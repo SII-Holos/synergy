@@ -19480,6 +19480,10 @@ msgstr "Approved"
 msgid "special-user.status.changes-requested"
 msgstr "Changes requested"
 
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.agents"
+msgstr "{count, plural, one {# agent} other {# agents}}"
+
 #. Question subtitle
 msgid "tool.label.asked-count"
 msgstr "Asked {count, plural, one {# question} other {# questions}}"

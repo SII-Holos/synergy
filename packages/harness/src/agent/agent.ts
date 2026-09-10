@@ -515,18 +515,26 @@ export namespace Agent {
   export async function defaultAgent() {
     const cfg = await Config.current()
     const agents = await list()
+    const eligible = (x: Info) => x.mode !== "subagent" && !x.hidden
     const configured = cfg.default_agent
     if (configured) {
       const agent = agents.find((x) => x.name === configured)
-      if (agent && agent.mode !== "subagent" && !agent.hidden) return agent.name
+      if (agent && eligible(agent)) return agent.name
       const reason = !agent
         ? `default_agent "${configured}" does not exist or is disabled`
         : agent.mode === "subagent"
           ? `default_agent "${configured}" is subagent-only`
           : `default_agent "${configured}" is hidden`
-      log.warn(`${reason}; falling back to "synergy"`)
+      log.warn(`${reason}; falling back`)
     }
-    return agents.find((x) => x.name === "synergy" && x.mode !== "subagent" && !x.hidden)?.name ?? "synergy"
+    // Prefer synergy, then any other visible primary agent that actually
+    // exists — never a bare name: a disabled synergy must not produce a
+    // default agent that fails to resolve at session creation.
+    return (
+      agents.find((x) => x.name === "synergy" && eligible(x))?.name ??
+      agents.find((x) => eligible(x))?.name ??
+      "synergy"
+    )
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {

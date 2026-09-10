@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { AgentConfig } from "@ericsanchezok/synergy-harness/agent/config-crud"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import DESCRIPTION from "./agent-config.txt"
 
 const parameters = z.object({
@@ -26,6 +27,7 @@ interface AgentConfigMetadata {
   count?: number
   default_agent?: string
   strategy?: AgentConfig.RemoveStrategy
+  agent?: Record<string, unknown>
   [key: string]: unknown
 }
 
@@ -39,12 +41,50 @@ export const AgentConfigToolGroup: ToolExposure.GroupInfo = {
   tools: ["agent_config"],
 }
 
+const MAX_PERMISSION_RULES = 20
+const MAX_PROMPT_CHARS = 500
+
+/** Bounded structured projection of the resolved agent for tool metadata. */
+function projectAgent(agent: Agent.Info): Record<string, unknown> {
+  return {
+    name: agent.name,
+    description: agent.description,
+    mode: agent.mode,
+    native: agent.native,
+    hidden: agent.hidden,
+    model: agent.model,
+    modelRole: agent.modelRole,
+    modelSource: agent.modelSource,
+    temperature: agent.temperature,
+    topP: agent.topP,
+    steps: agent.steps,
+    color: agent.color,
+    controlProfile: agent.controlProfile,
+    visibleTo: agent.visibleTo,
+    delegationGroups: agent.delegationGroups,
+    deferredTools: agent.deferredTools,
+    defaultVariant: agent.defaultVariant,
+    promptPreview:
+      agent.prompt === undefined
+        ? undefined
+        : agent.prompt.length > MAX_PROMPT_CHARS
+          ? agent.prompt.slice(0, MAX_PROMPT_CHARS) + "…"
+          : agent.prompt,
+    permissionRules: agent.permission
+      .slice(0, MAX_PERMISSION_RULES)
+      .map((rule) => ({ permission: rule.permission, pattern: rule.pattern, action: rule.action })),
+    permissionRulesTruncated: agent.permission.length > MAX_PERMISSION_RULES,
+  }
+}
+
 function summarizeAgent(item: AgentConfig.Describe): string {
   const lines = [
     `${item.agent.name} (${item.agent.mode}${item.agent.native ? ", built-in" : ""})`,
     item.agent.description ? `  ${item.agent.description}` : undefined,
     `  defined by: ${item.source}${item.file ? ` (${item.file})` : ""}`,
     item.agent.model ? `  model: ${item.agent.model.providerID}/${item.agent.model.modelID}` : undefined,
+    item.agent.controlProfile ? `  control profile: ${item.agent.controlProfile}` : undefined,
+    item.agent.visibleTo?.length ? `  visible to: ${item.agent.visibleTo.join(", ")}` : undefined,
     item.agent.hidden ? "  hidden from menus" : undefined,
   ]
   return lines.filter(Boolean).join("\n")
@@ -53,14 +93,14 @@ function summarizeAgent(item: AgentConfig.Describe): string {
 export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadata>("agent_config", {
   description: DESCRIPTION,
   parameters,
-  async execute(params: z.infer<typeof parameters>) {
+  async execute(params: z.infer<typeof parameters>, ctx) {
     const input: ActionInput = params.input
 
     try {
       switch (input.action) {
         case "create": {
           const { action, name, storage, scope, ...entry } = input
-          const result = await AgentConfig.create({ name, ...entry, storage, scope })
+          const result = await AgentConfig.create({ name, ...entry, storage, scope, signal: ctx.abort })
           const location = result.source + (result.file ? `: ${result.file}` : "")
           const body = result.agent
             ? summarizeAgent({ agent: result.agent, source: result.source, file: result.file })
@@ -68,13 +108,19 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
           const lines = [`Agent "${result.name}" created (${location}).`, "", body]
           return {
             title: `Create agent ${result.name}`,
-            metadata: { action, name: result.name, source: result.source, file: result.file },
+            metadata: {
+              action,
+              name: result.name,
+              source: result.source,
+              file: result.file,
+              agent: result.agent ? projectAgent(result.agent) : undefined,
+            },
             output: lines.join("\n"),
           }
         }
         case "update": {
           const { action, name, ...patch } = input
-          const result = await AgentConfig.update(name, patch)
+          const result = await AgentConfig.update({ name, patch, signal: ctx.abort })
           const lines = [
             `Agent "${result.agent.name}" updated (${result.source}${result.file ? `: ${result.file}` : ""}).`,
             "",
@@ -82,25 +128,31 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
           ]
           return {
             title: `Update agent ${result.agent.name}`,
-            metadata: { action, name: result.agent.name, source: result.source, file: result.file },
+            metadata: {
+              action,
+              name: result.agent.name,
+              source: result.source,
+              file: result.file,
+              agent: projectAgent(result.agent),
+            },
             output: lines.join("\n"),
           }
         }
         case "remove": {
           const { action, ...rest } = input
-          const result = await AgentConfig.remove(rest.name, { strategy: rest.strategy })
+          const result = await AgentConfig.remove({ name: rest.name, strategy: rest.strategy, signal: ctx.abort })
           return {
             title: `${result.strategy === "delete" ? "Delete" : "Disable"} agent ${result.name}`,
             metadata: { action, ...result },
             output:
               result.strategy === "disable"
-                ? `Agent "${result.name}" disabled (disable: true written). Re-enable with update { disable: false }.`
-                : `Agent "${result.name}" deleted — its defining file or config entry was removed.`,
+                ? `Agent "${result.name}" disabled (disable: true written in the owning layer). Re-enable with update { disable: false }.`
+                : `Agent "${result.name}" deleted — its defining file and config entries were removed.`,
           }
         }
         case "set_default": {
           const { action, ...rest } = input
-          const result = await AgentConfig.setDefault(rest.name)
+          const result = await AgentConfig.setDefault(rest.name, ctx.abort)
           return {
             title: `Set default agent ${result.default_agent}`,
             metadata: { action, ...result },
@@ -112,7 +164,13 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
           const result = await AgentConfig.describe(rest.name)
           return {
             title: `Agent ${result.agent.name}`,
-            metadata: { action, name: result.agent.name, source: result.source, file: result.file },
+            metadata: {
+              action,
+              name: result.agent.name,
+              source: result.source,
+              file: result.file,
+              agent: projectAgent(result.agent),
+            },
             output: summarizeAgent(result),
           }
         }

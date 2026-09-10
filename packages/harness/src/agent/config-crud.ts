@@ -3,9 +3,12 @@ import fs from "fs/promises"
 import matter from "gray-matter"
 import z from "zod"
 import { Config } from "../config/config"
+import { ConfigDomain } from "../config/domain"
+import { ConfigMarkdown } from "../config/markdown"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { Lock } from "../util/lock"
 import { RuntimeReloadExecutor } from "../config/reload-executor"
 import { Agent } from "./agent"
 import * as Schema from "../config/schema"
@@ -15,8 +18,13 @@ const log = Log.create({ service: "agent.config" })
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*(\/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$/
 
+const MD_GLOB = new Bun.Glob("{agent,agents}/**/*.md")
+
 export namespace AgentConfig {
   export type Entry = Schema.Agent
+
+  /** Update patch: every field may also be `null` to clear it. */
+  export type Patch = { [K in keyof Entry]?: Entry[K] | null }
 
   export type StorageScope = "project" | "global"
   export type StorageKind = "markdown" | "jsonc"
@@ -28,9 +36,25 @@ export namespace AgentConfig {
     scope?: StorageScope
     /** Custom root directory for markdown storage (CLI `--path` support). */
     directory?: string
+    /** Cancellation signal checked before irreversible writes and reloads. */
+    signal?: AbortSignal
   }
 
-  export type OwnerLayer = "markdown" | "jsonc" | "builtin"
+  export interface UpdateInput {
+    name: string
+    patch: Patch
+    /** Cancellation signal checked before irreversible writes and reloads. */
+    signal?: AbortSignal
+  }
+
+  export interface RemoveInput {
+    name: string
+    strategy?: RemoveStrategy
+    /** Cancellation signal checked before irreversible writes and reloads. */
+    signal?: AbortSignal
+  }
+
+  export type OwnerLayer = "markdown" | "jsonc" | "builtin" | "plugin" | "external"
 
   export interface Describe {
     agent: Agent.Info
@@ -39,11 +63,38 @@ export namespace AgentConfig {
     file?: string
   }
 
-  function markdownDirectories(): string[] {
-    const dirs: string[] = []
-    if (ScopeContext.tryScope()) dirs.push(path.join(ScopeContext.current.directory, ".synergy"))
-    dirs.push(Global.Path.config)
-    return dirs
+  interface LayerRoot {
+    root: string
+    scope: StorageScope
+  }
+
+  interface MarkdownOwner {
+    file: string
+    /** Config-layer root (…/.synergy or the global config dir) that owns the file. */
+    root: string
+    scope: StorageScope
+    data: Record<string, unknown>
+    content: string
+  }
+
+  interface JsoncOwner {
+    root: string
+    scope: StorageScope
+    entry: Partial<Entry>
+  }
+
+  /** Config layers in precedence order: project before global. */
+  function layerRoots(): LayerRoot[] {
+    const roots: LayerRoot[] = []
+    if (ScopeContext.tryScope() && ScopeContext.current.scope.type === "project") {
+      roots.push({ root: path.join(ScopeContext.current.directory, ".synergy"), scope: "project" })
+    }
+    roots.push({ root: Global.Path.config, scope: "global" })
+    return roots
+  }
+
+  function defaultScope(): StorageScope {
+    return ScopeContext.tryScope() && ScopeContext.current.scope.type === "project" ? "project" : "global"
   }
 
   async function fileExists(file: string): Promise<boolean> {
@@ -55,19 +106,58 @@ export namespace AgentConfig {
     }
   }
 
-  async function findMarkdownFile(name: string): Promise<string | undefined> {
-    for (const root of markdownDirectories()) {
-      for (const folder of ["agent", "agents"]) {
-        const file = path.join(root, folder, `${name}.md`)
-        if (await fileExists(file)) return file
+  function deriveMarkdownName(root: string, file: string): string {
+    const relative = path.relative(root, file).replaceAll("\\", "/").replace(/\.md$/, "")
+    const parts = relative.split("/")
+    if (parts.length <= 1) return parts[0] ?? ""
+    // Mirror the loader: the agent/agents folder name is not part of the name.
+    if (parts[0] === "agent" || parts[0] === "agents") return parts.slice(1).join("/")
+    return parts.join("/")
+  }
+
+  /**
+   * Scan the markdown agent layers and index owners by their configured
+   * (frontmatter) agent name — the loader lets frontmatter `name` override the
+   * filename-derived name, so ownership must resolve the same way. Earlier
+   * layers win, matching load precedence.
+   */
+  async function scanMarkdownOwners(): Promise<Map<string, MarkdownOwner>> {
+    const owners = new Map<string, MarkdownOwner>()
+    for (const { root, scope } of layerRoots()) {
+      if (!(await fileExists(root))) continue
+      for await (const item of MD_GLOB.scan({ absolute: true, followSymlinks: true, dot: true, cwd: root })) {
+        const file = item.replaceAll("\\", "/")
+        let parsed: { data?: Record<string, unknown>; content?: string }
+        try {
+          parsed = await ConfigMarkdown.parse(file)
+        } catch {
+          continue
+        }
+        if (!parsed.data) continue
+        const name =
+          typeof parsed.data["name"] === "string" && parsed.data["name"].length > 0
+            ? parsed.data["name"]
+            : deriveMarkdownName(root, file)
+        if (!name || owners.has(name)) continue
+        owners.set(name, { file, root, scope, data: parsed.data, content: parsed.content ?? "" })
       }
+    }
+    return owners
+  }
+
+  async function findJsoncOwner(name: string): Promise<JsoncOwner | undefined> {
+    for (const { root, scope } of layerRoots()) {
+      const domain = await Config.domainGet("agents", root)
+      const entry = domain.agent?.[name]
+      if (entry !== undefined) return { root, scope, entry }
     }
     return undefined
   }
 
-  async function jsoncEntry(name: string): Promise<Partial<Entry> | undefined> {
-    const domain = await Config.domainGet("agents")
-    return domain.agent?.[name]
+  function ensureActive(signal: AbortSignal | undefined, stage: string): void {
+    if (signal?.aborted) {
+      throw new Error(`agent_config ${stage} was cancelled before the change was applied`)
+    }
   }
 
   async function validateEntry(entry: Partial<Entry>, name: string): Promise<void> {
@@ -81,18 +171,24 @@ export namespace AgentConfig {
       const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "entry"}: ${i.message}`).join("; ")
       throw new Error(`Invalid agent configuration for "${name}": ${issues}`)
     }
-    if (entry.model !== undefined && !entry.model.includes("/")) {
+    if (entry.model !== undefined && entry.model !== null && !validModelRef(entry.model)) {
       throw new Error(
-        `Invalid model "${entry.model}" for agent "${name}": use the provider/model format, e.g. "openai/gpt-5".`,
+        `Invalid model "${entry.model}" for agent "${name}": use the provider/model format with both halves non-empty, e.g. "openai/gpt-5".`,
       )
     }
     await validateReferences(entry, name)
   }
 
+  function validModelRef(model: string): boolean {
+    const separator = model.indexOf("/")
+    if (separator <= 0) return false
+    return model.slice(0, separator).trim().length > 0 && model.slice(separator + 1).trim().length > 0
+  }
+
   /**
-   * Cross-agent reference check: every `visibleTo` entry must resolve to a
-   * known identity — an existing agent name, or a delegation group declared
-   * by any agent (including this entry's own `delegationGroups`).
+   * Direct-write reference check: every `visibleTo` entry must resolve to a
+   * known identity — an existing agent name, or a delegation group declared by
+   * any agent (including this entry's own `delegationGroups`).
    */
   async function validateReferences(entry: Partial<Entry>, name: string): Promise<void> {
     const references = entry.visibleTo ?? []
@@ -113,7 +209,89 @@ export namespace AgentConfig {
     }
   }
 
-  async function refreshRuntime(reason: string): Promise<void> {
+  interface GraphNode {
+    name: string
+    visibleTo?: string[]
+    delegationGroups?: string[]
+  }
+
+  function graphIdentities(nodes: GraphNode[]): Set<string> {
+    const known = new Set<string>()
+    for (const node of nodes) {
+      known.add(node.name)
+      for (const group of node.delegationGroups ?? []) known.add(group)
+    }
+    return known
+  }
+
+  function reachable(node: GraphNode, known: Set<string>): boolean {
+    return !node.visibleTo || node.visibleTo.length === 0 || node.visibleTo.some((ref) => known.has(ref))
+  }
+
+  /**
+   * Accessibility invariant over the prospective agent graph: report agents
+   * that were reachable before the change and would become unreachable after
+   * it (no visibleTo entry resolves to a remaining agent or group identity).
+   */
+  function newlyBrokenAgents(current: GraphNode[], next: GraphNode[]): GraphNode[] {
+    const before = graphIdentities(current)
+    const after = graphIdentities(next)
+    const broken: GraphNode[] = []
+    for (const node of next) {
+      if (reachable(node, after)) continue
+      // Agents already unreachable before the change keep their pre-existing
+      // (load-time warned) state — only newly broken ones block the write.
+      const prior = current.find((candidate) => candidate.name === node.name)
+      if (prior && !reachable(prior, before)) continue
+      if (!prior) continue
+      broken.push(prior)
+    }
+    return broken
+  }
+
+  /**
+   * Validate the whole prospective graph after applying a create/update/
+   * disable/delete — not just the touched entry. Removing a delegationGroups
+   * identity that another agent's visibleTo depends on rejects the write.
+   */
+  async function validateGraphChange(
+    action: "disable" | "delete" | "update" | "create",
+    name: string,
+    patch?: Partial<Entry>,
+  ): Promise<void> {
+    const agents = await Agent.list()
+    const current: GraphNode[] = agents.map((agent) => ({
+      name: agent.name,
+      visibleTo: agent.visibleTo,
+      delegationGroups: agent.delegationGroups,
+    }))
+    let next: GraphNode[]
+    if (action === "delete" || action === "disable") {
+      next = current.filter((node) => node.name !== name)
+    } else {
+      next = current.map((node) => ({ ...node }))
+      const merged = next.find((node) => node.name === name)
+      if (merged) {
+        if (patch?.visibleTo !== undefined) merged.visibleTo = patch.visibleTo
+        if (patch?.delegationGroups !== undefined) merged.delegationGroups = patch.delegationGroups
+      } else if (patch) {
+        next.push({ name, visibleTo: patch.visibleTo, delegationGroups: patch.delegationGroups })
+      }
+    }
+    const broken = newlyBrokenAgents(current, next)
+    if (broken.length > 0) {
+      const details = broken
+        .map((node) => `"${node.name}" (visibleTo: ${(node.visibleTo ?? []).map((r) => `"${r}"`).join(", ")})`)
+        .join("; ")
+      throw new Error(
+        `Cannot ${action} agent "${name}": it would make ${details} unreachable. ` +
+          `Keep the referenced agent or delegation group, or clear the dependent visibleTo entries first.`,
+      )
+    }
+  }
+
+  async function refreshRuntime(reason: string, signal?: AbortSignal): Promise<void> {
+    ensureActive(signal, "reload")
     await Agent.reload()
     await RuntimeReloadExecutor.reload({ targets: ["config"], scope: "global", reason }).catch((error) => {
       log.warn("runtime reload after agent config change failed", { reason, error })
@@ -122,10 +300,97 @@ export namespace AgentConfig {
 
   function markdownTargetDirectory(scope: StorageScope): string {
     if (scope === "global") return Global.Path.config
-    if (!ScopeContext.tryScope()) {
-      throw new Error("Creating a project-scoped agent requires a ScopeContext. Pass an explicit directory instead.")
+    if (!ScopeContext.tryScope() || ScopeContext.current.scope.type !== "project") {
+      throw new Error(
+        'Project-scoped agent storage requires a project Scope. Pass scope: "global" or run inside a project.',
+      )
     }
     return path.join(ScopeContext.current.directory, ".synergy")
+  }
+
+  /** Apply an update patch: `undefined` keeps the current value, `null` clears it. */
+  function applyPatch(current: Partial<Entry>, patch: Patch): Partial<Entry> {
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) continue
+      if (value === null) delete merged[key]
+      else merged[key] = value
+    }
+    return merged as Partial<Entry>
+  }
+
+  function rejectForeignAgent(existing: Agent.Info, action: string): void {
+    if (existing.source === "plugin") {
+      throw new Error(
+        `Agent "${existing.name}" is contributed by a plugin; ${action} through agent config would discard the plugin definition. Manage it in the owning plugin instead.`,
+      )
+    }
+    if (existing.source === "external") {
+      throw new Error(
+        `Agent "${existing.name}" is an external agent; ${action} through agent config is not supported. Manage the external definition directly.`,
+      )
+    }
+  }
+
+  /** Drop schema-transform artifacts (empty options/permission) before writing. */
+  function cleanEntry(entry: Partial<Entry>): Partial<Entry> {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(entry)) {
+      if (value === undefined) continue
+      if (typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0) {
+        continue
+      }
+      out[key] = value
+    }
+    return out as Partial<Entry>
+  }
+
+  /** An overlay with no meaningful fields left should fall away entirely. */
+  function isEmptyOverlay(entry: Partial<Entry>): boolean {
+    return Object.keys(cleanEntry(entry)).every((key) => key === "name")
+  }
+
+  async function writeJsoncEntry(owner: JsoncOwner, name: string, entry: Partial<Entry>): Promise<void> {
+    const cleaned = cleanEntry(entry)
+    if (isEmptyOverlay(cleaned)) {
+      await removeJsoncEntry(owner, name)
+      return
+    }
+    // replace-domain, not merge: deep-merge cannot remove keys, so a
+    // re-enable that drops `disable` must replace the whole entry.
+    if (owner.scope === "global") {
+      await Config.domainMutateWithChange(
+        "agents",
+        (domain) => ({ ...domain, agent: { ...domain.agent, [name]: cleaned } }),
+        { mode: "replace-domain" },
+      )
+      return
+    }
+    const domain = await Config.domainGet("agents", owner.root)
+    await Config.domainUpdate(
+      "agents",
+      { ...domain, agent: { ...domain.agent, [name]: cleaned } },
+      { root: owner.root, mode: "replace-domain" },
+    )
+  }
+
+  async function removeJsoncEntry(owner: JsoncOwner, name: string): Promise<void> {
+    if (owner.scope === "global") {
+      await Config.domainMutateWithChange(
+        "agents",
+        (domain) => {
+          const agent = { ...domain.agent }
+          delete agent[name]
+          return { ...domain, agent }
+        },
+        { mode: "replace-domain" },
+      )
+      return
+    }
+    const domain = await Config.domainGet("agents", owner.root)
+    const agent = { ...domain.agent }
+    delete agent[name]
+    await Config.domainUpdate("agents", { ...domain, agent }, { root: owner.root, mode: "replace-domain" })
   }
 
   export interface CreateResult {
@@ -136,7 +401,8 @@ export namespace AgentConfig {
   }
 
   export async function create(input: CreateInput): Promise<CreateResult> {
-    const { name, storage, scope, directory, ...entry } = input
+    const { name, storage, directory, signal } = input
+    const scope = input.scope ?? defaultScope()
     // An explicit directory scaffolds an agent file that may live outside the
     // scanned config directories (CLI `--path`): existence checks fall back to
     // the target file itself and loading is best-effort.
@@ -149,28 +415,31 @@ export namespace AgentConfig {
         )
       }
     }
+    const { name: _name, storage: _storage, scope: _scope, directory: _dir, signal: _sig, ...entry } = input
     await validateEntry(entry, name)
+    await validateGraphChange("create", name, entry)
+    ensureActive(signal, "create")
 
     const kind: StorageKind = directory
       ? "markdown"
       : (storage ?? (entry.prompt !== undefined && entry.prompt.trim().length > 0 ? "markdown" : "jsonc"))
 
     if (kind === "markdown") {
-      const root = directory ?? markdownTargetDirectory(scope ?? "project")
-      const dir = path.join(root, "agent")
-      const file = path.join(dir, `${name}.md`)
+      const root = directory ?? markdownTargetDirectory(scope)
+      const file = path.join(root, "agent", `${name}.md`)
+      using _ = await Lock.write(`agent-config:${file}`)
       if (await fileExists(file)) throw new Error(`Agent file already exists: ${file}`)
-      await fs.mkdir(dir, { recursive: true })
+      await fs.mkdir(path.dirname(file), { recursive: true })
       const { prompt = "", ...frontmatter } = entry
       await Bun.write(file, matter.stringify(prompt, frontmatter))
       await Config.state.resetAll()
-      await refreshRuntime(`agent-config:create:${name}`)
+      await refreshRuntime(`agent-config:create:${name}`, signal)
       if (scaffold) return { name, source: "markdown", file, agent: await Agent.get(name) }
     } else {
       await Config.domainMutateWithChange("agents", (current) => ({
         agent: { ...current.agent, [name]: entry },
       }))
-      await refreshRuntime(`agent-config:create:${name}`)
+      await refreshRuntime(`agent-config:create:${name}`, signal)
       return { name, source: "jsonc", agent: await Agent.get(name) }
     }
 
@@ -178,65 +447,108 @@ export namespace AgentConfig {
     if (!agent) {
       throw new Error(`Agent "${name}" was written but did not load. Check server logs for validation issues.`)
     }
-    const file = await findMarkdownFile(name)
-    return { name, source: "markdown", file, agent }
+    const owner = (await scanMarkdownOwners()).get(name)
+    return { name, source: "markdown", file: owner?.file, agent }
   }
 
-  export async function update(name: string, patch: Partial<Entry>): Promise<Describe> {
+  export async function update(input: UpdateInput): Promise<Describe> {
+    const { name, patch, signal } = input
     const existing = await Agent.get(name)
-    const file = await findMarkdownFile(name)
-    const entry = await jsoncEntry(name)
-    if (!existing && !file && !entry) {
+    const md = (await scanMarkdownOwners()).get(name)
+    const jsonc = await findJsoncOwner(name)
+    if (!existing && !md && !jsonc) {
       throw new Error(
         `Agent "${name}" does not exist, was fully deleted, or is disabled without a stored definition. Use the list action to see known agents, or create it again.`,
       )
     }
+    if (existing) rejectForeignAgent(existing, "updating it")
 
-    // A jsonc disable flag must be cleared through the jsonc layer, so
-    // re-enabling routes there even when a markdown file also defines the agent.
-    const reenabling = entry?.disable === true && patch.disable === false
+    // A jsonc disable flag must be cleared through the jsonc layer that holds
+    // it, so re-enabling routes there even when a markdown file also defines
+    // the agent.
+    const reenabling = jsonc?.entry.disable === true && patch.disable === false
 
-    if (file && !reenabling) {
-      const raw = await fs.readFile(file, "utf8")
+    if (md && !reenabling) {
+      // Hold the write lock across the full read/merge/write transaction so
+      // concurrent updates cannot silently drop each other's patches.
+      using _ = await Lock.write(`agent-config:${md.file}`)
+      const raw = await fs.readFile(md.file, "utf8")
       const parsed = matter(raw)
-      const merged: Partial<Entry> = { ...parsed.data, ...definedOnly(patch) }
+      const merged = applyPatch(parsed.data as Partial<Entry>, patch)
       await validateEntry(omit(merged, ["disable"]), name)
+      await validateGraphChange("update", name, merged)
+      ensureActive(signal, "update")
       const { prompt = parsed.content, ...frontmatter } = merged
-      await Bun.write(file, matter.stringify(prompt, frontmatter))
+      await Bun.write(md.file, matter.stringify(prompt, frontmatter))
       await Config.state.resetAll()
-      await refreshRuntime(`agent-config:update:${name}`)
+      await refreshRuntime(`agent-config:update:${name}`, signal)
       return describe(name)
     }
 
-    const current = entry ?? {}
-    const merged: Partial<Entry> = { ...current, ...definedOnly(patch) }
-    if (existing || patch.disable === true) {
-      await validateEntry(omit(merged, ["disable"]), name)
+    if (jsonc) {
+      const merged = applyPatch(jsonc.entry, patch)
+      // Re-enabling removes the disable marker outright instead of persisting
+      // `disable: false`; an overlay left with no fields falls away entirely
+      // so the owning definition stands alone.
+      if (patch.disable === false) {
+        delete merged.disable
+        const remaining = Object.keys(merged).filter((key) => key !== "name")
+        if (md && remaining.length === 0) {
+          ensureActive(signal, "update")
+          await removeJsoncEntry(jsonc, name)
+          await refreshRuntime(`agent-config:update:${name}`, signal)
+          return describe(name)
+        }
+      }
+      if (existing || patch.disable === true) {
+        await validateEntry(omit(merged, ["disable"]), name)
+      }
+      await validateGraphChange("update", name, merged)
+      ensureActive(signal, "update")
+      await writeJsoncEntry(jsonc, name, merged)
+      await refreshRuntime(`agent-config:update:${name}`, signal)
+      return describe(name)
     }
+
+    // No stored definition the patch can target (disabled markdown agent with
+    // its overlay already gone): treat like the jsonc path against global.
+    const merged = applyPatch({}, patch)
+    await validateGraphChange("update", name, merged)
+    ensureActive(signal, "update")
     await Config.domainMutateWithChange("agents", (domain) => ({
       agent: { ...domain.agent, [name]: merged },
     }))
-    await refreshRuntime(`agent-config:update:${name}`)
+    await refreshRuntime(`agent-config:update:${name}`, signal)
     return describe(name)
   }
 
-  export async function remove(
-    name: string,
-    options: { strategy?: RemoveStrategy } = {},
-  ): Promise<{ name: string; strategy: RemoveStrategy }> {
-    const strategy: RemoveStrategy = options.strategy ?? "disable"
+  export async function remove(input: RemoveInput): Promise<{ name: string; strategy: RemoveStrategy }> {
+    const { name, signal } = input
+    const strategy: RemoveStrategy = input.strategy ?? "disable"
     const existing = await Agent.get(name)
     if (!existing) {
       throw new Error(
         `Agent "${name}" does not exist (never configured, already removed, or disabled — re-enable it with update first).`,
       )
     }
+    rejectForeignAgent(existing, "removing it")
+    await validateGraphChange(strategy === "delete" ? "delete" : "disable", name)
+    ensureActive(signal, strategy)
 
     if (strategy === "disable") {
-      await Config.domainMutateWithChange("agents", (domain) => ({
-        agent: { ...domain.agent, [name]: { ...(domain.agent?.[name] ?? {}), disable: true } },
-      }))
-      await refreshRuntime(`agent-config:disable:${name}`)
+      // Scope the disable to the layer that owns the definition: a
+      // project-defined agent keeps working in every other Scope.
+      const md = (await scanMarkdownOwners()).get(name)
+      if (md?.scope === "project") {
+        const domain = await Config.domainGet("agents", md.root)
+        const current = domain.agent?.[name] ?? {}
+        await Config.domainUpdate("agents", { agent: { [name]: { ...current, disable: true } } }, { root: md.root })
+      } else {
+        await Config.domainMutateWithChange("agents", (domain) => ({
+          agent: { ...domain.agent, [name]: { ...(domain.agent?.[name] ?? {}), disable: true } },
+        }))
+      }
+      await refreshRuntime(`agent-config:disable:${name}`, signal)
       return { name, strategy }
     }
 
@@ -246,28 +558,34 @@ export namespace AgentConfig {
       )
     }
 
-    const file = await findMarkdownFile(name)
-    if (file) {
-      await fs.unlink(file)
+    const md = (await scanMarkdownOwners()).get(name)
+    if (md) {
+      using _ = await Lock.write(`agent-config:${md.file}`)
+      await fs.unlink(md.file)
+      // A same-name jsonc overlay (disable/re-enable bookkeeping or overrides)
+      // would immediately recreate a blank agent — clear it in every layer.
+      for (const { root, scope } of layerRoots()) {
+        const domain = await Config.domainGet("agents", root)
+        if (domain.agent?.[name] !== undefined) {
+          await removeJsoncEntry({ root, scope, entry: domain.agent[name] }, name)
+        }
+      }
       await Config.state.resetAll()
-      await refreshRuntime(`agent-config:delete:${name}`)
+      await refreshRuntime(`agent-config:delete:${name}`, signal)
       return { name, strategy }
     }
 
-    await Config.domainMutateWithChange(
-      "agents",
-      (domain) => {
-        const agent = { ...domain.agent }
-        delete agent[name]
-        return { ...domain, agent }
-      },
-      { mode: "replace-domain" },
-    )
-    await refreshRuntime(`agent-config:delete:${name}`)
-    return { name, strategy }
+    const jsonc = await findJsoncOwner(name)
+    if (jsonc) {
+      await removeJsoncEntry(jsonc, name)
+      await refreshRuntime(`agent-config:delete:${name}`, signal)
+      return { name, strategy }
+    }
+
+    throw new Error(`Agent "${name}" has no stored definition to delete.`)
   }
 
-  export async function setDefault(name: string): Promise<{ default_agent: string }> {
+  export async function setDefault(name: string, signal?: AbortSignal): Promise<{ default_agent: string }> {
     const agent = await Agent.get(name)
     if (!agent) {
       throw new Error(
@@ -282,17 +600,20 @@ export namespace AgentConfig {
     if (agent.hidden) {
       throw new Error(`Agent "${name}" is hidden and cannot be the default agent. Choose a visible primary agent.`)
     }
+    ensureActive(signal, "set_default")
     await Config.domainMutateWithChange("agents", (domain) => ({ ...domain, default_agent: name }))
-    await refreshRuntime(`agent-config:set-default:${name}`)
+    await refreshRuntime(`agent-config:set-default:${name}`, signal)
     return { default_agent: name }
   }
 
   export async function describe(name: string): Promise<Describe> {
     const agent = await Agent.get(name)
     if (!agent) throw new Error(`Agent "${name}" does not exist or is disabled.`)
-    const file = await findMarkdownFile(name)
-    if (file) return { agent, source: "markdown", file }
-    if (await jsoncEntry(name)) return { agent, source: "jsonc" }
+    const md = (await scanMarkdownOwners()).get(name)
+    if (md) return { agent, source: "markdown", file: md.file }
+    if (agent.source === "plugin") return { agent, source: "plugin" }
+    if (agent.source === "external") return { agent, source: "external" }
+    if (await findJsoncOwner(name)) return { agent, source: "jsonc" }
     return { agent, source: "builtin" }
   }
 
@@ -307,14 +628,6 @@ export namespace AgentConfig {
       }
     }
     return result
-  }
-
-  function definedOnly<T extends object>(patch: Partial<T>): Partial<T> {
-    const out: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(patch)) {
-      if (value !== undefined) out[key] = value
-    }
-    return out as Partial<T>
   }
 
   function omit<T extends object, K extends keyof T>(value: T, keys: K[]): Omit<T, K> {
@@ -352,29 +665,37 @@ export namespace AgentConfig {
         .describe("Group identities this agent receives for delegation resolution"),
       controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
       defaultVariant: z.string().optional(),
+      hidden: z.boolean().optional().describe("Hide this agent from menus"),
+      deferredTools: z.array(z.string()).optional().describe("Tools folded behind expand_tools for this agent"),
       storage: z
         .enum(["markdown", "jsonc"])
         .optional()
         .describe("Storage layer. Default: markdown when a prompt is given, else a global 60-agents.jsonc entry"),
-      scope: z.enum(["project", "global"]).optional().describe("Markdown storage scope. Default: project"),
+      scope: z.enum(["project", "global"]).optional().describe("Storage scope. Default: the current Scope's layer"),
     }),
     Update: z.object({
       action: z.literal("update"),
       name: z.string(),
-      description: z.string().optional(),
+      description: z.string().nullable().optional().describe("Pass null to clear"),
       mode: z.enum(["primary", "subagent", "all"]).optional(),
-      prompt: z.string().optional(),
-      model: z.string().optional(),
-      modelRole: ModelRole.optional(),
-      temperature: z.number().optional(),
-      top_p: z.number().optional(),
-      color: z.string().optional(),
-      steps: z.number().int().positive().optional(),
+      prompt: z.string().nullable().optional().describe("Pass null to clear"),
+      model: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("provider/model format. Pass null to clear so modelRole takes effect"),
+      modelRole: ModelRole.nullable().optional().describe("Pass null to clear"),
+      temperature: z.number().nullable().optional(),
+      top_p: z.number().nullable().optional(),
+      color: z.string().nullable().optional(),
+      steps: z.number().int().positive().nullable().optional(),
       permission: Schema.Permission.optional(),
       visibleTo: z.array(z.string()).optional(),
       delegationGroups: z.array(z.string()).optional(),
       controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
-      defaultVariant: z.string().optional(),
+      defaultVariant: z.string().nullable().optional().describe("Pass null to clear"),
+      hidden: z.boolean().optional(),
+      deferredTools: z.array(z.string()).optional(),
       disable: z.boolean().optional().describe("Set true to disable, false to re-enable"),
     }),
     Remove: z.object({
@@ -384,7 +705,7 @@ export namespace AgentConfig {
         .enum(["disable", "delete"])
         .optional()
         .describe(
-          '"disable" (default) writes disable:true — reversible; "delete" removes the markdown file or jsonc entry',
+          '"disable" (default) writes disable:true in the owning layer — reversible; "delete" removes the markdown file and config entries',
         ),
     }),
     SetDefault: z.object({

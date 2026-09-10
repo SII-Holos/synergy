@@ -990,3 +990,40 @@ test("two plugin contributions with same public name use first-wins order", asyn
     await Agent.reload()
   }
 })
+
+test("AgentConfig rejects updates and removals for plugin-contributed agents", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-guarded",
+      pluginId: "guard-plugin",
+      pluginGeneration: "generation-one",
+      name: "plugin_guarded",
+      description: "Plugin-owned agent",
+      prompt: "Managed by the plugin.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const agent = await Agent.get("plugin_guarded")
+        expect(agent?.source).toBe("plugin")
+
+        const { AgentConfig } = await import("@ericsanchezok/synergy-harness/agent/config-crud")
+        await expect(AgentConfig.update({ name: "plugin_guarded", patch: { model: "openai/gpt-5" } })).rejects.toThrow(
+          /plugin/i,
+        )
+        await expect(AgentConfig.remove({ name: "plugin_guarded" })).rejects.toThrow(/plugin/i)
+        await expect(AgentConfig.remove({ name: "plugin_guarded", strategy: "delete" })).rejects.toThrow(/plugin/i)
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})

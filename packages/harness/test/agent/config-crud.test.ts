@@ -127,9 +127,123 @@ describe("AgentConfig.create", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        for (const bad of ["not-a-model-ref", "openai/", "/gpt-5", "/"]) {
+          await expect(
+            AgentConfig.create({ name: "bad-model", prompt: "x", model: bad, scope: "project" }),
+          ).rejects.toThrow(/model.*provider\/model/i)
+        }
+      },
+    })
+  })
+
+  test("creates parent directories for nested agent names", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await AgentConfig.create({
+          name: "team/reviewer",
+          prompt: "nested reviewer",
+          scope: "project",
+        })
+
+        const file = path.join(tmp.path, ".synergy", "agent", "team", "reviewer.md")
+        expect(
+          await fs.access(file).then(
+            () => true,
+            () => false,
+          ),
+        ).toBe(true)
+        expect(await Agent.get("team/reviewer")).toBeDefined()
+      },
+    })
+  })
+
+  test("aborted signal rejects before any write lands", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const controller = new AbortController()
+        controller.abort()
         await expect(
-          AgentConfig.create({ name: "bad-model", prompt: "x", model: "not-a-model-ref", scope: "project" }),
-        ).rejects.toThrow(/model.*provider\/model/i)
+          AgentConfig.create({
+            name: "cancelled-agent",
+            prompt: "never lands",
+            scope: "project",
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow(/cancelled/i)
+
+        expect(await Agent.get("cancelled-agent")).toBeUndefined()
+        const file = path.join(tmp.path, ".synergy", "agent", "cancelled-agent.md")
+        await expect(fs.access(file)).rejects.toThrow()
+      },
+    })
+  })
+})
+
+describe("AgentConfig ownership resolution", () => {
+  test("resolves markdown owners by frontmatter name, not filename", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        // legacy.md carries a frontmatter name override, like the loader permits
+        await fs.mkdir(path.join(tmp.path, ".synergy", "agent"), { recursive: true })
+        await Bun.write(
+          path.join(tmp.path, ".synergy", "agent", "legacy.md"),
+          "---\nname: reviewer\ndescription: frontmatter owner\n---\nPrompt body",
+        )
+        await Agent.reload()
+        expect(await Agent.get("reviewer")).toBeDefined()
+
+        const updated = await AgentConfig.update({ name: "reviewer", patch: { description: "updated" } })
+        expect(updated.source).toBe("markdown")
+        expect(updated.file).toContain("legacy.md")
+
+        const agent = await Agent.get("reviewer")
+        expect(agent?.description).toBe("updated")
+
+        // delete removes the actual owning file
+        await AgentConfig.remove({ name: "reviewer", strategy: "delete" })
+        await expect(fs.access(path.join(tmp.path, ".synergy", "agent", "legacy.md"))).rejects.toThrow()
+        expect(await Agent.get("reviewer")).toBeUndefined()
+      },
+    })
+  })
+})
+
+describe("AgentConfig graph validation", () => {
+  test("rejects removing a delegation group another agent's visibleTo depends on", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await AgentConfig.create({
+          name: "group-owner",
+          prompt: "owner",
+          delegationGroups: ["reviewers"],
+          scope: "project",
+        })
+        await AgentConfig.create({
+          name: "group-member",
+          prompt: "member",
+          visibleTo: ["reviewers"],
+          scope: "project",
+        })
+
+        await expect(AgentConfig.update({ name: "group-owner", patch: { delegationGroups: [] } })).rejects.toThrow(
+          /group-member.*unreachable/i,
+        )
+
+        // disabling the group owner equally breaks the member's only identity
+        await expect(AgentConfig.remove({ name: "group-owner" })).rejects.toThrow(/group-member.*unreachable/i)
+
+        // clearing the dependent visibleTo first unblocks the write
+        await AgentConfig.update({ name: "group-member", patch: { visibleTo: [] } })
+        await expect(AgentConfig.remove({ name: "group-owner" })).resolves.toBeDefined()
       },
     })
   })
@@ -149,7 +263,7 @@ describe("AgentConfig.update", () => {
           prompt: "original prompt",
           scope: "project",
         })
-        await AgentConfig.update("reviewer", { description: "after" })
+        await AgentConfig.update({ name: "reviewer", patch: { description: "after" } })
 
         const agent = await Agent.get("reviewer")
         expect(agent?.description).toBe("after")
@@ -164,13 +278,109 @@ describe("AgentConfig.update", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await AgentConfig.update("explore", { model: "openai/gpt-test" })
+        await AgentConfig.update({ name: "explore", patch: { model: "openai/gpt-test" } })
 
         const domain = await Config.domainGet("agents")
         expect(domain.agent?.["explore"]).toMatchObject({ model: "openai/gpt-test" })
 
         const agent = await Agent.get("explore")
         expect(agent?.model).toMatchObject({ providerID: "openai", modelID: "gpt-test" })
+      },
+    })
+  })
+
+  test("null clears an explicit model so modelRole takes effect", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await AgentConfig.create({
+          name: "role-switcher",
+          prompt: "switch",
+          model: "openai/explicit-model",
+          modelRole: "mid",
+          scope: "project",
+        })
+        expect((await Agent.get("role-switcher"))?.modelSource).toBe("explicit")
+
+        await AgentConfig.update({ name: "role-switcher", patch: { model: null } })
+
+        const agent = await Agent.get("role-switcher")
+        expect(agent?.model).toBeUndefined()
+        expect(agent?.modelRole).toBe("mid")
+        expect(agent?.modelSource).toBe("role")
+      },
+    })
+  })
+
+  test("re-enabling a disabled markdown agent leaves no residual overlay", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await AgentConfig.create({ name: "cycle-agent", prompt: "cycle", scope: "project" })
+        await AgentConfig.remove({ name: "cycle-agent", strategy: "disable" })
+        expect(await Agent.get("cycle-agent")).toBeUndefined()
+
+        await AgentConfig.update({ name: "cycle-agent", patch: { disable: false } })
+        expect(await Agent.get("cycle-agent")).toBeDefined()
+
+        const domain = await Config.domainGet("agents")
+        expect(domain.agent?.["cycle-agent"]).toBeUndefined()
+
+        // deleting after the disable/re-enable cycle removes the file outright
+        await AgentConfig.remove({ name: "cycle-agent", strategy: "delete" })
+        const file = path.join(tmp.path, ".synergy", "agent", "cycle-agent.md")
+        await expect(fs.access(file)).rejects.toThrow()
+        expect(await Agent.get("cycle-agent")).toBeUndefined()
+      },
+    })
+  })
+})
+
+describe("AgentConfig scoped disable", () => {
+  test("disabling a project markdown agent writes the flag to the project layer", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await AgentConfig.create({ name: "project-agent", prompt: "project", scope: "project" })
+        expect(await Agent.get("project-agent")).toBeDefined()
+
+        await AgentConfig.remove({ name: "project-agent", strategy: "disable" })
+
+        const projectDomain = await Config.domainGet("agents", path.join(tmp.path, ".synergy"))
+        expect(projectDomain.agent?.["project-agent"]).toMatchObject({ disable: true })
+
+        const globalDomain = await Config.domainGet("agents")
+        expect(globalDomain.agent?.["project-agent"]).toBeUndefined()
+      },
+    })
+  })
+
+  test("deleting a markdown agent clears same-name jsonc overlays in every layer", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await AgentConfig.create({ name: "overlay-agent", prompt: "base", scope: "project" })
+        await AgentConfig.remove({ name: "overlay-agent", strategy: "disable" })
+        await AgentConfig.update({ name: "overlay-agent", patch: { disable: false, model: "openai/x" } })
+        const projectRoot = path.join(tmp.path, ".synergy")
+        expect(await Config.domainGet("agents", projectRoot)).toMatchObject({
+          agent: { "overlay-agent": { model: "openai/x" } },
+        })
+
+        await AgentConfig.remove({ name: "overlay-agent", strategy: "delete" })
+
+        expect(await Agent.get("overlay-agent")).toBeUndefined()
+        expect((await Config.domainGet("agents", projectRoot)).agent?.["overlay-agent"]).toBeUndefined()
+        const file = path.join(projectRoot, "agent", "overlay-agent.md")
+        await expect(fs.access(file)).rejects.toThrow()
       },
     })
   })
@@ -234,7 +444,7 @@ describe("AgentConfig.remove", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await AgentConfig.remove("explore", { strategy: "disable" })
+        await AgentConfig.remove({ name: "explore", strategy: "disable" })
 
         const domain = await Config.domainGet("agents")
         expect(domain.agent?.["explore"]).toMatchObject({ disable: true })
@@ -256,7 +466,7 @@ describe("AgentConfig.remove", () => {
         })
         expect(await Agent.get("temp-agent")).toBeDefined()
 
-        await AgentConfig.remove("temp-agent", { strategy: "delete" })
+        await AgentConfig.remove({ name: "temp-agent", strategy: "delete" })
 
         const file = path.join(tmp.path, ".synergy", "agent", "temp-agent.md")
         await expect(fs.access(file)).rejects.toThrow()
@@ -273,7 +483,7 @@ describe("AgentConfig.remove", () => {
         await AgentConfig.create({ name: "jsonc-agent", description: "entry", storage: "jsonc" })
         expect((await Config.domainGet("agents")).agent?.["jsonc-agent"]).toBeDefined()
 
-        await AgentConfig.remove("jsonc-agent", { strategy: "delete" })
+        await AgentConfig.remove({ name: "jsonc-agent", strategy: "delete" })
 
         expect((await Config.domainGet("agents")).agent?.["jsonc-agent"]).toBeUndefined()
       },
@@ -308,6 +518,23 @@ describe("Agent.defaultAgent fallback", () => {
       scope: await tmp.scope(),
       fn: async () => {
         expect(await Agent.defaultAgent()).toBe("synergy")
+      },
+    })
+  })
+
+  test("falls back to another available primary when synergy itself is disabled", async () => {
+    await using tmp = await tmpdir({
+      config: {
+        agent: { synergy: { disable: true } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const resolved = await Agent.defaultAgent()
+        expect(resolved).not.toBe("synergy")
+        expect(await Agent.get(resolved)).toBeDefined()
+        expect((await Agent.get(resolved))?.mode).not.toBe("subagent")
       },
     })
   })

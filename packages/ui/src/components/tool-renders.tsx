@@ -100,6 +100,8 @@ for (const name of [
   })
 }
 
+export * from "./tool/renders/agent-config"
+
 export * from "./tool/renders/file-ops"
 export * from "./tool/renders/standard"
 export * from "./tool/renders/task"
