@@ -32,3 +32,5 @@ The regression net is `apps/web/test/components/session/prompt-dock-height.dom.t
 - The observer callback still receives the content-box height (ceil'd), matching the pre-existing calibration of the fallback values.
 
 The exact observer module is exempted from Bun line accounting because its regression executes the real Vite-compiled helper in Chromium. The browser tests remain required and exercise delayed mount, resize, replacement and fractional height through the rendered session layout. Package coverage thresholds are unchanged.
+
+Real-host history acceptance also runs with delayed message responses. Initial connection recovery can replace the historical window with the latest page while a Return to latest click waits for the loading control. The test accepts that equivalent completed transition only for a click timeout with the control removed and the latest answer rendered; present controls, other errors, bounded-window failures and reconnect failures still fail. This keeps the existing recovery contract unchanged.
