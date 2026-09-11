@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bug Reporter"
+  short_description: "Draft review-ready GitHub bug reports from findings"
+  default_prompt: "Use $report-bug to package a diagnosed Synergy problem into a redacted, review-ready bug report draft."

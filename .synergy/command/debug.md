@@ -7,6 +7,7 @@ Diagnose the reported Synergy problem and identify its root cause. Do not implem
 5. Reproduce with the narrowest safe test. Use `develop-synergy` for an isolated second runtime; never restart the active instance.
 6. Use `git log -S`, `git log -G`, `git blame`, or `git show` only when history can distinguish intent from regression.
 7. Prove the causal chain and identify the smallest coherent fix plus its regression test and documentation impact.
+8. When the user wants the problem reported upstream, load `report-bug` to package the finding into a review-ready issue draft; never open the issue yourself.
 
 Report evidence, root cause, affected scope, confidence, recommended fix, and verification plan. Separate confirmed facts from hypotheses and redact secrets, absolute paths, and session content.
 
