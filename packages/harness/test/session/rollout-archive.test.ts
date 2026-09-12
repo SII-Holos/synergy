@@ -217,3 +217,80 @@ test("rollout ZIP retains file snapshot objects after the source store is remove
     }
   })
 })
+
+test("a partial manifest cannot hide an undeclared missing artifact reference", async () => {
+  await fixture(async ({ session, rootID }) => {
+    const writer = new Uint8ArrayWriter()
+    await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+    const reader = new ZipReader(new Uint8ArrayReader(await writer.getData()))
+    const output = new Uint8ArrayWriter()
+    const zip = new ZipWriter(output)
+    for (const entry of await reader.getEntries()) {
+      if (entry.directory) continue
+      let data = await entry.getData(new Uint8ArrayWriter())
+      if (entry.filename === "manifest.json") {
+        const manifest = JSON.parse(new TextDecoder().decode(data))
+        manifest.integrity = { complete: false, missing: [] }
+        manifest.artifacts = []
+        data = new TextEncoder().encode(JSON.stringify(manifest))
+      }
+      await zip.add(entry.filename, new Uint8ArrayReader(data))
+    }
+    await zip.close()
+    await reader.close()
+    await expect(RolloutArchive.inspect(new Blob([await output.getData()]))).rejects.toThrow(
+      "missing referenced artifact",
+    )
+  })
+})
+
+test.each([
+  "version",
+  "duplicate-entry",
+  "duplicate-declaration",
+  "unlisted",
+  "file-size",
+  "chunk-count",
+  "artifact-hash",
+])("ZIP validation rejects %s corruption without importing evidence", async (fault) => {
+  await fixture(async ({ session, rootID, call }) => {
+    await complete(call)
+    await RolloutLedger.finishRun(call.owner, rootID, "completed")
+    const original = new Uint8ArrayWriter()
+    await RolloutArchive.write({ sessionID: session.id, runID: rootID }, original)
+    const source = await original.getData()
+    await RolloutArchive.inspect(new Blob([source]))
+    const reader = new ZipReader(new Uint8ArrayReader(source))
+    const output = new Uint8ArrayWriter()
+    const zip = new ZipWriter(output)
+    for (const entry of await reader.getEntries()) {
+      if (entry.directory) continue
+      let data = await entry.getData(new Uint8ArrayWriter())
+      if (entry.filename === "manifest.json") {
+        const manifest = RolloutArchive.Manifest.parse(JSON.parse(new TextDecoder().decode(data)))
+        if (fault === "duplicate-declaration") manifest.files.push(manifest.files[0])
+        if (fault === "file-size") manifest.files[0].bytes++
+        if (fault === "chunk-count") manifest.artifacts[0].ref.chunks++
+        if (fault === "artifact-hash")
+          manifest.artifacts.find((artifact) => artifact.ref.status === "complete")!.ref.sha256 = "0".repeat(64)
+        data = new TextEncoder().encode(JSON.stringify({ ...manifest, version: fault === "version" ? 99 : 1 }))
+      }
+      await zip.add(entry.filename, new Uint8ArrayReader(data))
+    }
+    if (fault === "unlisted") await zip.add("unlisted.bin", new Uint8ArrayReader(new Uint8Array([1])))
+    if (fault === "duplicate-entry") {
+      for (const name of ["duplicate-a", "duplicate-b"]) await zip.add(name, new Uint8ArrayReader(new Uint8Array([1])))
+    }
+    await zip.close()
+    await reader.close()
+    const bytes = Buffer.from(await output.getData())
+    if (fault === "duplicate-entry") {
+      let offset = bytes.indexOf("duplicate-b")
+      while (offset !== -1) {
+        bytes.write("duplicate-a", offset)
+        offset = bytes.indexOf("duplicate-b", offset + 1)
+      }
+    }
+    await expect(RolloutArchive.inspect(new Blob([bytes]))).rejects.toThrow()
+  })
+})

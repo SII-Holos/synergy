@@ -1,0 +1,25 @@
+{
+  "name": "@ericsanchezok/synergy-benchmark",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test --config /dev/null test/*.test.ts",
+    "typecheck": "tsgo --noEmit",
+    "test:python": "uv run --locked pytest",
+    "check:python": "uv run --locked ruff check . && uv run --locked mypy src/synergy_bench"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-cli": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-library": "workspace:*",
+    "@ericsanchezok/synergy-product-runtime": "workspace:*",
+    "@ericsanchezok/synergy-runtime-local": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:"
+  }
+}

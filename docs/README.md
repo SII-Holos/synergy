@@ -61,6 +61,7 @@ Reference documents answer exact operational and repository questions without re
 - [Storage and paths](reference/storage-and-paths.md)
 - [Package map](reference/packages.md)
 - [Development](reference/development.md)
+- [Local performance experiments](../benchmark/README.md)
 - [Frontend themes and color](reference/frontend-theming.md)
 
 ## Plugins

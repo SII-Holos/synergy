@@ -111,6 +111,10 @@ export namespace RuntimeHandle {
         for (const session of sessions) {
           await cleanup(() => LoopJob.drain(session.id))
         }
+        // A turn that already released its lease is absent from the runtime
+        // snapshot, so its detached work must be canceled globally rather
+        // than per still-active session.
+        await cleanup(() => LoopJob.cancelDetachedAll())
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
         await cleanup(() => LoopJob.drainAll())

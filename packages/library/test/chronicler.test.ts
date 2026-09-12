@@ -52,7 +52,8 @@ async function fixture(enabled: boolean, run: (ctx: LoopJob.Context, abort: Abor
       try {
         await run(ctx, abort)
       } finally {
-        await LoopJob.drain(session.id)
+        LoopJob.cancelDetached(session.id)
+        await LoopJob.settleDetached(session.id)
       }
     },
   })
@@ -82,7 +83,7 @@ test("chronicler persists an unattended child, passes detached conversation and 
   })
   const cancel = spyOn(SessionInvoke, "cancel").mockImplementation(() => undefined as never)
   mocks.push(invoke, cancel)
-  await fixture(true, async (ctx, abort) => {
+  await fixture(true, async (ctx) => {
     await LoopJob.execute([{ type: "chronicle" }], ctx)
     const input = await Promise.race([
       invoked.promise,
@@ -98,14 +99,17 @@ test("chronicler persists an unattended child, passes detached conversation and 
       expect(child.parentID).toBe(ctx.sessionID)
       expect(child.interaction).toMatchObject({ mode: "unattended", source: "chronicler" })
       expect(child.completionNotice).toMatchObject({ silent: true })
-      abort.abort()
+      // Detached runs ignore the loop lease abort; cancellation flows through
+      // cancelDetached's own signal.
+      LoopJob.cancelDetached(ctx.sessionID)
       expect(cancel).toHaveBeenCalledWith(child.id)
     } finally {
       release.resolve()
-      await LoopJob.drain(ctx.sessionID)
+      LoopJob.cancelDetached(ctx.sessionID)
+      await LoopJob.settleDetached(ctx.sessionID)
     }
     const calls = cancel.mock.calls.length
-    abort.abort()
+    LoopJob.cancelDetached(ctx.sessionID)
     expect(cancel.mock.calls).toHaveLength(calls)
   })
 })

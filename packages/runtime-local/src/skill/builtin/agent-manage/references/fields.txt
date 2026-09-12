@@ -1,0 +1,64 @@
+# Agent Config Field Reference
+
+Field semantics, validation rules, and storage layers for agent definitions managed through `agent_config`.
+
+## Storage layers
+
+| Layer | Location | Best for |
+|---|---|---|
+| markdown | `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global) | Agents with a system prompt; the body is the prompt, frontmatter holds fields |
+| jsonc | `60-agents.jsonc` `agent` map | Short overrides of built-ins, `disable`, entries without prompts |
+
+`agent_config` chooses the storage layer by scope: markdown when a `prompt` is present; pass `storage: "jsonc"` to force a config entry. The default scope follows the current Scope — project layers inside a project, global everywhere else; pass `scope: "global"` or `scope: "project"` explicitly to override. Precedence when multiple layers define the same name: project markdown > project JSONC > global markdown > global JSONC > built-in. A project JSONC override owns project mutations even when its underlying definition is global markdown.
+
+Configuration operations are serialized across validation, writing, and reload and validated against the whole agent graph before landing. Plugin-contributed and external agents reject update/remove — manage them in the owning plugin or external definition instead.
+
+## Fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Letters, digits, `.`, `_`, `-`; `/` for subdirectories (parent directories are created). Must not collide with an existing agent on create |
+| `description` | string | The routing signal. Required in practice for delegation and menus. Update: pass `null` to clear |
+| `prompt` | string | System prompt. Markdown body in file storage. Update: pass `null` to clear |
+| `mode` | `primary` / `subagent` / `all` | Default `all`. `primary` appears in the `@` menu; `subagent` is task-only |
+| `model` | string | `provider/model` with both halves non-empty (e.g. `openai/gpt-5`; `openai/` and `/gpt-5` are rejected). Update: pass `null` to clear so `modelRole` takes effect |
+| `modelRole` | enum | `vision`, `nano`, `mini`, `mid`, `thinking`, `long`, `creative`. Update: pass `null` to clear |
+| `temperature` / `top_p` | number | Sampling overrides. Update: pass `null` to clear |
+| `color` | string | `#RRGGBB`. Update: pass `null` to clear |
+| `steps` | positive int | Max agentic iterations before text-only mode. Update: pass `null` to clear |
+| `permission` | object | Merges over inherited rules, e.g. `{ edit: "deny", bash: "allow" }` |
+| `controlProfile` | enum | `guarded`, `autonomous`, `full_access` |
+| `visibleTo` | string[] | Caller identities (agent names or group ids) allowed to delegate to this subagent. Empty/omitted = unrestricted |
+| `delegationGroups` | string[] | Group identities this agent receives when resolving delegation visibility |
+| `hidden` | boolean | Hide from menus |
+| `deferredTools` | string[] | Tools folded behind expand_tools for this agent |
+| `defaultVariant` | string | Default model variant; per-request variant wins. Update: pass `null` to clear |
+| `disable` | boolean | `true` removes the agent from the runtime. Clear with `update { disable: false }` |
+| `default_agent` | config key | Global config only (set via `set_default`). Must target a visible, non-subagent-only agent |
+
+## Update null semantics
+
+On `update`, omitting a field keeps its current value; passing `null` clears it (for nullable fields like `model`, `modelRole`, `description`, `prompt`, `temperature`, `top_p`, `color`, `steps`, `defaultVariant`). This matters for `model`/`modelRole`: an agent with an explicit `model` ignores its `modelRole`, so switching to role-based resolution requires `update { model: null }`.
+
+## Validation enforced at write time
+
+1. Zod schema: types, enum values, `color` format, positive `steps`.
+2. `model` must be `provider/model` with both halves non-empty.
+3. Cross-agent references: every `visibleTo` entry must match an existing agent name or a `delegationGroups` identity declared by any agent. Unknown references reject the write with the offending name.
+4. Graph integrity: a change (create/update/disable/delete) that would leave another agent's `visibleTo` with no resolvable identity — for example removing a delegation group another agent depends on, or disabling the only agent a subagent is visible to — rejects with the affected agent names.
+5. `set_default` rejects targets that do not exist, are disabled, are subagent-only, or are hidden; `Agent.defaultAgent()` logs a warning and falls back to synergy (then to any available visible primary) when config was edited by hand. If no visible primary remains, it reports a configuration error.
+6. Load-time lint: unresolved `visibleTo` references in any agent log a warning naming the agent and reference.
+
+## Deletion semantics
+
+- `remove { strategy: "disable" }` (default) writes `disable: true` **in the layer that owns the definition** — a project-defined agent stays available in every other Scope. Reversible; the only removal allowed for built-in agents.
+- `remove { strategy: "delete" }` deletes the owning markdown file plus any same-name config overlay in its owning layer (a leftover overlay would recreate a blank agent); independent definitions in other layers are preserved. Built-ins reject delete.
+- Re-enabling (`update { disable: false }`) removes the disable marker outright; an empty overlay above a markdown definition falls away; an empty JSONC definition remains a valid agent.
+
+## Ownership resolution
+
+Markdown ownership resolves by the configured (frontmatter) agent name, mirroring the loader: a file `legacy.md` carrying `name: reviewer` is owned as `reviewer`. `describe` reports the owning layer (markdown file path, config entry, built-in, plugin, or external) for any agent.
+
+## Manual editing
+
+Files written by `agent_config` are ordinary config files; users can hand-edit them and `runtime_reload({ target: "agent" })`. The `describe` action reports the owning path or entry for any agent.

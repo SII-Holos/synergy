@@ -31,6 +31,7 @@ export class ApprovalCache {
   }
 }
 
+import { worktreeSandboxReadGrants } from "../sandbox/policy"
 import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
@@ -940,6 +941,11 @@ export namespace EnforcementGate {
     // boundary declares.
     const approvedReadPaths = new Set<string>(trustedRootList)
     const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
+    if (workspaceType === "worktree") {
+      for (const grant of worktreeSandboxReadGrants(activeWorkspace, originalCheckout)) {
+        approvedReadPaths.add(grant)
+      }
+    }
     const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
@@ -1305,6 +1311,20 @@ export namespace EnforcementGate {
       // SII Inspire tools call external compute infrastructure.
       if (toolName.startsWith("inspire_")) {
         caps.push({ class: "network_request", nonBypassable: true })
+        return { capabilities: caps }
+      }
+
+      // Agent configuration tool — writes agent definitions, permissions,
+      // control profiles, and the global default agent; classify by action so
+      // reads stay free while writes surface as protected configuration
+      // changes.
+      if (toolName === "agent_config") {
+        const action = (args.input as { action?: string } | undefined)?.action ?? args.action
+        if (action === "list" || action === "describe") {
+          caps.push({ class: "config:read", nonBypassable: false })
+        } else {
+          caps.push({ class: "config:write", nonBypassable: true })
+        }
         return { capabilities: caps }
       }
 

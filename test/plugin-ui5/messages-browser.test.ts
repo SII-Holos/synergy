@@ -7,7 +7,7 @@ import { buildPluginProject } from "../../packages/plugin-kit/src/commands/build
 import { importPreviewConversation } from "./session-fixture"
 
 const require = createRequire(path.resolve(import.meta.dir, "../../apps/web/package.json"))
-const { chromium } = await import(require.resolve("playwright"))
+const { chromium, errors } = await import(require.resolve("playwright"))
 
 test("native public conversation retains bounded history and reconciles updates after reconnect", async () => {
   const project = createFixtureProject("message-host")
@@ -27,10 +27,20 @@ test("native public conversation retains bounded history and reconciles updates 
     const page = await context.newPage()
     page.setDefaultTimeout(20000)
     diagnostics = await openPluginPreviewPage(preview, page)
+    await page.route("**/session/**/message**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      await route.continue()
+    })
     await page.goto(conversation.url)
     await page.getByText("Answer 360", { exact: true }).waitFor()
     const roots = page.locator('[data-message-role="user"]')
     expect(await roots.count()).toBe(20)
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector('[data-message-role="user"]')?.closest(".overflow-y-auto")
+      return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
+    })
+    await roots.last().hover()
+    await page.mouse.wheel(0, -1000)
     for (let pageIndex = 0; pageIndex < 2; pageIndex++) {
       const first = await roots.first().getAttribute("data-message-id")
       await page.getByRole("button", { name: "Load earlier messages", exact: true }).click()
@@ -40,7 +50,14 @@ test("native public conversation retains bounded history and reconciles updates 
       )
       expect(await roots.count()).toBeLessThanOrEqual(250)
     }
-    await page.getByRole("button", { name: "Return to latest", exact: true }).click()
+    const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
+    try {
+      await returnLatest.click()
+    } catch (error) {
+      // Connection recovery can finish this transition while the loading control disables clicks.
+      if (!(error instanceof errors.TimeoutError) || (await returnLatest.count()) !== 0) throw error
+      await page.getByText("Answer 360", { exact: true }).waitFor()
+    }
     await page.getByText("Answer 360", { exact: true }).waitFor()
     const { data } = await preview.client.session.messages(
       { scopeID: "home", sessionID: conversation.id },

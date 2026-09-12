@@ -1,3 +1,4 @@
+import { buildWatcher } from "../../../packages/runtime-local/script/build-watcher"
 import { existsSync } from "node:fs"
 import fs from "node:fs/promises"
 import { createRequire } from "node:module"
@@ -104,7 +105,10 @@ async function copyWatcherBinding(
     // every target (including musl), so a missing declaration is fatal.
     throw new Error(`watcher binding package not declared for ${packageName}`)
   }
-  const source = resolveDependencyAsset(packageName, version, "watcher.node")
+  const source =
+    targetOs === "linux"
+      ? await buildWatcher({ arch: targetArch, libc: musl ? "musl" : "glibc" })
+      : resolveDependencyAsset(packageName, version, "watcher.node")
   if (!source) {
     throw new Error(`watcher binding (watcher.node) not found for ${packageName}`)
   }

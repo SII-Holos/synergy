@@ -207,6 +207,76 @@ describe("createAutoScroll", () => {
       harness.restore()
     }
   })
+
+  test("an attributed stale release does not clear the successor viewport's scroller binding", () => {
+    const harness = createScrollHarness()
+    try {
+      createRoot(() => {
+        const autoScroll = createAutoScroll({ working: () => true })
+        const first = harness.makeScroller()
+        autoScroll.scrollRef(first)
+        harness.flushFrames()
+
+        // Keyed session swap: the successor mounts (and binds) before the
+        // swapped-out owner's cleanup releases its own element.
+        const second = harness.makeScroller()
+        autoScroll.scrollRef(second)
+        autoScroll.scrollRef(undefined, first)
+
+        // The successor binding survives: a forced pin still scrolls it.
+        autoScroll.forceScrollToBottom()
+        harness.flushFrames()
+        expect(second.calls).toEqual([{ top: 1000, behavior: "auto" }])
+
+        // An unattributed or owning release still clears the binding.
+        autoScroll.scrollRef(undefined, second)
+        autoScroll.forceScrollToBottom()
+        harness.flushFrames()
+        expect(second.calls).toEqual([{ top: 1000, behavior: "auto" }])
+      })
+    } finally {
+      harness.restore()
+    }
+  })
+
+  test("an attributed stale release does not clear the successor content binding", async () => {
+    const harness = createScrollHarness()
+    try {
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      const first = harness.makeScroller()
+      const second = harness.makeScroller()
+      createRoot(() => {
+        autoScroll = createAutoScroll({ working: () => false })
+        autoScroll.scrollRef(first)
+        autoScroll.contentRef(first)
+      })
+
+      // Keyed session swap: successor binds first, then the swapped-out
+      // owner's cleanup releases both of its own elements.
+      autoScroll.scrollRef(second)
+      autoScroll.contentRef(second)
+      autoScroll.scrollRef(undefined, first)
+      autoScroll.contentRef(undefined, first)
+
+      autoScroll.forceScrollToBottom()
+      harness.flushFrames()
+      expect(second.calls).toEqual([{ top: 1000, behavior: "auto" }])
+
+      // The successor's content binding survived the stale release: growth
+      // on it still re-pins through the ResizeObserver while the forced
+      // settle window is open. A cleared binding would produce no scroll.
+      await harness.tick()
+      second.scrollHeight = 2200
+      harness.lastObserver()!.fire(second)
+      harness.flushFrames()
+      expect(second.calls).toEqual([
+        { top: 1000, behavior: "auto" },
+        { top: 2200, behavior: "auto" },
+      ])
+    } finally {
+      harness.restore()
+    }
+  })
 })
 
 for (const pending of [false, true]) {

@@ -372,7 +372,14 @@ export namespace RolloutArchive {
         const ref = parsed.data
         const artifact = artifacts.get(`${JSON.stringify(owner)}:${ref.id}`)
         if (!artifact) {
-          if (manifest.integrity.complete) throw new Error("Rollout ZIP integrity: missing referenced artifact")
+          const index = manifest.snapshots.findIndex(
+            (snapshot) => JSON.stringify(snapshot.owner) === JSON.stringify(owner),
+          )
+          const declaredMissing = manifest.integrity.missing.some((missing) =>
+            missing.startsWith(`artifact:${index}:${ref.id}:`),
+          )
+          if (manifest.integrity.complete || !declaredMissing)
+            throw new Error("Rollout ZIP integrity: missing referenced artifact")
           return
         }
         const size = artifact.files.slice(0, ref.chunks).reduce((sum, path) => sum + files.get(path)!.bytes, 0)

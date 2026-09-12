@@ -25,7 +25,6 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
@@ -61,6 +60,7 @@ import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { replaceSessionHistoryUrl, sessionRouteReplaceOptions } from "@/composables/use-navigate-to-session-model"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
+import { createPromptDockHeight } from "@/components/session/prompt-dock-height"
 import { createWorkbenchService } from "@/plugin/workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
@@ -124,7 +124,6 @@ import {
   adjustTrimScrollTop,
   computeTurnTrim,
   selectPrependAnchor,
-  shouldRecoverToLatest,
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
@@ -132,6 +131,7 @@ import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-a
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
+import { createBottomRecoveryTrigger } from "@/context/session-bottom-recovery"
 
 const handoff = {
   prompt: "",
@@ -914,7 +914,6 @@ function SessionPageContent() {
 
   const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
-  let promptDock: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
 
   const hydratedSessions = new Set<string>()
@@ -1127,9 +1126,13 @@ function SessionPageContent() {
 
   const anchor = (id: string) => `message-${id}`
 
-  const setScrollRef = (el: HTMLDivElement | undefined) => {
+  const setScrollRef = (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => {
+    // Attributed release: keyed session swaps mount the successor viewport
+    // before the swapped-out owner's cleanup runs; only clear when the
+    // binding is still the element this releaser bound.
+    if (!el && releaseOf !== undefined && scroller !== releaseOf) return
     scroller = el
-    autoScroll.scrollRef(el)
+    autoScroll.scrollRef(el, releaseOf)
   }
 
   const afterHistoryLayoutSettles = (fn: () => void) => {
@@ -1220,27 +1223,25 @@ function SessionPageContent() {
   }
 
   // When the bounded history window no longer reaches the true latest
-  // (cap-evicted tail or unseen arrivals) and the user heads back to the
-  // local bottom, recover through the existing return-to-latest path.
-  // The transition from scrolled-up to bottom keeps load-earlier-at-bottom
-  // from auto-jumping; gap-less history preserves the old scroll behavior.
-  createEffect(
-    on(scrolledUp, (up, prev) => {
-      if (up || prev === undefined) return
-      const id = params.id
-      if (!id) return
-      if (
-        !shouldRecoverToLatest({
-          mode: historyMode(),
-          tailMissingLatest: historyTailMissingLatest(),
-          pendingLatest: historyPendingLatest(),
-          historyLoading: historyLoading(),
-        })
-      ) {
-        return
-      }
-      void returnToLatestMessages()
-    }),
+  // (cap-evicted tail or unseen arrivals), recover through the existing
+  // return-to-latest path. The trigger evaluates the recovery predicate as a
+  // level rather than a single scrolled-up falling edge, so a history load
+  // finishing under an already-parked cursor or streamed arrivals parking
+  // into a history window the user never left recover too. A session starts
+  // disarmed and is armed by engagement (a history load or scrolling up), so
+  // navigating onto a retained history window never discards its stored view.
+  // The recover callback returns the request promise so the in-flight guard
+  // spans the actual return-to-latest load.
+  createBottomRecoveryTrigger(
+    {
+      sessionID: () => params.id,
+      scrolledUp,
+      mode: historyMode,
+      tailMissingLatest: historyTailMissingLatest,
+      pendingLatest: historyPendingLatest,
+      historyLoading: historyLoading,
+    },
+    () => returnToLatestMessages(),
   )
 
   const turnInit = 20
@@ -1324,25 +1325,20 @@ function SessionPageContent() {
     ),
   )
 
-  createResizeObserver(
-    () => promptDock,
-    ({ height }) => {
-      const next = Math.ceil(height)
+  const dockHeight = createPromptDockHeight((next) => {
+    if (next === store.promptHeight) return
 
-      if (next === store.promptHeight) return
+    const el = scroller
+    const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
 
-      const el = scroller
-      const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
+    setStore("promptHeight", next)
 
-      setStore("promptHeight", next)
-
-      if (stick && el) {
-        requestAnimationFrame(() => {
-          el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-        })
-      }
-    },
-  )
+    if (stick && el) {
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
+      })
+    }
+  })
 
   const updateHash = (id: string) => {
     replaceSessionHistoryUrl(window.history, `#${anchor(id)}`)
@@ -1403,7 +1399,6 @@ function SessionPageContent() {
       setStore("messageId", id)
     })
   }
-
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
@@ -1722,9 +1717,7 @@ function SessionPageContent() {
   }
   const composerLayout: PluginComposerLayoutService = {
     input: () => composer()?.input,
-    mount: (element) => {
-      promptDock = element
-    },
+    mount: dockHeight.mount,
     ready: prompt.ready,
     isNewSession,
     readOnly: () => sessionMeta().isReadOnly,

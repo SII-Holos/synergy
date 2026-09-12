@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, mock, test } from "bun:test"
 import type {
   PluginComposerLayoutService,
   PluginConversationService,
@@ -147,3 +147,47 @@ test("declared commands connect only their menus and dispatch the declared opera
     dispose()
   }
 })
+
+for (const binding of ["scroll", "content"] as const) {
+  test(`conversation ${binding} releases retain element ownership across swaps and permission disposal`, () => {
+    const owner = access(["session.read"])
+    const successor = access(["session.read"])
+    const refs = mock((_element: HTMLElement | undefined, _releaseOf?: HTMLElement) => {})
+    const source = fixture<PluginConversationService>({
+      setScrollRef: refs,
+      autoScroll: fixture<PluginConversationService["autoScroll"]>({ contentRef: refs }),
+    })
+    const first = bindPluginConversation(source, owner.service)
+    const next = bindPluginConversation(source, successor.service)
+    const bind = (
+      service: PluginConversationService,
+      element: HTMLDivElement | undefined,
+      releaseOf?: HTMLDivElement,
+    ) =>
+      binding === "scroll"
+        ? service.setScrollRef(element, releaseOf)
+        : service.autoScroll.contentRef(element, releaseOf)
+    const oldElement = document.createElement("div")
+    const newElement = document.createElement("div")
+    try {
+      bind(first, oldElement)
+      bind(first, newElement)
+      expect(refs.mock.calls).toEqual([[oldElement], [undefined, oldElement], [newElement]])
+      bind(first, undefined, oldElement)
+      expect(refs).toHaveBeenCalledTimes(3)
+      bind(next, oldElement)
+      owner.lifetime.dispose()
+      expect(refs.mock.calls.slice(-2)).toEqual([[oldElement], [undefined, newElement]])
+      bind(first, undefined, newElement)
+      expect(refs).toHaveBeenCalledTimes(5)
+      expect(() => bind(first, newElement)).toThrow("disposed")
+      bind(next, undefined, oldElement)
+      expect(refs.mock.calls.at(-1)).toEqual([undefined, oldElement])
+      successor.lifetime.dispose()
+      expect(refs).toHaveBeenCalledTimes(6)
+    } finally {
+      owner.lifetime.dispose()
+      successor.lifetime.dispose()
+    }
+  })
+}

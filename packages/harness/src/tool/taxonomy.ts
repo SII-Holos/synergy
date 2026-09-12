@@ -179,6 +179,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   worktree_enter: entry("platform.config", { stateful: true }),
   worktree_leave: entry("platform.config", { stateful: true }),
   worktree_list: entry("platform.config"),
+  agent_config: entry("platform.config", { stateful: true }),
 
   connect: entry("platform.config", { stateful: true, externalIO: true }),
   inspire_status: entry("platform.compute", { externalIO: true }),
