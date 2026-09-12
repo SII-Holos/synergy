@@ -84,6 +84,8 @@ musl Linux archives (`synergy-linux-*-musl`) intentionally exclude `bin/ast-grep
 
 Linux watcher assets are built from pinned Parcel 2.5.6 source with the EINTR patch and checked for the `parcel-2.5.6-eintr-1` marker at load time. Upgrade the executable and its matching assets together: a new executable with an old unpatched binding refuses file watching. Reinstall the matching runtime distribution to repair an incomplete installed upgrade; source checkouts use `bun dev prepare` with Docker available.
 
+All Linux watcher targets require the system C++ runtime libraries listed in the [watcher build reference](../../packages/runtime-local/script/watcher/README.md). Keep the glibc x64/arm64 Bun coexistence and signal-recovery checks passing before publishing the built bindings.
+
 Updater metadata expected on stable releases:
 
 - `latest-mac.yml`

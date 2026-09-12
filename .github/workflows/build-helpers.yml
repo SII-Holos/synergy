@@ -12,6 +12,8 @@ on:
       - "packages/runtime-local/script/build-helper.ts"
       - "packages/runtime-local/script/build-watcher.ts"
       - "packages/runtime-local/script/watcher/**"
+      - "packages/runtime-local/test/file/fixtures/watcher-*"
+      - "test/script/watcher-native.test.ts"
   push:
     branches: [dev, main]
     paths:
@@ -21,6 +23,8 @@ on:
       - "packages/runtime-local/script/build-helper.ts"
       - "packages/runtime-local/script/build-watcher.ts"
       - "packages/runtime-local/script/watcher/**"
+      - "packages/runtime-local/test/file/fixtures/watcher-*"
+      - "test/script/watcher-native.test.ts"
 
 permissions:
   contents: read
@@ -80,6 +84,8 @@ jobs:
           bun install --frozen-lockfile
           bun packages/runtime-local/script/build-watcher.ts --arch "${{ matrix.arch }}"
           bun packages/runtime-local/script/build-watcher.ts --arch "${{ matrix.arch }}" --libc musl
+      - name: Verify watcher coexistence with ONNX and signal recovery in Bun
+        run: bun test --config /dev/null test/script/watcher-native.test.ts
       - name: Upload Linux watcher bindings
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

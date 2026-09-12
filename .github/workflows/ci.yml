@@ -41,6 +41,8 @@ jobs:
           cargo build --locked --release --manifest-path packages/runtime-local/src/sandbox/helper-linux/Cargo.toml
           mkdir -p packages/runtime-local/sandbox-assets/linux-x64
           cp packages/runtime-local/src/sandbox/helper-linux/target/release/synergy-sandbox-linux packages/runtime-local/sandbox-assets/linux-x64/
+      - name: Verify watcher coexistence with ONNX and signal recovery in Bun
+        run: bun test --config /dev/null test/script/watcher-native.test.ts
       - name: Build the core profile
         run: bun packages/cli/script/build.ts --single --skip-install
         env:

@@ -47,6 +47,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0009 | Local benchmark cancellation lost export evidence | implemented | 2026-09-10 |
 | 0010 | Global event subscription loss left the UI connected but stale | implemented | 2026-09-12 |
+| 0011 | Watcher static C++ runtime crashed subsequent ONNX loading | implemented | 2026-09-12 |
 
 ## History rules
 

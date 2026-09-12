@@ -79,6 +79,8 @@ export async function buildWatcher(options: { arch?: string; libc?: string; loca
     })
     await fs.copyFile(path.join(source, "LICENSE"), path.join(stage, "LICENSE"))
     await run(["patch", "-p1", "--batch", "--forward", "-i", patch], stage)
+    // Provenance: https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html#index-fno-gnu-unique
+    // Local adaptation: share the system C++ runtime; static locale symbols can collide with ONNX even under RTLD_LOCAL.
     const compile = [
       "g++",
       "-shared",
@@ -96,8 +98,6 @@ export async function buildWatcher(options: { arch?: string; libc?: string; loca
       `-I${options.local ? (options.headers ?? "/usr/local/include/node") : "/usr/local/include/node"}`,
       ...sources,
       "-pthread",
-      "-static-libstdc++",
-      "-static-libgcc",
       "-o",
       "watcher.node",
     ]
