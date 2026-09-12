@@ -13,7 +13,7 @@ Verify the underlying claim before drafting. A report built on an unverified hyp
 
 ## Draft From the Template
 
-Produce the complete issue body in fenced Markdown for one-shot copying. It must answer every field the repository bug form asks for — what happened, expected behavior, reproduction steps, environment, and supporting evidence — as structured by [.github/ISSUE_TEMPLATE/bug_report.yml](../../../.github/ISSUE_TEMPLATE/bug_report.yml), and split the diagnostic evidence into observed, inferred, and unknown. Every section below is required except the last two, which should be dropped when empty rather than padded:
+Produce the complete issue body in fenced Markdown for one-shot copying. It must answer every field the repository bug form asks for — what happened, expected behavior, reproduction steps, environment, and supporting evidence — as structured by [.github/ISSUE_TEMPLATE/bug_report.yml](../../../.github/ISSUE_TEMPLATE/bug_report.yml), and split the diagnostic evidence into observed, inferred, and unknown. Every section below is required except Additional context, which should be dropped when empty rather than padded:
 
 ```markdown
 ## Summary
@@ -71,7 +71,7 @@ Apply these rules to the evidence sections. Lead with the deepest confirmed orig
 
 A draft for a diagnosed bug needs only verification and packaging. When the user asks to report a bug nobody has diagnosed yet, gather the minimum evidence the template requires before drafting — the `find-logs` workflow produces most of it — and leave the rest as explicit Unknown sections instead of running a full root-cause investigation unasked. Do not let draft-polishing substitute for evidence: one reproduction command cited in Observed outweighs any amount of speculative detail.
 
-Calibrate with known failure shapes. "Data disappeared" failures (a value became `undefined`, a count dropped, a fixture went missing) may be real regressions and deserve priority; "an extra thing appeared" failures (one more cache entry, one more registered client, one more retained node) are usually cross-file test-state leakage — check whether the suite passes when run alone before writing either kind up. For CI-only failures, record which job, shard, and platform failed and whether a rerun of the same commit reproduced it; a green rerun alone does not retire a failure.
+Missing data and unexpected extra entries can both indicate product regressions or test-state leakage. Compare isolated and combined runs before attributing either symptom to cross-file state; report the observed difference and leave an unproven cause in Inferred or Unknown. For CI-only failures, record which job, shard, and platform failed and whether a rerun of the same commit reproduced it; a green rerun alone does not retire a failure.
 
 Write the title as a symptom in the affected surface, not an internal file name — the root cause goes in the Summary, the user-facing effect goes in the title.
 
