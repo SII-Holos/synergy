@@ -31,6 +31,7 @@ export namespace GlobalEventClients {
     size(): number
     add(ws: WSContext, mode: Mode): void
     remove(ws: WSContext): boolean
+    reply(ws: WSContext, data: string): SendResult
     broadcast(encode: (mode: Mode) => string): {
       clients: number
       sent: number
@@ -79,8 +80,20 @@ export namespace GlobalEventClients {
       })
     }
 
+    function close(ws: WSContext, reason: string) {
+      try {
+        ws.close(1013, reason)
+      } catch {}
+    }
+
     function remove(ws: WSContext): boolean {
-      return clients.delete(connectionKey(ws))
+      const key = connectionKey(ws)
+      const client = clients.get(key)
+      if (!client) return false
+      clients.delete(key)
+      const readyState = rawReadyState(client)
+      if (readyState === undefined || readyState === 1) close(client.ws, "websocket subscription removed")
+      return true
     }
 
     function rawReadyState(client: ClientState): number | undefined {
@@ -147,15 +160,19 @@ export namespace GlobalEventClients {
     }
 
     function maybeEvict(key: unknown, client: ClientState, result: SendResult): boolean {
-      if (result === "closed" || result === "error" || result === "dropped") {
+      if (result === "closed") {
         clients.delete(key)
         return true
       }
-      if (result === "backpressured" && client.consecutiveBackpressure >= maxConsecutiveBackpressure) {
-        try {
-          client.ws.close(1013, "websocket backpressure")
-        } catch {}
+      if (result === "error" || result === "dropped") {
         clients.delete(key)
+        close(client.ws, `websocket send ${result}`)
+        log.warn("evicted websocket client after send failure", { result, mode: client.mode })
+        return true
+      }
+      if (result === "backpressured" && client.consecutiveBackpressure >= maxConsecutiveBackpressure) {
+        clients.delete(key)
+        close(client.ws, "websocket backpressure")
         log.warn("evicted websocket client under backpressure", {
           consecutiveBackpressure: client.consecutiveBackpressure,
           droppedFrames: client.droppedFrames,
@@ -191,20 +208,30 @@ export namespace GlobalEventClients {
       return { clients: clients.size + removed, sent, dropped, removed }
     }
 
+    function reply(ws: WSContext, data: string): SendResult {
+      const key = connectionKey(ws)
+      const client = clients.get(key)
+      if (!client) {
+        close(ws, "websocket subscription lost")
+        return "closed"
+      }
+      const result = send(client, data)
+      // Control frames must not advance the streaming backpressure eviction threshold.
+      if (result === "backpressured") {
+        client.consecutiveBackpressure = Math.max(0, client.consecutiveBackpressure - 1)
+      } else {
+        maybeEvict(key, client, result)
+      }
+      return result
+    }
+
     function heartbeat(data: string) {
       let sent = 0
       let removed = 0
-      for (const [key, client] of clients) {
-        const result = send(client, data)
+      for (const client of clients.values()) {
+        const result = reply(client.ws, data)
         if (result === "sent") sent++
-        if (maybeEvict(key, client, result === "backpressured" ? "sent" : result)) {
-          // Heartbeats should not count toward streaming backpressure eviction.
-          // Only hard failures remove clients here.
-          if (result !== "backpressured") removed++
-        } else if (result === "backpressured") {
-          // Reset consecutive counter growth from heartbeats alone.
-          client.consecutiveBackpressure = Math.max(0, client.consecutiveBackpressure - 1)
-        }
+        if (result === "closed" || result === "error" || result === "dropped") removed++
       }
       return { clients: clients.size + removed, sent, removed }
     }
@@ -213,9 +240,12 @@ export namespace GlobalEventClients {
       size: () => clients.size,
       add,
       remove,
+      reply,
       broadcast,
       heartbeat,
-      clear: () => clients.clear(),
+      clear: () => {
+        for (const client of clients.values()) remove(client.ws)
+      },
       clients: () => clients.values(),
     }
   }
