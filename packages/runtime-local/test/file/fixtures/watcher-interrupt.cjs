@@ -3,6 +3,7 @@ const path = require("node:path")
 const watcher = require(process.argv[2])
 const root = process.argv[3]
 const marker = process.env.WATCHER_INTERRUPTED
+const options = { backend: "inotify", ignorePaths: [], ignoreGlobs: [".*/node_modules/.*"] }
 const deadline = setTimeout(() => {
   console.error("watcher did not survive interrupted poll")
   process.exit(2)
@@ -19,7 +20,7 @@ const deadline = setTimeout(() => {
     if (error) reject(error)
     if (events?.some((event) => event.path === path.join(root, "after-signal"))) resolve()
   }
-  await watcher.subscribe(root, callback, { backend: "inotify", ignorePaths: [], ignoreGlobs: [] })
+  await watcher.subscribe(root, callback, options)
   const readiness = setInterval(async () => {
     try {
       if ((await fs.readFile(marker, "utf8")) !== "EINTR") return
@@ -33,7 +34,7 @@ const deadline = setTimeout(() => {
     await observed
   } finally {
     clearInterval(readiness)
-    await watcher.unsubscribe(root, callback, { backend: "inotify", ignorePaths: [], ignoreGlobs: [] })
+    await watcher.unsubscribe(root, callback, options)
   }
   clearTimeout(deadline)
   console.log(JSON.stringify({ poll: "EINTR", event: "observed", patch: watcher.synergyWatcherPatch }))
