@@ -817,7 +817,8 @@ export namespace Server {
               onOpen(_event, ws) {
                 log.info("global event ws connected", { mode })
                 globalEventClients.add(ws, mode)
-                ws.send(
+                globalEventClients.reply(
+                  ws,
                   JSON.stringify({
                     payload: {
                       type: "server.connected",
@@ -838,7 +839,8 @@ export namespace Server {
                   if (typeof _event.data !== "string") return
                   const data = JSON.parse(_event.data)
                   if (data?.payload?.type === "client.ping") {
-                    ws.send(
+                    globalEventClients.reply(
+                      ws,
                       JSON.stringify({
                         payload: {
                           type: "server.pong",

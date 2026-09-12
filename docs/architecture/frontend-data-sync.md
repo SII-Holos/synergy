@@ -37,6 +37,8 @@ The connection:
 - reconnects with jittered exponential delay from 1 to 30 seconds;
 - ignores server heartbeat frames as transport liveness only.
 
+The server owns event subscription and socket lifetime together. A dropped send, send exception, explicit subscription removal, or sustained streaming backpressure closes the affected socket so the client can reconnect and replay or resync. Connected acknowledgements, pongs, and server heartbeats use the same subscription registry as broadcasts; a ping on an unregistered socket closes it instead of reporting healthy transport. Transient control-frame backpressure does not advance the streaming eviction threshold. Failure diagnostics record the send outcome and transport mode without event contents.
+
 Incoming events are batched on an approximately 16 ms cadence while visible. Replaceable high-frequency state such as session status, inbox snapshots, LSP state, and full part updates is coalesced by identity before the Solid batch is applied. While the page is hidden the cadence relaxes to 1 second and streaming `message.part.delta` frames are merged per part into a single pending delta (the ≤1 s server checkpoint converges the authoritative part), keeping the background main-thread cost bounded without dropping sequenced state events. The event queue is capped; when the cap is reached it flushes early so watermarks keep advancing.
 
 ## Store Shape
