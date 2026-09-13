@@ -6,6 +6,7 @@ for (const [url, bytes, mime] of [
   ["data:text/plain;charset=utf-8,hello%20%E4%B8%96%E7%95%8C+%25", Buffer.from("hello 世界+%"), "text/plain"],
   ["data:application/octet-stream,%00%FF%80", Buffer.from([0, 255, 128]), "application/octet-stream"],
   ["data:;BASE64,YQ%3D%3D", Buffer.from("a"), "text/plain"],
+  ["data:text/plain;base64,Y%20Q%3D%3D%20", Buffer.from("a"), "text/plain"],
   ["data:,", Buffer.alloc(0), "text/plain"],
 ] as const) {
   test(`decodes inline attachment bytes: ${url}`, () => {
@@ -33,6 +34,9 @@ for (const url of [
   "data:text/plain;base64,====",
   "data:text/plain;base64,==",
   "data:text/plain;base64,a=b",
+  "data:text/plain;base64,YQ=",
+  "data:text/plain;base64,YWJj=",
+  "data:text/plain;base64,YWI==",
   "file:///fixture",
 ]) {
   test(`rejects malformed inline data without fabricating bytes: ${url}`, () => {

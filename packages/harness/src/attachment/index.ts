@@ -153,7 +153,7 @@ export namespace Attachment {
     const header = parsed.href.slice(5, comma).trim()
     const mime = header.split(";")[0] || "text/plain"
     // Provenance: https://fetch.spec.whatwg.org/#data-url-processor
-    // Local adaptation: preserve decoded octets and the existing MIME-essence return value; classify invalid input separately from storage failures. The base64 branch follows forgiving-base64: URL-safe `-`/`_` map to `+`/`/` and padding is re-derived, so legacy payloads produced with a URL-safe encoder stay decodable.
+    // Local adaptation: preserve decoded octets and the existing MIME-essence return value; map legacy URL-safe base64 to the standard alphabet before atob validates padding and removes ASCII whitespace.
     const encoded = Buffer.from(parsed.href.slice(comma + 1))
     let length = encoded.length
     if (encoded.includes(37)) {
@@ -172,22 +172,9 @@ export namespace Attachment {
     }
     const bytes = encoded.subarray(0, length)
     if (!/; *base64$/i.test(header)) return { mime, buffer: bytes }
-    const latin = bytes.toString("latin1")
-    const padMatch = latin.match(/=+$/)
-    const padCount = padMatch ? padMatch[0].length : 0
-    // Forgiving-base64 permits at most two pad characters and never a
-    // padding-only payload; keep malformed inputs rejected while legacy
-    // missing-padding payloads stay decodable.
-    if (padCount > 2) throw new InvalidUrlError()
-    const normalized = latin
-      .slice(0, latin.length - padCount)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-    if (padCount > 0 && normalized.length === 0) throw new InvalidUrlError()
-    if (normalized.length % 4 === 1) throw new InvalidUrlError()
-    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4)
+    const normalized = bytes.toString("latin1").replace(/-/g, "+").replace(/_/g, "/")
     try {
-      return { mime, buffer: Buffer.from(atob(padded), "latin1") }
+      return { mime, buffer: Buffer.from(atob(normalized), "latin1") }
     } catch (error) {
       if (error instanceof DOMException && error.name === "InvalidCharacterError") throw new InvalidUrlError()
       throw error

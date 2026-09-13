@@ -13,7 +13,7 @@ Status: implemented
 三处共同收口：
 
 1. **编码端**：`packages/util` 新增 `base64EncodeStandard`（RFC 4648 标准字符集 + padding）；四处 data-URL 生产点（session-command 两处、submit 两处）切换过去。`base64Encode` 保持 URL-safe 语义，继续服务 URL 路由段等需要 URL 安全字符集的调用方。
-2. **解码端**：`decodeDataUrl` 的 base64 分支按 forgiving-base64 归一化——URL-safe 字符映射回标准字符集并重新推导缺失 padding，同时保留 forgiving 规则的校验边界（padding 至多两个、纯 padding 输入与 `%4==1` 长度拒绝），畸形输入不再被静默解码为空附件。已滞留的历史消息无需迁移即恢复可解码。
+2. **解码端**：`decodeDataUrl` 的 base64 分支按 forgiving-base64 归一化——URL-safe 字符映射回标准字符集后交给 `atob`，由它移除 ASCII 空白、接受未填充输入并严格验证已有 padding；不重新推导 padding，以免把 `YQ=`、`YWJj=` 等畸形形式修补成有效输入，畸形输入不再被静默解码为空附件。已滞留的历史消息无需迁移即恢复可解码。
 3. **收件箱**：`SessionInbox.Item` 增加可选 `status: "failed"` 与 `failReason`。task 物化遇到 `InvalidUrlError` 时停靠为 failed 并持久化发布，不抛出、不删除；`peekTask`/`hasRunnableItem`/startup discovery 跳过 failed 条目，队列后方的任务继续消费；loop 在仅有停靠失败、无任何 transcript 时直接抛错，不再合成伪造血缘的 aborted assistant 消息。`materializeNextTask` 收口 loop 的两处任务物化点。重试链：`rearm` 清除失败态并经 `RolloutLedger.reopenRun` 重开该任务被终态化的 rollout（仅重开 payload-failed 且 recording 完好的 run；cancelled/completed/recording-failed 保持终态），retry 路由先 rearm 再唤醒，rearm 写失败会正常传播为错误响应。`guide` 拒绝 failed 条目（`SessionInboxItemFailedError` → 409），Web 批量「Send all」将其排除——loop 在物化前删除 steer 条目，引导停靠失败会在运行中途永久丢 payload；仅 retry 路径可重新驱动。failed 条目仍可 retry/删除（`assertMutable` 放行），即使它是没有 canonical root 的首任务。Web 收件箱行显示 Failed 徽标、failReason 提示与一键 Retry。
 
 ## Alternatives considered
