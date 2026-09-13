@@ -143,6 +143,34 @@ test("non-abort assistant failures skip encoding entirely", async () => {
   })
 })
 
+test("root-scoped cancellation reaches encoding when the assistant parent differs", async () => {
+  const started = Promise.withResolvers<AbortSignal>()
+  const release = Promise.withResolvers<void>()
+  mocks.push(
+    spyOn(Provider, "getModel").mockResolvedValue({ providerID: "test", id: "test" } as never),
+    spyOn(AgentCall, "text").mockImplementation(async (input) => {
+      if (!input.signal) throw new Error("missing encode signal")
+      started.resolve(input.signal)
+      await release.promise
+      input.signal.throwIfAborted()
+      throw new Error("expected root cancellation")
+    }),
+  )
+  await fixture({}, async (ctx) => {
+    const rootID = Identifier.ascending("message")
+    try {
+      await SessionContextContributions.onAssistantComplete({ ...ctx.assistant, rootID })
+      const signal = await started.promise
+      LoopJob.cancelDetached(ctx.sessionID, new Set([rootID]))
+      expect(signal.aborted).toBe(true)
+      release.resolve()
+      await LoopJob.settleDetached(ctx.sessionID, new Set([rootID]))
+    } finally {
+      release.resolve()
+    }
+  })
+}, 30_000)
+
 test("disabled experience encoding never reaches the model", async () => {
   const text = spyOn(AgentCall, "text").mockImplementation(
     async () =>

@@ -65,7 +65,7 @@ export namespace ExperienceEncoder {
     const capturedRetrieval = ExperienceRecall.captureRetrieval(msg.sessionID)
     const scheduled = LoopJob.scheduleDetached({
       sessionID: msg.sessionID,
-      rootID: userMessageID,
+      rootID: msg.rootID ?? userMessageID,
       type: "experience-encode",
       payload: { sessionID: msg.sessionID, userMessageID, retrievedExperienceIDs: capturedRetrieval },
     })
