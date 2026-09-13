@@ -105,3 +105,18 @@ async def test_closing_live_subscription_drains_late_events_without_losing_prior
     assert record["oom_coverage"] == "live_stream"
     assert record["oom_events"] == 2
     assert record["container_events"] == [early, late]
+
+
+def test_oom_dedup_uses_kernel_event_identity_and_preserves_distinct_occurrences(tmp_path):
+    row = {
+        "Type": "container",
+        "Action": "oom",
+        "timeNano": 1789000000000000001,
+        "Actor": {"ID": "container-one", "Attributes": {"com.docker.compose.project": "sb-run"}},
+    }
+    monitor = ResourceMonitor(tmp_path, "sb-run")
+    monitor.accept_event(row)
+    monitor.accept_event({**row, "status": "oom", "id": "container-one", "extra": "CLI serialization"})
+    assert len(monitor.events) == 1
+    monitor.accept_event({**row, "timeNano": row["timeNano"] + 1})
+    assert len(monitor.events) == 2

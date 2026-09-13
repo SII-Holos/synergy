@@ -168,9 +168,20 @@ class ResourceMonitor:
             project == self.project or project.startswith(self.project + "__verifier__")
         ):
             return
-        if row not in self.events:
-            self.events.append(row)
-            self.persist()
+        timestamp = row.get("timeNano")
+        identity = row.get("Actor", {}).get("ID")
+        for retained in self.events:
+            if retained == row or (
+                isinstance(timestamp, int)
+                and timestamp > 0
+                and identity
+                and retained.get("timeNano") == timestamp
+                and retained.get("Actor", {}).get("ID") == identity
+                and retained.get("Action") == row["Action"]
+            ):
+                return
+        self.events.append(row)
+        self.persist()
 
     async def observe_events(self) -> None:
         # Continuous Engine API subscription avoids the finite retrospective event window.
