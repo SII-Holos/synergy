@@ -10,6 +10,7 @@ import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { PolicyWorker } from "@ericsanchezok/synergy-harness/enforcement/policy-worker"
 import { ToolScheduler } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 
 test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent shutdown", async () => {
   const initialListeners = GlobalBus.listenerCount("event")
@@ -54,6 +55,9 @@ test("failed recovery does not announce completion or retain home ownership", as
   const recovery: Array<number | "completed"> = []
   await Storage.write([...root, "head"], { allocated: 1, committed: 1 })
   await Storage.write(event, { version: 1, seq: 2, time: 0, kind: "gap" })
+  // Simulate an unknown pending ledger so recovery falls back to the
+  // exhaustive scan that discovers this hand-written journal.
+  await Storage.remove(StoragePath.rolloutRecoveryPending())
   try {
     await expect(
       ProductRuntimeHandle.open({
@@ -70,6 +74,7 @@ test("failed recovery does not announce completion or retain home ownership", as
   } finally {
     await Storage.remove(event)
     await Storage.remove([...root, "head"])
+    await Storage.remove(StoragePath.rolloutRecoveryPending())
     SessionManager.openAdmission()
     AgentTurn.configure()
     PolicyWorker.configure()
