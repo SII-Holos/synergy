@@ -207,9 +207,12 @@ export function SessionInbox(props: SessionInboxProps) {
   )
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
-  const firstTaskLocked = (item: SessionInboxItem) => item.mode === "task" && props.hasCanonicalRoot === false
+  const firstTaskLocked = (item: SessionInboxItem) =>
+    item.mode === "task" && item.status !== "failed" && props.hasCanonicalRoot === false
+  // Bulk "Send all" guides every actionable item; failed items stay out of
+  // it — only the retry path may re-drive a parked failure.
   const actionableItems = createMemo(() =>
-    items().filter((item) => isInboxItemInteractive(item) && !firstTaskLocked(item)),
+    items().filter((item) => item.status !== "failed" && isInboxItemInteractive(item) && !firstTaskLocked(item)),
   )
 
   const titleDetail = createMemo(() => {

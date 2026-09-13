@@ -393,6 +393,7 @@ export namespace SessionInvoke {
     let session = await Session.get(sessionID)
     SessionManager.assertExecutionContext(session, "session loop")
     let scopeID = (session.scope as Scope).id
+    let parkedTask: { itemID: string; reason: string } | undefined
 
     while (true) {
       const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
@@ -403,6 +404,7 @@ export namespace SessionInvoke {
         // so the loop keeps consuming runnable tasks until none remain.
         const result = await SessionInbox.materializeNextTask(sessionID)
         if (result.status === "empty") break
+        if (result.status === "failed") parkedTask = { itemID: result.itemID, reason: result.reason }
         continue
       }
       const configuration = await RolloutLifecycle.configuration(session, root.info.id)
@@ -1358,6 +1360,12 @@ export namespace SessionInvoke {
     })
 
     let resultMessage = selectResultMessage(await SessionHistory.modelMessages({ sessionID }))
+    // A session whose only queued task is parked never produced a transcript;
+    // surface the parked failure instead of synthesizing an aborted assistant
+    // message with fabricated lineage.
+    if (!resultMessage && parkedTask && !abort.aborted) {
+      throw new Error(`Session inbox task could not be materialized: ${parkedTask.itemID} (${parkedTask.reason})`)
+    }
     if (!resultMessage) {
       resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
     }

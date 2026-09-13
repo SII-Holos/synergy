@@ -6766,6 +6766,15 @@ export type SessionInboxFirstTaskLockedError = {
   }
 }
 
+export type SessionInboxItemFailedError = {
+  name: "SessionInboxItemFailedError"
+  data: {
+    message: string
+    sessionID: string
+    itemID: string
+  }
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -14605,9 +14614,9 @@ export type SessionInboxGuideErrors = {
    */
   404: NotFoundError
   /**
-   * First task is locked until its root is ready
+   * First task is locked until its root is ready, or the item is parked as failed
    */
-  409: SessionInboxFirstTaskLockedError
+  409: SessionInboxFirstTaskLockedError | SessionInboxItemFailedError
   /**
    * Runtime shutting down
    */

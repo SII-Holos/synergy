@@ -26,7 +26,15 @@ for (const [url, bytes] of [
   })
 }
 
-for (const url of ["data:broken", "data:text/plain;base64,!", "data:text/plain;base64,a", "file:///fixture"]) {
+for (const url of [
+  "data:broken",
+  "data:text/plain;base64,!",
+  "data:text/plain;base64,a",
+  "data:text/plain;base64,====",
+  "data:text/plain;base64,==",
+  "data:text/plain;base64,a=b",
+  "file:///fixture",
+]) {
   test(`rejects malformed inline data without fabricating bytes: ${url}`, () => {
     expect(() => Attachment.decodeDataUrl(url)).toThrow(Attachment.InvalidUrlError)
   })

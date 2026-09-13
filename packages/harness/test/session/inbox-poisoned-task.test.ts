@@ -85,6 +85,34 @@ describe("session inbox poisoned task parking", () => {
     })
   })
 
+  test("guide rejects a parked failure so bulk send cannot drop the payload", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await seedRoot(session.id)
+        await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          parts: [
+            { type: "text", text: "poisoned task" },
+            { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
+          ],
+        })
+        const itemID = (await SessionInbox.peekTask(session.id))!.id
+        const result = await SessionInbox.materializeNextTask(session.id)
+        expect(result.status).toBe("failed")
+
+        await expect(SessionInbox.guide({ sessionID: session.id, itemID })).rejects.toMatchObject({
+          name: "SessionInboxItemFailedError",
+        })
+        // Parked failures stay mutable for retry and delete even without a
+        // canonical root in the conversation.
+        expect((await SessionInbox.getStored(session.id, itemID)).status).toBe("failed")
+      },
+    })
+  })
+
   test("rearm clears the failed state so retry can re-drive the item", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
