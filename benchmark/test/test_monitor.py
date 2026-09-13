@@ -82,3 +82,26 @@ async def test_oom_events_survive_container_cleanup_and_exclude_other_trials(tmp
     assert record["oom_events"] is None
     assert record["observed_oom_events"] == 2
     assert record["oom_coverage"] == "observed_event_window"
+
+
+async def test_closing_live_subscription_drains_late_events_without_losing_prior_events(tmp_path, monkeypatch):
+    def event(identity):
+        return {"Action": "oom", "Actor": {"ID": identity, "Attributes": {"com.docker.compose.project": "sb-run"}}}
+
+    early, late = event("early"), event("late")
+
+    async def process(args, *, log, **kwargs):
+        log.write_text(json.dumps(late) + "\n" + json.dumps(late) + "\n")
+        return 0
+
+    monkeypatch.setattr("synergy_bench.monitor.run_process", process)
+    monitor = ResourceMonitor(tmp_path, "sb-run")
+    monitor.event_connected = True
+    monitor.oom_coverage = "live_stream"
+    monitor.accept_event(early)
+    await monitor.collect_events()
+    monitor.persist()
+    record = json.loads((tmp_path / "resources.json").read_text())
+    assert record["oom_coverage"] == "live_stream"
+    assert record["oom_events"] == 2
+    assert record["container_events"] == [early, late]

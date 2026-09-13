@@ -19,6 +19,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 2. Keep native prompts, tools, loops and compaction. A protocol bridge converts messages and streams; it must not create an agent loop or silently drop unsupported controls.
 3. Exercise both Git and ordinary workspaces when upgrading native CLIs. Wait for the CLI's terminal process and native session state; a completed model turn does not establish that the agent loop ended.
 4. Persist request intent before dispatch and terminal evidence before scheduler state. Reconcile retained terminal records before resuming. A new paid attempt needs its own retained reason; never replace failed attempts or select the best score retrospectively.
+   On Linux, recover container-owned private log ownership before reading native terminal records or removing orphaned containers. Preserve file bytes and modes; test both running and stopped containers.
 5. Cross-check every completed provider request against native evidence. Interrupted requests retain unknown usage and any known lower bound. Cache and reasoning tokens have explicit inclusion rules; byte measurements remain bytes.
 6. Read the primary native reward while preserving auxiliary verifier metrics. Require positive test-start evidence separately. Check archive contents and checksums independently of agent outcomes and rewards.
 

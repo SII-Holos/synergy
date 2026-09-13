@@ -123,6 +123,7 @@ async def test_parent_death_preserves_dispatched_cost_and_never_repeats_terminal
         )
         assert code in {0, 1}, (root / "recovered.log").read_text()[-5000:]
         assert len(calls) == 1
+        assert (attempt / "evidence.json").exists(), (root / "recovered.log").read_text()[-8000:]
         result = read_json(attempt / "evidence.json")
         assert result["attempt_status"] == "completed"
         assert result["wire_usage"]["tokens"]["total"]["unknown"] == 1

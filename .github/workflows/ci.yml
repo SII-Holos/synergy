@@ -361,30 +361,42 @@ jobs:
         run: uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py benchmark/test/test_native.py benchmark/test/test_recovery.py benchmark/test/test_parent_death_docker.py benchmark/test/test_oom_docker.py benchmark/test/test_oracle.py benchmark/test/test_compaction_docker.py
         env:
           SYNERGY_BENCH_DOCKER: "1"
+      - name: Collect benchmark test evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          root = Path(".artifacts/benchmark")
+          output = Path(os.environ["RUNNER_TEMP"]) / "benchmark-evidence"
+          output.mkdir(parents=True, exist_ok=True)
+          names = {"evidence.json", "result.json", "rollout.zip", "execution.json", "accounting.json",
+                   "environment-cleanup.json", "cleanup.json", "export.json", "archive.json", "resources.json",
+                   "export.log", "validation.log", "parent.log", "recovered.log", "integration-cli.log",
+                   "container-events.log", "container-events-live.jsonl", "oom.log"}
+          errors = []
+          for family in ["integration", "parent-death", "compaction-integration", "oom-integration"]:
+              for directory, children, files in os.walk(root / family, onerror=lambda e: errors.append(type(e).__name__)):
+                  children[:] = [name for name in children if name not in {"home", "wire", "evaluator", "inputs", "data"}
+                                 and not (Path(directory) / name).is_symlink()]
+                  for name in files:
+                      source = Path(directory) / name
+                      if name not in names or source.is_symlink():
+                          continue
+                      target = output / source.relative_to(root)
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      try:
+                          shutil.copyfile(source, target)
+                      except OSError as error:
+                          errors.append(type(error).__name__)
+          (output / "collection.json").write_text(json.dumps({"errors": errors}))
+          PY
       - name: Preserve benchmark test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: local-benchmark-evidence
-          path: |
-            .artifacts/benchmark/integration/**/evidence.json
-            .artifacts/benchmark/integration/**/result.json
-            .artifacts/benchmark/integration/**/rollout.zip
-            .artifacts/benchmark/integration/**/execution.json
-            .artifacts/benchmark/integration/**/accounting.json
-            .artifacts/benchmark/integration/**/environment-cleanup.json
-            .artifacts/benchmark/integration/**/cleanup.json
-            .artifacts/benchmark/integration/**/export.json
-            .artifacts/benchmark/integration/**/archive.json
-            .artifacts/benchmark/integration/**/export.log
-            .artifacts/benchmark/integration/**/validation.log
-            .artifacts/benchmark/cache/preparing/*.log
-            .artifacts/benchmark/parent-death/**/evidence.json
-            .artifacts/benchmark/parent-death/**/parent.log
-            .artifacts/benchmark/parent-death/**/recovered.log
-            .artifacts/benchmark/parent-death/**/request.json
-            .artifacts/benchmark/compaction-integration/**/evidence.json
-            .artifacts/benchmark/compaction-integration/**/integration-cli.log
+          path: ${{ runner.temp }}/benchmark-evidence
           if-no-files-found: warn
 
   test-benchmark-matrix:

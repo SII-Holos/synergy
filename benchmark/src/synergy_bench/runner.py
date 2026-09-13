@@ -29,7 +29,7 @@ from .gateway import Gateway, read_ledger
 from .harnesses import harness_configuration
 from .monitor import ResourceMonitor
 from .native_usage import attach_synergy_requests, native_accounting, reconcile_requests, reconcile_usage
-from .prepare import command, evaluator_identity, preflight, prepare_source, verify_prepared
+from .prepare import command, evaluator_identity, preflight, prepare_source, remove_owned_container, verify_prepared
 from .resources import (
     Capacity,
     Request,
@@ -651,6 +651,63 @@ def environment_projects(root: Path, record: Path) -> set[str]:
     return {name for name in names if name == project or name.startswith(project + "__verifier__")}
 
 
+def handoff_environment(root: Path, record: Path) -> None:
+    project = read_json(record)["project"]
+    trial = record.parent / project
+    if trial.is_symlink() or not trial.resolve().is_relative_to(root.resolve()):
+        raise ValueError("Retained logs escape their run")
+    transferred = set()
+    for name in sorted(environment_projects(root, record)):
+        for container in command(
+            ["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={name}"], timeout=15
+        ).splitlines():
+            metadata = json.loads(command(["docker", "inspect", container], timeout=15))[0]
+            for mount in metadata["Mounts"]:
+                path = Path(mount.get("Source", ""))
+                if mount["Type"] != "bind" or path in transferred or not path.is_relative_to(trial):
+                    continue
+                if path.is_symlink() or not path.resolve().is_relative_to(trial.resolve()):
+                    raise ValueError("Retained log mount escapes its trial")
+                identifier = record.parent / ("handoff-" + uuid.uuid4().hex + ".cid")
+                try:
+                    command(
+                        [
+                            "docker",
+                            "run",
+                            "--rm",
+                            "--pull",
+                            "never",
+                            "--cidfile",
+                            str(identifier),
+                            "--network",
+                            "none",
+                            "--read-only",
+                            "--user",
+                            "0",
+                            "--cap-drop",
+                            "ALL",
+                            "--cap-add",
+                            "CHOWN",
+                            "--cap-add",
+                            "DAC_OVERRIDE",
+                            "--mount",
+                            f"type=bind,source={path},target=/retained",
+                            "--entrypoint",
+                            "chown",
+                            metadata["Image"],
+                            "-R",
+                            "-h",
+                            f"{os.getuid()}:{os.getgid()}",
+                            "/retained",
+                        ],
+                        timeout=30,
+                    )
+                    transferred.add(path)
+                finally:
+                    remove_owned_container(identifier)
+                    identifier.unlink(missing_ok=True)
+
+
 def remove_environment(root: Path, record: Path) -> None:
     for name in sorted(environment_projects(root, record)):
         selector = f"label=com.docker.compose.project={name}"
@@ -774,6 +831,7 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
     resolved_agent = await background(agent.resolve)
     if trial.is_symlink() or agent.is_symlink() or not resolved_agent.is_relative_to(root):
         raise ValueError("Retained terminal path escapes its run")
+    await background(handoff_environment, root, ownership)
     terminal = await background(retained_terminal, trial)
     if not (agent / "execution.json").exists() and not (agent / "finished").exists() and not terminal:
         return False
@@ -806,6 +864,7 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
             break
         await asyncio.sleep(0.2)
     try:
+        await background(handoff_environment, root, ownership)
         await background(remove_environment, root, ownership)
     except Exception as error:
         atomic_json(agent / "environment-cleanup.json", {"status": "failed", "errors": [type(error).__name__]})

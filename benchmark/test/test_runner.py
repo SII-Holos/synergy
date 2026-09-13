@@ -207,6 +207,20 @@ async def test_resume_recovers_retained_terminal_before_scheduling_any_model(
         pytest.fail("Retained terminal execution must never call the model again")
 
     monkeypatch.setattr(runner, "execute_trial", execute)
+    handed_back = False
+    original_read = Path.open
+
+    def guarded_read(path, *args, **kwargs):
+        if path.parent == agent and not handed_back:
+            raise PermissionError("container-owned private logs")
+        return original_read(path, *args, **kwargs)
+
+    def handoff(*args):
+        nonlocal handed_back
+        handed_back = True
+
+    monkeypatch.setattr(Path, "open", guarded_read)
+    monkeypatch.setattr(runner, "handoff_environment", handoff, raising=False)
     monkeypatch.setattr(runner, "remove_environment", lambda *args: None)
     await runner.resume(root)
     result = read_json(attempt / "evidence.json")

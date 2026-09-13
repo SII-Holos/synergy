@@ -166,4 +166,6 @@ SYNERGY_BENCH_PERFORMANCE=1 SYNERGY_BENCH_NATIVE_ARTIFACTS='{"pi":"/absolute/pat
 
 CI 使用轻量确定性任务（1 核、2 GiB），并为临时 runner 显式设置 10 GiB 缓存、2 GiB 磁盘余量。研究实验仍默认 32 GiB 缓存与 20 GiB 余量；CPU/内存预留不变。CI 配置依据 [GitHub 标准 runner 资源说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，实际可用资源仍由 doctor 检查。
 
-OOM 通过本地 Unix Docker Engine API 在执行期间持续订阅并落盘。订阅中断或只能取得历史窗口时，精确 OOM 数保持 unknown，另列已观察到的下界；远端 Docker 端点目前只有历史窗口覆盖。CPU/RSS 峰值来自定期采样，报告保留采样间隔并声明可能漏过短峰值。
+父进程异常退出后的恢复先交还容器私有日志的文件所有权，再读取原有终态；交接保持文件内容与 0600/0700 权限，通过原容器的不可变镜像完成，运行中和已停止的容器均可恢复。
+
+OOM 通过本地 Unix Docker Engine API 在执行期间持续订阅并落盘，关闭时合并并去重最终事件窗口，避免遗漏已发生但尚未消费的事件。订阅中断或只能取得历史窗口时，精确 OOM 数保持 unknown，另列已观察到的下界；远端 Docker 端点目前只有历史窗口覆盖。CPU/RSS 峰值来自定期采样，报告保留采样间隔并声明可能漏过短峰值。

@@ -216,8 +216,6 @@ class ResourceMonitor:
             self.event_ready.set()
 
     async def collect_events(self) -> None:
-        if self.event_connected:
-            return
         log = self.directory / "container-events.log"
         log.unlink(missing_ok=True)
         try:
@@ -242,16 +240,14 @@ class ResourceMonitor:
             if code:
                 raise RuntimeError("Docker event history unavailable")
             events = [json.loads(line) for line in log.read_text().splitlines()]
-            self.events = [
-                row
-                for row in events
-                if (project := row.get("Actor", {}).get("Attributes", {}).get("com.docker.compose.project", ""))
-                == self.project
-                or project.startswith(self.project + "__verifier__")
-            ]
-            self.oom_coverage = "observed_event_window"
+            for row in events:
+                self.accept_event(row)
+            if not self.event_connected:
+                self.oom_coverage = "observed_event_window"
         except (OSError, ValueError, RuntimeError, TimeoutError) as error:
             self.errors.append("events:" + type(error).__name__)
+            if self.event_connected:
+                self.oom_coverage = "partial_live_stream"
 
     async def run(self) -> None:
         while not self.stop.is_set():

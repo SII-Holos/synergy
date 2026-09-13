@@ -5,6 +5,7 @@ import uuid
 import pytest
 
 from synergy_bench.monitor import ResourceMonitor
+from synergy_bench.prepare import BENCHMARK
 from synergy_bench.process import run_process
 from synergy_bench.storage import read_json
 
@@ -50,6 +51,8 @@ async def test_native_docker_process_rss_is_observed(tmp_path):
 
 
 async def test_kernel_oom_is_retained_after_container_removal(tmp_path):
+    tmp_path = BENCHMARK.parent / ".artifacts/benchmark/oom-integration" / uuid.uuid4().hex
+    tmp_path.mkdir(parents=True)
     project = "sb-" + uuid.uuid4().hex[:8] + "-oom"
     container = "synergy-benchmark-oom-" + uuid.uuid4().hex
     try:
@@ -83,7 +86,7 @@ async def test_kernel_oom_is_retained_after_container_removal(tmp_path):
         assert code == 137
         record = read_json(tmp_path / "resources.json")
         assert record["oom_coverage"] == "live_stream", record
-        assert record["oom_events"] == 1
+        assert record["oom_events"] == 1, record
         assert record["observed_oom_events"] == 1
     finally:
         await run_process(["docker", "rm", "-f", container], log=tmp_path / "cleanup.log", deadline=15)
