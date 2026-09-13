@@ -122,14 +122,13 @@ export namespace RuntimeHandle {
         await cleanup(() => services.disposeExtensions?.())
         await cleanup(() => ScopeRuntime.disposeAll())
         await cleanup(async () => {
-          // The drains above settled every running record; verify this
-          // session's owners and re-arm the ledger so the next startup skips
-          // recovery. A failed drain leaves the ledger listed instead.
-          if (errors.length === 0) await RolloutRecovery.settle()
-        })
-        await cleanup(async () => {
           await server?.stop(true)
           configureRuntimeEndpoint(undefined)
+        })
+        await cleanup(async () => {
+          // Re-arm only after execution and transport have both stopped;
+          // any cleanup failure keeps owners listed for startup recovery.
+          if (errors.length === 0) await RolloutRecovery.settle()
         })
         ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" })
         ObservabilityResources.stop()

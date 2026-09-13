@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
@@ -21,6 +21,20 @@ function runKey(target: RolloutSchema.Owner) {
 // clean slate after every test so sibling files in the same process are not
 // poisoned by deliberately corrupted fixtures.
 afterEach(() => Storage.remove(StoragePath.rolloutRecoveryPending()))
+beforeEach(() => RolloutPending.markClean())
+
+test("writes before first recovery preserve exhaustive discovery of historical owners", async () => {
+  const historical = owner()
+  const migrated = owner()
+  await RolloutLedger.beginSegment({ owner: historical, runID: "run", input: { task: "historical" } })
+  await Storage.remove(StoragePath.rolloutRecoveryPending())
+  await RolloutLedger.beginSegment({ owner: migrated, runID: "run", input: { task: "migration" } })
+  expect(await RolloutPending.tracked()).toBeUndefined()
+  await RolloutRecovery.all()
+  expect((await RolloutSnapshot.read(historical)).segments[0].status).toBe("interrupted")
+  expect((await RolloutSnapshot.read(migrated)).segments[0].status).toBe("interrupted")
+  expect(await RolloutPending.tracked()).toEqual({ version: 1, owners: [] })
+})
 
 test("journal writes track their owner in the durable pending set before mutating", async () => {
   const operationID = crypto.randomUUID()

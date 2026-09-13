@@ -78,6 +78,9 @@ export namespace RolloutPending {
     if (suspended) return
     const identity = RolloutSchema.Owner.parse(owner)
     const probe = await load()
+    // A migration can write before the first recovery pass. Only recovery
+    // can establish that a missing ledger covers every historical owner.
+    if (probe.kind === "absent") return
     if (probe.kind === "ok" && probe.owners.some((entry) => sameOwner(entry, identity))) return
     await record(async () => {
       using lock = await Lock.write(lockKey)
@@ -88,7 +91,8 @@ export namespace RolloutPending {
       if (current.kind === "untrusted")
         throw new RolloutRecordingError({ message: "Rollout recovery pending set is unreadable" })
       if (current.kind === "ok" && current.owners.some((entry) => sameOwner(entry, identity))) return
-      const owners = current.kind === "ok" ? [...current.owners, identity] : [identity]
+      if (current.kind === "absent") return
+      const owners = [...current.owners, identity]
       await Storage.write(key(), { version: 1, owners }, options)
     })
   }
