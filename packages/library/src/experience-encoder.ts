@@ -15,6 +15,8 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { SessionPluginHooks } from "@ericsanchezok/synergy-harness/session/plugin-hooks"
+import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { createHash } from "crypto"
 
 export namespace ExperienceEncoder {
@@ -52,21 +54,68 @@ export namespace ExperienceEncoder {
     if (msg.error && !MessageV2.AbortedError.isInstance(msg.error)) return
     if (msg.finish === "tool-calls") return
 
-    return encode(msg.sessionID, msg.parentID)
-      .then(async (outcome) => {
-        await triggerEncodeAfter(msg.sessionID, msg.parentID, outcome).catch((err) =>
-          log.error("encode after hook failed", { sessionID: msg.sessionID, error: err }),
-        )
-      })
-      .catch((err) => log.error("encoding failed", { sessionID: msg.sessionID, error: err }))
-      .finally(async () => {
-        await retryFailedEncodings(msg.sessionID, msg.parentID).catch((err) =>
-          log.error("retry failed", { sessionID: msg.sessionID, error: err }),
-        )
-        await checkRewardWindow(msg.sessionID).catch((err) =>
-          log.error("reward check failed", { sessionID: msg.sessionID, error: err }),
-        )
-      })
+    // Completion hooks must not hold the turn on model work: scheduling is
+    // synchronous and the pipeline runs detached — it outlives the loop
+    // lease, stays bounded by the job timeout, and settles through
+    // settleDetached after the lease releases.
+    const userMessageID = msg.parentID ?? msg.id
+    const scheduled = LoopJob.scheduleDetached({
+      sessionID: msg.sessionID,
+      rootID: userMessageID,
+      type: "experience-encode",
+      payload: { sessionID: msg.sessionID, userMessageID },
+    })
+    if (!scheduled) log.warn("experience-encode job unavailable; skipping encoding", { sessionID: msg.sessionID })
+  }
+
+  let encodeJobRegistered = false
+
+  /** Idempotent capability registration, composed by registerLibrary(). */
+  export function register() {
+    if (encodeJobRegistered) return
+    encodeJobRegistered = true
+    LoopJob.register({
+      type: "experience-encode",
+      phase: "post",
+      blocking: false,
+      detached: true,
+      timeoutMs: 300_000,
+      collect() {
+        return []
+      },
+      capture(_ctx, instance) {
+        return instance
+      },
+      key(input) {
+        return String(input.userMessageID ?? input.sessionID)
+      },
+      async execute(input, signal) {
+        await encodeTurn(String(input.sessionID), String(input.userMessageID), signal)
+        return "pass"
+      },
+    })
+  }
+
+  async function encodeTurn(sessionID: string, userMessageID: string, signal?: AbortSignal) {
+    // Detached runs of different turns in one session can overlap; the lock
+    // keeps the inline path's per-session serialization for retrieval
+    // attribution, failure retries, and reward evaluation.
+    using _ = await Lock.write(`library-experience-encode:${sessionID}`)
+    let outcome: EncodeOutcome | undefined
+    try {
+      outcome = await encode(sessionID, userMessageID, { signal })
+    } catch (err) {
+      log.error("encoding failed", { sessionID, userMessageID, error: err })
+    }
+    if (outcome) {
+      await triggerEncodeAfter(sessionID, userMessageID, outcome).catch((err) =>
+        log.error("encode after hook failed", { sessionID, error: err }),
+      )
+    }
+    await retryFailedEncodings(sessionID, userMessageID).catch((err) =>
+      log.error("retry failed", { sessionID, error: err }),
+    )
+    await checkRewardWindow(sessionID).catch((err) => log.error("reward check failed", { sessionID, error: err }))
   }
 
   // ── Re-encode helpers ─────────────────────────────────────────────────

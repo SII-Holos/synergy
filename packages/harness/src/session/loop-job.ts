@@ -96,6 +96,7 @@ export namespace LoopJob {
   const ownerKey = (sessionID: string, rootID: string) => `${sessionID}:${rootID}`
   let backgroundSequence = 0
   const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
+  const NEVER_ABORTED_SIGNAL = new AbortController().signal
 
   export function register<Payload extends JobInstance>(job: Job<Payload>) {
     registry.set(job.type, job as RegisteredJob)
@@ -153,7 +154,7 @@ export namespace LoopJob {
         log.error("failed to capture background job", { type: instance.type, error })
         continue
       }
-      scheduleBackground(job, payload, ctx)
+      scheduleBackground(job, payload, ctx.sessionID, ctx.abort, ctx.lastUser.rootID ?? ctx.lastUser.id)
     }
     let flow: FlowResult = "pass"
     for (const { instance, job } of blocking) {
@@ -248,9 +249,43 @@ export namespace LoopJob {
     }
   }
 
-  function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, ctx: Context) {
-    const sessionID = ctx.sessionID
-    const rootID = ctx.lastUser.rootID ?? ctx.lastUser.id
+  export interface ScheduleDetachedInput {
+    sessionID: string
+    rootID: string
+    type: string
+    payload?: Omit<JobInstance, "type">
+  }
+
+  /**
+   * Queue a registered detached background run outside the loop context —
+   * completion hooks use this to hand long model work to the detached pool so
+   * the calling path returns immediately. The run ignores the loop lease
+   * abort, is bounded by the job's own timeout, settles through
+   * settleDetached, and coalesces behind the job's key like collect-driven
+   * background runs. Returns false for unknown, blocking, or non-detached
+   * job types.
+   */
+  export function scheduleDetached(input: ScheduleDetachedInput): boolean {
+    const job = registry.get(input.type)
+    if (!job || job.blocking || job.detached !== true) return false
+    const backgroundJob = job as RegisteredBackgroundJob
+    const payload = { type: input.type, ...(input.payload ?? {}) }
+    try {
+      scheduleBackground(backgroundJob, payload, input.sessionID, NEVER_ABORTED_SIGNAL, input.rootID)
+    } catch (error) {
+      log.warn("detached schedule failed", { type: input.type, error })
+      return false
+    }
+    return true
+  }
+
+  function scheduleBackground(
+    job: RegisteredBackgroundJob,
+    payload: JobInstance,
+    sessionID: string,
+    abort: AbortSignal,
+    rootID: string,
+  ) {
     const coalescingKey = job.key?.(payload)
     const key = `${ownerKey(sessionID, rootID)}:${job.type}:${coalescingKey ?? `run:${++backgroundSequence}`}`
     const run = {
@@ -259,7 +294,7 @@ export namespace LoopJob {
       payloadBytes: estimatePayloadBytes(payload),
       sessionID,
       rootID,
-      abort: ctx.abort,
+      abort,
       detached: job.detached === true,
       resume: AsyncLocalStorage.snapshot(),
     }

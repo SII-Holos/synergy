@@ -15,7 +15,7 @@
 | Library 完成时序    | 经验编码仍有模型调用时，执行账本已经结算。完成贡献返回并等待完整异步工作，包括嵌套奖励计算；核心保持通用贡献接口，完整产品继续启用 Library。                                                                                                                      |
 | 普通 workspace 构建 | Turbo 依赖构建误触发跨平台二进制发行，导致本机缺少其它平台 sandbox 资产时测试失败。CLI/Product Runtime 的普通 `build` 编译 `dist/modules`，显式 `script/build.ts` 保留二进制发行职责。Web 重命名后的文件标题测试期望同步为新目录名。                              |
 
-设计依据见[验证稳定性](../decisions/implemented/bug-fix/2026-09-08-validation-source-stability-and-gate-order.md)、[编译 namespace 所有权](../decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md)和[完成贡献结算](../decisions/implemented/bug-fix/2026-09-08-await-completion-context-contributions.md)。核心生命周期、业务算法、宿主实现与界面职责见[架构总览](../architecture/README.md)。用户安装名称、`synergy` 命令、配置和数据路径不因源码目录迁移改名。
+设计依据见[验证稳定性](../decisions/implemented/bug-fix/2026-09-08-validation-source-stability-and-gate-order.md)、[编译 namespace 所有权](../decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md)和[完成贡献结算](../decisions/archived/bug-fix/2026-09-08-await-completion-context-contributions.md)。核心生命周期、业务算法、宿主实现与界面职责见[架构总览](../architecture/README.md)。用户安装名称、`synergy` 命令、配置和数据路径不因源码目录迁移改名。
 
 新增整合保留了 migration phase、Desktop 进度续期、前台 stderr 渲染、ACP 干净协议输出、历史附件缺失证据及模型目录刷新结果。Plugin/Plugin Kit 构建仅写自己拥有的输出，开发和发行入口通过 Turbo 安排依赖；文件监视器正向测试等待真实通知，避免把 400 ms 固定睡眠误当作 OS 事件完成。
 
