@@ -155,3 +155,24 @@ def test_native_reward_can_include_auxiliary_verifier_metrics():
 
     assert reward_of({"verifier": {"rewards": {"reward": 1, "f2p_total": 88, "p2p": 1.0}}}) == 1
     assert reward_of({"verifier": {"rewards": {"f2p": 0.5, "p2p": 1.0}}}) is None
+
+
+def test_exact_token_comparison_requires_per_request_reconciliation(tmp_path):
+    from synergy_bench.storage import read_json
+
+    fixture(tmp_path, [(1, 30)])
+    file = tmp_path / "trials/0000/attempt-001/evidence.json"
+    result = read_json(file)
+    result["reconciliation"] = {
+        "status": "mismatch",
+        "fields": {field: {"status": "matched"} for field in ["input", "output", "total"]},
+        "requests": {"status": "mismatch", "coverage": 1},
+    }
+    atomic_json(file, result)
+    assert report_data(tmp_path)["scored"][0]["comparable_usage"] is False
+    result["reconciliation"].update(status="matched", requests={"status": "matched", "coverage": 1})
+    atomic_json(file, result)
+    assert report_data(tmp_path)["scored"][0]["comparable_usage"] is True
+    result["reconciliation"]["requests"] = {"status": "partial", "coverage": 0.5}
+    atomic_json(file, result)
+    assert report_data(tmp_path)["scored"][0]["comparable_usage"] is False

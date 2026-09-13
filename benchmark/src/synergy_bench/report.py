@@ -179,6 +179,9 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "usage_fields": (accounting or {}).get("tokens", {}),
             "comparable_usage": not native_only
             and tokens.get("total") is not None
+            and (result.get("reconciliation") or {}).get("status") != "mismatch"
+            and (result.get("reconciliation") or {}).get("requests", {}).get("status") == "matched"
+            and (result.get("reconciliation") or {}).get("requests", {}).get("coverage") == 1
             and all(
                 (result.get("reconciliation") or {}).get("fields", {}).get(field, {}).get("status") == "matched"
                 for field in ["input", "output", "total"]

@@ -358,7 +358,7 @@ jobs:
       - name: Prepare verified Linux watcher
         run: bun packages/runtime-local/script/build-watcher.ts
       - name: Verify Docker rollout with a deterministic local provider
-        run: uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py benchmark/test/test_native.py benchmark/test/test_recovery.py benchmark/test/test_parent_death_docker.py benchmark/test/test_oom_docker.py benchmark/test/test_oracle.py
+        run: uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py benchmark/test/test_native.py benchmark/test/test_recovery.py benchmark/test/test_parent_death_docker.py benchmark/test/test_oom_docker.py benchmark/test/test_oracle.py benchmark/test/test_compaction_docker.py
         env:
           SYNERGY_BENCH_DOCKER: "1"
       - name: Preserve benchmark test evidence
@@ -383,6 +383,8 @@ jobs:
             .artifacts/benchmark/parent-death/**/parent.log
             .artifacts/benchmark/parent-death/**/recovered.log
             .artifacts/benchmark/parent-death/**/request.json
+            .artifacts/benchmark/compaction-integration/**/evidence.json
+            .artifacts/benchmark/compaction-integration/**/integration-cli.log
           if-no-files-found: warn
 
   test-benchmark-matrix:

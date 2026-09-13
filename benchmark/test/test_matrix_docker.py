@@ -20,7 +20,7 @@ from synergy_bench.storage import atomic_json, read_json
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit native Docker matrix")
 
 
-async def fixture_provider(request, *, command_prefix=""):
+async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None):
     body = await request.json()
     responses = request.path.endswith("/responses")
     messages = body["input"] if responses else body["messages"]
@@ -30,6 +30,9 @@ async def fixture_provider(request, *, command_prefix=""):
     call = bool(tools) and not any(
         message.get("role") == "tool" or message.get("type") == "function_call_output" for message in messages
     )
+    if force_tool is not None:
+        call = bool(tools) and force_tool
+    call_id = "fixture-call-" + uuid.uuid4().hex
     message = {"role": "assistant", "content": "Done"}
     namespace = None
     if call:
@@ -66,14 +69,14 @@ async def fixture_provider(request, *, command_prefix=""):
             "tool_calls": [
                 {
                     "index": 0,
-                    "id": "fixture-call",
+                    "id": call_id,
                     "type": "function",
                     "function": {"name": selected["name"], "arguments": json.dumps(args)},
                 }
             ],
         }
     usage = {
-        "prompt_tokens": 100 if body["model"] == "fixture-one" else 200,
+        "prompt_tokens": input_tokens if input_tokens is not None else 100 if body["model"] == "fixture-one" else 200,
         "completion_tokens": 10,
         "prompt_tokens_details": {"cached_tokens": 40},
         "completion_tokens_details": {"reasoning_tokens": 0},
@@ -86,7 +89,7 @@ async def fixture_provider(request, *, command_prefix=""):
             {
                 "type": "function_call",
                 "id": "fc_fixture",
-                "call_id": "fixture-call",
+                "call_id": call_id,
                 "name": function.get("name"),
                 "arguments": function.get("arguments"),
                 "status": "completed",

@@ -33,6 +33,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 1. Run the narrow Python/Bun regression, relevant pure suites and static checks. For wire changes run `test_gateway.py`, `test_gateway_faults.py` and the native capture tests.
 2. Run the native Docker matrix with two deterministic models over both protocols. Keep live credentials out of CI. Actual CLIs, restricted inference egress and real tool roundtrips are required.
+   Exercise native compaction with actual retained tool history as well as reported usage; a high synthetic token count alone may not leave any eligible history to summarize. Require a native compaction record and per-request usage reconciliation.
 3. Run live acceptance from frozen inputs. Count all attempts, preflights and diagnostic runs in family reports. Model failures are observations; unexplained evaluator failures block claims of support.
 4. Compare only matching model/task/repeat/conditions. Expose missing or unpairable samples. Use seeded task-cluster bootstrap and only produce precise token differences for reconciled complete usage.
 5. Update this workflow, package documentation and an implemented decision record when their behavior changes. Run skill, documentation, decision, test-layout and workspace-boundary gates; follow `git-guide` for publication.
