@@ -153,7 +153,7 @@ export namespace Attachment {
     const header = parsed.href.slice(5, comma).trim()
     const mime = header.split(";")[0] || "text/plain"
     // Provenance: https://fetch.spec.whatwg.org/#data-url-processor
-    // Local adaptation: preserve decoded octets and the existing MIME-essence return value; classify invalid input separately from storage failures.
+    // Local adaptation: preserve decoded octets and the existing MIME-essence return value; classify invalid input separately from storage failures. The base64 branch follows forgiving-base64: URL-safe `-`/`_` map to `+`/`/` and padding is re-derived, so legacy payloads produced with a URL-safe encoder stay decodable.
     const encoded = Buffer.from(parsed.href.slice(comma + 1))
     let length = encoded.length
     if (encoded.includes(37)) {
@@ -172,8 +172,10 @@ export namespace Attachment {
     }
     const bytes = encoded.subarray(0, length)
     if (!/; *base64$/i.test(header)) return { mime, buffer: bytes }
+    const normalized = bytes.toString("latin1").replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/, "")
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4)
     try {
-      return { mime, buffer: Buffer.from(atob(bytes.toString("latin1")), "latin1") }
+      return { mime, buffer: Buffer.from(atob(padded), "latin1") }
     } catch (error) {
       if (error instanceof DOMException && error.name === "InvalidCharacterError") throw new InvalidUrlError()
       throw error

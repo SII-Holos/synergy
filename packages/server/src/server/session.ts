@@ -741,7 +741,9 @@ export const SessionRoute = new Hono()
     async (c) => {
       const params = c.req.valid("param")
       await assertSessionWorkspaceAvailable(params.sessionID)
-      const item = await SessionInbox.get(params.sessionID, params.itemID)
+      // A parked failure must be cleared before the wake, or the loop would
+      // peek past the failed item and report nothing to do.
+      const item = await SessionInbox.rearm(params).catch(() => SessionInbox.get(params.sessionID, params.itemID))
       await SessionDrive.request(params.sessionID, "user-input-retry")
       return c.json(item)
     },

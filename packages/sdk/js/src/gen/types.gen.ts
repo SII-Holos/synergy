@@ -6627,6 +6627,8 @@ export type SessionInboxItem = {
   id: string
   sessionID: string
   mode: "task" | "steer" | "context"
+  status?: "failed"
+  failReason?: string
   deliveryKey?: string
   message?: {
     role?: "user" | "assistant"

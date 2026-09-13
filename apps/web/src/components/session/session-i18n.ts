@@ -348,6 +348,10 @@ export const S = {
     message: "{count} {count, plural, one {item} other {items}} waiting for your attention",
   },
   inboxSessionAria: { id: "session.inbox.sessionAria", message: "Session inbox" },
+  inboxFailedStatus: { id: "session.inbox.failedStatus", message: "Failed" },
+  inboxFailed: { id: "session.inbox.failed", message: "Failed to deliver" },
+  inboxRetry: { id: "session.inbox.retry", message: "Retry delivery" },
+  inboxRetryFailed: { id: "session.inbox.retryFailed", message: "Failed to retry message" },
 
   // question-prompt
   questionNeedsInput: { id: "session.question.needsInput", message: "Choose how to proceed" },

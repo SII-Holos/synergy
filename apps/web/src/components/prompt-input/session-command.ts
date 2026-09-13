@@ -1,5 +1,5 @@
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
 import type { NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
 import { Identifier } from "@/utils/id"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
@@ -40,7 +40,7 @@ export function createSessionCommandParts(input: {
         id: Identifier.ascending("part"),
         type: "attachment" as const,
         mime: "text/plain",
-        url: `data:text/plain;base64,${base64Encode(text)}`,
+        url: `data:text/plain;base64,${base64EncodeStandard(text)}`,
         filename: `${attachment.title || "Untitled"}.md`,
         model: { mode: "content" as const, text },
         metadata: {
@@ -56,7 +56,7 @@ export function createSessionCommandParts(input: {
         id: Identifier.ascending("part"),
         type: "attachment" as const,
         mime: "text/plain",
-        url: `data:text/plain;base64,${base64Encode(text)}`,
+        url: `data:text/plain;base64,${base64EncodeStandard(text)}`,
         filename: `${attachment.title || "session"}.session.txt`,
         model: { mode: "content" as const, text },
         metadata: {

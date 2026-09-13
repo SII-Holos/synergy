@@ -12,6 +12,19 @@ for (const [url, bytes, mime] of [
     expect(Attachment.decodeDataUrl(url)).toEqual({ mime, buffer: bytes })
   })
 }
+// Producers built data URLs with a URL-safe base64 helper while labeling them
+// standard base64 (regression behind stranded inbox items); forgiving-base64
+// decoding accepts those legacy payloads instead of stranding them.
+for (const [url, bytes] of [
+  ["data:text/plain;base64,8J-agA", Buffer.from("🚀")],
+  ["data:text/plain;base64,-_8", Buffer.from([0xfb, 0xff])],
+  ["data:text/plain;base64,aGVsbG8", Buffer.from("hello")],
+  ["data:text/plain;base64,YQ", Buffer.from("a")],
+] as const) {
+  test(`accepts legacy URL-safe and unpadded base64 payloads: ${url}`, () => {
+    expect(Attachment.decodeDataUrl(url).buffer).toEqual(bytes)
+  })
+}
 
 for (const url of ["data:broken", "data:text/plain;base64,!", "data:text/plain;base64,a", "file:///fixture"]) {
   test(`rejects malformed inline data without fabricating bytes: ${url}`, () => {

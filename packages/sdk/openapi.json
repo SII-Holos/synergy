@@ -43626,6 +43626,13 @@
             "type": "string",
             "enum": ["task", "steer", "context"]
           },
+          "status": {
+            "type": "string",
+            "enum": ["failed"]
+          },
+          "failReason": {
+            "type": "string"
+          },
           "deliveryKey": {
             "type": "string"
           },

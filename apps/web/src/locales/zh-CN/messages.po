@@ -12868,6 +12868,16 @@ msgstr "收件箱为空"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.failed"
+msgstr "投递失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.failedStatus"
+msgstr "失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.frozen"
 msgstr "回退期间收件箱已冻结"
 
@@ -12979,6 +12989,16 @@ msgstr "请求失败"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.restore"
 msgstr "恢复"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.retry"
+msgstr "重试投递"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.retryFailed"
+msgstr "重试消息失败"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

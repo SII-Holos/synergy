@@ -399,11 +399,10 @@ export namespace SessionInvoke {
         (message) => message.info.role === "user" && message.info.isRoot === true,
       )
       if (!root) {
-        const task = await SessionInbox.peekTask(sessionID)
-        if (!task) break
-        if (!(await SessionInbox.materializeItem(task)))
-          throw new Error(`Session inbox task could not be materialized: ${task.id}`)
-        await SessionInbox.commitReady(sessionID, [task.id])
+        // A parked failure stays in the inbox and is skipped by the next peek,
+        // so the loop keeps consuming runnable tasks until none remain.
+        const result = await SessionInbox.materializeNextTask(sessionID)
+        if (result.status === "empty") break
         continue
       }
       const configuration = await RolloutLifecycle.configuration(session, root.info.id)
@@ -1322,21 +1321,20 @@ export namespace SessionInvoke {
               }
             }
 
-            const taskItem = await SessionInbox.peekTask(sessionID)
-            if (taskItem) {
-              log.info("next task found, materializing", { sessionID, itemID: taskItem.id })
-              const materialized = await SessionInbox.materializeItem(taskItem)
-              if (!materialized) {
-                throw new Error(`Session inbox task could not be materialized: ${taskItem.id}`)
-              }
-              await SessionInbox.commitReady(sessionID, [taskItem.id])
+            const nextTask = await SessionInbox.materializeNextTask(sessionID)
+            if (nextTask.status === "materialized") {
               log.info("materialized durable task", {
                 sessionID,
-                itemID: taskItem.id,
-                messageID: taskItem.messageID,
-                queuedForMs: Math.max(0, Date.now() - taskItem.time.created),
+                itemID: nextTask.itemID,
+                messageID: nextTask.messageID,
               })
               return true
+            }
+            if (nextTask.status === "failed") {
+              log.warn("parked inbox task blocked task materialization", {
+                sessionID,
+                itemID: nextTask.itemID,
+              })
             }
 
             const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true

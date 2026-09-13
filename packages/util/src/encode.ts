@@ -4,6 +4,14 @@ export function base64Encode(value: string) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
 }
 
+/** RFC 4648 standard base64 (with padding) for opaque labels like data: URLs;
+ *  unlike base64Encode this output is safe for strict atob decoders. */
+export function base64EncodeStandard(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("")
+  return btoa(binary)
+}
+
 export function base64Decode(value: string) {
   const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"))
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))

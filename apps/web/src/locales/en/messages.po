@@ -12868,6 +12868,16 @@ msgstr "Inbox clear"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.failed"
+msgstr "Failed to deliver"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.failedStatus"
+msgstr "Failed"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.frozen"
 msgstr "Inbox frozen while rewinding"
 
@@ -12979,6 +12989,16 @@ msgstr "Request failed"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.restore"
 msgstr "Restore"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.retry"
+msgstr "Retry delivery"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.retryFailed"
+msgstr "Failed to retry message"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
