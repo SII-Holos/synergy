@@ -136,3 +136,39 @@ test("late tool completion cannot rewrite a cancelled or recovered execution", a
   await RolloutLedger.writeTool({ ...tool, status: "completed", ended: Date.now() + 1 })
   expect((await RolloutLedger.tools(input.owner, input.runID))[0].status).toBe("interrupted")
 })
+
+test("reopenRun restores a payload-failed run but keeps terminal and recording-failed runs closed", async () => {
+  const input = invocation()
+  const failed = await RolloutLedger.beginSegment({ owner: input.owner, runID: input.runID, input: { task: "x" } })
+  await RolloutLedger.finishSegment(failed, "failed")
+  await RolloutLedger.finishRun(input.owner, input.runID, "failed")
+
+  const reopened = await RolloutLedger.reopenRun(input.owner, input.runID)
+  expect(reopened?.status).toBe("running")
+  expect(reopened?.ended).toBeUndefined()
+  expect(
+    (await RolloutLedger.beginSegment({ owner: input.owner, runID: input.runID, input: { task: "retry" } })).status,
+  ).toBe("running")
+})
+
+test("reopenRun refuses cancelled runs and runs whose recording failed", async () => {
+  const cancelled = invocation()
+  const segment = await RolloutLedger.beginSegment({ owner: cancelled.owner, runID: cancelled.runID, input: {} })
+  await RolloutLedger.finishSegment(segment, "completed")
+  await RolloutLedger.finishRun(cancelled.owner, cancelled.runID, "cancelled")
+  expect((await RolloutLedger.reopenRun(cancelled.owner, cancelled.runID))?.status).toBe("cancelled")
+
+  const recordingFailed = invocation()
+  const call = await RolloutLedger.beginCall(recordingFailed)
+  await RolloutLedger.failRecording(
+    recordingFailed.owner,
+    recordingFailed.runID,
+    new RolloutRecordingError({ message: "recording failed" }),
+  )
+  await RolloutLedger.finishCall(recordingFailed.owner, recordingFailed.runID, call.id, { status: "failed" })
+  await RolloutLedger.finishRun(recordingFailed.owner, recordingFailed.runID, "failed")
+  expect((await RolloutLedger.reopenRun(recordingFailed.owner, recordingFailed.runID))?.recording).toBe("failed")
+  await expect(
+    RolloutLedger.beginSegment({ owner: recordingFailed.owner, runID: recordingFailed.runID, input: {} }),
+  ).rejects.toMatchObject({ name: "RolloutRecordingError" })
+})

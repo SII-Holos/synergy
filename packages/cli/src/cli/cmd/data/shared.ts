@@ -4,6 +4,7 @@ import path from "path"
 import os from "os"
 import { UI } from "../../../util/ui"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 
 export interface Category {
   key: string
@@ -165,6 +166,16 @@ export function archiveExclusions(directory: string): string[] {
   if (directory === "cache") return ["snapshot-index"]
   if (directory === "state") return [path.join("daemon", "runtime-lock.json")]
   return []
+}
+
+/**
+ * Invalidates the target home's rollout recovery ledger after owner trees
+ * were copied into it. copyDirSkipExisting retains an existing ledger, but
+ * imported owners can hold journals the target ledger never listed, so the
+ * next startup must fall back to the exhaustive recovery scan.
+ */
+export async function invalidatePendingRolloutLedger(dataDir: string) {
+  await fs.rm(path.join(dataDir, ...StoragePath.rolloutRecoveryPending()) + ".json", { force: true })
 }
 
 export interface CopyProgress {

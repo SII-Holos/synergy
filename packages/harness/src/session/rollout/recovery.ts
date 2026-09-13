@@ -5,6 +5,7 @@ import { RolloutLedger } from "./ledger"
 import { RolloutSnapshot } from "./snapshot"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
+import { RolloutPending } from "./pending"
 
 export namespace RolloutRecovery {
   async function committed(
@@ -94,10 +95,52 @@ export namespace RolloutRecovery {
     }
   }
 
+  /**
+   * Recovers every owner that may hold unsettled work, then re-arms the
+   * durable pending set. A valid pending set bounds the pass to its members;
+   * a missing or malformed set falls back to the exhaustive scan because the
+   * pending state cannot be trusted. Both paths require exclusive runtime
+   * ownership.
+   */
   export async function all(onProgress?: (current: number) => void) {
     let current = 0
     onProgress?.(current)
     const checked = () => onProgress?.(++current)
-    for await (const identity of owners(checked)) await owner(identity, checked)
+    const pending = await RolloutPending.tracked()
+    // Settlement itself writes journals; suspend tracking so recovery never
+    // consults (or fails closed on) the ledger it is about to re-arm.
+    RolloutPending.suspendTracking()
+    try {
+      if (pending) {
+        for (const identity of pending.owners) {
+          await owner(identity, checked)
+          checked()
+        }
+        if (pending.owners.length > 0) await RolloutPending.markClean()
+        return
+      }
+      for await (const identity of owners(checked)) await owner(identity, checked)
+      await RolloutPending.markClean()
+    } finally {
+      RolloutPending.resumeTracking()
+    }
+  }
+
+  /**
+   * Settles every owner this session listed after the runtime drained, then
+   * re-arms the ledger so the next startup skips recovery. Owners with
+   * already-terminal records cost only their snapshot verification; a failed
+   * settle leaves the ledger listed for the next startup recovery.
+   */
+  export async function settle() {
+    const pending = await RolloutPending.tracked()
+    if (!pending || pending.owners.length === 0) return
+    RolloutPending.suspendTracking()
+    try {
+      for (const identity of pending.owners) await owner(identity)
+      await RolloutPending.markClean()
+    } finally {
+      RolloutPending.resumeTracking()
+    }
   }
 }

@@ -79,6 +79,28 @@ export namespace RolloutLedger {
     return updated
   }
 
+  /**
+   * Reopen a run the retry path terminalized by parking an inbox task failure.
+   * Only payload-failed runs (recording intact) reopen; cancelled, completed,
+   * and recording-failed runs stay terminal.
+   */
+  export async function reopenRun(owner: Owner, runID: string) {
+    using lock = await Lock.write(lockKey(owner, runID))
+    const run = await getRun(owner, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!run || run.status !== "failed" || run.recording === "failed") return run
+    const reopened = RolloutSchema.RunRecord.parse({
+      ...run,
+      ended: undefined,
+      status: "running",
+      recording: "partial",
+    })
+    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], reopened))
+    return reopened
+  }
+
   export async function beginSegment(input: {
     owner: Owner
     runID: string

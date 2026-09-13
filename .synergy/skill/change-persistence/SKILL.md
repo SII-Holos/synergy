@@ -41,6 +41,8 @@ Register optional session fields, creation/import hooks and indexes through the 
 8. Inventory every record layer traversed by a startup-blocking migration, including nested message parts and attachments. Classify malformed historical input separately from storage failures: preserve the record and persist an explicit evidence gap when its original content cannot be recovered; keep permission, read/write and evidence-persistence failures fatal. Test both cases using real storage fixtures.
 9. For independent scans within one migration, pass an increasing phase index to `progress(current, total, phase)`, beginning with `progress(0, 0, nextPhase)` before preparing the next scan. Keep counts monotonic within each phase and test phase transitions through the central runner; do not relax Desktop stale-progress rejection to accommodate raw counter resets.
 
+Recovery indexes must stay absent or untrusted until a complete recovery pass establishes their baseline. Exercise migration-time writes before that first pass with unrelated historical owners; a new write must not create a partial index that hides older work. Re-arm a clean-shutdown index only after execution drains and transport shutdown succeed.
+
 ## File Snapshot Storage
 
 When changing snapshot Git commands, verify them with an actual supported older Git executable as well as the current version. Run the snapshot suites with that executable first on `PATH`; keep test homes isolated. Initialization must select and verify SHA-1 before publishing repository metadata, preserve existing objects, and retain exit code and stderr on failure. Avoid introducing a version-specific CLI option when the same operation has a compatible form.

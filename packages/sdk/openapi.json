@@ -8394,11 +8394,18 @@
             }
           },
           "409": {
-            "description": "First task is locked until its root is ready",
+            "description": "First task is locked until its root is ready, or the item is parked as failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionInboxFirstTaskLockedError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionInboxFirstTaskLockedError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionInboxItemFailedError"
+                    }
+                  ]
                 }
               }
             }
@@ -43626,6 +43633,13 @@
             "type": "string",
             "enum": ["task", "steer", "context"]
           },
+          "status": {
+            "type": "string",
+            "enum": ["failed"]
+          },
+          "failReason": {
+            "type": "string"
+          },
           "deliveryKey": {
             "type": "string"
           },
@@ -44010,6 +44024,33 @@
           "name": {
             "type": "string",
             "const": "SessionInboxFirstTaskLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "itemID": {
+                "type": "string",
+                "pattern": "^inb.*"
+              }
+            },
+            "required": ["message", "sessionID", "itemID"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SessionInboxItemFailedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionInboxItemFailedError"
           },
           "data": {
             "type": "object",

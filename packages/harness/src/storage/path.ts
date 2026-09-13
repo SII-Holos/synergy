@@ -30,6 +30,7 @@ export namespace StoragePath {
   ]
   export const metaMigrationLog = () => ["meta", "migration", "log"]
   export const metaMigrationLogDomain = (domain: string) => ["meta", "migration", `log-${domain}`]
+  export const rolloutRecoveryPending = () => ["meta", "rollout", "recovery-pending"]
 
   export const scopeRoot = () => ["projects"]
   export const scope = (scopeID: ScopeID) => ["projects", scopeID as string]

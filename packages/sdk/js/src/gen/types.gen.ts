@@ -6627,6 +6627,8 @@ export type SessionInboxItem = {
   id: string
   sessionID: string
   mode: "task" | "steer" | "context"
+  status?: "failed"
+  failReason?: string
   deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
@@ -6757,6 +6759,15 @@ export type AttachmentPartInput = {
 
 export type SessionInboxFirstTaskLockedError = {
   name: "SessionInboxFirstTaskLockedError"
+  data: {
+    message: string
+    sessionID: string
+    itemID: string
+  }
+}
+
+export type SessionInboxItemFailedError = {
+  name: "SessionInboxItemFailedError"
   data: {
     message: string
     sessionID: string
@@ -14603,9 +14614,9 @@ export type SessionInboxGuideErrors = {
    */
   404: NotFoundError
   /**
-   * First task is locked until its root is ready
+   * First task is locked until its root is ready, or the item is parked as failed
    */
-  409: SessionInboxFirstTaskLockedError
+  409: SessionInboxFirstTaskLockedError | SessionInboxItemFailedError
   /**
    * Runtime shutting down
    */

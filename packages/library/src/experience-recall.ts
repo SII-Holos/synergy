@@ -85,10 +85,28 @@ export namespace ExperienceRecall {
     }
   }
 
-  export function consumeRetrieval(sessionID: string): string[] {
+  /**
+   * Foreground snapshot of the session's pending retrieval IDs, taken when a
+   * completed turn schedules its detached encode. The entry is left in
+   * place: consumeRetrieval removes it only when it still holds this exact
+   * capture.
+   */
+  export function captureRetrieval(sessionID: string): string[] {
+    return pendingRetrievals.get(sessionID) ?? []
+  }
+
+  /**
+   * Removes and returns the session's pending retrieval IDs. With a capture
+   * from captureRetrieval, a pending entry rewritten by a later turn is
+   * left untouched, so the earlier encode records its captured IDs without
+   * stealing the newer turn's attribution. Entries are replaced, never
+   * mutated, so reference equality identifies the captured generation.
+   */
+  export function consumeRetrieval(sessionID: string, captured?: string[]): string[] {
+    if (captured !== undefined && pendingRetrievals.get(sessionID) !== captured) return captured
     const ids = pendingRetrievals.get(sessionID)
     pendingRetrievals.delete(sessionID)
-    return ids ?? []
+    return captured ?? ids ?? []
   }
 
   export async function retrieve(scopeID: string | undefined, query: string, options: Options = {}): Promise<Result[]> {

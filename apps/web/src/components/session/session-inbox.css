@@ -267,6 +267,12 @@
   border-color: color-mix(in srgb, var(--border-weak-base) 72%, transparent);
 }
 
+.session-inbox-row-status[data-failed="true"] {
+  color: var(--text-error);
+  background: color-mix(in srgb, var(--surface-critical-weak, var(--surface-raised-base-hover)) 24%, transparent);
+  border-color: color-mix(in srgb, var(--text-error) 28%, transparent);
+}
+
 .session-inbox-row-preview {
   display: -webkit-box;
   overflow: hidden;

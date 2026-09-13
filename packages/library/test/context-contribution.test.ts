@@ -77,7 +77,6 @@ function emptyProvider(): SessionLibraryRecall.Provider {
     commitExperienceRetrieval() {},
     buildExperienceEvaluation: () => undefined,
     writeExperienceDebugLog() {},
-    onAssistantComplete() {},
   }
 }
 

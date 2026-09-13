@@ -8,6 +8,7 @@ import { SessionContextContributions } from "@ericsanchezok/synergy-harness/sess
 import { buildMemoryContext, buildAlwaysOnlyMemoryResult } from "./recall"
 
 export function registerLibrarySessionRecall() {
+  ExperienceEncoder.register()
   SessionLibraryRecall.register({
     listAlwaysMemories: () => LibraryDB.Memory.list({ recallModes: ["always"] }),
     searchMemories: (input) => MemoryRecall.search(input),
@@ -23,8 +24,6 @@ export function registerLibrarySessionRecall() {
       ExperienceRecall.buildEvaluation(rewards as LibraryDB.Experience.Rewards, snapThreshold),
     writeExperienceDebugLog: (sessionID, scopeID, query, results, injected) =>
       ExperienceRecall.writeDebugLog(sessionID, scopeID, query, results as ExperienceRecall.Result[], injected),
-    onAssistantComplete: (message) =>
-      ExperienceEncoder.onComplete(message as Parameters<typeof ExperienceEncoder.onComplete>[0]),
   })
   return SessionContextContributions.register("library", {
     async enabled({ isTopSession }) {

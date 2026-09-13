@@ -1061,9 +1061,8 @@ describe("SessionInvoke pre-stream error handling", () => {
 })
 
 describe("SessionInvoke inbox boundaries", () => {
-  test("keeps the next task durable until its root message is materialized", async () => {
+  test("parks an invalid first task without losing its payload or fabricating a transcript", async () => {
     await using tmp = await tmpdir({ git: true })
-    const originalMaterializeItem = SessionInbox.materializeItem
     let activeSessionID = ""
 
     try {
@@ -1076,19 +1075,21 @@ describe("SessionInvoke inbox boundaries", () => {
             sessionID: session.id,
             agent: "synergy",
             model: { providerID: "test-provider", modelID: "test-model" },
-            parts: [{ type: "text", text: "Keep me durable" }],
+            parts: [
+              { type: "text", text: "Keep me durable" },
+              { type: "attachment", mime: "text/plain", filename: "broken.txt", url: "data:text/plain;base64,!!!" },
+            ],
           })
-          ;(SessionInbox.materializeItem as any) = mock(async () => {
-            throw new Error("simulated materialization failure")
-          })
-
-          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow("simulated materialization failure")
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow(
+            "Session inbox task could not be materialized",
+          )
           expect((await SessionInbox.list(session.id)).map((item) => item.id)).toContain(queued.id)
+          expect((await SessionInbox.getStored(session.id, queued.id)).status).toBe("failed")
+          expect(await SessionInbox.hasRunnableItem(session.id)).toBe(false)
           expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
         },
       })
     } finally {
-      ;(SessionInbox.materializeItem as any) = originalMaterializeItem
       if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }
   })

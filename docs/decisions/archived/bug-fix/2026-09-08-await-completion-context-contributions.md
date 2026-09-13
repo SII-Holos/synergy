@@ -1,6 +1,7 @@
 # Decision Record: Await contributed model work before rollout completion
 
 Status: implemented
+Archived: 2026-09-13
 
 ## Problem
 

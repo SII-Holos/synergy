@@ -97,6 +97,49 @@ export namespace Lock {
   }
 
   /**
+   * Acquire the write lock, abandoning the wait when the signal aborts.
+   * Resolves undefined when the signal is already aborted or aborts while
+   * queued; a waiter abandoned that way is removed from the queue so a later
+   * release cannot grant a lock whose owner will never run. Callers that
+   * acquire while a simultaneous abort lands still observe it through their
+   * own signal check after acquisition.
+   */
+  export async function writeWithSignal(key: string, signal: AbortSignal): Promise<Disposable | undefined> {
+    const lock = get(key)
+    if (signal.aborted) return undefined
+
+    if (!lock.writer && lock.readers === 0) {
+      lock.writer = true
+      return {
+        [Symbol.dispose]: () => {
+          lock.writer = false
+          process(key)
+        },
+      }
+    }
+
+    return new Promise((resolve) => {
+      const acquire = () => {
+        signal.removeEventListener("abort", onAbort)
+        lock.writer = true
+        resolve({
+          [Symbol.dispose]: () => {
+            lock.writer = false
+            process(key)
+          },
+        })
+      }
+      const onAbort = () => {
+        const queued = lock.waitingWriters.indexOf(acquire)
+        if (queued >= 0) lock.waitingWriters.splice(queued, 1)
+        resolve(undefined)
+      }
+      lock.waitingWriters.push(acquire)
+      signal.addEventListener("abort", onAbort, { once: true })
+    })
+  }
+
+  /**
    * Try to acquire the write lock without waiting. Returns undefined when
    * the lock is currently held (by a writer or any reader), in which case
    * the caller should skip the guarded work instead of queuing. When the

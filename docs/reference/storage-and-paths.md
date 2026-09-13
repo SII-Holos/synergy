@@ -62,6 +62,7 @@ data/holos/contacts/
 data/holos/mailbox/
 data/synergy_link/targets/
 data/stats/
+data/meta/rollout/
 ```
 
 Local embedding model assets are cached under `data/embedding/models/`; the location can be redirected with `embedding.local.cacheDir`.

@@ -2,6 +2,7 @@ import z from "zod"
 import { Storage } from "../../storage/storage"
 import { Lock } from "../../util/lock"
 import { RolloutArtifact } from "./artifact"
+import { RolloutPending } from "./pending"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
 
@@ -36,8 +37,9 @@ export namespace RolloutJournal {
     return [...root(owner), "events", String(seq).padStart(12, "0")]
   }
   export async function head(owner: RolloutSchema.Owner) {
+    // Owner enumeration probes most owners without a journal; the miss is expected control flow.
     try {
-      return Head.parse(await Storage.read([...root(owner), "head"]))
+      return Head.parse(await Storage.read([...root(owner), "head"], { silentNotFound: true }))
     } catch (error) {
       if (error instanceof Storage.NotFoundError) return { allocated: 0, committed: 0 }
       throw error
@@ -78,6 +80,8 @@ export namespace RolloutJournal {
       const base = RolloutArtifact.root(owner)
       if (!base.every((segment, index) => key[index] === segment)) throw new Error("Rollout write escapes its owner")
       using lock = await Lock.write(lockKey(owner))
+      // Record the owner before any mutation so a crash cannot leave mutated journal work unlisted.
+      await RolloutPending.track(owner)
       await recoverPending(owner)
       const previous = await head(owner)
       const seq = Revision.parse(previous.allocated + 1)

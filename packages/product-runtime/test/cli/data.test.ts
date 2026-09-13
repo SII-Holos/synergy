@@ -4,6 +4,7 @@ import path from "path"
 import type { Argv } from "yargs"
 import yargs from "yargs"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import {
   CATEGORIES,
@@ -200,9 +201,16 @@ describe("data move command", () => {
     await using target = await tmpdir()
     const root = Global.Path.root
     await Bun.write(path.join(root, "data", "session.json"), "{}")
+    const ledger = path.join(root, "data", ...StoragePath.rolloutRecoveryPending()) + ".json"
+    await Bun.write(ledger, "{}")
     await executeMove({ target: target.path, removeOriginal: true, dryRun: false })
     expect(await dirExists(root)).toBe(false)
     expect(await Bun.file(path.join(target.path, ".synergy", "data", "session.json")).text()).toBe("{}")
+    expect(
+      await Bun.file(
+        path.join(target.path, ".synergy", "data", ...StoragePath.rolloutRecoveryPending()) + ".json",
+      ).exists(),
+    ).toBe(false)
   })
   test("dry-run plans a move without touching the target", async () => {
     const { executeMove } = await import("../../src/cli/data/move")
@@ -303,9 +311,12 @@ describe("data command registrations", () => {
     })
     const root = Global.Path.root
     await Bun.write(path.join(root, "data", "target.txt"), "{}")
+    const ledger = path.join(root, "data", ...StoragePath.rolloutRecoveryPending()) + ".json"
+    await Bun.write(ledger, "{}")
     try {
       await runHandler(DataMergeCommand)(handlerArgs({ source: source.path }) as never)
       expect(await Bun.file(path.join(root, "data", "file.txt")).text()).toBe("payload")
+      expect(await Bun.file(ledger).exists()).toBe(false)
     } finally {
       await Bun.file(path.join(root, "data", "file.txt"))
         .delete()

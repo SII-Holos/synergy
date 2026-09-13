@@ -18,6 +18,7 @@ import { SessionContextContributions } from "./context-contributions"
 import { ScopeContext } from "../scope/context"
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
+import { Attachment } from "../attachment"
 import { lastModel, type InvokeInput } from "./input"
 import type { Info } from "./types"
 import type { SessionManager } from "./manager"
@@ -37,6 +38,15 @@ export namespace SessionInbox {
 
   export const FirstTaskLockedError = NamedError.create(
     "SessionInboxFirstTaskLockedError",
+    z.object({
+      message: z.string(),
+      sessionID: Identifier.schema("session"),
+      itemID: Identifier.schema("inbox"),
+    }),
+  )
+
+  export const ItemFailedError = NamedError.create(
+    "SessionInboxItemFailedError",
     z.object({
       message: z.string(),
       sessionID: Identifier.schema("session"),
@@ -65,6 +75,11 @@ export namespace SessionInbox {
       id: Identifier.schema("inbox"),
       sessionID: Identifier.schema("session"),
       mode: ItemMode,
+      // A task whose payload deterministically cannot become a message is
+      // parked as failed instead of removed: it stays visible with a reason
+      // and can be re-driven (rearm) without wedging the queue behind it.
+      status: z.enum(["failed"]).optional(),
+      failReason: z.string().optional(),
       deliveryKey: z.string().optional(),
       // Payload for materialization
       message: z
@@ -191,6 +206,8 @@ export namespace SessionInbox {
       id: item.id,
       sessionID: item.sessionID,
       mode: item.mode,
+      status: item.status,
+      failReason: item.failReason,
       deliveryKey: item.deliveryKey,
       message,
       summaryPreview: item.summaryPreview,
@@ -376,7 +393,7 @@ export namespace SessionInbox {
       options?.createdAfter === undefined
         ? stored
         : stored.filter((item) => item.time.created >= (options.createdAfter ?? 0))
-    if (items.some((item) => item.mode === "task")) return true
+    if (items.some((item) => item.mode === "task" && item.status !== "failed")) return true
     if (options?.allowSteer === false) return false
     if (!items.some((item) => item.mode === "steer")) return false
     return !!(await latestRootID(sessionID))
@@ -416,7 +433,13 @@ export namespace SessionInbox {
         })
         if (!info?.time || info.time.archived) continue
 
-        if (items.some((item) => item && item.id && normalizeStored(item).mode === "task")) {
+        if (
+          items.some((item) => {
+            if (!item?.id) return false
+            const normalized = normalizeStored(item)
+            return normalized.mode === "task" && normalized.status !== "failed"
+          })
+        ) {
           runnable.add(key)
         }
       }
@@ -718,7 +741,9 @@ export namespace SessionInbox {
 
   export async function assertMutable(input: { sessionID: string; itemID: string }): Promise<StoredItem> {
     const item = await getStored(input.sessionID, input.itemID)
-    if (item.mode === "task" && !(await latestRootID(input.sessionID))) {
+    // A parked failure stays mutable (rearm, remove) even as the first task
+    // of a session whose canonical root never materialized.
+    if (item.mode === "task" && item.status !== "failed" && !(await latestRootID(input.sessionID))) {
       throw new FirstTaskLockedError({
         message: "The first queued task cannot be changed until its conversation root is ready.",
         sessionID: input.sessionID,
@@ -736,6 +761,16 @@ export namespace SessionInbox {
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
     const item = await assertMutable(input)
     if (item.mode === "context") return publicItem(item)
+    if (item.status === "failed") {
+      // The loop deletes steer items before materialization, so guiding a
+      // parked failure would permanently drop its payload mid-run; only the
+      // retry path may re-drive it.
+      throw new ItemFailedError({
+        message: "A failed item cannot be guided; retry delivery or delete it instead.",
+        sessionID: input.sessionID,
+        itemID: input.itemID,
+      })
+    }
     const updated: StoredItem = {
       ...item,
       mode: item.mode === "task" ? "steer" : "task",
@@ -802,7 +837,7 @@ export namespace SessionInbox {
 
   export async function peekTask(sessionID: string): Promise<StoredItem | undefined> {
     const items = await listStored(sessionID)
-    return items.find((item) => item.mode === "task")
+    return items.find((item) => item.mode === "task" && item.status !== "failed")
   }
 
   export async function fenceQueuedWork(sessionID: string, onFence: (createdBefore: number) => void): Promise<number> {
@@ -974,5 +1009,73 @@ export namespace SessionInbox {
       {},
     )
     return { info, parts }
+  }
+
+  export type TaskMaterializationResult =
+    | { status: "materialized"; itemID: string; messageID: string }
+    | { status: "failed"; itemID: string; reason: string }
+    | { status: "empty" }
+
+  /**
+   * Materialize the next runnable task. A payload that deterministically
+   * cannot become a message (attachment capture failures and similar
+   * InvalidUrlError-class input errors) is parked as failed instead of
+   * throwing: the item stays visible with a reason, the queue behind it
+   * proceeds, and retry can re-drive it after the payload is repaired.
+   */
+  export async function materializeNextTask(sessionID: string): Promise<TaskMaterializationResult> {
+    const task = await peekTask(sessionID)
+    if (!task) return { status: "empty" }
+    try {
+      const materialized = await materializeItem(task)
+      if (!materialized) {
+        await parkTaskFailure(sessionID, task, "Inbox task payload could not be materialized")
+        return { status: "failed", itemID: task.id, reason: "Inbox task payload could not be materialized" }
+      }
+    } catch (error) {
+      if (!(error instanceof Attachment.InvalidUrlError)) throw error
+      await parkTaskFailure(sessionID, task, error.message)
+      return { status: "failed", itemID: task.id, reason: error.message }
+    }
+    await commitReady(sessionID, [task.id])
+    return { status: "materialized", itemID: task.id, messageID: task.messageID }
+  }
+
+  async function parkTaskFailure(sessionID: string, task: StoredItem, reason: string): Promise<void> {
+    const failed: StoredItem = {
+      ...task,
+      status: "failed",
+      failReason: reason,
+      time: { ...task.time, updated: Date.now() },
+    }
+    await writeItem(failed, true)
+    log.warn("parked inbox task that cannot materialize", {
+      sessionID,
+      itemID: task.id,
+      messageID: task.messageID,
+      reason,
+    })
+  }
+
+  /** Clear a parked failure so the item becomes runnable again. */
+  export async function rearm(input: { sessionID: string; itemID: string }): Promise<Item> {
+    const item = await getStored(input.sessionID, input.itemID)
+    if (item.status !== "failed") return publicItem(item)
+    // The failed materialization terminalized this task's rollout before the
+    // payload error surfaced; reopen it so the retry can open a segment
+    // instead of hitting the terminal-rollout guard with no item left.
+    if (item.mode === "task") {
+      const { RolloutLifecycle } = await import("./rollout/lifecycle")
+      const { RolloutLedger } = await import("./rollout/ledger")
+      const session = await Session.get(input.sessionID)
+      await RolloutLedger.reopenRun(RolloutLifecycle.owner(session), item.messageID)
+    }
+    const cleared: StoredItem = {
+      ...item,
+      status: undefined,
+      failReason: undefined,
+      time: { ...item.time, updated: Date.now() },
+    }
+    return publicItem(await writeItem(cleared, true))
   }
 }

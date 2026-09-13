@@ -3,7 +3,7 @@ import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
@@ -879,7 +879,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           id: Identifier.ascending("part"),
           type: "attachment" as const,
           mime: "text/plain",
-          url: `data:text/plain;base64,${base64Encode(content)}`,
+          url: `data:text/plain;base64,${base64EncodeStandard(content)}`,
           filename: `${attachment.title || "session"}.session.txt`,
           model: { mode: "content" as const, text: content },
           metadata: {
@@ -958,7 +958,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         id: Identifier.ascending("part"),
         type: "attachment" as const,
         mime: "text/plain",
-        url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
+        url: `data:text/plain;base64,${base64EncodeStandard(formatNoteContent(attachment))}`,
         filename: `${attachment.title || "Untitled"}.md`,
         model: { mode: "content" as const, text: formatNoteContent(attachment) },
         metadata: {

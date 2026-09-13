@@ -125,6 +125,11 @@ export namespace RuntimeHandle {
           await server?.stop(true)
           configureRuntimeEndpoint(undefined)
         })
+        await cleanup(async () => {
+          // Re-arm only after execution and transport have both stopped;
+          // any cleanup failure keeps owners listed for startup recovery.
+          if (errors.length === 0) await RolloutRecovery.settle()
+        })
         ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" })
         ObservabilityResources.stop()
         await cleanup(() => Observability.flush())

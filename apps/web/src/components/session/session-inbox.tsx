@@ -60,6 +60,9 @@ function InboxDetail(props: { item: SessionInboxItem; i18n: ReturnType<typeof us
         cacheKey={`session-inbox-detail-${props.item.id}`}
         class="session-inbox-detail-markdown"
       />
+      <Show when={props.item.status === "failed" && props.item.failReason}>
+        <div class="session-inbox-detail-meta">{props.item.failReason}</div>
+      </Show>
       <div class="session-inbox-detail-meta">
         <span>{props.item.source.label ?? props.item.source.type}</span>
         <span>·</span>
@@ -74,10 +77,12 @@ function InboxRow(props: {
   disabled?: boolean
   onGuide: (item: SessionInboxItem) => void
   onRemove: (item: SessionInboxItem) => void
+  onRetry: (item: SessionInboxItem) => void
   i18n: ReturnType<typeof useLocale>["i18n"]
 }) {
   const _ = (d: { id: string; message: string }) => props.i18n._(d)
   const [menuOpen, setMenuOpen] = createSignal(false)
+  const failed = () => props.item.status === "failed"
   const canInteract = () => !props.disabled && isInboxItemInteractive(props.item)
   const preview = () => props.item.summary.preview || props.item.summary.title
   const guideLabel = () => (props.item.mode === "steer" ? _(S.inboxGuideQueue) : _(S.inboxGuideSendNow))
@@ -89,6 +94,7 @@ function InboxRow(props: {
   }
 
   const timingLabel = () => {
+    if (failed()) return _(S.inboxFailedStatus)
     switch (props.item.mode) {
       case "task":
         return _(S.inboxAfterTurn)
@@ -113,7 +119,7 @@ function InboxRow(props: {
   }
 
   return (
-    <div class="session-inbox-row" data-mode={props.item.mode} data-interactive={canInteract()}>
+    <div class="session-inbox-row" data-mode={props.item.mode} data-failed={failed()} data-interactive={canInteract()}>
       <Tooltip
         placement="left"
         class="session-inbox-row-tooltip"
@@ -122,7 +128,7 @@ function InboxRow(props: {
         <div class="session-inbox-row-main">
           <div class="session-inbox-row-meta">
             <span class="session-inbox-row-label">{modeLabel()}</span>
-            <span class="session-inbox-row-status" data-mode={props.item.mode}>
+            <span class="session-inbox-row-status" data-mode={props.item.mode} data-failed={failed()}>
               {timingLabel()}
             </span>
           </div>
@@ -131,18 +137,36 @@ function InboxRow(props: {
       </Tooltip>
       <Show when={canInteract()}>
         <div class="session-inbox-actions">
-          <button
-            type="button"
-            class="session-inbox-send-now"
-            aria-label={guideLabel()}
-            title={guideTitle()}
-            onClick={(event) => {
-              event.stopPropagation()
-              props.onGuide(props.item)
-            }}
+          <Show
+            when={!failed()}
+            fallback={
+              <button
+                type="button"
+                class="session-inbox-send-now"
+                aria-label={_(S.inboxRetry)}
+                title={props.item.failReason ?? _(S.inboxFailed)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  props.onRetry(props.item)
+                }}
+              >
+                {_(S.inboxRetry)}
+              </button>
+            }
           >
-            {guideLabel()}
-          </button>
+            <button
+              type="button"
+              class="session-inbox-send-now"
+              aria-label={guideLabel()}
+              title={guideTitle()}
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onGuide(props.item)
+              }}
+            >
+              {guideLabel()}
+            </button>
+          </Show>
           <Popover
             open={menuOpen()}
             onOpenChange={setMenuOpen}
@@ -183,9 +207,12 @@ export function SessionInbox(props: SessionInboxProps) {
   )
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
-  const firstTaskLocked = (item: SessionInboxItem) => item.mode === "task" && props.hasCanonicalRoot === false
+  const firstTaskLocked = (item: SessionInboxItem) =>
+    item.mode === "task" && item.status !== "failed" && props.hasCanonicalRoot === false
+  // Bulk "Send all" guides every actionable item; failed items stay out of
+  // it — only the retry path may re-drive a parked failure.
   const actionableItems = createMemo(() =>
-    items().filter((item) => isInboxItemInteractive(item) && !firstTaskLocked(item)),
+    items().filter((item) => item.status !== "failed" && isInboxItemInteractive(item) && !firstTaskLocked(item)),
   )
 
   const titleDetail = createMemo(() => {
@@ -215,6 +242,18 @@ export function SessionInbox(props: SessionInboxProps) {
       showToast({
         type: "error",
         title: _(S.inboxGuideFailed),
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
+      })
+    }
+  }
+
+  const retry = async (item: SessionInboxItem) => {
+    try {
+      await props.sdk.client.session.inboxRetry({ sessionID: props.sessionID, itemID: item.id })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: _(S.inboxRetryFailed),
         description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
       })
     }
@@ -316,6 +355,7 @@ export function SessionInbox(props: SessionInboxProps) {
                     disabled={props.freezeHint || firstTaskLocked(item)}
                     onGuide={guide}
                     onRemove={remove}
+                    onRetry={retry}
                     i18n={i18n}
                   />
                 )}
