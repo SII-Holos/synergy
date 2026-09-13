@@ -57,13 +57,17 @@ export namespace ExperienceEncoder {
     // Completion hooks must not hold the turn on model work: scheduling is
     // synchronous and the pipeline runs detached — it outlives the loop
     // lease, stays bounded by the job timeout, and settles through
-    // settleDetached after the lease releases.
+    // settleDetached after the lease releases. Retrieval attribution is
+    // snapshotted here, on the foreground path: the session-keyed pending
+    // entry is overwritten by the next turn's recall, so consuming at
+    // encode time could record the wrong turn's experience IDs.
     const userMessageID = msg.parentID ?? msg.id
+    const capturedRetrieval = ExperienceRecall.captureRetrieval(msg.sessionID)
     const scheduled = LoopJob.scheduleDetached({
       sessionID: msg.sessionID,
       rootID: userMessageID,
       type: "experience-encode",
-      payload: { sessionID: msg.sessionID, userMessageID },
+      payload: { sessionID: msg.sessionID, userMessageID, retrievedExperienceIDs: capturedRetrieval },
     })
     if (!scheduled) log.warn("experience-encode job unavailable; skipping encoding", { sessionID: msg.sessionID })
   }
@@ -90,21 +94,43 @@ export namespace ExperienceEncoder {
         return String(input.userMessageID ?? input.sessionID)
       },
       async execute(input, signal) {
-        await encodeTurn(String(input.sessionID), String(input.userMessageID), signal)
+        await encodeTurn(
+          String(input.sessionID),
+          String(input.userMessageID),
+          signal,
+          Array.isArray(input.retrievedExperienceIDs) ? (input.retrievedExperienceIDs as string[]) : undefined,
+        )
         return "pass"
       },
     })
   }
 
-  async function encodeTurn(sessionID: string, userMessageID: string, signal?: AbortSignal) {
+  async function encodeTurn(
+    sessionID: string,
+    userMessageID: string,
+    signal?: AbortSignal,
+    capturedRetrieval?: string[],
+  ) {
     // Detached runs of different turns in one session can overlap; the lock
     // keeps the inline path's per-session serialization for retrieval
-    // attribution, failure retries, and reward evaluation.
-    using _ = await Lock.write(`library-experience-encode:${sessionID}`)
+    // attribution, failure retries, and reward evaluation. The wait is
+    // cancellable so cancelDetached and the job timeout are not extended by
+    // an unrelated turn's encode.
+    using guard = signal
+      ? await Lock.writeWithSignal(`library-experience-encode:${sessionID}`, signal)
+      : await Lock.write(`library-experience-encode:${sessionID}`)
+    if (!guard) {
+      log.info("encode cancelled before acquiring the session lock", { sessionID, userMessageID })
+      return
+    }
     let outcome: EncodeOutcome | undefined
     try {
-      outcome = await encode(sessionID, userMessageID, { signal })
+      outcome = await encode(sessionID, userMessageID, { signal, capturedRetrieval })
     } catch (err) {
+      if (signal?.aborted) {
+        log.info("encode cancelled", { sessionID, userMessageID })
+        return
+      }
       log.error("encoding failed", { sessionID, userMessageID, error: err })
     }
     if (outcome) {
@@ -112,10 +138,16 @@ export namespace ExperienceEncoder {
         log.error("encode after hook failed", { sessionID, error: err }),
       )
     }
-    await retryFailedEncodings(sessionID, userMessageID).catch((err) =>
+    if (signal?.aborted) {
+      log.info("encode cancelled before retry pass", { sessionID, userMessageID })
+      return
+    }
+    await retryFailedEncodings(sessionID, userMessageID, signal).catch((err) =>
       log.error("retry failed", { sessionID, error: err }),
     )
-    await checkRewardWindow(sessionID).catch((err) => log.error("reward check failed", { sessionID, error: err }))
+    await checkRewardWindow(sessionID, signal).catch((err) =>
+      log.error("reward check failed", { sessionID, error: err }),
+    )
   }
 
   // ── Re-encode helpers ─────────────────────────────────────────────────
@@ -261,6 +293,7 @@ export namespace ExperienceEncoder {
       session?: Awaited<ReturnType<typeof Session.get>>
       messages?: MessageV2.WithParts[]
       signal?: AbortSignal
+      capturedRetrieval?: string[]
     } = {},
   ): Promise<EncodeOutcome> {
     const existing = LibraryDB.Experience.get(userMessageID)
@@ -347,7 +380,7 @@ export namespace ExperienceEncoder {
       const sourceAssistant = turn.assistants.at(-1)
 
       const raw = TurnDigest.renderToText(digest)
-      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
+      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID, options.capturedRetrieval)
 
       const assistantInfo = turn.assistants.find((m) => m.info.role === "assistant")?.info as
         | MessageV2.Assistant
@@ -482,18 +515,19 @@ export namespace ExperienceEncoder {
     )
   }
 
-  async function retryFailedEncodings(sessionID: string, excludeID?: string) {
+  async function retryFailedEncodings(sessionID: string, excludeID?: string, signal?: AbortSignal) {
     const failed = LibraryDB.Experience.listFailed(sessionID)
     for (const exp of failed) {
       if (exp.id === excludeID) continue
+      signal?.throwIfAborted()
       log.info("retrying failed encoding", { id: exp.id })
-      await encode(sessionID, exp.id).catch((err: any) =>
+      await encode(sessionID, exp.id, { signal }).catch((err: any) =>
         log.error("retry encoding failed", { id: exp.id, error: err }),
       )
     }
   }
 
-  async function checkRewardWindow(sessionID: string) {
+  async function checkRewardWindow(sessionID: string, signal?: AbortSignal) {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (session?.parentID) return
 
@@ -518,6 +552,7 @@ export namespace ExperienceEncoder {
     for (const exp of pending) {
       const turnIdx = userMessageIDs.indexOf(exp.id)
       if (turnIdx < 0) continue
+      signal?.throwIfAborted()
 
       const subsequentCount = userMessageIDs.length - 1 - turnIdx
       const turnsRemaining = Math.max(0, learning.rewardDelay - subsequentCount)
@@ -525,7 +560,7 @@ export namespace ExperienceEncoder {
 
       if (turnsRemaining > 0) continue
 
-      await evaluateReward(exp, sessionID, msgs, turns, turnIdx, learning).catch((err: any) =>
+      await evaluateReward(exp, sessionID, msgs, turns, turnIdx, learning, signal).catch((err: any) =>
         log.error("reward evaluation failed", { id: exp.id, error: err }),
       )
     }
@@ -538,6 +573,7 @@ export namespace ExperienceEncoder {
     turns: Turn.Raw[],
     turnIdx: number,
     learning: Required<LibraryConfigSchema.Learning>,
+    signal?: AbortSignal,
   ) {
     using _ = log.time("evaluateReward", { id: exp.id, turnIdx })
 
@@ -549,7 +585,7 @@ export namespace ExperienceEncoder {
     const model = assistantMsg ? await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID) : undefined
 
     const rewardContent = buildRewardContent(msgs, turns, turnIdx)
-    const ctx: AgentContext = { sessionID, userMsg, model, learning }
+    const ctx: AgentContext = { sessionID, userMsg, model, learning, signal }
 
     const rewards = await generateRewards(ctx, rewardContent)
     if (!rewards) {
