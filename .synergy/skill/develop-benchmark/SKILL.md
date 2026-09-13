@@ -25,6 +25,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 ## Control resources and cache ownership
 
 1. Inspect Docker quotas, host pressure and native task/verifier declarations. Use shared resource reservations for concurrent evaluators using the same cache. Keep reserved resources and admission decisions in evidence; do not kill running tasks to make room.
+   Validate resource parsers against a real container: Docker process inspection requires a PID column alongside RSS. Preserve unknown metrics when inspection fails, and distinguish sampled peaks from kernel maxima.
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.

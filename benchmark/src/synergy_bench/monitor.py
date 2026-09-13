@@ -115,11 +115,13 @@ class ResourceMonitor:
         rss_values = []
         for container in containers:
             log.unlink(missing_ok=True)
-            code = await run_process(["docker", "top", container, "-eo", "rss"], log=log, deadline=5)
-            lines = log.read_text().splitlines()[1:]
+            code = await run_process(["docker", "top", container, "-eo", "pid,rss"], log=log, deadline=5)
+            lines = [line.split() for line in log.read_text().splitlines()[1:]]
             rss_values.append(
-                sum(int(line.strip()) * 1024 for line in lines)
-                if code == 0 and lines and all(line.strip().isdecimal() for line in lines)
+                sum(int(line[1]) * 1024 for line in lines)
+                if code == 0
+                and lines
+                and all(len(line) == 2 and all(value.isdecimal() for value in line) for line in lines)
                 else None
             )
         process = psutil.Process()

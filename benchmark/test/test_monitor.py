@@ -47,7 +47,7 @@ async def test_resource_samples_include_separate_verifier_and_exclude_other_runs
         elif args[1] == "stats":
             log.write_text("\n".join(json.dumps({"MemUsage": "1GiB / 8GiB", "CPUPerc": "20%"}) for _ in args[5:]))
         else:
-            log.write_text("123456\n")
+            log.write_text("PID RSS\n11 120\n12 80\n")
         return 0
 
     monkeypatch.setattr("synergy_bench.monitor.run_process", process)
@@ -57,6 +57,7 @@ async def test_resource_samples_include_separate_verifier_and_exclude_other_runs
     assert stats[5:] == ["one", "two"]
     assert monitor.samples[0]["memory_bytes"] == 2 * 1024**3
     assert monitor.samples[0]["cpu_percent"] == 40
+    assert monitor.samples[0]["process_rss_sum_bytes"] == 400 * 1024
 
 
 async def test_oom_events_survive_container_cleanup_and_exclude_other_trials(tmp_path, monkeypatch):
