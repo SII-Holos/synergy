@@ -22,6 +22,7 @@ import {
   checkDiskSpace,
   isDirEmpty,
   copyDirSkipExisting,
+  invalidatePendingRolloutLedger,
   updateShellProfile,
   dataRoot,
 } from "@ericsanchezok/synergy-cli/cli/cmd/data/shared"
@@ -267,6 +268,9 @@ export async function executeMove(opts: MoveOptions) {
       }
     }
   }
+  // Copied owner trees can hold journals the target ledger never listed,
+  // so force one exhaustive recovery on the next startup.
+  await invalidatePendingRolloutLedger(path.join(targetPath, "data"))
 
   // Step 7: Write marker
   if (errors.length === 0) {

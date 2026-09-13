@@ -125,4 +125,22 @@ export namespace RolloutRecovery {
       RolloutPending.resumeTracking()
     }
   }
+
+  /**
+   * Settles every owner this session listed after the runtime drained, then
+   * re-arms the ledger so the next startup skips recovery. Owners with
+   * already-terminal records cost only their snapshot verification; a failed
+   * settle leaves the ledger listed for the next startup recovery.
+   */
+  export async function settle() {
+    const pending = await RolloutPending.tracked()
+    if (!pending || pending.owners.length === 0) return
+    RolloutPending.suspendTracking()
+    try {
+      for (const identity of pending.owners) await owner(identity)
+      await RolloutPending.markClean()
+    } finally {
+      RolloutPending.resumeTracking()
+    }
+  }
 }

@@ -19,6 +19,7 @@ import {
   shortenPath,
   dirExists,
   copyDirSkipExisting,
+  invalidatePendingRolloutLedger,
   dataRoot,
 } from "@ericsanchezok/synergy-cli/cli/cmd/data/shared"
 
@@ -232,6 +233,9 @@ export const DataMergeCommand = cmd({
           }
         }
       }
+      // Imported owner trees can hold journals the target ledger never
+      // listed, so force one exhaustive recovery on the next startup.
+      await invalidatePendingRolloutLedger(path.join(targetRoot, "data"))
 
       // Report
       UI.empty()

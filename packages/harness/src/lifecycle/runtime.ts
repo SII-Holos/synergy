@@ -122,6 +122,12 @@ export namespace RuntimeHandle {
         await cleanup(() => services.disposeExtensions?.())
         await cleanup(() => ScopeRuntime.disposeAll())
         await cleanup(async () => {
+          // The drains above settled every running record; verify this
+          // session's owners and re-arm the ledger so the next startup skips
+          // recovery. A failed drain leaves the ledger listed instead.
+          if (errors.length === 0) await RolloutRecovery.settle()
+        })
+        await cleanup(async () => {
           await server?.stop(true)
           configureRuntimeEndpoint(undefined)
         })

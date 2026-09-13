@@ -71,3 +71,29 @@ test("a malformed pending set falls back to the exhaustive scan", async () => {
   expect((await RolloutSnapshot.read(target)).segments[0].status).toBe("interrupted")
   expect(await RolloutPending.tracked()).toEqual({ version: 1, owners: [] })
 })
+
+test("settle settles listed owners and re-arms the ledger after a drained shutdown", async () => {
+  const target = owner()
+  await RolloutLedger.beginSegment({ owner: target, runID: "run", input: { task: "original" } })
+  expect((await RolloutSnapshot.read(target)).segments[0].status).toBe("running")
+  await RolloutRecovery.settle()
+  expect((await RolloutSnapshot.read(target)).segments[0].status).toBe("interrupted")
+  expect(await RolloutPending.tracked()).toEqual({ version: 1, owners: [] })
+})
+
+test("settle is a no-op without a trusted ledger", async () => {
+  await Storage.remove(StoragePath.rolloutRecoveryPending())
+  await RolloutRecovery.settle()
+  expect(await RolloutPending.tracked()).toBeUndefined()
+})
+
+test("settle leaves an untrusted ledger untouched", async () => {
+  await Storage.write(StoragePath.rolloutRecoveryPending(), { version: 1, owners: [{ kind: "bogus" }] })
+  await RolloutRecovery.settle()
+  expect(
+    await Storage.read<{ version: 1; owners: Array<{ kind: string }> }>(StoragePath.rolloutRecoveryPending()),
+  ).toEqual({
+    version: 1,
+    owners: [{ kind: "bogus" }],
+  })
+})
