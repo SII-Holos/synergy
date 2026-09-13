@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-async def run_process(args: list[str], *, log: Path, deadline: float, env: dict[str, str] | None = None) -> int:
+async def run_process(args: list[str], *, log: Path, deadline: float | None, env: dict[str, str] | None = None) -> int:
     log.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     with os.fdopen(fd, "ab", buffering=0) as output:

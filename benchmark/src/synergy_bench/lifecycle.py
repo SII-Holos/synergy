@@ -10,6 +10,30 @@ from typing import Any
 from .storage import atomic_json, read_json
 
 
+def error_trace(error: BaseException) -> list[dict[str, Any]]:
+    chain = []
+    seen: set[int] = set()
+    while id(error) not in seen:
+        seen.add(id(error))
+        frames = []
+        frame = error.__traceback__
+        while frame is not None:
+            frames.append(
+                {
+                    "module": frame.tb_frame.f_globals.get("__name__"),
+                    "function": frame.tb_frame.f_code.co_name,
+                    "line": frame.tb_lineno,
+                }
+            )
+            frame = frame.tb_next
+        chain.append({"type": type(error).__name__, "frames": frames})
+        cause = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+        if cause is None:
+            break
+        error = cause
+    return chain
+
+
 class Lifecycle:
     def __init__(self, directory: Path) -> None:
         self.file = directory / "stages.json"
@@ -43,6 +67,7 @@ class Lifecycle:
                 else "failed"
             )
             row["error"] = type(error).__name__
+            row["error_trace"] = error_trace(error)
             raise
         finally:
             row["ended_at"] = time.time()

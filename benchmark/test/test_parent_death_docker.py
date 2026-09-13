@@ -103,7 +103,11 @@ async def test_parent_death_preserves_dispatched_cost_and_never_repeats_terminal
                 stderr=output,
                 start_new_session=True,
             )
-            await asyncio.wait_for(dispatched.wait(), 300)
+            async with asyncio.timeout(300):
+                while not dispatched.is_set():
+                    if process.returncode is not None:
+                        pytest.fail("Evaluator exited before dispatch: " + (root / "parent.log").read_text()[-5000:])
+                    await asyncio.sleep(0.05)
             process.kill()
             await process.wait()
         attempt = root / "trials/0000/attempt-001"

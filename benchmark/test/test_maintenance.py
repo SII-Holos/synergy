@@ -125,6 +125,7 @@ async def test_prewarm_records_all_setup_failures(tmp_path, monkeypatch):
         await prewarm_plan(tmp_path, plan)
     rows = read_json(tmp_path / "prewarm.json")["records"]
     assert len(rows) == 2 and all(row["status"] == "failed" for row in rows)
+    assert all(row["error_trace"][0]["frames"][-1]["function"] == "broken" for row in rows)
 
 
 def test_readonly_harness_bundles_share_the_same_task_image_prewarm():

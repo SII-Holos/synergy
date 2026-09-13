@@ -7,7 +7,8 @@ import pytest
 from synergy_bench.process import run_process
 
 
-async def test_cancellation_reaps_process_tree_and_retains_output(tmp_path):
+@pytest.mark.parametrize("deadline", [None, 30])
+async def test_cancellation_reaps_process_tree_and_retains_output(tmp_path, deadline):
     pid = tmp_path / "child.pid"
     script = (
         "import subprocess,time,pathlib; child=subprocess.Popen(['sleep','100']);pathlib.Path('"
@@ -15,7 +16,7 @@ async def test_cancellation_reaps_process_tree_and_retains_output(tmp_path):
         + "').write_text(str(child.pid));print('retained',flush=True);time.sleep(100)"
     )
     running = asyncio.create_task(
-        run_process([sys.executable, "-c", script], log=tmp_path / "process.log", deadline=30)
+        run_process([sys.executable, "-c", script], log=tmp_path / "process.log", deadline=deadline)
     )
     async with asyncio.timeout(5):
         for _ in range(500):

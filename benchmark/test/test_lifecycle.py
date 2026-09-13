@@ -31,3 +31,21 @@ async def test_repeated_stage_is_retained_instead_of_overwritten(tmp_path):
         async with lifecycle.stage("prepare", deadline=1):
             pass
     assert len(read_json(tmp_path / "stages.json")["prepare"]) == 2
+
+
+async def test_failure_retains_cause_locations_without_exception_values(tmp_path):
+    lifecycle = Lifecycle(tmp_path)
+    with pytest.raises(ValueError):
+        async with lifecycle.stage("prepare", deadline=1):
+            try:
+                raise RuntimeError("do-not-retain-credential")
+            except RuntimeError as cause:
+                raise ValueError("do-not-retain-credential") from cause
+    content = (tmp_path / "stages.json").read_text()
+    assert "do-not-retain-credential" not in content
+    trace = read_json(tmp_path / "stages.json")["prepare"][0]["error_trace"]
+    assert [entry["type"] for entry in trace] == ["ValueError", "RuntimeError"]
+    assert all(
+        entry["frames"][-1]["function"] == test_failure_retains_cause_locations_without_exception_values.__name__
+        for entry in trace
+    )

@@ -9,6 +9,7 @@ from typing import Any
 from .bridge import content_text
 from .config import ModelProfile
 from .gateway import Gateway, read_ledger
+from .lifecycle import error_trace
 from .resources import Capacity, Request, ResourcePool, admission_for, shared_pool_options
 from .storage import atomic_json, read_json
 from .trial import BenchmarkTrial
@@ -101,6 +102,7 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
             row.update(
                 status="interrupted" if isinstance(error, asyncio.CancelledError) else "failed",
                 error=type(error).__name__,
+                error_trace=error_trace(error),
             )
             if not isinstance(error, Exception):
                 raise
@@ -109,7 +111,9 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
                 try:
                     await asyncio.to_thread(audit_environment, root, attempt / "environment.json", trial_dir / "agent")
                 except Exception as error:
-                    row.update(status="failed", cleanup_error=type(error).__name__)
+                    row.update(
+                        status="failed", cleanup_error=type(error).__name__, cleanup_error_trace=error_trace(error)
+                    )
             row["ended_at"] = time.time()
             atomic_json(attempt / "prewarm.json", row)
             records.append(row)
@@ -128,6 +132,7 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
         )
 
     failure = None
+    failure_trace = None
     try:
         items = prepare_items(plan)
         width = plan["config"]["resources"]["build_concurrency"]
@@ -139,6 +144,7 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
             await check_budget()
     except BaseException as error:
         failure = type(error).__name__
+        failure_trace = error_trace(error)
         raise
     finally:
         report = {
@@ -147,6 +153,7 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
             "ended_at": time.time(),
             "records": records,
             "error": failure,
+            "error_trace": failure_trace,
             "status": "completed"
             if failure is None
             and len(records) == len(prepare_items(plan))

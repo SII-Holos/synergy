@@ -16,4 +16,4 @@ Increasing one deadline would reduce the race without preserving the exception s
 
 ## Consequences
 
-Agent timeouts remain recorded failures and still receive native grading. Existing records remain unchanged; validation with the corrected evaluator creates a separate experiment with an explicit reason. This extension depends on the pinned Pier exception contract and must be checked when upgrading Pier.
+Agent timeouts remain recorded failures and still receive native grading. Existing records remain unchanged; validation with the corrected evaluator creates a separate experiment with an explicit reason. This extension depends on the pinned Pier exception contract and must be checked when upgrading Pier. Docker exec without an explicit timeout must inherit the native caller deadline; a preparation default at a lower layer can otherwise fire early while the exception reports the longer outer limit. The [deadline regression](../../../../benchmark/test/test_environment.py) covers both missing and explicit execution deadlines.

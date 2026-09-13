@@ -7,6 +7,51 @@ from synergy_bench.environment import CachedDockerEnvironment, environment_ident
 from synergy_bench.storage import atomic_json, digest
 
 
+@pytest.mark.parametrize(
+    "operation,command_deadline", [("exec", None), ("exec", 10800), ("exec", 1800), ("build", None)]
+)
+async def test_native_execution_outlives_preparation_ceiling(tmp_path, monkeypatch, operation, command_deadline):
+    import sys
+
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    from synergy_bench import environment
+    from synergy_bench.process import run_process
+
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name="deadline-fixture",
+        session_id="deadline-fixture",
+        trial_paths=TrialPaths(trial_dir=tmp_path / "trial"),
+        task_env_config=EnvironmentConfig(),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/amd64",
+    )
+
+    async def execute(args, *, log, deadline, **kwargs):
+        # Scale hours to fractions of a second while keeping the real subprocess deadline and cleanup.
+        return await run_process(
+            [sys.executable, "-c", "import time;time.sleep(.15);print('native work completed')"],
+            log=log,
+            deadline=None if deadline is None else deadline / 18000,
+        )
+
+    monkeypatch.setattr(environment, "run_process", execute)
+    monkeypatch.setattr(environment, "run_preparation_process", execute)
+    if operation == "build" or command_deadline == 1800:
+        with pytest.raises(TimeoutError):
+            if operation == "build":
+                await env._compose_command(["build"])
+            else:
+                await env.exec("native work", timeout_sec=command_deadline)
+        return
+    result = await env.exec("native work", timeout_sec=command_deadline)
+    assert result.return_code == 0
+    assert result.stdout == "native work completed\n"
+
+
 async def test_diagnostic_failure_cannot_prevent_environment_stop(monkeypatch):
     from pier.environments.docker.docker import DockerEnvironment
 

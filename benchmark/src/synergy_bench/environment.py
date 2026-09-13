@@ -115,8 +115,14 @@ class CachedDockerEnvironment(DockerEnvironment):
         if self._windows_container_name:
             env["PIER_CONTAINER_NAME"] = self._windows_container_name
         log = self.trial_paths.trial_dir / "compose" / (args[0] + "-" + uuid.uuid4().hex + ".log")
-        execute = run_preparation_process if args[0] in {"build", "pull", "up"} else run_process
-        code = await execute(command_args, env=env, log=log, deadline=timeout_sec or 1800)
+        # Native execution inherits its caller's deadline; preparation's ceiling must not truncate paid work.
+        deadline = timeout_sec if timeout_sec is not None or args[0] == "exec" else 1800
+        if args[0] in {"build", "pull", "up"}:
+            code = await run_preparation_process(
+                command_args, env=env, log=log, deadline=timeout_sec if timeout_sec is not None else 1800
+            )
+        else:
+            code = await run_process(command_args, env=env, log=log, deadline=deadline)
         if check and code:
             if args[0] == "up":
                 await self._compose_command(["logs", "--no-color"], check=False, timeout_sec=30)
