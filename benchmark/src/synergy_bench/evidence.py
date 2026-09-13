@@ -1,14 +1,113 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
-from pathlib import Path
+import json
+import re
+import tarfile
+import xml.etree.ElementTree as ET
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .results import RESULT_VERSION, AttemptResult
 from .storage import read_json
 
 
-def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
+def native_archive_readable(path: Path) -> bool:
+    names = set()
+    try:
+        with gzip.open(path, "rb") as compressed:
+            with tarfile.open(fileobj=compressed, mode="r|") as archive:
+                for member in archive:
+                    name = PurePosixPath(member.name)
+                    if name.is_absolute() or ".." in name.parts or member.name in names:
+                        return False
+                    names.add(member.name)
+                    if member.isfile():
+                        source = archive.extractfile(member)
+                        if source is None:
+                            return False
+                        with source:
+                            while source.read(1024 * 1024):
+                                pass
+            while compressed.read(1024 * 1024):
+                pass
+        return {"home", "events.jsonl", "stderr.log", "execution.json"} <= names
+    except (OSError, EOFError, tarfile.TarError):
+        return False
+
+
+def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
+    count = None
+    sources = []
+    observations = []
+    for file in sorted((trial / "verifier").rglob("*")):
+        if not file.is_file() or file.is_symlink():
+            continue
+        try:
+            if file.suffix == ".xml":
+                root = ET.parse(file).getroot()
+                format_name = "junit"
+                observed = int(root.get("tests", "0"))
+                if not observed:
+                    observed = sum(int(suite.get("tests", "0")) for suite in root.findall(".//testsuite"))
+            elif file.suffix == ".json":
+                # CTRF executed test statuses: https://ctrf.io/docs/specification/overview
+                value = read_json(file)
+                results = value.get("results") if isinstance(value, dict) else None
+                tests = results.get("tests") if isinstance(results, dict) else None
+                if not isinstance(tests, list):
+                    continue
+                format_name = "ctrf"
+                observed = sum(isinstance(test, dict) and test.get("status") in {"passed", "failed"} for test in tests)
+            elif file.suffix in {".txt", ".log", ".jsonl"}:
+                content = file.read_text(errors="replace")
+                matches = re.findall(r"running (\d+) tests?\b", content)
+                observed = max([int(value) for value in matches], default=0)
+                format_name = "native_test_start_log"
+                running = set()
+                # A run event with a Test identifies execution: https://pkg.go.dev/cmd/test2json
+                for line in content.splitlines():
+                    if not line.startswith("{"):
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(event, dict) and event.get("Action") == "run" and isinstance(event.get("Test"), str):
+                        running.add((event.get("Package", ""), event["Test"]))
+                observed = max(observed, len(running))
+            else:
+                continue
+            if observed > 0:
+                count = max(count or 0, observed)
+                sources.append(file.relative_to(trial).as_posix())
+                observations.append({"source": sources[-1], "count": observed, "format": format_name})
+        except (ValueError, OSError, ET.ParseError):
+            continue
+    exception = (pier.get("exception_info") or {}).get("exception_type")
+    timing = pier.get("verifier") or {}
+    status = (
+        "timed_out"
+        if exception == "VerifierTimeoutError"
+        else "completed"
+        if pier.get("verifier_result")
+        else "failed"
+        if timing.get("started_at")
+        else "unknown"
+    )
+    return {
+        "execution": status,
+        "functional_tests": "started" if sources else "unknown",
+        "test_count": count,
+        "test_count_semantics": "maximum_observed_count_across_overlapping_reports",
+        "observations": observations,
+        "sources": sources,
+        "raw_rewards": (pier.get("verifier_result") or {}).get("rewards"),
+    }
+
+
+def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required: bool = True) -> dict[str, Any]:
     agent = trial / "agent"
     missing: list[str] = []
 
@@ -42,13 +141,16 @@ def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
                 files[relative] = {"sha256": checksum, "bytes": path.stat().st_size}
         except OSError:
             missing.append(f"file_unreadable:{relative}")
-    payload = files.get("agent/rollout.zip")
+    external = execution and execution.get("harness") not in {None, "synergy"}
+    payload = files.get("agent/rollout.tar.gz" if external else "agent/rollout.zip")
     structural = bool(
         archive
         and archive.get("valid") is True
         and payload
         and all(payload[key] == archive.get(key) for key in ["sha256", "bytes"])
     )
+    if structural and external:
+        structural = native_archive_readable(agent / "rollout.tar.gz")
     if not structural:
         missing.append("archive_invalid" if payload else "rollout_missing")
     recording = archive.get("recording", "unknown") if structural and archive else "unknown"
@@ -70,10 +172,15 @@ def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         "NonZeroAgentExitCodeError",
         "CancelledError",
     }
-    if not pier.get("verifier_result") and (exception or {}).get("exception_type") not in {
-        "CancelledError",
-        "VerifierTimeoutError",
-    }:
+    if (
+        verification_required
+        and not pier.get("verifier_result")
+        and (exception or {}).get("exception_type")
+        not in {
+            "CancelledError",
+            "VerifierTimeoutError",
+        }
+    ):
         missing.append("verifier_missing")
     tokens = accounting.get("tokens", {}) if accounting else {}
     if not isinstance(tokens, dict):
@@ -91,6 +198,7 @@ def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         "execution": execution,
         "export": exported,
         "verifier": pier.get("verifier_result"),
+        "grading": grading_evidence(trial, pier),
         "pier_exception": exception,
         "infrastructure_error": None if expected else exception,
         "accounting": accounting,
@@ -107,34 +215,28 @@ def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
 
 
 def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
-    results = [
-        read_json(sorted(directory.glob("attempt-*/evidence.json"))[-1])
-        for directory in sorted((root / category).glob("*"))
-        if list(directory.glob("attempt-*/evidence.json"))
-    ]
+    from .report import report_data
+
+    report = report_data(root, category=category)
+    results = report["scored"]
     failed = sum(
-        not result.get("evidence", {}).get("valid", False) or bool(result.get("infrastructure_error"))
-        for result in results
+        not row["evidence"].get("valid", False) or bool(row["infrastructure_error"]) for row in report["all_attempts"]
     )
     outcomes: dict[str, int] = {}
-    rewards = []
-    task_failures = 0
-    for result in results:
-        outcome = (result.get("execution") or {}).get("outcome", "unknown")
-        outcomes[outcome] = outcomes.get(outcome, 0) + 1
-        score = (result.get("verifier") or {}).get("rewards")
-        rewards.append(score)
-        task_failures += (
-            (result.get("pier_exception") or {}).get("exception_type") == "VerifierTimeoutError"
-            or outcome != "completed"
-            or bool(score and all(isinstance(value, (int, float)) and value <= 0 for value in score.values()))
-        )
+    for row in results:
+        outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
     return {
         "run": str(root),
-        "attempts": len(results),
+        "attempts": report["attempts"],
+        "planned": report["planned"],
+        "completed": report["completed"],
         "outcomes": outcomes,
-        "task_failures": task_failures,
+        "task_failures": sum(
+            row["outcome"] != "completed" or (row["reward"] is not None and row["reward"] <= 0) for row in results
+        ),
         "recording_or_infrastructure_failures": failed,
-        "rewards": rewards,
-        "exit_code": 1 if failed else 0,
+        "rewards": [row["raw_rewards"] for row in results],
+        "usage": report["usage"],
+        "missing": report["missing"],
+        "exit_code": 1 if failed or report["missing"] else 0,
     }

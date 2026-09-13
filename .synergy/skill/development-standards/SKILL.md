@@ -21,6 +21,7 @@ description: Route a Synergy source change to the current repository development
    - plugin manifest, installation, runtime, bridge, marketplace, or UI host: `change-plugin-runtime`
    - built-in agent, CLI command, or first-party tool: `add-agent`, `add-cli-command`, or `add-tool`
    - tests or manual runtime validation: `testing-guide` and `develop-synergy`
+   - benchmark evaluator, native harnesses, accounting, cache or resource scheduling: `develop-benchmark`
    - Git/worktree/PR operations: `git-guide`
    - broad simplification audits or decision-record coalescing: `find-simplifications`
 5. Use canonical product, architecture, reference, plugin, and operations documents for system truth. Keep Skills procedural; do not copy whole architecture descriptions into them.

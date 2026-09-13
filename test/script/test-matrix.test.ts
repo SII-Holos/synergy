@@ -16,7 +16,7 @@ const workflow = Bun.YAML.parse(ciSource) as {
     {
       name?: string
       needs?: string | string[]
-      strategy?: { "fail-fast"?: boolean; matrix?: { include?: ShardEntry[]; outcome?: string[] } }
+      strategy?: { "fail-fast"?: boolean; matrix?: { include?: ShardEntry[]; outcome?: string[]; harness?: string[] } }
       steps?: Array<{ name?: string; run?: string; env?: Record<string, unknown>; if?: string }>
     }
   >
@@ -112,11 +112,23 @@ describe("CI test matrix", () => {
   test("the anchored Test check includes the benchmark contracts", () => {
     const fanIn = workflow.jobs["test"]!
     expect(fanIn.name).toBe("Test")
-    expect(fanIn.needs).toEqual(["test-shards", "test-aux", "test-harness", "test-benchmark", "test-rollout-long"])
+    expect(fanIn.needs).toEqual([
+      "test-shards",
+      "test-aux",
+      "test-harness",
+      "test-benchmark",
+      "test-benchmark-docker",
+      "test-benchmark-matrix",
+      "test-benchmark-streams",
+      "test-rollout-long",
+    ])
     const verify = fanIn.steps?.find((step) => step.run?.includes("needs.test-shards.result"))
     expect(verify?.run).toContain("needs.test-aux.result")
     expect(verify?.run).toContain("needs.test-harness.result")
     expect(verify?.run).toContain("needs.test-benchmark.result")
+    for (const name of ["test-benchmark-docker", "test-benchmark-matrix", "test-benchmark-streams"]) {
+      expect(verify?.run).toContain(`needs.${name}.result`)
+    }
     expect(verify?.run).toContain("needs.test-rollout-long.result")
     expect(verify?.run).toContain("exit 1")
   })
@@ -125,9 +137,30 @@ describe("CI test matrix", () => {
     const needs = workflow.jobs["all-checks-passed"]!.needs
     const flat = Array.isArray(needs) ? needs : [needs]
     expect(flat).toContain("test")
-    for (const leaf of ["test-shards", "test-aux", "test-harness", "test-benchmark", "test-rollout-long"]) {
+    for (const leaf of [
+      "test-shards",
+      "test-aux",
+      "test-harness",
+      "test-benchmark",
+      "test-benchmark-docker",
+      "test-benchmark-matrix",
+      "test-benchmark-streams",
+      "test-rollout-long",
+    ]) {
       expect(flat).not.toContain(leaf)
     }
+  })
+
+  test("native benchmark jobs exercise five harnesses with deterministic providers", () => {
+    const matrix = workflow.jobs["test-benchmark-matrix"]!
+    expect(matrix.strategy?.["fail-fast"]).toBe(false)
+    expect(matrix.strategy?.matrix?.harness).toEqual(["synergy", "codex", "opencode", "pi", "deepseek"])
+    const run = matrix.steps?.find((step) => step.run?.includes("test_matrix_docker.py"))
+    expect(run?.env?.SYNERGY_BENCH_DOCKER).toBe("1")
+    expect(run?.env?.SYNERGY_BENCH_TEST_HARNESSES).toBe("${{ matrix.harness }}")
+    expect(
+      workflow.jobs["test-benchmark-streams"]?.steps?.some((step) => step.run?.includes("test_gateway_faults.py")),
+    ).toBe(true)
   })
 
   test("long rollout outcomes run on independent workers and keep every outcome required", () => {

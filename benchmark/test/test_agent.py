@@ -30,6 +30,9 @@ async def test_accounting_is_read_only_after_pier_hands_logs_to_the_host(tmp_pat
         env_paths = SimpleNamespace(agent_dir=Path("/logs/agent"))
         capabilities = SimpleNamespace(mounted=True)
 
+        def agent_process_env(self, env):
+            return env
+
         async def upload_file(self, source, target):
             pass
 
@@ -56,6 +59,36 @@ async def test_accounting_is_read_only_after_pier_hands_logs_to_the_host(tmp_pat
     await trial._maybe_download_logs(source_dir="/logs/agent", target_dir=tmp_path)
     trial._maybe_populate_agent_context(context)
     assert context.n_input_tokens == 123
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("proxy", [None, {"HTTPS_PROXY": "http://fixture:token@proxy.invalid:8080"}])
+async def test_runner_receives_environment_agent_network_settings(tmp_path: Path, proxy) -> None:
+    from pier.models.agent.context import AgentContext
+
+    class Environment:
+        env_paths = SimpleNamespace(agent_dir=Path("/logs/agent"))
+        executed = False
+
+        def agent_process_env(self, env):
+            assert env is None
+            return proxy
+
+        async def upload_file(self, source, target):
+            pass
+
+        async def exec(self, command, **kwargs):
+            if command.startswith("/opt/synergy/bin/bun"):
+                assert kwargs.get("env") == proxy
+                self.executed = True
+            else:
+                assert not kwargs.get("env")
+            return ExecResult(return_code=0, stdout="1000" if command == "id -u" else "")
+
+    environment = Environment()
+    agent = SynergyAgent(tmp_path, settings={"env": {}})
+    await agent.run("Fixture", cast(BaseEnvironment, environment), AgentContext())
+    assert environment.executed
 
 
 @pytest.mark.asyncio

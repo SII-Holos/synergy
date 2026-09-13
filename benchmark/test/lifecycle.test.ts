@@ -28,6 +28,33 @@ test("process deadlines retain nonzero, signal and timeout independently", async
   }
 })
 
+test("normal process exit also reaps its remaining process group", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-descendant-"))
+  let pid: number | undefined
+  try {
+    const file = path.join(root, "child.pid")
+    await runProcess({
+      command: [
+        process.execPath,
+        "-e",
+        `const {spawn}=require('node:child_process');const child=spawn('sleep',['60'],{stdio:'ignore'});child.unref();await Bun.write(${JSON.stringify(file)},String(child.pid));`,
+      ],
+      log: path.join(root, "child.log"),
+      timeoutMs: 5000,
+    })
+    pid = Number(await readFile(file, "utf8"))
+    await Bun.sleep(30)
+    expect(() => process.kill(pid!, 0)).toThrow()
+  } finally {
+    if (pid) {
+      try {
+        process.kill(pid, "SIGKILL")
+      } catch {}
+    }
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("incremental event reading retains terminal identity through a truncated tail", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bench-events-"))
   try {
@@ -98,7 +125,7 @@ test("cancelling the wrapper during export drains the exporter before exit", asy
   const root = await mkdtemp(path.join(os.tmpdir(), "bench-export-cancel-"))
   let child: Bun.Subprocess | undefined
   try {
-    for (const file of ["trial.ts", "events.ts", "export.ts", "process.ts", "files.ts"])
+    for (const file of ["trial.ts", "events.ts", "export.ts", "process.ts", "files.ts", "deadline.mjs"])
       await Bun.write(path.join(root, file), Bun.file(path.join(import.meta.dir, "../runtime", file)))
     await Bun.write(
       path.join(root, "entry.ts"),

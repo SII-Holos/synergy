@@ -69,3 +69,80 @@ def test_summary_reports_wrong_answers_as_task_failures_without_infrastructure_f
     result = summarize(tmp_path)
     assert result["task_failures"] == 1
     assert result["exit_code"] == 0
+
+
+def test_reward_alone_does_not_claim_functional_tests_started(tmp_path):
+    (tmp_path / "agent").mkdir()
+    value = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 1.0}}})
+    assert value["grading"]["functional_tests"] == "unknown"
+    assert value["grading"]["raw_rewards"] == {"reward": 1.0}
+
+
+def test_junit_start_evidence_is_independent_of_native_score(tmp_path):
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "verifier").mkdir()
+    (tmp_path / "verifier/results.xml").write_text(
+        '<testsuite tests="3" failures="2"><testcase name="real"/></testsuite>'
+    )
+    value = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0.0}}})
+    assert value["grading"]["functional_tests"] == "started"
+    assert value["grading"]["test_count"] == 3
+
+
+def test_probe_omits_grading_without_claiming_tests_ran(tmp_path):
+    value = collect_evidence(tmp_path, {}, verification_required=False)
+    assert "verifier_missing" not in value["evidence"]["issues"]
+    assert value["grading"]["functional_tests"] == "unknown"
+
+
+def test_native_archive_hash_alone_does_not_prove_a_readable_archive(tmp_path):
+    import hashlib
+
+    from synergy_bench.storage import atomic_json
+
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    payload = b"not a gzip or native archive"
+    (agent / "rollout.tar.gz").write_bytes(payload)
+    atomic_json(agent / "execution.json", {"harness": "opencode", "outcome": "completed"})
+    atomic_json(
+        agent / "archive.json",
+        {"valid": True, "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "recording": "complete"},
+    )
+    result = collect_evidence(tmp_path, {})
+    assert result["evidence"]["archive_valid"] is False
+
+
+def test_collected_tests_and_reward_do_not_establish_execution(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+
+    (tmp_path / "verifier").mkdir()
+    (tmp_path / "verifier/test-stdout.txt").write_text("collected 18 items\ninternal error before execution\n")
+    assert grading_evidence(tmp_path, {})["functional_tests"] == "unknown"
+
+
+def test_ctrf_and_go_test_events_provide_independent_execution_evidence(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tool": {"name": "fixture"},
+                "tests": [
+                    {"name": "a", "status": "passed"},
+                    {"name": "b", "status": "failed"},
+                    {"name": "c", "status": "skipped"},
+                ],
+            }
+        },
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        '{"Action":"run","Package":"pkg","Test":"TestA"}\n{"Action":"run","Package":"pkg","Test":"TestA"}\n'
+    )
+    result = grading_evidence(tmp_path, {})
+    assert result["functional_tests"] == "started"
+    assert result["test_count"] == 2
+    assert len(result["observations"]) == 2
+    assert result["test_count_semantics"] == "maximum_observed_count_across_overlapping_reports"

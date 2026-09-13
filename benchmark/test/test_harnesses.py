@@ -1,0 +1,55 @@
+import pytest
+
+from synergy_bench.config import ModelProfile
+from synergy_bench.harnesses import PACKAGES, harness_configuration
+
+
+@pytest.mark.parametrize("kind", ["synergy", "codex", "opencode", "pi", "deepseek"])
+@pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
+def test_native_configuration_keeps_model_axis_and_environment_credentials(kind, protocol):
+    model = ModelProfile(
+        model="fixture-two",
+        protocol=protocol,
+        base_url="http://provider.invalid/v1",
+        api_key_env="ACTUAL_PROVIDER_SECRET",
+        context_window=64000,
+        max_output_tokens=4096,
+    )
+    value = harness_configuration(kind, model, "http://host.docker.internal:1234/v1", "/logs/agent/home")
+    assert "fixture-two" in str(value)
+    assert "64000" in str(value)
+    assert "ACTUAL_PROVIDER_SECRET" not in str(value)
+    assert "BENCH_GATEWAY_KEY" in str(value)
+    assert value["protocol"] == ("responses" if kind == "codex" else protocol)
+    if kind != "synergy":
+        assert PACKAGES[kind]["version"]
+        assert value["argv"]
+
+
+def test_unknown_harness_fails_before_launch():
+    model = ModelProfile(
+        model="m",
+        protocol="responses",
+        base_url="https://example.com/v1",
+        api_key_env="KEY",
+        context_window=1000,
+        max_output_tokens=100,
+    )
+    with pytest.raises(ValueError, match="Unknown harness"):
+        harness_configuration("imaginary", model, "http://localhost:1/v1", "/home/fixture")
+
+
+@pytest.mark.parametrize("kind", ["pi", "deepseek"])
+def test_native_provider_can_explicitly_disable_developer_role(kind):
+    model = ModelProfile(
+        model="m",
+        protocol="chat-completions",
+        base_url="https://provider.test/v1",
+        api_key_env="KEY",
+        context_window=32000,
+        max_output_tokens=2000,
+        supports_developer_role=False,
+    )
+    config = harness_configuration(kind, model, "http://localhost:1/v1", "/home/fixture")
+    assert "supportsDeveloperRole" in str(config["files"])
+    assert "false" in str(config["files"])
