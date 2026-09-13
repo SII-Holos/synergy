@@ -58,3 +58,26 @@ def test_collection_rejects_unknown_families_and_does_not_traverse_linked_family
     with pytest.raises(ValueError, match="Unknown evidence family"):
         collect(root, output, ["../outside"])
     assert collect(root, output, ["matrix-integration"])["copied"] == 0
+
+
+def test_native_home_archive_stays_private_while_validation_metadata_is_collected(tmp_path):
+    import io
+    import tarfile
+
+    root, output = tmp_path / "source", tmp_path / "output"
+    agent = root / "matrix-integration/run/trials/0000/attempt-001/agent"
+    agent.mkdir(parents=True)
+    with tarfile.open(agent / "rollout.tar.gz", "w:gz") as archive:
+        secret = b'{"apiKey":"private-native-home"}'
+        info = tarfile.TarInfo("home/auth.json")
+        info.size = len(secret)
+        archive.addfile(info, io.BytesIO(secret))
+    metadata = {"format": "native-home-tar-v1", "valid": True}
+    (agent / "archive.json").write_text(json.dumps(metadata))
+    (agent / "evidence.json").write_text('{"version":3}')
+    result = collect(root, output, ["matrix-integration"])
+    retained = output / agent.relative_to(root)
+    assert result == {"copied": 2, "errors": []}
+    assert json.loads((retained / "archive.json").read_text()) == metadata
+    assert not (retained / "rollout.tar.gz").exists()
+    assert (agent / "rollout.tar.gz").is_file()

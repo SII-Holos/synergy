@@ -166,6 +166,10 @@ SYNERGY_BENCH_PERFORMANCE=1 SYNERGY_BENCH_NATIVE_ARTIFACTS='{"pi":"/absolute/pat
 
 CI 使用轻量确定性任务（1 核、2 GiB），并为临时 runner 显式设置 10 GiB 缓存、2 GiB 磁盘余量。研究实验仍默认 32 GiB 缓存与 20 GiB 余量；CPU/内存预留不变。CI 配置依据 [GitHub 标准 runner 资源说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，实际可用资源仍由 doctor 检查。
 
+runtime 缓存按实际执行入口区分：Synergy 由 Bun 执行 `trial.ts`，其配方覆盖 TypeScript 源码及共享的 `deadline.mjs`；外部 CLI 由 Node 执行 `external.mjs`，其独立安装产物对 `engines.NATIVE_RUNTIME` 中全部入口和 capture helper 求摘要。外部 CLI 不执行 Synergy bundle 内附带的 `.mjs` 副本。增加 Synergy 使用的非 TypeScript 依赖时，必须同步扩展其配方与失效回归；不得把新执行依赖排除在缓存身份之外。每个已冻结 bundle 仍逐字节校验自身 receipt。
+
+CI 保留 `archive.json`、`export.json` 和归档验证结果。外部 CLI 的 `rollout.tar.gz` 包含原生 Home（包括认证存储），因此只在本地私有实验中保留，不上传 CI artifact；这与 Synergy 公开 rollout 合同的 `rollout.zip` 不同。省略原生 Home payload 是证据发布边界，不能省略本地归档校验或用量核对。
+
 Docker `exec` 未显式指定命令期限时继承调用方的原生阶段期限；准备阶段默认 1800 秒上限不能截断原生 10800 秒的 agent 执行。显式命令期限仍有效，取消仍回收所属进程树。跨阶段期限回归同时验证未指定、显式长期限和准备期限；不能只用短任务证明长任务可靠。阶段及预热失败保留异常类型、模块、函数、行号和因果链，不持久化异常文本、源代码行或局部变量；可结合冻结源码定位原因，避免错误值携带凭据。
 
 父进程异常退出后的恢复先交还容器私有日志的文件所有权，再读取原有终态；交接保持文件内容与 0600/0700 权限，通过原容器的不可变镜像完成，运行中和已停止的容器均可恢复。
