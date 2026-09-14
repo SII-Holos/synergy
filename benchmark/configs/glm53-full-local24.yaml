@@ -6,6 +6,8 @@ platform: linux/amd64
 seed: 20260914
 repeat: 1
 concurrency: auto
+resources:
+  cache_budget_gib: 128
 timeout_seconds: 10800
 preparation_timeout_seconds: 7200
 startup_timeout_seconds: 600

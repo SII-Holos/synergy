@@ -20,4 +20,6 @@ The [full local-24 preset](../../../../benchmark/configs/glm53-full-local24.yaml
 
 ## Consequences
 
+The full preset declares a 128 GiB logical cache budget for all task images and frozen harness bundles while retaining the independent free-disk floor. Cache accounting can count shared image layers more than once, so the budget is not a reservation or a prediction of physical disk consumption. Existing frozen runs retain their recorded resource settings.
+
 The 120-cell preset is reproducible and distinguishes registered capability from operational availability. Default native prompts, visibility, permissions and task environments remain intact. Linux, network, credential and model-protocol restrictions must accompany any claim about full-product results. Pure tests exercise every harness's formal and probe launch deadlines and preserve native verifier settings.
