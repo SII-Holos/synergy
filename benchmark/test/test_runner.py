@@ -8,16 +8,22 @@ from synergy_bench.storage import atomic_json, read_json
 
 @pytest.mark.parametrize("startup_failures,requests,expected", [(1, 0, 2), (5, 0, 3), (1, 1, 1)])
 async def test_only_unstarted_native_timeouts_retry_with_a_durable_bound(
-    tmp_path, startup_failures, requests, expected
+    tmp_path, monkeypatch, startup_failures, requests, expected
 ):
+    from types import SimpleNamespace
+
+    from synergy_bench import runner
     from synergy_bench.evidence import collect_evidence
     from synergy_bench.runner import verify_terminal
 
     plan = {"schedule": [{"task": "s/t", "variant": "A", "pair": "p", "repeat": 0}], "concurrency": 1}
     called = []
+    elapsed = [0]
+    monkeypatch.setattr(runner, "time", SimpleNamespace(monotonic=lambda: elapsed[0], time=lambda: elapsed[0]))
 
     async def execute(item, attempt):
         called.append(attempt)
+        elapsed[0] += 100
         result = collect_evidence(attempt / "native", {}, verification_required=False)
         result["evidence"]["archive_valid"] = True
         result["wire_usage"] = {"attempts": requests}
@@ -40,6 +46,7 @@ async def test_only_unstarted_native_timeouts_retry_with_a_durable_bound(
         trial = read_json(attempt / "trial.json")
         assert trial["reason"] == ("planned_first_attempt" if index == 0 else "retry_startup_timeout_before_model")
         assert trial["startup_attempt"] == index + 1
+        assert trial["queue_seconds"] == 0
 
 
 @pytest.mark.asyncio

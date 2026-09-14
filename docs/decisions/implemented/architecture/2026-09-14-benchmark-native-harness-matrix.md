@@ -22,6 +22,8 @@ Completed request usage is not a finalized attempt total while the attempt lacks
 
 Native startup timeouts may create up to three automatic attempts only when native lifecycle evidence confirms no model execution, the entire request ledger is empty, the archive is complete and cleanup has no reported failure. Each attempt retains its terminal evidence, retry reason and 1/2-second backoff. Task startup budgets survive recovery; a new explicit doctor invocation records its own reason. Possible delivery, incomplete evidence and post-dispatch failures remain outside this path.
 
+Each attempt starts its own queue clock before resource admission. Prior execution and teardown never become the next attempt's queue latency; retry backoff remains a separately retained value.
+
 ## Alternatives considered
 
 **Run every model through Synergy's loop.** This would compare model behavior but remove the native harness differences the experiment needs to measure.

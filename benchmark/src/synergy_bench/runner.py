@@ -358,8 +358,8 @@ async def execute_plan(
             request = Request(
                 **plan.get("tasks", {}).get(item.get("task"), {}).get("resources", {"cpus": 1, "memory_bytes": 1024**3})
             )
-            queued = time.monotonic()
             while True:
+                queued = time.monotonic()
                 async with pool.reserve(request):
                     previous = state["trials"].get(trial_id, {})
                     prior_result = (
