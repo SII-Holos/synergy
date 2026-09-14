@@ -3,6 +3,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { AgentConfig } from "@ericsanchezok/synergy-harness/agent/config-crud"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import * as Schema from "@ericsanchezok/synergy-harness/config/schema"
 import DESCRIPTION from "./agent-config.txt"
 
 const parameters = z.object({
@@ -18,6 +19,14 @@ const parameters = z.object({
     .describe("One action object. create/update/remove/set_default/describe each take agent fields; list takes none."),
 })
 type ActionInput = z.infer<(typeof parameters)["shape"]["input"]>
+
+/** `Schema.Permission` is a preprocess/transform pipeline that `z.toJSONSchema`
+ * cannot represent, so parameters accept `PermissionInput` and execution
+ * normalizes it. The fragment keeps absent permissions absent: the markdown
+ * writer rejects explicit `undefined` frontmatter values. */
+function normalizedPermission(permission: Schema.PermissionInput | undefined): { permission?: Schema.Permission } {
+  return permission === undefined ? {} : { permission: Schema.Permission.parse(permission) }
+}
 
 interface AgentConfigMetadata {
   action: string
@@ -99,8 +108,15 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
     try {
       switch (input.action) {
         case "create": {
-          const { action, name, storage, scope, ...entry } = input
-          const result = await AgentConfig.create({ name, ...entry, storage, scope, signal: ctx.abort })
+          const { action, name, storage, scope, permission, ...entry } = input
+          const result = await AgentConfig.create({
+            name,
+            ...entry,
+            ...normalizedPermission(permission),
+            storage,
+            scope,
+            signal: ctx.abort,
+          })
           const location = result.source + (result.file ? `: ${result.file}` : "")
           const body = result.agent
             ? summarizeAgent({ agent: result.agent, source: result.source, file: result.file })
@@ -119,8 +135,12 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
           }
         }
         case "update": {
-          const { action, name, ...patch } = input
-          const result = await AgentConfig.update({ name, patch, signal: ctx.abort })
+          const { action, name, permission, ...patch } = input
+          const result = await AgentConfig.update({
+            name,
+            patch: { ...patch, ...normalizedPermission(permission) },
+            signal: ctx.abort,
+          })
           const lines = [
             `Agent "${result.name}" ${result.agent ? "updated" : "disabled"} (${result.source}${result.file ? `: ${result.file}` : ""}).`,
             "",

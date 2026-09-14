@@ -15,6 +15,9 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 
 1. Define the tool with `Tool.define(id, init, options?)` under the owning business package’s domain `tools/` directory. Harness owns generic definitions, discovery, execution and scheduling; concrete file/shell tools belong to `runtime-local`.
 2. Use precise Zod parameters and descriptions. Model-facing parameters must serialize to a JSON Schema object at the root; wrap a discriminated action union in an object field such as `input`. The production tool resolver excludes schemas without an object root. Test this boundary as well as individual variants. Return the established `{ title, metadata, output, attachments? }` shape.
+
+   Keep preprocess/transform normalization out of model-facing parameter schemas. Accept a representable input schema and normalize through the owning domain parser before mutation; preserve omitted fields and permission ordering. Exercise serialization after registering the owning package's tools: the Harness-only registry test cannot cover optional runtime contributions. Check that internal normalization fields do not appear in the advertised schema.
+
 3. Honor `ctx.abort`, use `ctx.ask()` for operation-specific permission requests, and route filesystem, shell, network, remote, or external-write work through existing boundaries.
 4. Register through the owning package’s explicit tool contribution using `ToolRegistry.registerToolProvider`. Keep selection and ordering in the capability registration; only generic built-ins belong in the Harness registry.
 5. Add an exact `tool/taxonomy.ts` entry with the correct domain kind and `stateful` / `externalIO` traits. Verify enforcement classification when arguments change the operation, such as local versus remote execution.

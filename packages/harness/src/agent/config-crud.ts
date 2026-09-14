@@ -658,7 +658,7 @@ export namespace AgentConfig {
       top_p: z.number().optional(),
       color: z.string().optional().describe('Hex color like "#FF5733"'),
       steps: z.number().int().positive().optional().describe("Max agentic iterations before text-only mode"),
-      permission: Schema.Permission.optional().describe("Permission overrides, e.g. { edit: 'deny' }"),
+      permission: Schema.PermissionInput.optional().describe("Permission overrides, e.g. { edit: 'deny' }"),
       visibleTo: z
         .array(z.string())
         .optional()
@@ -695,7 +695,7 @@ export namespace AgentConfig {
       top_p: z.number().nullable().optional(),
       color: z.string().nullable().optional(),
       steps: z.number().int().positive().nullable().optional(),
-      permission: Schema.Permission.optional(),
+      permission: Schema.PermissionInput.optional(),
       visibleTo: z.array(z.string()).optional(),
       delegationGroups: z.array(z.string()).optional(),
       controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),

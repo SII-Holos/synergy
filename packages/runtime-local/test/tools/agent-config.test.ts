@@ -151,6 +151,59 @@ describe("tool.agent_config", () => {
     expect(tool.parameters.safeParse({ input: { action: "list" } }).success).toBe(true)
     expect(tool.parameters.safeParse({ action: "list" }).success).toBe(false)
   })
+
+  test("string permission shorthand normalizes through the executor", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await AgentConfigTool.init()
+        await tool.execute(
+          { input: { action: "create", name: "deny-all", prompt: "Deny everything.", permission: "deny" } },
+          ctx,
+        )
+
+        const agent = await Agent.get("deny-all")
+        expect(agent?.permission.some((rule) => rule.permission === "*" && rule.action === "deny")).toBe(true)
+      },
+    })
+  })
+
+  test("updates preserve omitted permissions and reject invalid known rules before writing", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await AgentConfigTool.init()
+        await tool.execute(
+          {
+            input: {
+              action: "create",
+              name: "ordered-rules",
+              prompt: "Inspect only.",
+              permission: { bash: { "*": "deny", "git status": "allow" } },
+            },
+          },
+          ctx,
+        )
+        await tool.execute({ input: { action: "update", name: "ordered-rules", description: "Inspect git." } }, ctx)
+        expect((await Agent.get("ordered-rules"))?.permission.filter((rule) => rule.permission === "bash")).toEqual([
+          { permission: "bash", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "git status", action: "allow" },
+        ])
+        await tool.execute({ input: { action: "update", name: "ordered-rules", permission: "deny" } }, ctx)
+        const before = await Agent.get("ordered-rules")
+        expect(before?.permission.some((rule) => rule.permission === "*" && rule.action === "deny")).toBe(true)
+        await expect(
+          tool.execute(
+            { input: { action: "update", name: "ordered-rules", permission: { question: { "*": "allow" } } } },
+            ctx,
+          ),
+        ).rejects.toThrow()
+        expect((await Agent.get("ordered-rules"))?.permission).toEqual(before?.permission)
+      },
+    })
+  })
 })
 
 test("describe includes the bounded prompt and permissions in model-visible output", async () => {

@@ -53,6 +53,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0014 | Benchmark recopied instructions into their existing bind mount | implemented | 2026-09-14 |
 | 0015 | Repeated normalization erased reasoning | implemented | 2026-09-14 |
 | 0016 | Stale frame invalidated DOOM verifier | implemented | 2026-09-15 |
+| 0017 | Agent configuration permission schema removed the tool from availability | implemented | 2026-09-15 |
 
 ## History rules
 

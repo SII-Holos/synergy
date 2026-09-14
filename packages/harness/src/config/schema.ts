@@ -256,6 +256,14 @@ export const Permission = z
   })
 export type Permission = z.infer<typeof Permission>
 
+/**
+ * Transform-free mirror of `Permission` for request boundaries: `z.toJSONSchema`
+ * throws on the preprocess/transform pipeline above, so tool and CLI input
+ * schemas accept this shape and normalize through `Permission` before use.
+ */
+export const PermissionInput = z.union([PermissionAction, z.record(z.string(), PermissionRule)])
+export type PermissionInput = z.infer<typeof PermissionInput>
+
 export const Command = z.object({
   template: z.string(),
   description: z.string().optional(),
