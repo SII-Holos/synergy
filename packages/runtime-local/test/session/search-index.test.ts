@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -434,4 +434,19 @@ describe("session.search-index", () => {
       },
     })
   })
+})
+
+test("a rebuild cannot clear a new dirty write within the same millisecond", async () => {
+  const scopeID = Identifier.asScopeID("search_revision_scope")
+  const sessionID = Identifier.asSessionID("ses_search_revision")
+  using clock = spyOn(Date, "now").mockReturnValue(1000)
+  await SessionSearchIndex.markDirty(scopeID, sessionID)
+  const revision = await SessionSearchIndex.dirtyRevision(scopeID, sessionID)
+  await SessionSearchIndex.markDirty(scopeID, sessionID)
+  await SessionSearchIndex.commitRebuild(scopeID, sessionID, [], { revision })
+  expect(await SessionSearchIndex.isDirty(scopeID, sessionID)).toBe(true)
+  await SessionSearchIndex.commitRebuild(scopeID, sessionID, [], {
+    revision: await SessionSearchIndex.dirtyRevision(scopeID, sessionID),
+  })
+  expect(await SessionSearchIndex.isDirty(scopeID, sessionID)).toBe(false)
 })

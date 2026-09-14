@@ -7,18 +7,17 @@ import { Log } from "../util/log"
 /**
  * Versioned per-session search index (session-search P2). The index is an
  * optimization: a query reads one compact record per clean session instead of
- * streaming every message file. Correctness never depends on it — dirty,
+ * streaming every message record. Correctness never depends on it — dirty,
  * missing, or stale records fall back to the existing message scan path and
  * are rebuilt write-through.
  *
  * Write path: message/session mutations mark the owning session dirty via a
- * tiny marker file; the next search rebuilds lazily. Part streaming deltas
+ * small marker record; the next search rebuilds lazily. Part streaming deltas
  * (updatePartDelta) deliberately do NOT mark dirty — text/tool parts settle
  * into a message before Session.updateMessage fires, which is the single hook.
  *
  * Concurrency: markDirty (message writers) and commit/rebuild (search queries)
- * serialize on a per-session lock so a marker can never be cleared after a
- * newer write — the last writer wins and any interleaved rebuild observes it.
+ * use SQL revisions so a rebuild cannot clear a marker changed during its scan.
  */
 export namespace SessionSearchIndex {
   const log = Log.create({ service: "session.search-index" })
@@ -213,7 +212,10 @@ export namespace SessionSearchIndex {
   ): Promise<SearchIndexRecord | undefined> {
     const record = await Storage.read<SearchIndexRecord>(recordKey(scopeID, sessionID), {
       silentNotFound: true,
-    }).catch(() => undefined)
+    }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
     // A record from an older format lacks current semantics (e.g. nested tool
     // attachments); treat it as absent so the next query rescans and rebuilds
     // instead of trusting content that no longer matches the scan path.
@@ -223,7 +225,10 @@ export namespace SessionSearchIndex {
 
   export async function isDirty(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<boolean> {
     const marker = await Storage.read<DirtyMarker>(dirtyKey(scopeID, sessionID), { silentNotFound: true }).catch(
-      () => undefined,
+      (error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      },
     )
     return marker !== undefined
   }
@@ -232,11 +237,22 @@ export namespace SessionSearchIndex {
     await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker)
   }
 
+  export async function dirtyRevision(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<bigint> {
+    return Storage.snapshot(async (tx) => {
+      try {
+        return (await tx.versioned(dirtyKey(scopeID, sessionID))).revision
+      } catch (error) {
+        if (error instanceof Storage.NotFoundError) return 0n
+        throw error
+      }
+    })
+  }
+
   export async function commitRebuild(
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
     messages: IndexedMessage[],
-    opts?: { sinceMs?: number },
+    opts: { revision: bigint },
   ): Promise<void> {
     await Storage.transaction(async (tx) => {
       const record: SearchIndexRecord = {
@@ -248,9 +264,7 @@ export namespace SessionSearchIndex {
         messages,
       }
       await tx.write(recordKey(scopeID, sessionID), record)
-      const [marker] = await tx.readMany<DirtyMarker>([dirtyKey(scopeID, sessionID)])
-      if (!marker || (opts?.sinceMs !== undefined && marker.dirtyAt < opts.sinceMs))
-        await tx.remove(dirtyKey(scopeID, sessionID))
+      if ((await dirtyRevision(scopeID, sessionID)) === opts.revision) await tx.remove(dirtyKey(scopeID, sessionID))
     })
   }
 
@@ -264,20 +278,20 @@ export namespace SessionSearchIndex {
   /**
    * Rebuild a session's index record from its persisted messages and parts via
    * the canonical MessageV2 read path, then clear its dirty marker (guarded by
-   * the rebuild start time). Returns the fresh record.
+   * the dirty record revision). Returns the fresh record.
    */
   export async function rebuildSession(
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
   ): Promise<SearchIndexRecord> {
-    const startedAt = Date.now()
+    const revision = await dirtyRevision(scopeID, sessionID)
     const infos = await MessageV2.readInfoList({ scopeID, sessionID })
     const messages: IndexedMessage[] = []
     for (const info of infos) {
       const parts = await MessageV2.parts({ scopeID, sessionID, messageID: info.id })
       messages.push(messageEntryFromParts(info, parts))
     }
-    await commitRebuild(scopeID, sessionID, messages, { sinceMs: startedAt })
+    await commitRebuild(scopeID, sessionID, messages, { revision })
     log.debug("rebuilt session search index", { scopeID, sessionID, messages: messages.length })
     return {
       version: VERSION,
