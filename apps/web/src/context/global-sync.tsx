@@ -30,6 +30,7 @@ import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./globa
 import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planSessionVolatileResync } from "./session-volatile-resync"
+import { mergeIdKeyedSnapshot, mergeSessionStatusSnapshot } from "./scope-snapshot-merge"
 import { removeMaterializedInboxItems } from "../components/session/session-inbox-utils"
 import {
   parseSyncVersion,
@@ -272,6 +273,11 @@ function createGlobalSync() {
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
+  // Reactivity for the scope-store registry: consumers reading
+  // peekScopeState() re-run when a store is created or evicted, so a sidebar
+  // row that first observed `undefined` picks the store up once an event or
+  // prefetch creates it (the plain object below is invisible to Solid).
+  const [scopeRegistryVersion, setScopeRegistryVersion] = createSignal(0)
   const scopeRetention = createScopeRetention(releaseScopeState)
   let disposed = false
   const instanceRequestConcurrency = 2
@@ -453,6 +459,7 @@ function createGlobalSync() {
   }
 
   function peekScopeState(scopeKey: string) {
+    scopeRegistryVersion()
     return children[scopeKey]
   }
 
@@ -498,6 +505,7 @@ function createGlobalSync() {
         latestContextMessage: {},
         part: {},
       })
+      setScopeRegistryVersion((version) => version + 1)
       scheduleBootstrap(scopeKey)
     }
     scopeRetention.touch(scopeKey)
@@ -538,7 +546,10 @@ function createGlobalSync() {
 
   function releaseScopeState(scopeKey: string) {
     contextProjectionRevision.releaseScope(scopeKey)
-    delete children[scopeKey]
+    if (children[scopeKey]) {
+      delete children[scopeKey]
+      setScopeRegistryVersion((version) => version + 1)
+    }
     watermarks.delete(scopeKey)
     replayInFlight.delete(scopeKey)
     replayPending.delete(scopeKey)
@@ -896,6 +907,18 @@ function createGlobalSync() {
     headers: Pick<Headers, "get"> | undefined,
   ) {
     const sessions = data.sessions?.data.filter((session) => !!session?.id && !session.time?.archived)
+    // The server stamps the response sequence before reading snapshot
+    // fields, so a same-epoch response whose seq trails the scope's applied
+    // event watermark predates already-applied events. Events are
+    // authoritative for the buckets they write (session status/list, cortex
+    // tasks), so a stale snapshot merges instead of reconciling: local event
+    // state wins and the snapshot only fills gaps. A plain reconcile would
+    // delete e.g. a busy status for the rest of the turn, leaving the sidebar
+    // without the running icon.
+    const version = readSyncVersion(headers)
+    const watermark = watermarks.get(scopeKey)
+    const behindAppliedEvents =
+      !!version && !!watermark && version.epoch === watermark.epoch && version.seq < watermark.seq
     batch(() => {
       setStore("scopeID", data.scopeID)
       setStore("provider", internProviderList(data.provider))
@@ -903,13 +926,31 @@ function createGlobalSync() {
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
-      if (data.sessionStatus) setStore("session_status", reconcile(data.sessionStatus))
+      if (data.sessionStatus)
+        setStore(
+          "session_status",
+          reconcile(
+            behindAppliedEvents
+              ? mergeSessionStatusSnapshot(data.sessionStatus, store.session_status)
+              : data.sessionStatus,
+          ),
+        )
       if (sessions) {
-        setStore("session", reconcile(sessions, { key: "id" }))
-        setStore("sessionTotal", data.sessions!.total)
+        const nextSessions = behindAppliedEvents ? mergeIdKeyedSnapshot(sessions, store.session) : sessions
+        setStore("session", reconcile(nextSessions, { key: "id" }))
+        setStore(
+          "sessionTotal",
+          behindAppliedEvents ? Math.max(data.sessions!.total, nextSessions.length) : data.sessions!.total,
+        )
       }
       if (data.mcp) setStore("mcp", reconcile(data.mcp))
-      if (data.cortex) setStore("cortex", reconcile(data.cortex, { key: "id" }))
+      if (data.cortex)
+        setStore(
+          "cortex",
+          reconcile(behindAppliedEvents ? mergeIdKeyedSnapshot(data.cortex, store.cortex) : data.cortex, {
+            key: "id",
+          }),
+        )
       if (data.agenda) {
         setStore(
           "agenda",
@@ -923,7 +964,6 @@ function createGlobalSync() {
       if (data.vcs) setStore("vcs", reconcile(data.vcs))
     })
 
-    const version = readSyncVersion(headers)
     if (!version) return
     const current = watermarks.get(scopeKey)
     if (!current || current.epoch !== version.epoch || version.seq > current.seq) {
