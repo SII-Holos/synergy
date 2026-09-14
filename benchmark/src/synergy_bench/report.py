@@ -130,6 +130,14 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
         execution = result.get("execution") or {}
         variant = plan.get("variants", {}).get(item.get("variant"), {})
         task = plan.get("tasks", {}).get(item.get("task"), {})
+        config = plan.get("config", {})
+        policy_fields = [
+            "startup_timeout_seconds",
+            "cleanup_seconds",
+            "export_timeout_seconds",
+            "preparation_timeout_seconds",
+            "resources",
+        ]
         condition_fields = {
             "task_digest": task.get("digest"),
             "model": variant.get("model_profile", variant.get("model")),
@@ -140,6 +148,13 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "verifier_seconds": task.get("verifier_seconds"),
             "resources": task.get("resources"),
             "evaluator": plan.get("evaluator"),
+            "concurrency": plan.get("concurrency"),
+            "seed": config.get("seed"),
+            "docker": plan.get("host", {}).get("docker"),
+            "capacity": plan.get("host", {}).get("capacity"),
+            "execution_policy": {key: config[key] for key in policy_fields}
+            if all(key in config for key in policy_fields)
+            else None,
         }
         required = [
             "task_digest",
@@ -150,6 +165,11 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "verifier_seconds",
             "resources",
             "evaluator",
+            "concurrency",
+            "seed",
+            "docker",
+            "capacity",
+            "execution_policy",
         ]
         missing_conditions = [key for key in required if condition_fields[key] is None]
         conditions = None if missing_conditions else digest(condition_fields)

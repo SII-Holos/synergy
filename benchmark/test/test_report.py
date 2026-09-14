@@ -184,6 +184,52 @@ def test_incomplete_experiment_conditions_are_not_paired(tmp_path):
     assert len(compared["unpairable_right"]) == 1
 
 
+@pytest.mark.parametrize("change", [None, "concurrency", "docker", "capacity", "deadline", "policy", "seed", "missing"])
+def test_pairing_requires_matching_declared_execution_conditions(tmp_path, change):
+    from synergy_bench.storage import read_json
+
+    for name in ["left", "right"]:
+        root = tmp_path / name
+        fixture(root, [(1, 30)])
+        plan = read_json(root / "plan.json")
+        plan.update(
+            concurrency=4,
+            host={"docker": {"cpus": 8, "memory_bytes": 16000}, "capacity": {"cpus": 6, "memory_bytes": 12000}},
+            evaluator={"python": "same"},
+        )
+        plan["tasks"]["task"].update(
+            agent_seconds=900, verifier_seconds=300, resources={"cpus": 1, "memory_bytes": 1000}
+        )
+        plan["config"].update(
+            startup_timeout_seconds=120,
+            cleanup_seconds=60,
+            export_timeout_seconds=300,
+            preparation_timeout_seconds=1800,
+            resources={"reserve_cpus": 2},
+        )
+        if name == "right":
+            if change == "concurrency":
+                plan["concurrency"] = 6
+            elif change in {"docker", "capacity"}:
+                plan["host"][change]["memory_bytes"] += 1000
+            elif change == "deadline":
+                plan["config"]["startup_timeout_seconds"] = 60
+            elif change == "policy":
+                plan["config"]["resources"]["reserve_cpus"] = 1
+            elif change == "seed":
+                plan["config"]["seed"] += 1
+            elif change == "missing":
+                plan.pop("host")
+        atomic_json(root / "plan.json", plan)
+    left, right = [report_data(tmp_path / name)["scored"] for name in ["left", "right"]]
+    compared = paired_compare(left, right, samples=10)
+    assert compared["pairs"] == (1 if change is None else 0)
+    if change == "missing":
+        assert len(compared["unpairable_right"]) == 1
+    elif change:
+        assert len(compared["missing_left"]) == len(compared["missing_right"]) == 1
+
+
 def test_native_reward_can_include_auxiliary_verifier_metrics():
     from synergy_bench.report import reward_of
 

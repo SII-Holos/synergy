@@ -20,6 +20,8 @@ The [report](../../../../benchmark/src/synergy_bench/report.py) counts all retai
 
 Completed request usage is not a finalized attempt total while the attempt lacks terminal evidence. Live and interrupted snapshots retain the observed token lower bound and original per-request unknown count; they cannot assert complete consumption or invent an extra unknown request merely because the lifecycle is unfinished.
 
+Cross-run pairing also requires the same resolved concurrency, experiment seed, Docker quotas, reserved capacity and declared lifecycle/resource policy. These conditions affect contention and deadline behavior even when per-task limits match. Missing policy evidence makes a historical row unpairable; reports do not backfill current defaults into old experiments. Harness variants remain the treatment axis, while transient load observations are reported rather than treated as identical conditions.
+
 Native startup timeouts may create up to three automatic attempts only when native lifecycle evidence confirms no model execution, the entire request ledger is empty, the archive is complete and cleanup has no reported failure. Each attempt retains its terminal evidence, retry reason and 1/2-second backoff. Task startup budgets survive recovery; a new explicit doctor invocation records its own reason. Possible delivery, incomplete evidence and post-dispatch failures remain outside this path.
 
 Each attempt starts its own queue clock before resource admission. Prior execution and teardown never become the next attempt's queue latency; retry backoff remains a separately retained value.
