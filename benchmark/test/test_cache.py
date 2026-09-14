@@ -1,5 +1,6 @@
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -116,6 +117,32 @@ def test_budget_check_does_not_delete_unknown_cache_or_collect_during_execution(
     cache = tmp_path / "cache"
     with cache_activity(cache):
         assert enforce_budget(cache, budget_bytes=100, min_free_bytes=0)["remaining_bytes"] == 0
+
+
+def test_disk_reserve_failure_preserves_frozen_inputs_and_unowned_files(tmp_path, monkeypatch):
+    from synergy_bench.cache import enforce_budget, reference_run
+
+    cache = tmp_path / "cache"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "data").write_text("frozen")
+    frozen = publish(stage, cache, {"fixture": "protected"})
+    reference_run(cache, tmp_path / "run", artifacts=[frozen.name])
+    stage.mkdir()
+    (stage / "data").write_text("recyclable")
+    recyclable = publish(stage, cache, {"fixture": "recyclable"})
+    unowned = cache / "objects" / "shared"
+    unowned.mkdir()
+    (unowned / "data").write_text("unrelated")
+    free = [1]
+    monkeypatch.setattr("synergy_bench.cache.shutil.disk_usage", lambda _: SimpleNamespace(free=free[0]))
+    with pytest.raises(ValueError, match="protected inputs"):
+        enforce_budget(cache, budget_bytes=1000000, min_free_bytes=20)
+    assert not recyclable.exists()
+    assert (frozen / "data").read_text() == "frozen"
+    assert (unowned / "data").read_text() == "unrelated"
+    free[0] = 20
+    assert enforce_budget(cache, budget_bytes=1000000, min_free_bytes=20)["removed"] == []
 
 
 def test_directory_receipt_precedes_publication_and_survives_interruption(tmp_path):

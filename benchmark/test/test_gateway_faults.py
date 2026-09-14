@@ -1,6 +1,8 @@
 import asyncio
+import errno
 import os
 import signal
+import socket
 import sys
 
 import aiohttp
@@ -91,6 +93,74 @@ async def test_proxy_failure_is_durable_before_any_provider_response(tmp_path, m
     record = read_ledger(tmp_path)[0]
     assert record["status"] == "failed" and record["usage"] is None
     assert (tmp_path / record["id"] / "upstream.bin").exists()
+
+
+async def test_dns_failure_retains_one_unknown_request_without_proxy(tmp_path, monkeypatch):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    monkeypatch.setenv("NO_PROXY", "*")
+    monkeypatch.setenv("no_proxy", "*")
+    loop = asyncio.get_running_loop()
+    original = loop.getaddrinfo
+    lookups = []
+
+    async def resolve(host, *args, **kwargs):
+        if host == "unresolvable.invalid":
+            lookups.append(host)
+            raise socket.gaierror(socket.EAI_NONAME, "deterministic DNS failure")
+        return await original(host, *args, **kwargs)
+
+    monkeypatch.setattr(loop, "getaddrinfo", resolve)
+    async with Gateway(model("http://unresolvable.invalid/v1"), tmp_path, bind="127.0.0.1") as gateway:
+        async with aiohttp.ClientSession(trust_env=False) as client:
+            async with client.post(
+                gateway.url + "/chat/completions",
+                headers={"Authorization": "Bearer " + gateway.token},
+                json={"model": "fixture-one", "messages": []},
+            ) as response:
+                assert response.status == 502
+    records = read_ledger(tmp_path)
+    assert lookups == ["unresolvable.invalid"]
+    assert len(records) == 1 and records[0]["status"] == "failed"
+    assert records[0]["usage"] is None and records[0]["http_status"] is None
+    assert aggregate_usage(records)["tokens"]["total"]["unknown"] == 1
+    assert (tmp_path / records[0]["id"] / "upstream.bin").exists()
+
+
+async def test_disk_full_before_dispatch_never_calls_provider_or_discards_prior_evidence(tmp_path, monkeypatch):
+    from synergy_bench.storage import atomic_json
+
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    calls = []
+
+    async def handler(request):
+        calls.append(await request.json())
+        return web.json_response({"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}})
+
+    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+        async with aiohttp.ClientSession() as client:
+            options = {
+                "headers": {"Authorization": "Bearer " + gateway.token},
+                "json": {"model": "fixture-one", "messages": []},
+            }
+            async with client.post(gateway.url + "/chat/completions", **options) as response:
+                assert response.status == 200
+                await response.read()
+            prior = read_ledger(tmp_path)
+            prior_bytes = (tmp_path / prior[0]["id"] / "request.json").read_bytes()
+
+            def persist(path, value):
+                if path.name == "request.json":
+                    raise OSError(errno.ENOSPC, "deterministic disk full")
+                atomic_json(path, value)
+
+            monkeypatch.setattr("synergy_bench.gateway.atomic_json", persist)
+            async with client.post(gateway.url + "/chat/completions", **options) as response:
+                assert response.status == 500
+                await response.read()
+    assert len(calls) == 1
+    assert read_ledger(tmp_path) == prior
+    assert (tmp_path / prior[0]["id"] / "request.json").read_bytes() == prior_bytes
+    assert len(list(tmp_path.glob("*/upstream.bin"))) == 2
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX parent kill contract")
