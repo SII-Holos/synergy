@@ -52,6 +52,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0013 | Short native probes missed OpenCode runtime stalls under Rosetta | mitigated | 2026-09-14 |
 | 0014 | Benchmark recopied instructions into their existing bind mount | implemented | 2026-09-14 |
 | 0015 | Repeated normalization erased reasoning | implemented | 2026-09-14 |
+| 0016 | Stale frame invalidated DOOM verifier | implemented | 2026-09-15 |
 
 ## History rules
 

@@ -1,0 +1,26 @@
+--- a/tests/test_outputs.py
++++ b/tests/test_outputs.py
+@@ -15,2 +15,6 @@
+     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmp_stdout:
++        frame_path = Path("/tmp/frame.bmp")
++        frame_path.unlink(missing_ok=True)
++        expected_text = b"I_InitGraphics: DOOM screen size: w x h: 320 x 200"
++
+         # Start vm.js in a subprocess
+@@ -24,3 +28,2 @@
+         # Wait for the frame.bmp file to be created
+-        frame_path = Path("/tmp/frame.bmp")
+         timeout = 30  # 30 seconds timeout
+@@ -28,6 +31,6 @@
+
+-        while not frame_path.exists():
++        while not frame_path.exists() or expected_text not in Path(tmp_stdout.name).read_bytes():
+             if time.time() - start_time > timeout:
+                 process.kill()
+-                raise TimeoutError("Timeout waiting for frame.bmp to be created")
++                raise TimeoutError("Timeout waiting for fresh DOOM initialization and frame")
+             time.sleep(0.1)
+@@ -55,3 +58,2 @@
+     # Check that the DOOM initialization text is present
+-    expected_text = b"I_InitGraphics: DOOM screen size: w x h: 320 x 200"
+     error_msg = "Expected text not found in output"

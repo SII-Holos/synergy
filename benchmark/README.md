@@ -53,7 +53,7 @@ bun bench clean /absolute/path/to/run
 | `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                             |
 | `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                           |
 | `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始 |
-| `probe_timeout_seconds`                      | 原生工具预检的独立模型执行期限，默认 120 秒；不改变正式解题或判题期限          |
+| `probe_timeout_seconds`                      | 原生工具预检的独立模型执行期限，默认 120 秒；不改变正式解题或判题期限            |
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。平台实现不绑定该模型或智谱端点。
 
@@ -86,6 +86,8 @@ bindings 文件需要完整 `models`，以及旧 `provider/model` 到新模型�
 Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree/0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea)、[Terminal-Bench 锁定源码](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b)、[Pier 0.3.1](https://pypi.org/project/datacurve-pier/0.3.1/)。上游内容下载到 ignored cache，完整 checkout 保留许可证。
 
 原始 instruction、镜像语义、资源、期限、网络、collect hook 和 verifier 不被改写。DeepSWE 使用独立 verifier，原生 hook 收集基于 HEAD 的 patch；要求提交的任务不会由评测器代为提交。模型破坏环境后不在判题前偷偷修复。`oracle` 使用 Pier 原生 OracleAgent 在独立环境逐题验证参考解和 verifier，失败题保留在清单中。`oracle-resume --recorded-evaluator` 核对已完成证据或保留中断结果，不自动重新判题。
+
+已验证的上游判题缺陷可保存为 [显式任务补丁](patches/README.md)，仅用于具有独立输入摘要的修正实验；默认清单和 runner 不自动应用。原生 reward、修正验证和源码重建验证分别记录。
 
 模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。预检不能预置解题依赖、答案或 oracle 产物。
 
