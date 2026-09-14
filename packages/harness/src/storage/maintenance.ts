@@ -44,13 +44,17 @@ export namespace StorageMaintenance {
       const handle = { store: prepared.store, artifactDirectory: Global.Path.data }
       uninstall = Storage.install(handle)
       await SessionStaging.recover()
-      if (options.migrate !== false) {
-        await ensureMigrations({ output: "silent" })
-        if (prepared.manifest.phase !== "active") await StorageRecovery.validate()
-        await prepared.activate()
+      const pending = prepared
+      const activate = async () => {
+        if (pending.manifest.phase !== "active") await StorageRecovery.validate()
+        await pending.activate()
         await StorageRecovery.recoverOwners()
       }
-      return { ...handle, manifest: prepared.manifest, close, [Symbol.asyncDispose]: close }
+      if (options.migrate !== false) {
+        await ensureMigrations({ output: "silent" })
+        await activate()
+      }
+      return { ...handle, manifest: prepared.manifest, activate, close, [Symbol.asyncDispose]: close }
     } catch (error) {
       await close()
       throw error

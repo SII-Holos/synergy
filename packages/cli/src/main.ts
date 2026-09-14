@@ -228,7 +228,18 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
   process.on("uncaughtException", onException)
   try {
     if (argv.length === 0 && !options.defaultCommand) cli.showHelp()
-    else await cli.parse()
+    else {
+      const parsed = await cli.parse()
+      if (
+        parsed._.length === 2 &&
+        parsed._[0] === "migration" &&
+        parsed._[1] === "run" &&
+        !parsed["dry-run"] &&
+        storage &&
+        "activate" in storage
+      )
+        await storage.activate()
+    }
   } catch (e) {
     let data: Record<string, unknown> = {}
     if (e instanceof NamedError) {
