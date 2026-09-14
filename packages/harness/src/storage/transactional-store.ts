@@ -172,6 +172,12 @@ export class StoreTransaction {
 
   async write<T>(key: string[], value: T, options: { expectedRevision?: bigint } = {}): Promise<void> {
     this.check(true)
+    if (key[0] === "sessions" && key.length >= 4) await this.assertNotDeleted([...key.slice(0, 3), "info"])
+    await this.put(key, value, options)
+  }
+
+  private async put<T>(key: string[], value: T, options: { expectedRevision?: bigint } = {}): Promise<void> {
+    this.check(true)
     if (!key.length) throw new StorageIntegrityError("Cannot write the storage root")
     const previous = await this.row(key)
     const revision = previous ? BigInt(previous.revision) : 0n
@@ -221,10 +227,12 @@ export class StoreTransaction {
     )
   }
 
+  // SQLite must drive recursion from the frontier to use both columns of the parent index.
+  // CROSS JOIN prevents a namespace-wide node scan for every visited node.
   async scan(prefix: string[]): Promise<string[]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { child: string }>(
-      "WITH RECURSIVE tree(key_id, child) AS (SELECT key_id, segment FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id, tree.child FROM storage_nodes node JOIN tree ON node.parent_id = tree.key_id WHERE node.namespace = ?) SELECT DISTINCT tree.child FROM tree JOIN storage_records record ON record.key_id = tree.key_id AND record.namespace = ? WHERE record.body IS NOT NULL",
+      "WITH RECURSIVE tree(key_id, child) AS (SELECT key_id, segment FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id, tree.child FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT DISTINCT tree.child FROM tree JOIN storage_records record ON record.key_id = tree.key_id AND record.namespace = ? WHERE record.body IS NOT NULL",
       [this.namespace, keyID(prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => row.child).sort()
@@ -233,7 +241,7 @@ export class StoreTransaction {
   async list(prefix: string[]): Promise<string[][]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { key_text: string }>(
-      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM storage_nodes node JOIN tree ON node.parent_id = tree.key_id WHERE node.namespace = ?) SELECT record.key_text FROM tree JOIN storage_records record ON record.key_id = tree.key_id AND record.namespace = ? WHERE record.body IS NOT NULL",
+      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT record.key_text FROM tree JOIN storage_records record ON record.key_id = tree.key_id AND record.namespace = ? WHERE record.body IS NOT NULL",
       [this.namespace, keyID(prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => JSON.parse(row.key_text) as string[]).sort()
@@ -249,7 +257,7 @@ export class StoreTransaction {
       return
     }
     await this.connection.query(
-      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM storage_nodes node JOIN tree ON node.parent_id = tree.key_id WHERE node.namespace = ?) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
+      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
       [this.namespace, keyID(prefix), this.namespace, Date.now(), this.namespace],
     )
   }
@@ -351,7 +359,7 @@ export class StoreTransaction {
       if (BigInt(entry.revision) > 9223372036854775807n) throw new StorageIntegrityError("Unsupported record revision")
       if ((await this.readMany([entry.key]))[0] !== undefined)
         throw new StorageConflictError("Portable record conflicts with existing target data")
-      await this.write(entry.key, entry.value)
+      await this.put(entry.key, entry.value)
       await this.connection.query(
         "UPDATE storage_records SET revision = CASE WHEN revision > ? THEN revision ELSE ? END WHERE namespace = ? AND key_id = ?",
         [BigInt(entry.revision), BigInt(entry.revision), this.namespace, keyID(entry.key)],

@@ -429,6 +429,7 @@ test("legacy monolithic config with a retired root key stays intact as a migrati
     await expect(Config.globalRaw()).rejects.toThrow()
     expect(JSON.parse(await Bun.file(legacy).text())).toEqual({ auto_classifier: true, theme: "test_theme" })
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
     // The lazy global cache is still holding the rejected load from the
@@ -1380,6 +1381,7 @@ test("migrates legacy channel holos config to top-level holos", async () => {
 }`,
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1431,6 +1433,7 @@ test("removes legacy channel holos config when top-level holos already exists", 
 }`,
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1464,6 +1467,7 @@ test("migrates legacy auto_classifier config to smartAllow", async () => {
 }`,
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1495,6 +1499,7 @@ test("migrates project permissions domain auto_classifier config to smartAllow",
     )
 
     process.chdir(project)
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1530,6 +1535,7 @@ test("removes deprecated autoupdate from monolithic and domain configs", async (
     await Bun.write(projectGeneral, `{"autoupdate": true, "snapshot": false}`)
 
     process.chdir(project)
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1568,6 +1574,7 @@ test("removes deprecated providerCatalog from monolithic and domain configs", as
     await Bun.write(projectProviders, `{"providerCatalog": {"enabled": false}, "enabled_providers": ["legacy"]}`)
 
     process.chdir(project)
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1602,11 +1609,10 @@ test("removes deprecated providerCatalog from persisted project scopes", async (
     await Bun.write(providersFile, `{"providerCatalog": {"enabled": true}, "enabled_providers": ["legacy"]}`)
     await fs.mkdir(path.join(projectB, ".synergy", "synergy.d"), { recursive: true })
 
-    const dataDir = path.join(home, ".synergy", "data", "projects")
-    await fs.mkdir(dataDir, { recursive: true })
-    await Bun.write(path.join(dataDir, "scope-record.json"), JSON.stringify({ worktree: projectA }))
+    await Storage.write(["projects", "scope-record"], { worktree: projectA })
 
     process.chdir(projectB)
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1671,6 +1677,7 @@ test("migrates legacy identity config to valid library config", async () => {
 }`,
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1747,6 +1754,7 @@ test("migrates legacy engram domain config to library and general domains", asyn
       }),
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1789,6 +1797,7 @@ test("repairs invalid library shapes written by legacy identity migration", asyn
       }),
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 
@@ -1835,6 +1844,7 @@ test("provider profile normalize migration rewrites known provider aliases", asy
       }),
     )
 
+    await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
     resetMigrations()
     await runMigrations({ targetDomain: "config" })
 

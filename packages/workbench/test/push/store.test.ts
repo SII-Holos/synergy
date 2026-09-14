@@ -1,3 +1,4 @@
+import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
@@ -18,15 +19,34 @@ async function withIsolatedHome<T>(fn: () => Promise<T>): Promise<T> {
   const home = path.join(tmp.path, "home")
   process.env.SYNERGY_TEST_HOME = home
   await fs.mkdir(home, { recursive: true })
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace: "push-test",
+    filename: path.join(home, "authority.sqlite"),
+  })
   try {
-    return await ScopeContext.provide({ scope: Scope.home(), fn })
+    return await Storage.provide({ store, artifactDirectory: path.join(home, ".synergy", "data") }, () =>
+      ScopeContext.provide({ scope: Scope.home(), fn }),
+    )
   } finally {
+    await store.close()
     if (previous === undefined) delete process.env.SYNERGY_TEST_HOME
     else process.env.SYNERGY_TEST_HOME = previous
   }
 }
 
 describe("PushStore", () => {
+  test("preserves the existing VAPID credential when authority moves to SQL", async () => {
+    await withIsolatedHome(async () => {
+      const pair = { publicKey: "existing-public-key", privateKey: "existing-private-key" }
+      await Storage.writeJsonAtomic(path.join(Global.Path.data, "push/vapid.json"), JSON.stringify(pair), {
+        private: true,
+      })
+      expect(await PushStore.vapidKeys()).toEqual(pair)
+      expect(await Storage.readMany([StoragePath.pushVapid()])).toEqual([undefined])
+    })
+  })
+
   test("round-trips subscriptions", async () => {
     await withIsolatedHome(async () => {
       const created = await PushStore.upsert({
@@ -82,7 +102,7 @@ describe("PushStore", () => {
       const first = await PushStore.vapidKeys()
       expect(first.publicKey).toBeTruthy()
       expect(first.privateKey).toBeTruthy()
-      const persisted = await Storage.read<{ publicKey: string; privateKey: string }>(StoragePath.pushVapid())
+      const persisted = await Bun.file(path.join(Global.Path.data, "push/vapid.json")).json()
       expect(persisted).toEqual(first)
       const second = await PushStore.vapidKeys()
       expect(second).toEqual(first)
@@ -113,8 +133,11 @@ describe("PushStore", () => {
       if (process.platform !== "win32") {
         const vapidMode = (await fs.stat(path.join(dataRoot, "push/vapid.json"))).mode
         expect(vapidMode & 0o777).toBe(0o600)
-        const subMode = (await fs.stat(path.join(dataRoot, `push/subscriptions/${sub.id}.json`))).mode
-        expect(subMode & 0o777).toBe(0o600)
+        const store = Storage.current().store
+        if (store.options.backend !== "sqlite") throw new Error("Expected isolated SQLite fixture")
+        expect((await fs.stat(store.options.filename)).mode & 0o777).toBe(0o600)
+        expect(await Bun.file(path.join(dataRoot, `push/subscriptions/${sub.id}.json`)).exists()).toBe(false)
+        expect(await Storage.read(StoragePath.pushSubscription(sub.id))).toMatchObject({ id: sub.id })
       }
     })
   })

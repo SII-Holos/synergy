@@ -72,3 +72,21 @@ test("notification failure does not turn a confirmed commit into a retryable wri
     expect(lastObserver).toBe(true)
   })
 })
+
+test("deleted sessions reject delayed rollout and inbox writes in the same transaction", async () => {
+  await Storage.provide({ store, artifactDirectory: root }, async () => {
+    const session = ["sessions", "scope_deleted", "ses_deleted"]
+    await Storage.write([...session, "info"], { id: "ses_deleted" })
+    await Storage.removeTree(session)
+    for (const suffix of [["rollout", "journal", "head"], ["inbox", "late"], ["info"]]) {
+      await expect(
+        Storage.transaction(async () => {
+          await Storage.write(["unrelated", "late-owner"], true)
+          await Storage.write([...session, ...suffix], { delayed: true })
+        }),
+      ).rejects.toThrow("deleted")
+    }
+    expect(await Storage.list(session)).toEqual([])
+    expect(await Storage.readMany([["unrelated", "late-owner"]])).toEqual([undefined])
+  })
+})

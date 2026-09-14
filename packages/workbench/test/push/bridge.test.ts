@@ -1,3 +1,5 @@
+import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -43,9 +45,17 @@ async function withIsolatedHome<T>(fn: () => Promise<T>): Promise<T> {
   const home = path.join(tmp.path, "home")
   process.env.SYNERGY_TEST_HOME = home
   await fs.mkdir(home, { recursive: true })
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace: "push-test",
+    filename: path.join(home, "authority.sqlite"),
+  })
   try {
-    return await ScopeContext.provide({ scope: Scope.home(), fn })
+    return await Storage.provide({ store, artifactDirectory: path.join(home, ".synergy", "data") }, () =>
+      ScopeContext.provide({ scope: Scope.home(), fn }),
+    )
   } finally {
+    await store.close()
     if (previous === undefined) delete process.env.SYNERGY_TEST_HOME
     else process.env.SYNERGY_TEST_HOME = previous
   }

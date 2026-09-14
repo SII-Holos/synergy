@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
@@ -195,11 +196,26 @@ export async function copyDirSkipExisting(
   // Shared mutable counters so recursive calls accumulate correctly
   const acc = { copied: 0, skipped: 0 }
 
+  async function exists(filename: string) {
+    return fs.lstat(filename).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return false
+        throw error
+      },
+    )
+  }
+
   async function walk(currentSrc: string, currentDst: string) {
+    if (await exists(currentDst)) {
+      if ((await fs.lstat(currentDst)).isSymbolicLink())
+        throw new Error("Data copy cannot traverse a destination symbolic link")
+    }
     await fs.mkdir(currentDst, { recursive: true })
     const entries = await fs.readdir(currentSrc, { withFileTypes: true })
 
     for (const entry of entries) {
+      if (entry.name.startsWith(".synergy-copy-")) continue
       const srcPath = path.join(currentSrc, entry.name)
       const dstPath = path.join(currentDst, entry.name)
       const relative = path.relative(src, srcPath)
@@ -208,15 +224,29 @@ export async function copyDirSkipExisting(
       if (entry.isDirectory()) {
         await walk(srcPath, dstPath)
       } else if (entry.isFile()) {
-        const exists = await fs
-          .access(dstPath)
-          .then(() => true)
-          .catch(() => false)
-        if (exists) {
+        if (await exists(dstPath)) {
           acc.skipped++
         } else {
-          await fs.copyFile(srcPath, dstPath)
-          acc.copied++
+          const temporary = path.join(currentDst, `.synergy-copy-${randomUUID()}`)
+          try {
+            await fs.copyFile(srcPath, temporary, fsSync.constants.COPYFILE_EXCL)
+            const handle = await fs.open(temporary, "r")
+            try {
+              await handle.sync()
+            } finally {
+              await handle.close()
+            }
+            // Publish a complete file without replacing a concurrent destination.
+            try {
+              await fs.link(temporary, dstPath)
+              acc.copied++
+            } catch (error) {
+              if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") acc.skipped++
+              else throw error
+            }
+          } finally {
+            await fs.rm(temporary, { force: true })
+          }
         }
         if (onProgress && totalFiles) {
           onProgress({
@@ -227,11 +257,7 @@ export async function copyDirSkipExisting(
           })
         }
       } else if (entry.isSymbolicLink()) {
-        const exists = await fs
-          .access(dstPath)
-          .then(() => true)
-          .catch(() => false)
-        if (exists) {
+        if (await exists(dstPath)) {
           acc.skipped++
         } else {
           const linkTarget = await fs.readlink(srcPath)
@@ -246,6 +272,14 @@ export async function copyDirSkipExisting(
             currentFile: path.relative(rootSrc!, srcPath),
           })
         }
+      }
+    }
+    if (process.platform !== "win32") {
+      const directory = await fs.open(currentDst, "r")
+      try {
+        await directory.sync()
+      } finally {
+        await directory.close()
       }
     }
   }

@@ -839,19 +839,22 @@ export namespace Session {
     return withClientInfo(info)
   })
 
-  // This queue orders completion mutations with their completion events. Canonical writes still use SessionMutation.
-  const completionNoticeMutations = new Map<string, Promise<void>>()
+  // Acquire this publication queue before SQL; a transaction must never wait
+  // on a queued mutation that needs the same SQL writer.
+  const completionNoticeMutations = Storage.state(() => new Map<string, Promise<void>>())
 
   function serializeCompletionNoticeMutation<T>(id: string, mutation: () => Promise<T>): Promise<T> {
-    const previous = completionNoticeMutations.get(id) ?? Promise.resolve()
+    if (Storage.inTransaction()) return mutation()
+    const queue = completionNoticeMutations()
+    const previous = queue.get(id) ?? Promise.resolve()
     const current = previous.then(mutation, mutation)
     const settled = current.then(
       () => undefined,
       () => undefined,
     )
-    completionNoticeMutations.set(id, settled)
+    queue.set(id, settled)
     void settled.finally(() => {
-      if (completionNoticeMutations.get(id) === settled) completionNoticeMutations.delete(id)
+      if (queue.get(id) === settled) queue.delete(id)
     })
     return current
   }
@@ -897,12 +900,12 @@ export namespace Session {
     acknowledgedCount: number,
     options?: { repairNavOnNoop?: boolean },
   ) {
-    return Storage.transaction(async () => {
-      if (!Number.isSafeInteger(acknowledgedCount) || acknowledgedCount < 0) {
-        throw new TypeError("acknowledgedCount must be a non-negative safe integer")
-      }
+    return serializeCompletionNoticeMutation(id, () =>
+      Storage.transaction(async () => {
+        if (!Number.isSafeInteger(acknowledgedCount) || acknowledgedCount < 0) {
+          throw new TypeError("acknowledgedCount must be a non-negative safe integer")
+        }
 
-      return serializeCompletionNoticeMutation(id, async () => {
         const session = await SessionManager.requireSession(id)
         const scope = session.scope as Scope
         const scopeID = asScopeID(scope.id)
@@ -923,8 +926,8 @@ export namespace Session {
         const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
         await publishInfo(SessionEvent.Updated, result, navEntry)
         return { info: await withRuntimeInfo(result), acknowledgedCount: actualAcknowledgedCount }
-      })
-    })
+      }),
+    )
   }
 
   export async function acknowledgeCompletionNotice(id: string, acknowledgedCount: number) {
@@ -956,21 +959,23 @@ export namespace Session {
   }
 
   export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
-    return serializeCompletionNoticeMutation(id, async () => {
-      let unreadCount: number | undefined
-      const result = await update(id, (draft) => {
-        if (draft.time.archived || draft.completionNotice.silent) return
-        const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
-        const next = Math.min(Number.MAX_SAFE_INTEGER, current + 1)
-        draft.completionNotice.unread = true
-        draft.completionNotice.unreadCount = next
-        if (next !== current) unreadCount = next
-      })
-      if (unreadCount !== undefined && options?.publishEvent !== false) {
-        await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
-      }
-      return result
-    })
+    return serializeCompletionNoticeMutation(id, () =>
+      Storage.transaction(async () => {
+        let unreadCount: number | undefined
+        const result = await update(id, (draft) => {
+          if (draft.time.archived || draft.completionNotice.silent) return
+          const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+          const next = Math.min(Number.MAX_SAFE_INTEGER, current + 1)
+          draft.completionNotice.unread = true
+          draft.completionNotice.unreadCount = next
+          if (next !== current) unreadCount = next
+        })
+        if (unreadCount !== undefined && options?.publishEvent !== false) {
+          await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+        }
+        return result
+      }),
+    )
   }
 
   async function updateInternal(

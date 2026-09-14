@@ -17,6 +17,7 @@ async function inspect() {
   Config.schema().strict().parse(config)
   const experiment = process.argv[4] ? Experiment.File.parse(await Bun.file(process.argv[4]).json()) : undefined
   let measured: unknown
+  const runtime = process.argv[5] ? await composition.open({ mode: "oneshot" }) : undefined
   try {
     if (process.argv[5])
       measured = await ScopeContext.provide({
@@ -60,7 +61,8 @@ async function inspect() {
       }),
     )
   } finally {
-    await ScopeRuntime.disposeAll()
+    if (runtime) await runtime.close()
+    else await ScopeRuntime.disposeAll()
   }
 }
 
