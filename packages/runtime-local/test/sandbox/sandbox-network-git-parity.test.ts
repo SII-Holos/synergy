@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import * as fs from "node:fs"
-import * as os from "node:os"
 import * as path from "node:path"
 import { buildPermissionProfile } from "@ericsanchezok/synergy-harness/sandbox/policy-engine"
 import {
@@ -9,6 +8,7 @@ import {
   gitProtectedSubpaths,
   macosPlatformReadRoots,
   READ_DENY_PATHS,
+  readDenyHomeDirs,
 } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { MacBackend } from "../../src/sandbox/macos"
 import { MacOSPolicy } from "../../src/sandbox/macos-policy"
@@ -204,15 +204,16 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     })
     const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
     MacBackend.cleanupTemp(wrapper.tempPath!)
-    const homedir = os.homedir()
     const expected = new Set(
-      READ_DENY_PATHS(homedir).map((p) => {
-        try {
-          return fs.realpathSync(p)
-        } catch {
-          return p
-        }
-      }),
+      readDenyHomeDirs().flatMap((home) =>
+        READ_DENY_PATHS(home).map((p) => {
+          try {
+            return fs.realpathSync(p)
+          } catch {
+            return p
+          }
+        }),
+      ),
     )
     const denyLines = sbpl.split("\n").filter((line) => line.startsWith("(deny file-read*"))
     expect(denyLines.length).toBeGreaterThan(0)

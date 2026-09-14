@@ -11,7 +11,10 @@ import { MacOSPolicy } from "../../src/sandbox/macos-policy"
 // Deny-list read model of the macOS deny-default backend: file reads are
 // allowed globally and only credential-bearing locations stay denied.
 // Write containment is unchanged — writes are denied everywhere except the
-// parameterized writable roots.
+// parameterized writable roots. A deny containing the workspace stays in
+// the profile: the deeper writable-root parameter allow wins under
+// most-specific-match, so a workspace nested in a credential directory
+// works while sibling credentials stay unreadable.
 //
 // Run with:
 //   cd packages/runtime-local && bun test test/sandbox/read-denylist.test.ts
@@ -36,10 +39,10 @@ function profileFor(ws: string, readDenyPaths: string[]) {
 }
 
 describe("policy-engine read deny scope", () => {
-  test("readDenyPaths drop entries under the workspace and writable roots", () => {
+  test("readDenyPaths drop entries equal to or inside the workspace and writable roots", () => {
     const homedir = os.homedir()
-    // A project rooted at a credential path keeps its own files readable —
-    // the deny entry for that path is excluded from the compiled profile.
+    // A project rooted exactly at a credential path keeps its own files
+    // readable — the deny entry for that path is excluded.
     const ws = path.join(homedir, ".ssh")
     const p = buildPermissionProfile({
       workspace: ws,
@@ -55,11 +58,12 @@ describe("policy-engine read deny scope", () => {
     expect(p.fileSystem.readDenyPaths).toContain(path.join(homedir, ".gnupg"))
   })
 
-  test("readDenyPaths drop entries containing the workspace (ancestor collision)", () => {
+  test("readDenyPaths keep the ancestor deny for a nested workspace (carve-out)", () => {
     const homedir = os.homedir()
-    // A workspace nested under a credential directory must not collide with
-    // the deny on its ancestor: the writable-root allow wins and the deny
-    // entry is dropped.
+    // A workspace nested under a credential directory keeps the ancestor
+    // deny: the compiled writable-root parameter allow is deeper than the
+    // subpath deny and wins under most-specific-match, so credential
+    // siblings stay unreadable while the project itself works.
     const ws = path.join(homedir, ".ssh", "proj")
     const p = buildPermissionProfile({
       workspace: ws,
@@ -70,7 +74,7 @@ describe("policy-engine read deny scope", () => {
       approvedNetwork: false,
       approvedUnixSockets: [],
     })
-    expect(p.fileSystem.readDenyPaths).not.toContain(path.join(homedir, ".ssh"))
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(homedir, ".ssh"))
     expect(p.fileSystem.readDenyPaths).toContain(path.join(homedir, ".aws"))
   })
 })
@@ -145,6 +149,54 @@ describe("real sandbox-exec read deny-list behavior (darwin)", () => {
       // Writes: host paths outside the writable roots stay blocked.
       expect(out).toContain("host-write-blocked")
       expect(fs.existsSync(hostOut)).toBe(false)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("nested workspace carves out of an ancestor credential deny", () => {
+    if (process.platform !== "darwin") return
+    if (!fs.existsSync("/usr/bin/sandbox-exec")) return
+
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "synergy-rdlx-")))
+    try {
+      const creds = path.join(root, "creds")
+      const ws = path.join(creds, "proj")
+      const siblingKey = path.join(creds, "id_rsa")
+      const projFile = path.join(ws, "existing.txt")
+      fs.mkdirSync(ws, { recursive: true })
+      fs.writeFileSync(siblingKey, "PRIVATE\n")
+      fs.writeFileSync(projFile, "data\n")
+
+      // The ancestor credential directory is denied; the workspace nested
+      // inside it is the writable root.
+      const profile = profileFor(ws, [creds])
+      const sbpl = MacOSPolicy.compileProfile(profile)
+      const params = MacOSPolicy.generateParams(profile)
+      const sbPath = path.join(root, "probe.sb")
+      fs.writeFileSync(sbPath, sbpl)
+      const dArgs = Object.entries(params).flatMap(([k, v]) => ["-D", `${k}=${v}`])
+
+      const q = (p: string) => JSON.stringify(p)
+      const cmd = [
+        `cat ${q(siblingKey)} >/dev/null 2>&1 && echo sibling-read || echo sibling-blocked`,
+        `cat ${q(projFile)} >/dev/null 2>&1 && echo proj-read || echo proj-blocked`,
+        `echo x > ${q(path.join(ws, "w.txt"))} && echo proj-write-ok`,
+      ].join("; ")
+
+      const proc = Bun.spawnSync(["sandbox-exec", "-f", sbPath, ...dArgs, "/bin/sh", "-c", cmd], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const out = proc.stdout.toString()
+      // The ancestor deny stays effective for sibling credentials.
+      expect(out).toContain("sibling-blocked")
+      expect(out).not.toContain("sibling-read")
+      // The nested workspace is readable and writable through its deeper
+      // parameterized allow — most-specific-match beats the ancestor deny.
+      expect(out).toContain("proj-read")
+      expect(out).toContain("proj-write-ok")
+      expect(fs.existsSync(path.join(ws, "w.txt"))).toBe(true)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
