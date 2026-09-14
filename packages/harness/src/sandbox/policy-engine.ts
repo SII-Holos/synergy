@@ -6,9 +6,11 @@ import {
   gitProtectedSubpaths,
   protectedMetadataUnderWritableRoot,
   PROTECTED_METADATA_PATH_NAMES,
+  READ_DENY_PATHS,
   uniqueRoots,
   isMetadataWriteDenied,
 } from "./policy"
+import { normalizeSlashes } from "../util/path"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "sandbox-policy-engine" })
@@ -23,6 +25,7 @@ export interface SynergyFileSystemSandboxPolicy {
   protectedMetadataNames: string[]
   protectedPaths: string[]
   dataDenyRoots: string[]
+  readDenyPaths?: string[]
   includePlatformDefaults: boolean
   workspace: string
 }
@@ -140,6 +143,21 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     readableRoots.push(input.executionCwd)
   }
 
+  // Deny-list read model (macOS deny-default backend): reads are allowed
+  // globally and only credential-bearing locations stay denied. Entries
+  // equal to, inside, or containing the workspace or a writable root are
+  // excluded — a project's own files (e.g. a workspace under ~/.ssh) must
+  // stay readable instead of colliding with the writable-root allow.
+  const readDenyScope = [input.workspace, ...writableRoots].map((root) => normalizeSlashes(root))
+  const readDenyPaths = READ_DENY_PATHS(homedir).filter((p) => {
+    const normalized = normalizeSlashes(p)
+    return !readDenyScope.some(
+      (root) =>
+        root === normalized ||
+        normalized.startsWith(root + "/") ||
+        (root.startsWith(normalized + "/") && normalized !== "/"),
+    )
+  })
   const fileSystem: SynergyFileSystemSandboxPolicy = {
     readableRoots,
     writableRoots,
@@ -148,6 +166,7 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     protectedMetadataNames: protectedNames,
     protectedPaths,
     dataDenyRoots,
+    readDenyPaths,
     includePlatformDefaults: true,
     workspace: input.workspace,
   }

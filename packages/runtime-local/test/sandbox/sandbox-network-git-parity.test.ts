@@ -8,6 +8,7 @@ import {
   defaultRuntimeReadRoots,
   gitProtectedSubpaths,
   macosPlatformReadRoots,
+  READ_DENY_PATHS,
 } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { MacBackend } from "../../src/sandbox/macos"
 import { MacOSPolicy } from "../../src/sandbox/macos-policy"
@@ -171,7 +172,7 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     expect(roots).not.toContain("/private/tmp")
   })
 
-  test("deny-default wrapper exposes the /bin/sh selector path to the sandbox", () => {
+  test("deny-default profile grants reads globally instead of enumerating PATH_READ roots", () => {
     const wrapper = MacBackend.prepare({
       command: "/bin/sh",
       args: ["-c", "true"],
@@ -181,19 +182,18 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     })
     try {
       const dArgs = wrapper.args.filter((arg) => /^PATH_READ_\d+=/.test(arg))
-      expect(dArgs.some((arg) => arg.endsWith("=/var/select") || arg.endsWith("=/private/var/select"))).toBe(true)
+      expect(dArgs).toHaveLength(0)
+      const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
+      // The /bin/sh selector path and every other host path are covered by
+      // the global read allow — the read model is a deny list, not an
+      // enumeration of runtime read roots.
+      expect(sbpl).toContain("(allow file-read*)")
     } finally {
       MacBackend.cleanupTemp(wrapper.tempPath!)
     }
   })
 
-  test("deny-default profile stats readable-root ancestors for git path validation", () => {
-    const sbpl = MacOSPolicy.compileProfile(profile())
-    expect(sbpl).toContain("(allow file-read-metadata")
-    expect(sbpl).toContain('(allow file-read-metadata (literal "/Users")')
-  })
-
-  test("runtime user roots under the homedir are not defeated by sibling denies", () => {
+  test("deny-default profile denies reads only for credential and sensitive data paths", () => {
     if (process.platform !== "darwin") return
     const wrapper = MacBackend.prepare({
       command: "/bin/sh",
@@ -205,9 +205,21 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
     MacBackend.cleanupTemp(wrapper.tempPath!)
     const homedir = os.homedir()
-    for (const root of DEFAULT_USER_RUNTIME_READ_ROOTS(homedir)) {
-      if (!fs.existsSync(root)) continue
-      expect(sbpl).not.toContain(`(deny file-read* (subpath "${root}"))`)
+    const expected = new Set(
+      READ_DENY_PATHS(homedir).map((p) => {
+        try {
+          return fs.realpathSync(p)
+        } catch {
+          return p
+        }
+      }),
+    )
+    const denyLines = sbpl.split("\n").filter((line) => line.startsWith("(deny file-read*"))
+    expect(denyLines.length).toBeGreaterThan(0)
+    for (const line of denyLines) {
+      const match = line.match(/\(subpath "([^"]+)"\)/)
+      expect(match).not.toBeNull()
+      expect(expected.has(match![1])).toBe(true)
     }
   })
 

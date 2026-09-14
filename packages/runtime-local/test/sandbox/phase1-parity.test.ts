@@ -104,13 +104,8 @@ describe("Phase 1: macOS deny-default parity", () => {
       SandboxBackend.cleanupTemp(tempPath)
     }
   })
-  test("deny-default forwards extraReadRoots and extraWritableRoots as -D params", () => {
-    const readRoot = "/tmp/test-read-root-" + Math.random().toString(36).slice(2, 8)
+  test("deny-default forwards extraWritableRoots as -D params and grants reads globally", () => {
     const writeRoot = "/tmp/test-write-root-" + Math.random().toString(36).slice(2, 8)
-    // Ensure temp dirs exist so canonicalize / sibling-deny doesn't choke
-    try {
-      fs.mkdirSync(readRoot, { recursive: true })
-    } catch {}
     try {
       fs.mkdirSync(writeRoot, { recursive: true })
     } catch {}
@@ -122,7 +117,6 @@ describe("Phase 1: macOS deny-default parity", () => {
       sandboxMode: "workspace_write",
       forcePlatform: "macos",
       backend: "seatbelt-deny-default",
-      extraReadRoots: [readRoot],
       extraWritableRoots: [writeRoot],
     })
 
@@ -131,22 +125,10 @@ describe("Phase 1: macOS deny-default parity", () => {
 
     const dParams = extractDParams(wrapper.args)
 
-    // Canonicalize to match generateParams which calls fs.realpathSync
-    // (on macOS APFS /tmp → /private/tmp).
-    let canonicalRead = readRoot
     let canonicalWrite = writeRoot
-    try {
-      canonicalRead = fs.realpathSync(readRoot)
-    } catch {}
     try {
       canonicalWrite = fs.realpathSync(writeRoot)
     } catch {}
-
-    // extraReadRoot must appear in a PATH_READ_N param
-    const readFound = [...dParams.entries()].some(
-      ([key, value]: [string, string]) => key.startsWith("PATH_READ_") && value === canonicalRead,
-    )
-    expect(readFound).toBe(true)
 
     // extraWritableRoot must appear in a PATH_WRITE_N param
     const writeFound = [...dParams.entries()].some(
@@ -154,10 +136,13 @@ describe("Phase 1: macOS deny-default parity", () => {
     )
     expect(writeFound).toBe(true)
 
-    // Cleanup temp dirs and profile
-    try {
-      fs.rmdirSync(readRoot)
-    } catch {}
+    // The read model is a deny list: no PATH_READ params are emitted and
+    // the profile allows reads globally, denying only credential paths.
+    const readParams = [...dParams.keys()].filter((key) => key.startsWith("PATH_READ_"))
+    expect(readParams).toHaveLength(0)
+    const profile = fs.readFileSync(wrapper.args[1], "utf8")
+    expect(profile).toContain("(allow file-read*)")
+
     try {
       fs.rmdirSync(writeRoot)
     } catch {}
