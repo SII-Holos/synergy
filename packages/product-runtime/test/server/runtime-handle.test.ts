@@ -17,6 +17,7 @@ test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent s
   const recovery: Array<number | "completed"> = []
   const runtime = await ProductRuntimeHandle.open({
     mode: "oneshot",
+    storage: Storage.current(),
     network: { hostname: "127.0.0.1", port: 0 },
     recoveryReporter: {
       progress: (current) => recovery.push(current),
@@ -62,6 +63,7 @@ test("failed recovery does not announce completion or retain home ownership", as
     await expect(
       ProductRuntimeHandle.open({
         mode: "oneshot",
+        storage: Storage.current(),
         recoveryReporter: {
           progress: (current) => recovery.push(current),
           completed: () => recovery.push("completed"),

@@ -58,7 +58,11 @@ test("server command passes interactive and managed lifecycle options to the ful
     interactive: true,
     printBanner: true,
     printChannelStatus: true,
-    network: { port: 45217, hostname: "127.0.0.1" },
+  })
+  const network = started[0]?.network
+  expect(await (typeof network === "function" ? network() : network)).toMatchObject({
+    port: 45217,
+    hostname: "127.0.0.1",
   })
   expect(started[1]).toMatchObject({ interactive: false, printBanner: false, printChannelStatus: false })
 })

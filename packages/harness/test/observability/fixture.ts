@@ -1,3 +1,4 @@
+import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import { mkdirSync, mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
@@ -10,6 +11,7 @@ const originalHome = process.env.SYNERGY_TEST_HOME
 const originalInline = process.env.SYNERGY_OBSERVABILITY_INLINE
 
 export function resetObservabilityHome(prefix = "synergy-observability-") {
+  initializeSqliteEngine()
   const home = mkdtempSync(path.join(tmpdir(), prefix))
   homes.push(home)
   process.env.SYNERGY_TEST_HOME = home
