@@ -6,8 +6,6 @@ import { Global } from "../global"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotStore } from "./snapshot-store"
 
-initializeSqliteEngine()
-
 export namespace SnapshotTransfer {
   export async function recoverImports(target: string, signal?: AbortSignal) {
     const packs = path.join(target, "objects", "pack")
@@ -57,6 +55,7 @@ export namespace SnapshotTransfer {
       readonly target: string,
       readonly directory: string,
     ) {
+      initializeSqliteEngine()
       this.db = new Database(path.join(directory, "inventory.sqlite"))
       this.db.exec(
         "PRAGMA journal_mode=MEMORY; PRAGMA synchronous=OFF; CREATE TABLE known (oid TEXT PRIMARY KEY); CREATE TABLE incoming (oid TEXT PRIMARY KEY, type TEXT NOT NULL); CREATE TABLE covered (oid TEXT PRIMARY KEY)",

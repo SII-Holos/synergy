@@ -4,7 +4,13 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkflowSessionService } from "../../../src/session/workflow"
 import { registerWorkflowSessions } from "../../../src/session/register"
 
+if (process.argv.includes("__storage-worker-runner")) {
+  await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
+  await new Promise(() => {})
+}
 registerWorkflowSessions()
+const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+await using maintenance = await StorageMaintenance.open()
 const { scope } = await Scope.fromDirectory(process.cwd())
 await ScopeContext.provide({
   scope,
