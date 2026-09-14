@@ -9,6 +9,8 @@ test("optional migration owners retain their original ledger and leave unloaded 
       "--eval",
       `
       import assert from "node:assert/strict"
+      const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+      await using storageHandle = await StorageMaintenance.open({ migrate: false })
       const { MigrationRegistry } = await import("@ericsanchezok/synergy-harness/migration/registry")
       const { runMigrations } = await import("@ericsanchezok/synergy-harness/migration")
       const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")

@@ -1,198 +1,81 @@
 # Storage and Paths
 
-Synergy keeps installation state under one root:
+Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `SYNERGY_HOME` selects the parent home, not the `.synergy` suffix. For example, `SYNERGY_HOME=/tmp/example` produces `/tmp/example/.synergy/`.
 
-```text
-<SYNERGY_HOME or OS home>/.synergy/
+## Physical layout
+
+| Path                                               | Responsibility                                                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `bin/`                                             | Installed launchers and binaries                                                           |
+| `config/`                                          | Global domain configuration, agents, commands, skills and instructions                     |
+| `data/storage/`                                    | Agent database bootstrap identity, SQLite database, migration backups and transfer records |
+| `data/auth/`                                       | Provider, Holos, MCP and other account credentials                                         |
+| `data/library.db`                                  | Library's independently owned SQLite knowledge database                                    |
+| `data/plugin/<plugin-id>/auth.json`                | Plugin credentials                                                                         |
+| `data/plugin-install-artifacts/`                   | Private installation recovery snapshots and directory backups                              |
+| `data/browser/profiles/`                           | Persistent browser profiles and browser storage state                                      |
+| `data/browser/uploads/`, `data/browser/downloads/` | Browser file staging and downloads                                                         |
+| `data/snapshot-v2/<scope>/store.git/`              | Shared Git snapshot objects and retained references                                        |
+| `data/snapshot/`                                   | Historical Git snapshot repositories until explicit migration/cleanup                      |
+| `data/sessions/<scope>/<session>/`                 | Session-owned binary evidence; metadata is in the Agent database                           |
+| `data/operations/<scope>/<operation>/`             | Binary evidence for sessionless operations                                                 |
+| `data/channel/workspaces/`                         | Channel-managed Project checkouts                                                          |
+| `data/embedding/models/`                           | Local embedding models; overridable with `embedding.local.cacheDir`                        |
+| `data/tool-output/`                                | Externalized tool output without age-based expiry                                          |
+| `state/`                                           | Process ownership, daemon and transient runtime state                                      |
+| `cache/`                                           | Rebuildable caches, including snapshot working indexes                                     |
+| `log/`                                             | Process and diagnostic logs                                                                |
+| `schema/`                                          | Installed JSON schemas                                                                     |
+
+Library, credentials, project files, browser profiles and observability remain separate stores with their own lifecycle. Do not copy an open Library/observability SQLite file without its owning backup protocol. Cache may be cleared on upgrade and is not a backup source. Treat auth, plugin recovery snapshots, logs, signing keys and exported Home archives as private data.
+
+## Agent database
+
+`Storage` reads and writes logical keys inside an explicit `Storage.Handle`. Keys no longer map to `.json` files. SQLite defaults to `data/storage/agent.sqlite`; PostgreSQL uses a configured namespace. `data/storage/manifest.json` binds the backend target, database identity and local artifact identity, preventing a missing or unrelated database from being silently accepted as an empty installation.
+
+| Logical collection                                                                                  | Owner and contents                                                                                   |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `projects`                                                                                          | Scope metadata                                                                                       |
+| `sessions/<scope>/<session>`                                                                        | Session info, messages, parts, Inbox, Todo, DAG, history, summary and Rollout                        |
+| `operations/<scope>/<operation>`                                                                    | Sessionless Rollout metadata                                                                         |
+| `session_index`, `endpoint_session`, `sessions_page_index`, `session_child_index`, `session_nav_v2` | Session lookup and navigation projections                                                            |
+| `session_message_order_v1`, `session_search_v1`, `session_search_dirty_v1`                          | Message ordering and rebuildable search projections                                                  |
+| `permissions`, `permission-rules`                                                                   | Persistent permission state                                                                          |
+| `agenda`, `blueprint_loops`, `superplan`, `lattice`, `notes`                                        | Workflow and Note domain records                                                                     |
+| `channel`                                                                                           | Ownership indexes, response cards, thread bindings, provider dedup, outboxes and bounded diagnostics |
+| `holos`, `synergy_link`                                                                             | Routing, contacts, mailbox and target metadata; credentials stay separate                            |
+| `browser`                                                                                           | Browser Session/page metadata; profiles stay on the filesystem                                       |
+| `plugin-lock`, `plugin-approvals`, `plugin-incompatible`, `registry`                                | Plugin installation, grants and registry records                                                     |
+| `plugin-audit`, `plugin-runtime-state`, `plugin-install-intents`                                    | Plugin audit, health and installation recovery                                                       |
+| `snapshot-v2`                                                                                       | Snapshot repository metadata, ownership and cleanup records                                          |
+| `meta`                                                                                              | Versioned domain migration ledgers and recovery indexes                                              |
+| `storage_recovery`, `storage_staging`, `storage_transfer`                                           | Quarantine, unpublished imports and transfer reports                                                 |
+
+Domain extensions keep their data and migration history when unloaded. Scope/session IDs and external account IDs are record data, not an implicit filesystem authority. Read [Agent storage](../architecture/agent-storage.md) for transaction, concurrency, notification and file-commit contracts.
+
+## Configuration and commands
+
+Global `config/synergy.d/130-storage.jsonc` selects storage. Omission selects SQLite. PostgreSQL configuration uses an environment-variable name rather than an inline password:
+
+```json
+{
+  "storage": {
+    "backend": "postgres",
+    "namespace": "my-agent-data",
+    "connectionEnv": "SYNERGY_DATABASE_URL",
+    "maxConnections": 8
+  }
+}
 ```
 
-`SYNERGY_HOME` changes the parent home, not the `.synergy` suffix. For example, `SYNERGY_HOME=/tmp/example` produces `/tmp/example/.synergy/`.
+Use `synergy data storage status` to inspect the active dataset, `verify` to check integrity and relationships, `resume` to finish interrupted upgrades or switches, and `migrate --target <config-file>` to change backend, namespace or SQLite location. These commands acquire the appropriate read-only or exclusive maintenance Handle. They do not stop the running Runtime.
 
-## Top-Level Layout
+`data pack`, `data merge` and `data move` use checksummed logical records and separately copy physical artifacts. The portable record stream is `data/agent-records.ndjson`; the target creates a new local bootstrap identity when restoring a Home archive. Target storage configuration is retained instead of importing another machine's connection settings. Conflicting Sessions are skipped as whole aggregates; source evidence and reports remain in `data/storage/transfers/`.
 
-| Path      | Responsibility                                                         |
-| --------- | ---------------------------------------------------------------------- |
-| `bin/`    | installed launchers and binaries                                       |
-| `config/` | global domain config, global agents/commands/skills, instruction files |
-| `data/`   | durable product data and auth stores                                   |
-| `log/`    | normal process logs                                                    |
-| `state/`  | daemon, runtime, trace, and process state                              |
-| `cache/`  | disposable model/provider/marketplace and derived caches               |
-| `schema/` | installed JSON schemas                                                 |
+## Credentials and independent hosts
 
-Cache version changes can clear `cache/` on startup. Treat cache as reproducible, not as a backup source.
+Holos account storage at `data/auth/holos-accounts.json` is the canonical multi-account credential store. Synergy and the standalone Link host serialize updates with `data/auth/.locks/`, using the `holos-accounts:write` lock key and atomic file replacement. `api-key.json` is historical migration input, not the steady-state Holos source.
 
-## JSON Storage
+The standalone Synergy Link host owns `SYNERGY_LINK_HOME` (default `~/.synergy-link/`), including its own `state.json`, `migrations.json`, `owner.json`, control socket and logs. It is independent of Agent database ownership and must not share one host state root across live instances. See [Link operations](../operations/qizhi-synergy-link.md).
 
-Most durable product objects use file-based JSON storage rooted at `data/`. A logical storage key maps to nested directories plus a `.json` suffix. Writes take per-file locks and use a temporary file followed by atomic rename. The write+rename sequence retries transient sharing-violation errors (`EPERM`/`EACCES`/`EBUSY`, classified via `isRetryableIOError`) up to 4 attempts with 50–200 ms backoff, because Windows renames fail when antivirus, sync clients, or cross-process readers briefly hold a handle; permanent errors fail on the first attempt and the temp file is removed (with the same transient retry) before the original error propagates. Cross-process readers of these files read through `readFileWithRetry` for the same reason. Streaming message/part writes can use compact JSON; lower-frequency records remain indented.
-
-Major collections include:
-
-```text
-data/projects/
-data/session_index/
-data/sessions_page_index/
-data/session_child_index/
-data/session_nav_v2/
-data/session_search_v1/<scope>/<session>/
-data/session_search_dirty_v1/<scope>/<session>/
-data/sessions/<scope>/<session>/
-data/session_message_order_v1/<scope>/<session>/
-data/channel/managed_ownership/
-data/embedding/models/
-data/channel/managed_ownership_reverse/
-data/channel/workspaces/<identity-hash>/workspace/
-data/channel/diagnostics/
-data/channel/providers/clarus/accounts/
-data/permissions/
-data/channel/response_cards/<channel-type>/<account-id>/<request-id>.json
-data/channel/feishu/streaming_cards/<account-id>/<session-id>/<card-id>.json
-data/channel/feishu/thread_bindings/<account-id>/<chat-id>/<thread-id>.json
-data/permission-rules.json
-data/notes/<scope>/
-data/agenda/items/<scope>/
-data/agenda/runs/<scope>/<item>/
-data/blueprint_loops/<scope>/
-data/superplan/runs/<scope>/
-data/superplan/events/<scope>/<run>/
-data/lattice/runs/<scope>/<run>.json
-data/lattice/current/<scope>/<session>.json
-data/lattice/events/<scope>/<run>/
-data/holos/contacts/
-data/holos/mailbox/
-data/synergy_link/targets/
-data/stats/
-data/meta/rollout/
-```
-
-Local embedding model assets are cached under `data/embedding/models/`; the location can be redirected with `embedding.local.cacheDir`.
-
-Channel-managed Project ownership uses a hashed forward record under `managed_ownership/` and a Scope-ID reverse index under `managed_ownership_reverse/`. Raw external account and Project IDs remain record values rather than path components. `workspaces/<identity-hash>/workspace/` is the deterministic, symlink-rejecting Project directory and an independent Git repository.
-
-Channel diagnostics store bounded, redacted, independently addressable records below `data/channel/diagnostics/accounts/<account-hash>/records/`. Account-level NDJSON downloads first scan the bounded set of at most 10,000 retained record IDs, then read, validate, and encode one record per response pull instead of materializing record payloads. Obsolete pre-release per-account array files directly under `data/channel/diagnostics/` are left untouched and ignored. Clarus provider-private state is isolated below each hashed account root: `assignments/`, `assignment_session_index/`, `dedup/`, `outbox/results/`, and `outbox/extensions/`. Result and extension outboxes are durable-before-send recovery state; pending records recovered after an interrupted process become ambiguous rather than being retried blindly.
-
-The GitHub Channel keeps provider-private state below each hashed account root at `data/channel/providers/github/accounts/<account-hash>/`: per-repository poll cursors and dedup state under `poll-state/`, and thread→checkout records under `workspaces/index/`. Actual repository checkouts live under the configured account `workspaceDir`, one random-hash directory per issue/PR thread; expired checkouts are removed after the account's `workspaceTtlHours` (default 24h) and recreated on the next thread trigger, while session history is preserved.
-
-Channel response-card registrations live under `data/channel/response_cards/`. Each provider-neutral record is keyed by channel type, account, and response-card tool-part ID. A pending record is written before the provider side effect and becomes active only after the provider returns a sent message ID. Both states retain the original chat, requester, session, card contract, and a 14-day expiry. An active registration additionally binds the provider message ID used to validate callbacks. A surviving pending record blocks resend until its expiry. Expired and malformed registrations are pruned at global runtime startup.
-
-Active Feishu/Lark streaming cards live under `data/channel/feishu/streaming_cards/`, keyed independently by account, session, and card ID. Each record is written after CardKit creates the card but before the card is exposed in chat, and contains the identifiers and start time needed to terminate an orphan after process restart. The message ID is added after provider delivery succeeds. A successful terminal close removes only that card's record. Account reconnect scans all records for its account, closes each orphan with a terminal recovery mutation, and preserves records whose provider call fails transiently so a later reconnect can retry without a newer card overwriting them.
-
-Feishu/Lark thread bindings live under `data/channel/feishu/thread_bindings/`, keyed by account, chat, and thread ID. Each record durably maps a Feishu `thread_id` to the endpoint `scopeKey` it belongs to, so `group_thread` sessions resume the same conversation when a later message arrives in the same thread.
-
-Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
-
-The standalone Synergy Link host keeps its own per-instance state root at `SYNERGY_LINK_HOME` (default `~/.synergy-link/`), containing `state.json`, `migrations.json`, `owner.json`, `control.sock`, and `logs/`. It is a separate root from the Synergy installation and must never be shared between Link instances; the control socket, state writes, and Holos credential handling all assume one live service per root. See [Qizhi Synergy Link operations](../operations/qizhi-synergy-link.md) for the per-instance namespace boundary.
-
-Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `lightloop_terminal.json`, `inbox/`, `messages/`, and `history/` are separate records. `lightloop_terminal.json` preserves a plugin-owned Light Loop result and its `lightloop.after` delivery acknowledgement after the interactive workflow is cleared. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
-
-The session index, paged-session index, child-session index, navigation index, message-order index, and session-search index are derived but operationally important. `session_message_order_v1` contains sortable per-message markers and a readiness/count record for bounded newest-first reads; missing or interrupted state rebuilds from canonical message info. `session_search_v1` caches per-session searchable text excerpts (with `session_search_dirty_v1` dirty markers); both are discardable — deleting them only forces a lazy rebuild on the next `session_search` query. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
-
-Lattice stores every v2 run by immutable run ID. A session's `lattice/current` record selects the run shown as current without overwriting older terminal runs; it is a repairable index over canonical Run records. Per-run event files are idempotent, best-effort audit records, not an event-sourced reconstruction of the Run. Run, Step, Blueprint binding, and BlueprintLoop records remain the recovery facts.
-
-## Rollout Artifacts
-
-The rollout artifact store uses `rollout/` beneath its owning session, or `data/operations/<scope>/<operation>/rollout/` for sessionless operations. `artifacts/<id>/info.json` commits the readable byte/chunk count and completeness state; individually addressed chunk descriptors reference owner-local, SHA-256-addressed binary blobs. Payloads are streamed in bounded chunks and verified on read. Interrupted streams retain their committed prefix. Under the same rollout owner, `runs/<run>/info.json` stores run state, `runs/<run>/calls/<call>.json` stores logical calls, and `runs/<run>/attempts/<call>/<attempt>.json` stores actual provider attempts with ordered indices and body references. Private records use owner-only permissions and durable atomic writes; they are separate from public product assets and telemetry retention.
-
-Session rollout `continuation-recovery/<run>.json` records the recovery intent created by the unanswered-continuation migration before repairing terminal state. Startup uses it to wake the existing root without adding inbox or transcript records. The intent survives failed wake attempts and is removed when the root is answered, cancelled, failed, or superseded; ordinary interrupted runs without this intent are not automatically resumed.
-
-Externalized files in `data/tool-output/` have no age-based expiration. Creating a new tool-output file does not delete older observations.
-
-## Library Database
-
-Library uses:
-
-```text
-data/library.db
-```
-
-It is a Bun SQLite database with WAL behavior and optional `sqlite-vec` tables for Memory and Experience embeddings. It is installation-global while records retain Scope/session metadata. SQLite sidecar files can exist while the server is active; copy the database only through a consistent backup workflow.
-
-## Credentials
-
-Credential files live under `data/auth/`, including:
-
-- `api-key.json` and `provider-auth.json`
-- `holos-accounts.json`
-- `mcp.json`
-- integration-specific auth stores
-
-`holos-accounts.json` is the canonical multi-account Holos credential store. Its active account supplies the identity used by both the Holos runtime and the standalone Synergy Link transport. `api-key.json` is legacy migration input for Holos credentials and is not the steady-state source after migration.
-
-Synergy and Synergy Link serialize updates to `holos-accounts.json` with the shared `data/auth/.locks/` protocol. Writers use the `holos-accounts:write` lock key and atomic rename so lock-free readers never observe a partial account store.
-
-Holos account storage is permissioned to the local user. Treat the entire auth directory as sensitive. Diagnostics and SmartAllow use redaction/metadata paths rather than exposing raw secrets.
-
-Plugin-scoped credentials live separately at `data/plugin/<plugin-id>/auth.json`. Plugin approvals, audit history, runtime health, and the local registry use `data/plugin-approvals.json`, `data/plugin-audit.json`, `data/plugin-runtime-state.json`, and `data/registry/plugins.json`; `plugin.lock` at the installation root binds installed specs to resolved artifacts and integrity. Treat plugin auth and signing material under `keys/` as sensitive even when the plugin itself is trusted.
-
-## Browser, Worktrees, and Artifacts
-
-| Path                      | Content                                                                 |
-| ------------------------- | ----------------------------------------------------------------------- |
-| `data/browser/sessions/`  | canonical Browser session/page metadata                                 |
-| `data/browser/profiles/`  | persistent browser profiles and storage state                           |
-| `data/browser/uploads/`   | owner-scoped upload staging                                             |
-| `data/browser/downloads/` | browser downloads grouped by Scope                                      |
-| `data/browser/chromium/`  | managed Chromium assets                                                 |
-| `data/worktree/`          | Synergy-managed worktree metadata/resources                             |
-| `data/snapshot/`          | registered legacy file snapshot repositories pending migration          |
-| `data/snapshot-v2/`       | Scope object stores, historical roots, owners, and maintenance journals |
-| `data/tool-output/`       | large tool outputs externalized from message records                    |
-| `data/assets/`            | product/plugin assets                                                   |
-| `data/media/`             | generated or captured media, including Browser screenshots              |
-
-Archiving or deleting a session disposes its live Browser runtime, but persisted Browser state follows its own lifecycle and migration rules.
-
-## Daemon and Observability State
-
-Managed service state is under:
-
-```text
-state/daemon/manifest.json
-state/daemon/runtime-lock.json
-state/daemon/logs/server.log
-```
-
-The lock records PID, server/daemon mode, command, and working directory. A stale or conflicting lock is inspected rather than blindly overwritten.
-
-Platform service definitions live in platform-owned locations:
-
-- macOS: `~/Library/LaunchAgents/dev.synergy.server.plist`
-- Linux: `~/.config/systemd/user/synergy.service`
-- Windows: Task Scheduler plus launch scripts in `state/daemon/`
-
-Structured observability traces live under `state/observability/traces/`. Performance and diagnostics state may add adjacent state/data records. `synergy status --verbose`, `synergy logs`, and `synergy diagnostics` are the supported inspection entry points.
-
-Indexed observability telemetry lives in `state/observability/observability.sqlite`. The database uses WAL plus incremental auto-vacuum. Retention and size maintenance evict the globally oldest eligible historical telemetry in bounded batches while preserving running spans and open issues. Existing observability databases and the previous `state/observability/performance/performance.sqlite` store are upgraded through central, transactional observability migrations; runtime request paths do not perform schema upgrades or full-database vacuum operations.
-
-Plugin installation stages artifacts and holds its transaction lock under `state/plugin-install/`. Cached plugin packages, extracted archives, marketplace records, models, provider catalogs, and downloaded runtime dependencies live under `cache/`; they may be recreated and must not be treated as approval or credential records. Live provider model snapshots are versioned, atomically written, and keyed by opaque identity hashes rather than credentials or raw account identifiers. LSP process bookkeeping is kept in `state/lsp-pids.json`.
-
-## Project-Local `.synergy`
-
-A repository's `.synergy/` is project configuration and extension source, not the installation data root:
-
-```text
-<project>/.synergy/synergy.d/
-<project>/.synergy/agent/
-<project>/.synergy/command/
-<project>/.synergy/skill/
-```
-
-Project worktrees may also be managed beneath a project-local Synergy area. Permission policy treats the active worktree as the write/execute boundary and the original checkout as readable but protected from autonomous modification.
-
-## Relocation and Backup
-
-Stop the server before raw filesystem backup or relocation. For supported selective movement, use `synergy data pack`, `merge`, `move`, and `set-home`. Use session export/import for portable session artifacts.
-
-Never include `data/auth/` in a public diagnostics bundle, issue attachment, or repository commit.
-
-Rollout runs also own `tools/<executionID>` and `processes/<processID>` metadata through `RolloutLedger`. Tool inputs, original results, returned observations, and channel-framed process streams use the same private artifact store as model evidence. A process record can remain active after an explicitly backgrounded tool returns; exports must preserve its partial stream boundary rather than infer completion from the tool result.
-
-## File snapshot persistence
-
-The server's Git executable initializes snapshot stores as SHA-1 repositories, including on Git 2.25.1. Initialization explicitly selects SHA-1 through `GIT_DEFAULT_HASH`, verifies the actual object hash format before recording success, and reports the Git exit code and stderr on initialization failure. A non-SHA-1 repository is rejected without conversion or deletion. The browser's operating system does not determine snapshot Git compatibility.
-
-`data/snapshot-v2/<scope>/store.git` holds self-contained Git objects and all historical retention refs. `repository.json` records object format; `owners/<session>.json` selects `legacy`, `shared`, or the permanent deletion tombstone. `migrations/<session>.json` and `deletions/<session>.json` are durable recovery state. Scope `leases.json`, the root `leases.json`, and `.locks/` coordinate processes and are regenerated rather than merged into archives. `format.json` marks the installed layout version.
-
-`cache/snapshot-index/<scope>/<session>/<workspace-hash>/index` is rebuildable working state. It can be removed independently of historical objects. The workspace hash uses its canonical filesystem path. Legacy owners resolve only to `data/snapshot/<scope>/<session>` until explicit migration switches their ownership; unknown and reclaimed repositories remain intact and are reported separately. Legacy directories with no owner record and no session record (including the `__reclaimed__` scope) are reclaimable through `synergy data snapshots clean` and `POST /global/storage/snapshot/clean`: both default to a dry run, refuse a scope that fails its integrity check, and never touch the shared store or directories with owners. The HTTP endpoint rejects an empty `scopeID`; scope-targeted requests return 409 on busy or failed integrity checks, while batch requests (no `scopeID`) return `{ results, failures }` and keep the completed work of scopes processed before a failure. The `20260907-snapshot-release-orphan-owners` migration releases legacy owner records that the shared-store migration created for directories without session records, so such orphans reach `clean` on upgraded installations. Owned legacy repositories move through `synergy data snapshots migrate` or `POST /global/storage/snapshot/migrate`, and the shared store packs through `compact` or `POST /global/storage/snapshot/compact`; both HTTP endpoints default to a dry run and return 409 when storage is busy or a scope fails its integrity check. Clean before running `migrate` — a registered repository is migration's responsibility and is no longer a clean candidate.
-
-JSON session export does not contain file objects. Complete `data pack`, `move`, and `merge` preserve file history through the snapshot domain's object/ref transfer. Owner-backend or maintenance-record conflicts abort that data transfer so the source remains available for resolution. These commands acquire offline ownership and never stop a running server. Migration changes are not backward-readable by an older runtime after shared snapshots have been captured.
+Physical private writes use flushed temporary files, atomic rename and directory sync where supported. Transient Windows sharing violations retry up to four attempts. Database durability uses the database engine's commit protocol; it is not controlled by a per-record JSON formatting or durability option.

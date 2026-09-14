@@ -14,7 +14,6 @@ export namespace RolloutArtifact {
   const Chunk = z
     .object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().positive().max(CHUNK_BYTES) })
     .strict()
-  const options = { private: true, durable: true, compact: true } as const
 
   export function root(input: Owner) {
     const owner = Owner.parse(input)
@@ -33,7 +32,7 @@ export namespace RolloutArtifact {
   }
 
   export async function list(owner: Owner): Promise<Ref[]> {
-    const ids = await Storage.scan([...root(owner), "artifacts"], { strict: true })
+    const ids = await Storage.scan([...root(owner), "artifacts"])
     const result: Ref[] = []
     for (const id of ids) result.push(await get(owner, id))
     return result
@@ -89,7 +88,7 @@ export namespace RolloutArtifact {
       status: "partial",
     }
     const key = artifactRoot(owner, ref.id)
-    await record(() => Storage.write([...key, "info"], ref, options))
+    await record(() => Storage.write([...key, "info"], ref))
     const buffer = new Uint8Array(CHUNK_BYTES)
     const hash = new Bun.CryptoHasher("sha256")
     let filled = 0
@@ -101,12 +100,10 @@ export namespace RolloutArtifact {
       const next = { ...ref, bytes: ref.bytes + filled, chunks: ref.chunks + 1 }
       await record(async () => {
         await Storage.writeBinary([...base, "blobs", sha256], data)
-        await Storage.write(
-          [...key, "chunks", String(ref.chunks).padStart(12, "0")],
-          { sha256, bytes: filled },
-          options,
-        )
-        await Storage.write([...key, "info"], next, options)
+        await Storage.transaction(async () => {
+          await Storage.write([...key, "chunks", String(ref.chunks).padStart(12, "0")], { sha256, bytes: filled })
+          await Storage.write([...key, "info"], next)
+        })
       })
       hash.update(data)
       ref = next
@@ -157,7 +154,7 @@ export namespace RolloutArtifact {
           if (finished) return ref
           await flush()
           const final: Ref = { ...ref, sha256: status === "complete" ? hash.digest("hex") : null, status }
-          await record(() => Storage.write([...key, "info"], final, options))
+          await record(() => Storage.write([...key, "info"], final))
           ref = final
           finished = true
           return ref

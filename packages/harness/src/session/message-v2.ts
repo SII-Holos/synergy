@@ -13,7 +13,6 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { fn } from "../util/fn"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { Lock } from "../util/lock"
 import { ProviderTransform } from "../provider/transform"
 import { ProviderAuthRecoveryError } from "../provider/auth-recovery-error"
 import { STATUS_CODES } from "http"
@@ -1327,7 +1326,7 @@ export namespace MessageV2 {
     byMessageID: Map<string, string>
   }
 
-  const messageOrderCache = new Map<string, MessageOrderCache>()
+  const messageOrderCache = Storage.state(() => new Map<string, MessageOrderCache>())
   const MESSAGE_ORDER_CACHE_LIMIT = 64
   const MESSAGE_ORDER_SIGN_BIT = 1n << 63n
   const MESSAGE_ORDER_MASK = (1n << 64n) - 1n
@@ -1370,17 +1369,30 @@ export namespace MessageV2 {
       await Promise.all(
         markers
           .slice(index, index + MESSAGE_ORDER_REBUILD_CONCURRENCY)
-          .map((marker) =>
-            Storage.write(StoragePath.sessionMessageOrderMarker(scopeID, sessionID, marker), {}, { compact: true }),
-          ),
+          .map((marker) => Storage.write(StoragePath.sessionMessageOrderMarker(scopeID, sessionID, marker), {})),
       )
     }
   }
 
   function cacheMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID, markers: string[]) {
     const key = messageOrderKey(scopeID, sessionID)
-    messageOrderCache.delete(key)
-    messageOrderCache.set(key, {
+    const value = {
+      markers: markers.slice(),
+      byMessageID: new Map(
+        markers.flatMap((marker) => {
+          const id = markerMessageID(marker)
+          return id ? [[id, marker] as const] : []
+        }),
+      ),
+    }
+    if (Storage.inTransaction()) {
+      Storage.afterCommit(() => {
+        cacheMessageOrder(scopeID, sessionID, markers)
+      })
+      return value
+    }
+    messageOrderCache().delete(key)
+    messageOrderCache().set(key, {
       markers,
       byMessageID: new Map(
         markers.flatMap((marker) => {
@@ -1389,16 +1401,16 @@ export namespace MessageV2 {
         }),
       ),
     })
-    while (messageOrderCache.size > MESSAGE_ORDER_CACHE_LIMIT) {
-      const oldest = messageOrderCache.keys().next().value
+    while (messageOrderCache().size > MESSAGE_ORDER_CACHE_LIMIT) {
+      const oldest = messageOrderCache().keys().next().value
       if (oldest === undefined) break
-      messageOrderCache.delete(oldest)
+      messageOrderCache().delete(oldest)
     }
-    return messageOrderCache.get(key)!
+    return messageOrderCache().get(key)!
   }
 
   async function rebuildMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
-    messageOrderCache.delete(messageOrderKey(scopeID, sessionID))
+    messageOrderCache().delete(messageOrderKey(scopeID, sessionID))
     await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
       version: 1,
       ready: false,
@@ -1407,20 +1419,20 @@ export namespace MessageV2 {
     await Storage.removeTree(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID))
     const markers = infos.map(messageOrderMarker)
     await writeMessageOrderMarkers(scopeID, sessionID, markers)
-    await Storage.write(
-      StoragePath.sessionMessageOrderState(scopeID, sessionID),
-      { version: 1, ready: true, count: markers.length },
-      { compact: true },
-    )
+    await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
+      version: 1,
+      ready: true,
+      count: markers.length,
+    })
     return cacheMessageOrder(scopeID, sessionID, markers)
   }
 
   async function loadMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
     const key = messageOrderKey(scopeID, sessionID)
-    const cached = messageOrderCache.get(key)
+    const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
     if (cached) {
-      messageOrderCache.delete(key)
-      messageOrderCache.set(key, cached)
+      messageOrderCache().delete(key)
+      messageOrderCache().set(key, cached)
       return cached
     }
 
@@ -1438,54 +1450,53 @@ export namespace MessageV2 {
   }
 
   async function messageOrderSnapshot(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
-    const key = messageOrderKey(scopeID, sessionID)
-    if (messageOrderCache.has(key)) {
-      using _ = await Lock.read(`session-message-order:${scopeID}:${sessionID}`)
-      const cached = messageOrderCache.get(key)
-      if (cached) return cached.markers.slice()
-    }
-    using _ = await Lock.write(`session-message-order:${scopeID}:${sessionID}`)
-    return (await loadMessageOrder(scopeID, sessionID)).markers.slice()
+    return Storage.transaction(async () => {
+      const key = messageOrderKey(scopeID, sessionID)
+      if (messageOrderCache().has(key)) {
+        const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
+        if (cached) return cached.markers.slice()
+      }
+
+      return (await loadMessageOrder(scopeID, sessionID)).markers.slice()
+    })
   }
 
   export async function writeInfo(input: { scopeID: Identifier.ScopeID; info: Info }) {
-    const info = canonicalMessage(input.info)
-    const sessionID = Identifier.asSessionID(info.sessionID)
-    using _ = await Lock.write(`session-message-order:${input.scopeID}:${sessionID}`)
-    const order = await loadMessageOrder(input.scopeID, sessionID)
-    const previousMarker = order.byMessageID.get(info.id)
-    const nextMarker = messageOrderMarker(info)
-    if (previousMarker === nextMarker) {
+    return Storage.transaction(async () => {
+      const info = canonicalMessage(input.info)
+      const sessionID = Identifier.asSessionID(info.sessionID)
+
+      const order = await loadMessageOrder(input.scopeID, sessionID)
+      const previousMarker = order.byMessageID.get(info.id)
+      const nextMarker = messageOrderMarker(info)
+      if (previousMarker === nextMarker) {
+        await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+        return info
+      }
+
+      messageOrderCache().delete(messageOrderKey(input.scopeID, sessionID))
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
+        version: 1,
+        ready: false,
+      })
       await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+      if (previousMarker) {
+        await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, previousMarker))
+      }
+      await Storage.write(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, nextMarker), {})
+
+      const markers = order.markers
+        .filter((marker) => marker !== previousMarker)
+        .concat(nextMarker)
+        .sort(compareMessageOrderMarker)
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
+        version: 1,
+        ready: true,
+        count: markers.length,
+      })
+      cacheMessageOrder(input.scopeID, sessionID, markers)
       return info
-    }
-
-    messageOrderCache.delete(messageOrderKey(input.scopeID, sessionID))
-    await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
-      version: 1,
-      ready: false,
     })
-    await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
-    if (previousMarker) {
-      await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, previousMarker))
-    }
-    await Storage.write(
-      StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, nextMarker),
-      {},
-      { compact: true },
-    )
-
-    const markers = order.markers
-      .filter((marker) => marker !== previousMarker)
-      .concat(nextMarker)
-      .sort(compareMessageOrderMarker)
-    await Storage.write(
-      StoragePath.sessionMessageOrderState(input.scopeID, sessionID),
-      { version: 1, ready: true, count: markers.length },
-      { compact: true },
-    )
-    cacheMessageOrder(input.scopeID, sessionID, markers)
-    return info
   }
 
   export async function removeInfo(input: {
@@ -1493,34 +1504,36 @@ export namespace MessageV2 {
     sessionID: Identifier.SessionID
     messageID: Identifier.MessageID
   }) {
-    using _ = await Lock.write(`session-message-order:${input.scopeID}:${input.sessionID}`)
-    const order = await loadMessageOrder(input.scopeID, input.sessionID)
-    const marker = order.byMessageID.get(input.messageID)
-    if (!marker) {
-      await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
-      return
-    }
+    return Storage.transaction(async () => {
+      const order = await loadMessageOrder(input.scopeID, input.sessionID)
+      const marker = order.byMessageID.get(input.messageID)
+      if (!marker) {
+        await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+        return
+      }
 
-    messageOrderCache.delete(messageOrderKey(input.scopeID, input.sessionID))
-    await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
-      version: 1,
-      ready: false,
+      messageOrderCache().delete(messageOrderKey(input.scopeID, input.sessionID))
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
+        version: 1,
+        ready: false,
+      })
+      await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+      await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, input.sessionID, marker))
+      const markers = order.markers.filter((candidate) => candidate !== marker)
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
+        version: 1,
+        ready: true,
+        count: markers.length,
+      })
+      cacheMessageOrder(input.scopeID, input.sessionID, markers)
     })
-    await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
-    await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, input.sessionID, marker))
-    const markers = order.markers.filter((candidate) => candidate !== marker)
-    await Storage.write(
-      StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID),
-      { version: 1, ready: true, count: markers.length },
-      { compact: true },
-    )
-    cacheMessageOrder(input.scopeID, input.sessionID, markers)
   }
 
   export async function removeOrderIndex(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
-    using _ = await Lock.write(`session-message-order:${scopeID}:${sessionID}`)
-    messageOrderCache.delete(messageOrderKey(scopeID, sessionID))
-    await Storage.removeTree(StoragePath.sessionMessageOrderRoot(scopeID, sessionID))
+    return Storage.transaction(async () => {
+      messageOrderCache().delete(messageOrderKey(scopeID, sessionID))
+      await Storage.removeTree(StoragePath.sessionMessageOrderRoot(scopeID, sessionID))
+    })
   }
 
   export async function readInfoList(input: {

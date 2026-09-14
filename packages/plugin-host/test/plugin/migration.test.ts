@@ -1,3 +1,5 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
@@ -68,31 +70,42 @@ describe("plugin catalog migration", () => {
     await fs.mkdir(path.join(cache, "plugin-market"), { recursive: true })
     await Bun.write(path.join(cache, "plugin-market", "registry.json"), "{}")
 
-    await migratePluginCatalog({ root, data, cache })
+    const prepared = await StorageBootstrap.prepare({ root })
+    try {
+      await Storage.provide({ store: prepared.store, artifactDirectory: data }, async () => {
+        await migratePluginCatalog({ root, data, cache })
 
-    const lock = JSON.parse(await Bun.file(path.join(root, "plugin.lock")).text())
-    expect(lock.version).toBe(2)
-    expect(lock.plugins["migrated-plugin"]).toMatchObject({
-      version: "2.0.0",
-      apiVersion: "4.0",
-      generation: "migrated-generation",
-    })
-    const incompatible = JSON.parse(await Bun.file(path.join(data, "plugin-incompatible.json")).text())
-    expect(incompatible).toEqual([{ pluginId: "incompatible", spec: "file:old", reason: "reinstallRequired" }])
-    const approvals = JSON.parse(await Bun.file(path.join(data, "plugin-approvals.json")).text())
-    expect(approvals[0]).toMatchObject({
-      schemaVersion: 2,
-      pluginId: "migrated-plugin",
-      approvedCapabilities: [],
-    })
-    expect(approvals).toHaveLength(1)
-    expect(verifyApproval(approvals[0], manifest)).toBe(true)
-    expect(JSON.parse(await Bun.file(settingsPath).text())).toEqual({ "migrated-plugin": { enabled: true } })
-    expect(await Bun.file(path.join(cache, "plugin", "temporary")).exists()).toBe(false)
-    expect(await Bun.file(path.join(cache, "plugin-market", "registry.json")).exists()).toBe(false)
+        const lock = await Storage.read<{ version: number; plugins: Record<string, unknown> }>(["plugin-lock"])
+        expect(lock.version).toBe(2)
+        expect(lock.plugins["migrated-plugin"]).toMatchObject({
+          version: "2.0.0",
+          apiVersion: "4.0",
+          generation: "migrated-generation",
+        })
+        const incompatible = await Storage.read(["plugin-incompatible"])
+        expect(incompatible).toEqual([{ pluginId: "incompatible", spec: "file:old", reason: "reinstallRequired" }])
+        const approvals = await Storage.read<import("../../src/plugin/consent/approval-store").PluginApprovalRecord[]>([
+          "plugin-approvals",
+        ])
+        expect(approvals[0]).toMatchObject({
+          schemaVersion: 2,
+          pluginId: "migrated-plugin",
+          approvedCapabilities: [],
+        })
+        expect(approvals).toHaveLength(1)
+        expect(verifyApproval(approvals[0], manifest)).toBe(true)
+        expect(JSON.parse(await Bun.file(settingsPath).text())).toEqual({ "migrated-plugin": { enabled: true } })
+        expect(await Bun.file(path.join(cache, "plugin", "temporary")).exists()).toBe(false)
+        expect(await Bun.file(path.join(cache, "plugin-market", "registry.json")).exists()).toBe(false)
 
-    await migratePluginCatalog({ root, data, cache })
-    const rerunApprovals = JSON.parse(await Bun.file(path.join(data, "plugin-approvals.json")).text())
-    expect(rerunApprovals).toEqual(approvals)
+        await migratePluginCatalog({ root, data, cache })
+        const rerunApprovals = await Storage.read<
+          import("../../src/plugin/consent/approval-store").PluginApprovalRecord[]
+        >(["plugin-approvals"])
+        expect(rerunApprovals).toEqual(approvals)
+      })
+    } finally {
+      await prepared.store.close()
+    }
   })
 })

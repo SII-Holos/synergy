@@ -49,7 +49,6 @@ export const migrations: Migration[] = [
     description: "Consolidate orphan scope data (no active project, no worktree) into a reclaimed scope",
     async up(progress) {
       const now = Date.now()
-      const dataDir = Global.Path.data
       const reclaimedSID = Identifier.asScopeID(RECLAIMED_SCOPE_ID)
 
       // 1. Collect all scopeIDs that have file-based data
@@ -121,7 +120,7 @@ export const migrations: Migration[] = [
       let done = 0
 
       for (const orphanID of orphanIDs) {
-        await moveFileBasedData(orphanID, RECLAIMED_SCOPE_ID, dataDir)
+        await moveRecordsByScope(orphanID, RECLAIMED_SCOPE_ID)
         await removeOrphanProjectRecord(orphanID)
         done++
         progress(done, totalSteps)
@@ -190,28 +189,18 @@ export const migrations: Migration[] = [
     id: "20260624-scope-global-to-home",
     description: "Rename legacy global scope data to the home scope",
     async up(progress) {
-      const dataDir = Global.Path.data
       const fromSID = Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID)
       const toSID = Identifier.asScopeID(HOME_SCOPE_ID)
       const steps = 12
       let done = 0
 
-      await moveFileBasedData(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID, dataDir)
-      await moveFile(
-        path.join(dataDir, ...StoragePath.sessionNavIndex(fromSID)) + ".json",
-        path.join(dataDir, ...StoragePath.sessionNavIndex(toSID)) + ".json",
-      )
+      await moveRecordsByScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID)
+      await moveRecord(StoragePath.sessionNavIndex(fromSID), StoragePath.sessionNavIndex(toSID))
       done++
       progress(done, steps)
 
-      await moveDir(
-        path.join(dataDir, ...StoragePath.blueprintLoopsRoot(fromSID)),
-        path.join(dataDir, ...StoragePath.blueprintLoopsRoot(toSID)),
-      )
-      await moveFile(
-        path.join(dataDir, ...StoragePath.permission(fromSID)) + ".json",
-        path.join(dataDir, ...StoragePath.permission(toSID)) + ".json",
-      )
+      await moveRecords(StoragePath.blueprintLoopsRoot(fromSID), StoragePath.blueprintLoopsRoot(toSID))
+      await moveRecord(StoragePath.permission(fromSID), StoragePath.permission(toSID))
       await moveDir(
         path.join(Global.Path.snapshot, LEGACY_GLOBAL_SCOPE_ID),
         path.join(Global.Path.snapshot, HOME_SCOPE_ID),
@@ -507,44 +496,41 @@ async function removeLegacyGlobalRoots() {
   await Storage.remove(StoragePath.permission(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
 }
 
-async function moveFileBasedData(fromScopeID: string, toScopeID: string, dataDir: string) {
-  const fromSID = Identifier.asScopeID(fromScopeID)
-  const toSID = Identifier.asScopeID(toScopeID)
+async function moveRecordsByScope(fromScopeID: string, toScopeID: string) {
+  const from = Identifier.asScopeID(fromScopeID)
+  const to = Identifier.asScopeID(toScopeID)
+  await moveRecords(StoragePath.sessionsRoot(from), StoragePath.sessionsRoot(to))
+  await moveRecord(StoragePath.sessionsPageIndex(from), StoragePath.sessionsPageIndex(to))
+  await moveRecords(StoragePath.notesRoot(from), StoragePath.notesRoot(to))
+  await moveRecords(StoragePath.agendaItemsRoot(from), StoragePath.agendaItemsRoot(to))
+  await moveRecords(["agenda", "runs", fromScopeID], ["agenda", "runs", toScopeID])
+  await moveRecord(StoragePath.agendaRunIndex(from), StoragePath.agendaRunIndex(to))
+}
 
-  // Move sessions directory (contains session dirs with info/messages/etc)
-  await moveDir(
-    path.join(dataDir, ...StoragePath.sessionsRoot(fromSID)),
-    path.join(dataDir, ...StoragePath.sessionsRoot(toSID)),
-  )
+async function moveRecord(from: string[], to: string[]) {
+  await Storage.transaction(async (tx) => {
+    const [source, target] = await tx.readMany([from, to])
+    if (source === undefined) return
+    if (target === undefined) await tx.write(to, source)
+    await tx.remove(from)
+  })
+}
 
-  // Move sessions page index
-  await moveFile(
-    path.join(dataDir, ...StoragePath.sessionsPageIndex(fromSID)) + ".json",
-    path.join(dataDir, ...StoragePath.sessionsPageIndex(toSID)) + ".json",
-  )
-
-  // Move notes directory
-  await moveDir(
-    path.join(dataDir, ...StoragePath.notesRoot(fromSID)),
-    path.join(dataDir, ...StoragePath.notesRoot(toSID)),
-  )
-
-  // Move agenda items directory
-  await moveDir(
-    path.join(dataDir, ...StoragePath.agendaItemsRoot(fromSID)),
-    path.join(dataDir, ...StoragePath.agendaItemsRoot(toSID)),
-  )
-
-  // Move agenda runs directory
-  const runsPrefix = ["agenda", "runs", fromScopeID]
-  const runsTarget = ["agenda", "runs", toScopeID]
-  await moveDir(path.join(dataDir, ...runsPrefix), path.join(dataDir, ...runsTarget))
-
-  // Move agenda run index
-  await moveFile(
-    path.join(dataDir, ...StoragePath.agendaRunIndex(fromSID)) + ".json",
-    path.join(dataDir, ...StoragePath.agendaRunIndex(toSID)) + ".json",
-  )
+async function moveRecords(from: string[], to: string[]) {
+  for (const child of await Storage.scan(from)) {
+    await Storage.transaction(async (tx) => {
+      const source = [...from, child]
+      const target = [...to, child]
+      const existing = await tx.readMany([target])
+      if (existing[0] === undefined && !(await tx.list(target)).length) {
+        const [own] = await tx.readMany([source])
+        if (own !== undefined) await tx.write(target, own)
+        for (const key of await tx.list(source))
+          await tx.write([...target, ...key.slice(source.length)], await tx.read(key))
+      }
+      await tx.removeTree(source)
+    })
+  }
 }
 
 async function moveDir(from: string, to: string) {
@@ -562,12 +548,6 @@ async function moveDir(from: string, to: string) {
       log.warn("failed to move directory", { from, to, error: err })
     })
   }
-}
-
-async function moveFile(from: string, to: string) {
-  if (!existsSync(from)) return
-  await fs.mkdir(path.dirname(to), { recursive: true })
-  await fs.rename(from, to).catch(() => {})
 }
 
 async function removeOrphanProjectRecord(scopeID: string) {

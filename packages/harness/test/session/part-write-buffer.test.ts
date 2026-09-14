@@ -12,6 +12,34 @@ function recorder() {
 }
 
 describe("PartWriteBuffer", () => {
+  test("terminal writes wait for an already executing streaming write", async () => {
+    const writes: string[] = []
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
+      if (value === "stream") await blocked
+      writes.push(value)
+    }, 1)
+    buffer.defer("part", "part", "stream")
+    await Bun.sleep(10)
+    const terminal = buffer.writeNow("part", "part", "complete")
+    expect(writes).toEqual([])
+    release()
+    await terminal
+    await buffer.flushAll()
+    expect(writes).toEqual(["stream", "complete"])
+  })
+
+  test("draining includes timer writes and reports background persistence failure", async () => {
+    const buffer = new PartWriteBuffer<string>(async () => {
+      throw new Error("disk full")
+    }, 1)
+    buffer.defer("part", "part", "stream")
+    await Bun.sleep(10)
+    await expect(buffer.flushAll()).rejects.toThrow("disk full")
+  })
   test("coalesces deferred writes: many defers, one flush writes the latest", () => {
     const r = recorder()
     const buf = new PartWriteBuffer<string>(r.write, 10_000)

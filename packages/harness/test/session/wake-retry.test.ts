@@ -148,15 +148,13 @@ describe("session wake retry", () => {
         const loop = spyOn(SessionInvoke, "loop").mockImplementation((async () => {
           attempts++
           if (attempts === 1) {
-            // Mirrors the real loop ordering: steer items are drained (deleted)
-            // before materialization, so the InvalidUrlError from the real
-            // attachment capture surfaces after the item is already gone.
-            const steerItems = await SessionInbox.drainSteer(session.id)
+            // Failed materialization parks the original payload so later work can proceed.
+            const steerItems = await SessionInbox.peekSteer(session.id)
             expect(steerItems.length).toBe(1)
             for (const item of steerItems) await SessionInbox.materializeItem(item, root.info.id)
             return {} as never
           }
-          expect((await SessionInbox.drainSteer(session.id)).length).toBe(0)
+          expect((await SessionInbox.peekSteer(session.id)).length).toBe(0)
           const task = await SessionInbox.peekTask(session.id)
           expect(task).toBeDefined()
           await SessionInbox.materializeItem(task!)
@@ -169,6 +167,7 @@ describe("session wake retry", () => {
         SessionManager.scheduleWake(session.id, "test")
         await waitFor(() => committed)
         expect(attempts).toBe(2)
+        expect((await SessionInbox.list(session.id)).some((item) => item.status === "failed")).toBe(true)
         expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
       },
     })

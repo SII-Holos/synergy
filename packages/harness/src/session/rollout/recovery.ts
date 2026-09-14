@@ -81,8 +81,8 @@ export namespace RolloutRecovery {
 
   export async function* owners(onProgress?: () => void): AsyncGenerator<RolloutSchema.Owner> {
     for (const category of ["sessions", "operations"] as const) {
-      for (const scopeID of await Storage.scan([category], { strict: true })) {
-        for (const id of await Storage.scan([category, scopeID], { strict: true })) {
+      for (const scopeID of await Storage.scan([category])) {
+        for (const id of await Storage.scan([category, scopeID])) {
           const identity: RolloutSchema.Owner =
             category === "sessions"
               ? { kind: "session", scopeID, sessionID: id }

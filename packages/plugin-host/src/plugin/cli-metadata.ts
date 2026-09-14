@@ -1,9 +1,21 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { Global } from "@ericsanchezok/synergy-harness/global"
 import { computeManifestHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { read } from "./lockfile"
 import { findPackageRoot, readPluginManifest } from "./spec-resolver"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 
 export async function installedPluginCliMetadata(): Promise<Array<{ id: string; manifest: PluginManifestType }>> {
+  if (!Storage.available()) {
+    const handle = await StorageBootstrap.inspect(Global.Path.root)
+    if (!handle) return []
+    try {
+      return await Storage.provide(handle, () => installedPluginCliMetadata())
+    } finally {
+      await handle.store.close()
+    }
+  }
   const lock = await read().catch((error) => {
     console.error(`Plugin CLI metadata unavailable: ${error instanceof Error ? error.message : String(error)}`)
     return undefined

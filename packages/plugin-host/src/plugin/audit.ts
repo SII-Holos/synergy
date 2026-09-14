@@ -1,6 +1,4 @@
-import path from "path"
-import fs from "fs/promises"
-import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,55 +26,28 @@ export interface PluginAuditEvent {
   details: Record<string, unknown>
 }
 
-// ---------------------------------------------------------------------------
-// Storage path
-// ---------------------------------------------------------------------------
-
-function auditPath(): string {
-  return path.join(Global.Path.data, "plugin-audit.json")
-}
-
-// ---------------------------------------------------------------------------
-// JSON read / write helpers
-// ---------------------------------------------------------------------------
-
-async function readAll(): Promise<PluginAuditEvent[]> {
-  try {
-    const text = await Bun.file(auditPath()).text()
-    return JSON.parse(text)
-  } catch {
-    return []
-  }
-}
-
-async function writeAll(events: PluginAuditEvent[]): Promise<void> {
-  const p = auditPath()
-  await fs.mkdir(path.dirname(p), { recursive: true })
-  await Bun.write(p, JSON.stringify(events, null, 2))
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 export async function recordEvent(event: Omit<PluginAuditEvent, "id" | "time">): Promise<void> {
   const full: PluginAuditEvent = {
     ...event,
     id: crypto.randomUUID(),
     time: Date.now(),
   }
-  const events = await readAll()
-  events.push(full)
-  await writeAll(events)
+  await Storage.write(["plugin-audit", "events", `${String(full.time).padStart(16, "0")}_${full.id}`], full)
 }
 
 export async function getEvents(pluginId?: string, limit?: number): Promise<PluginAuditEvent[]> {
-  const events = await readAll()
-  const filtered = pluginId ? events.filter((e) => e.pluginId === pluginId) : events
-  if (limit != null && limit > 0) {
-    return filtered.slice(-limit)
+  const events: PluginAuditEvent[] = []
+  const bounded = limit !== undefined && limit > 0
+  for await (const record of Storage.records<PluginAuditEvent>({
+    kind: "plugin-audit",
+    descending: bounded,
+    limit: 128,
+  })) {
+    if (record.key[1] !== "events" || (pluginId && record.value.pluginId !== pluginId)) continue
+    events.push(record.value)
+    if (bounded && events.length >= limit) break
   }
-  return filtered
+  return bounded ? events.reverse() : events
 }
 
 export async function getRecentEvents(limit?: number): Promise<PluginAuditEvent[]> {

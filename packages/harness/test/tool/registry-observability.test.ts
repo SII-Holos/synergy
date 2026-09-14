@@ -13,6 +13,8 @@ test("successful tool initialization does not emit per-tool info records", async
     import { ScopeContext } from "./src/scope/context.ts"
     import { ToolRegistry } from "./src/tool/registry.ts"
 
+    const { StorageMaintenance } = await import("./src/storage/maintenance.ts")
+    await using storage = await StorageMaintenance.open()
     await Log.init({ print: false, dev: true, level: "INFO" })
     const { scope } = await Scope.fromDirectory(${JSON.stringify(project)})
     const toolCount = await ScopeContext.provide({

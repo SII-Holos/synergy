@@ -1,3 +1,4 @@
+import { SessionStaging } from "../staging"
 import { SessionSchemaRegistry } from "../schema-registry"
 import { SessionExecutionContributions } from "../execution-contributions"
 import { RolloutAttachment } from "./attachment"
@@ -444,7 +445,7 @@ export namespace RolloutArchive {
 
   export async function restore(blob: Blob): Promise<SessionImport.Result> {
     const archive = await open(blob)
-    const created: RolloutSchema.Owner[] = []
+    let stagingID: string | undefined
     try {
       const report = SessionExport.Report.parse(JSON.parse((await archive.bytes("transcript.json")).toString()))
       SessionImport.validateScope(report)
@@ -468,6 +469,7 @@ export namespace RolloutArchive {
         ])
           for (const record of records) if (!ids.has(record.id)) ids.set(record.id, crypto.randomUUID())
       const scopeID = ScopeContext.current.scope.id
+      stagingID = await SessionStaging.begin(scopeID, [...sessionIDs.values()])
       const ownerKey = (owner: RolloutSchema.Owner) => JSON.stringify(owner)
       const owners = new Map<string, RolloutSchema.Owner>()
       for (const snapshot of archive.manifest.snapshots) {
@@ -479,7 +481,6 @@ export namespace RolloutArchive {
           sessionID: sessionIDs.get(snapshot.owner.sessionID)!,
         }
         owners.set(ownerKey(snapshot.owner), owner)
-        created.push(owner)
       }
       const artifacts = new Map<string, RolloutArtifact.Ref>()
       for (const snapshot of archive.manifest.fileSnapshots) {
@@ -598,18 +599,14 @@ export namespace RolloutArchive {
               "application/vnd.synergy.source-evidence+json",
             ),
           })
-        await Storage.write(
-          [...root, "import"],
-          {
-            version: 1,
-            source: snapshot.owner,
-            revision: snapshot.revision,
-            integrity: archive.manifest.integrity,
-            evidence: sourceEvidence,
-            artifacts: [...artifacts.entries()].map(([source, ref]) => ({ source, ref })),
-          },
-          { private: true, durable: true },
-        )
+        await Storage.write([...root, "import"], {
+          version: 1,
+          source: snapshot.owner,
+          revision: snapshot.revision,
+          integrity: archive.manifest.integrity,
+          evidence: sourceEvidence,
+          artifacts: [...artifacts.entries()].map(([source, ref]) => ({ source, ref })),
+        })
       }
       for (const data of report.sessions) {
         const owner: RolloutSchema.Owner = { kind: "session", scopeID: data.info.scope.id, sessionID: data.info.id }
@@ -648,19 +645,12 @@ export namespace RolloutArchive {
           }
         SessionSchemaRegistry.normalizeImport(data.info, "archive")
       }
-      const result = await SessionImport.fromReport(report, { sessionIDs, rollout: true })
+      const result = await SessionImport.fromReport(report, { sessionIDs, rollout: true, stagingID })
       result.warnings.push(...archive.manifest.integrity.missing)
       if (!archive.manifest.integrity.complete) result.warnings.push("Imported rollout is a partial evidence snapshot.")
       return result
     } catch (error) {
-      for (const owner of created) {
-        if (owner.kind === "session") {
-          await Session.remove(owner.sessionID).catch(() => {})
-          await Storage.removeTree(RolloutArtifact.root(owner))
-          await SnapshotLifecycle.beginDelete(owner.scopeID, owner.sessionID)
-          await SnapshotLifecycle.completeDelete(owner.scopeID, owner.sessionID)
-        }
-      }
+      if (stagingID) await SessionStaging.discard(stagingID)
       throw error
     } finally {
       await archive.reader.close()

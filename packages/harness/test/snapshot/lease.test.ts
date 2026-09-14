@@ -22,7 +22,7 @@ test("maintenance excludes another process and recovers its abandoned lease", as
     await SnapshotLease.use(${JSON.stringify(key)}, true, async () => {
       process.stdout.write("ready\\n");
       await Bun.sleep(60000);
-    });
+    }, { dataRoot: ${JSON.stringify(Global.Path.data)} });
   `,
     ],
     { env: process.env, stdout: "pipe", stderr: "pipe" },

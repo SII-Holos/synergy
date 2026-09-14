@@ -259,3 +259,5 @@ Coding agents and LLM tools should begin with [llms.txt](llms.txt). Read [AGENTS
 Contributions, bug reports, and feature ideas are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and use the repository's [security reporting process](.github/SECURITY.md) for vulnerabilities rather than opening a public issue.
 
 Synergy is open source under the [MIT License](LICENSE).
+
+Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Existing Home data upgrades through a resumable, backed-up migration. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).

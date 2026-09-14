@@ -1,4 +1,15 @@
 async function bootstrap(): Promise<void> {
+  if (process.argv.includes("__storage-maintenance-runner")) {
+    await import("./product-registration")
+    const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+    await using handle = await StorageMaintenance.open({ recover: true })
+    return
+  }
+  if (process.argv.includes("__storage-worker-runner")) {
+    await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
+    await new Promise(() => {})
+    return
+  }
   if (process.argv.some((arg) => arg.startsWith("__") && arg.endsWith("-runner"))) {
     const { Global } = await import("@ericsanchezok/synergy-harness/global")
     await Global.initialize({ cache: false })

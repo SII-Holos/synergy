@@ -275,14 +275,14 @@ describe("Synergy Link target relink", () => {
     const continueWrite = Promise.withResolvers<void>()
     const write = Storage.write
     let paused = false
-    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content) => {
       const candidate = content as { id?: string; linkID?: string }
       if (!paused && candidate.id === target.id && candidate.linkID === "link_new") {
         paused = true
         writeStarted.resolve()
         await continueWrite.promise
       }
-      return await write(key, content, options)
+      return await write(key, content)
     })
 
     try {
@@ -319,14 +319,14 @@ describe("Synergy Link target relink", () => {
     const continueWrite = Promise.withResolvers<void>()
     const write = Storage.write
     let paused = false
-    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content) => {
       const candidate = content as { id?: string; linkID?: string }
       if (!paused && candidate.id === target.id && candidate.linkID === "link_new") {
         paused = true
         writeStarted.resolve()
         await continueWrite.promise
       }
-      return await write(key, content, options)
+      return await write(key, content)
     })
 
     try {

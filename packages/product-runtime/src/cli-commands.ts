@@ -19,6 +19,7 @@ export const productCommands: CommandEntry[] = [
   },
   {
     command: "debug",
+    storage: "maintenance",
     describe: "debugging and troubleshooting tools",
     load: async () =>
       (await import("@ericsanchezok/synergy-cli/cli/cmd/debug")).createDebugCommand([
@@ -28,12 +29,14 @@ export const productCommands: CommandEntry[] = [
   },
   {
     command: "stats",
+    storage: "maintenance",
     describe: "show token usage and cost statistics",
     load: async () =>
       (await import("@ericsanchezok/synergy-workbench/stats/cli/stats")).StatsCommand as unknown as CommandModule,
   },
   {
     command: "mcp",
+    storage: "maintenance",
     describe: "manage MCP (Model Context Protocol) servers",
     load: async () =>
       (await import("@ericsanchezok/synergy-agent-integrations/mcp/cli/mcp")).McpCommand as unknown as CommandModule,
@@ -42,7 +45,9 @@ export const productCommands: CommandEntry[] = [
     command: "acp",
     describe: "start ACP (Agent Client Protocol) server",
     load: async () =>
-      (await import("@ericsanchezok/synergy-agent-integrations/acp/cli/acp")).AcpCommand as unknown as CommandModule,
+      (await import("@ericsanchezok/synergy-agent-integrations/acp/cli/acp")).createAcpCommand(
+        (await import("./server/runtime-handle")).ProductRuntimeHandle.open,
+      ) as unknown as CommandModule,
   },
   {
     command: "web",
@@ -51,6 +56,7 @@ export const productCommands: CommandEntry[] = [
   },
   {
     command: "channel",
+    storage: "maintenance",
     describe: "manage messaging channels",
     load: async () =>
       (await import("@ericsanchezok/synergy-connections/channel/cli/channel"))
@@ -58,18 +64,21 @@ export const productCommands: CommandEntry[] = [
   },
   {
     command: "holos",
+    storage: "maintenance",
     describe: "manage Holos identity and runtime",
     load: async () =>
       (await import("@ericsanchezok/synergy-connections/holos/cli/holos")).HolosCommand as unknown as CommandModule,
   },
   {
     command: "library",
+    storage: "maintenance",
     describe: "manage library memory and learning",
     load: async () =>
       (await import("@ericsanchezok/synergy-library/cli/library")).LibraryCommand as unknown as CommandModule,
   },
   {
     command: "embed",
+    storage: "maintenance",
     describe: "manage the local embedding model",
     load: async () =>
       (await import("@ericsanchezok/synergy-library/cli/embed")).EmbedCommand as unknown as CommandModule,
@@ -98,12 +107,14 @@ export const productCommands: CommandEntry[] = [
   },
   {
     command: "browser",
+    storage: "maintenance",
     describe: "diagnose and install Chromium for Browser tools",
     load: async () =>
       (await import("@ericsanchezok/synergy-browser-runtime/cli/browser")).BrowserCommand as unknown as CommandModule,
   },
   {
     command: "plugin",
+    storage: "maintenance",
     describe: "install, remove, update, and inspect plugins",
     load: async () =>
       (await import("@ericsanchezok/synergy-plugin-host/plugin/cli/plugin")).PluginCommand as unknown as CommandModule,

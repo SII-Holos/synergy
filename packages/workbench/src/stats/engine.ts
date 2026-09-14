@@ -29,8 +29,8 @@ export namespace Engine {
   async function operationDigests() {
     const result: OperationDigest[] = []
     const retained = new Set<string>()
-    for (const scopeID of await Storage.scan(["operations"], { strict: true })) {
-      for (const operationID of await Storage.scan(["operations", scopeID], { strict: true })) {
+    for (const scopeID of await Storage.scan(["operations"])) {
+      for (const operationID of await Storage.scan(["operations", scopeID])) {
         const owner = { kind: "operation" as const, scopeID, operationID }
         const revision = await readRolloutRevision(owner)
         if (!revision) continue
@@ -50,8 +50,8 @@ export namespace Engine {
         result.push(digest)
       }
     }
-    for (const scopeID of await Storage.scan(StoragePath.statsOperations(), { strict: true }))
-      for (const id of await Storage.scan([...StoragePath.statsOperations(), scopeID], { strict: true })) {
+    for (const scopeID of await Storage.scan(StoragePath.statsOperations()))
+      for (const id of await Storage.scan([...StoragePath.statsOperations(), scopeID])) {
         const key = StoragePath.statsOperation(scopeID, id)
         if (!retained.has(key.join("/"))) await Storage.remove(key)
       }

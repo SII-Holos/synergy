@@ -36,9 +36,11 @@ export namespace Todo {
   }
 
   export async function update(input: { sessionID: string; todos: Info[] }) {
-    const scopeID = await resolveScopeID(input.sessionID)
-    await Storage.write(StoragePath.sessionTodo(scopeID, asSessionID(input.sessionID)), input.todos)
-    Bus.publish(Event.Updated, input)
+    return Storage.transaction(async () => {
+      const scopeID = await resolveScopeID(input.sessionID)
+      await Storage.write(StoragePath.sessionTodo(scopeID, asSessionID(input.sessionID)), input.todos)
+      Bus.publish(Event.Updated, input)
+    })
   }
 
   export async function get(sessionID: string) {

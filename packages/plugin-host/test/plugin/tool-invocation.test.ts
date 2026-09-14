@@ -166,7 +166,7 @@ test("plugin host cancellation reaches an active tool and persists interrupted e
 
 test("plugin host preserves recording failures when durable output cannot be written", async () => {
   await withSession(async ({ session, assistantID }) => {
-    const artifacts = path.join(Global.Path.data, "sessions", session.scope.id, session.id, "rollout", "artifacts")
+    const artifacts = path.join(Global.Path.data, "sessions", session.scope.id, session.id, "rollout", "blobs")
     const backup = artifacts + "-preserved"
     let blocked = false
     await ToolRegistry.register(

@@ -285,9 +285,9 @@ describe("LatticeRunService v2", () => {
       const scopeID = ScopeContext.current.scope.id
       const pointerPath = StoragePath.latticeCurrent(Identifier.asScopeID(scopeID), crashSession.id)
       const write = Storage.write
-      const pointerWrite = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+      const pointerWrite = spyOn(Storage, "write").mockImplementation(async (key, content) => {
         if (key.join("/") === pointerPath.join("/")) throw new Error("pointer write failed")
-        return write(key, content, options)
+        return write(key, content)
       })
       try {
         await expect(
@@ -296,13 +296,7 @@ describe("LatticeRunService v2", () => {
       } finally {
         pointerWrite.mockRestore()
       }
-      expect(await LatticeStore.listBySession(scopeID, crashSession.id)).toMatchObject([
-        {
-          revision: 0,
-          goalSeed: "Crash-safe seed",
-          effect: { kind: "deliver_prompt", promptType: "state_entry" },
-        },
-      ])
+      expect(await LatticeStore.listBySession(scopeID, crashSession.id)).toEqual([])
 
       const session = await Session.create({})
       const projected = await WorkflowSessionService.enableLattice(session.id, {

@@ -583,8 +583,8 @@ describe("rollback acknowledgment", () => {
         const releaseMetadataUpdate = Promise.withResolvers<void>()
         const originalUpdate = Storage.update
         let pauseNextInfoUpdate = true
-        using _update = spyOn(Storage, "update").mockImplementation(async (key, editor, options) => {
-          const result = await originalUpdate(key, editor, options)
+        using _update = spyOn(Storage, "update").mockImplementation(async (key, editor) => {
+          const result = await originalUpdate(key, editor)
           if (pauseNextInfoUpdate && key.join("/") === infoPath.join("/")) {
             pauseNextInfoUpdate = false
             metadataPersisted.resolve()

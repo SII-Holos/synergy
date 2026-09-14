@@ -1,22 +1,18 @@
 import { describe, expect, test, afterEach } from "bun:test"
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
-import path from "node:path"
+import { Storage } from "../../src/storage/storage"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { rollbackMigrations, resetMigrations, runMigrations } from "../../src/migration"
 import type { Migration } from "../../src/migration/types"
 
-const dataDir = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "data")
 const TEST_DOMAIN = "test-rollback"
 
-function trackingPath(domain: string): string {
-  return path.join(dataDir, "meta", "migration", `log-${domain}.json`)
-}
+const trackingPath = (domain: string) => ["meta", "migration", `log-${domain}`]
 
 describe("rollbackMigrations", () => {
-  afterEach(() => {
+  afterEach(async () => {
     const p = trackingPath(TEST_DOMAIN)
     try {
-      unlinkSync(p)
+      await Storage.remove(p)
     } catch {}
     MigrationRegistry.unregister(TEST_DOMAIN)
     resetMigrations()
@@ -60,7 +56,7 @@ describe("rollbackMigrations", () => {
     // down() iterates toRollback in the collected order: [b, a]
     expect(called).toEqual(["b", "a"])
 
-    const after = JSON.parse(readFileSync(trackingPath(TEST_DOMAIN), "utf-8"))
+    const after = await Storage.read<Record<string, number>>(trackingPath(TEST_DOMAIN))
     expect(after).not.toHaveProperty("20260605-rb-a")
     expect(after).not.toHaveProperty("20260605-rb-b")
     expect(after).toHaveProperty("20260605-rb-c")
@@ -94,7 +90,7 @@ describe("rollbackMigrations", () => {
 
     expect(called).toEqual(["a"])
 
-    const after = JSON.parse(readFileSync(trackingPath(TEST_DOMAIN), "utf-8"))
+    const after = await Storage.read<Record<string, number>>(trackingPath(TEST_DOMAIN))
     expect(after).not.toHaveProperty("20260605b-rb-a")
     expect(after).toHaveProperty("20260605b-rb-b")
   })
@@ -135,7 +131,7 @@ describe("rollbackMigrations", () => {
 
     expect(called).toEqual(["c", "b", "a"])
 
-    const after = JSON.parse(readFileSync(trackingPath(TEST_DOMAIN), "utf-8"))
+    const after = await Storage.read<Record<string, number>>(trackingPath(TEST_DOMAIN))
     expect(Object.keys(after)).toHaveLength(0)
   })
 
@@ -159,7 +155,7 @@ describe("rollbackMigrations", () => {
     // Rollback to oldest: m1 (no down) is unmarked, m2 stays
     await rollbackMigrations(TEST_DOMAIN, "20260607-nodown-a")
 
-    const after = JSON.parse(readFileSync(trackingPath(TEST_DOMAIN), "utf-8"))
+    const after = await Storage.read<Record<string, number>>(trackingPath(TEST_DOMAIN))
     expect(after).not.toHaveProperty("20260607-nodown-a")
     expect(after).toHaveProperty("20260607-withdown-b")
   })
@@ -199,9 +195,9 @@ describe("rollbackMigrations", () => {
 
     // Manually remove b's tracking entry to create a gap
     const p = trackingPath(TEST_DOMAIN)
-    const logData = JSON.parse(readFileSync(p, "utf-8"))
+    const logData = await Storage.read<Record<string, number>>(p)
     delete logData["20260610-gap-b"]
-    writeFileSync(p, JSON.stringify(logData, null, 2))
+    await Storage.write(p, logData)
 
     // Rollback newest: starts at c, hits b (untracked) → stops
     await rollbackMigrations(TEST_DOMAIN, "20260610-gap-c")
@@ -209,7 +205,7 @@ describe("rollbackMigrations", () => {
     // Only c rollback was attempted (b was untracked, breaks the chain)
     expect(called).toEqual(["c"])
 
-    const after = JSON.parse(readFileSync(p, "utf-8"))
+    const after = await Storage.read<Record<string, number>>(p)
     expect(after).not.toHaveProperty("20260610-gap-c")
     expect(after).toHaveProperty("20260610-gap-a")
   })

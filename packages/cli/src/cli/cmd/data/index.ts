@@ -1,3 +1,4 @@
+import { DataStorageCommand } from "./storage"
 import type { CommandModule } from "yargs"
 import { DataSnapshotsCommand } from "./snapshots"
 import { cmd } from "../cmd"
@@ -10,6 +11,7 @@ export function createDataCommand(commands: CommandModule[] = []) {
     describe: "manage synergy data location and storage",
     builder: (yargs) =>
       yargs
+        .command(DataStorageCommand)
         .command(DataSnapshotsCommand)
         .command(DataPathCommand)
         .command(DataSetHomeCommand)

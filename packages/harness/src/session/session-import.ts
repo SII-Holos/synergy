@@ -1,3 +1,4 @@
+import { SessionStaging } from "./staging"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import { SnapshotRecords } from "./snapshot-records"
@@ -152,7 +153,7 @@ export namespace SessionImport {
 
   export async function fromReport(
     report: SessionExport.Report,
-    options: { sessionIDs?: Map<string, string>; rollout?: boolean } = {},
+    options: { sessionIDs?: Map<string, string>; rollout?: boolean; stagingID?: string } = {},
   ): Promise<Result> {
     if (report.sessions.length === 0) throw new Error("Session import report does not contain any sessions")
 
@@ -186,83 +187,110 @@ export namespace SessionImport {
     const imported: ImportedSession[] = []
     let messageCount = 0
 
-    for (const data of ordered) {
-      const sessionID = idMap.get(data.info.id)!
-      const parentID = data.info.parentID ? idMap.get(data.info.parentID) : undefined
-      const info = normalizeSessionInfo({ info: data.info, sessionID, parentID, scope, idMap })
-
-      await Session.create({
-        scope,
-        id: sessionID,
-        parentID,
-        title: info.title,
-        permission: info.permission,
-        controlProfile: info.controlProfile,
-        preAuthorizedActions: info.preAuthorizedActions,
-        interaction: info.interaction,
-        cortex: info.cortex,
-        workspace: info.workspace,
-        forkedFrom: info.forkedFrom,
-        completionNotice: info.completionNotice,
-      })
-      await writeSessionInfo(scopeID, info)
-      const snapshots = await SnapshotLifecycle.adopt({
-        scopeID: scope.id,
-        sourceSessionID: data.info.id,
-        targetSessionID: sessionID,
-        workspace: info.workspace?.path ?? ScopeContext.current.directory,
-        hashes: data.messages.flatMap((message) => message.parts.flatMap(SnapshotRecords.partRoots)),
-        allowMissing: true,
-      })
-      if (snapshots.missing.length)
-        warnings.push(
-          `Imported session has ${snapshots.missing.length} unavailable file snapshots; JSON exports do not contain file objects.`,
-        )
-
-      for (const message of data.messages) {
-        const nextMessage = await remapMessage(message.info, sessionID, idMap)
-        await Session.updateMessage(nextMessage)
-        messageCount++
-
-        for (const part of message.parts) {
-          await Session.updatePart(remapPart(part, sessionID, message.info.id, idMap, options.rollout))
+    const stagingID = options.stagingID ?? (await SessionStaging.begin(scope.id, [...idMap.values()]))
+    try {
+      const prepared: Array<{
+        data: SessionExport.SessionData
+        sessionID: string
+        parentID: string | undefined
+        info: Session.Info
+        messages: MessageV2.WithParts[]
+      }> = []
+      for (const data of ordered) {
+        const sessionID = idMap.get(data.info.id)!
+        const parentID = data.info.parentID ? idMap.get(data.info.parentID) : undefined
+        const info = normalizeSessionInfo({ info: data.info, sessionID, parentID, scope, idMap })
+        if (!options.rollout) {
+          const snapshots = await SnapshotLifecycle.adopt({
+            scopeID: scope.id,
+            sourceSessionID: data.info.id,
+            targetSessionID: sessionID,
+            workspace: info.workspace?.path ?? ScopeContext.current.directory,
+            hashes: data.messages.flatMap((message) => message.parts.flatMap(SnapshotRecords.partRoots)),
+            allowMissing: true,
+          })
+          if (snapshots.missing.length)
+            warnings.push(
+              `Imported session has ${snapshots.missing.length} unavailable file snapshots; JSON exports do not contain file objects.`,
+            )
         }
+        const messages = []
+        for (const message of data.messages) {
+          const parts = []
+          for (const part of message.parts)
+            parts.push(
+              await Session.preparePart(remapPart(part, sessionID, message.info.id, idMap, options.rollout), scope.id),
+            )
+          messages.push({ info: await remapMessage(message.info, sessionID, idMap), parts })
+        }
+        prepared.push({ data, sessionID, parentID, info, messages })
       }
+      return await Storage.transaction(async () => {
+        for (const { data, sessionID, parentID, info, messages } of prepared) {
+          await Session.create({
+            scope,
+            id: sessionID,
+            parentID,
+            title: info.title,
+            permission: info.permission,
+            controlProfile: info.controlProfile,
+            preAuthorizedActions: info.preAuthorizedActions,
+            interaction: info.interaction,
+            cortex: info.cortex,
+            workspace: info.workspace,
+            forkedFrom: info.forkedFrom,
+            completionNotice: info.completionNotice,
+          })
+          await writeSessionInfo(scopeID, info)
+          for (const message of messages) {
+            await Session.updateMessage(message.info)
+            messageCount++
 
-      const dag = Dag.normalizeRetiredAssignments(
-        data.dag.map((node) => ({
-          ...node,
-          session_id: node.session_id ? (idMap.get(node.session_id) ?? node.session_id) : undefined,
-        })),
-      )
-      if (dag.length > 0) await Dag.update({ sessionID, nodes: dag })
-      if (data.todos.length > 0) await Todo.update({ sessionID, todos: data.todos })
-      if (data.diffs.length > 0) {
-        await Storage.write(
-          StoragePath.sessionSummary(scopeID, Identifier.asSessionID(sessionID)),
-          SnapshotSchema.boundArray(data.diffs),
-        )
-      }
+            for (const part of message.parts) {
+              await Session.updatePart(part)
+            }
+          }
 
-      imported.push({ sourceSessionID: data.info.id, session: info })
-    }
+          const dag = Dag.normalizeRetiredAssignments(
+            data.dag.map((node) => ({
+              ...node,
+              session_id: node.session_id ? (idMap.get(node.session_id) ?? node.session_id) : undefined,
+            })),
+          )
+          if (dag.length > 0) await Dag.update({ sessionID, nodes: dag })
+          if (data.todos.length > 0) await Todo.update({ sessionID, todos: data.todos })
+          if (data.diffs.length > 0) {
+            await Storage.write(
+              StoragePath.sessionSummary(scopeID, Identifier.asSessionID(sessionID)),
+              SnapshotSchema.boundArray(data.diffs),
+            )
+          }
 
-    const navIndex = await SessionNav.buildNavIndex(scope.id)
-    for (const item of imported) {
-      Bus.publish(SessionEvent.Updated, {
-        info: await Session.withRuntimeInfo(item.session),
-        navEntry: navIndex.entries.find((entry) => entry.id === item.session.id),
+          imported.push({ sourceSessionID: data.info.id, session: info })
+        }
+
+        const navIndex = await SessionNav.buildNavIndex(scope.id)
+        for (const item of imported) {
+          Bus.publish(SessionEvent.Updated, {
+            info: await Session.withRuntimeInfo(item.session),
+            navEntry: navIndex.entries.find((entry) => entry.id === item.session.id),
+          })
+        }
+
+        const rootSessionID = idMap.get(report.rootSessionID) ?? imported[0]?.session.id
+        if (!rootSessionID) throw new Error("Session import did not create a root session")
+        await SessionStaging.finish(stagingID)
+        return {
+          rootSessionID,
+          sessions: imported,
+          sessionCount: imported.length,
+          messageCount,
+          warnings,
+        }
       })
-    }
-
-    const rootSessionID = idMap.get(report.rootSessionID) ?? imported[0]?.session.id
-    if (!rootSessionID) throw new Error("Session import did not create a root session")
-    return {
-      rootSessionID,
-      sessions: imported,
-      sessionCount: imported.length,
-      messageCount,
-      warnings,
+    } catch (error) {
+      await SessionStaging.discard(stagingID)
+      throw error
     }
   }
 

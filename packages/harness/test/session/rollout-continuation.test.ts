@@ -14,7 +14,7 @@ async function notify(sessionID: string, rootID: string) {
     noReply: true,
     parts: [{ type: "text", text: "Child task completed" }],
   })
-  for (const item of await SessionInbox.drainSteer(sessionID))
+  for (const item of await SessionInbox.peekSteer(sessionID))
     await SessionInbox.materializeItem(item, rootID, { guiding: true })
 }
 

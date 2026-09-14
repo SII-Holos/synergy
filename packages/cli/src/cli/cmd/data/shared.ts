@@ -4,7 +4,6 @@ import path from "path"
 import os from "os"
 import { UI } from "../../../util/ui"
 import { Global } from "@ericsanchezok/synergy-harness/global"
-import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 
 export interface Category {
   key: string
@@ -162,20 +161,11 @@ export async function isDirEmpty(dir: string): Promise<boolean> {
 }
 
 export function archiveExclusions(directory: string): string[] {
-  if (directory === "data") return ["snapshot", "snapshot-v2"]
+  if (directory === "data") return ["snapshot", "snapshot-v2", "storage", "agent-records.ndjson"]
+  if (directory === "config") return [path.join("synergy.d", "130-storage.jsonc")]
   if (directory === "cache") return ["snapshot-index"]
   if (directory === "state") return [path.join("daemon", "runtime-lock.json")]
   return []
-}
-
-/**
- * Invalidates the target home's rollout recovery ledger after owner trees
- * were copied into it. copyDirSkipExisting retains an existing ledger, but
- * imported owners can hold journals the target ledger never listed, so the
- * next startup must fall back to the exhaustive recovery scan.
- */
-export async function invalidatePendingRolloutLedger(dataDir: string) {
-  await fs.rm(path.join(dataDir, ...StoragePath.rolloutRecoveryPending()) + ".json", { force: true })
 }
 
 export interface CopyProgress {
@@ -192,7 +182,7 @@ export async function copyDirSkipExisting(
   onProgress?: (progress: CopyProgress) => void,
   rootSrc?: string,
   totalFiles?: number,
-  exclude: string[] = [],
+  exclude: string[] | ((relative: string) => boolean) = [],
 ): Promise<{ copied: number; skipped: number }> {
   if (!rootSrc) {
     rootSrc = src
@@ -212,7 +202,8 @@ export async function copyDirSkipExisting(
     for (const entry of entries) {
       const srcPath = path.join(currentSrc, entry.name)
       const dstPath = path.join(currentDst, entry.name)
-      if (exclude.includes(path.relative(src, srcPath))) continue
+      const relative = path.relative(src, srcPath)
+      if (typeof exclude === "function" ? exclude(relative) : exclude.includes(relative)) continue
 
       if (entry.isDirectory()) {
         await walk(srcPath, dstPath)
@@ -244,7 +235,7 @@ export async function copyDirSkipExisting(
           acc.skipped++
         } else {
           const linkTarget = await fs.readlink(srcPath)
-          await fs.symlink(linkTarget, dstPath).catch(() => {})
+          await fs.symlink(linkTarget, dstPath)
           acc.copied++
         }
         if (onProgress && totalFiles) {

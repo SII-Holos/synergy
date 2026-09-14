@@ -681,6 +681,14 @@ stop channels
 stop plugin runtime
 
 
+## storage
+
+inspect, verify, recover, and move authoritative Agent storage
+
+| Option | Description |
+| --- | --- |
+| `--target` (string) | JSONC configuration file containing the target storage domain; credentials use an environment reference |
+
 ## symbols <query>
 
 search workspace symbols

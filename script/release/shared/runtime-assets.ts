@@ -1,3 +1,4 @@
+import { buildSqlite } from "../../../packages/harness/script/build-sqlite"
 import { buildWatcher } from "../../../packages/runtime-local/script/build-watcher"
 import { existsSync } from "node:fs"
 import fs from "node:fs/promises"
@@ -78,6 +79,7 @@ export async function prepareRuntimeAssets(name: string, profile: RuntimeArtifac
 
   const dependencies = await runtimeDependencies(profile)
   const { targetOs, targetArch, musl } = runtimeTarget(name)
+  if (targetOs === "darwin") await fs.copyFile(await buildSqlite(), path.join(runtimeDir, "libsqlite3.dylib"))
   if (musl) {
     await removeUnsupportedMuslAssets(runtimeDir)
     console.warn(`Skipping ast-grep and sqlite-vec for ${name}; no musl-compatible release assets are available`)

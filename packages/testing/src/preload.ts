@@ -8,7 +8,22 @@ delete process.env["SYNERGY_HOME"]
 process.env["SYNERGY_TEST_HOME"] = isolated.env.SYNERGY_TEST_HOME
 process.env["SYNERGY_TEST_ROOT"] = isolated.env.SYNERGY_TEST_ROOT
 process.env["LC_ALL"] = isolated.env.LC_ALL
-afterAll(() => isolated.dispose())
+const cleanups: Array<() => Promise<unknown> | void> = []
+export function beforeTestHomeDisposal(cleanup: () => Promise<unknown> | void) {
+  cleanups.push(cleanup)
+}
+afterAll(async () => {
+  const errors: unknown[] = []
+  for (const cleanup of cleanups.toReversed()) {
+    try {
+      await cleanup()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length) throw new AggregateError(errors, "Test resources did not settle before home disposal")
+  await isolated.dispose()
+})
 const testHome = isolated.env.SYNERGY_TEST_HOME!
 
 // Existing observability/performance tests exercise the store contract with

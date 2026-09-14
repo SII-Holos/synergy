@@ -14,6 +14,8 @@ function homeDir() {
 }
 
 function root() {
+  if (process.argv.includes("__storage-maintenance-runner") && process.env.SYNERGY_MAINTENANCE_ROOT)
+    return path.resolve(process.env.SYNERGY_MAINTENANCE_ROOT)
   return path.join(homeDir(), "." + app)
 }
 

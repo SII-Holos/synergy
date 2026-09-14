@@ -179,7 +179,7 @@ describe("plugin uninstall transaction", () => {
 
       expect(await Config.domainGet("plugins")).toEqual(configured)
       expect(await Lockfile.read()).toEqual(locked)
-      expect(await readApprovals()).toEqual(approvals)
+      expect(await readApprovals()).toEqual(approvals.toSorted((a, b) => a.pluginId.localeCompare(b.pluginId)))
       expect(await IncompatiblePluginStore.read()).toEqual(incompatible)
     } finally {
       await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })

@@ -333,18 +333,14 @@ describe("session.search-index", () => {
 
         const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
         const { StoragePath } = await import("@ericsanchezok/synergy-harness/storage/path")
-        await Storage.write(
-          StoragePath.sessionSearchIndex(scopeID, sessionID),
-          {
-            version: 1,
-            tokenizerVersion: 1,
-            scopeID,
-            sessionID,
-            updatedAt: Date.now(),
-            messages: [],
-          },
-          { compact: true },
-        )
+        await Storage.write(StoragePath.sessionSearchIndex(scopeID, sessionID), {
+          version: 1,
+          tokenizerVersion: 1,
+          scopeID,
+          sessionID,
+          updatedAt: Date.now(),
+          messages: [],
+        })
 
         // readRecord ignores the stale version, so the query rescans and finds
         // the content, then persists a current-version record.

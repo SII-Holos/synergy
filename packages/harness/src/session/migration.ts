@@ -401,9 +401,6 @@ function applyPrimaryAttachmentVisibility(
   return { value, changed }
 }
 
-const legacyAttachmentPattern = String.raw`"type"\s*:\s*"file"|"artifact-only"|"attachment-only"|"primaryAttachmentIds"|"kind"\s*:\s*"artifact"|"artifact"\s*:|"mode"\s*:\s*"(inline|card|hidden)"|"primary"\s*:\s*true`
-const legacyToolDisplayPattern = String.raw`"visibility"\s*:\s*"media"|"attachment-only"|"primaryAttachmentIds"`
-const attachmentPartGlob = new Bun.Glob("sessions/**/parts/*.json")
 const legacyAttachmentMarkers = [
   '"type":"file"',
   '"type": "file"',
@@ -461,161 +458,22 @@ function candidateFromRelativePath(relativePath: string, text: string): Attachme
   }
 }
 
-async function existingRipgrepPath() {
-  const system = Bun.which("rg")
-  if (system) return system
-  const bundled = path.join(Global.Path.bin, process.platform === "win32" ? "rg.exe" : "rg")
-  return (await Bun.file(bundled)
-    .exists()
-    .catch(() => false))
-    ? bundled
-    : undefined
+async function collectPartCandidates(predicate: (text: string) => boolean): Promise<AttachmentPartCandidate[]> {
+  const result: AttachmentPartCandidate[] = []
+  for await (const record of Storage.records<unknown>({ kind: "part" })) {
+    const text = JSON.stringify(record.value)
+    if (!predicate(text)) continue
+    const candidate = candidateFromRelativePath(record.key.join("/"), text)
+    if (candidate) result.push(candidate)
+  }
+  return result
 }
 
-async function readSpawnStdout(stdout: unknown) {
-  if (!stdout || typeof stdout === "string") return undefined
-  if (typeof (stdout as { text?: unknown }).text === "function") {
-    return (stdout as { text: () => Promise<string> }).text()
-  }
-  if (typeof (stdout as { getReader?: unknown }).getReader === "function")
-    return Bun.readableStreamToText(stdout as ReadableStream)
-  return undefined
+function collectLegacyAttachmentPartCandidates() {
+  return collectPartCandidates(needsAttachmentMigration)
 }
-
-async function findLegacyAttachmentPartPaths() {
-  const sessionsRoot = path.join(Global.Path.data, "sessions")
-  if (!(await fs.stat(sessionsRoot).catch(() => undefined))?.isDirectory()) return []
-  const rg = await existingRipgrepPath()
-  if (!rg) return undefined
-
-  const proc = Bun.spawn(
-    [
-      rg,
-      "--files-with-matches",
-      "--hidden",
-      "--follow",
-      "--glob=**/parts/*.json",
-      "--",
-      legacyAttachmentPattern,
-      sessionsRoot,
-    ],
-    {
-      stdout: "pipe",
-      stderr: "ignore",
-      maxBuffer: 1024 * 1024 * 50,
-    },
-  )
-  const [text, exitCode] = await Promise.all([readSpawnStdout(proc.stdout), proc.exited])
-  if (text === undefined) return undefined
-  if (exitCode !== 0 && exitCode !== 1) {
-    log.warn("legacy attachment part candidate search failed", { exitCode })
-    return []
-  }
-  return text.split(/\r?\n/).filter(Boolean)
-}
-
-async function findLegacyToolDisplayPartPaths() {
-  const sessionsRoot = path.join(Global.Path.data, "sessions")
-  if (!(await fs.stat(sessionsRoot).catch(() => undefined))?.isDirectory()) return []
-  const rg = await existingRipgrepPath()
-  if (!rg) return undefined
-
-  const proc = Bun.spawn(
-    [
-      rg,
-      "--files-with-matches",
-      "--hidden",
-      "--follow",
-      "--glob=**/parts/*.json",
-      "--",
-      legacyToolDisplayPattern,
-      sessionsRoot,
-    ],
-    {
-      stdout: "pipe",
-      stderr: "ignore",
-      maxBuffer: 1024 * 1024 * 50,
-    },
-  )
-  const [text, exitCode] = await Promise.all([readSpawnStdout(proc.stdout), proc.exited])
-  if (text === undefined) return undefined
-  if (exitCode !== 0 && exitCode !== 1) {
-    log.warn("legacy tool display part candidate search failed", { exitCode })
-    return []
-  }
-  return text.split(/\r?\n/).filter(Boolean)
-}
-
-async function collectLegacyAttachmentPartCandidates(): Promise<AttachmentPartCandidate[]> {
-  const candidates: AttachmentPartCandidate[] = []
-  const pending: Promise<void>[] = []
-  const flush = async () => {
-    if (pending.length === 0) return
-    await Promise.all(pending.splice(0))
-  }
-
-  const paths = await findLegacyAttachmentPartPaths()
-  const scan = async function* () {
-    if (paths) {
-      for (const filepath of paths) yield filepath
-      return
-    }
-    for await (const relativePath of attachmentPartGlob.scan({ cwd: Global.Path.data, onlyFiles: true })) {
-      yield path.join(Global.Path.data, relativePath)
-    }
-  }
-
-  for await (const filepath of scan()) {
-    pending.push(
-      Bun.file(filepath)
-        .text()
-        .then((text) => {
-          if (!needsAttachmentMigration(text)) return
-          const candidate = candidateFromRelativePath(path.relative(Global.Path.data, filepath), text)
-          if (candidate) candidates.push(candidate)
-        })
-        .catch(() => undefined),
-    )
-    if (pending.length >= 64) await flush()
-  }
-  await flush()
-  return candidates.sort((a, b) => a.key.join("/").localeCompare(b.key.join("/")))
-}
-
-async function collectLegacyToolDisplayPartCandidates(): Promise<AttachmentPartCandidate[]> {
-  const candidates: AttachmentPartCandidate[] = []
-  const pending: Promise<void>[] = []
-  const flush = async () => {
-    if (pending.length === 0) return
-    await Promise.all(pending.splice(0))
-  }
-
-  const paths = await findLegacyToolDisplayPartPaths()
-  const scan = async function* () {
-    if (paths) {
-      for (const filepath of paths) yield filepath
-      return
-    }
-    for await (const relativePath of attachmentPartGlob.scan({ cwd: Global.Path.data, onlyFiles: true })) {
-      yield path.join(Global.Path.data, relativePath)
-    }
-  }
-
-  for await (const filepath of scan()) {
-    pending.push(
-      Bun.file(filepath)
-        .text()
-        .then((text) => {
-          if (!needsToolDisplayMigration(text)) return
-          const candidate = candidateFromRelativePath(path.relative(Global.Path.data, filepath), text)
-          if (candidate) candidates.push(candidate)
-        })
-        .catch(() => undefined),
-    )
-    if (pending.length >= 64) await flush()
-  }
-  await flush()
-  return candidates.sort((a, b) => a.key.join("/").localeCompare(b.key.join("/")))
+function collectLegacyToolDisplayPartCandidates() {
+  return collectPartCandidates(needsToolDisplayMigration)
 }
 
 async function migrateSessionAttachmentParts(progress: (current: number, total: number) => void) {
@@ -2216,6 +2074,48 @@ export const migrations: Migration[] = [
     async up(progress) {
       const { SnapshotMaintenance } = await import("./snapshot-maintenance")
       await SnapshotMaintenance.releaseOrphanOwners(progress)
+    },
+  },
+  {
+    id: "20260914-transactional-session-indexes",
+    description: "Build Session lookup and navigation projections from transactional authority",
+    async up(progress) {
+      const { Session } = await import(".")
+      progress?.(0, 1)
+      await Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))
+      progress?.(1, 1)
+    },
+  },
+  {
+    id: "20260914-inbox-delivery-receipts",
+    description: "Index historical inbox materializations without replaying deliveries",
+    async up(progress) {
+      const { SessionInbox } = await import("./inbox")
+      let done = 0
+      for await (const record of Storage.records<MessageV2.Info>({ kind: "message" })) {
+        const message = record.value
+        const deliveryKey = message.metadata?.inboxDeliveryKey
+        const itemID =
+          typeof deliveryKey === "string"
+            ? SessionInbox.stableDeliveryItemID(message.sessionID, deliveryKey)
+            : /^msg_[a-f0-9]{26}$/.test(message.id)
+              ? `inb_${message.id.slice(4)}`
+              : undefined
+        if (itemID)
+          await Storage.transaction(async () => {
+            const key = ["sessions", record.key[1], message.sessionID, "inbox-materialized", itemID]
+            if ((await Storage.readMany([key]))[0] === undefined)
+              await Storage.write(key, {
+                itemID,
+                messageID: message.id,
+                deliveryKey,
+                completedAt: message.time.created,
+              })
+          })
+        done++
+        if (done % 128 === 0) progress?.(0, 0)
+      }
+      progress?.(done, done)
     },
   },
 ]

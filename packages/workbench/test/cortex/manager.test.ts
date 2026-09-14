@@ -2072,7 +2072,7 @@ describe.serial("Cortex", () => {
             expect(await waitForNotification(parentSession.id, first.id)).toBeDefined()
             expect(await waitForNotification(parentSession.id, second.id)).toBeDefined()
 
-            const drained = await SessionInbox.drainSteer(parentSession.id)
+            const drained = await SessionInbox.peekSteer(parentSession.id)
             expect(drained).toHaveLength(2)
             expect(new Set(drained.map((item) => item.deliveryKey))).toEqual(
               new Set([`cortex:taskNotification:${first.id}`, `cortex:taskNotification:${second.id}`]),

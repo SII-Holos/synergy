@@ -9,6 +9,8 @@ test("core preserves unknown kinds and nested owner metadata through read update
       "--eval",
       `
       import assert from "node:assert/strict"
+      const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+      await using storageHandle = await StorageMaintenance.open({ migrate: false })
       import z from "zod"
       const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
       const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")

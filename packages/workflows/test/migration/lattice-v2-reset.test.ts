@@ -589,12 +589,12 @@ describe("Lattice v2 reset migration", () => {
 
     const originalWrite = Storage.write
     let failAuditWrite = true
-    using _write = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+    using _write = spyOn(Storage, "write").mockImplementation(async (key, content) => {
       if (failAuditWrite && key.join("/") === auditSessionPath.join("/")) {
         failAuditWrite = false
         throw new Error("injected audit Session write failure")
       }
-      return originalWrite(key, content, options)
+      return originalWrite(key, content)
     })
 
     const migration = resetMigration()

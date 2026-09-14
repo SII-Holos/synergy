@@ -31,6 +31,7 @@ test("config domain filenames are stable and ordered", () => {
     "115-github.jsonc",
     "120-runtime.jsonc",
     "125-voice.jsonc",
+    "130-storage.jsonc",
   ])
 })
 

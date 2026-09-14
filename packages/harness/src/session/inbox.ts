@@ -2,12 +2,10 @@ import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
-import { GlobalBus } from "../bus/global"
 import { Identifier } from "../id/id"
 import { Scope } from "../scope"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { Context } from "../util/context"
 import { Lock } from "../util/lock"
 import { sha256Content } from "../util/crypto"
 import { Log } from "../util/log"
@@ -246,51 +244,48 @@ export namespace SessionInbox {
   }
 
   async function writeItem(item: StoredItem, preserveCreated = false): Promise<StoredItem> {
-    {
-      using lock = await Lock.write(`session-inbox-write:${item.sessionID}`)
-      if (!preserveCreated) {
-        const { SessionManager } = await import("./manager")
-        item.time.created = Math.max(
-          item.time.created,
-          Date.now(),
-          SessionManager.fenceQueuedBefore(item.sessionID) ?? 0,
+    return Storage.transaction(async () => {
+      {
+        if (!preserveCreated) {
+          const { SessionManager } = await import("./manager")
+          item.time.created = Math.max(
+            item.time.created,
+            Date.now(),
+            SessionManager.fenceQueuedBefore(item.sessionID) ?? 0,
+          )
+        }
+        const session = await readSession(item.sessionID)
+        const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+        await Storage.write(
+          StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id),
+          item,
         )
       }
-      const session = await readSession(item.sessionID)
-      const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-      await Storage.write(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id), item)
-    }
-    await publish(item.sessionID)
-    return item
+      await publish(item.sessionID)
+      return item
+    })
   }
 
   async function removeItems(sessionID: string, itemIDs: string[], notify = true): Promise<void> {
-    if (itemIDs.length === 0) return
-    const session = await readSession(sessionID)
-    const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-    await Promise.all(
-      itemIDs.map((id) => Storage.remove(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(sessionID), id))),
-    )
-    if (notify) await publish(sessionID)
+    return Storage.transaction(async () => {
+      if (itemIDs.length === 0) return
+      const session = await readSession(sessionID)
+      const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+      await Promise.all(
+        itemIDs.map((id) =>
+          Storage.remove(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(sessionID), id)),
+        ),
+      )
+      if (notify) await publish(sessionID)
+    })
   }
 
   async function publish(sessionID: string): Promise<void> {
     const items = await list(sessionID)
     const payload = { sessionID, items }
-    try {
-      await Bus.publish(Event.Updated, payload)
-    } catch (e) {
-      if (!(e instanceof Context.NotFound)) throw e
-      const session = await readSession(sessionID)
-      const scope = session.scope as Scope
-      GlobalBus.emit("event", {
-        directory: scope.type === "home" ? "home" : scope.directory,
-        payload: {
-          type: Event.Updated.type,
-          properties: payload,
-        },
-      })
-    }
+    const session = await readSession(sessionID)
+    const scope = session.scope as Scope
+    await ScopeContext.provide({ scope, fn: () => Bus.publish(Event.Updated, payload) })
   }
 
   function summarizeParts(parts: Array<{ type: string; text?: unknown; filename?: unknown }>): Item["summary"] & {
@@ -395,7 +390,7 @@ export namespace SessionInbox {
         : stored.filter((item) => item.time.created >= (options.createdAfter ?? 0))
     if (items.some((item) => item.mode === "task" && item.status !== "failed")) return true
     if (options?.allowSteer === false) return false
-    if (!items.some((item) => item.mode === "steer")) return false
+    if (!items.some((item) => item.mode === "steer" && item.status !== "failed")) return false
     return !!(await latestRootID(sessionID))
   }
 
@@ -463,14 +458,9 @@ export namespace SessionInbox {
     return publicItem(await getStored(sessionID, itemID))
   }
 
-  function stableDeliveryItemID(sessionID: string, deliveryKey: string): string {
+  export function stableDeliveryItemID(sessionID: string, deliveryKey: string): string {
     const hash = sha256Content(`${sessionID}:${deliveryKey}`).slice(0, 26)
     return `inb_${hash}`
-  }
-
-  function legacyStableMessageID(sessionID: string, deliveryKey: string): string {
-    const hash = sha256Content(`${sessionID}:${deliveryKey}`).slice(0, 26)
-    return `msg_${hash}`
   }
 
   function deliveryItem(input: z.infer<typeof Deliver.Input>, ids: { itemID: string; messageID: string }): StoredItem {
@@ -537,15 +527,22 @@ export namespace SessionInbox {
 
   async function findExistingDelivery(sessionID: string, deliveryKey: string) {
     const itemID = stableDeliveryItemID(sessionID, deliveryKey)
-    const existing = await getStored(sessionID, itemID).catch(() => undefined)
+    const existing = await getStored(sessionID, itemID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
     if (existing) return { itemID: existing.id, messageID: existing.messageID }
 
-    const legacyMessageID = legacyStableMessageID(sessionID, deliveryKey)
-    const materialized = (await SessionHistory.messageInfos(sessionID)).find(
-      (info) => info.id === legacyMessageID || info.metadata?.inboxDeliveryKey === deliveryKey,
-    )
-    if (!materialized) return undefined
-    return { itemID, messageID: materialized.id }
+    const session = await readSession(sessionID)
+    const [receipt] = await Storage.readMany<{ itemID: string; messageID: string }>([
+      [
+        ...StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(sessionID)),
+        "inbox-materialized",
+        itemID,
+      ],
+    ])
+    if (receipt) return { itemID: receipt.itemID, messageID: receipt.messageID }
+    return undefined
   }
 
   async function deliverUniqueWithPreparedMessage(
@@ -723,14 +720,8 @@ export namespace SessionInbox {
     const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
 
-    const existing = await getStored(input.sessionID, itemID).catch(() => undefined)
-    if (existing) return { itemID: existing.id, messageID: existing.messageID, created: false }
-
-    const legacyMessageID = legacyStableMessageID(input.sessionID, input.deliveryKey)
-    const materialized = (await SessionHistory.messageInfos(input.sessionID)).find(
-      (info) => info.id === legacyMessageID || info.metadata?.inboxDeliveryKey === input.deliveryKey,
-    )
-    if (materialized) return { itemID, messageID: materialized.id, created: false }
+    const existing = await findExistingDelivery(input.sessionID, input.deliveryKey)
+    if (existing) return { ...existing, created: false }
 
     const orderKey = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
@@ -759,27 +750,27 @@ export namespace SessionInbox {
    * A steer item becomes task (queues for after-turn).
    */
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
-    const item = await assertMutable(input)
-    if (item.mode === "context") return publicItem(item)
-    if (item.status === "failed") {
-      // The loop deletes steer items before materialization, so guiding a
-      // parked failure would permanently drop its payload mid-run; only the
-      // retry path may re-drive it.
-      throw new ItemFailedError({
-        message: "A failed item cannot be guided; retry delivery or delete it instead.",
-        sessionID: input.sessionID,
-        itemID: input.itemID,
-      })
-    }
-    const updated: StoredItem = {
-      ...item,
-      mode: item.mode === "task" ? "steer" : "task",
-      time: {
-        ...item.time,
-        updated: Date.now(),
-      },
-    }
-    return publicItem(await writeItem(updated, true))
+    return Storage.transaction(async () => {
+      const item = await assertMutable(input)
+      if (item.mode === "context") return publicItem(item)
+      if (item.status === "failed") {
+        // Retry must reopen the failed rollout before its payload becomes runnable.
+        throw new ItemFailedError({
+          message: "A failed item cannot be guided; retry delivery or delete it instead.",
+          sessionID: input.sessionID,
+          itemID: input.itemID,
+        })
+      }
+      const updated: StoredItem = {
+        ...item,
+        mode: item.mode === "task" ? "steer" : "task",
+        time: {
+          ...item.time,
+          updated: Date.now(),
+        },
+      }
+      return publicItem(await writeItem(updated, true))
+    })
   }
 
   /**
@@ -790,15 +781,17 @@ export namespace SessionInbox {
   }
 
   async function drainWhere(sessionID: string, predicate: (item: StoredItem) => boolean): Promise<StoredItem[]> {
-    const items = await listStored(sessionID)
-    const drained = items.filter(predicate)
-    if (drained.length === 0) return []
-    await removeItems(
-      sessionID,
-      drained.map((item) => item.id),
-    )
-    log.info("drained inbox items", { sessionID, count: drained.length })
-    return drained
+    return Storage.transaction(async () => {
+      const items = await listStored(sessionID)
+      const drained = items.filter(predicate)
+      if (drained.length === 0) return []
+      await removeItems(
+        sessionID,
+        drained.map((item) => item.id),
+      )
+      log.info("drained inbox items", { sessionID, count: drained.length })
+      return drained
+    })
   }
 
   export async function drainReady(sessionID: string): Promise<StoredItem[]> {
@@ -827,12 +820,14 @@ export namespace SessionInbox {
 
   // --- Mode-based drains ---
 
-  export async function drainSteer(sessionID: string): Promise<StoredItem[]> {
-    return drainWhere(sessionID, (item) => item.mode === "steer")
+  export async function peekSteer(sessionID: string): Promise<StoredItem[]> {
+    return (await listStored(sessionID)).filter((item) => item.mode === "steer" && item.status !== "failed")
   }
 
-  export async function drainContext(sessionID: string): Promise<StoredItem[]> {
-    return drainWhere(sessionID, (item) => item.mode === "context" && item.message?.role === "user")
+  export async function peekContext(sessionID: string): Promise<StoredItem[]> {
+    return (await listStored(sessionID)).filter(
+      (item) => item.mode === "context" && item.message?.role === "user" && item.status !== "failed",
+    )
   }
 
   export async function peekTask(sessionID: string): Promise<StoredItem | undefined> {
@@ -841,29 +836,31 @@ export namespace SessionInbox {
   }
 
   export async function fenceQueuedWork(sessionID: string, onFence: (createdBefore: number) => void): Promise<number> {
-    let removed: number
-    {
-      using lock = await Lock.write(`session-inbox-write:${sessionID}`)
-      const { SessionManager } = await import("./manager")
-      const items = await listStored(sessionID)
-      const createdBefore =
-        SessionManager.fenceQueuedBefore(sessionID) ??
-        Math.max(Date.now(), ...items.map((item) => item.time.created)) + 1
-      onFence(createdBefore)
-      removed = await removeByModesUnlocked(sessionID, ["task", "steer", "context"], createdBefore)
-    }
-    if (removed > 0) await publish(sessionID)
-    return removed
+    return Storage.transaction(async () => {
+      let removed: number
+      {
+        const { SessionManager } = await import("./manager")
+        const items = await listStored(sessionID)
+        const createdBefore =
+          SessionManager.fenceQueuedBefore(sessionID) ??
+          Math.max(Date.now(), ...items.map((item) => item.time.created)) + 1
+        Storage.afterCommit(() => onFence(createdBefore))
+        removed = await removeByModesUnlocked(sessionID, ["task", "steer", "context"], createdBefore)
+      }
+      if (removed > 0) await publish(sessionID)
+      return removed
+    })
   }
 
   export async function removeByModes(sessionID: string, modes: ItemMode[], createdBefore?: number): Promise<number> {
-    let removed: number
-    {
-      using lock = await Lock.write(`session-inbox-write:${sessionID}`)
-      removed = await removeByModesUnlocked(sessionID, modes, createdBefore)
-    }
-    if (removed > 0) await publish(sessionID)
-    return removed
+    return Storage.transaction(async () => {
+      let removed: number
+      {
+        removed = await removeByModesUnlocked(sessionID, modes, createdBefore)
+      }
+      if (removed > 0) await publish(sessionID)
+      return removed
+    })
   }
 
   async function removeByModesUnlocked(sessionID: string, modes: ItemMode[], createdBefore?: number): Promise<number> {
@@ -884,11 +881,42 @@ export namespace SessionInbox {
     rootID?: string,
     options?: { guiding?: boolean },
   ): Promise<MessageV2.WithParts | undefined> {
-    // Pre-allocated messageID ensures idempotent write
-    const existing = await MessageV2.get({ sessionID: item.sessionID, messageID: item.messageID }).catch(
-      () => undefined,
-    )
-    if (existing) return existing
+    try {
+      return await materializeStoredItem(item, rootID, options)
+    } catch (error) {
+      if (item.mode !== "task" && error instanceof Attachment.InvalidUrlError)
+        await parkTaskFailure(item.sessionID, item, error.message)
+      throw error
+    }
+  }
+
+  async function materializeStoredItem(
+    item: StoredItem,
+    rootID?: string,
+    options?: { guiding?: boolean },
+  ): Promise<MessageV2.WithParts | undefined> {
+    const commitOptions: SessionUserMessageMaterialization.CommitOptions = {
+      commit: async () => {
+        const session = await readSession(item.sessionID)
+        const scopeID = Identifier.asScopeID(session.scope.id)
+        const sid = Identifier.asSessionID(item.sessionID)
+        await Storage.write([...StoragePath.sessionRoot(scopeID, sid), "inbox-materialized", item.id], {
+          itemID: item.id,
+          messageID: item.messageID,
+          deliveryKey: item.deliveryKey,
+          completedAt: Date.now(),
+        })
+        await removeItems(item.sessionID, [item.id])
+      },
+    }
+    const existing = await MessageV2.get({ sessionID: item.sessionID, messageID: item.messageID }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
+    if (existing) {
+      await Storage.transaction(() => commitOptions.commit!(existing))
+      return existing
+    }
 
     const payload = item.message
     if (!payload) return undefined
@@ -918,6 +946,7 @@ export namespace SessionInbox {
             noReply: item.mode === "task" ? item.input.noReply : true,
           },
           rootID,
+          commitOptions,
         )
       }
 
@@ -960,7 +989,7 @@ export namespace SessionInbox {
         ...(payload.tools ? { tools: payload.tools } : {}),
         ...(variant ? { variant } : {}),
       }
-      return SessionUserMessageMaterialization.write({ info, parts })
+      return SessionUserMessageMaterialization.write({ info, parts }, commitOptions)
     }
 
     // Assistant messages
@@ -991,10 +1020,7 @@ export namespace SessionInbox {
           }
         : {}),
     }
-    await Session.updateMessage(info)
-    for (const part of parts) {
-      await Session.updatePart(part)
-    }
+    const result = await SessionUserMessageMaterialization.write({ info, parts }, commitOptions)
     await SessionContextContributions.onAssistantComplete(info)
     await Plugin.trigger(
       "session.turn.after",
@@ -1037,7 +1063,6 @@ export namespace SessionInbox {
       await parkTaskFailure(sessionID, task, error.message)
       return { status: "failed", itemID: task.id, reason: error.message }
     }
-    await commitReady(sessionID, [task.id])
     return { status: "materialized", itemID: task.id, messageID: task.messageID }
   }
 

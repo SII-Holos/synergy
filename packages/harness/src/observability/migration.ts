@@ -1,3 +1,4 @@
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import fs from "fs/promises"
 import { Database } from "bun:sqlite"
 import { MigrationRegistry } from "../migration/registry"
@@ -26,6 +27,7 @@ export namespace ObservabilityMigration {
       progress(1, 1)
       return
     }
+    initializeSqliteEngine()
     const legacy = new Database(legacyPath, { readonly: true })
     try {
       const steps = [

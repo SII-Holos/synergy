@@ -1,14 +1,11 @@
-import path from "path"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { MigrationRegistry } from "./registry"
 import { orderMigrations } from "./order"
 import { progressBar, stageWrite, disableWrap, enableWrap, PROGRESS_INTERVAL } from "./format"
-import { Global } from "../global"
 import { Installation } from "../global/installation"
 import { setActiveMigrationContext } from "./context"
-import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 // Side-effect imports: register harness-core domain migrations in
 // MigrationRegistry. Product-domain migrations register through the L4
 // product manifest (src/product-registration.ts) loaded by real entry points.
@@ -22,9 +19,7 @@ export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSumma
 
 const log = Log.create({ service: "migration" })
 
-let runningMigrations: Promise<MigrationSummary> | undefined
-let migrationsCompleted = false
-let lastSummary: MigrationSummary | undefined
+const states = new WeakMap<object, { running?: Promise<MigrationSummary>; summary?: MigrationSummary }>()
 
 function collectByDomain(options?: { targetDomain?: string }): Map<string, Migration[]> {
   const result = new Map<string, Migration[]>()
@@ -49,7 +44,7 @@ function collectByDomain(options?: { targetDomain?: string }): Map<string, Migra
  */
 async function migrateOldTrackingData(): Promise<void> {
   const oldLogKey = StoragePath.metaMigrationLog()
-  const oldData = await Storage.read<Record<string, number>>(oldLogKey).catch(() => null)
+  const oldData = await Storage.read<Record<string, number>>(oldLogKey).catch(missingLog)
   if (!oldData) return
   const remaining = { ...oldData }
 
@@ -89,7 +84,7 @@ async function migrateOldTrackingData(): Promise<void> {
 async function migrateRegisteredLegacyTrackingData(): Promise<void> {
   for (const owner of MigrationRegistry.legacyTracking()) {
     const oldKey = StoragePath.metaMigrationLogDomain(owner.sourceDomain)
-    const oldData = await Storage.read<Record<string, number>>(oldKey).catch(() => null)
+    const oldData = await Storage.read<Record<string, number>>(oldKey).catch(missingLog)
     if (!oldData) continue
     const migrated = Object.fromEntries(
       Object.entries(oldData).map(([id, timestamp]) => [owner.aliases[id] ?? owner.rename?.(id) ?? id, timestamp]),
@@ -101,32 +96,37 @@ async function migrateRegisteredLegacyTrackingData(): Promise<void> {
 }
 
 export async function ensureMigrations(options?: RunOptions): Promise<MigrationSummary> {
-  if (migrationsCompleted) {
-    const summary = lastSummary ?? emptySummary()
-    options?.reporter?.summary(summary)
-    return summary
+  const store = Storage.current().store
+  let state = states.get(store)
+  if (!state) {
+    state = {}
+    states.set(store, state)
   }
-  runningMigrations ??= runMigrations({ ...options, output: options?.output ?? "silent" })
+  if (state.summary) {
+    options?.reporter?.summary(state.summary)
+    return state.summary
+  }
+  const current = state
+  current.running ??= runMigrations({ ...options, output: options?.output ?? "silent" })
     .then((summary) => {
-      migrationsCompleted = true
-      lastSummary = summary
+      current.summary = summary
       return summary
     })
     .finally(() => {
-      runningMigrations = undefined
+      current.running = undefined
     })
-  return runningMigrations
+  return current.running
 }
 
 export function resetMigrations(): void {
-  migrationsCompleted = false
-  runningMigrations = undefined
-  lastSummary = undefined
+  if (Storage.available()) states.delete(Storage.current().store)
 }
 
 export async function runMigrations(options?: RunOptions): Promise<MigrationSummary> {
-  await migrateOldTrackingData()
-  await migrateRegisteredLegacyTrackingData()
+  if (!options?.dryRun) {
+    await migrateOldTrackingData()
+    await migrateRegisteredLegacyTrackingData()
+  }
 
   const dryRun = options?.dryRun ?? false
   const output = options?.output ?? "interactive"
@@ -267,31 +267,20 @@ function emptySummary(): MigrationSummary {
 }
 
 async function loadLogForDomain(domain: string): Promise<Record<string, number>> {
-  return Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(domain)).catch(() => ({}))
+  return Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(domain)).catch(
+    (error) => missingLog(error) ?? {},
+  )
 }
 
-function migrationLockDirectory() {
-  return path.join(Global.Path.data, "meta", "migration", ".locks")
+function missingLog(error: unknown): undefined {
+  if (error instanceof Storage.NotFoundError) return
+  throw error
 }
 
-function migrationLockOptions(domain: string) {
-  return {
-    directory: migrationLockDirectory(),
-    key: `migration-log:${domain}`,
-    timeoutMessage: `Timed out acquiring migration tracking lock for ${domain}`,
-  }
-}
-
-/**
- * Merge completion markers into the per-domain migration log under a cross-process
- * file lock. Multiple Synergy instances sharing one home may run migrations
- * concurrently; a plain read-modify-write would let the last writer drop markers
- * persisted by the other process, re-pending completed migrations on the next boot.
- */
 async function mergeDomainLog(domain: string, entries: Record<string, number>): Promise<void> {
   const key = StoragePath.metaMigrationLogDomain(domain)
-  await withFileLock(migrationLockOptions(domain), async () => {
-    const current = await Storage.read<Record<string, number>>(key).catch(() => ({}))
+  await Storage.transaction(async () => {
+    const current = await loadLogForDomain(domain)
     await Storage.write(key, { ...current, ...entries })
   })
 }
@@ -303,8 +292,10 @@ async function saveLogForDomain(domain: string, data: Record<string, number>): P
 /** Remove a single completion marker under the same cross-process lock, preserving concurrent markers. */
 async function deleteDomainLogEntry(domain: string, migrationID: string): Promise<void> {
   const key = StoragePath.metaMigrationLogDomain(domain)
-  await withFileLock(migrationLockOptions(domain), async () => {
-    const current: Record<string, number> = await Storage.read<Record<string, number>>(key).catch(() => ({}))
+  await Storage.transaction(async () => {
+    const current: Record<string, number> = await Storage.read<Record<string, number>>(key).catch(
+      (error) => missingLog(error) ?? {},
+    )
     delete current[migrationID]
     await Storage.write(key, current)
   })
@@ -384,8 +375,6 @@ export async function rollbackMigrations(domain: string, targetId: string): Prom
 export async function getMigrationStatus(
   domain?: string,
 ): Promise<Record<string, { completed: Migration[]; pending: Migration[] }>> {
-  await migrateOldTrackingData()
-
   const domains = collectByDomain({ targetDomain: domain })
   const result: Record<string, { completed: Migration[]; pending: Migration[] }> = {}
 

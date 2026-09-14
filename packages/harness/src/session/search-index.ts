@@ -2,7 +2,6 @@ import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { Lock } from "../util/lock"
 import { Log } from "../util/log"
 
 /**
@@ -229,72 +228,17 @@ export namespace SessionSearchIndex {
     return marker !== undefined
   }
 
-  /**
-   * Record that the session's searchable content changed. Callers invoke this
-   * BEFORE the content mutation persists (a crash between invalidation and the
-   * write costs only one extra scan) and again AFTER it (a scan that started
-   * before the mutation must see a marker newer than its scan start; see
-   * commitRebuild). When the marker write itself fails, the index record is
-   * dropped instead — under the same lock, so a concurrent commitRebuild
-   * cannot republish a clean record between the failed marker write and this
-   * removal. Never throws.
-   */
   export async function markDirty(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
-    try {
-      using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
-      try {
-        await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker, {
-          compact: true,
-        })
-      } catch (error) {
-        // The marker could not be persisted. A stale-but-clean record must not
-        // survive, so remove it while still holding the lock; if that also
-        // fails, the record is only ever read as absent on a later query when
-        // the session's messages are scanned anyway.
-        try {
-          await Storage.remove(recordKey(scopeID, sessionID))
-          log.warn("marking session search dirty failed; dropped index record", {
-            scopeID,
-            sessionID,
-            error: String(error),
-          })
-        } catch (recordError) {
-          log.warn("failed to mark session search dirty and drop stale record", {
-            scopeID,
-            sessionID,
-            error: String(error),
-            recordError: String(recordError),
-          })
-        }
-      }
-    } catch (error) {
-      log.warn("failed to acquire session search index lock for markDirty", {
-        scopeID,
-        sessionID,
-        error: String(error),
-      })
-    }
+    await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker)
   }
 
-  async function clearDirtyLocked(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
-    await Storage.remove(dirtyKey(scopeID, sessionID))
-  }
-
-  /**
-   * Persist a rebuilt record and clear the dirty marker — but only when no
-   * write landed after the rebuild started. `sinceMs` is the timestamp the
-   * caller began collecting; a marker newer than it means a mutation raced in
-   * during the rebuild, so the marker must survive to trigger another pass.
-   * Never throws.
-   */
   export async function commitRebuild(
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
     messages: IndexedMessage[],
     opts?: { sinceMs?: number },
   ): Promise<void> {
-    try {
-      using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
+    await Storage.transaction(async (tx) => {
       const record: SearchIndexRecord = {
         version: VERSION,
         tokenizerVersion: TOKENIZER_VERSION,
@@ -303,29 +247,18 @@ export namespace SessionSearchIndex {
         updatedAt: Date.now(),
         messages,
       }
-      await Storage.write(recordKey(scopeID, sessionID), record, { compact: true })
-      if (opts?.sinceMs === undefined) {
-        await clearDirtyLocked(scopeID, sessionID)
-        return
-      }
-      const marker = await Storage.read<DirtyMarker>(dirtyKey(scopeID, sessionID), {
-        silentNotFound: true,
-      }).catch(() => undefined)
-      if (!marker || marker.dirtyAt <= opts.sinceMs) await clearDirtyLocked(scopeID, sessionID)
-    } catch (error) {
-      log.warn("failed to commit session search index", { scopeID, sessionID, error: String(error) })
-    }
+      await tx.write(recordKey(scopeID, sessionID), record)
+      const [marker] = await tx.readMany<DirtyMarker>([dirtyKey(scopeID, sessionID)])
+      if (!marker || (opts?.sinceMs !== undefined && marker.dirtyAt < opts.sinceMs))
+        await tx.remove(dirtyKey(scopeID, sessionID))
+    })
   }
 
-  /** Delete a session's index record and dirty marker. Never throws. */
   export async function removeRecords(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
-    try {
-      using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
-      await Storage.remove(recordKey(scopeID, sessionID))
-      await Storage.remove(dirtyKey(scopeID, sessionID))
-    } catch (error) {
-      log.warn("failed to remove session search index", { scopeID, sessionID, error: String(error) })
-    }
+    await Storage.transaction(async (tx) => {
+      await tx.remove(recordKey(scopeID, sessionID))
+      await tx.remove(dirtyKey(scopeID, sessionID))
+    })
   }
 
   /**

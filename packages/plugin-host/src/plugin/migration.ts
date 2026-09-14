@@ -1,3 +1,7 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { writeLocalRegistry } from "./local-registry-store"
+import * as Lockfile from "./lockfile"
+import { writeApprovals } from "./consent/approval-store"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -55,7 +59,7 @@ async function migrateApprovalFile(
   data: string,
   manifests: Map<string, { manifest: PluginApprovalManifest; rawManifest: PluginApprovalManifest }>,
 ) {
-  const value = await readJson(path.join(data, "plugin-approvals.json"))
+  const [value] = await Storage.readMany([["plugin-approvals"]])
   const oldApprovals = Array.isArray(value) ? value : Object.values(record(value))
   const approvals: PluginApprovalRecord[] = []
   for (const value of oldApprovals) {
@@ -85,12 +89,11 @@ async function migrateApprovalFile(
       approvedAt: Number.isFinite(Number(old.approvedAt)) ? Number(old.approvedAt) : Date.now(),
     })
   }
-  await fs.mkdir(data, { recursive: true })
-  await Bun.write(path.join(data, "plugin-approvals.json"), `${JSON.stringify(approvals, null, 2)}\n`)
+  await Storage.write(["plugin-approvals"], approvals)
 }
 
 export async function migratePluginApprovalsV2(input: { root: string; data: string; cache: string }) {
-  const rawLock = record(await readJson(path.join(input.root, "plugin.lock")))
+  const rawLock = record((await Storage.readMany([["plugin-lock"]]))[0])
   const rawPlugins = record(rawLock.plugins)
   const manifests = new Map<string, { manifest: PluginApprovalManifest; rawManifest: PluginApprovalManifest }>()
   for (const [pluginId, value] of Object.entries(rawPlugins)) {
@@ -110,8 +113,7 @@ export async function migratePluginCatalog(input: {
   progress?: (current: number, total: number) => void
 }) {
   const progress = input.progress ?? (() => undefined)
-  const lockPath = path.join(input.root, "plugin.lock")
-  const rawLock = record(await readJson(lockPath))
+  const rawLock = record((await Storage.readMany([["plugin-lock"]]))[0])
   const rawPlugins = record(rawLock.plugins)
   const next: PluginLockfile = { version: 2, plugins: {} }
   const incompatible: IncompatiblePluginRecord[] = []
@@ -147,9 +149,8 @@ export async function migratePluginCatalog(input: {
     }
     progress(++current, Math.max(1, entries.length))
   }
-  await fs.mkdir(path.dirname(lockPath), { recursive: true })
-  await Bun.write(lockPath, `${JSON.stringify(next, null, 2)}\n`)
-  await IncompatiblePluginStore.write(incompatible, input.data)
+  await Storage.write(["plugin-lock"], next)
+  await IncompatiblePluginStore.write(incompatible)
 
   await migrateApprovalFile(input.data, manifests)
   await fs.rm(path.join(input.cache, "plugin"), { recursive: true, force: true }).catch(() => undefined)
@@ -172,6 +173,45 @@ const migrations: Migration[] = [
     async up(progress) {
       progress(0, 1)
       await migratePluginApprovalsV2({ root: Global.Path.root, data: Global.Path.data, cache: Global.Path.cache })
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260914-plugin-transactional-records",
+    description: "Separate plugin installation, approval, and audit records in authoritative storage",
+    async up(progress) {
+      await Storage.transaction(async (tx) => {
+        const [rawLock, approvals, audit, registry] = await tx.readMany([
+          ["plugin-lock"],
+          ["plugin-approvals"],
+          ["plugin-audit"],
+          ["registry", "plugins"],
+        ])
+        if (rawLock !== undefined) await Lockfile.write(rawLock as PluginLockfile)
+        if (approvals !== undefined) {
+          if (!Array.isArray(approvals)) throw new Error("Plugin approvals must be an array")
+          await writeApprovals(approvals as PluginApprovalRecord[])
+        }
+        if (audit !== undefined) {
+          if (!Array.isArray(audit)) throw new Error("Plugin audit history must be an array")
+          for (const entry of audit) {
+            const event = record(entry)
+            if (typeof event.id !== "string" || typeof event.time !== "number")
+              throw new Error("Plugin audit event has no stable identity")
+            await tx.write(["plugin-audit", "events", `${String(event.time).padStart(16, "0")}_${event.id}`], event)
+          }
+        }
+        if (registry !== undefined) {
+          const entries = Array.isArray(registry) ? registry : record(registry).plugins
+          if (!Array.isArray(entries) || entries.some((entry) => typeof record(entry).id !== "string"))
+            throw new Error("Plugin registry entries have no stable identities")
+          await writeLocalRegistry(entries as Array<{ id: string }>)
+          await tx.remove(["registry", "plugins"])
+        }
+        await tx.remove(["plugin-lock"])
+        await tx.remove(["plugin-approvals"])
+        await tx.remove(["plugin-audit"])
+      })
       progress(1, 1)
     },
   },

@@ -35,6 +35,7 @@ Architecture documents define current invariants, ownership boundaries, and the 
 
 - [Architecture overview](architecture/README.md)
 - [Runtime and Scope](architecture/runtime-and-scope.md)
+- [Agent storage](architecture/agent-storage.md)
 - [Workspace and files](architecture/workspace-and-files.md)
 - [Sessions and messages](architecture/session-and-messages.md)
 - [LLM loop and compaction](architecture/llm-loop.md)

@@ -1,9 +1,12 @@
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { Database } from "bun:sqlite"
 import { Global } from "../global"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotStore } from "./snapshot-store"
+
+initializeSqliteEngine()
 
 export namespace SnapshotTransfer {
   export async function recoverImports(target: string, signal?: AbortSignal) {

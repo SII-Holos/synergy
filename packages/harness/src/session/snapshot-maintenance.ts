@@ -1,7 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
-import { Global } from "../global"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
@@ -35,8 +34,13 @@ export namespace SnapshotMaintenance {
   const { entries, historicalRoots } = SnapshotRecords
 
   export async function scopes() {
-    const result = new Set<string>()
-    for (const dir of [Global.Path.snapshot, path.join(Global.Path.data, "snapshot-v2")]) {
+    const result = new Set<string>(
+      (await Storage.scan(["snapshot-v2"])).filter((id) => id !== "format" && id !== "leases"),
+    )
+    for (const dir of [
+      path.join(Storage.current().artifactDirectory, "snapshot"),
+      path.join(Storage.current().artifactDirectory, "snapshot-v2"),
+    ]) {
       for (const entry of await entries(dir))
         if (entry.isDirectory() && /^[a-zA-Z0-9_-]+$/.test(entry.name)) result.add(entry.name)
     }
@@ -48,9 +52,16 @@ export namespace SnapshotMaintenance {
     let done = 0
     for (const scopeID of ids) {
       await SnapshotLease.use(scopeID, true, async () => {
-        for (const entry of await entries(path.join(Global.Path.snapshot, scopeID))) {
+        for (const entry of await entries(
+          path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID),
+        )) {
           if (!entry.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(entry.name)) continue
-          if (!(await Bun.file(path.join(Global.Path.snapshot, scopeID, entry.name, "HEAD")).exists())) continue
+          if (
+            !(await Bun.file(
+              path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID, entry.name, "HEAD"),
+            ).exists())
+          )
+            continue
           if (await SnapshotStore.owner(scopeID, entry.name)) continue
           await SnapshotStore.write(StoragePath.snapshotOwner(scopeID, entry.name), {
             version: 2,
@@ -80,7 +91,12 @@ export namespace SnapshotMaintenance {
         for (const sessionID of await ownerIDs(scopeID)) {
           const owner = await SnapshotStore.owner(scopeID, sessionID)
           if (owner?.backend !== "legacy") continue
-          if (!(await Bun.file(path.join(Global.Path.snapshot, scopeID, sessionID, "HEAD")).exists())) continue
+          if (
+            !(await Bun.file(
+              path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID, sessionID, "HEAD"),
+            ).exists())
+          )
+            continue
           if (await SnapshotStore.optional(StoragePath.snapshotMigration(scopeID, sessionID))) continue
           const info = await SnapshotStore.optional<unknown>(
             StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
@@ -112,10 +128,7 @@ export namespace SnapshotMaintenance {
   }
 
   async function ownerIDs(scopeID: string) {
-    return (await entries(path.join(Global.Path.data, ...StoragePath.snapshotOwners(scopeID))))
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map((entry) => entry.name.slice(0, -5))
-      .sort()
+    return Storage.scan(StoragePath.snapshotOwners(scopeID))
   }
 
   export async function inspect(scopeID?: string) {
@@ -126,21 +139,26 @@ export namespace SnapshotMaintenance {
         const owner = await SnapshotStore.owner(id, sessionID)
         if (owner) owners[owner.backend]++
       }
-      const legacy = await statistics(path.join(Global.Path.snapshot, id))
+      const legacy = await statistics(path.join(path.join(Storage.current().artifactDirectory, "snapshot"), id))
       const shared = await statistics(SnapshotStore.repository(id))
       const indexes = await statistics(SnapshotStore.cache(id))
       const retainedLegacy = { unowned: 0, reclaimed: 0, sharedBaselines: 0, unregistered: 0 }
-      for (const entry of await entries(path.join(Global.Path.snapshot, id))) {
+      for (const entry of await entries(path.join(path.join(Storage.current().artifactDirectory, "snapshot"), id))) {
         if (!entry.isDirectory()) continue
         if (entry.name === ".shared.old") {
           retainedLegacy.sharedBaselines++
           continue
         }
         if (!/^[a-zA-Z0-9_-]+$/.test(entry.name)) continue
-        if (!(await Bun.file(path.join(Global.Path.snapshot, id, entry.name, "HEAD")).exists())) continue
+        if (
+          !(await Bun.file(
+            path.join(path.join(Storage.current().artifactDirectory, "snapshot"), id, entry.name, "HEAD"),
+          ).exists())
+        )
+          continue
         if (!(await SnapshotStore.owner(id, entry.name))) retainedLegacy.unregistered++
         if (id === "__reclaimed__") retainedLegacy.reclaimed++
-        else if (!(await Bun.file(path.join(Global.Path.data, "sessions", id, entry.name, "info.json")).exists()))
+        else if ((await SnapshotStore.optional(["sessions", id, entry.name, "info"])) === undefined)
           retainedLegacy.unowned++
       }
       result.push({ scopeID: id, owners, retainedLegacy, legacy, shared, indexes })
@@ -165,9 +183,7 @@ export namespace SnapshotMaintenance {
         issues.push(error instanceof Error ? error.message : String(error))
       }
     }
-    const sessions = (await entries(path.join(Global.Path.data, "sessions", scopeID)))
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
+    const sessions = await Storage.scan(["sessions", scopeID])
     for (const sessionID of new Set([...(await ownerIDs(scopeID)), ...sessions])) {
       signal?.throwIfAborted()
       const owner = await SnapshotStore.owner(scopeID, sessionID)
@@ -331,9 +347,8 @@ export namespace SnapshotMaintenance {
           if (packs.some((entry) => entry.name.endsWith(".keep")))
             throw new SnapshotStore.StorageError("Snapshot packs have unresolved import protection")
           for (const dir of ["migrations", "deletions"]) {
-            for (const entry of await entries(path.join(SnapshotStore.root(scopeID), dir))) {
-              if (!entry.isFile() || !entry.name.endsWith(".json")) continue
-              const record = await Storage.read<unknown>(["snapshot-v2", scopeID, dir, entry.name.slice(0, -5)])
+            for (const id of await Storage.scan(["snapshot-v2", scopeID, dir])) {
+              const record = await Storage.read<unknown>(["snapshot-v2", scopeID, dir, id])
               if (dir === "deletions" || Journal.parse(record).phase !== "cleaned")
                 throw new SnapshotStore.StorageError("Snapshot maintenance has unfinished recovery work")
             }
@@ -391,7 +406,9 @@ export namespace SnapshotMaintenance {
     if (info !== undefined) return undefined
     return {
       sessionID,
-      bytes: (await statistics(path.join(Global.Path.snapshot, scopeID, sessionID))).bytes,
+      bytes: (
+        await statistics(path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID, sessionID))
+      ).bytes,
       reason: scopeID === "__reclaimed__" ? "reclaimed" : "unowned",
     }
   }
@@ -420,9 +437,16 @@ export namespace SnapshotMaintenance {
           skippedProtected: 0,
           errors: [],
         }
-        for (const entry of await entries(path.join(Global.Path.snapshot, scopeID))) {
+        for (const entry of await entries(
+          path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID),
+        )) {
           if (!entry.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(entry.name)) continue
-          if (!(await Bun.file(path.join(Global.Path.snapshot, scopeID, entry.name, "HEAD")).exists())) continue
+          if (
+            !(await Bun.file(
+              path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID, entry.name, "HEAD"),
+            ).exists())
+          )
+            continue
           const candidate = await cleanCandidate(scopeID, entry.name)
           if (candidate) result.candidates.push(candidate)
           else result.skippedProtected++
@@ -434,10 +458,13 @@ export namespace SnapshotMaintenance {
         for (const candidate of result.candidates) {
           options.signal?.throwIfAborted()
           try {
-            await fs.rm(path.join(Global.Path.snapshot, scopeID, candidate.sessionID), {
-              recursive: true,
-              force: true,
-            })
+            await fs.rm(
+              path.join(path.join(Storage.current().artifactDirectory, "snapshot"), scopeID, candidate.sessionID),
+              {
+                recursive: true,
+                force: true,
+              },
+            )
             await fs.rm(SnapshotStore.cache(scopeID, candidate.sessionID), { recursive: true, force: true })
             result.removed++
             result.bytes += candidate.bytes

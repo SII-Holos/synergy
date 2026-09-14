@@ -1,25 +1,15 @@
 import { describe, expect, test, afterEach } from "bun:test"
-import { existsSync, readFileSync, unlinkSync } from "node:fs"
-import path from "node:path"
+import { Storage } from "../../src/storage/storage"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { resetMigrations, runMigrations } from "../../src/migration"
 import type { Migration } from "../../src/migration/types"
 
-// Use the preload's test home directory
-const dataDir = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "data")
 const TEST_DOMAIN = "test-dry-run"
-
-function trackingPath(domain: string): string {
-  return path.join(dataDir, "meta", "migration", `log-${domain}.json`)
-}
+const trackingPath = (domain: string) => ["meta", "migration", `log-${domain}`]
 
 describe("runMigrations dry run", () => {
-  afterEach(() => {
-    // Clean migration tracking and reset state
-    const p = trackingPath(TEST_DOMAIN)
-    try {
-      unlinkSync(p)
-    } catch {}
+  afterEach(async () => {
+    await Storage.remove(trackingPath(TEST_DOMAIN))
     MigrationRegistry.unregister(TEST_DOMAIN)
     resetMigrations()
   })
@@ -42,7 +32,7 @@ describe("runMigrations dry run", () => {
     expect(upWasCalled).toBe(false)
   })
 
-  test("dryRun: no tracking file is created after dry run", async () => {
+  test("dryRun: no tracking record is created after dry run", async () => {
     const testMigration: Migration = {
       id: "20260602-test-no-tracking",
       description: "Test dry-run no tracking",
@@ -54,10 +44,10 @@ describe("runMigrations dry run", () => {
     await runMigrations({ dryRun: true, targetDomain: TEST_DOMAIN })
 
     const p = trackingPath(TEST_DOMAIN)
-    expect(existsSync(p)).toBe(false)
+    expect((await Storage.readMany([p]))[0]).toBeUndefined()
   })
 
-  test("non-dryRun: migration executes and tracking file is created", async () => {
+  test("non-dryRun: migration executes and tracking record is created", async () => {
     let upWasCalled = false
 
     const testMigration: Migration = {
@@ -83,9 +73,9 @@ describe("runMigrations dry run", () => {
     )
 
     const p = trackingPath(TEST_DOMAIN)
-    expect(existsSync(p)).toBe(true)
+    expect((await Storage.readMany([p]))[0]).toBeDefined()
 
-    const data = JSON.parse(readFileSync(p, "utf-8"))
+    const data = await Storage.read(p)
     expect(data).toHaveProperty("20260603-test-executes")
   })
 
@@ -121,7 +111,7 @@ describe("runMigrations dry run", () => {
     expect(calledIds).toEqual([])
 
     const p = trackingPath(TEST_DOMAIN)
-    expect(existsSync(p)).toBe(false)
+    expect((await Storage.readMany([p]))[0]).toBeUndefined()
   })
 
   test("silent output returns summary without writing to stderr", async () => {

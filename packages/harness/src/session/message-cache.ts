@@ -1,7 +1,7 @@
+import { Storage } from "../storage/storage"
 import { MessageV2 } from "./message-v2"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 import { LLMTurnMemory } from "./llm-memory"
-
 // Loop-scoped in-memory model working-set cache (issue #350 D2).
 //
 // The invoke loop assembles model context on every step. The cache holds only
@@ -15,18 +15,19 @@ import { LLMTurnMemory } from "./llm-memory"
 // Maintenance is immutable so a list already handed to a caller remains a valid
 // snapshot while later writes advance the cache.
 export namespace SessionMessageCache {
-  const active = new Set<string>()
-  const cache = new Map<string, MessageV2.WithParts[]>()
-
+  const state = Storage.state(() => ({
+    active: new Set<string>(),
+    cache: new Map<string, MessageV2.WithParts[]>(),
+    sizes: new Map<string, number>(),
+    lru: [] as string[],
+    totalBytes: 0,
+    hits: 0,
+    misses: 0,
+    evictions: 0,
+    protectedOverbudget: 0,
+  }))
   // Bound the aggregate footprint of concurrent model working sets. Eviction is
   // transparent because the next read reconstructs the working set from disk.
-  const sizes = new Map<string, number>()
-  const lru: string[] = []
-  let totalBytes = 0
-  let hits = 0
-  let misses = 0
-  let evictions = 0
-  let protectedOverbudget = 0
   const DEFAULT_BYTE_BUDGET = 256 * 1024 * 1024
   // Read on each eviction so SYNERGY_SESSION_CACHE_MAX_BYTES can be tuned (and
   // set by tests) without a restart; the cost is a trivial env parse on writes.
@@ -34,48 +35,48 @@ export namespace SessionMessageCache {
     const env = Number.parseInt(process.env.SYNERGY_SESSION_CACHE_MAX_BYTES ?? "", 10)
     return Number.isFinite(env) && env > 0 ? env : DEFAULT_BYTE_BUDGET
   }
-
   /** Begin the single-writer window for a session (loop start). */
   export function enable(sessionID: string) {
-    active.add(sessionID)
+    state().active.add(sessionID)
   }
-
   /** End the window and drop the entry (loop exit). */
   export function disable(sessionID: string) {
-    active.delete(sessionID)
+    state().active.delete(sessionID)
     drop(sessionID)
   }
-
   /** Drop the cached list but keep the window open; the next read repopulates. */
   export function invalidate(sessionID: string) {
     drop(sessionID)
   }
-
   export function isActive(sessionID: string) {
-    return active.has(sessionID)
+    return state().active.has(sessionID)
   }
-
   /** Cached model working set, or undefined when closed or unpopulated. */
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
     return read(sessionID, true)
   }
-
   function read(sessionID: string, countStats: boolean): MessageV2.WithParts[] | undefined {
-    if (!active.has(sessionID)) return undefined
-    const hit = cache.get(sessionID)
+    if (Storage.inTransaction() || !state().active.has(sessionID)) return undefined
+    const hit = state().cache.get(sessionID)
     if (hit) {
-      if (countStats) hits++
+      if (countStats) state().hits++
       touch(sessionID)
     } else if (countStats) {
-      misses++
+      state().misses++
     }
     return hit
   }
-
-  export function stats(input: { entryLimit?: number } = {}) {
+  export function stats(
+    input: {
+      entryLimit?: number
+    } = {},
+  ) {
     const entryLimit = Math.max(0, Math.floor(input.entryLimit ?? 100))
-    const entries: Array<{ sessionID: string; estimatedBytes: number }> = []
-    for (const [sessionID, estimatedBytes] of sizes) {
+    const entries: Array<{
+      sessionID: string
+      estimatedBytes: number
+    }> = []
+    for (const [sessionID, estimatedBytes] of state().sizes) {
       let lo = 0
       let hi = entries.length
       while (lo < hi) {
@@ -93,51 +94,55 @@ export namespace SessionMessageCache {
       if (entries.length > entryLimit) entries.pop()
     }
     return {
-      totalBytes,
-      activeCount: active.size,
-      entryCount: cache.size,
-      hits,
-      misses,
-      evictions,
-      protectedOverbudget,
+      totalBytes: state().totalBytes,
+      activeCount: state().active.size,
+      entryCount: state().cache.size,
+      hits: state().hits,
+      misses: state().misses,
+      evictions: state().evictions,
+      protectedOverbudget: state().protectedOverbudget,
       entries,
-      truncatedEntryCount: Math.max(0, sizes.size - entries.length),
+      truncatedEntryCount: Math.max(0, state().sizes.size - entries.length),
     }
   }
-
   export function resetStatsForTest() {
-    hits = 0
-    misses = 0
-    evictions = 0
-    protectedOverbudget = 0
+    state().hits = 0
+    state().misses = 0
+    state().evictions = 0
+    state().protectedOverbudget = 0
   }
-
   /** Full teardown for tests: clears windows, entries, and counters. */
   export function resetForTest() {
-    active.clear()
-    cache.clear()
-    sizes.clear()
-    lru.length = 0
-    totalBytes = 0
+    state().active.clear()
+    state().cache.clear()
+    state().sizes.clear()
+    state().lru.length = 0
+    state().totalBytes = 0
     resetStatsForTest()
   }
-
   /** Seed from a fresh compaction-aware disk read (no-op outside the window). */
   export function set(sessionID: string, messages: MessageV2.WithParts[]) {
-    if (!active.has(sessionID)) return
+    if (Storage.inTransaction()) {
+      Storage.afterCommit(() => set(sessionID, messages))
+      return
+    }
+    if (!state().active.has(sessionID)) return
     const workingSet = projectModelWorkingSet(messages)
     const size = estimateList(workingSet)
     if (size > byteBudget()) {
       drop(sessionID)
       return
     }
-    cache.set(sessionID, workingSet)
+    state().cache.set(sessionID, workingSet)
     setSize(sessionID, size)
     touch(sessionID)
     evict(sessionID)
   }
-
   export function upsertMessage(sessionID: string, info: MessageV2.Info) {
+    if (Storage.inTransaction()) {
+      Storage.afterCommit(() => upsertMessage(sessionID, info))
+      return
+    }
     const list = read(sessionID, false)
     if (!list) return
     const idx = list.findIndex((m) => m.info.id === info.id)
@@ -152,13 +157,16 @@ export namespace SessionMessageCache {
       replaceProjected(sessionID, next)
       return
     }
-    cache.set(sessionID, next)
+    state().cache.set(sessionID, next)
     addSize(sessionID, estimateInfo(info) - (previous ? estimateInfo(previous) : 0))
     touch(sessionID)
     evict(sessionID)
   }
-
   export function upsertPart(sessionID: string, part: MessageV2.Part) {
+    if (Storage.inTransaction()) {
+      Storage.afterCommit(() => upsertPart(sessionID, part))
+      return
+    }
     const list = read(sessionID, false)
     if (!list) return
     const mi = list.findIndex((m) => m.info.id === part.messageID)
@@ -187,20 +195,18 @@ export namespace SessionMessageCache {
       replaceProjected(sessionID, next)
       return
     }
-    cache.set(sessionID, next)
+    state().cache.set(sessionID, next)
     addSize(sessionID, estimatePart(part) - (previous ? estimatePart(previous) : 0))
     touch(sessionID)
     evict(sessionID)
   }
-
   function replaceProjected(sessionID: string, messages: MessageV2.WithParts[]) {
     const workingSet = projectModelWorkingSet(messages)
-    cache.set(sessionID, workingSet)
+    state().cache.set(sessionID, workingSet)
     setSize(sessionID, estimateList(workingSet))
     touch(sessionID)
     evict(sessionID)
   }
-
   function projectModelWorkingSet(messages: MessageV2.WithParts[]) {
     const projection = modelWorkingSetProjection(messages.map((message) => message.info))
     if (!projection) return messages
@@ -213,65 +219,56 @@ export namespace SessionMessageCache {
       (message) => ({ ...message, info: { ...message.info, includeInContext: false } }),
     )
   }
-
   // --- Footprint accounting & LRU eviction ---
-
   function drop(sessionID: string) {
-    cache.delete(sessionID)
-    const size = sizes.get(sessionID)
+    state().cache.delete(sessionID)
+    const size = state().sizes.get(sessionID)
     if (size !== undefined) {
-      totalBytes -= size
-      sizes.delete(sessionID)
+      state().totalBytes -= size
+      state().sizes.delete(sessionID)
     }
-    const i = lru.indexOf(sessionID)
-    if (i !== -1) lru.splice(i, 1)
+    const i = state().lru.indexOf(sessionID)
+    if (i !== -1) state().lru.splice(i, 1)
   }
-
   function touch(sessionID: string) {
-    const i = lru.indexOf(sessionID)
-    if (i !== -1) lru.splice(i, 1)
-    lru.push(sessionID)
+    const i = state().lru.indexOf(sessionID)
+    if (i !== -1) state().lru.splice(i, 1)
+    state().lru.push(sessionID)
   }
-
   function setSize(sessionID: string, bytes: number) {
-    totalBytes += bytes - (sizes.get(sessionID) ?? 0)
-    sizes.set(sessionID, bytes)
+    state().totalBytes += bytes - (state().sizes.get(sessionID) ?? 0)
+    state().sizes.set(sessionID, bytes)
   }
-
   function addSize(sessionID: string, bytes: number) {
-    const current = sizes.get(sessionID)
+    const current = state().sizes.get(sessionID)
     if (current === undefined) return
-    totalBytes += bytes
-    sizes.set(sessionID, current + bytes)
+    state().totalBytes += bytes
+    state().sizes.set(sessionID, current + bytes)
   }
-
   // Evict least-recently-used entries until under budget. The current writer is
   // protected only while its own entry fits the budget; a single oversized
   // working set must not make the aggregate limit ineffective.
   function evict(protect: string) {
     const budget = byteBudget()
-    if (totalBytes <= budget) return
-    if ((sizes.get(protect) ?? 0) > budget) drop(protect)
-    for (let i = 0; i < lru.length && totalBytes > budget; ) {
-      const victim = lru[i]
+    if (state().totalBytes <= budget) return
+    if ((state().sizes.get(protect) ?? 0) > budget) drop(protect)
+    for (let i = 0; i < state().lru.length && state().totalBytes > budget; ) {
+      const victim = state().lru[i]
       if (victim === protect) {
         i++
         continue
       }
       drop(victim)
-      evictions++
+      state().evictions++
     }
-    if (totalBytes > budget) protectedOverbudget++
+    if (state().totalBytes > budget) state().protectedOverbudget++
   }
-
   function estimatePart(part: MessageV2.Part): number {
     return LLMTurnMemory.estimateBytes(part)
   }
-
   function estimateInfo(info: MessageV2.Info): number {
     return LLMTurnMemory.estimateBytes(info)
   }
-
   function estimateList(list: MessageV2.WithParts[]): number {
     let total = 0
     for (const m of list) {
@@ -280,7 +277,6 @@ export namespace SessionMessageCache {
     }
     return total
   }
-
   function messageInsertionIndex(messages: MessageV2.WithParts[], info: MessageV2.Info): number {
     let lo = 0
     let hi = messages.length
@@ -291,7 +287,6 @@ export namespace SessionMessageCache {
     }
     return lo
   }
-
   function insertionIndex<T>(arr: T[], id: string, idOf: (t: T) => string): number {
     let lo = 0
     let hi = arr.length

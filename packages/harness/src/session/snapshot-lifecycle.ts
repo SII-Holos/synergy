@@ -2,7 +2,6 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { Global } from "../global"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -10,7 +9,6 @@ import { SnapshotStore } from "./snapshot-store"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotTransfer } from "./snapshot-transfer"
 import { SnapshotGit } from "./snapshot-git"
-import { SnapshotRecords } from "./snapshot-records"
 
 export namespace SnapshotLifecycle {
   const Deletion = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared"]) })
@@ -82,6 +80,12 @@ export namespace SnapshotLifecycle {
 
   export async function beginDelete(scopeID: string, sessionID: string) {
     return locked(scopeID, [sessionID], async () => {
+      await scheduleDelete(scopeID, sessionID)
+    })
+  }
+
+  export async function scheduleDelete(scopeID: string, sessionID: string) {
+    return Storage.transaction(async () => {
       const key = StoragePath.snapshotDeletion(scopeID, sessionID)
       const previous = await SnapshotStore.optional<unknown>(key)
       if (previous !== undefined) Deletion.parse(previous)
@@ -106,17 +110,14 @@ export namespace SnapshotLifecycle {
       if (stored === undefined) return
       const job = Deletion.parse(stored)
       const canonical = path.join(
-        Global.Path.data,
+        Storage.current().artifactDirectory,
         ...StoragePath.sessionRoot(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
       )
-      const exists = await fs.lstat(canonical).then(
-        () => true,
-        (error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return false
-          throw error
-        },
+      const remaining = await Storage.list(
+        StoragePath.sessionRoot(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
       )
-      if (exists) throw new SnapshotStore.StorageError("Cannot release snapshots before permanent session deletion")
+      if (remaining.length)
+        throw new SnapshotStore.StorageError("Cannot release snapshots before permanent session deletion")
       const repo = SnapshotStore.repository(scopeID)
       if (await Bun.file(path.join(repo, "HEAD")).exists()) {
         const prefix = `refs/synergy/snapshots/${SnapshotStore.component(sessionID)}/`
@@ -140,18 +141,17 @@ export namespace SnapshotLifecycle {
       if (job.backend === "legacy")
         await fs.rm(SnapshotStore.legacyRepository(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(SnapshotStore.cache(scopeID, sessionID), { recursive: true, force: true })
+      await fs.rm(canonical, { recursive: true, force: true })
       await Storage.remove(StoragePath.snapshotMigration(scopeID, sessionID))
       await Storage.remove(key)
     })
   }
 
   export async function recover(scopeID: string) {
-    const jobs = await SnapshotRecords.entries(path.join(SnapshotStore.root(scopeID), "deletions"))
-    if (!jobs.length) return
+    const jobs = await Storage.scan(["snapshot-v2", scopeID, "deletions"])
     const { SessionRecovery } = await import("./recovery")
-    for (const entry of jobs) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue
-      const report = await SessionRecovery.remove({ scopeID, sessionID: entry.name.slice(0, -5) })
+    for (const sessionID of jobs) {
+      const report = await SessionRecovery.remove({ scopeID, sessionID })
       if (report.errors.length) throw new SnapshotStore.StorageError("Snapshot deletion recovery is incomplete")
     }
   }

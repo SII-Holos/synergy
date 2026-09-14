@@ -1,6 +1,8 @@
 import path from "path"
 import fs from "fs/promises"
+import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 const action = process.argv[2]
+await using storage = await StorageMaintenance.open()
 let requests = 0
 
 function refreshedCatalog() {
@@ -100,7 +102,9 @@ if (action === "refresh") {
         : [],
       requests,
     }),
-    () => process.exit(0),
+    () => {
+      void storage.close().then(() => process.exit(0))
+    },
   )
 } else if (action === "invalid-refresh") {
   globalThis.fetch = (() => Promise.resolve(Response.json(refreshedCatalog()))) as unknown as typeof fetch
@@ -132,7 +136,9 @@ if (action === "refresh") {
       providerCatalogProviders: provider.catalogProviders,
       bootstrapCatalogProviders: bootstrap.provider.catalogProviders,
     }),
-    () => process.exit(0),
+    () => {
+      void storage.close().then(() => process.exit(0))
+    },
   )
 } else if (action === "refresh-routes") {
   const waiters: Array<() => void> = []
@@ -188,7 +194,9 @@ if (action === "refresh") {
       bootstrapConnected: bootstrap.provider.connected,
       runtimeReloads,
     }),
-    () => process.exit(0),
+    () => {
+      void storage.close().then(() => process.exit(0))
+    },
   )
 } else if (action === "refresh-during-discovery") {
   let modelsRefreshStarted!: () => void
@@ -244,7 +252,9 @@ if (action === "refresh") {
   const snapshot = persisted.snapshots.find((candidate: { providerID: string }) => candidate.providerID === providerID)
   process.stdout.write(
     JSON.stringify({ activeModels: snapshot?.activeModels.map((model: { id: string }) => model.id) ?? [] }),
-    () => process.exit(0),
+    () => {
+      void storage.close().then(() => process.exit(0))
+    },
   )
 } else if (action === "refresh-after-discovery") {
   let modelsRefreshStarted!: () => void

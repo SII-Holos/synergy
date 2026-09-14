@@ -1,7 +1,6 @@
-import { resolveNetworkArgv } from "../cli/network"
+import { resolveNetworkArgv, loadNetworkConfig } from "../cli/network"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
-import { ensureMigrations } from "@ericsanchezok/synergy-harness/migration"
 import type { DaemonService } from "./service"
 import { DaemonCommand } from "./command"
 
@@ -25,9 +24,8 @@ export namespace DaemonSpec {
   }
 
   export async function resolveNetwork(input?: { argv?: string[]; config?: GlobalConfig }): Promise<Network> {
-    await ensureMigrations({ output: "interactive" })
     if (!input?.config) Config.global.reset()
-    const config = input?.config ?? (await Config.global())
+    const config = input?.config ?? (await loadNetworkConfig())
     const network = await resolveNetworkArgv({
       argv: input?.argv,
       config,
@@ -49,9 +47,8 @@ export namespace DaemonSpec {
   }
 
   export async function resolve(input?: { argv?: string[]; config?: GlobalConfig }): Promise<ManagedService> {
-    await ensureMigrations({ output: "interactive" })
     if (!input?.config) Config.global.reset()
-    const config = input?.config ?? (await Config.global())
+    const config = input?.config ?? (await loadNetworkConfig())
     const network = await resolveNetwork({ argv: input?.argv, config })
     const command = DaemonCommand.resolve({ hostname: network.hostname, port: network.port })
 

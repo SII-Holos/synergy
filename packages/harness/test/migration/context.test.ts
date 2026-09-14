@@ -1,22 +1,18 @@
 import { describe, expect, test, afterEach } from "bun:test"
-import { unlinkSync } from "node:fs"
-import path from "node:path"
+import { Storage } from "../../src/storage/storage"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { resetMigrations, runMigrations } from "../../src/migration"
 import type { MigrationContext } from "../../src/migration/types"
 
-const dataDir = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "data")
 const TEST_DOMAIN = "test-context"
 
-function trackingPath(domain: string): string {
-  return path.join(dataDir, "meta", "migration", `log-${domain}.json`)
-}
+const trackingPath = (domain: string) => ["meta", "migration", `log-${domain}`]
 
 describe("two-param up() receives MigrationContext", () => {
-  afterEach(() => {
+  afterEach(async () => {
     const p = trackingPath(TEST_DOMAIN)
     try {
-      unlinkSync(p)
+      await Storage.remove(p)
     } catch {}
     MigrationRegistry.unregister(TEST_DOMAIN)
     resetMigrations()

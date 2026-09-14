@@ -1,3 +1,4 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
@@ -54,18 +55,11 @@ async function listArchiveCacheDirs(): Promise<string[]> {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(root, entry.name))
 }
 
-function runtimeStatePath(): string {
-  return path.join(Global.Path.data, "plugin-runtime-state.json")
-}
-
-async function readRawRuntimeState(): Promise<any[]> {
-  try {
-    const text = await Bun.file(runtimeStatePath()).text()
-    const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
+async function readRawRuntimeState(): Promise<Record<string, unknown>[]> {
+  const [value] = await Storage.readMany<Record<string, unknown>[]>([["plugin-runtime-state"]])
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new Error("Plugin runtime state is not an array")
+  return value
 }
 
 function runtimeStateEntryUsable(entry: any): boolean {
@@ -257,8 +251,7 @@ export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoc
         })
       }
       if (options.fix) {
-        await fs.mkdir(path.dirname(runtimeStatePath()), { recursive: true })
-        await Bun.write(runtimeStatePath(), JSON.stringify(validRuntimeState, null, 2))
+        await Storage.write(["plugin-runtime-state"], validRuntimeState)
       }
     }
 

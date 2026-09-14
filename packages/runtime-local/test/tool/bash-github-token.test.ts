@@ -28,7 +28,8 @@ async function reset() {
 }
 
 beforeEach(async () => {
-  delete process.env.SHELL
+  if (process.platform !== "win32") process.env.SHELL = "/bin/bash"
+  else delete process.env.SHELL
   Shell.preferred.reset()
   Shell.acceptable.reset()
 })

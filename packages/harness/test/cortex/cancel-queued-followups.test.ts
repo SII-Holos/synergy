@@ -87,12 +87,12 @@ describe("Cortex cancellation fences queued follow-ups", () => {
         const held = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
         const realWrite = Storage.write
-        using write = spyOn(Storage, "write").mockImplementation(async (key, value, options) => {
+        using write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
           if (key.includes(task.sessionID) && key.some((part) => part.startsWith("inb_"))) {
             held.resolve()
             await release.promise
           }
-          return realWrite(key, value, options)
+          return realWrite(key, value)
         })
         const delivery = SessionInbox.enqueueMail({
           sessionID: task.sessionID,

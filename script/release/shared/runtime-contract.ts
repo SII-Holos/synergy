@@ -23,6 +23,7 @@ export function requiredRuntimeArtifactPaths(name: string, profile: RuntimeArtif
   const sqliteVec = target.os === "windows" ? "vec0.dll" : target.os === "darwin" ? "vec0.dylib" : "vec0.so"
   return [
     binary,
+    ...(target.os === "darwin" ? ["libsqlite3.dylib"] : []),
     ...(!target.musl && profile === "full" ? [astGrep] : []),
     ...(!target.musl && profile === "full" ? [sqliteVec] : []),
     // The watcher binding ships for every target: @parcel/watcher publishes

@@ -26,9 +26,9 @@ test("a failed commit never reuses an allocated sequence or overwrites its evide
   const key = [...root, "runs", "run", "info"]
   const original = Storage.write.bind(Storage)
   {
-    using write = spyOn(Storage, "write").mockImplementation(async (path, value, options) => {
+    using write = spyOn(Storage, "write").mockImplementation(async (path, value) => {
       if (path.join("/") === key.join("/")) throw new Error("projection unavailable")
-      return original(path, value, options)
+      return original(path, value)
     })
     await expect(RolloutJournal.write(target, key, { status: "running" })).rejects.toMatchObject({
       name: "RolloutRecordingError",
@@ -49,9 +49,9 @@ test("recovery restores committed projections without replaying execution", asyn
   const key = [...RolloutArtifact.root(target), "runs", "run", "info"]
   const original = Storage.write.bind(Storage)
   {
-    using write = spyOn(Storage, "write").mockImplementation(async (path, value, options) => {
+    using write = spyOn(Storage, "write").mockImplementation(async (path, value) => {
       if (path.join("/") === key.join("/")) throw new Error("interrupted projection")
-      return original(path, value, options)
+      return original(path, value)
     })
     await expect(RolloutJournal.write(target, key, { status: "running" })).rejects.toThrow()
   }
@@ -60,19 +60,28 @@ test("recovery restores committed projections without replaying execution", asyn
   expect(await RolloutJournal.recover(target)).toEqual({ recovered: 0, gaps: [] })
 })
 
-test("a missing reserved event remains an explicit gap at later read boundaries", async () => {
+test("an interrupted evidence transaction does not leave a newly allocated gap", async () => {
   const target = owner()
   const root = RolloutArtifact.root(target)
   const key = [...root, "runs", "run", "info"]
   const original = Storage.write.bind(Storage)
   {
-    using write = spyOn(Storage, "write").mockImplementation(async (path, value, options) => {
+    using write = spyOn(Storage, "write").mockImplementation(async (path, value) => {
       if (path.includes("events")) throw new Error("interrupted event")
-      return original(path, value, options)
+      return original(path, value)
     })
     await expect(RolloutJournal.write(target, key, { status: "running" })).rejects.toThrow()
   }
+  expect(await RolloutJournal.head(target)).toEqual({ allocated: 0, committed: 0 })
   await RolloutJournal.write(target, key, { status: "failed" })
+  expect(await RolloutJournal.head(target)).toEqual({ allocated: 1, committed: 1 })
+})
+
+test("a historical missing reserved event remains an explicit gap", async () => {
+  const target = owner()
+  const root = RolloutArtifact.root(target)
+  await Storage.write([...root, "journal", "head"], { allocated: 1, committed: 0 })
+  await RolloutJournal.write(target, [...root, "runs", "run", "info"], { status: "failed" })
   const events = []
   for await (const event of RolloutJournal.events(target, 2)) events.push(event)
   expect(events[0]).toMatchObject({ seq: 1, kind: "gap" })

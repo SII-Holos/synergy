@@ -264,11 +264,11 @@ describe("session migrations", () => {
     const target = StoragePath.sessionNavIndex(Identifier.asScopeID(tmpScope.id))
     const originalWrite = Storage.write
     {
-      using _write = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+      using _write = spyOn(Storage, "write").mockImplementation(async (key, content) => {
         if (key.length === target.length && key.every((part, index) => part === target[index])) {
           throw new Error("nav index write failed")
         }
-        return originalWrite(key, content, options)
+        return originalWrite(key, content)
       })
 
       const migration = migrations.find((entry) => entry.id === "20260730-session-nav-channel-provider-fields")
