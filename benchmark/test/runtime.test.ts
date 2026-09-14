@@ -3,17 +3,27 @@ import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-async function inspect(runtime: string, config: Record<string, unknown> = {}) {
+async function inspect(runtime: string, config: Record<string, unknown> = {}, agent?: string) {
   const home = await mkdtemp(path.join(os.tmpdir(), "synergy-bench-contract-"))
   try {
     const file = path.join(home, "config.json")
     await Bun.write(file, JSON.stringify(config))
-    const child = Bun.spawn([process.execPath, "runtime/inspect.ts", runtime, file], {
-      cwd: path.resolve(import.meta.dir, ".."),
-      env: { PATH: process.env.PATH, SYNERGY_HOME: home, SYNERGY_CONFIG_CONTENT: "{}" },
-      stdout: "pipe",
-      stderr: "pipe",
-    })
+    const child = Bun.spawn(
+      [process.execPath, "runtime/inspect.ts", runtime, file, ...(agent ? ["", "test/model", agent] : [])],
+      {
+        cwd: path.resolve(import.meta.dir, ".."),
+        env: {
+          PATH: process.env.PATH,
+          SYNERGY_HOME: home,
+          SYNERGY_CONFIG: file,
+          SYNERGY_CONFIG_CONTENT: "{}",
+          SYNERGY_DISABLE_MODELS_FETCH: "1",
+          MODELS_DEV_API_JSON: path.resolve(import.meta.dir, "../../packages/testing/fixtures/models-api.json"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
     const [code, stdout, stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -52,6 +62,30 @@ test("each named composition reports its own capabilities", async () => {
     expect(report.configKeys.includes("library")).toBe(runtime !== "core")
     expect(report.configKeys.includes("mcp")).toBe(runtime === "full")
   }
+}, 30_000)
+
+test("full inspection records the normal max delegation catalog without running agents", async () => {
+  const result = await inspect(
+    "full",
+    {
+      model: "test/model",
+      provider: {
+        test: {
+          npm: "@ai-sdk/openai-compatible",
+          models: { model: { name: "Fixture", limit: { context: 100000, output: 10000 } } },
+          options: { baseURL: "http://provider.invalid/v1", apiKey: "fixture" },
+        },
+      },
+    },
+    "synergy-max",
+  )
+  expect(result.code, result.stderr).toBe(0)
+  const measured = JSON.parse(result.stdout.trim().split("\n").at(-1)!).measured
+  expect(measured.agent).toBe("synergy-max")
+  expect(measured.capabilities.registeredTools).toContain("task")
+  expect(measured.capabilities.delegatableAgents).toContain("implementation-engineer")
+  expect(measured.capabilities.delegatableAgents).not.toContain("synergy")
+  expect(measured.capabilities.agents.length).toBeGreaterThan(measured.capabilities.delegatableAgents.length)
 }, 30_000)
 
 test("offline preflight rejects an unavailable measured model before inference", async () => {

@@ -53,8 +53,11 @@ bun bench clean /absolute/path/to/run
 | `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                             |
 | `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                           |
 | `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始 |
+| `probe_timeout_seconds`                      | 原生工具预检的独立模型执行期限，默认 120 秒；不改变正式解题或判题期限          |
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。平台实现不绑定该模型或智谱端点。
+
+[完整 local-24 研究示例](configs/glm53-full-local24.yaml) 为五种 harness 各运行全部 24 题一次，共 120 个单元；Synergy 使用 `full` composition 和 `synergy-max`，保留正常子 agent 可见性、工具发现与按需加载。每题使用全新 Home，不导入个人插件、MCP 或自定义 agent；所有可配置的实验模型角色使用同一 GLM profile。预检同时保留注册工具、完整 agent 目录和主 agent 可委派列表。注册不代表运行可用：原题网络限制、Linux 平台、外部服务凭据和协议能力仍分别约束工具调用；这些条件必须与实测可用性一起报告，不能仅凭 `full` 名称宣称所有产品能力可运行。该配置使用 600 秒启动、900 秒模型预检和 900 秒导出期限，正式解题为 10800 秒，原生 verifier 期限保持不变。
 
 [GLM 长会话研究示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，为每题显式设置 10800 秒解题期限，并使用 `opencode-jitless` 规避已复现的 Bun JIT / Rosetta 停滞路径。准备、排队、导出和独立判题均不占该解题期限；模型在任务中安装依赖属于解题时间。该配置改变 agent 期限及 OpenCode 运行条件，必须创建新实验，不能与原题期限的结果直接配对，也不能替换旧评分。它保留原生 verifier 期限，并非上游运行时缺陷已修复的保证。
 

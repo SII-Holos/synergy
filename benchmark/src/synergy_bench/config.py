@@ -208,6 +208,7 @@ class ExperimentConfig(StrictModel):
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
+    probe_timeout_seconds: int = Field(default=120, ge=1, le=10800)
     timeout_seconds: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")

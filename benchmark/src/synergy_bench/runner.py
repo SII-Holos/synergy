@@ -551,7 +551,11 @@ def trial_configuration(
     shutil.copytree(root / "inputs" / item["variant"], inputs)
     cleanup = plan["config"]["cleanup_seconds"]
     export_timeout = plan["config"]["export_timeout_seconds"]
-    timeout = 120 if probe_instruction else plan["config"]["timeout_seconds"] or task["agent_seconds"]
+    timeout = (
+        plan["config"].get("probe_timeout_seconds", 120)
+        if probe_instruction
+        else plan["config"]["timeout_seconds"] or task["agent_seconds"]
+    )
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
         "config": "/benchmark-input/config.json",

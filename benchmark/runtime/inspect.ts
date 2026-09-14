@@ -5,6 +5,7 @@ import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tools"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentDelegation } from "@ericsanchezok/synergy-harness/agent/delegation"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
@@ -41,10 +42,29 @@ async function inspect() {
                 }
               }),
             )
+            const agents = await Agent.list()
             return {
               model: { providerID: model.providerID, id: model.id, api: model.api, limit: model.limit },
               agent: agent.name,
               roles,
+              capabilities: {
+                registeredTools: (await ToolRegistry.ids()).sort(),
+                delegatableAgents: agents
+                  .filter((value) => AgentDelegation.canDelegateTo(value, agent))
+                  .map((value) => value.name)
+                  .sort(),
+                agents: agents
+                  .map((value) => ({
+                    name: value.name,
+                    mode: value.mode,
+                    hidden: value.hidden ?? false,
+                    visibleTo: value.visibleTo,
+                    delegationGroups: value.delegationGroups,
+                    model: value.model,
+                    modelRole: value.modelRole,
+                  }))
+                  .sort((a, b) => a.name.localeCompare(b.name)),
+              },
               experiment: snapshot,
             }
           })

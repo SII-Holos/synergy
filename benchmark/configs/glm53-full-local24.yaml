@@ -1,0 +1,49 @@
+version: 2
+suite: ../suites/local-24.json
+output: ../../.artifacts/benchmark/full-local24
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 20260914
+repeat: 1
+concurrency: auto
+timeout_seconds: 10800
+preparation_timeout_seconds: 7200
+startup_timeout_seconds: 600
+probe_timeout_seconds: 900
+export_timeout_seconds: 900
+harnesses:
+  synergy-max-full:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: full
+    agent: synergy-max
+  codex:
+    kind: codex
+    package_version: 0.154.0
+  opencode-jitless:
+    kind: opencode
+    package_version: 1.15.13
+    bun_jit: false
+  pi:
+    kind: pi
+    package_version: 0.85.1
+  deepseek:
+    kind: deepseek
+    package_version: 0.1.5-rc.1
+models:
+  glm53flash:
+    model: glm-5.3-flash
+    protocol: chat-completions
+    base_url: https://open.bigmodel.cn/api/coding/paas/v4
+    api_key_env: ZHIPU_CODING_PLAN_API_KEY
+    context_window: 1048576
+    max_output_tokens: 131072
+    supports_developer_role: false
+    parameters:
+      temperature: 1
+      top_p: 0.95
+      thinking:
+        type: enabled
+        clear_thinking: false
+      tool_stream: true

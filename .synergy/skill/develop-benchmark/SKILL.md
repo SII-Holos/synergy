@@ -12,6 +12,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 3. Freeze a new experiment after changing the evaluator. Resume only through the recorded evaluator. Import historical evidence into reports without rewriting attempts or continuing old runs under new execution code.
 4. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
 
+For full-product research, record the composition's registered tools, all agent identities and the primary agent's normal delegation catalog before execution. Keep host-selected private agents distinct from model-selectable children; preserve native permission and deferred-tool behavior. Verify live availability separately from registration, including platform, network, provider protocol and fresh-install credential requirements. Declare an independent `probe_timeout_seconds` when a native tool roundtrip needs more time than the default probe; never borrow the formal solving deadline silently.
+
 ## Preserve execution and evidence
 
 1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and its deadlines. Preparation, execution, export and cleanup have separate deadlines.
