@@ -157,11 +157,17 @@ export namespace ProviderTransform {
     ) {
       return msgs.map((msg) => {
         if (msg.role === "assistant" && Array.isArray(msg.content)) {
-          const reasoningParts = msg.content.filter((part: any) => part.type === "reasoning")
-          const reasoningText = reasoningParts.map((part: any) => part.text).join("")
+          const reasoningParts = msg.content.filter((part) => part.type === "reasoning")
+          const retainedReasoning = msg.providerOptions?.openaiCompatible?.reasoning_content
+          const reasoningText =
+            reasoningParts.length > 0
+              ? reasoningParts.map((part) => part.text).join("")
+              : typeof retainedReasoning === "string"
+                ? retainedReasoning
+                : ""
 
           // Filter out reasoning parts from content
-          const filteredContent = msg.content.filter((part: any) => part.type !== "reasoning")
+          const filteredContent = msg.content.filter((part) => part.type !== "reasoning")
 
           // DeepSeek requires reasoning_content on ALL assistant messages in
           // thinking mode when tool calls are present in the conversation — even
@@ -173,8 +179,8 @@ export namespace ProviderTransform {
             providerOptions: {
               ...msg.providerOptions,
               openaiCompatible: {
-                ...(msg.providerOptions as any)?.openaiCompatible,
-                reasoning_content: reasoningText || "",
+                ...msg.providerOptions?.openaiCompatible,
+                reasoning_content: reasoningText,
               },
             },
           }

@@ -203,6 +203,8 @@ The post-job captures only session, root-message, and terminal-revision identifi
 
 ## Prompt Budget
 
+Provider message normalization runs during budgeting and final request preparation. Moving interleaved reasoning into `openaiCompatible.reasoning_content` preserves that field on repeated normalization; explicit reasoning parts take precedence, including an explicitly empty part. Budgeting and sending therefore retain the same reasoning history.
+
 `PromptBudgeter` measures the complete request:
 
 - stable and late system context

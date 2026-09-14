@@ -94,6 +94,8 @@ Treat streamed tool argument deltas as transport/progress data, not canonical to
 
 ## Verify and Document
 
+Exercise repeated provider message normalization when changing content-to-provider-option transforms. Budget and send paths can both apply the transform: assert that encoded reasoning survives another pass, while fresh reasoning parts override retained metadata even when explicitly empty.
+
 1. Test the chosen lifecycle boundary as a behavior: no session for sessionless work; explicit child lineage and output for Cortex work.
 2. Run focused Agent protocol/worker, provider, session, Cortex, and permission tests, then typecheck and `quality:quick`.
 3. Update [LLM loop and compaction](../../../docs/architecture/llm-loop.md) when the shared call pipeline or path-selection contract changes.

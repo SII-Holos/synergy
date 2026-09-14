@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { ProviderTransform } from "../../src/provider/transform"
 import type { Provider } from "../../src/provider/provider"
+import type { ModelMessage } from "ai"
 
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
@@ -629,7 +630,7 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
       },
     ] as any[]
 
-    const result = ProviderTransform.message(msgs, {
+    const model = {
       id: "deepseek/deepseek-chat",
       providerID: "deepseek",
       api: {
@@ -662,7 +663,8 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
       options: {},
       headers: {},
       release_date: "2023-04-01",
-    })
+    } satisfies Provider.Model
+    const result = ProviderTransform.message(msgs, model)
 
     expect(result).toHaveLength(1)
     expect(result[0].content).toEqual([
@@ -674,6 +676,24 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
       },
     ])
     expect(result[0].providerOptions?.openaiCompatible?.reasoning_content).toBe("Let me think about this...")
+    expect(ProviderTransform.message(result, model)[0]).toEqual(result[0])
+    for (const text of ["New reasoning", ""]) {
+      const fresh: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text },
+            { type: "text", text: "Answer" },
+          ],
+          providerOptions: { openaiCompatible: { reasoning_content: "Old reasoning", marker: "keep" } },
+        },
+      ]
+      const transformed = ProviderTransform.message(fresh, model)
+      expect(transformed[0].providerOptions?.openaiCompatible).toEqual({ reasoning_content: text, marker: "keep" })
+      expect(ProviderTransform.message(transformed, model)[0]).toEqual(transformed[0])
+    }
+    const empty: ModelMessage[] = [{ role: "assistant", content: [{ type: "text", text: "Answer" }] }]
+    expect(ProviderTransform.message(empty, model)[0].providerOptions?.openaiCompatible?.reasoning_content).toBe("")
   })
 
   test("Non-DeepSeek providers leave reasoning content unchanged", () => {
