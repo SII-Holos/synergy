@@ -36,6 +36,8 @@ Native startup timeouts may create up to three automatic attempts only when nati
 
 Each attempt starts its own queue clock before resource admission. Prior execution and teardown never become the next attempt's queue latency; retry backoff remains a separately retained value.
 
+Instruction delivery follows Pier's declared log-mount capability: mounted logs expose the host instruction directly, while non-mounted environments receive an upload. Recopying the same bound file adds a Docker failure point without improving visibility. Credentials stay outside the mounted logs and retain their separate private transfer. The [transfer postmortem](../../../postmortem/0014-benchmark-recopied-mounted-instructions.md) preserves the observed failure and the limits of its underlying Docker diagnosis.
+
 ## Alternatives considered
 
 **Run every model through Synergy's loop.** This would compare model behavior but remove the native harness differences the experiment needs to measure.

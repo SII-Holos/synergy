@@ -153,7 +153,8 @@ class SynergyAgent(BaseAgent):
         logs = environment.env_paths.agent_dir.as_posix()
         local = self.logs_dir / "instruction.md"
         local.write_text(instruction)
-        await environment.upload_file(local, f"{logs}/instruction.md")
+        if not environment.capabilities.mounted:
+            await environment.upload_file(local, f"{logs}/instruction.md")
         try:
             async with self.credential_file(environment) as remote_secret:
                 invocation = shlex.join(

@@ -27,6 +27,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 5. Cross-check every completed provider request against native evidence. Interrupted requests retain unknown usage and any known lower bound. Cache and reasoning tokens have explicit inclusion rules; byte measurements remain bytes.
 6. Read the primary native reward while preserving auxiliary verifier metrics. Require positive test-start evidence separately. Check archive contents and checksums independently of agent outcomes and rewards.
 
+   Respect the environment's declared log mounts when delivering instructions: a host file in a mounted log directory is already visible at its container path. Upload it only for non-mounted environments; keep credentials in separate private temporary files. Test both paths with real file contents and retain pre-dispatch transfer failures without calling them model failures.
+
 ## Control resources and cache ownership
 
 1. Inspect Docker quotas, host pressure and native task/verifier declarations. Use shared resource reservations for concurrent evaluators using the same cache. Keep reserved resources and admission decisions in evidence; do not kill running tasks to make room.

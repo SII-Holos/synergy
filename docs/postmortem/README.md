@@ -50,6 +50,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0011 | Watcher static C++ runtime crashed subsequent ONNX loading | implemented | 2026-09-12 |
 | 0012 | Preparation deadline truncated native benchmark execution | implemented | 2026-09-14 |
 | 0013 | Short native probes missed OpenCode runtime stalls under Rosetta | mitigated | 2026-09-14 |
+| 0014 | Benchmark recopied instructions into their existing bind mount | implemented | 2026-09-14 |
 
 ## History rules
 

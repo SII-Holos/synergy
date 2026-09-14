@@ -1,5 +1,6 @@
 import asyncio
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -62,12 +63,19 @@ async def test_accounting_is_read_only_after_pier_hands_logs_to_the_host(tmp_pat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mounted", [False, True])
 @pytest.mark.parametrize("proxy", [None, {"HTTPS_PROXY": "http://fixture:token@proxy.invalid:8080"}])
-async def test_runner_receives_environment_agent_network_settings(tmp_path: Path, proxy) -> None:
+async def test_runner_receives_instruction_and_environment_agent_network_settings(
+    tmp_path: Path, proxy, mounted
+) -> None:
     from pier.models.agent.context import AgentContext
+
+    instruction = "读取完整任务指令并运行验证。\n" * 4096
+    remote_instruction = tmp_path / ("instruction.md" if mounted else "container-instruction.md")
 
     class Environment:
         env_paths = SimpleNamespace(agent_dir=Path("/logs/agent"))
+        capabilities = SimpleNamespace(mounted=mounted)
         executed = False
 
         def agent_process_env(self, env):
@@ -75,11 +83,13 @@ async def test_runner_receives_environment_agent_network_settings(tmp_path: Path
             return proxy
 
         async def upload_file(self, source, target):
-            pass
+            if target == "/logs/agent/instruction.md":
+                shutil.copyfile(source, remote_instruction)
 
         async def exec(self, command, **kwargs):
             if command.startswith("/opt/synergy/bin/bun"):
                 assert kwargs.get("env") == proxy
+                assert remote_instruction.read_text() == instruction
                 self.executed = True
             else:
                 assert not kwargs.get("env")
@@ -87,7 +97,7 @@ async def test_runner_receives_environment_agent_network_settings(tmp_path: Path
 
     environment = Environment()
     agent = SynergyAgent(tmp_path, settings={"env": {}})
-    await agent.run("Fixture", cast(BaseEnvironment, environment), AgentContext())
+    await agent.run(instruction, cast(BaseEnvironment, environment), AgentContext())
     assert environment.executed
 
 
