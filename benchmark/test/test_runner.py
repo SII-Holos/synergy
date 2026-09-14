@@ -6,6 +6,42 @@ from synergy_bench.runner import execute_plan
 from synergy_bench.storage import atomic_json, read_json
 
 
+@pytest.mark.parametrize("startup_failures,requests,expected", [(1, 0, 2), (5, 0, 3), (1, 1, 1)])
+async def test_only_unstarted_native_timeouts_retry_with_a_durable_bound(
+    tmp_path, startup_failures, requests, expected
+):
+    from synergy_bench.evidence import collect_evidence
+    from synergy_bench.runner import verify_terminal
+
+    plan = {"schedule": [{"task": "s/t", "variant": "A", "pair": "p", "repeat": 0}], "concurrency": 1}
+    called = []
+
+    async def execute(item, attempt):
+        called.append(attempt)
+        result = collect_evidence(attempt / "native", {}, verification_required=False)
+        result["evidence"]["archive_valid"] = True
+        result["wire_usage"] = {"attempts": requests}
+        result["execution"] = (
+            {
+                "outcome": "timeout",
+                "lifecycle": {"timeout_stage": "startup", "model_started_at": None, "marker_error": None},
+            }
+            if len(called) <= startup_failures
+            else {"outcome": "completed"}
+        )
+        return result
+
+    await execute_plan(tmp_path, plan, execute)
+    await execute_plan(tmp_path, plan, execute)
+    assert len(called) == expected
+    assert read_json(tmp_path / "state.json")["trials"]["0000"]["status"] == "completed"
+    for index, attempt in enumerate(called):
+        verify_terminal(attempt, read_json(attempt / "evidence.json"))
+        trial = read_json(attempt / "trial.json")
+        assert trial["reason"] == ("planned_first_attempt" if index == 0 else "retry_startup_timeout_before_model")
+        assert trial["startup_attempt"] == index + 1
+
+
 @pytest.mark.asyncio
 async def test_resume_preserves_completed_trials_and_restarts_interrupted_attempts(tmp_path: Path) -> None:
     plan = {"schedule": [{"task": "s/t", "variant": "A", "pair": "p", "repeat": 0}], "concurrency": 1}

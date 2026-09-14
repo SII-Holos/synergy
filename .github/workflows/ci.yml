@@ -332,7 +332,7 @@ jobs:
         run: |
           uv run --locked --project benchmark ruff check benchmark
           uv run --locked --project benchmark ruff format --check benchmark
-          uv run --locked --project benchmark mypy benchmark/src/synergy_bench
+          uv run --locked --project benchmark mypy --config-file benchmark/pyproject.toml benchmark/src/synergy_bench
           uv run --locked --project benchmark pytest benchmark/test --ignore=benchmark/test/test_gateway.py --ignore=benchmark/test/test_gateway_faults.py
       - name: Check runtime recipes
         run: bun run --cwd benchmark test

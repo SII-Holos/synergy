@@ -39,6 +39,26 @@ def test_unknown_harness_fails_before_launch():
         harness_configuration("imaginary", model, "http://localhost:1/v1", "/home/fixture")
 
 
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_opencode_jit_controls_the_native_process_without_changing_model_or_tools(enabled):
+    model = ModelProfile(
+        model="m",
+        protocol="chat-completions",
+        base_url="https://provider.test/v1",
+        api_key_env="KEY",
+        context_window=32000,
+        max_output_tokens=2000,
+    )
+    baseline = harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture")
+    actual = harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture", bun_jit=enabled)
+    assert actual["files"] == baseline["files"]
+    assert actual["argv"] == baseline["argv"]
+    if enabled is None:
+        assert "BUN_JSC_useJIT" not in actual["env"]
+    else:
+        assert actual["env"]["BUN_JSC_useJIT"] == str(int(enabled))
+
+
 @pytest.mark.parametrize("kind", ["pi", "deepseek"])
 def test_native_provider_can_explicitly_disable_developer_role(kind):
     model = ModelProfile(

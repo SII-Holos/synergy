@@ -317,6 +317,26 @@ def _initialize(path: Path) -> Path:
     return root
 
 
+def startup_retryable(attempt: Path, result: dict[str, Any]) -> bool:
+    execution = result.get("execution") or {}
+    lifecycle = execution.get("lifecycle") or {}
+    wire = attempt / "wire"
+    return (
+        execution.get("outcome") == "timeout"
+        and lifecycle.get("timeout_stage") == "startup"
+        and "model_started_at" in lifecycle
+        and lifecycle["model_started_at"] is None
+        and lifecycle.get("marker_error") is None
+        and not result.get("infrastructure_error")
+        and (result.get("wire_usage") or {}).get("attempts") == 0
+        and (result.get("evidence") or {}).get("archive_valid") is True
+        and not {"cleanup_failed", "credential-cleanup_failed", "environment-cleanup_failed"}.intersection(
+            (result.get("evidence") or {}).get("issues", [])
+        )
+        and (not wire.exists() or not any(wire.iterdir()))
+    )
+
+
 async def execute_plan(
     root: Path,
     plan: dict[str, Any],
@@ -339,58 +359,93 @@ async def execute_plan(
                 **plan.get("tasks", {}).get(item.get("task"), {}).get("resources", {"cpus": 1, "memory_bytes": 1024**3})
             )
             queued = time.monotonic()
-            async with pool.reserve(request):
-                previous = state["trials"].get(trial_id, {})
-                prior_result = (
-                    root / "trials" / trial_id / f"attempt-{previous.get('attempt', 0):03d}" / "evidence.json"
-                )
-                if previous.get("status") in {"running", "interrupted"} and prior_result.exists():
-                    if read_json(prior_result).get("attempt_status") == "completed":
-                        previous["status"] = "completed"
-                        atomic_json(state_file, state)
-                if previous.get("status") == "completed":
-                    continue
-                number = previous.get("attempt", 0) + 1
-                attempt = root / "trials" / trial_id / f"attempt-{number:03d}"
-                attempt.mkdir(parents=True, exist_ok=False)
-                current = {
-                    "status": "running",
-                    "attempt": number,
-                    "started": time.time(),
-                    "queue_seconds": time.monotonic() - queued,
-                    "reason": "resume_interrupted_attempt" if previous else "planned_first_attempt",
-                    "previous_attempt": previous.get("attempt"),
-                }
-                state["trials"][trial_id] = current
-                atomic_json(state_file, state)
-                atomic_json(
-                    attempt / "trial.json",
-                    {**item, **{key: current[key] for key in ["queue_seconds", "reason", "previous_attempt"]}},
-                )
-                progress(f"run: trial {trial_id} {item.get('task', '')} / {item['variant']} / {attempt.name}")
-                try:
-                    result = await execute(item, attempt)
-                    result["attempt_status"] = "completed"
-                    seal_attempt(attempt, result)
-                    atomic_json(attempt / "evidence.json", result)
-                    current["status"] = "completed"
-                except asyncio.CancelledError:
-                    evidence = attempt / "evidence.json"
-                    current["status"] = (
-                        "completed"
-                        if evidence.exists() and read_json(evidence).get("attempt_status") == "completed"
-                        else "interrupted"
+            while True:
+                async with pool.reserve(request):
+                    previous = state["trials"].get(trial_id, {})
+                    prior_result = (
+                        root / "trials" / trial_id / f"attempt-{previous.get('attempt', 0):03d}" / "evidence.json"
                     )
-                    raise
-                except Exception as error:
-                    failure = retain_failure(attempt, error)
-                    failure["attempt_status"] = "completed"
-                    atomic_json(attempt / "evidence.json", failure)
-                    current["status"] = "completed"
-                finally:
-                    current["finished"] = time.time()
+                    if previous.get("status") in {"running", "interrupted"} and prior_result.exists():
+                        if read_json(prior_result).get("attempt_status") == "completed":
+                            previous["status"] = "completed"
+                            atomic_json(state_file, state)
+                    startup_retry = (
+                        previous.get("status") == "completed"
+                        and prior_result.exists()
+                        and previous.get("startup_attempt", 1) < 3
+                        and startup_retryable(prior_result.parent, read_json(prior_result))
+                    )
+                    if previous.get("status") == "completed" and not startup_retry:
+                        break
+                    if startup_retry:
+                        verify_terminal(prior_result.parent, read_json(prior_result))
+                    startup_attempt = (
+                        previous.get("startup_attempt", 1) + 1 if startup_retry else previous.get("startup_attempt", 1)
+                    )
+                    backoff = 2 ** (startup_attempt - 2) if startup_retry else 0
+                    number = previous.get("attempt", 0) + 1
+                    attempt = root / "trials" / trial_id / f"attempt-{number:03d}"
+                    attempt.mkdir(parents=True, exist_ok=False)
+                    current = {
+                        "status": "running",
+                        "attempt": number,
+                        "started": time.time(),
+                        "queue_seconds": time.monotonic() - queued,
+                        "reason": "retry_startup_timeout_before_model"
+                        if startup_retry
+                        else "resume_interrupted_attempt"
+                        if previous
+                        else "planned_first_attempt",
+                        "startup_attempt": startup_attempt,
+                        "backoff_seconds": backoff,
+                        "previous_attempt": previous.get("attempt"),
+                    }
+                    state["trials"][trial_id] = current
                     atomic_json(state_file, state)
-                    progress(f"run: trial {trial_id} {current['status']}")
+                    atomic_json(
+                        attempt / "trial.json",
+                        {
+                            **item,
+                            **{
+                                key: current[key]
+                                for key in [
+                                    "queue_seconds",
+                                    "reason",
+                                    "previous_attempt",
+                                    "startup_attempt",
+                                    "backoff_seconds",
+                                ]
+                            },
+                        },
+                    )
+                    progress(f"run: trial {trial_id} {item.get('task', '')} / {item['variant']} / {attempt.name}")
+                    try:
+                        if backoff:
+                            await asyncio.sleep(backoff)
+                        result = await execute(item, attempt)
+                        result["attempt_status"] = "completed"
+                        seal_attempt(attempt, result)
+                        atomic_json(attempt / "evidence.json", result)
+                        current["status"] = "completed"
+                    except asyncio.CancelledError:
+                        evidence = attempt / "evidence.json"
+                        current["status"] = (
+                            "completed"
+                            if evidence.exists() and read_json(evidence).get("attempt_status") == "completed"
+                            else "interrupted"
+                        )
+                        raise
+                    except Exception as error:
+                        result = retain_failure(attempt, error)
+                        result["attempt_status"] = "completed"
+                        atomic_json(attempt / "evidence.json", result)
+                        current["status"] = "completed"
+                    finally:
+                        current["finished"] = time.time()
+                        atomic_json(state_file, state)
+                        progress(f"run: trial {trial_id} {current['status']}")
+                    if startup_attempt >= 3 or not startup_retryable(attempt, result):
+                        break
 
     async with asyncio.TaskGroup() as group:
         for items in pairs.values():
@@ -455,7 +510,7 @@ async def execute_trial(
 def retain_failure(attempt: Path, error: BaseException) -> dict[str, Any]:
     file = attempt / "evidence.json"
     if file.exists():
-        evidence = read_json(file)
+        evidence: dict[str, Any] = read_json(file)
     else:
         trials = [directory.parent for directory in attempt.glob("*/agent") if directory.is_dir()]
         trial = trials[0] if len(trials) == 1 else attempt / "unstarted"
@@ -508,7 +563,13 @@ def trial_configuration(
         "export_timeout_seconds": export_timeout,
     }
     if gateway:
-        native = harness_configuration(variant["harness"], gateway.model, gateway.url, "/logs/agent/home")
+        native = harness_configuration(
+            variant["harness"],
+            gateway.model,
+            gateway.url,
+            "/logs/agent/home",
+            bun_jit=variant.get("bun_jit"),
+        )
         if variant["harness"] == "synergy":
             settings = read_json(inputs / "config.json")
             settings.update(native["config"])

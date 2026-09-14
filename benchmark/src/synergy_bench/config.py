@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 
 class StrictModel(BaseModel):
@@ -130,9 +130,12 @@ class HarnessProfile(StrictModel):
     agent: str = "synergy"
     config: str | None = None
     experiment: str | None = None
+    bun_jit: StrictBool | None = None
 
     @model_validator(mode="after")
     def validate_native_options(self) -> HarnessProfile:
+        if self.bun_jit is not None and self.kind != "opencode":
+            raise ValueError("bun_jit is supported only for opencode")
         if self.kind != "synergy":
             if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
@@ -176,6 +179,7 @@ class Variant(StrictModel):
     model_key: str | None = None
     model_profile: ModelProfile | None = None
     package_version: str | None = None
+    bun_jit: StrictBool | None = None
 
 
 class Selection(StrictModel):
@@ -251,6 +255,7 @@ class ExperimentConfig(StrictModel):
                 model_key=cell.model,
                 model_profile=model,
                 package_version=harness.package_version,
+                bun_jit=harness.bun_jit,
             )
         if not resolved:
             raise ValueError("No matrix combinations selected")

@@ -216,12 +216,31 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
 
 def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
     from .report import report_data
+    from .runner import startup_retryable
 
     report = report_data(root, category=category)
     results = report["scored"]
-    failed = sum(
-        not row["evidence"].get("valid", False) or bool(row["infrastructure_error"]) for row in report["all_attempts"]
-    )
+    failures = [
+        row for row in report["all_attempts"] if not row["evidence"].get("valid", False) or row["infrastructure_error"]
+    ]
+    recovered = 0
+    for row in failures:
+        owner = {"task": "trials", "preflight": "probes", "debug": "debug"}[row["purpose"]]
+        attempt = root / owner / row["trial"] / row["attempt"]
+        evidence = attempt / "evidence.json"
+        if not evidence.exists() or not startup_retryable(attempt, read_json(evidence)):
+            continue
+        recovered += any(
+            later["purpose"] == row["purpose"]
+            and later["trial"] == row["trial"]
+            and later["attempt"] > row["attempt"]
+            and later["terminal"]
+            and later["model_started"]
+            and later["evidence"].get("valid", False)
+            and not later["infrastructure_error"]
+            for later in report["all_attempts"]
+        )
+    unresolved = len(failures) - recovered
     outcomes: dict[str, int] = {}
     for row in results:
         outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
@@ -234,9 +253,11 @@ def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
         "task_failures": sum(
             row["outcome"] != "completed" or (row["reward"] is not None and row["reward"] <= 0) for row in results
         ),
-        "recording_or_infrastructure_failures": failed,
+        "recording_or_infrastructure_failures": len(failures),
+        "recovered_startup_failures": recovered,
+        "unresolved_recording_or_infrastructure_failures": unresolved,
         "rewards": [row["raw_rewards"] for row in results],
         "usage": report["usage"],
         "missing": report["missing"],
-        "exit_code": 1 if failed or report["missing"] else 0,
+        "exit_code": 1 if unresolved or report["missing"] else 0,
     }

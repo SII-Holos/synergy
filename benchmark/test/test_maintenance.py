@@ -208,3 +208,130 @@ def test_completed_calls_need_independent_native_usage_confirmation():
         }
     }
     assert completed_usage_reconciled(aggregate, calls)
+
+
+async def test_doctor_bounds_startup_retries_and_preserves_each_terminal_attempt(tmp_path, monkeypatch):
+    import pytest
+
+    from synergy_bench import runner
+    from synergy_bench.maintenance import doctor_plan
+    from synergy_bench.storage import read_json
+
+    plan = {
+        "host": {"capacity": {"cpus": 1, "memory_bytes": 100}},
+        "concurrency": 1,
+        "schedule": [{"task": "fixture", "variant": "native"}],
+        "tasks": {"fixture": {"resources": {"cpus": 1, "memory_bytes": 100}}},
+    }
+
+    async def timeout(root, plan, item, attempt, **kwargs):
+        from synergy_bench.evidence import collect_evidence
+
+        empty = collect_evidence(attempt / "native", {}, verification_required=False)
+        return {
+            **empty,
+            "execution": {
+                "outcome": "timeout",
+                "lifecycle": {"timeout_stage": "startup", "model_started_at": None, "marker_error": None},
+            },
+            "wire_usage": {"attempts": 0},
+            "evidence": {**empty["evidence"], "archive_valid": True},
+        }
+
+    monkeypatch.setattr(runner, "execute_trial", timeout)
+    with pytest.raises(ValueError, match="connectivity failed"):
+        await doctor_plan(tmp_path, plan)
+    attempts = sorted(tmp_path.glob("probes/0000/attempt-*"))
+    assert len(attempts) == 3
+    for index, attempt in enumerate(attempts):
+        evidence = read_json(attempt / "evidence.json")
+        assert evidence["attempt_status"] == "completed"
+        assert evidence["execution"]["outcome"] == "timeout"
+        runner.verify_terminal(attempt, evidence)
+        intent = read_json(attempt / "probe-intent.json")
+        assert intent["backoff_seconds"] == (0 if index == 0 else 2 ** (index - 1))
+        assert intent["reason"] == ("initial_preflight" if index == 0 else "retry_startup_timeout_before_model")
+    assert read_json(tmp_path / "doctor.json")["records"][0]["attempt"] == 3
+
+
+def test_probe_retry_requires_positive_startup_evidence_and_no_possible_request(tmp_path):
+    from synergy_bench.runner import startup_retryable
+    from synergy_bench.storage import atomic_json
+
+    result = {
+        "execution": {
+            "outcome": "timeout",
+            "lifecycle": {"timeout_stage": "startup", "model_started_at": None, "marker_error": None},
+        },
+        "wire_usage": {"attempts": 0},
+        "evidence": {"archive_valid": True},
+    }
+    assert startup_retryable(tmp_path, result)
+    assert not startup_retryable(tmp_path, {**result, "execution": {"outcome": "timeout"}})
+    assert not startup_retryable(tmp_path, {**result, "wire_usage": {"attempts": 1}})
+    assert not startup_retryable(tmp_path, {**result, "evidence": {"archive_valid": False}})
+    assert not startup_retryable(
+        tmp_path, {**result, "evidence": {"archive_valid": True, "issues": ["environment-cleanup_failed"]}}
+    )
+    for lifecycle in [
+        {"timeout_stage": "agent", "model_started_at": 123},
+        {"timeout_stage": "startup", "model_started_at": 123},
+        {"timeout_stage": "startup", "model_started_at": None, "marker_error": "SyntaxError"},
+    ]:
+        assert not startup_retryable(tmp_path, {**result, "execution": {"outcome": "timeout", "lifecycle": lifecycle}})
+    atomic_json(tmp_path / "wire/possible-request/downstream.json", {"model": "fixture"})
+    assert not startup_retryable(tmp_path, result)
+
+
+async def test_successful_startup_retry_is_reused_without_repeating_model_work(tmp_path, monkeypatch):
+    from synergy_bench import runner
+    from synergy_bench.evidence import collect_evidence
+    from synergy_bench.maintenance import doctor_plan
+    from synergy_bench.storage import atomic_json, read_json
+    from synergy_bench.usage import aggregate_usage
+
+    plan = {
+        "host": {"capacity": {"cpus": 1, "memory_bytes": 100}},
+        "concurrency": 1,
+        "schedule": [{"task": "fixture", "variant": "native"}],
+        "tasks": {"fixture": {"resources": {"cpus": 1, "memory_bytes": 100}}},
+    }
+    called = []
+
+    async def execute(root, plan, item, attempt, **kwargs):
+        called.append(attempt)
+        result = collect_evidence(attempt / "native", {}, verification_required=False)
+        result["evidence"]["archive_valid"] = True
+        if len(called) == 1:
+            result["execution"] = {
+                "outcome": "timeout",
+                "lifecycle": {"timeout_stage": "startup", "model_started_at": None, "marker_error": None},
+            }
+            result["wire_usage"] = {"attempts": 0}
+            return result
+        marker = read_json(attempt / "probe-intent.json")["marker"]
+        call = {
+            "id": "request",
+            "protocol": "chat-completions",
+            "status": "completed",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+        }
+        atomic_json(attempt / "wire/request/request.json", call)
+        atomic_json(attempt / "wire/request/upstream.json", {"messages": [{"role": "tool", "content": marker}]})
+        result["execution"] = {"outcome": "completed"}
+        result["wire_usage"] = aggregate_usage([call])
+        result["reconciliation"] = {
+            "status": "matched",
+            "requests": {"mode": "request_id", "status": "matched", "completed_usage_crosschecked": ["native"]},
+        }
+        return result
+
+    monkeypatch.setattr(runner, "execute_trial", execute)
+    first = await doctor_plan(tmp_path, plan)
+    second = await doctor_plan(tmp_path, plan)
+    assert first == second
+    assert first["status"] == "completed"
+    assert first["records"][0]["attempt"] == 2
+    assert len(called) == 2
+    assert read_json(called[0] / "probe.json")["status"] == "failed"
+    assert read_json(called[1] / "probe.json")["status"] == "completed"

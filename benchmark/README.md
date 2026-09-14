@@ -40,6 +40,7 @@ bun bench clean /absolute/path/to/run
 | 字段                                         | 含义                                                                             |
 | -------------------------------------------- | -------------------------------------------------------------------------------- |
 | `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment      |
+| `harnesses.<name>.bun_jit`                   | OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭其内嵌 Bun JIT            |
 | `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数             |
 | `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                       |
 | `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                |
@@ -58,6 +59,8 @@ bun bench clean /absolute/path/to/run
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。
+
+OpenCode 的 `bun_jit: false` 映射为原生进程的 `BUN_JSC_useJIT=0`；它是运行时执行条件，可能改变延迟和资源消耗。需要比较时声明独立名称，例如 `opencode-native` 和 `opencode-jitless`。该值随配置和每次尝试的有效环境冻结，不改变模型、提示词、工具或压缩策略，也不根据宿主或失败结果自动切换。其他 harness 使用此选项会报错。运行时适配的取舍见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
 
 API key 通过 `api_key_env` 引用，保留在宿主账本服务中。容器使用本次尝试的临时入口凭据，经 0600 文件传入、读取后删除。每次尝试均有新 Home、进程和任务可写层。服务商 prompt cache 独立存在，fresh Home 不等于远端 cold cache。
 
@@ -123,6 +126,10 @@ run/
 
 报告统计所有 attempts，包括预检和失败重跑；评分预先选定每个计划单元的首次模型执行。已结束的失败是终态，resume 不自动重抽样。恢复先核对原有执行终态、归档和账本摘要，再修复调度状态；改变 evaluator、Python 版本、冻结输入或任务摘要会拒绝续跑。`resume`、`doctor`、`prewarm` 和 `debug` 的 `--recorded-evaluator` 显式使用已校验的冻结评测器；它不会用新代码续跑旧实验。
 
+只有明确发生在首次模型请求前的原生启动超时可以自动重试：原生生命周期确认模型未开始、请求账本目录为空、归档已完成且没有清理错误。预检每次调用最多三次启动尝试；正式任务的三次上限随调度状态持久化，恢复不重置。退避为 1、2 秒，每次创建新的 attempt 并记录原因，原失败证据保持终态。账本残片、送达不明、已请求模型、输出中断或原生判题失败都不进入这条自动重试路径。
+
+CLI 汇总保留全部记录或基础设施失败数，另列已恢复的启动失败和未解决失败。只有同一任务或预检的后续模型尝试留下完整终态证据，才将符合上述条件的早期启动失败计为已恢复；未解决失败或缺失任务返回非零状态。恢复不改变原始失败、分数或全部 attempts 的消耗统计。
+
 原生 reward、判题执行、功能测试启动、归档有效性、记录覆盖和 usage 完整性彼此独立。reward.txt 不证明测试已启动；只有原生日志或测试报告中的正面证据才能确认启动，其他情况保持 unknown。部分记录可构成有效失败证据。
 
 `report` 输出 JSON、CSV 和离线中文 HTML。成功率仅在计划单元的 reward 全部可见时给出；缺失时公开上下界和原因。Wilson 区间描述已观测 reward。横向差值限定同模型、任务、repeat 和实验条件，公开缺失配对，用固定 seed 按任务聚类 bootstrap。只有完整可核对的用量参与精确 token 差值。没有版本化价格来源就不换算货币，订阅 token 不虚构金额。`--include-run` 将关联实验的全部消耗纳入报告，但评分仍来自位置参数指定的 run；不得在看到分数后更换评分 run。不同模型在同一 harness 下作描述性比较，不混入同模型配对 bootstrap。
@@ -138,7 +145,7 @@ run/
 ```bash
 uv run --locked --project benchmark pytest benchmark/test
 uv run --locked --project benchmark ruff check benchmark
-uv run --locked --project benchmark mypy benchmark/src/synergy_bench
+uv run --locked --project benchmark mypy --config-file benchmark/pyproject.toml benchmark/src/synergy_bench
 bun run --cwd benchmark test
 bun run --cwd benchmark typecheck
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_matrix_docker.py

@@ -187,7 +187,7 @@ def main() -> None:
                     raise ValueError("Cross-model comparison requires both model names and the same harness")
 
                 def group(path: Path, model: str) -> dict[str, Any]:
-                    rows = [
+                    rows: list[dict[str, Any]] = [
                         row
                         for row in report_data(path)["groups"]
                         if row["harness"] == args.left_harness and row["model"] == model

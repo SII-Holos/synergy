@@ -174,6 +174,7 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
         remove_environment,
         retain_failure,
         seal_attempt,
+        startup_retryable,
         verify_terminal,
     )
 
@@ -218,35 +219,55 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
         if prior and read_json(prior[-1]).get("status") == "completed":
             records.append(read_json(prior[-1]))
             return
-        number = len(list(directory.glob("attempt-*"))) + 1
-        attempt = directory / f"attempt-{number:03d}"
-        attempt.mkdir()
-        atomic_json(attempt / "trial.json", {**item, "purpose": "preflight", "scoring_eligible": False})
-        marker = "BENCHMARK_TOOL_" + uuid.uuid4().hex
-        atomic_json(attempt / "probe-intent.json", {"marker": marker, "attempt": number})
-        async with pool.reserve(Request(**plan["tasks"][item["task"]]["resources"])):
-            progress(f"doctor: real tool roundtrip {item['task']} / {item['variant']}")
-            try:
-                result = await execute_trial(
-                    root,
-                    plan,
-                    item,
-                    attempt,
-                    probe_instruction=(
-                        "This is a benchmark connectivity check in a disposable environment. "
-                        "Use your shell tool to run "
-                        f"printf '{marker}\\n', read its output, and finish. "
-                        "Do not solve the task's original instruction."
-                    ),
-                )
-            except Exception as error:
-                result = retain_failure(attempt, error)
-            result["attempt_status"] = "completed"
-            row = probe_result(item, attempt, marker, number, result)
-            atomic_json(attempt / "probe.json", row)
-            seal_attempt(attempt, result)
-            atomic_json(attempt / "evidence.json", result)
-            records.append(row)
+        first = len(list(directory.glob("attempt-*"))) + 1
+        for retry in range(3):
+            number = first + retry
+            attempt = directory / f"attempt-{number:03d}"
+            attempt.mkdir()
+            atomic_json(attempt / "trial.json", {**item, "purpose": "preflight", "scoring_eligible": False})
+            marker = "BENCHMARK_TOOL_" + uuid.uuid4().hex
+            backoff = 2 ** (retry - 1) if retry else 0
+            atomic_json(
+                attempt / "probe-intent.json",
+                {
+                    "marker": marker,
+                    "attempt": number,
+                    "previous_attempt": number - 1 if number > 1 else None,
+                    "reason": "retry_startup_timeout_before_model"
+                    if retry
+                    else "requested_preflight_after_failure"
+                    if prior
+                    else "initial_preflight",
+                    "backoff_seconds": backoff,
+                },
+            )
+            if backoff:
+                await asyncio.sleep(backoff)
+            async with pool.reserve(Request(**plan["tasks"][item["task"]]["resources"])):
+                progress(f"doctor: real tool roundtrip {item['task']} / {item['variant']} / {attempt.name}")
+                try:
+                    result = await execute_trial(
+                        root,
+                        plan,
+                        item,
+                        attempt,
+                        probe_instruction=(
+                            "This is a benchmark connectivity check in a disposable environment. "
+                            "Use your shell tool to run "
+                            f"printf '{marker}\\n', read its output, and finish. "
+                            "Do not solve the task's original instruction."
+                        ),
+                    )
+                except Exception as error:
+                    result = retain_failure(attempt, error)
+                result["attempt_status"] = "completed"
+                row = probe_result(item, attempt, marker, number, result)
+                atomic_json(attempt / "probe.json", row)
+                seal_attempt(attempt, result)
+                atomic_json(attempt / "evidence.json", result)
+            if row["status"] == "completed" or retry == 2 or not startup_retryable(attempt, result):
+                records.append(row)
+                return
 
     try:
         async with asyncio.TaskGroup() as group:

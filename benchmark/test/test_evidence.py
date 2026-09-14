@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from synergy_bench.evidence import collect_evidence
 
 
@@ -69,6 +71,47 @@ def test_summary_reports_wrong_answers_as_task_failures_without_infrastructure_f
     result = summarize(tmp_path)
     assert result["task_failures"] == 1
     assert result["exit_code"] == 0
+
+
+@pytest.mark.parametrize("category", ["trials", "probes"])
+@pytest.mark.parametrize("recovered,possible_request", [(True, False), (False, False), (True, True)])
+def test_summary_retains_startup_failures_but_distinguishes_recovery(tmp_path, category, recovered, possible_request):
+    from synergy_bench.evidence import summarize
+    from synergy_bench.storage import atomic_json
+
+    first = tmp_path / category / "0000/attempt-001"
+    atomic_json(
+        first / "evidence.json",
+        {
+            "version": 3,
+            "attempt_status": "completed",
+            "execution": {
+                "outcome": "timeout",
+                "lifecycle": {"timeout_stage": "startup", "model_started_at": None},
+            },
+            "wire_usage": {"attempts": 0, "tokens": {}},
+            "evidence": {"valid": False, "archive_valid": True, "issues": ["accounting_missing"]},
+        },
+    )
+    if possible_request:
+        atomic_json(first / "wire/torn/downstream.json", {"model": "fixture"})
+    if recovered:
+        atomic_json(
+            tmp_path / category / "0000/attempt-002/evidence.json",
+            {
+                "version": 3,
+                "attempt_status": "completed",
+                "execution": {"outcome": "completed"},
+                "wire_usage": {"attempts": 1, "tokens": {}},
+                "evidence": {"valid": True},
+            },
+        )
+    result = summarize(tmp_path)
+    assert result["recording_or_infrastructure_failures"] == 1
+    resolved = int(recovered and not possible_request)
+    assert result["recovered_startup_failures"] == resolved
+    assert result["unresolved_recording_or_infrastructure_failures"] == 1 - resolved
+    assert result["exit_code"] == 1 - resolved
 
 
 def test_reward_alone_does_not_claim_functional_tests_started(tmp_path):

@@ -7,6 +7,7 @@ import os
 import secrets
 import time
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from types import TracebackType
 from typing import Any, BinaryIO
@@ -19,7 +20,7 @@ from .config import MODEL_PARAMETERS, ModelProfile
 from .storage import atomic_json, digest, read_json
 
 
-async def stream_lines(content: aiohttp.StreamReader):
+async def stream_lines(content: aiohttp.StreamReader) -> AsyncIterator[bytes]:
     pending = bytearray()
     async for chunk in content.iter_any():
         pending.extend(chunk)

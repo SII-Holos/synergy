@@ -23,13 +23,22 @@ PACKAGES = {
 }
 
 
-def harness_configuration(kind: str, model: ModelProfile, endpoint: str, home: str) -> dict[str, Any]:
+def harness_configuration(
+    kind: str, model: ModelProfile, endpoint: str, home: str, *, bun_jit: bool | None = None
+) -> dict[str, Any]:
     files: dict[str, str] = {}
     env: dict[str, str] = {
         "BENCH_GATEWAY_BASE": endpoint,
         "BENCH_CAPTURE_DIR": home + "/native-wire",
         "NODE_USE_ENV_PROXY": "1",
     }
+    if bun_jit is not None:
+        if kind != "opencode" or type(bun_jit) is not bool:
+            raise ValueError("bun_jit requires an explicit boolean for opencode")
+        # Provenance: https://github.com/oven-sh/bun/issues/22901
+        # Local adaptation: expose Bun's supported override as an explicit experiment
+        # condition; do not use the distinct JSC_useJIT variable or auto-detect a fallback.
+        env["BUN_JSC_useJIT"] = str(int(bun_jit))
     protocol = "responses" if kind == "codex" else model.protocol
     api = "openai-completions" if protocol == "chat-completions" else "openai-responses"
     name = model.model

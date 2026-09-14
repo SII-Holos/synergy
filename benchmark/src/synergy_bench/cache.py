@@ -87,7 +87,7 @@ def publish(stage: Path, cache: Path, identity: dict[str, Any]) -> Path:
 
 
 def verify_object(path: Path) -> dict[str, Any]:
-    receipt = read_json(path / "cache.json")
+    receipt: dict[str, Any] = read_json(path / "cache.json")
     if receipt.get("owner") != OWNER or receipt.get("id") != path.name:
         raise ValueError("Not a benchmark-owned cache object")
     observed = inventory(path)

@@ -231,7 +231,8 @@ class ResponseStream:
     def event(self, kind: str, **kwargs: Any) -> dict[str, Any]:
         value = {"type": kind, "sequence_number": self.sequence, **kwargs}
         self.sequence += 1
-        return json.loads(json.dumps(value))  # Events are immutable snapshots, never references to later state.
+        snapshot: dict[str, Any] = json.loads(json.dumps(value))
+        return snapshot  # Events are immutable snapshots, never references to later state.
 
     def begin(self) -> list[dict[str, Any]]:
         return [

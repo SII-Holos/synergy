@@ -52,7 +52,7 @@ def _prepare_external(
     index = cache / "indexes" / (recipe_id + ".json")
     with cache_lock(cache / "locks" / ("engine-" + recipe_id), timeout=timeout):
         if index.exists():
-            target = cache / "objects" / read_json(index)["artifact"]
+            target: Path = cache / "objects" / read_json(index)["artifact"]
             if target.exists():
                 verify_object(target)
                 return target

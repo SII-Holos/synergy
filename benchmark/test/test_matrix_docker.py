@@ -14,6 +14,7 @@ from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
 from synergy_bench.prepare import BENCHMARK, evaluator_identity
 from synergy_bench.process import run_process
+from synergy_bench.runner import startup_retryable, verify_terminal
 from synergy_bench.source import git
 from synergy_bench.storage import atomic_json, read_json
 
@@ -223,9 +224,13 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 async def test_native_matrix_uses_restricted_egress_and_two_independent_models(tmp_path, monkeypatch, protocol):
     create_matrix_suite(tmp_path)
+
+    async def provider_with_runtime_evidence(request):
+        return await fixture_provider(request, command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ')
+
     app = web.Application()
-    app.router.add_post("/v1/chat/completions", fixture_provider)
-    app.router.add_post("/v1/responses", fixture_provider)
+    app.router.add_post("/v1/chat/completions", provider_with_runtime_evidence)
+    app.router.add_post("/v1/responses", provider_with_runtime_evidence)
     provider = web.AppRunner(app)
     await provider.setup()
     await web.TCPSite(provider, "127.0.0.1", 0).start()
@@ -242,6 +247,8 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
         }
         for kind in kinds
     }
+    if "opencode" in harnesses:
+        harnesses["opencode-jitless"] = {**harnesses["opencode"], "bun_jit": False}
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture-key-private")
     profiles = {
         name: {
@@ -296,10 +303,27 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             deadline=1200,
         )
         assert code == 0, (root / "integration-cli.log").read_text()[-20000:]
-        results = await asyncio.to_thread(
-            lambda: [read_json(file) for file in root.glob("trials/*/attempt-*/evidence.json")]
-        )
-        assert len(results) == 2 * len(kinds)
+
+        def retained_results():
+            results = []
+            for trial in sorted((root / "trials").iterdir()):
+                attempts = sorted(trial.glob("attempt-*"))
+                assert 1 <= len(attempts) <= 3
+                for attempt in attempts:
+                    result = read_json(attempt / "evidence.json")
+                    verify_terminal(attempt, result)
+                    if attempt != attempts[-1]:
+                        assert startup_retryable(attempt, result), result
+                        continue
+                    results.append(result)
+                    if read_json(attempt / "trial.json")["harness"] == "opencode-jitless":
+                        assert read_json(attempt / "inputs/options.json")["native"]["env"]["BUN_JSC_useJIT"] == "0"
+                        events = next(attempt.glob("*/agent/events.jsonl")).read_text()
+                        assert "BENCH_JIT=0" in events
+            return results
+
+        results = await asyncio.to_thread(retained_results)
+        assert len(results) == 2 * len(harnesses)
         assert all((result["execution"] or {}).get("outcome") == "completed" for result in results), results
         assert all((result["verifier"] or {}).get("rewards") == {"reward": 1.0} for result in results), results
         assert all(result["evidence"]["valid"] for result in results), results
