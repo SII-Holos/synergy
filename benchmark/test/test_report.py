@@ -184,6 +184,53 @@ def test_incomplete_experiment_conditions_are_not_paired(tmp_path):
     assert len(compared["unpairable_right"]) == 1
 
 
+@pytest.mark.parametrize(
+    "execution,eligible",
+    [
+        ({"outcome": "cancelled", "interrupted": True}, False),
+        ({"outcome": "cancelled"}, False),
+        ({"outcome": "timeout", "interrupted": False, "timed_out": True}, True),
+    ],
+)
+def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_pair(tmp_path, execution, eligible):
+    from synergy_bench.storage import read_json
+
+    for name in ["left", "right"]:
+        root = tmp_path / name
+        fixture(root, [(0, 30), (1, 70)])
+        plan = read_json(root / "plan.json")
+        plan.update(
+            concurrency=4,
+            host={"docker": {"cpus": 8, "memory_bytes": 16000}, "capacity": {"cpus": 6, "memory_bytes": 12000}},
+            evaluator={"python": "same"},
+        )
+        plan["tasks"]["task"].update(
+            agent_seconds=900, verifier_seconds=300, resources={"cpus": 1, "memory_bytes": 1000}
+        )
+        plan["config"].update(
+            startup_timeout_seconds=120,
+            cleanup_seconds=60,
+            export_timeout_seconds=300,
+            preparation_timeout_seconds=1800,
+            resources={"reserve_cpus": 2},
+        )
+        atomic_json(root / "plan.json", plan)
+        if name == "right":
+            file = root / "trials/0000/attempt-001/evidence.json"
+            value = read_json(file)
+            value["execution"] = execution
+            atomic_json(file, value)
+    left, right = [report_data(tmp_path / name) for name in ["left", "right"]]
+    compared = paired_compare(left["scored"], right["scored"], samples=10)
+    assert compared["pairs"] == int(eligible)
+    assert right["usage"]["known_tokens"] == 100
+    assert right["scored"][0]["attempt"] == "attempt-001"
+    assert right["scored"][0]["reward"] == 0
+    if not eligible:
+        assert compared["unpairable_right"][0]["pairing_exclusions"] == ["cancelled_execution"]
+        assert len(compared["missing_right"]) == 1
+
+
 @pytest.mark.parametrize("change", [None, "concurrency", "docker", "capacity", "deadline", "policy", "seed", "missing"])
 def test_pairing_requires_matching_declared_execution_conditions(tmp_path, change):
     from synergy_bench.storage import read_json

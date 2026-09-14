@@ -172,7 +172,10 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "execution_policy",
         ]
         missing_conditions = [key for key in required if condition_fields[key] is None]
-        conditions = None if missing_conditions else digest(condition_fields)
+        pairing_exclusions = (
+            ["cancelled_execution"] if execution.get("interrupted") or execution.get("outcome") == "cancelled" else []
+        )
+        conditions = None if missing_conditions or pairing_exclusions else digest(condition_fields)
         row = {
             **item,
             "purpose": purpose,
@@ -196,6 +199,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "wall_seconds": execution["wall_ms"] / 1000 if execution.get("wall_ms") is not None else None,
             "conditions": conditions,
             "missing_conditions": missing_conditions,
+            "pairing_exclusions": pairing_exclusions,
             "resources": result.get("resources", {}),
             "stages": result.get("stages", {}),
             "queue_seconds": item.get("queue_seconds"),
@@ -448,6 +452,7 @@ def write_report(root: Path, destination: Path, *, related: list[Path] | None = 
         "repeat",
         "terminal",
         "outcome",
+        "pairing_exclusions",
         "reward",
         "tokens",
         "known_tokens",
@@ -458,7 +463,9 @@ def write_report(root: Path, destination: Path, *, related: list[Path] | None = 
     with (destination / "attempts.csv").open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(value["all_attempts"])
+        writer.writerows(
+            {**row, "pairing_exclusions": ";".join(row["pairing_exclusions"])} for row in value["all_attempts"]
+        )
 
     def cell(item: Any) -> str:
         return html.escape("未知" if item is None else str(item))
