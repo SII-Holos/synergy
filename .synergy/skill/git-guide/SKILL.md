@@ -147,7 +147,7 @@ Behavior:
 
 ## Maintain Repository Automation
 
-Oryn configuration and labels follow [the operations guide](../../../docs/operations/oryn.md). Keep executable workflow/policy and validation selection on a trusted revision, use separate read/publication App tokens, and keep model credentials out of validation. Update the immutable runtime pin, label catalog and validation graph together when their contracts change. Verify `bun test --config /dev/null test/script/oryn-validation.test.ts` and `bun run workflow:check`, then perform a manual preflight and selected live review. A successful preflight does not establish model or publication success.
+Oryn configuration and labels follow [the operations guide](../../../docs/operations/oryn.md). Keep executable workflow/policy and validation selection on a trusted revision, use separate read/publication App tokens, and keep model credentials out of validation. Update the immutable runtime pin, label catalog and validation graph together when their contracts change. Verify `bun test --config /dev/null test/script/oryn-validation.test.ts` and `bun run workflow:check`, then perform a manual preflight and selected live review. A successful preflight does not establish model or publication success. Bind each item publisher to the producing upload artifact ID and verify full-run, execution-only and publication-only retry behavior. After a runtime receipt-contract upgrade, start a fresh workflow; historical reruns retain their original runtime and plan. For report submission changes, run the Oryn real Core report smoke alongside existing provider/failure smokes before updating the pin.
 
 ## Rebase or Recover
 
