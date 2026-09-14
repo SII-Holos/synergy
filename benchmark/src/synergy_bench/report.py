@@ -119,7 +119,12 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
         native_only = accounting is None
         if native_only:
             accounting = result.get("accounting")
-        tokens = (accounting or {}).get("tokens", {}).get("total", {})
+        pending = plan.get("result_version", result.get("version")) == 3 and result.get("attempt_status") != "completed"
+        usage_fields = {
+            field: {**value, "total": None} if pending and isinstance(value, dict) else value
+            for field, value in (accounting or {}).get("tokens", {}).items()
+        }
+        tokens = usage_fields.get("total", {})
         if not isinstance(tokens, dict):
             tokens = {}
         execution = result.get("execution") or {}
@@ -176,7 +181,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "queue_seconds": item.get("queue_seconds"),
             "wire_usage": accounting if not native_only else None,
             "request_count": (accounting or {}).get("attempts"),
-            "usage_fields": (accounting or {}).get("tokens", {}),
+            "usage_fields": usage_fields,
             "comparable_usage": not native_only
             and tokens.get("total") is not None
             and (result.get("reconciliation") or {}).get("status") != "mismatch"

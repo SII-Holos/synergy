@@ -18,6 +18,8 @@ Native transport evidence is cross-checked against the gateway. Native CLI exten
 
 The [report](../../../../benchmark/src/synergy_bench/report.py) counts all retained attempts, including preflight calls, while selecting the first model execution for scoring. Unknown usage retains known lower bounds. Paired comparisons require matching model, task, repeat and experimental conditions, expose missing pairs, and use seeded task-cluster bootstrap. Native reward observations receive Wilson intervals; missing rewards produce success bounds rather than invented scores.
 
+Completed request usage is not a finalized attempt total while the attempt lacks terminal evidence. Live and interrupted snapshots retain the observed token lower bound and original per-request unknown count; they cannot assert complete consumption or invent an extra unknown request merely because the lifecycle is unfinished.
+
 Native startup timeouts may create up to three automatic attempts only when native lifecycle evidence confirms no model execution, the entire request ledger is empty, the archive is complete and cleanup has no reported failure. Each attempt retains its terminal evidence, retry reason and 1/2-second backoff. Task startup budgets survive recovery; a new explicit doctor invocation records its own reason. Possible delivery, incomplete evidence and post-dispatch failures remain outside this path.
 
 ## Alternatives considered

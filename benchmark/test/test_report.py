@@ -1,3 +1,5 @@
+import pytest
+
 from synergy_bench.report import paired_compare, report_data, write_report
 from synergy_bench.storage import atomic_json
 
@@ -50,6 +52,38 @@ def test_incomplete_usage_keeps_bound_and_missing_attempts(tmp_path):
     assert result["usage"]["total_tokens"] is None
     assert result["usage"]["known_tokens"] == 30
     assert result["usage"]["unknown_attempts"] == 1
+
+
+@pytest.mark.parametrize("terminal", [False, True])
+def test_completed_requests_do_not_finalize_an_active_attempt_total(tmp_path, terminal):
+    from synergy_bench.storage import read_json
+
+    fixture(tmp_path, [(1, 30)])
+    attempt = tmp_path / "trials/0000/attempt-001"
+    evidence = attempt / "evidence.json"
+    if not terminal:
+        evidence.unlink()
+    atomic_json(
+        attempt / "wire/request/request.json",
+        {
+            "id": "request",
+            "protocol": "chat-completions",
+            "status": "completed",
+            "usage": {"prompt_tokens": 25, "completion_tokens": 5},
+        },
+    )
+    if terminal:
+        value = read_json(evidence)
+        value.pop("wire_usage")
+        atomic_json(evidence, value)
+    report = report_data(tmp_path)
+    row = report["scored"][0]
+    assert row["known_tokens"] == 30
+    assert row["tokens"] == (30 if terminal else None)
+    assert row["usage_fields"]["input"]["total"] == (25 if terminal else None)
+    assert row["usage_fields"]["input"]["known"] == 25
+    assert row["unknown_requests"] == 0
+    assert report["usage"]["total_tokens"] == (30 if terminal else None)
 
 
 def test_clustered_pairs_expose_missing_and_refuse_inexact_token_delta():
