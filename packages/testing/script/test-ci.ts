@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "../src/env"
-import { batchShardCount, collectTests, shardMainFiles, splitBatchFiles } from "./coverage-run"
+import { batchInvocation, batchShardCount, collectTests, shardMainFiles, splitBatchFiles } from "./coverage-run"
 
 export interface ShardPlan {
   batches: Array<{ files: string[]; shard: number }>
@@ -55,8 +55,9 @@ export async function runSequentialShards(
 }
 
 export async function runBunTest(args: string[], env: Record<string, string | undefined>): Promise<number> {
-  const child = Bun.spawn([process.execPath, ...args], {
-    cwd: process.cwd(),
+  const invocation = batchInvocation(args)
+  const child = Bun.spawn([process.execPath, ...invocation.args], {
+    cwd: invocation.cwd,
     env,
     stdin: "inherit",
     stdout: "inherit",
