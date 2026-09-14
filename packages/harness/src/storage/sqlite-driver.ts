@@ -37,6 +37,8 @@ export class SqliteDriver implements SqlDriver {
     this.worker = Bun.spawn({
       cmd: existsSync(entry) ? [process.execPath, "run", entry] : [process.execPath, "__storage-worker-runner"],
       env: { ...process.env, SYNERGY_STORAGE_PARENT_PID: String(process.pid) },
+      // Group cancellation must leave storage alive until its owner drains terminal writes.
+      detached: process.platform !== "win32",
       serialization: "advanced",
       stdout: "ignore",
       stderr: "inherit",

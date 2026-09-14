@@ -93,3 +93,68 @@ for (const stage of ["inside", "committed"] as const) {
     }
   }, 15_000)
 }
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  test.skipIf(process.platform === "win32")(
+    `process-group ${signal} allows the owner to persist terminal evidence before closing storage`,
+    async () => {
+      const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "storage-signal-"))
+      const filename = path.join(root, "agent.sqlite")
+      const ready = Promise.withResolvers<void>()
+      const child = Bun.spawn({
+        cmd: [
+          process.execPath,
+          "--eval",
+          `
+          const { TransactionalStore } = await import(process.env.TEST_STORAGE_MODULE)
+          const stopping = Promise.withResolvers()
+          process.on("SIGINT", () => stopping.resolve())
+          process.on("SIGTERM", () => stopping.resolve())
+          const store = await TransactionalStore.open({ backend: "sqlite", filename: process.env.TEST_STORAGE_FILE, namespace: "signal" })
+          try {
+            process.send({ ready: true })
+            await stopping.promise
+            await store.transaction(async (tx) => {
+              await tx.write(["terminal"], { status: "cancelled" })
+              await tx.write(["accounting"], { complete: false })
+            })
+          } finally {
+            await store.close()
+            process.disconnect()
+          }
+        `,
+        ],
+        detached: true,
+        env: { ...process.env, TEST_STORAGE_MODULE: entry, TEST_STORAGE_FILE: filename },
+        stdout: "ignore",
+        stderr: "pipe",
+        ipc(message: unknown) {
+          if (message && typeof message === "object" && "ready" in message) ready.resolve()
+        },
+        onExit(_child, code) {
+          ready.reject(new Error(`Child exited before the signal boundary: ${code}`))
+        },
+      })
+      const stderr = new Response(child.stderr).text()
+      try {
+        await ready.promise
+        process.kill(-child.pid, signal)
+        expect({ code: await child.exited, stderr: await stderr }).toEqual({ code: 0, stderr: "" })
+        const reopened = await TransactionalStore.open({ backend: "sqlite", filename, namespace: "signal" })
+        try {
+          expect(await reopened.readMany([["terminal"], ["accounting"]])).toEqual([
+            { status: "cancelled" },
+            { complete: false },
+          ])
+        } finally {
+          await reopened.close()
+        }
+      } finally {
+        child.kill("SIGKILL")
+        await child.exited
+        await fs.rm(root, { recursive: true, force: true })
+      }
+    },
+    15_000,
+  )
+}

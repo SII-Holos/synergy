@@ -21,7 +21,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 4. Treat commit uncertainty as an unresolved result; reconcile the operation receipt before retrying. Preserve storage, ownership and integrity errors instead of treating them as missing records.
 5. Flush artifact bytes before publishing references. Stage unpublished large imports and register resumable post-deletion cleanup. Rollout evidence retains its separate allocation/evidence and projection/head transactions.
 6. Physical writes retain the atomic-file transient-retry contract for Windows sharing violations. Extend the real-file retry tests when changing that helper.
-7. Run the shared SQLite/PostgreSQL contract tests for engine changes; CI requires real PostgreSQL 16–18. macOS source development needs the verified SQLite engine from `bun packages/harness/script/build-sqlite.ts`.
+7. Keep the SQLite subprocess alive through owner process-group cancellation so terminal evidence can drain. Verify real `SIGINT`/`SIGTERM` delivery to an isolated owner group and forced owner loss; explicit shutdown, request deadlines and parent-disconnection cleanup must still terminate the worker.
+8. Run the shared SQLite/PostgreSQL contract tests for engine changes; CI requires real PostgreSQL 16–18. macOS source development needs the verified SQLite engine from `bun packages/harness/script/build-sqlite.ts`.
 
 ### SQLite and other domain stores
 
