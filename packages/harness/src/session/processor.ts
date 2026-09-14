@@ -1510,10 +1510,17 @@ export namespace SessionProcessor {
                       input.assistantMessage.finish = value.finishReason
                       input.assistantMessage.cost += usage.cost
                       input.assistantMessage.tokens = usage.tokens
-                      if (hasProviderInputUsage(value.usage) && stream.contextUsageDraft) {
+                      const exactProviderInputTotal = rollout
+                        ? stepAccounting?.tokens.input.total
+                        : ModelLimit.actualInput(usage.tokens)
+                      if (
+                        hasProviderInputUsage(value.usage) &&
+                        stream.contextUsageDraft &&
+                        exactProviderInputTotal != null
+                      ) {
                         contextUsageEnrichment = {
                           draft: stream.contextUsageDraft,
-                          totalInput: ModelLimit.actualInput(usage.tokens),
+                          totalInput: exactProviderInputTotal,
                         }
                       }
                       const step = await Session.updatePart({
