@@ -64,7 +64,15 @@ export async function pickProjectDirectoriesWithRuntime(
         const directoryPaths = normalizePickedDirectories(selected)
         if (!directoryPaths) return null
         return { directoryPaths, source: "native-local" }
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && error.name === "PortalPermissionError") {
+          runtime.showErrorToast({
+            type: "error",
+            title: dialog.directoryPickerDenied.message,
+            description: dialog.directoryPickerDeniedHint.message,
+          })
+          return null
+        }
         runtime.showErrorToast({
           type: "error",
           title: dialog.directoryPickerFailed.message,

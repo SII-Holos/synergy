@@ -1859,6 +1859,14 @@ msgid "app.dialog.directory.toast.pickerCantOpen"
 msgstr "无法打开文件夹选择器。"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.directory.toast.pickerDenied"
+msgstr "文件夹选择器权限被拒绝"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.directory.toast.pickerDeniedHint"
+msgstr "桌面 Portal 拒绝了该请求，通常是因为 Synergy 以更改后的主用户组启动（例如 newgrp docker）。请从正常的桌面会话重新启动 Synergy。"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.directory.toast.pickerFailed"
 msgstr "文件夹选择器失败"
 

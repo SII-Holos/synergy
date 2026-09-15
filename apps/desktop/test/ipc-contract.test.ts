@@ -211,6 +211,57 @@ describe("desktop ipc contract", () => {
     ).rejects.toThrow("multiple paths")
   })
 
+  test("refuses the native picker when the portal probe reports denial", async () => {
+    const { window, webContents } = mainWindowFixture()
+    let dialogCalled = false
+    const result = await selectDirectoryWithNativeDialog({
+      mainWindow: window as any,
+      sender: webContents as any,
+      serverStatus: managedRunningStatus,
+      showOpenDialog: (async () => {
+        dialogCalled = true
+        return { canceled: true, filePaths: [] }
+      }) as any,
+      rawRequest: {},
+      probePortalFileAccess: async () => "denied",
+    })
+    expect(result).toEqual({
+      denied: true,
+      message: "Portal file dialogs are not allowed for this process",
+    })
+    expect(dialogCalled).toBe(false)
+  })
+
+  test("runs the native picker when the portal probe allows access", async () => {
+    const { window, webContents } = mainWindowFixture()
+    let probeCalls = 0
+    const selected = await selectDirectoryWithNativeDialog({
+      mainWindow: window as any,
+      sender: webContents as any,
+      serverStatus: managedRunningStatus,
+      showOpenDialog: (async () => ({ canceled: false, filePaths: ["/repo"] })) as any,
+      rawRequest: {},
+      probePortalFileAccess: async () => {
+        probeCalls += 1
+        return "allowed"
+      },
+    })
+    expect(probeCalls).toBe(1)
+    expect(selected).toEqual({ canceled: false, directoryPaths: ["/repo"] })
+  })
+
+  test("runs the native picker when the portal probe is unavailable", async () => {
+    const { window, webContents } = mainWindowFixture()
+    const selected = await selectDirectoryWithNativeDialog({
+      mainWindow: window as any,
+      sender: webContents as any,
+      serverStatus: managedRunningStatus,
+      showOpenDialog: (async () => ({ canceled: false, filePaths: ["/repo"] })) as any,
+      rawRequest: {},
+      probePortalFileAccess: async () => "unavailable",
+    })
+    expect(selected).toEqual({ canceled: false, directoryPaths: ["/repo"] })
+  })
   test("maps preload directory picker responses", () => {
     expect(mapSelectDirectoryDialogResponse({ canceled: true, directoryPaths: [] }, false)).toBeNull()
     expect(mapSelectDirectoryDialogResponse({ canceled: false, directoryPaths: ["/repo"] }, false)).toBe("/repo")

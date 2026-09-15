@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { dialog } from "@/locales/messages"
 import {
   canUseNativeProjectDirectoryPicker,
   normalizePickedDirectories,
@@ -147,6 +148,45 @@ describe("project directory picker", () => {
     ).resolves.toBeNull()
     expect(context.toasts).toHaveLength(1)
     expect(context.serverBrowserOpenCount()).toBe(0)
+  })
+
+  test("portal denial shows the permission toast", async () => {
+    const context = runtime({
+      platform: {
+        desktopServer: { status: async () => managedRunningStatus, restart: async () => managedRunningStatus },
+        openDirectoryPickerDialog: async () => {
+          const error = new Error("Portal file dialogs are not allowed for this process")
+          error.name = "PortalPermissionError"
+          throw error
+        },
+      },
+    })
+    await expect(
+      pickProjectDirectoriesWithRuntime(context.runtime, { title: "Add project", multiple: true }),
+    ).resolves.toBeNull()
+    expect(context.toasts).toHaveLength(1)
+    const toast = context.toasts[0] as { type: string; title: string; description: string }
+    expect(toast.type).toBe("error")
+    expect(toast.title).toBe(dialog.directoryPickerDenied.message)
+    expect(toast.description).toBe(dialog.directoryPickerDeniedHint.message)
+  })
+
+  test("non-portal rejections keep the generic picker failure toast", async () => {
+    const context = runtime({
+      platform: {
+        desktopServer: { status: async () => managedRunningStatus, restart: async () => managedRunningStatus },
+        openDirectoryPickerDialog: async () => {
+          throw new Error("boom")
+        },
+      },
+    })
+    await expect(
+      pickProjectDirectoriesWithRuntime(context.runtime, { title: "Add project", multiple: true }),
+    ).resolves.toBeNull()
+    expect(context.toasts).toHaveLength(1)
+    const toast = context.toasts[0] as { type: string; title: string; description: string }
+    expect(toast.title).toBe(dialog.directoryPickerFailed.message)
+    expect(toast.description).toBe(dialog.directoryPickerCantOpen.message)
   })
 
   test("server browser routing and pending guard stop native usage", async () => {

@@ -1091,6 +1091,15 @@ export const dialog = {
     id: "app.dialog.directory.toast.pickerCantOpen",
     message: "Could not open the folder picker.",
   },
+  directoryPickerDenied: {
+    id: "app.dialog.directory.toast.pickerDenied",
+    message: "Folder picker permission denied",
+  },
+  directoryPickerDeniedHint: {
+    id: "app.dialog.directory.toast.pickerDeniedHint",
+    message:
+      "The desktop portal rejected the request, usually because Synergy was launched with a changed primary group (e.g. newgrp docker). Restart Synergy from a normal desktop session.",
+  },
   browseFailed: { id: "app.dialog.directory.browseFailed", message: "Browse failed" },
   // File selection
   selectFile: { id: "app.dialog.file.title", message: "Select file" },

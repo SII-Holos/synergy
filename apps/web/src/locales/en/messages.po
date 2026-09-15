@@ -1859,6 +1859,14 @@ msgid "app.dialog.directory.toast.pickerCantOpen"
 msgstr "Could not open the folder picker."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.directory.toast.pickerDenied"
+msgstr "Folder picker permission denied"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.directory.toast.pickerDeniedHint"
+msgstr "The desktop portal rejected the request, usually because Synergy was launched with a changed primary group (e.g. newgrp docker). Restart Synergy from a normal desktop session."
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.directory.toast.pickerFailed"
 msgstr "Folder picker failed"
 
