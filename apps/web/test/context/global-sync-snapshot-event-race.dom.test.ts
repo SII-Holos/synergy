@@ -13,6 +13,7 @@ type ScopeState = [
     session: Array<{ id: string }>
     session_status: Record<string, { type?: string }>
     sessionTotal: number
+    cortex: Array<{ id: string; sessionID?: string }>
   },
   unknown,
 ]
@@ -176,6 +177,36 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(shared.state[0].session_status["fixture-session"]).toEqual({ type: "busy" })
       expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
       expect(shared.state[0].session.some((session) => session.id === "from-snapshot")).toBe(true)
+      // Reviewer scenario: the response stamp sits between an old stale
+      // write and a newer unrelated event. Scope-wide "snapshot is behind"
+      // merging keeps every local entry; only keys written after the stamp
+      // may keep their event value, and post-stamp deletions must not be
+      // resurrected from the older snapshot read.
+      const stale = api.retainScopeState("stale-scope")
+      h.emit("stale-scope", 5, "session.status", { sessionID: "missed-idle", status: { type: "busy" } })
+      h.emit("stale-scope", 6, "session.diff", { sessionID: "missed-idle", diff: [] })
+      h.emit("stale-scope", 7, "session.updated", { info: { id: "b-session", time: {} } })
+      h.emit("stale-scope", 8, "cortex.task.created", { task: { id: "task-live", sessionID: "b-session" } })
+      h.emit("stale-scope", 9, "cortex.tasks.updated", { tasks: [] })
+      h.complete(
+        "stale-scope",
+        {
+          scopeID: "scope-stale",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: { data: [{ id: "snap-only", time: {} }], total: 1 },
+          cortex: [{ id: "task-live", sessionID: "b-session" }],
+        },
+        { epoch: "test-epoch", seq: 6 },
+      )
+      await h.waitComplete(stale.state)
+      expect(stale.state[0].session_status["missed-idle"]).toBeUndefined()
+      expect(stale.state[0].session.some((session) => session.id === "b-session")).toBe(true)
+      expect(stale.state[0].session.some((session) => session.id === "snap-only")).toBe(true)
+      expect(stale.state[0].cortex.some((task) => task.id === "task-live")).toBe(false)
+      stale.release()
       // The store registry is reactive: a consumer that observed undefined
       // before the store existed re-runs on creation and on eviction.
       const seen: Array<ScopeState | undefined> = []
