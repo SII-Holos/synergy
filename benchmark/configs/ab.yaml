@@ -1,28 +1,32 @@
-version: 1
+version: 2
 suite: ../suites/local-24.json
 output: ../../.artifacts/benchmark/runs
 cache: ../../.artifacts/benchmark/cache
 platform: linux/amd64
 seed: 0
 repeat: 1
-concurrency: 1
+concurrency: auto
 selection:
   limit: 2
-variants:
+harnesses:
   baseline:
+    kind: synergy
     source:
       path: ../..
       revision: HEAD
     runtime: core
-    model: openai/REPLACE_WITH_YOUR_MODEL
-    env:
-      OPENAI_API_KEY: OPENAI_API_KEY
-    network_domains: [api.openai.com]
   candidate:
+    kind: synergy
     source:
       path: ../..
     runtime: core
-    model: openai/REPLACE_WITH_YOUR_MODEL
-    env:
-      OPENAI_API_KEY: OPENAI_API_KEY
-    network_domains: [api.openai.com]
+models:
+  selected:
+    model: REPLACE_WITH_YOUR_MODEL
+    protocol: chat-completions
+    base_url: https://provider.example/v1
+    api_key_env: BENCH_MODEL_KEY
+    context_window: 128000
+    max_output_tokens: 16384
+    parameters:
+      temperature: 1

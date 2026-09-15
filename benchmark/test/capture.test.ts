@@ -1,0 +1,163 @@
+import { expect, test } from "bun:test"
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { installCapture } from "../runtime/capture.mjs"
+
+test("native recorder includes auxiliary calls without changing the request or streaming bytes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-capture-"))
+  const body = 'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}\n\ndata: [DONE]\n\n'
+  const requests: string[] = []
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      requests.push(await request.text())
+      expect(request.headers.get("x-benchmark-client-request")).toMatch(/^[a-f0-9-]{36}$/)
+      expect(request.headers.get("content-length")).toBe(String(Buffer.byteLength(requests.at(-1)!)))
+      return new Response(body, { headers: { "content-type": "text/event-stream" } })
+    },
+  })
+  const restore = installCapture({ root, endpoint: server.url.toString().replace(/\/$/, "") })
+  try {
+    installCapture({ root, endpoint: server.url.toString().replace(/\/$/, "") })
+    for (const tools of [[], [{ type: "function", function: { name: "read" } }]]) {
+      const payload = JSON.stringify({ model: "fixture", tools, messages: [] })
+      const response = await fetch(new URL("chat/completions", server.url), { method: "POST", body: payload })
+      expect(await response.text()).toBe(body)
+    }
+    expect(requests).toHaveLength(2)
+    const entries = await readdir(root)
+    expect(entries).toHaveLength(2)
+    for (const entry of entries) {
+      const value = JSON.parse(await readFile(path.join(root, entry, "request.json"), "utf8"))
+      expect(value.status).toBe("completed")
+      expect(value.usage).toEqual({ prompt_tokens: 10, completion_tokens: 3 })
+    }
+  } finally {
+    restore()
+    server.stop(true)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("native observation preserves a non-JSON provider error and HTTP retry semantics", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-capture-error-"))
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response("upstream overloaded", { status: 503 }),
+  })
+  const restore = installCapture({ root, endpoint: server.url.toString().replace(/\/$/, "") })
+  try {
+    const response = await fetch(new URL("chat/completions", server.url), { method: "POST", body: "{}" })
+    expect(response.status).toBe(503)
+    expect(await response.text()).toBe("upstream overloaded")
+    const [id] = await readdir(root)
+    const record = JSON.parse(await readFile(path.join(root, id, "request.json"), "utf8"))
+    expect(record.status).toBe("http_error")
+    expect(record.usage).toBeNull()
+  } finally {
+    restore()
+    server.stop(true)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("native observation does not rewrite malformed SSE bytes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-capture-frame-"))
+  const body = "data: not-json\n\ndata: [DONE]\n\n"
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
+  })
+  const restore = installCapture({ root, endpoint: server.url.toString().replace(/\/$/, "") })
+  try {
+    const response = await fetch(new URL("chat/completions", server.url), { method: "POST", body: "{}" })
+    expect(await response.text()).toBe(body)
+    const [id] = await readdir(root)
+    const record = JSON.parse(await readFile(path.join(root, id, "request.json"), "utf8"))
+    expect(record.usage).toBeNull()
+    expect(record.parse_errors).toBeGreaterThan(0)
+  } finally {
+    restore()
+    server.stop(true)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("streamed UTF-8 requests and multi-megabyte responses retain exact bytes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-capture-long-"))
+  const payload = JSON.stringify({ model: "fixture", text: "中文🙂" })
+  const responseBody =
+    "data: " +
+    JSON.stringify({ choices: [{ delta: { content: "x".repeat(5 * 1024 * 1024) }, finish_reason: "stop" }] }) +
+    '\n\ndata: {"usage":{"prompt_tokens":10,"completion_tokens":3}}\n\ndata: [DONE]\n\n'
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      expect(await request.text()).toBe(payload)
+      expect(request.headers.get("content-length")).toBe(String(Buffer.byteLength(payload)))
+      return new Response(responseBody, { headers: { "content-type": "text/event-stream" } })
+    },
+  })
+  const restore = installCapture({ root, endpoint: server.url.toString().replace(/\/$/, "") })
+  try {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload))
+        controller.close()
+      },
+    })
+    const response = await fetch(new Request(new URL("chat/completions", server.url), { method: "POST", body: stream }))
+    expect(await response.text()).toBe(responseBody)
+    expect(response.url).toBe(new URL("chat/completions", server.url).href)
+    const [id] = await readdir(root)
+    expect(await readFile(path.join(root, id, "response.bin"), "utf8")).toBe(responseBody)
+    const record = JSON.parse(await readFile(path.join(root, id, "request.json"), "utf8"))
+    expect(record.status).toBe("completed")
+    expect(record.usage).toEqual({ prompt_tokens: 10, completion_tokens: 3 })
+  } finally {
+    restore()
+    server.stop(true)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("native cancellation completes even if upstream reader cancellation never acknowledges", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-capture-cancel-"))
+  const original = globalThis.fetch
+  globalThis.fetch = Object.assign(
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: {"choices":[]}\n\n'))
+          },
+          cancel() {
+            return new Promise(() => {})
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    { preconnect: original.preconnect },
+  )
+  const restore = installCapture({ root, endpoint: "http://fixture.invalid/v1" })
+  try {
+    const response = await fetch("http://fixture.invalid/v1/chat/completions", { method: "POST", body: "{}" })
+    const reader = response.body!.getReader()
+    await reader.read()
+    const finished = await Promise.race([reader.cancel().then(() => true), Bun.sleep(100).then(() => false)])
+    expect(finished).toBe(true)
+    const [id] = await readdir(root)
+    const record = JSON.parse(await readFile(path.join(root, id, "request.json"), "utf8"))
+    expect(record.status).toBe("interrupted")
+    expect(record.usage).toBeNull()
+  } finally {
+    restore()
+    globalThis.fetch = original
+    await rm(root, { recursive: true, force: true })
+  }
+})

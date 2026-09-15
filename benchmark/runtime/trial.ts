@@ -4,6 +4,7 @@ import { readEvents } from "./events"
 import { atomicJSON } from "./files"
 import { exportRollout } from "./export"
 import { terminate } from "./process"
+import { executionDeadline } from "./deadline.mjs"
 
 const [optionsFile, instructionFile, logs, credentialFile] = process.argv.slice(2)
 let credentials: Record<string, string> = {}
@@ -84,12 +85,27 @@ const cancel = () => {
 }
 process.on("SIGTERM", cancel)
 process.on("SIGINT", cancel)
-const deadline = setTimeout(() => {
-  timedOut = true
-  stop()
-}, options.timeout_seconds * 1000)
+const executionClock = options.execution_marker
+  ? executionDeadline({
+      marker: options.execution_marker,
+      startupSeconds: options.startup_timeout_seconds,
+      agentSeconds: options.timeout_seconds,
+      onTimeout: () => {
+        timedOut = true
+        stop()
+      },
+    })
+  : null
+const deadline = executionClock
+  ? undefined
+  : setTimeout(() => {
+      timedOut = true
+      stop()
+    }, options.timeout_seconds * 1000)
 const exitCode = await child.exited
+terminate(child, "SIGKILL")
 clearTimeout(deadline)
+await executionClock?.stop()
 clearTimeout(forceTimer)
 await output.close()
 await errors.close()
@@ -109,6 +125,7 @@ await atomicJSON(path.join(logs, "execution.json"), {
   run_id: identity?.runID ?? null,
   terminal: terminal ?? null,
   invalid_event_lines: invalid_lines,
+  lifecycle: executionClock?.state ?? null,
 })
 const result = terminal?.result
 if (result && typeof result === "object" && "accounting" in result)

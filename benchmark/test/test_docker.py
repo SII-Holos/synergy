@@ -123,6 +123,7 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     config = {
         "version": 1,
         "suite": "suite.json",
+        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/integration"),
         "variants": {

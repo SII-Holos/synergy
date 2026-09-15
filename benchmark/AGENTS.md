@@ -12,7 +12,10 @@ Own local research orchestration, frozen source inputs, task catalogs, runtime c
 - Version attempt results; historical experiments are read-only when evaluator or result versions differ. Reconcile durable terminal evidence before rescheduling or cleanup.
 - Keep execution, cleanup and export deadlines independent. Validate rollout archives with the product contract and keep structural validity, recording coverage and usage coverage distinct.
 - Pass credentials through temporary mode-0600 files outside retained evidence. Never pass their values to Docker arguments or persistent options.
-- Run deterministic cancellation, long-stream and Linux watcher tests in the benchmark CI job. Keep live-provider acceptance outside CI.
+- Keep pure contracts, Docker lifecycle, five native harness integrations and streaming fault tests in separate CI jobs. Use two deterministic models, both protocols and a real Git working tree. Keep live-provider acceptance outside CI.
 - `BenchmarkTrial` owns the pinned Pier verifier/cleanup boundary. Preserve source attribution and upgrade it only with deadline, reward-retention and Docker regressions passing. Never let environment cleanup consume verifier time or trigger automatic regrading.
 - The current result contract covers single-step tasks. Reject multi-step tasks during preparation instead of overwriting step evidence in shared log paths.
 - Read container-owned private accounting only after Pier's log handoff. Observe active native evidence through the owned container; keep ledger files private on Linux hosts.
+
+- Native cancellation observers must forward cancellation without awaiting an unbounded upstream acknowledgement. Persist interrupted calls independently and preserve unknown usage.
+- Keep native oracle audits separate from model runs. Reference solutions enter only disposable oracle environments; preserve every failed task and never use the oracle to repair an agent workspace.

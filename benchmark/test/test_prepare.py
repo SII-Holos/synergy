@@ -34,6 +34,11 @@ def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monk
         )
     )
     monkeypatch.setattr(runner, "command", lambda *args, **kwargs: "fixture Docker")
+    monkeypatch.setattr(
+        runner,
+        "inspect_host",
+        lambda *args: {"disk_ready": True, "capacity": {"cpus": 8, "memory_bytes": 16 * 1024**3}},
+    )
 
     def prepare(*args, **kwargs):
         raise failure
@@ -57,3 +62,19 @@ def test_cleanup_rejects_an_unverified_container_identifier(tmp_path: Path, monk
     monkeypatch.setattr(prepare, "command", lambda *args, **kwargs: pytest.fail("Unverified Docker mutation"))
     with pytest.raises(ValueError, match="Invalid owned container"):
         prepare.remove_owned_container(file)
+
+
+@pytest.mark.parametrize(
+    "external", ["external.mjs", "capture.mjs", "capture-plugin.mjs", "capture-pi.mjs", "native-outcome.mjs"]
+)
+@pytest.mark.parametrize("synergy", ["entry.ts", "deadline.mjs"])
+def test_external_observer_changes_do_not_invalidate_synergy_runtime(tmp_path, external, synergy):
+    from synergy_bench.prepare import synergy_runtime_digest
+
+    (tmp_path / synergy).write_text("native Synergy entry")
+    (tmp_path / external).write_text("external observer one")
+    first = synergy_runtime_digest(tmp_path)
+    (tmp_path / external).write_text("external observer two")
+    assert synergy_runtime_digest(tmp_path) == first
+    (tmp_path / synergy).write_text("changed Synergy entry")
+    assert synergy_runtime_digest(tmp_path) != first
