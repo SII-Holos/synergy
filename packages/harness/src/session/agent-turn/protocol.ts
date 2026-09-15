@@ -6,7 +6,7 @@ import { Workspace } from "../workspace-schema"
 import { RolloutTransportSchema } from "../rollout/transport-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 8
+  export const VERSION = 9
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -24,6 +24,12 @@ export namespace AgentTurnProtocol {
       message: z.string(),
       code: z.string().optional(),
       syscall: z.string().optional(),
+      get cause(): z.ZodOptional<typeof SerializedCause> {
+        return SerializedCause.optional()
+      },
+      get errors(): z.ZodOptional<z.ZodArray<typeof SerializedCause>> {
+        return z.array(SerializedCause).max(16).optional()
+      },
     })
     .strict()
 
@@ -40,6 +46,7 @@ export namespace AgentTurnProtocol {
       responseBody: z.string().optional(),
       isRetryable: z.boolean().optional(),
       cause: SerializedCause.optional(),
+      errors: z.array(SerializedCause).max(16).optional(),
     })
     .strict()
   export type SerializedError = z.infer<typeof SerializedError>
@@ -438,7 +445,7 @@ export namespace AgentTurnProtocol {
       const rawName = field("name")
       const rawMessage = field("message")
       const rawCode = field("code")
-      const rawType = field("type")
+      const rawType = source.type === "error" ? (nested?.type ?? source.type) : field("type")
       const rawStack = field("stack")
       const normalized = Object.assign(
         new Error(
@@ -462,6 +469,7 @@ export namespace AgentTurnProtocol {
           responseBody: field("responseBody"),
           isRetryable: field("isRetryable"),
           cause: field("cause"),
+          errors: field("errors"),
         },
       )
       normalized.stack = typeof rawStack === "string" ? rawStack : undefined
@@ -491,7 +499,7 @@ export namespace AgentTurnProtocol {
         : undefined
     const isRetryable = "isRetryable" in error && typeof error.isRetryable === "boolean" ? error.isRetryable : undefined
     const data = "data" in error ? boundedSerializable(error.data, ERROR_DATA_MAX_BYTES) : undefined
-    const cause = "cause" in error ? serializeCause(error.cause) : undefined
+    const details = serializeCause(error)
     return {
       name: error.name || "Error",
       message: error.message.slice(0, ERROR_MESSAGE_MAX_CHARS),
@@ -503,23 +511,20 @@ export namespace AgentTurnProtocol {
       responseHeaders,
       responseBody,
       isRetryable,
-      cause,
+      cause: details?.cause,
+      errors: details?.errors,
     }
   }
 
   export function deserializeError(error: SerializedError): Error & { code?: unknown } {
-    const cause = error.cause
-      ? Object.assign(new Error(error.cause.message), {
-          name: error.cause.name,
-          code: error.cause.code,
-          syscall: error.cause.syscall,
-        })
-      : undefined
+    const cause = error.cause ? deserializeCause(error.cause) : undefined
+    const errors = error.errors?.map(deserializeCause)
     if (error.name === "AbortError" || error.name === "TimeoutError") {
       const result = Object.assign(new DOMException(error.message, error.name), {
         syscall: error.syscall,
         data: error.data,
         cause,
+        errors,
       })
       if (error.stack) result.stack = error.stack
       return result
@@ -536,6 +541,7 @@ export namespace AgentTurnProtocol {
         data: error.data,
         cause,
       })
+      Object.assign(result, { errors })
       if (error.stack) result.stack = error.stack
       return result
     }
@@ -550,6 +556,7 @@ export namespace AgentTurnProtocol {
       responseBody: error.responseBody,
       isRetryable: error.isRetryable,
       cause,
+      errors,
     })
   }
 
@@ -685,17 +692,46 @@ export namespace AgentTurnProtocol {
   }
 
   function serializeCause(value: unknown): z.infer<typeof SerializedCause> | undefined {
-    if (!(value instanceof Error)) return undefined
-    return {
-      name: value.name || "Error",
-      message: value.message.slice(0, ERROR_MESSAGE_MAX_CHARS),
-      code:
-        "code" in value && value.code !== undefined ? String(value.code).slice(0, ERROR_MESSAGE_MAX_CHARS) : undefined,
-      syscall:
-        "syscall" in value && value.syscall !== undefined
-          ? String(value.syscall).slice(0, ERROR_MESSAGE_MAX_CHARS)
+    const seen = new Set<object>()
+    let remaining = 16
+    function visit(value: unknown, depth: number): z.infer<typeof SerializedCause> | undefined {
+      if (!value || typeof value !== "object" || seen.has(value)) return undefined
+      if (depth > 8 || --remaining < 0)
+        return { name: "Error", message: "Error cause graph truncated", code: "ERR_CAUSE_TRUNCATED" }
+      seen.add(value)
+      const record = value as Record<string, unknown>
+      const text = (key: string) => (typeof record[key] === "string" ? record[key].slice(0, 4096) : undefined)
+      const errors = Array.isArray(record.errors) ? record.errors : undefined
+      return {
+        name: text("name") ?? "Error",
+        message: text("message") ?? "",
+        code: text("code"),
+        syscall: text("syscall"),
+        cause: visit(record.cause, depth + 1),
+        errors: errors
+          ? errors
+              .slice(0, errors.length > 16 ? 15 : 16)
+              .map((entry) => visit(entry, depth + 1))
+              .filter((entry) => entry !== undefined)
+              .concat(
+                errors.length > 16
+                  ? [{ name: "Error", message: "Error cause graph truncated", code: "ERR_CAUSE_TRUNCATED" }]
+                  : [],
+              )
           : undefined,
+      }
     }
+    return visit(value, 0)
+  }
+
+  function deserializeCause(value: z.infer<typeof SerializedCause>): Error {
+    return Object.assign(new Error(value.message), {
+      name: value.name,
+      code: value.code,
+      syscall: value.syscall,
+      cause: value.cause ? deserializeCause(value.cause) : undefined,
+      errors: value.errors?.map(deserializeCause),
+    })
   }
 
   function safeStringify(value: unknown): string {

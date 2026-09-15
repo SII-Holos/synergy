@@ -1,7 +1,86 @@
 import { describe, expect, test } from "bun:test"
-import { retry } from "../src/retry"
+import { retry, retryAfterMs } from "../src/retry"
 
 describe("retry", () => {
+  test.each([
+    "ETIMEOUT",
+    "EAI_AGAIN",
+    "ESERVFAIL",
+    "EHOSTUNREACH",
+    "ENETDOWN",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "UND_ERR_HEADERS_TIMEOUT",
+    "UND_ERR_BODY_TIMEOUT",
+    "UND_ERR_SOCKET",
+  ])("recovers from wrapped %s errors", async (code) => {
+    let calls = 0
+    const result = await retry(
+      async () => {
+        if (++calls === 1)
+          throw new TypeError("request failed", {
+            cause: new AggregateError([Object.assign(new Error("transport failed"), { code })]),
+          })
+        return "recovered"
+      },
+      { delay: 1 },
+    )
+    expect(result).toBe("recovered")
+    expect(calls).toBe(2)
+  })
+
+  test.each(["ENOTFOUND", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "ERR_INVALID_URL", "UND_ERR_ABORTED"])(
+    "does not hide a permanent or cancelled %s behind fetch failed",
+    async (code) => {
+      let calls = 0
+      const error = new TypeError("fetch failed", { cause: Object.assign(new Error("failure"), { code }) })
+      await expect(
+        retry(
+          async () => {
+            calls++
+            throw error
+          },
+          { delay: 1 },
+        ),
+      ).rejects.toBe(error)
+      expect(calls).toBe(1)
+    },
+  )
+
+  test("cancels backoff without starting another attempt", async () => {
+    const controller = new AbortController()
+    const reason = new Error("cancelled by caller")
+    let calls = 0
+    const pending = retry(
+      async () => {
+        calls++
+        throw new Error("failed to fetch")
+      },
+      {
+        signal: controller.signal,
+        delay: 60_000,
+        retryIf() {
+          controller.abort(reason)
+          return true
+        },
+      },
+    )
+    await expect(pending).rejects.toBe(reason)
+    expect(calls).toBe(1)
+  })
+
+  test("does not start an already cancelled request", async () => {
+    let calls = 0
+    const reason = new Error("cancelled")
+    await expect(
+      retry(
+        async () => {
+          calls++
+        },
+        { signal: AbortSignal.abort(reason) },
+      ),
+    ).rejects.toBe(reason)
+    expect(calls).toBe(0)
+  })
   test("returns immediately on the first success", async () => {
     let calls = 0
     const value = await retry(async () => {
@@ -122,4 +201,22 @@ describe("retry", () => {
     expect(calls).toBe(2)
     expect(elapsedMs).toBeLessThan(250)
   })
+})
+
+describe("retry-after", () => {
+  test("accepts case-insensitive headers, finite milliseconds, seconds and HTTP dates", () => {
+    expect(retryAfterMs({ "Retry-After": "3" })).toBe(3000)
+    expect(retryAfterMs(new Headers({ "retry-after-ms": "12.5" }))).toBe(12.5)
+    expect(retryAfterMs({ "retry-after": "Thu, 01 Jan 1970 00:00:10 GMT" }, 1000)).toBe(9000)
+  })
+  test.each(["-1", "Infinity", "NaN", "3seconds", "1e9", "", "1.5"])("rejects malformed Retry-After %s", (value) => {
+    expect(retryAfterMs({ "retry-after": value })).toBeUndefined()
+  })
+  test("falls through malformed milliseconds to a valid seconds hint", () => {
+    expect(retryAfterMs({ "retry-after-ms": "-10", "Retry-After": "2" })).toBe(2000)
+  })
+})
+
+test("malformed diagnostic headers cannot replace the original network failure", () => {
+  expect(retryAfterMs({ "invalid\nheader": "value", "retry-after": "1" })).toBeUndefined()
 })

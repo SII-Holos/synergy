@@ -538,3 +538,16 @@ test("health events contain only public state and ignore connected token rotatio
     },
   })
 })
+
+test("credential cooling uses the same strict retry hints as request recovery", async () => {
+  await Auth.set("test-exhausted", { type: "api", key: "test-key" })
+  const before = Math.floor(Date.now() / 1000)
+  await ProviderAuthRecovery.execute({
+    providerID: "test-exhausted",
+    request: async () =>
+      new Response(null, { status: 429, headers: { "retry-after": "120", "retry-after-ms": "1500" } }),
+  })
+  const health = ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])
+  expect(health.cooldownUntil).toBeGreaterThanOrEqual(before + 2)
+  expect(health.cooldownUntil).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 2)
+})

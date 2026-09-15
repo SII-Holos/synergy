@@ -1,6 +1,8 @@
 import { RolloutRecordingError } from "./rollout/error"
 import type { NamedError } from "@ericsanchezok/synergy-util/error"
 import { MessageV2 } from "./message-v2"
+import { retryAfterMs, retrySleep } from "@ericsanchezok/synergy-util/retry"
+import { providerRetryable } from "../provider/retry"
 
 export namespace SessionRetry {
   export const RETRY_INITIAL_DELAY = 2000
@@ -9,92 +11,31 @@ export namespace SessionRetry {
   export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
   export const RETRY_MAX_ATTEMPTS = 10
 
-  export async function sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const abortHandler = () => {
-        clearTimeout(timeout)
-        reject(new DOMException("Aborted", "AbortError"))
-      }
-      const timeout = setTimeout(
-        () => {
-          signal.removeEventListener("abort", abortHandler)
-          resolve()
-        },
-        Math.min(ms, RETRY_MAX_DELAY),
-      )
-      signal.addEventListener("abort", abortHandler, { once: true })
-    })
-  }
+  export const sleep = retrySleep
 
-  export function delay(attempt: number, error?: MessageV2.APIError) {
-    if (error) {
-      const headers = error.data.responseHeaders
-      if (headers) {
-        const retryAfterMs = headers["retry-after-ms"]
-        if (retryAfterMs) {
-          const parsedMs = Number.parseFloat(retryAfterMs)
-          if (!Number.isNaN(parsedMs)) {
-            return parsedMs
-          }
-        }
-
-        const retryAfter = headers["retry-after"]
-        if (retryAfter) {
-          const parsedSeconds = Number.parseFloat(retryAfter)
-          if (!Number.isNaN(parsedSeconds)) {
-            // convert seconds to milliseconds
-            return Math.ceil(parsedSeconds * 1000)
-          }
-          // Try parsing as HTTP date format
-          const parsed = Date.parse(retryAfter) - Date.now()
-          if (!Number.isNaN(parsed) && parsed > 0) {
-            return Math.ceil(parsed)
-          }
-        }
-
-        return RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1)
-      }
-    }
-
-    return Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), RETRY_MAX_DELAY_NO_HEADERS)
+  export function delay(attempt: number, error?: MessageV2.APIError, random = Math.random) {
+    const hint = retryAfterMs(error?.data.responseHeaders)
+    if (hint !== undefined) return Math.min(hint, RETRY_MAX_DELAY)
+    const maximum = Math.min(
+      RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1),
+      RETRY_MAX_DELAY_NO_HEADERS,
+    )
+    return maximum * (0.5 + random() / 2)
   }
 
   export function retryable(error: ReturnType<NamedError["toObject"]>) {
     if (RolloutRecordingError.isInstance(error)) return undefined
+    if (error.name !== "UnknownError" && !MessageV2.APIError.isInstance(error)) return undefined
     const rawMessage = typeof error?.data?.message === "string" ? error.data.message : ""
-    if (/Agent worker exited/.test(rawMessage)) return "Agent worker restarted"
+    if (error.name === "UnknownError" && /^(?:Error: )?Agent worker exited(?: \(|$)/.test(rawMessage))
+      return "Agent worker restarted"
 
     if (MessageV2.APIError.isInstance(error)) {
-      if (error.data.isRetryable)
-        return error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message
-      const status = error.data.statusCode
-      if (status && status >= 500) return "Provider Server Error"
-      if (error.data.message?.includes("assistant message prefill")) return "Provider Validation Error"
-      return undefined
+      if (!error.data.isRetryable) return undefined
+      return error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message
     }
 
-    if (typeof error.data?.message === "string") {
-      try {
-        const json = JSON.parse(error.data.message)
-        if (json.type === "error" && json.error?.type === "too_many_requests") {
-          return "Too Many Requests"
-        }
-        if (json.code.includes("exhausted") || json.code.includes("unavailable")) {
-          return "Provider is overloaded"
-        }
-        if (json.type === "error" && json.error?.code?.includes("rate_limit")) {
-          return "Rate Limited"
-        }
-        if (
-          json.error?.message?.includes("no_kv_space") ||
-          (json.type === "error" && json.error?.type === "server_error") ||
-          !!json.error
-        ) {
-          return "Provider Server Error"
-        }
-      } catch {}
-    }
-
+    if (providerRetryable(rawMessage) === true) return "Provider is temporarily unavailable"
     return undefined
   }
 }

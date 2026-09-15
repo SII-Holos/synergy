@@ -5,12 +5,32 @@ import { WebFetchTool } from "../../src/tools/webfetch"
 const html =
   "<html><head><style>hidden-style</style><script>hidden-script</script></head><body><h1>Research methods</h1><p>A reproducible experiment measures the same phenomenon with independent observations.</p></body></html>"
 const requests: Array<{ accept: string | null }> = []
+const retryRequests = new Map<string, number>()
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
   async fetch(request) {
     requests.push({ accept: request.headers.get("accept") })
     const pathname = new URL(request.url).pathname
+    if (pathname.startsWith("/retry/")) {
+      const count = (retryRequests.get(pathname) ?? 0) + 1
+      retryRequests.set(pathname, count)
+      const status = Number(pathname.split("/")[2])
+      if (count === 1 || pathname.includes("always"))
+        return new Response("unavailable", {
+          status,
+          headers: { "Retry-After": pathname.includes("wait") ? "60" : "0" },
+        })
+      return new Response("Recovered complete page", { headers: { "content-type": "text/plain" } })
+    }
+    if (pathname === "/slow-body")
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("partial"))
+          },
+        }),
+      )
     if (pathname === "/slow") {
       await Bun.sleep(100)
       return new Response("late")
@@ -113,8 +133,43 @@ test("aborts slow requests at configured timeout and honors caller cancellation"
     "Request timed out",
   )
   const controller = new AbortController()
-  controller.abort()
+  const reason = new DOMException("Cancelled by caller", "AbortError")
+  controller.abort(reason)
   await expect(tool.execute({ url: url("/slow"), format: "text" }, context(controller.signal).ctx)).rejects.toThrow(
+    "Cancelled by caller",
+  )
+})
+
+test.each([408, 429, 500, 502, 503, 504])(
+  "retries HTTP %s reads within one permission and search attempt",
+  async (status) => {
+    const pathname = `/retry/${status}/${crypto.randomUUID()}`
+    const { ctx, permissions } = context()
+    const result = await tool.execute({ url: url(pathname), format: "text" }, ctx)
+    expect(result.output).toBe("Recovered complete page")
+    expect(retryRequests.get(pathname)).toBe(2)
+    expect(permissions).toEqual([url(pathname)])
+  },
+)
+
+test.each([403, 404, 501, 505])("does not retry HTTP %s reads", async (status) => {
+  const pathname = `/retry/${status}/${crypto.randomUUID()}`
+  await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow(
+    `status code: ${status}`,
+  )
+  expect(retryRequests.get(pathname)).toBe(1)
+})
+
+test("bounds attempts and includes body reading and backoff in the total deadline", async () => {
+  const pathname = `/retry/503/always-${crypto.randomUUID()}`
+  await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow("503")
+  expect(retryRequests.get(pathname)).toBe(3)
+  const waiting = `/retry/429/wait-${crypto.randomUUID()}`
+  await expect(tool.execute({ url: url(waiting), format: "text", timeout: 0.05 }, context().ctx)).rejects.toThrow(
+    "Request timed out",
+  )
+  expect(retryRequests.get(waiting)).toBe(1)
+  await expect(tool.execute({ url: url("/slow-body"), format: "text", timeout: 0.05 }, context().ctx)).rejects.toThrow(
     "Request timed out",
   )
 })

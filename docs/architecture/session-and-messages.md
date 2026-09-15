@@ -398,6 +398,7 @@ The index is not part of session export or canonical recovery state. Missing, in
 - duplicate terminal tool parts from older histories are collapsed by provider call ID, preferring the execution outcome over an AI SDK fallback diagnostic;
 - workflow wrappers are applied ephemerally and do not rewrite stored user text.
 - errored-assistant filtering, canonical terminal tool selection, attachment fallback text, and historical-image placeholders apply identically to messages and provenance.
+- model recovery withdraws failed-attempt text, reasoning, and unexecuted tool proposals before another attempt, so they are absent from both transcript and context; authoritative rollout records retain the attempts and accounting, as defined in [LLM recovery](llm-loop.md#completion-abort-and-errors).
 
 Visible history and model context can therefore differ intentionally without losing the durable record.
 

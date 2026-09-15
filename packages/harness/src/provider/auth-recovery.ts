@@ -1,3 +1,4 @@
+import { retryAfterMs } from "@ericsanchezok/synergy-util/retry"
 import { ScopeContext } from "../scope/context"
 import { ProviderAuthRecoveryError } from "./auth-recovery-error"
 import { Auth } from "./api-key"
@@ -72,16 +73,8 @@ export namespace ProviderAuthRecovery {
   }
 
   function retryAfterSeconds(response: Response) {
-    const retryAfter = response.headers.get("retry-after")
-    const seconds = Number(retryAfter)
-    if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds)
-    if (retryAfter) {
-      const date = Date.parse(retryAfter)
-      if (Number.isFinite(date) && date > Date.now()) return Math.ceil((date - Date.now()) / 1000)
-    }
-    const milliseconds = Number(response.headers.get("retry-after-ms"))
-    if (Number.isFinite(milliseconds) && milliseconds > 0) return Math.ceil(milliseconds / 1000)
-    return undefined
+    const milliseconds = retryAfterMs(response.headers)
+    return milliseconds === undefined ? undefined : Math.ceil(milliseconds / 1000)
   }
 
   function resetAt(response: Response) {

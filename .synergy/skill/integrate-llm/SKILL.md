@@ -58,7 +58,7 @@ Use Cortex for decisions that must be independently auditable. Choose task visib
 
 ## Direct AI SDK Calls
 
-`config/setup.ts` uses `generateText()` for a live provider capability probe before normal agent/session orchestration is appropriate. Keep direct AI SDK usage limited to such bootstrap/provider plumbing or the implementation of the shared `LLM` layer. Product inference should not bypass provider transforms, configured roles, plugin hooks, telemetry, timeouts, or output policy. Bootstrap probes that reach a managed-inference endpoint must pass through the same per-request header gate as normal turns (`ProviderSessionHeader.forRequest` with the resolved provider options), because the provider cannot distinguish a probe from a conversation.
+`packages/cli/src/setup/config.ts` uses `generateText()` for a live provider capability probe before normal agent/session orchestration is appropriate. Keep direct AI SDK usage limited to such bootstrap/provider plumbing or the implementation of the shared `LLM` layer. Product inference should not bypass provider transforms, configured roles, plugin hooks, telemetry, timeouts, or output policy. Bootstrap probes that reach a managed-inference endpoint must pass through the same per-request header gate as normal turns (`ProviderSessionHeader.forRequest` with the resolved provider options), because the provider cannot distinguish a probe from a conversation.
 
 ## External Model Catalogs
 
@@ -93,6 +93,8 @@ Tool-call input has a separate serialized-input bound. Enforce it for incrementa
 Treat streamed tool argument deltas as transport/progress data, not canonical tool input. Use them for incremental byte limits, memory accounting, and diagnostics. Once the AI SDK emits `tool-call`, use its final `input` consistently for the final serialized-input bound, persisted tool part, loop guards, permission evaluation, and execution. Test providers that omit deltas and cases where streamed raw arguments differ from the final AI SDK input.
 
 ## Verify and Document
+
+For retry changes, exercise raw runtime errors, nested causes, aggregate address failures, worker serialization, SDK admission, and session recovery. Reuse `provider/retry.ts` and the shared network classifier rather than domain-name or broad message matching. Keep one owner for each retry budget; preserve cancellation, permanent failures and recording errors. A model retry must end before tool dispatch can produce effects. Test both successful transient recovery and a post-dispatch failure that must not replay the model; for derived calls, exercise both stream-start and body errors against one caller-owned budget with SDK retries disabled. Verify that retry withdrawal removes failed text and unexecuted proposals from visible history and model context while preserving rollout events, failure status, and accounting. Shared provider recovery belongs before worker admission; test cancellation, bounded waits, one recovery probe, connection isolation, and stale-success/new-failure races.
 
 1. Test the chosen lifecycle boundary as a behavior: no session for sessionless work; explicit child lineage and output for Cortex work.
 2. Run focused Agent protocol/worker, provider, session, Cortex, and permission tests, then typecheck and `quality:quick`.
