@@ -565,6 +565,7 @@ def trial_configuration(
         "execution_marker": "/logs/agent/model-started.json" if gateway else None,
         "cleanup_seconds": cleanup,
         "export_timeout_seconds": export_timeout,
+        "bun_jit": variant.get("bun_jit"),
     }
     if gateway:
         native = harness_configuration(
@@ -609,6 +610,7 @@ def trial_configuration(
                 "settings": {
                     "artifact_id": variant["artifact_id"],
                     "harness": variant.get("harness", "synergy"),
+                    "bun_jit": variant.get("bun_jit"),
                     "env": {"BENCH_GATEWAY_KEY": reference} if gateway else variant["env"],
                     "network_domains": [gateway.advertised] if gateway else variant["network_domains"],
                     "cleanup_seconds": cleanup,

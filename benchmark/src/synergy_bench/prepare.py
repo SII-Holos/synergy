@@ -14,6 +14,7 @@ from typing import Any
 
 from .catalog import tree_digest
 from .config import Resources, Source
+from .harnesses import runtime_environment
 from .source import entry, freeze_source, safe_path, verify_source
 from .storage import atomic_json, digest, read_json
 
@@ -346,6 +347,7 @@ def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform
     for key in variant.get("env", {}):
         args[2:2] = ["-e", f"{key}=benchmark-preflight"]
     for key, value in {
+        **runtime_environment("synergy", variant.get("bun_jit")),
         "SYNERGY_CONFIG": "/inputs/config.json",
         "SYNERGY_DISABLE_MODELS_FETCH": "1",
         "SYNERGY_DISABLE_DEFAULT_PLUGINS": "1",

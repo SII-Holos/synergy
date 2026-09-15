@@ -80,11 +80,12 @@ def test_serialization_round_trip_preserves_resolved_variants():
     assert restored == config
 
 
-def test_opencode_jit_is_a_named_harness_condition_independent_of_model():
+@pytest.mark.parametrize("kind", ["opencode", "synergy"])
+def test_bun_jit_is_a_named_harness_condition_independent_of_model(kind):
     value = matrix_config()
     value["harnesses"] = {
-        "native": {"kind": "opencode"},
-        "interpreted": {"kind": "opencode", "bun_jit": False},
+        "native": {"kind": kind},
+        "interpreted": {"kind": kind, "bun_jit": False},
     }
     config = ExperimentConfig.model_validate(value)
     for model in value["models"]:
@@ -93,7 +94,7 @@ def test_opencode_jit_is_a_named_harness_condition_independent_of_model():
     assert ExperimentConfig.model_validate(config.model_dump()) == config
 
 
-@pytest.mark.parametrize("kind", ["synergy", "codex", "pi", "deepseek"])
+@pytest.mark.parametrize("kind", ["codex", "pi", "deepseek"])
 def test_jit_control_is_rejected_for_unverified_native_runtimes(kind):
     from synergy_bench.config import HarnessProfile
 
@@ -101,12 +102,13 @@ def test_jit_control_is_rejected_for_unverified_native_runtimes(kind):
         HarnessProfile(kind=kind, bun_jit=False)
 
 
+@pytest.mark.parametrize("kind", ["opencode", "synergy"])
 @pytest.mark.parametrize("value", ["false", "0", 0, 1])
-def test_jit_control_requires_an_explicit_boolean(value):
+def test_jit_control_requires_an_explicit_boolean(kind, value):
     from synergy_bench.config import HarnessProfile
 
     with pytest.raises(ValueError):
-        HarnessProfile(kind="opencode", bun_jit=value)
+        HarnessProfile(kind=kind, bun_jit=value)
 
 
 def test_profile_rejects_unmapped_or_transport_overriding_parameters():

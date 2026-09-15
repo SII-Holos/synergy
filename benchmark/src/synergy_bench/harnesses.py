@@ -23,6 +23,17 @@ PACKAGES = {
 }
 
 
+def runtime_environment(kind: str, bun_jit: bool | None) -> dict[str, str]:
+    if bun_jit is None:
+        return {}
+    if kind not in {"opencode", "synergy"} or type(bun_jit) is not bool:
+        raise ValueError("bun_jit requires an explicit boolean for opencode or synergy")
+    # Provenance: https://github.com/oven-sh/bun/issues/22901
+    # Local adaptation: expose Bun's supported override as an explicit experiment
+    # condition; do not use the distinct JSC_useJIT variable or auto-detect a fallback.
+    return {"BUN_JSC_useJIT": str(int(bun_jit))}
+
+
 def harness_configuration(
     kind: str, model: ModelProfile, endpoint: str, home: str, *, bun_jit: bool | None = None
 ) -> dict[str, Any]:
@@ -31,14 +42,8 @@ def harness_configuration(
         "BENCH_GATEWAY_BASE": endpoint,
         "BENCH_CAPTURE_DIR": home + "/native-wire",
         "NODE_USE_ENV_PROXY": "1",
+        **runtime_environment(kind, bun_jit),
     }
-    if bun_jit is not None:
-        if kind != "opencode" or type(bun_jit) is not bool:
-            raise ValueError("bun_jit requires an explicit boolean for opencode")
-        # Provenance: https://github.com/oven-sh/bun/issues/22901
-        # Local adaptation: expose Bun's supported override as an explicit experiment
-        # condition; do not use the distinct JSC_useJIT variable or auto-detect a fallback.
-        env["BUN_JSC_useJIT"] = str(int(bun_jit))
     protocol = "responses" if kind == "codex" else model.protocol
     api = "openai-completions" if protocol == "chat-completions" else "openai-responses"
     name = model.model

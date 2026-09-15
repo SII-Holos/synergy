@@ -18,6 +18,7 @@ from pier.models.agent.context import AgentContext
 from pier.models.agent.install import AgentInstallSpec, InstallStep
 from pier.models.agent.network import NetworkAllowlist
 
+from .harnesses import runtime_environment
 from .prepare import command
 from .storage import atomic_json, read_json
 
@@ -26,6 +27,7 @@ class SynergyAgent(BaseAgent):
     def __init__(self, logs_dir: Path, *, settings: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(logs_dir=logs_dir, **kwargs)
         self.settings = settings
+        self.runtime_env = runtime_environment(settings.get("harness", "synergy"), settings.get("bun_jit"))
 
     @staticmethod
     def name() -> str:
@@ -64,7 +66,7 @@ class SynergyAgent(BaseAgent):
             if self.settings.get("harness", "synergy") == "synergy"
             else "/opt/synergy/node/bin/node"
         )
-        result = await environment.exec(f"{binary} --version", timeout_sec=30)
+        result = await environment.exec(f"{binary} --version", env=self.runtime_env or None, timeout_sec=30)
         if result.return_code:
             raise ValueError("Prepared runtime is not compatible with the task environment")
         if self.settings.get("connectivity_url"):
@@ -77,6 +79,7 @@ class SynergyAgent(BaseAgent):
                 shlex.join([binary, "-e", script]),
                 env={
                     **(environment.agent_process_env(None) or {}),
+                    **self.runtime_env,
                     "NODE_USE_ENV_PROXY": "1",
                     "BENCH_CONNECTIVITY_URL": self.settings["connectivity_url"],
                 },
@@ -112,7 +115,10 @@ class SynergyAgent(BaseAgent):
                 ],
             )
             observed.append(json.loads(value))
-        atomic_json(self.logs_dir / "environment.json", {"containers": observed, "bun": result.stdout})
+        atomic_json(
+            self.logs_dir / "environment.json",
+            {"containers": observed, "bun": result.stdout, "runtime_controls": self.runtime_env},
+        )
 
     @asynccontextmanager
     async def credential_file(self, environment: BaseEnvironment) -> AsyncIterator[str]:
@@ -173,7 +179,10 @@ class SynergyAgent(BaseAgent):
                 )
                 # Pier 0.3.1 InstalledAgent._exec applies agent egress only to the agent process.
                 # Provenance and pinned dependency: benchmark/third_party/pier/NOTICE.
-                result = await environment.exec(invocation, env=environment.agent_process_env(None))
+                env = environment.agent_process_env(None)
+                if self.runtime_env:
+                    env = {**(env or {}), **self.runtime_env}
+                result = await environment.exec(invocation, env=env)
                 if result.return_code:
                     raise NonZeroAgentExitCodeError(f"Synergy exited with code {result.return_code}")
         except asyncio.CancelledError:

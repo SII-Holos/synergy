@@ -11,8 +11,9 @@ from synergy_bench.storage import atomic_json, read_json
 @pytest.mark.parametrize("filename", ["glm53-acceptance.yaml", "glm53-long-session.yaml", "glm53-full-local24.yaml"])
 @pytest.mark.parametrize("native_seconds", [900, 10800])
 @pytest.mark.parametrize("probe", [False, True])
+@pytest.mark.parametrize("synergy_jit", [None, False])
 def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(
-    tmp_path, filename, native_seconds, probe
+    tmp_path, filename, native_seconds, probe, synergy_jit
 ):
     path = Path(__file__).parents[1] / "configs" / filename
     config = load_config(path)
@@ -36,6 +37,8 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(
         expected = 900 if full else 120
     root = tmp_path / "run-12345678"
     for name, variant in config.variants.items():
+        if variant.harness == "synergy":
+            variant = variant.model_copy(update={"bun_jit": synergy_jit})
         atomic_json(root / "inputs" / name / "config.json", {})
         task = {"local_path": str(tmp_path / "task"), "agent_seconds": native_seconds}
         plan = {
@@ -59,6 +62,8 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(
             probe_instruction="Run the tool probe" if probe else None,
         )
         options = read_json(attempt / "inputs/options.json")
+        assert options["bun_jit"] is variant.bun_jit
+        assert trial.agent.kwargs["settings"]["bun_jit"] is variant.bun_jit
         assert options["timeout_seconds"] == expected
         assert (
             trial.agent.override_timeout_sec

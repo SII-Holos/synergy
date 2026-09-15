@@ -247,8 +247,9 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
         }
         for kind in kinds
     }
-    if "opencode" in harnesses:
-        harnesses["opencode-jitless"] = {**harnesses["opencode"], "bun_jit": False}
+    for kind in ["opencode", "synergy"]:
+        if kind in harnesses:
+            harnesses[kind + "-jitless"] = {**harnesses[kind], "bun_jit": False}
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture-key-private")
     profiles = {
         name: {
@@ -267,8 +268,10 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 4,
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
-        "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
+        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
+        if os.environ.get("CI") == "true"
+        else {"cache_budget_gib": float(os.environ.get("SYNERGY_BENCH_TEST_CACHE_BUDGET_GIB", "32"))},
+        "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
     }
     path = tmp_path / "matrix.yaml"
@@ -316,8 +319,13 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
                         assert startup_retryable(attempt, result), result
                         continue
                     results.append(result)
-                    if read_json(attempt / "trial.json")["harness"] == "opencode-jitless":
-                        assert read_json(attempt / "inputs/options.json")["native"]["env"]["BUN_JSC_useJIT"] == "0"
+                    if read_json(attempt / "trial.json")["harness"].endswith("-jitless"):
+                        options = read_json(attempt / "inputs/options.json")
+                        assert options["bun_jit"] is False
+                        environment = read_json(next(attempt.glob("*/agent/environment.json")))
+                        assert environment["runtime_controls"]["BUN_JSC_useJIT"] == "0"
+                        if "native" in options:
+                            assert options["native"]["env"]["BUN_JSC_useJIT"] == "0"
                         events = next(attempt.glob("*/agent/events.jsonl")).read_text()
                         assert "BENCH_JIT=0" in events
             return results

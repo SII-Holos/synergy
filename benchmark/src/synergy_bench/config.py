@@ -134,8 +134,8 @@ class HarnessProfile(StrictModel):
 
     @model_validator(mode="after")
     def validate_native_options(self) -> HarnessProfile:
-        if self.bun_jit is not None and self.kind != "opencode":
-            raise ValueError("bun_jit is supported only for opencode")
+        if self.bun_jit is not None and self.kind not in {"opencode", "synergy"}:
+            raise ValueError("bun_jit is supported only for opencode and synergy")
         if self.kind != "synergy":
             if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
