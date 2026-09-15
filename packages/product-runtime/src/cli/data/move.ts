@@ -4,7 +4,7 @@ import {
   mergeLibraryDB,
   type LibraryConflictStrategy,
 } from "@ericsanchezok/synergy-library/cli/data"
-import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
+import { DataTransfer } from "./transfer"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
@@ -22,7 +22,6 @@ import {
   checkDiskSpace,
   isDirEmpty,
   copyDirSkipExisting,
-  invalidatePendingRolloutLedger,
   updateShellProfile,
   dataRoot,
 } from "@ericsanchezok/synergy-cli/cli/cmd/data/shared"
@@ -158,7 +157,7 @@ export async function executeMove(opts: MoveOptions) {
     return
   }
 
-  await using homes = await SnapshotArchive.lockHomes([sourceRoot, targetPath])
+  await using homes = await DataTransfer.lockHomes([sourceRoot, targetPath])
 
   // Step 5: Handle library.db if core is selected
   let libraryStrategy: LibraryConflictStrategy = "skip"
@@ -248,18 +247,20 @@ export async function executeMove(opts: MoveOptions) {
       spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
 
       try {
-        if (subdir === "data") await SnapshotArchive.merge(src, dst)
-        const result = await copyDirSkipExisting(
-          src,
-          dst,
-          (p) => {
-            const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-            spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-          },
-          undefined,
-          undefined,
-          archiveExclusions(subdir),
-        )
+        const result =
+          subdir === "data"
+            ? await DataTransfer.merge(sourceRoot, targetPath, { trusted: true })
+            : await copyDirSkipExisting(
+                src,
+                dst,
+                (p) => {
+                  const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+                  spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+                },
+                undefined,
+                undefined,
+                archiveExclusions(subdir),
+              )
         const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
         spinner.stop(`Moved ${subdir}/${skippedNote}`)
       } catch (e) {
@@ -268,9 +269,6 @@ export async function executeMove(opts: MoveOptions) {
       }
     }
   }
-  // Copied owner trees can hold journals the target ledger never listed,
-  // so force one exhaustive recovery on the next startup.
-  await invalidatePendingRolloutLedger(path.join(targetPath, "data"))
 
   // Step 7: Write marker
   if (errors.length === 0) {
@@ -294,6 +292,7 @@ export async function executeMove(opts: MoveOptions) {
   // Report
   UI.empty()
   if (errors.length > 0) {
+    process.exitCode = 1
     prompts.log.warn("Move completed with errors:")
     for (const err of errors) prompts.log.error(`  ${err}`)
     prompts.log.info("Original data preserved at " + shortenPath(sourceRoot))

@@ -1,3 +1,4 @@
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { Database } from "bun:sqlite"
@@ -54,6 +55,7 @@ export namespace SnapshotTransfer {
       readonly target: string,
       readonly directory: string,
     ) {
+      initializeSqliteEngine()
       this.db = new Database(path.join(directory, "inventory.sqlite"))
       this.db.exec(
         "PRAGMA journal_mode=MEMORY; PRAGMA synchronous=OFF; CREATE TABLE known (oid TEXT PRIMARY KEY); CREATE TABLE incoming (oid TEXT PRIMARY KEY, type TEXT NOT NULL); CREATE TABLE covered (oid TEXT PRIMARY KEY)",

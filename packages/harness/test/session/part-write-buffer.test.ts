@@ -12,6 +12,85 @@ function recorder() {
 }
 
 describe("PartWriteBuffer", () => {
+  test("transaction admission requires buffered, running and failed writes to drain first", async () => {
+    let fail = true
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const buffer = new PartWriteBuffer<string>(async () => {
+      await blocked
+      if (fail) throw new Error("transient")
+    }, 10_000)
+    expect(() => buffer.assertDrained("part")).not.toThrow()
+    buffer.defer("part", "part", "stream")
+    expect(() => buffer.assertDrained("part")).toThrow("Drain")
+    const pending = buffer.flush("part")
+    expect(() => buffer.assertDrained("part")).toThrow("Drain")
+    release()
+    await expect(pending).rejects.toThrow("transient")
+    expect(() => buffer.assertDrained("part")).toThrow("Drain")
+    fail = false
+    await buffer.flushAll()
+    expect(() => buffer.assertDrained("part")).not.toThrow()
+  })
+
+  test("terminal writes wait for an already executing streaming write", async () => {
+    const writes: string[] = []
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
+      if (value === "stream") await blocked
+      writes.push(value)
+    }, 1)
+    buffer.defer("part", "part", "stream")
+    await Bun.sleep(10)
+    const terminal = buffer.writeNow("part", "part", "complete")
+    expect(writes).toEqual([])
+    release()
+    await terminal
+    await buffer.flushAll()
+    expect(writes).toEqual(["stream", "complete"])
+  })
+
+  test("draining includes timer writes and reports background persistence failure", async () => {
+    const buffer = new PartWriteBuffer<string>(async () => {
+      throw new Error("disk full")
+    }, 1)
+    buffer.defer("part", "part", "stream")
+    await Bun.sleep(10)
+    await expect(buffer.flushAll()).rejects.toThrow("disk full")
+  })
+
+  test("a later successful write clears the retained failure for the same key", async () => {
+    let fail = true
+    const writes: string[] = []
+    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
+      if (fail) throw new Error("transient")
+      writes.push(value)
+    }, 10_000)
+    buffer.defer("part", "part", "stream")
+    await expect(buffer.flush("part")).rejects.toThrow("transient")
+    fail = false
+    await buffer.writeNow("part", "part", "complete")
+    expect(writes).toEqual(["complete"])
+    await buffer.flushAll()
+    expect(writes).toEqual(["complete"])
+  })
+
+  test("a transient part failure does not block later drains of the same session", async () => {
+    let fail = true
+    const buffer = new PartWriteBuffer<{ sessionID: string; text: string }>(async (_path, value) => {
+      if (fail) throw new Error("transient")
+    }, 10_000)
+    buffer.defer("p1", "path/p1", { sessionID: "ses_1", text: "one" })
+    await expect(buffer.flushWhere((value) => value.sessionID === "ses_1")).rejects.toThrow("transient")
+    fail = false
+    buffer.defer("p2", "path/p2", { sessionID: "ses_1", text: "two" })
+    await buffer.flushWhere((value) => value.sessionID === "ses_1")
+  })
   test("coalesces deferred writes: many defers, one flush writes the latest", () => {
     const r = recorder()
     const buf = new PartWriteBuffer<string>(r.write, 10_000)

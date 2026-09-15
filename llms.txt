@@ -74,7 +74,7 @@ Use `@ericsanchezok/synergy-plugin-kit` and the public `@ericsanchezok/synergy-p
 
 The project-local `.synergy/skill/` files are executable workflows for this repository. Load the relevant workflow instead of copying architecture facts into an agent prompt:
 
-- `architecture`, `develop-synergy`, `testing-guide`, and `git-guide`
+- `architecture`, `develop-synergy`, `testing-guide`, `develop-benchmark`, and `git-guide`
 - `development-standards`, `develop-frontend`, and `integrate-llm`
 - `change-server-api` and `change-persistence`
 - `change-execution-boundaries`, `change-channel-runtime`, `change-browser-runtime`, and `change-plugin-runtime`

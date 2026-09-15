@@ -1,3 +1,4 @@
+import { Storage } from "../../src/storage/storage"
 import { expect, test } from "bun:test"
 import { RuntimeHandle } from "../../src/lifecycle/runtime"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
@@ -21,6 +22,7 @@ for (const fails of [false, true]) {
     const owner: RolloutSchema.Owner = { kind: "operation", scopeID: "test", operationID: crypto.randomUUID() }
     let ownersAtStop: RolloutSchema.Owner[] | undefined
     const runtime = await RuntimeHandle.open({
+      storage: Storage.current(),
       mode: "oneshot",
       services: {
         transport: {
@@ -52,6 +54,7 @@ for (const fails of [false, true]) {
 test("local runtime owns its home without a transport and releases it exactly once", async () => {
   const calls: string[] = []
   const runtime = await RuntimeHandle.open({
+    storage: Storage.current(),
     mode: "oneshot",
     services: {
       initializeExtensions: async () => {
@@ -65,7 +68,7 @@ test("local runtime owns its home without a transport and releases it exactly on
   try {
     expect(runtime.server).toBeUndefined()
     expect((await ServerProcessLock.read())?.mode).toBe("oneshot")
-    await expect(RuntimeHandle.open({ mode: "oneshot" })).rejects.toThrow("already owns")
+    await expect(RuntimeHandle.open({ storage: Storage.current(), mode: "oneshot" })).rejects.toThrow("already owns")
     await Promise.all([runtime.close(), runtime.close()])
     expect(calls).toEqual(["initialize", "dispose"])
     expect(await ServerProcessLock.read()).toBeUndefined()
@@ -80,6 +83,7 @@ test("startup failure disposes initialized resources and releases home ownership
   try {
     await expect(
       RuntimeHandle.open({
+        storage: Storage.current(),
         mode: "oneshot",
         services: {
           initializeExtensions: async () => {

@@ -218,9 +218,7 @@ export async function recording(channelType: string, accountId: string, input: D
   try {
     using _ = await Lock.write(`channel-diagnostics:${account}`)
     await pruneBeforeWrite(account, normalized.timestamp)
-    await Storage.write(StoragePath.channelDiagnosticsRecord(account, recordID(normalized.timestamp)), normalized, {
-      compact: true,
-    })
+    await Storage.write(StoragePath.channelDiagnosticsRecord(account, recordID(normalized.timestamp)), normalized)
   } catch (err) {
     log.error("failed to persist diagnostic record", { error: err })
   }

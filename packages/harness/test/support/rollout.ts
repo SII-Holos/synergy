@@ -73,7 +73,16 @@ export async function fixture(
   })
 }
 
-export async function complete(call: Awaited<ReturnType<typeof RolloutLedger.beginCall>>) {
+export async function complete(
+  call: Awaited<ReturnType<typeof RolloutLedger.beginCall>>,
+  {
+    inputTokens = 1000,
+    omitCacheDetails = false,
+  }: {
+    inputTokens?: number
+    omitCacheDetails?: boolean
+  } = {},
+) {
   const recorder = RolloutTransportRecorder.create(call)
   const attemptID = crypto.randomUUID()
   await recorder.emit({
@@ -92,10 +101,18 @@ export async function complete(call: Awaited<ReturnType<typeof RolloutLedger.beg
     data: new TextEncoder().encode(
       JSON.stringify({
         usage: {
-          input_tokens: 1000,
-          input_tokens_details: { cached_tokens: 0 },
+          input_tokens: inputTokens,
+          ...(omitCacheDetails
+            ? {}
+            : {
+                input_tokens_details: {
+                  cached_tokens: 0,
+                },
+              }),
           output_tokens: 500,
-          output_tokens_details: { reasoning_tokens: 100 },
+          output_tokens_details: {
+            reasoning_tokens: 100,
+          },
         },
       }),
     ),

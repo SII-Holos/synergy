@@ -8,9 +8,10 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from .cache import cache_lock, register_directory
 from .config import StrictModel
 from .source import entry, git, safe_path
-from .storage import digest, locked
+from .storage import digest
 
 
 class Dataset(StrictModel):
@@ -70,7 +71,8 @@ def materialize(suite: Suite, task: Task, cache: Path) -> Path:
     source = suite.sources[task.source]
     identity = digest(source.model_dump())
     target = cache / "datasets" / identity / "source"
-    with locked(target.parent):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with cache_lock(cache / "locks" / identity):
         if not target.exists():
             stage = Path(tempfile.mkdtemp(prefix=".dataset-", dir=target.parent))
             try:
@@ -80,6 +82,7 @@ def materialize(suite: Suite, task: Task, cache: Path) -> Path:
                 if git(stage, "rev-parse", "HEAD").decode().strip() != source.commit:
                     raise ValueError("Dataset revision mismatch")
                 stage.rename(target)
+                register_directory(cache, target.parent, identity=source.model_dump())
             finally:
                 if stage.exists():
                     shutil.rmtree(stage)

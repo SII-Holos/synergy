@@ -1,3 +1,5 @@
+import fs from "node:fs/promises"
+import path from "node:path"
 import { describe, expect, spyOn, test } from "bun:test"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutRecordingError } from "../../src/session/rollout/error"
@@ -45,7 +47,9 @@ describe("rollout artifacts", () => {
     const second = await RolloutArtifact.write(target, source(), "application/octet-stream")
     expect(first.id).not.toBe(second.id)
     expect(first.sha256).toBe(second.sha256)
-    expect(await Storage.scan([...RolloutArtifact.root(target), "blobs"], { strict: true })).toHaveLength(1)
+    expect(
+      await fs.readdir(path.join(Storage.current().artifactDirectory, ...RolloutArtifact.root(target), "blobs")),
+    ).toHaveLength(1)
   })
 
   test("preserves content across producer chunk boundaries", async () => {
@@ -112,11 +116,11 @@ describe("rollout artifacts", () => {
   test("does not publish completion when the final commit fails", async () => {
     const target = owner()
     const original = Storage.write.bind(Storage)
-    using write = spyOn(Storage, "write").mockImplementation(async (key, data, options) => {
+    using write = spyOn(Storage, "write").mockImplementation(async (key, data) => {
       if (data && typeof data === "object" && "status" in data && data.status === "complete") {
         throw Object.assign(new Error("disk full"), { code: "ENOSPC" })
       }
-      return original(key, data, options)
+      return original(key, data)
     })
     async function* source() {
       yield new Uint8Array([1])

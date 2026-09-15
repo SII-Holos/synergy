@@ -55,6 +55,9 @@ export async function runCli(options: CliOptions): Promise<void> {
 
 async function runCliImplementation(options: CliOptions): Promise<void> {
   const argv = options.argv ?? hideBin(process.argv)
+  let storage:
+    | Awaited<ReturnType<typeof import("@ericsanchezok/synergy-harness/storage/maintenance").StorageMaintenance.open>>
+    | undefined
   const builtinCommands = [...coreCommands(options.runtimeFactory, options.dataCommands), ...(options.commands ?? [])]
   const onRejection = (error: unknown) => {
     process.exitCode = 1
@@ -87,6 +90,16 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
     })
     .middleware(async (opts) => {
       if (informational) return
+      const entry = builtinCommands.find((entry) =>
+        (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
+          (name) => name.split(" ")[0] === selectedCommand,
+        ),
+      )
+      if (entry?.storage === "maintenance" && !storage) {
+        const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+        const inspect = selectedCommand === "migration" && (argv.includes("status") || argv.includes("--dry-run"))
+        storage = await StorageMaintenance.open({ readonly: inspect, migrate: selectedCommand !== "migration" })
+      }
       if (!["send", "server"].includes(selectedCommand ?? "server")) await Global.initialize({ cache: false })
       let configLogLevel: string | undefined
       try {
@@ -215,7 +228,18 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
   process.on("uncaughtException", onException)
   try {
     if (argv.length === 0 && !options.defaultCommand) cli.showHelp()
-    else await cli.parse()
+    else {
+      const parsed = await cli.parse()
+      if (
+        parsed._.length === 2 &&
+        parsed._[0] === "migration" &&
+        parsed._[1] === "run" &&
+        !parsed["dry-run"] &&
+        storage &&
+        "activate" in storage
+      )
+        await storage.activate()
+    }
   } catch (e) {
     let data: Record<string, unknown> = {}
     if (e instanceof NamedError) {
@@ -258,6 +282,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
       process.exitCode = findRecordingError(e) ? 5 : process.exitCode || 2
     } else process.exitCode = 1
   } finally {
+    await storage?.close()
     if (!isLongRunningCommand()) await flushCliOutput()
     process.removeListener("unhandledRejection", onRejection)
     process.removeListener("uncaughtException", onException)

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, test, spyOn } from "bun:test"
 import { Agent } from "../../src/agent/agent"
 import { AgentTurn } from "../../src/session/agent-turn"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { SessionRetry } from "../../src/session/retry"
 import { AgentCall } from "../../src/agent/call"
 import { Provider } from "../../src/provider/provider"
 import { LLM } from "../../src/session/llm"
@@ -297,5 +298,85 @@ describe("AgentCall", () => {
     expect(result.text).toBe("answer")
     expect(result.model).toMatchObject({ providerID: "test", id: "model" })
     expect(result.usage).toEqual(usage)
+  })
+})
+
+describe("AgentCall recovery budget", () => {
+  test("retries a failed stream with a fresh output buffer and no SDK budget", async () => {
+    installAgent()
+    using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
+    let attempts = 0
+    let disposed = 0
+    using stream = spyOn(AgentTurn, "stream").mockImplementation(async (input) => {
+      expect(input.retries).toBe(0)
+      const attempt = ++attempts
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-delta" as const, id: "text", text: attempt === 1 ? "partial" : "complete" }
+          if (attempt === 1)
+            yield {
+              type: "error" as const,
+              error: Object.assign(new TypeError("fetch failed"), { cause: { code: "ETIMEOUT" } }),
+            }
+        })(),
+        usage: Promise.resolve(undefined),
+        async dispose() {
+          disposed++
+        },
+      }
+    })
+    await expect(call()).resolves.toMatchObject({ text: "complete" })
+    expect(attempts).toBe(2)
+    expect(disposed).toBe(2)
+  })
+
+  test("stream errors consume one shared budget for starts and bodies", async () => {
+    installAgent()
+    using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
+    let attempts = 0
+    using stream = spyOn(AgentTurn, "stream").mockImplementation(async () => {
+      attempts++
+      if (attempts === 1) throw Object.assign(new Error("connect failed"), { code: "ECONNRESET" })
+      return {
+        fullStream: (async function* () {
+          yield { type: "error" as const, error: { type: "overloaded_error" } }
+        })(),
+        usage: Promise.resolve(undefined),
+        async dispose() {},
+      }
+    })
+    await expect(call({ retries: 2 })).rejects.toMatchObject({ type: "overloaded_error" })
+    expect(attempts).toBe(3)
+  })
+
+  test("permanent stream failures fail without returning partial text", async () => {
+    installAgent()
+    let attempts = 0
+    const failure = Object.assign(new Error("bad key"), { statusCode: 401 })
+    using stream = spyOn(AgentTurn, "stream").mockImplementation(async () => {
+      attempts++
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-delta" as const, id: "text", text: "partial" }
+          yield { type: "error" as const, error: failure }
+        })(),
+        usage: Promise.resolve(undefined),
+        async dispose() {},
+      }
+    })
+    await expect(call()).rejects.toBe(failure)
+    expect(attempts).toBe(1)
+  })
+
+  test("the original deadline covers backoff and all attempts", async () => {
+    installAgent()
+    using delay = spyOn(SessionRetry, "delay").mockReturnValue(10_000)
+    let attempts = 0
+    using stream = spyOn(AgentTurn, "stream").mockImplementation(async () => {
+      attempts++
+      throw Object.assign(new Error("connect failed"), { code: "ECONNRESET" })
+    })
+    await expect(call({ timeoutMs: 50 })).rejects.toMatchObject({ code: "timeout" })
+    expect(attempts).toBe(1)
   })
 })

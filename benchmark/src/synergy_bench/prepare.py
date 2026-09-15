@@ -13,21 +13,35 @@ from pathlib import Path
 from typing import Any
 
 from .catalog import tree_digest
-from .config import Source
+from .config import Resources, Source
 from .source import entry, freeze_source, safe_path, verify_source
-from .storage import atomic_json, digest, locked, read_json
+from .storage import atomic_json, digest, read_json
 
 BENCHMARK = Path(__file__).resolve().parents[2]
 
 
-def evaluator_identity() -> dict[str, str]:
+def evaluator_identity(root: Path | None = None) -> dict[str, str]:
+    root = root or BENCHMARK
     return {
-        "python": tree_digest(BENCHMARK / "src" / "synergy_bench"),
-        "runtime": tree_digest(BENCHMARK / "runtime"),
-        "lock": digest((BENCHMARK / "uv.lock").read_text()),
+        "python": tree_digest(root / "src" / "synergy_bench"),
+        "runtime": tree_digest(root / "runtime"),
+        "lock": digest((root / "uv.lock").read_text()),
+        "project": digest((root / "pyproject.toml").read_text()),
         "python_version": host_platform.python_version(),
-        "recipe_dependencies": digest(read_json(BENCHMARK / "package.json")["dependencies"]),
+        "recipe_dependencies": digest(read_json(root / "package.json")["dependencies"]),
     }
+
+
+def synergy_runtime_digest(root: Path) -> str:
+    from .source import entry
+
+    return digest(
+        [
+            entry(root, path.relative_to(root).as_posix())
+            for path in sorted(root.rglob("*"))
+            if path.is_file() and (path.suffix == ".ts" or path.name == "deadline.mjs")
+        ]
+    )
 
 
 def recipe_links(source: Path, dependencies: dict[str, str]) -> dict[str, str]:
@@ -53,6 +67,47 @@ def command(args: list[str], log: Path | None = None, *, timeout: float = 1800) 
     return subprocess.check_output(args, stderr=subprocess.PIPE, timeout=timeout).decode().strip()
 
 
+def transient_preparation_error(detail: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:429|500|502|503|504)\b|ECONNRESET|EAI_AGAIN|ETIMEDOUT|TLS handshake timeout|"
+            r"connection reset|no such host|temporary failure|network is unreachable",
+            detail,
+            re.I,
+        )
+    )
+
+
+def retry_command(args: list[str], log: Path, *, timeout: float = 1800, backoff: float = 2) -> str:
+    history = log.with_suffix(log.suffix + ".attempts.json")
+    records = read_json(history) if history.exists() else []
+    deadline = time.monotonic() + timeout
+    for attempt in range(3):
+        offset = log.stat().st_size if log.exists() else 0
+        row: dict[str, Any] = {"started_at": time.time(), "status": "running", "operation": args[:2]}
+        records.append(row)
+        atomic_json(history, records)
+        try:
+            result = command(args, log, timeout=max(0.01, deadline - time.monotonic()))
+            row["status"] = "completed"
+            return result
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            with log.open("rb") if log.exists() else open(os.devnull, "rb") as stream:
+                stream.seek(offset)
+                detail = stream.read().decode(errors="replace")
+            transient = transient_preparation_error(detail)
+            delay = backoff * 2**attempt
+            row.update(status="failed", error=type(error).__name__, retryable=transient)
+            if not transient or attempt == 2 or time.monotonic() + delay >= deadline:
+                raise
+            row["backoff_seconds"] = delay
+        finally:
+            row["ended_at"] = time.time()
+            atomic_json(history, records)
+        time.sleep(delay)
+    raise RuntimeError("Preparation retry budget exhausted")
+
+
 def remove_owned_container(file: Path) -> None:
     if not file.exists():
         return
@@ -67,7 +122,13 @@ def remove_owned_container(file: Path) -> None:
 
 
 def verify_prepared(path: Path) -> dict[str, Any]:
-    receipt: dict[str, Any] = read_json(path / "receipt.json")
+    if (path / "cache.json").exists():
+        from .cache import verify_object
+
+        verify_object(path)
+        receipt: dict[str, Any] = read_json(path / "receipt.json")
+        return receipt
+    receipt = read_json(path / "receipt.json")
     if receipt["id"] != digest(receipt["identity"]):
         raise ValueError("Prepared artifact identity changed")
     verify_source(path / "bundle" / "source", receipt["source"])
@@ -89,14 +150,22 @@ def bundle_digest(root: Path) -> str:
     return digest(files)
 
 
-def prepare_source(source: Source, base: Path, cache: Path, platform: str, *, timeout: int = 1800) -> Path:
+def prepare_source(
+    source: Source,
+    base: Path,
+    cache: Path,
+    platform: str,
+    *,
+    timeout: int = 1800,
+    build_settings: Resources | None = None,
+) -> Path:
     deadline = time.monotonic() + timeout
     if source.artifact:
         path = (base / source.artifact).resolve()
         receipt = verify_prepared(path)
         if receipt["identity"]["platform"] != platform:
             raise ValueError("Prepared artifact platform mismatch")
-        if receipt["identity"]["runtime"] != tree_digest(BENCHMARK / "runtime"):
+        if receipt["identity"]["runtime"] != synergy_runtime_digest(BENCHMARK / "runtime"):
             raise ValueError("Prepared runtime recipe differs from this evaluator; prepare a new artifact")
         if receipt["identity"]["recipe_dependencies"] != read_json(BENCHMARK / "package.json")["dependencies"]:
             raise ValueError("Prepared recipe dependencies changed")
@@ -112,7 +181,7 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str, *, ti
         version = manager.removeprefix("bun@")
         identity = {
             "source": receipt["digest"],
-            "runtime": tree_digest(BENCHMARK / "runtime"),
+            "runtime": synergy_runtime_digest(BENCHMARK / "runtime"),
             "recipe_dependencies": read_json(BENCHMARK / "package.json")["dependencies"],
             "bun": version,
             "platform": platform,
@@ -120,115 +189,129 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str, *, ti
         }
         artifact_id = digest(identity)
         target = cache / "prepared" / artifact_id
-        with locked(cache / "locks" / artifact_id):
+        from .cache import cache_lock, register_directory
+
+        with cache_lock(cache / "locks" / artifact_id, timeout=max(1, deadline - time.monotonic())):
             if target.exists():
                 verify_prepared(target)
                 return target
-            shutil.copytree(BENCHMARK / "runtime", stage / "runtime")
-            base_image = f"oven/bun:{version}"
-            log = work / f"{artifact_id}.log"
-            command(
-                ["docker", "pull", "--platform", platform, base_image], log, timeout=max(1, deadline - time.monotonic())
-            )
-            image_id = command(["docker", "image", "inspect", base_image, "--format", "{{index .RepoDigests 0}}"])
-            manifests = stage / "manifests"
-            manifests.mkdir()
-            for name in ["package.json", "bun.lock"]:
-                shutil.copyfile(stage / "source" / name, manifests / name)
-            package = read_json(stage / "source" / "package.json")
-            for workspace in package["workspaces"]["packages"]:
-                for manifest in (stage / "source").glob(f"{workspace}/package.json"):
-                    destination = manifests / manifest.relative_to(stage / "source")
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(manifest, destination)
-            shutil.copytree(stage / "source" / "patches", manifests / "patches")
-            links = recipe_links(stage / "source", identity["recipe_dependencies"])
-            link_commands = []
-            for name, relative in links.items():
-                link_path = Path("/opt/synergy/runtime/node_modules") / name
-                linked = Path("/opt/synergy/source") / relative
-                link_commands.extend(
-                    [
-                        shlex.join(["mkdir", "-p", str(link_path.parent)]),
-                        shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
-                    ]
+            from .resources import build_reservation
+
+            with build_reservation(cache, timeout=max(1, deadline - time.monotonic()), settings=build_settings):
+                shutil.copytree(BENCHMARK / "runtime", stage / "runtime")
+                base_image = f"oven/bun:{version}"
+                log = work / f"{artifact_id}.log"
+                retry_command(
+                    ["docker", "pull", "--platform", platform, base_image],
+                    log,
+                    timeout=max(1, deadline - time.monotonic()),
                 )
-            (stage / "Dockerfile").write_text(
-                f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
-                "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
-                "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
-                "bun install --frozen-lockfile --network-concurrency 16\n"
-                "COPY source/ ./\n"
-                "COPY runtime/ /opt/synergy/runtime/\n"
-                f"RUN {' && '.join(link_commands)}\n"
-                "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
-                "RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/prepare.ts\n"
-                "FROM node:22.14.0-bullseye AS native\n"
-                "COPY --from=source /opt/synergy /opt/synergy\n"
-                "WORKDIR /opt/synergy/source\n"
-                "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
-                "FROM source\n"
-                "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
-                "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
-            )
-            image = f"synergy-bench:{artifact_id}"
-            container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"
-            command(
-                [
-                    "docker",
-                    "build",
-                    "--platform",
-                    platform,
-                    "--label",
-                    "org.synergy.benchmark=prepared",
-                    "-t",
-                    image,
-                    str(stage),
-                ],
-                log,
-                timeout=max(1, deadline - time.monotonic()),
-            )
-            container_file = work / f"{artifact_id}.container.id"
-            remove_owned_container(container_file)
-            container_file.unlink(missing_ok=True)
-            try:
-                command(
+                image_id = command(["docker", "image", "inspect", base_image, "--format", "{{index .RepoDigests 0}}"])
+                manifests = stage / "manifests"
+                manifests.mkdir()
+                for name in ["package.json", "bun.lock"]:
+                    shutil.copyfile(stage / "source" / name, manifests / name)
+                package = read_json(stage / "source" / "package.json")
+                for workspace in package["workspaces"]["packages"]:
+                    for manifest in (stage / "source").glob(f"{workspace}/package.json"):
+                        destination = manifests / manifest.relative_to(stage / "source")
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(manifest, destination)
+                shutil.copytree(stage / "source" / "patches", manifests / "patches")
+                links = recipe_links(stage / "source", identity["recipe_dependencies"])
+                link_commands = []
+                for name, relative in links.items():
+                    link_path = Path("/opt/synergy/runtime/node_modules") / name
+                    linked = Path("/opt/synergy/source") / relative
+                    link_commands.extend(
+                        [
+                            shlex.join(["mkdir", "-p", str(link_path.parent)]),
+                            shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
+                        ]
+                    )
+                (stage / "Dockerfile").write_text(
+                    f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
+                    "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
+                    "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
+                    "bun install --frozen-lockfile --network-concurrency 16\n"
+                    "COPY source/ ./\n"
+                    "COPY runtime/ /opt/synergy/runtime/\n"
+                    f"RUN {' && '.join(link_commands)}\n"
+                    "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
+                    "RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/prepare.ts\n"
+                    "FROM node:22.14.0-bullseye AS native\n"
+                    "COPY --from=source /opt/synergy /opt/synergy\n"
+                    "WORKDIR /opt/synergy/source\n"
+                    "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
+                    "FROM source\n"
+                    "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
+                    "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
+                )
+                image = f"synergy-bench:{artifact_id}"
+                container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"
+                retry_command(
                     [
                         "docker",
-                        "create",
-                        "--cidfile",
-                        str(container_file),
+                        "build",
                         "--platform",
                         platform,
-                        "--name",
-                        container,
+                        "--label",
+                        "org.synergy.benchmark=prepared",
+                        "-t",
                         image,
-                    ]
+                        str(stage),
+                    ],
+                    log,
+                    timeout=max(1, deadline - time.monotonic()),
                 )
-                command(["docker", "cp", f"{container}:/opt/synergy", str(stage / "bundle")], log)
-            finally:
+                container_file = work / f"{artifact_id}.container.id"
                 remove_owned_container(container_file)
                 container_file.unlink(missing_ok=True)
-            runtime_digest = tree_digest(stage / "bundle" / "runtime")
-            result = {
-                "version": 1,
-                "id": artifact_id,
-                "identity": identity,
-                "source": receipt,
-                "base_image": image_id,
-                "image": image,
-                "runtime_digest": runtime_digest,
-                "binary_digest": tree_digest(stage / "bundle" / "bin"),
-                "bundle_digest": bundle_digest(stage / "bundle"),
-            }
-            atomic_json(stage / "receipt.json", result)
-            shutil.copyfile(log, stage / "prepare.log")
-            verify_source(stage / "bundle" / "source", receipt)
-            shutil.rmtree(stage / "source")
-            shutil.rmtree(stage / "runtime")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            stage.rename(target)
-            return target
+                try:
+                    command(
+                        [
+                            "docker",
+                            "create",
+                            "--cidfile",
+                            str(container_file),
+                            "--platform",
+                            platform,
+                            "--name",
+                            container,
+                            image,
+                        ]
+                    )
+                    command(["docker", "cp", f"{container}:/opt/synergy", str(stage / "bundle")], log)
+                finally:
+                    remove_owned_container(container_file)
+                    container_file.unlink(missing_ok=True)
+                runtime_digest = tree_digest(stage / "bundle" / "runtime")
+                result = {
+                    "version": 1,
+                    "id": artifact_id,
+                    "identity": identity,
+                    "source": receipt,
+                    "base_image": image_id,
+                    "image": image,
+                    "image_id": command(["docker", "image", "inspect", image, "--format", "{{.Id}}"]),
+                    "runtime_digest": runtime_digest,
+                    "binary_digest": tree_digest(stage / "bundle" / "bin"),
+                    "bundle_digest": bundle_digest(stage / "bundle"),
+                }
+                atomic_json(stage / "receipt.json", result)
+                shutil.copyfile(log, stage / "prepare.log")
+                verify_source(stage / "bundle" / "source", receipt)
+                shutil.rmtree(stage / "source")
+                shutil.rmtree(stage / "runtime")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                register_directory(cache, target, identity=identity, contents=stage)
+                stage.rename(target)
+                parent = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(parent)
+                finally:
+                    os.close(parent)
+                return target
 
 
 def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform: str, logs: Path) -> dict[str, Any]:

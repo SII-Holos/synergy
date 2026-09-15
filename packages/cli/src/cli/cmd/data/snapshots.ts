@@ -1,3 +1,5 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import type { Argv } from "yargs"
 import { cmd } from "../cmd"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
@@ -15,8 +17,10 @@ interface Input {
 
 export async function executeSnapshots(input: Input) {
   let lock: Awaited<ReturnType<typeof ServerProcessLock.acquire>> | undefined
+  let maintenance: Awaited<ReturnType<typeof StorageMaintenance.open>> | undefined
   try {
-    if (input.apply) lock = await ServerProcessLock.acquire()
+    if (!Storage.available()) maintenance = await StorageMaintenance.open({ readonly: !input.apply })
+    else if (input.apply) lock = await ServerProcessLock.acquire()
     if (input.action === "inspect") return { ok: true, results: await SnapshotMaintenance.inspect(input.scope) }
     if (input.action === "clean") {
       // Skip registerLegacy: it would claim unowned legacy directories right
@@ -64,6 +68,7 @@ export async function executeSnapshots(input: Input) {
       },
     }
   } finally {
+    await maintenance?.close()
     await lock?.release()
   }
 }

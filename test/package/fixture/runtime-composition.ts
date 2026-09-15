@@ -132,30 +132,22 @@ try {
       if (enabled("browser")) {
         const { BrowserRuntime } = await import("@ericsanchezok/synergy-browser-runtime/runtime")
         const { browserOwnerKey } = await import("@ericsanchezok/synergy-browser")
-        const { Global } = await import("@ericsanchezok/synergy-harness/global")
+        const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
         const owner = { mode: "session" as const, scopeID: scope.id, sessionID: session.id, directory }
-        const stateFile = path.join(
-          Global.Path.data,
-          "browser",
-          "sessions-v4",
-          `${createHash("sha256").update(browserOwnerKey(owner)).digest("hex")}.json`,
-        )
-        await Bun.write(
-          stateFile,
-          JSON.stringify({
-            version: 4,
-            status: "suspended",
-            page: { id: "page-installed", url: "https://example.com/research", title: "Installed Browser" },
-            timestamp: Date.now(),
-          }),
-        )
+        const stateKey = ["browser", "sessions-v4", createHash("sha256").update(browserOwnerKey(owner)).digest("hex")]
+        await Storage.write(stateKey, {
+          version: 4,
+          status: "suspended",
+          page: { id: "page-installed", url: "https://example.com/research", title: "Installed Browser" },
+          timestamp: Date.now(),
+        })
         const browser = await BrowserRuntime.getOrCreateSession(owner)
         assert.equal(browser.status, "suspended")
         assert.equal(browser.page, null)
         assert.equal(BrowserRuntime.resourceStats().ownerCount, 1)
         assert.equal(BrowserRuntime.resourceStats().processCount, 0)
         await browser.save()
-        assert.equal((await Bun.file(stateFile).json()).page?.title, "Installed Browser")
+        assert.equal((await Storage.read<{ page?: { title: string } }>(stateKey)).page?.title, "Installed Browser")
       }
       if (enabled("library")) {
         const { LibraryDB } = await import("@ericsanchezok/synergy-library")

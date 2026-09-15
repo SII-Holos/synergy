@@ -10,6 +10,32 @@
       "type": "string",
       "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
     },
+    "storage": {
+      "description": "Global authoritative storage; backend changes require an explicit storage migration",
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "backend": { "type": "string", "const": "sqlite" },
+            "namespace": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,128}$" },
+            "filename": { "type": "string", "minLength": 1 }
+          },
+          "required": ["backend"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "backend": { "type": "string", "const": "postgres" },
+            "namespace": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,128}$" },
+            "connectionEnv": { "type": "string", "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$" },
+            "maxConnections": { "type": "integer", "minimum": 2, "maximum": 64 }
+          },
+          "required": ["backend", "namespace", "connectionEnv"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "server": {
       "description": "Server configuration for synergy serve and web commands",
       "ref": "ServerConfig",

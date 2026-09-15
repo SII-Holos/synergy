@@ -11,6 +11,8 @@ test("runtime registration lock rejects late migration domains without changing 
       "--eval",
       `
       import assert from "node:assert/strict"
+      const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+      await using storageHandle = await StorageMaintenance.open({ migrate: false })
       import fs from "node:fs/promises"
       import path from "node:path"
       const { MigrationRegistry } = await import(${JSON.stringify(registry)})
@@ -20,7 +22,8 @@ test("runtime registration lock rejects late migration domains without changing 
       const file = path.join(process.env.SYNERGY_TEST_HOME, ".synergy/data/meta/migration/log.json")
       const legacy = { "optional-late": { id: "optional-late", status: "completed", timestamp: 123 } }
       await fs.mkdir(path.dirname(file), { recursive: true })
-      await Bun.write(file, JSON.stringify(legacy))
+      const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
+      await Storage.write(["meta", "migration", "log"], legacy)
       const snapshot = MigrationRegistry.list()
       snapshot.get("known-before-open")[0].id = "changed-via-snapshot"
       snapshot.get("known-before-open")[0].dependsOn.push("missing")
@@ -40,7 +43,7 @@ test("runtime registration lock rejects late migration domains without changing 
       assert.throws(() => MigrationRegistry.register("known-before-open", [...known]), /before opening the runtime/)
       assert.throws(() => MigrationRegistry.register("optional-late", [{ id: "optional-late", description: "Late", async up() {} }]), /before opening the runtime/)
       await runMigrations({ targetDomain: "known-before-open", output: "silent" })
-      assert.deepEqual(JSON.parse(await Bun.file(file).text()), legacy)
+      assert.deepEqual(await Storage.read(["meta", "migration", "log"]), legacy)
       assert.equal(MigrationRegistry.list().has("optional-late"), false)
     `,
     ],

@@ -1,3 +1,4 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
@@ -6,11 +7,11 @@ import { BrowserExport } from "../src/export.js"
 import { BrowserOwner } from "../src/owner.js"
 import { BrowserStorage } from "../src/storage.js"
 
-const created = new Set<string>()
+const created = new Set<string[]>()
 const createdOwners: BrowserOwner.Info[] = []
 
 afterEach(async () => {
-  await Promise.all(Array.from(created, (filepath) => fs.rm(filepath, { force: true })))
+  await Promise.all(Array.from(created, (filepath) => Storage.remove(filepath)))
   await Promise.all(
     createdOwners
       .splice(0)
@@ -24,16 +25,16 @@ afterEach(async () => {
 })
 
 describe("Browser storage owner isolation", () => {
-  test("hashes ambiguous and traversal-shaped owner fields into distinct contained paths", () => {
+  test("hashes ambiguous and traversal-shaped owner fields into distinct logical records", () => {
     const first = owner("scope:a", "b/c")
     const second = owner("scope", "a:b_c")
     const traversal = owner("../../outside", "../session")
-    const paths = [first, second, traversal].map(BrowserStorage.pathForOwner)
+    const paths = [first, second, traversal].map(BrowserStorage.keyForOwner)
 
-    expect(new Set(paths).size).toBe(3)
+    expect(new Set(paths.map((key) => JSON.stringify(key))).size).toBe(3)
     for (const filepath of paths) {
-      expect(path.basename(filepath)).toMatch(/^[a-f0-9]{64}\.json$/)
-      expect(path.basename(path.dirname(filepath))).toBe("sessions-v4")
+      expect(filepath[2]).toMatch(/^[a-f0-9]{64}$/)
+      expect(filepath.slice(0, 2)).toEqual(["browser", "sessions-v4"])
     }
     expect(BrowserOwner.key(first)).not.toBe(BrowserOwner.key(second))
   })
@@ -41,22 +42,18 @@ describe("Browser storage owner isolation", () => {
   test("rejects unknown or oversized persisted state instead of reviving it", async () => {
     const targetOwner = owner("storage-schema", "invalid-state")
     createdOwners.push(targetOwner)
-    const filepath = BrowserStorage.pathForOwner(targetOwner)
+    const filepath = BrowserStorage.keyForOwner(targetOwner)
     created.add(filepath)
     await BrowserStorage.ensureOwnerDirs(targetOwner)
-    await fs.writeFile(
-      filepath,
-      JSON.stringify({
-        version: BrowserStorage.CURRENT_VERSION,
-        status: "suspended",
-        page: { id: "page", url: "https://example.com", title: "x".repeat(20_001) },
-        timestamp: Date.now(),
-        unexpected: true,
-      }),
-      { mode: 0o600 },
-    )
+    await Storage.write(filepath, {
+      version: BrowserStorage.CURRENT_VERSION,
+      status: "suspended",
+      page: { id: "page", url: "https://example.com", title: "x".repeat(20_001) },
+      timestamp: Date.now(),
+      unexpected: true,
+    })
 
-    expect(await BrowserStorage.load(targetOwner)).toBeNull()
+    await expect(BrowserStorage.load(targetOwner)).rejects.toThrow()
   })
 })
 

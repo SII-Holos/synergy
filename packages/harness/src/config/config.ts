@@ -280,7 +280,9 @@ export namespace Config {
 
     // Inline config content has highest precedence
     if (Flag.SYNERGY_CONFIG_CONTENT) {
-      merge(Info.parse(LegacyExecutionConfig.migrate(JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))), "inline_config")
+      const inline = Info.parse(LegacyExecutionConfig.migrate(JSON.parse(Flag.SYNERGY_CONFIG_CONTENT)))
+      if (inline.storage) throw new Error("Storage configuration must use the global 130-storage.jsonc domain file")
+      merge(inline, "inline_config")
       log.debug("loaded custom config from SYNERGY_CONFIG_CONTENT")
     }
 
@@ -498,6 +500,8 @@ export namespace Config {
       try {
         const fragment = await loadFile(filepath, { addSchema: false })
         ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id, { preserveUnregistered: true })
+        if (domain.id === "storage" && fragment.storage && path.resolve(root) !== path.resolve(Global.Path.config))
+          throw new Error("Storage configuration is global and cannot be overridden by a project")
         result = mergeConfigConcatArrays(result, fragment as Info)
         // A recovered file clears its historical diagnostic so the registry
         // reflects the most recent load. Only clear when the file really
@@ -507,7 +511,7 @@ export namespace Config {
           clearIssueForPath(filepath)
         }
       } catch (error) {
-        if (strictExecution.getStore()) throw error
+        if (domain.id === "storage" || strictExecution.getStore()) throw error
         await quarantineDomainFile(domain.id, filepath, error)
       }
     }
@@ -1395,6 +1399,8 @@ export namespace Config {
     options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
     const parsed = ConfigDomain.Id.parse(id)
+    if (parsed === "storage")
+      throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
     using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
     // `return await` (not bare `return promise`): with `using`, a bare return
     // disposes the lock before the async transaction has run, so concurrent
@@ -1433,6 +1439,8 @@ export namespace Config {
     options: { mode?: ConfigDomain.MergeMode } = {},
   ) {
     const parsed = ConfigDomain.Id.parse(id)
+    if (parsed === "storage")
+      throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
     using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed)}`)
     const oldConfig = await globalResolved()
     const current = await domainGet(parsed)
@@ -1484,6 +1492,8 @@ export namespace Config {
     options: { mode?: ConfigDomain.MergeMode } = {},
   ) {
     const parsed = ConfigDomain.Id.parse(id)
+    if (parsed === "storage")
+      throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
     using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed)}`)
     const oldConfig = await globalResolved()
     const result = await domainUpdateUnlocked(parsed, patch, options)

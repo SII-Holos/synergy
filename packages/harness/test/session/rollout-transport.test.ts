@@ -2,6 +2,48 @@ import { describe, expect, test } from "bun:test"
 import { RolloutTransport } from "../../src/session/rollout/transport"
 
 describe("rollout transport", () => {
+  test("records a buffered POST while retaining its content length through a real proxy", async () => {
+    const payload = JSON.stringify({ messages: [{ role: "user", content: "read".repeat(50000) }] })
+    const observed: { bytes?: string; length?: string | null; transfer?: string | null } = {}
+    const proxy = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        observed.length = request.headers.get("content-length")
+        observed.transfer = request.headers.get("transfer-encoding")
+        observed.bytes = await request.text()
+        return new Response("data: done\n\n", { headers: { "content-type": "text/event-stream" } })
+      },
+    })
+    const events: RolloutTransport.Event[] = []
+    const options = {
+      method: "POST",
+      body: payload,
+      headers: { "content-type": "application/json" },
+      proxy: proxy.url.toString(),
+      signal: AbortSignal.timeout(2000),
+    }
+    try {
+      const response = await RolloutTransport.provide(
+        async (event) => {
+          events.push(event)
+        },
+        () => RolloutTransport.fetch(fetch, "http://fixture.invalid/v1/chat/completions", options),
+      )
+      expect(await response.text()).toBe("data: done\n\n")
+      expect(observed.bytes).toBe(payload)
+      expect(observed.length).toBe(String(Buffer.byteLength(payload)))
+      expect(observed.transfer).toBeNull()
+      const chunks = events.flatMap((event) =>
+        event.type === "chunk" && event.channel === "request" ? [event.data] : [],
+      )
+      expect(Buffer.concat(chunks).toString()).toBe(payload)
+      expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: "completed" })
+    } finally {
+      proxy.stop(true)
+    }
+  })
+
   test("keeps request options on the Request and forwards transport-only options", async () => {
     const options = {
       method: "POST",

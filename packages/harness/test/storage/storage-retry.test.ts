@@ -2,7 +2,12 @@ import { describe, expect, spyOn, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Global } from "../../src/global"
-import { Storage } from "../../src/storage/storage"
+import { AtomicFile } from "../../src/storage/atomic-file"
+const FileRecords = {
+  write: (key: string[], value: unknown, options?: AtomicFile.WriteOptions) =>
+    AtomicFile.writeJsonAtomic(path.join(Global.Path.data, ...key) + ".json", JSON.stringify(value), options),
+  read: <T>(key: string[]) => Bun.file(path.join(Global.Path.data, ...key) + ".json").json() as Promise<T>,
+}
 
 function keyRoot() {
   return ["storage-retry-test", Math.random().toString(36).slice(2)]
@@ -22,14 +27,14 @@ describe("Storage atomic write transient-failure retry", () => {
   test("durable write failure leaves the previous record intact", async () => {
     const root = keyRoot()
     const key = [...root, "durable"]
-    await Storage.write(key, { phase: "old" })
+    await FileRecords.write(key, { phase: "old" })
     const realOpen = fs.open.bind(fs)
     using _open = spyOn(fs, "open").mockImplementation((async (file, ...args) => {
       if (String(file).includes(".tmp-")) throw errnoError("ENOSPC")
       return realOpen(file, ...args)
     }) as typeof fs.open)
-    await expect(Storage.write(key, { phase: "new" }, { durable: true })).rejects.toMatchObject({ code: "ENOSPC" })
-    expect(await Storage.read<{ phase: string }>(key)).toEqual({ phase: "old" })
+    await expect(FileRecords.write(key, { phase: "new" }, { durable: true })).rejects.toMatchObject({ code: "ENOSPC" })
+    expect(await FileRecords.read<{ phase: string }>(key)).toEqual({ phase: "old" })
     expect(await tempFiles(root)).toEqual([])
   })
   test("retries a transient EPERM on rename and persists the payload", async () => {
@@ -43,10 +48,10 @@ describe("Storage atomic write transient-failure retry", () => {
     }) as unknown as typeof fs.rename
     using _rename = spyOn(fs, "rename").mockImplementation(impl)
 
-    await Storage.write([...root, "item"], { value: 1 })
+    await FileRecords.write([...root, "item"], { value: 1 })
 
     expect(calls).toBe(3)
-    expect(await Storage.read<{ value: number }>([...root, "item"])).toEqual({ value: 1 })
+    expect(await FileRecords.read<{ value: number }>([...root, "item"])).toEqual({ value: 1 })
     expect(await tempFiles(root)).toEqual([])
   })
 
@@ -61,10 +66,10 @@ describe("Storage atomic write transient-failure retry", () => {
     }) as unknown as typeof Bun.write
     using _write = spyOn(Bun, "write").mockImplementation(impl)
 
-    await Storage.write([...root, "item"], { value: 2 })
+    await FileRecords.write([...root, "item"], { value: 2 })
 
     expect(calls).toBe(2)
-    expect(await Storage.read<{ value: number }>([...root, "item"])).toEqual({ value: 2 })
+    expect(await FileRecords.read<{ value: number }>([...root, "item"])).toEqual({ value: 2 })
     expect(await tempFiles(root)).toEqual([])
   })
 
@@ -77,7 +82,7 @@ describe("Storage atomic write transient-failure retry", () => {
     }) as unknown as typeof fs.rename
     using _rename = spyOn(fs, "rename").mockImplementation(impl)
 
-    await expect(Storage.write([...root, "item"], { value: 3 })).rejects.toMatchObject({ code: "EPERM" })
+    await expect(FileRecords.write([...root, "item"], { value: 3 })).rejects.toMatchObject({ code: "EPERM" })
     expect(calls).toBe(4)
     expect(await tempFiles(root)).toEqual([])
   })
@@ -91,7 +96,7 @@ describe("Storage atomic write transient-failure retry", () => {
     }) as unknown as typeof fs.rename
     using _rename = spyOn(fs, "rename").mockImplementation(impl)
 
-    await expect(Storage.write([...root, "item"], { value: 4 })).rejects.toMatchObject({ code: "ENOSPC" })
+    await expect(FileRecords.write([...root, "item"], { value: 4 })).rejects.toMatchObject({ code: "ENOSPC" })
     expect(calls).toBe(1)
     expect(await tempFiles(root)).toEqual([])
   })
@@ -113,7 +118,7 @@ describe("Storage atomic write transient-failure retry", () => {
     }) as unknown as typeof fs.unlink
     using _unlink = spyOn(fs, "unlink").mockImplementation(unlinkImpl)
 
-    await expect(Storage.write([...root, "item"], { value: 5 })).rejects.toMatchObject({ code: "EPERM" })
+    await expect(FileRecords.write([...root, "item"], { value: 5 })).rejects.toMatchObject({ code: "EPERM" })
     expect(renameCalls).toBe(4)
     expect(unlinkCalls).toBe(2)
     expect(await tempFiles(root)).toEqual([])

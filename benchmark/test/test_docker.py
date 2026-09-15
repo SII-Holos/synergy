@@ -1,6 +1,8 @@
 import asyncio
+import json
 import os
 import shutil
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -123,6 +125,7 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     config = {
         "version": 1,
         "suite": "suite.json",
+        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/integration"),
         "variants": {
@@ -156,8 +159,6 @@ def test_real_synergy_paired_rollout(prepared_fixture) -> None:
 
 
 def assert_retained_credentials_absent(root: Path) -> None:
-    import zipfile
-
     sentinel = b"deterministic-local-fixture"
     for evidence_file in root.glob("trials/*/attempt-*/evidence.json"):
         evidence = read_json(evidence_file)
@@ -172,10 +173,13 @@ def assert_retained_credentials_absent(root: Path) -> None:
 
 
 def primary_attempts(root: Path):
-    for call in root.glob("trials/*/attempt-*/*/agent/home/.synergy/data/sessions/*/*/rollout/runs/*/calls/*.json"):
-        if read_json(call)["purpose"] == "synergy":
-            for attempt in (call.parent.parent / "attempts" / call.stem).glob("*.json"):
-                yield read_json(attempt)
+    for file in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
+        with zipfile.ZipFile(file) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["format"] == "synergy-rollout" and manifest["version"] == 1
+        for snapshot in manifest["snapshots"]:
+            calls = {call["id"] for call in snapshot["calls"] if call["purpose"] == "synergy"}
+            yield from (attempt for attempt in snapshot["attempts"] if attempt["callID"] in calls)
 
 
 @pytest.mark.parametrize("mode", ["long", "disconnect", "timeout", "cancel", "docker-stop"])
@@ -218,14 +222,20 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
                 container = containers.strip()
                 probe = """
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
-observed = False
-for call in Path('/logs/agent/home').glob('.synergy/data/sessions/*/*/rollout/runs/*/calls/*.json'):
-    if json.loads(call.read_text())['purpose'] != 'synergy':
-        continue
-    for file in (call.parent.parent / 'attempts' / call.stem).glob('*.json'):
-        observed |= (json.loads(file.read_text()).get('response') or {}).get('bytes', 0) > 0
-print(observed)
+root = Path('/logs/agent/home/.synergy/data/storage')
+namespace = json.loads((root / 'manifest.json').read_text())['namespace']
+with closing(sqlite3.connect((root / 'agent.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
+    rows = [(json.loads(key), json.loads(body)) for key, body in db.execute(
+        "SELECT key_text, body FROM storage_records WHERE namespace=? AND kind='rollout' AND body IS NOT NULL",
+        (namespace,),
+    )]
+calls = {(tuple(key[:6]), key[7]) for key, value in rows
+         if len(key) == 8 and key[4] == 'runs' and key[6] == 'calls' and value['purpose'] == 'synergy'}
+print(any(len(key) == 9 and key[6] == 'attempts' and (tuple(key[:6]), key[7]) in calls
+          and (value.get('response') or {}).get('bytes', 0) > 0 for key, value in rows))
 """
                 while (
                     await asyncio.to_thread(

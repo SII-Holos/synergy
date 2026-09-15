@@ -9,5 +9,18 @@ Pier contains modifications to the original Harbor code.
 Synergy's benchmark/src/synergy_bench/trial.py adapts the separate-verifier
 lifecycle from datacurve-pier 0.3.1 (https://pypi.org/project/datacurve-pier/0.3.1/).
 Modifications separate cleanup from verifier deadlines, preserve committed
-rewards, bound cleanup, and disable automatic verifier timeout retries.
+rewards, bound cleanup, and disable automatic verifier timeout retries. The outer
+agent deadline preserves Pier's AgentTimeoutError so timed-out agents still
+reach native artifact collection and verification.
 The dependency version is pinned in benchmark/pyproject.toml and uv.lock.
+
+Synergy's benchmark/src/synergy_bench/agent.py follows the same version's
+InstalledAgent._exec agent_process_env integration so isolated task networks
+retain Pier-managed inference egress for the agent process.
+
+Synergy's benchmark/src/synergy_bench/environment.py extends the pinned Pier
+Docker environment with immutable image receipts, scoped image ownership,
+process-tree cancellation and inference-proxy address handling. Native task
+Dockerfiles, resource limits, verifier recipes and task network policy remain
+owned by Pier and the locked task sources. oracle.py invokes Pier's native
+OracleAgent in separate disposable audits.

@@ -4,7 +4,7 @@
 
 ## Ownership
 
-- `cli/acp.ts` runs migrations, starts a local Synergy HTTP server, creates a generated SDK client for the requested working directory, and binds ACP stdio transport.
+- `cli/acp.ts` opens the product-injected Runtime Handle, including storage ownership, migrations, recovery and a local Synergy HTTP server, creates a generated SDK client for the requested working directory, and binds ACP stdio transport.
 - `agent.ts` implements protocol initialization, modes/models, session prompting, cancellation, permission bridging, history replay, and event-to-ACP updates.
 - `session.ts` maps ACP session state to durable Synergy session IDs and retains the ACP working directory, MCP descriptors, selected model, and mode.
 - `types.ts` defines the internal ACP configuration and session state.

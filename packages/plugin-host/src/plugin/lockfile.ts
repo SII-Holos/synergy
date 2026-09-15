@@ -1,46 +1,27 @@
-import path from "path"
-import fs from "fs/promises"
-import os from "os"
-import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { PluginLockfile } from "./lockfile-schema"
 import type { PluginLockEntry } from "./lockfile-schema"
 
-const EMPTY_LOCKFILE: PluginLockfile = {
-  version: 2 as const,
-  plugins: {},
-}
-
-function lockfilePath() {
-  return path.join(Global.Path.root, "plugin.lock")
-}
-
-/**
- * Read and parse the plugin lockfile.
- * Returns an empty lockfile if the file doesn't exist.
- */
 export async function read(): Promise<PluginLockfile> {
-  try {
-    const text = await Bun.file(lockfilePath()).text()
-    if (!text.trim()) return { ...EMPTY_LOCKFILE }
-    const parsed = PluginLockfile.parse(JSON.parse(text))
-    return parsed
-  } catch (err: any) {
-    if (err.code === "ENOENT") return { ...EMPTY_LOCKFILE }
-    throw err
-  }
+  return Storage.snapshot(async (tx) => {
+    const [metadata] = await tx.readMany<Record<string, unknown>>([["plugin-lock", "info"]])
+    const plugins: Record<string, PluginLockEntry> = {}
+    for (const key of await tx.list(["plugin-lock", "entries"]))
+      plugins[key.at(-1)!] = await tx.read<PluginLockEntry>(key)
+    const document = { version: 2, ...metadata, plugins }
+    PluginLockfile.loose().parse(document)
+    return document as PluginLockfile
+  })
 }
 
-/**
- * Write the lockfile atomically (write to temp + rename).
- */
 export async function write(lockfile: PluginLockfile): Promise<void> {
-  const targetPath = lockfilePath()
-  // Unique temp name (pid + timestamp + random) so concurrent writers in the same
-  // millisecond cannot collide on one temp path and fail the rename.
-  const tmpPath = path.join(os.tmpdir(), `.synergy-plugin-lock-${process.pid}-${Date.now()}-${crypto.randomUUID()}.tmp`)
-  await Bun.write(tmpPath, JSON.stringify(lockfile, null, 2) + "\n")
-  await fs.mkdir(path.dirname(targetPath), { recursive: true })
-  await fs.rename(tmpPath, targetPath)
+  const { plugins, ...metadata } = lockfile
+  await Storage.transaction(async (tx) => {
+    await tx.write(["plugin-lock", "info"], metadata)
+    const existing = await tx.scan(["plugin-lock", "entries"])
+    for (const id of existing) if (!(id in plugins)) await tx.remove(["plugin-lock", "entries", id])
+    for (const [id, entry] of Object.entries(plugins)) await tx.write(["plugin-lock", "entries", id], entry)
+  })
 }
 
 /**

@@ -1,3 +1,7 @@
+import { SessionStaging } from "../session/staging"
+import { StorageRecovery } from "../storage/recovery"
+import { Storage } from "../storage/storage"
+import { StorageBootstrap } from "../storage/bootstrap"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -54,8 +58,9 @@ export namespace RuntimeHandle {
 
   export async function open(options: {
     experiment?: Experiment.File
+    storage?: Storage.Handle
     mode: "server" | "oneshot"
-    network?: RuntimeNetwork
+    network?: RuntimeNetwork | (() => Promise<RuntimeNetwork>)
     services?: RuntimeServices
     reporter?: MigrationReporter
     migrationOutput?: RunOptions["output"]
@@ -63,6 +68,8 @@ export namespace RuntimeHandle {
   }) {
     const services = options.services ?? {}
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
+    let storage: StorageBootstrap.Prepared | undefined
+    let uninstallStorage: (() => void) | undefined
     let server: RuntimeServer | undefined
     let residentStarted = false
     let closing: Promise<void> | undefined
@@ -134,6 +141,8 @@ export namespace RuntimeHandle {
         ObservabilityResources.stop()
         await cleanup(() => Observability.flush())
         await cleanup(() => ObservabilityStore.close())
+        await cleanup(() => storage?.store.close())
+        uninstallStorage?.()
         await cleanup(() => ownership.release())
         ScopeStartup.configure("server")
         Experiment.configureRuntime()
@@ -146,10 +155,21 @@ export namespace RuntimeHandle {
       MigrationRegistry.lock()
       ConfigExtensions.lock()
       await Global.initialize({ configSchemaPath: options.services?.configSchemaPath })
+      if (options.storage) uninstallStorage = Storage.install(options.storage)
+      else {
+        storage = await StorageBootstrap.prepare({ root: Global.Path.root })
+        uninstallStorage = Storage.install({ store: storage.store, artifactDirectory: Global.Path.data })
+      }
+      await SessionStaging.recover()
       const migration = await ensureMigrations({
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
+      if (storage && storage.manifest.phase !== "active") await StorageRecovery.validate()
+      await storage?.activate()
+      await StorageRecovery.recoverOwners()
+      await StorageRecovery.load()
+      await StorageRecovery.reconcileNotifications()
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested)
@@ -173,7 +193,10 @@ export namespace RuntimeHandle {
         },
       })
       if (services.transport) {
-        const network = options.network ?? { hostname: "127.0.0.1", port: 0 }
+        const network = (typeof options.network === "function" ? await options.network() : options.network) ?? {
+          hostname: "127.0.0.1",
+          port: 0,
+        }
         server = services.transport.listen(network, options.mode)
         configureRuntimeEndpoint({ hostname: server.hostname ?? network.hostname, port: server.port ?? network.port })
       }

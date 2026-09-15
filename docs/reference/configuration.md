@@ -24,6 +24,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
 | `voice` | `125-voice.jsonc` | merge |
+| `storage` | `130-storage.jsonc` | replace-domain |
 
 ## General
 
@@ -205,3 +206,11 @@ File: `125-voice.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `voice` | VoiceConfig |  |
+
+## Storage
+
+File: `130-storage.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `storage` | StorageConfiguration.optional (optional) |  |

@@ -1,3 +1,7 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { StorageMaintenance } from "../../src/storage/maintenance"
 import { Log } from "../../src/util/log"
 import { ContinuationKernel } from "../../src/session/continuation-kernel"
 
@@ -10,6 +14,14 @@ import { ContinuationKernel } from "../../src/session/continuation-kernel"
  * goes to stderr via Log.init({ print: true }).
  */
 
-await Log.init({ print: true })
-const result = await ContinuationKernel.propose("ses_does_not_exist")
-console.log(`PROPOSE_RESULT:${result === undefined ? "undefined" : JSON.stringify(result)}`)
+const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-empty-policy-"))
+delete process.env.SYNERGY_HOME
+process.env.SYNERGY_TEST_HOME = home
+try {
+  await using storage = await StorageMaintenance.open()
+  await Log.init({ print: true })
+  const result = await ContinuationKernel.propose("ses_does_not_exist")
+  console.log(`PROPOSE_RESULT:${result === undefined ? "undefined" : JSON.stringify(result)}`)
+} finally {
+  await fs.rm(home, { recursive: true, force: true })
+}

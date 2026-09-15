@@ -1,0 +1,263 @@
+import { afterEach, expect, mock, spyOn, test } from "bun:test"
+import { z } from "zod"
+import type { Provider } from "../../src/provider/provider"
+import { Identifier } from "../../src/id/id"
+import { ScopeContext } from "../../src/scope/context"
+import { Session } from "../../src/session"
+import { createUserMessage } from "../../src/session/input"
+import { AgentTurn } from "../../src/session/agent-turn"
+import { MessageV2 } from "../../src/session/message-v2"
+import { SessionProcessor } from "../../src/session/processor"
+import { SessionRetry } from "../../src/session/retry"
+import { RolloutCall } from "../../src/session/rollout/call"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RolloutArtifact } from "../../src/session/rollout/artifact"
+import { ToolScheduler } from "../../src/session/tool-scheduler"
+import { tmpdir } from "../support/fixture"
+
+afterEach(async () => {
+  mock.restore()
+  await ToolScheduler.stop()
+  ToolScheduler.configure()
+})
+
+function testModel(): Provider.Model {
+  return {
+    id: "test-model",
+    providerID: "test",
+    api: { id: "test-model", url: "https://example.invalid", npm: "@ai-sdk/openai-compatible" },
+    name: "Test Model",
+    capabilities: {
+      temperature: false,
+      reasoning: false,
+      attachment: false,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 128_000, output: 4_096 },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "2026-01-01",
+    family: "test",
+  }
+}
+
+async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cancel") {
+  await using tmp = await tmpdir({ git: true })
+  return ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const session = await Session.create({})
+      const user = await createUserMessage({
+        sessionID: session.id,
+        model: { providerID: "test", modelID: "test-model" },
+        parts: [{ type: "text", text: "run a tool" }],
+      })
+      const assistant: MessageV2.Assistant = {
+        id: Identifier.ascending("message"),
+        sessionID: session.id,
+        role: "assistant",
+        time: { created: Date.now() },
+        parentID: user.info.id,
+        rootID: user.info.id,
+        modelID: "test-model",
+        providerID: "test",
+        mode: "test",
+        agent: "synergy",
+        path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      }
+      await Session.updateMessage(assistant)
+      const abort = new AbortController()
+      const processor = SessionProcessor.create({
+        assistantMessage: assistant,
+        sessionID: session.id,
+        model: testModel(),
+        abort: abort.signal,
+      })
+      let calls = 0
+      let effects = 0
+      let disposed = 0
+      spyOn(SessionRetry, "delay").mockReturnValue(0)
+      if (mode === "cancel")
+        spyOn(SessionRetry, "sleep").mockImplementation(async () => {
+          abort.abort()
+          throw abort.signal.reason
+        })
+      const owner = { kind: "session" as const, scopeID: ScopeContext.current.scope.id, sessionID: session.id }
+      spyOn(AgentTurn, "stream").mockImplementation(async () => {
+        const attempt = ++calls
+        return RolloutCall.stream(
+          {
+            owner,
+            runID: user.info.id,
+            purpose: "test",
+            request: {},
+            model: { providerID: "test", modelID: "test-model", sdk: "test", pricing: null },
+          },
+          async () => ({
+            fullStream: (async function* () {
+              const failed =
+                ((mode === "stream" || mode === "reused" || mode === "cancel") && attempt === 1) || mode === "exhausted"
+              yield { type: "text-start" as const, id: "text" }
+              yield {
+                type: "text-delta" as const,
+                id: "text",
+                text: failed ? "discard this partial answer" : "valid answer",
+              }
+              yield { type: "reasoning-start" as const, id: "reasoning" }
+              yield {
+                type: "reasoning-delta" as const,
+                id: "reasoning",
+                text: failed ? "discard this reasoning" : "valid reasoning",
+              }
+              if (!failed) {
+                yield { type: "text-end" as const, id: "text" }
+                yield { type: "reasoning-end" as const, id: "reasoning" }
+              }
+              yield {
+                type: "tool-call" as const,
+                toolCallId: mode === "reused" ? "same-call" : `call-${attempt}`,
+                toolName: "probe",
+                input: { attempt },
+              }
+              if (failed) {
+                yield {
+                  type: "error" as const,
+                  error: Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" }),
+                }
+              }
+            })(),
+            usage: Promise.resolve(undefined),
+            async dispose() {
+              disposed++
+            },
+          }),
+        )
+      })
+      if (mode === "dispatch") {
+        const dispatch = ToolScheduler.dispatch
+        let failed = false
+        spyOn(ToolScheduler, "dispatch").mockImplementation(async (input) => {
+          const result = await dispatch(input)
+          if (!failed) {
+            failed = true
+            throw Object.assign(new Error("post-dispatch failure"), { code: "ECONNRESET" })
+          }
+          return result
+        })
+      }
+      await processor.process({
+        user: user.info,
+        sessionID: session.id,
+        model: testModel(),
+        agent: { name: "synergy", mode: "primary", permission: [], options: {}, native: true },
+        system: [],
+        messages: [{ role: "user", content: "run a tool" }],
+        abort: abort.signal,
+        toolDefinitions: [],
+        executionTools: {
+          probe: {
+            inputSchema: z.object({}),
+            async execute(input: unknown, options) {
+              effects++
+              const output = { output: "done", title: "probe", metadata: {} }
+              processor.beginExecution(options.toolCallId).complete(input, output)
+              return output
+            },
+          },
+        },
+        executorKinds: { probe: "control_plane" },
+      })
+      const recordedCalls = await RolloutLedger.calls(owner, user.info.id)
+      const artifacts = await Promise.all(
+        recordedCalls.map(async (call) => {
+          const chunks: Uint8Array[] = []
+          if (call.response) for await (const chunk of RolloutArtifact.read(owner, call.response.id)) chunks.push(chunk)
+          return Buffer.concat(chunks).toString()
+        }),
+      )
+      return {
+        recordedCalls,
+        artifacts,
+        calls,
+        effects,
+        disposed,
+        message: await MessageV2.get({ sessionID: session.id, messageID: assistant.id }),
+      }
+    },
+  })
+}
+
+test("a failed provider stream cannot execute its proposed tool, and recovery executes once", async () => {
+  const result = await run("stream")
+  expect(result.calls).toBe(2)
+  expect(result.effects).toBe(1)
+  expect(result.disposed).toBe(2)
+  expect(
+    result.message.parts
+      .filter((part) => part.type === "tool")
+      .map((part) => part.state.status)
+      .sort(),
+  ).toEqual(["completed"])
+})
+
+test("a failure after tool dispatch never replays the model or side effect", async () => {
+  const result = await run("dispatch")
+  expect(result.calls).toBe(1)
+  expect(result.effects).toBe(1)
+  expect(result.message.info).toMatchObject({ finish: "error" })
+})
+
+test("provider retries stop at the attempt budget and persist a terminal failure", async () => {
+  const result = await run("exhausted")
+  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+  expect(result.effects).toBe(0)
+  expect(result.disposed).toBe(result.calls)
+  expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
+})
+
+test("retry removes incomplete content from persisted history and the next model context", async () => {
+  const result = await run("stream")
+  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual(["valid answer"])
+  expect(result.message.parts.filter((part) => part.type === "reasoning").map((part) => part.text)).toEqual([
+    "valid reasoning",
+  ])
+  expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
+})
+
+test("provider call IDs reused on retry execute the recovered input once", async () => {
+  const result = await run("reused")
+  expect(result.calls).toBe(2)
+  expect(result.effects).toBe(1)
+  const tools = result.message.parts.filter((part) => part.type === "tool")
+  expect(tools).toHaveLength(1)
+  expect(tools[0]?.state).toMatchObject({ status: "completed", input: { attempt: 2 } })
+})
+
+test("withdrawn retry output remains in the authoritative call records", async () => {
+  const result = await run("stream")
+  expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
+  expect(result.artifacts[0]).toContain("discard this partial answer")
+  expect(result.artifacts[1]).toContain("valid answer")
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.accounting).toMatchObject({
+    kind: "rollout",
+    callIDs: result.recordedCalls.map((call) => call.id),
+  })
+})
+
+test("cancelling before retry keeps the final partial output and starts no new attempt", async () => {
+  const result = await run("cancel")
+  expect(result.calls).toBe(1)
+  expect(result.effects).toBe(0)
+  expect(result.message.info).toMatchObject({ finish: "error", error: { name: "MessageAbortedError" } })
+  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+    "discard this partial answer",
+  ])
+})

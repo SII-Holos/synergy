@@ -11,7 +11,6 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { externalIdentityHash } from "@ericsanchezok/synergy-harness/util/identity"
-import { Global } from "@ericsanchezok/synergy-harness/global"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -89,23 +88,18 @@ async function seedDiagnosticRecords(input: {
   count: number
   firstTimestamp: number
 }): Promise<string> {
-  const root = path.join(Global.Path.data, ...StoragePath.channelDiagnosticsRecordsRoot(input.accountHash))
-  await fs.mkdir(root, { recursive: true })
   const firstID = `${input.firstTimestamp.toString().padStart(13, "0")}-seed-00000`
-  const concurrency = 128
-  for (let offset = 0; offset < input.count; offset += concurrency) {
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, input.count - offset) }, (_, index) => {
-        const position = offset + index
-        const timestamp = input.firstTimestamp + position
-        const id = `${timestamp.toString().padStart(13, "0")}-seed-${position.toString().padStart(5, "0")}`
-        return Bun.write(
-          path.join(root, `${id}.json`),
-          JSON.stringify({ timestamp, level: "info", message: `seed ${position}` }),
-        )
-      }),
-    )
-  }
+  await Storage.transaction(async () => {
+    for (let position = 0; position < input.count; position++) {
+      const timestamp = input.firstTimestamp + position
+      const id = `${timestamp.toString().padStart(13, "0")}-seed-${position.toString().padStart(5, "0")}`
+      await Storage.write(StoragePath.channelDiagnosticsRecord(input.accountHash, id), {
+        timestamp,
+        level: "info",
+        message: `seed ${position}`,
+      })
+    }
+  })
   return firstID
 }
 

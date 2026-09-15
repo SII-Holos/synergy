@@ -58,7 +58,7 @@ describe("SessionInbox", () => {
 
         expect(first?.info.id).toBe(queued.messageID)
         expect(retry?.info.id).toBe(queued.messageID)
-        expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([queued.id])
+        expect(await SessionInbox.list(session.id)).toEqual([])
         expect((await Session.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
           queued.messageID,
         ])

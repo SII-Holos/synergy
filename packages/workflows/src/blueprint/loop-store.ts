@@ -57,66 +57,53 @@ export namespace BlueprintLoopStore {
     executionTools?: Info["executionTools"]
     auditTools?: Info["auditTools"]
   }): Promise<Info> {
-    const scopeID = ScopeContext.current.scope.id
-    const sid = Identifier.asScopeID(scopeID)
-    const activeLoop = (await list(scopeID)).find(
-      (loop) => loop.noteID === input.noteID && isActiveLoopStatus(loop.status),
-    )
-    if (activeLoop) {
-      throw new LoopError.AlreadyActive({
-        noteID: input.noteID,
-        loopID: activeLoop.id,
-        sessionID: activeLoop.sessionID,
-        status: activeLoop.status,
-      })
-    }
-
-    const now = Date.now()
-    const id = Identifier.ascending("blueprint_loop")
-    const loop: Info = {
-      id,
-      noteID: input.noteID,
-      noteVersion: input.noteVersion,
-      title: input.title,
-      description: input.description,
-      sessionID: input.sessionID,
-      executionAgent: input.executionAgent,
-      auditAgent: input.auditAgent?.trim() || "supervisor",
-      scopeID,
-      status: "armed",
-      runMode: input.runMode,
-      parentSessionID: input.parentSessionID,
-      firstPrompt: input.firstPrompt,
-      source: input.source ?? "user",
-      sourceDigest: input.sourceDigest,
-      budget: input.budget,
-      pluginOwner: input.pluginOwner,
-      model: input.model,
-      executionTools: input.executionTools,
-      auditTools: input.auditTools,
-      time: { created: now, updated: now },
-    }
-    await Storage.write(StoragePath.blueprintLoop(sid, id), loop)
-
-    // Link to note: increment runCount, set lastRunAt, activeLoopID
-    try {
-      const note = await NoteStore.get(scopeID, loop.noteID)
-      if (note.kind === "blueprint") {
-        const bp = note.blueprint ?? {}
-        await NoteStore.update(scopeID, loop.noteID, {
-          blueprint: {
-            runCount: (bp.runCount ?? 0) + 1,
-            lastRunAt: now,
-            activeLoopID: id,
-          },
+    return Storage.transaction(async () => {
+      const scopeID = ScopeContext.current.scope.id
+      const sid = Identifier.asScopeID(scopeID)
+      const activeLoop = (await list(scopeID)).find(
+        (loop) => loop.noteID === input.noteID && isActiveLoopStatus(loop.status),
+      )
+      if (activeLoop) {
+        throw new LoopError.AlreadyActive({
+          noteID: input.noteID,
+          loopID: activeLoop.id,
+          sessionID: activeLoop.sessionID,
+          status: activeLoop.status,
         })
       }
-    } catch {
-      // Note may not exist or not be a blueprint — best effort
-    }
 
-    await Bus.publish(LoopEvent.Created, { loop })
-    return loop
+      const now = Date.now()
+      const id = Identifier.ascending("blueprint_loop")
+      const loop: Info = {
+        id,
+        noteID: input.noteID,
+        noteVersion: input.noteVersion,
+        title: input.title,
+        description: input.description,
+        sessionID: input.sessionID,
+        executionAgent: input.executionAgent,
+        auditAgent: input.auditAgent?.trim() || "supervisor",
+        scopeID,
+        status: "armed",
+        runMode: input.runMode,
+        parentSessionID: input.parentSessionID,
+        firstPrompt: input.firstPrompt,
+        source: input.source ?? "user",
+        sourceDigest: input.sourceDigest,
+        budget: input.budget,
+        pluginOwner: input.pluginOwner,
+        model: input.model,
+        executionTools: input.executionTools,
+        auditTools: input.auditTools,
+        time: { created: now, updated: now },
+      }
+      await Storage.write(StoragePath.blueprintLoop(sid, id), loop)
+
+      await NoteStore.recordBlueprintRun({ scopeID, noteID: loop.noteID, loopID: id, started: now })
+
+      await Bus.publish(LoopEvent.Created, { loop })
+      return loop
+    })
   }
 
   export async function get(scopeID: string, id: string): Promise<Info> {
@@ -137,17 +124,19 @@ export namespace BlueprintLoopStore {
     id: string,
     stopRequest: NonNullable<Info["stopRequest"]>,
   ): Promise<Info> {
-    const sid = Identifier.asScopeID(scopeID)
-    const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
-      if (draft.status !== "running") {
-        throw new Error(`Cannot request review for BlueprintLoop ${draft.id} while its status is "${draft.status}"`)
-      }
-      if (draft.stopRequest) return
-      draft.stopRequest = stopRequest
-      draft.time.updated = Date.now()
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
+        if (draft.status !== "running") {
+          throw new Error(`Cannot request review for BlueprintLoop ${draft.id} while its status is "${draft.status}"`)
+        }
+        if (draft.stopRequest) return
+        draft.stopRequest = stopRequest
+        draft.time.updated = Date.now()
+      })
+      await Bus.publish(LoopEvent.Updated, { loop: updated })
+      return updated
     })
-    await Bus.publish(LoopEvent.Updated, { loop: updated })
-    return updated
   }
 
   export async function recordAuditToolRecovery(
@@ -160,22 +149,24 @@ export namespace BlueprintLoopStore {
       attempts: number
     },
   ): Promise<Info> {
-    const sid = Identifier.asScopeID(scopeID)
-    const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
-      if (
-        draft.status !== "auditing" ||
-        !draft.stopRequest ||
-        draft.auditSessionID !== input.auditSessionID ||
-        draft.auditTaskID !== input.expectedAuditTaskID
-      ) {
-        throw new Error(`BlueprintLoop ${draft.id} review binding changed before recovery`)
-      }
-      draft.auditTaskID = input.auditTaskID
-      draft.stopRequest.reviewToolRecoveryAttempts = input.attempts
-      draft.time.updated = Date.now()
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
+        if (
+          draft.status !== "auditing" ||
+          !draft.stopRequest ||
+          draft.auditSessionID !== input.auditSessionID ||
+          draft.auditTaskID !== input.expectedAuditTaskID
+        ) {
+          throw new Error(`BlueprintLoop ${draft.id} review binding changed before recovery`)
+        }
+        draft.auditTaskID = input.auditTaskID
+        draft.stopRequest.reviewToolRecoveryAttempts = input.attempts
+        draft.time.updated = Date.now()
+      })
+      await Bus.publish(LoopEvent.Updated, { loop: updated })
+      return updated
     })
-    await Bus.publish(LoopEvent.Updated, { loop: updated })
-    return updated
   }
 
   export async function updateStatus(
@@ -192,97 +183,78 @@ export namespace BlueprintLoopStore {
       stopRequest?: Info["stopRequest"] | null
     },
   ): Promise<Info> {
-    const sid = Identifier.asScopeID(scopeID)
-    const current = await Storage.read<Info>(StoragePath.blueprintLoop(sid, id))
+    const updated = await Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const current = await Storage.read<Info>(StoragePath.blueprintLoop(sid, id))
 
-    if (!isValidTransition(current.status, patch.status)) {
-      throw new LoopError.InvalidTransition({
-        from: current.status,
-        to: patch.status,
+      if (!isValidTransition(current.status, patch.status)) {
+        throw new LoopError.InvalidTransition({
+          from: current.status,
+          to: patch.status,
+        })
+      }
+
+      const isTerminal = patch.status === "completed" || patch.status === "failed" || patch.status === "cancelled"
+      if (isTerminal) Storage.afterCommit(() => cancelDeadline(scopeID, id))
+
+      const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
+        draft.status = patch.status
+        draft.time.updated = Date.now()
+        if (isTerminal) {
+          draft.time.completed = Date.now()
+          draft.auditTaskID = undefined
+          draft.stopRequest = undefined
+        }
+        if (patch.status === "running" && !draft.time.started) {
+          draft.time.started = Date.now()
+        }
+        if (patch.status === "running" && current.status === "auditing" && patch.auditSessionID === undefined) {
+          draft.auditSessionID = undefined
+          draft.auditTaskID = undefined
+          draft.stopRequest = undefined
+        }
+        if (patch.audit) draft.audit = patch.audit
+        if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
+        if (patch.auditTaskID !== undefined) draft.auditTaskID = patch.auditTaskID ?? undefined
+        if (patch.userPrompt !== undefined) draft.userPrompt = patch.userPrompt ?? undefined
+        if (patch.summary !== undefined) draft.summary = patch.summary
+        if (patch.stopRequest !== undefined) draft.stopRequest = patch.stopRequest ?? undefined
+        if (patch.error !== undefined) draft.error = patch.error
       })
-    }
 
-    const isTerminal = patch.status === "completed" || patch.status === "failed" || patch.status === "cancelled"
-    if (isTerminal) {
-      cancelDeadline(scopeID, id)
-    }
-
-    const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
-      draft.status = patch.status
-      draft.time.updated = Date.now()
+      async function unbind(sessionID: string | undefined, archive = false) {
+        if (!sessionID) return
+        try {
+          await Session.update(sessionID, (draft) => {
+            draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+            if (archive) draft.time.archived = Date.now()
+          })
+        } catch (error) {
+          if (!(error instanceof Storage.NotFoundError)) throw error
+        }
+      }
+      if (isTerminal || (patch.status === "running" && current.status === "auditing"))
+        await unbind(current.auditSessionID)
       if (isTerminal) {
-        draft.time.completed = Date.now()
-        draft.auditTaskID = undefined
-        draft.stopRequest = undefined
+        await NoteStore.recordBlueprintRun({
+          scopeID,
+          noteID: updated.noteID,
+          loopID: id,
+          ended: true,
+          archive: updated.source === "plugin",
+        })
+        await unbind(updated.sessionID, updated.source === "plugin")
       }
-      if (patch.status === "running" && !draft.time.started) {
-        draft.time.started = Date.now()
-      }
-      if (patch.status === "running" && current.status === "auditing" && patch.auditSessionID === undefined) {
-        draft.auditSessionID = undefined
-        draft.auditTaskID = undefined
-        draft.stopRequest = undefined
-      }
-      if (patch.audit) draft.audit = patch.audit
-      if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
-      if (patch.auditTaskID !== undefined) draft.auditTaskID = patch.auditTaskID ?? undefined
-      if (patch.userPrompt !== undefined) draft.userPrompt = patch.userPrompt ?? undefined
-      if (patch.summary !== undefined) draft.summary = patch.summary
-      if (patch.stopRequest !== undefined) draft.stopRequest = patch.stopRequest ?? undefined
-      if (patch.error !== undefined) draft.error = patch.error
+
+      await Bus.publish(LoopEvent.Updated, { loop: updated })
+      return updated
     })
-
-    if (isTerminal || (patch.status === "running" && current.status === "auditing")) {
-      try {
-        if (current.auditSessionID) {
-          await Session.update(current.auditSessionID, (draft) => {
-            draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
-          })
-        }
-      } catch {
-        // best effort
-      }
-    }
-
-    if (isTerminal) {
-      // Clear activeLoopID from note
-      try {
-        const note = await NoteStore.get(scopeID, updated.noteID)
-        if (note.kind === "blueprint" && note.blueprint?.activeLoopID === id) {
-          await NoteStore.update(scopeID, updated.noteID, {
-            blueprint: { activeLoopID: null },
-          })
-        }
-      } catch {
-        // best effort
-      }
-
-      // Unbind execution session
-      try {
-        if (updated.sessionID) {
-          await Session.update(updated.sessionID, (draft) => {
-            draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
-          })
-        }
-      } catch {
-        // best effort
-      }
-
-      // Archive plugin-owned generated resources (Note + execution Session)
-      // User/lattice-owned loops archive via their own lifecycle paths.
-      if (updated.source === "plugin") {
-        void NoteStore.update(scopeID, updated.noteID, { archived: true }).catch(() => {})
-        void Session.update(updated.sessionID, (draft) => {
-          draft.time.archived = Date.now()
-        }).catch(() => {})
-      }
-    }
-
-    if (isTerminal && updated.source === "plugin" && updated.pluginOwner) {
+    if (
+      ["completed", "failed", "cancelled"].includes(updated.status) &&
+      updated.source === "plugin" &&
+      updated.pluginOwner
+    )
       await deliverTerminalHook(scopeID, id)
-    }
-
-    await Bus.publish(LoopEvent.Updated, { loop: updated })
     return updated
   }
 

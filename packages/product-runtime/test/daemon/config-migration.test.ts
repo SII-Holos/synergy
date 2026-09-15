@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { DaemonSpec } from "@ericsanchezok/synergy-cli/daemon/spec"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability"
@@ -31,6 +32,7 @@ describe("daemon.spec", () => {
     await fs.mkdir(path.join(home, ".synergy", "config"), { recursive: true })
     Config.global.reset()
     resetMigrations()
+    await Storage.removeTree(["meta", "migration"])
   })
 
   afterEach(async () => {

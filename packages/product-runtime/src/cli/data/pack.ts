@@ -1,5 +1,5 @@
 import { getLibraryInfo, resolveLibraryDB } from "@ericsanchezok/synergy-library/cli/data"
-import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
+import { DataTransfer } from "./transfer"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
@@ -99,6 +99,7 @@ export const DataPackCommand = cmd({
       spinner.stop("Packing failed", 1)
       prompts.log.error(`Failed to pack: ${e instanceof Error ? e.message : String(e)}`)
       prompts.outro("Failed")
+      process.exitCode = 1
       return
     }
 
@@ -107,7 +108,7 @@ export const DataPackCommand = cmd({
 })
 
 export async function createDataArchive(root: string, output: string, directories: string[], manifest: unknown) {
-  await using homes = await SnapshotArchive.lockHomes([root])
+  await using homes = await DataTransfer.lockHomes([root])
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-pack-"))
   try {
     await Bun.write(path.join(stage, "manifest.json"), JSON.stringify(manifest, null, 2))
@@ -123,8 +124,8 @@ export async function createDataArchive(root: string, output: string, directorie
       )
       if (!exists) continue
       const destination = path.join(stage, directory)
-      if (directory === "data") await SnapshotArchive.merge(source, destination)
-      await copyDirSkipExisting(source, destination, undefined, undefined, undefined, archiveExclusions(directory))
+      if (directory === "data") await DataTransfer.pack(root, destination)
+      else await copyDirSkipExisting(source, destination, undefined, undefined, undefined, archiveExclusions(directory))
       included.push(directory)
     }
     const zip = Bun.which("zip")
@@ -135,7 +136,7 @@ export async function createDataArchive(root: string, output: string, directorie
       `.synergy-pack-${crypto.randomUUID()}${zip ? ".zip" : ".tar.gz"}`,
     )
     try {
-      const command = zip ? [zip, "-q", "-r", temporary, ...included] : ["tar", "-czf", temporary, ...included]
+      const command = zip ? [zip, "-q", "-r", "-y", temporary, ...included] : ["tar", "-czf", temporary, ...included]
       const child = Bun.spawn(command, { cwd: stage, stdout: "ignore", stderr: "pipe" })
       const errors = new Response(child.stderr).text()
       if ((await child.exited) !== 0) throw new Error(`Archive creation failed: ${await errors}`)

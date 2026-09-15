@@ -24,24 +24,29 @@ const log = Log.create({ service: "server-runtime" })
 const CHANNEL_CONNECT_TIMEOUT = 15_000
 const STATUS_POLL_INTERVAL = 320
 
+type Network = import("@ericsanchezok/synergy-harness/lifecycle").RuntimeNetwork
+
 export interface RuntimeOptions {
+  migrationReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["reporter"]
+  migrationOutput?: Parameters<typeof ProductRuntimeHandle.open>[0]["migrationOutput"]
   recoveryReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["recoveryReporter"]
   interactive: boolean
   printBanner: boolean
   printChannelStatus: boolean
-  network: {
-    hostname: string
-    port: number
-    mdns?: boolean
-    cors?: string[]
-  }
+  network: Network | (() => Promise<Network>)
 }
 export async function run(options: RuntimeOptions) {
+  let network: Network = { hostname: "127.0.0.1", port: 0 }
   const reporter = options.printBanner ? StartupReporter.create() : undefined
   await using handle = await ProductRuntimeHandle.open({
     mode: "server",
-    network: options.network,
-    reporter: reporter ? { summary: (summary) => reporter.migration(summary) } : undefined,
+    network: async () => {
+      network = typeof options.network === "function" ? await options.network() : options.network
+      return network
+    },
+    reporter:
+      options.migrationReporter ?? (reporter ? { summary: (summary) => reporter.migration(summary) } : undefined),
+    migrationOutput: options.migrationOutput,
     recoveryReporter: options.recoveryReporter,
   })
   const server = handle.server
@@ -54,7 +59,7 @@ export async function run(options: RuntimeOptions) {
       cwd: process.cwd(),
       launchCwd: startupScopeLabel(),
       mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
-      network: options.network,
+      network,
     },
   })
 
@@ -105,7 +110,7 @@ export async function run(options: RuntimeOptions) {
       const location = issue.quarantinedPath ?? issue.path
       reporter?.warning(`Configuration issue (${issue.code}): ${issue.error}${location ? ` — ${location}` : ""}`)
     }
-    renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
+    renderBanner({ server, network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
 
   if (process.env.SYNERGY_DAEMON === "1") {
@@ -117,7 +122,7 @@ export async function run(options: RuntimeOptions) {
 
 function renderBanner(input: {
   server: { hostname?: string; port?: number }
-  network: RuntimeOptions["network"]
+  network: Network
   reporter: StartupReporter.Reporter
   statuses: StartupReporter.StatusRow[]
 }) {

@@ -1,3 +1,4 @@
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import { Database } from "bun:sqlite"
 import fsSync from "fs"
 import { ObservabilityConfig } from "./config"
@@ -82,6 +83,7 @@ export namespace ObservabilityStore {
     if (!inlineMode()) {
       if (!readonlyDb) {
         try {
+          initializeSqliteEngine()
           const conn = new Database(pathName(), { readonly: true })
           conn.exec("PRAGMA busy_timeout=5000")
           readonlyDb = conn
@@ -774,6 +776,7 @@ export namespace ObservabilityStore {
   function createConnection() {
     fsSync.mkdirSync(ObservabilityPaths.dir(), { recursive: true })
     const fresh = !fsSync.existsSync(ObservabilityPaths.pathName())
+    initializeSqliteEngine()
     const conn = new Database(ObservabilityPaths.pathName(), { create: true })
     ObservabilityDbSchema.configureWriteConnection(conn, fresh)
     return conn

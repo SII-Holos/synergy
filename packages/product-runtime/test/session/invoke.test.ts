@@ -2587,7 +2587,7 @@ for (const phase of ["materializing", "persisted-terminal", "startup-without-tas
               parts: [{ type: "text", text: "Child task completed" }],
             })
             if (phase !== "materializing")
-              for (const item of await SessionInbox.drainSteer(session.id))
+              for (const item of await SessionInbox.peekSteer(session.id))
                 await SessionInbox.materializeItem(item, rootID, { guiding: true })
             const queued = phase.startsWith("startup")
               ? undefined

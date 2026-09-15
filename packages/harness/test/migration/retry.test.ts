@@ -1,23 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { unlinkSync } from "node:fs"
-import path from "node:path"
+import { Storage } from "../../src/storage/storage"
 import { ensureMigrations, resetMigrations } from "../../src/migration"
 import { MigrationRegistry } from "../../src/migration/registry"
 
 const TEST_DOMAIN = "test-migration-retry"
-const trackingPath = path.join(
-  process.env["SYNERGY_TEST_HOME"]!,
-  ".synergy",
-  "data",
-  "meta",
-  "migration",
-  `log-${TEST_DOMAIN}.json`,
-)
+const trackingPath = ["meta", "migration", `log-${TEST_DOMAIN}`]
 
 describe("ensureMigrations failure recovery", () => {
-  const reset = () => {
+  const reset = async () => {
     try {
-      unlinkSync(trackingPath)
+      await Storage.remove(trackingPath)
     } catch {}
     MigrationRegistry.unregister(TEST_DOMAIN)
     resetMigrations()

@@ -58,3 +58,7 @@ Current prompt assembly and compaction contracts live in [LLM loop and compactio
 ### UI API 5 frontend performance
 
 [UI API 5 performance acceptance](2026-09-07-plugin-ui5-performance.md) records the same-machine production-build comparison, bounded rendering and plugin request counts for the public frontend extraction.
+
+### 网络重试与恢复边界
+
+[网络重试覆盖与恢复边界审查](2026-09-15-network-retry-audit.md) 记录 DNS/连接错误、SDK 与 worker 信息传递、HTTP/流错误、网页读取和工具重放的审查证据，并列出跨会话冷却与流式文本投影的后续范围。

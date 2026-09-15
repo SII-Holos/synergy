@@ -1,3 +1,4 @@
+import { initializeSqliteEngine } from "@ericsanchezok/synergy-harness/storage/sqlite-engine"
 import { Database, type SQLQueryBindings } from "bun:sqlite"
 import * as sqliteVec from "sqlite-vec"
 import { Global } from "@ericsanchezok/synergy-harness/global"
@@ -83,34 +84,6 @@ const MEMORY_RECALL_MODES = ["always", "contextual", "search_only"] as const
 type MemoryCategory = (typeof MEMORY_CATEGORIES)[number]
 type MemoryRecallMode = (typeof MEMORY_RECALL_MODES)[number]
 
-const HOMEBREW_SQLITE_PATHS = [
-  "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib",
-  "/usr/local/opt/sqlite/lib/libsqlite3.dylib",
-]
-
-function setupCustomSQLite() {
-  if (process.platform !== "darwin") return
-  for (const p of HOMEBREW_SQLITE_PATHS) {
-    if (existsSync(p)) {
-      try {
-        Database.setCustomSQLite(p)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (message.includes("SQLite already loaded") || message.includes("exactly once")) {
-          log.debug("custom sqlite already initialized", { path: p })
-          return
-        }
-        throw err
-      }
-      log.info("using custom sqlite", { path: p })
-      return
-    }
-  }
-  log.warn("no homebrew sqlite found, extension loading may fail on macOS")
-}
-
-setupCustomSQLite()
-
 function loadSqliteVec(conn: Database) {
   const suffix = process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so"
 
@@ -134,6 +107,7 @@ function open(): Database {
   if (db) return db
   const dbPath = Global.Path.libraryDB
   log.info("open", { path: dbPath })
+  initializeSqliteEngine()
   const conn = new Database(dbPath, { create: true })
   try {
     loadSqliteVec(conn)

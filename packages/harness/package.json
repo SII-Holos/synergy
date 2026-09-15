@@ -11,6 +11,9 @@
     "./session/snapshot-git": "./src/session/snapshot-git.ts",
     "./scope": "./src/scope/index.ts",
     "./scope/context": "./src/scope/context.ts",
+    "./storage/sqlite-worker": "./src/storage/sqlite-worker.ts",
+    "./storage/bootstrap": "./src/storage/bootstrap.ts",
+    "./storage/transactional-store": "./src/storage/transactional-store.ts",
     "./storage/path": "./src/storage/path.ts",
     "./config/config": "./src/config/config.ts",
     "./provider/models-schemas": "./src/provider/models-schemas.ts",
@@ -309,7 +312,13 @@
     "./test/internal/session/rollout/call": "./src/session/rollout/call.ts",
     "./test/internal/config/migration": "./src/config/migration.ts",
     "./config/schema": "./src/config/schema.ts",
-    "./test/support/internals": "./test/support/internals.ts"
+    "./test/support/internals": "./test/support/internals.ts",
+    "./storage/maintenance": "./src/storage/maintenance.ts",
+    "./storage/sqlite-engine": "./src/storage/sqlite-engine.ts",
+    "./storage/config": "./src/storage/config.ts",
+    "./storage/portable": "./src/storage/portable.ts",
+    "./storage/legacy-import": "./src/storage/legacy-import.ts",
+    "./storage/recovery": "./src/storage/recovery.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

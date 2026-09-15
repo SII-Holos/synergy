@@ -209,8 +209,13 @@ export namespace RolloutTransport {
     })
     const requestBody = original.body ? body(original.body, "request") : undefined
     if (!requestBody) await emit({ type: "body-end", attemptID, channel: "request", complete: true })
+    const buffered =
+      typeof init?.body === "string" || init?.body instanceof ArrayBuffer || ArrayBuffer.isView(init?.body)
+    // Preserve a materialized SDK request's known length through HTTP proxies.
+    const wireBody =
+      requestBody && buffered ? new Uint8Array(await new Response(requestBody).arrayBuffer()) : requestBody
     const request = new Request(original, {
-      ...(requestBody ? { body: requestBody, duplex: "half" } : {}),
+      ...(wireBody ? { body: wireBody, ...(buffered ? {} : { duplex: "half" }) } : {}),
       signal: AbortSignal.any([original.signal, controller.signal]),
     })
     let response: Response | undefined

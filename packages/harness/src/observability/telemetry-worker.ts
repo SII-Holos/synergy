@@ -1,3 +1,4 @@
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import { Database } from "bun:sqlite"
 import fs from "fs"
 import path from "path"
@@ -130,6 +131,7 @@ function handle(message: TelemetryProtocol.HostToWorker): void {
       if (db) return
       fs.mkdirSync(path.dirname(message.dbPath), { recursive: true })
       const fresh = !fs.existsSync(message.dbPath)
+      initializeSqliteEngine()
       const conn = new Database(message.dbPath, { create: true })
       ObservabilityDbSchema.configureWriteConnection(conn, fresh)
       const autoVacuum = conn.query("PRAGMA auto_vacuum").get() as { auto_vacuum?: number } | undefined

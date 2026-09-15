@@ -1,5 +1,7 @@
 # Runtime and Scope
 
+The Runtime owns an explicit transactional Agent Storage Handle independently of Scope directories. It completes database upgrade and recovery before admission, then drains and closes owned storage during shutdown. See [Agent storage](agent-storage.md) for authority, ownership, engine and file-commit boundaries.
+
 ## Runtime Model
 
 Synergy has one execution runtime and one writing owner per home in a process. Harness can run without an HTTP server; a server composition exposes that runtime to multiple clients and project contexts. The runtime is not bound to the launch directory: scoped operations select a `scopeID` or directory, and each session persists its own Scope and workspace binding.

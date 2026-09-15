@@ -113,10 +113,12 @@ export namespace Dag {
   }
 
   export async function update(input: { sessionID: string; nodes: Node[] }) {
-    const ready = computeReady(input.nodes)
-    const scopeID = await resolveScopeID(input.sessionID)
-    await Storage.write(StoragePath.sessionDag(scopeID, asSessionID(input.sessionID)), input.nodes)
-    Bus.publish(Event.Updated, { sessionID: input.sessionID, nodes: input.nodes, ready })
+    return Storage.transaction(async () => {
+      const ready = computeReady(input.nodes)
+      const scopeID = await resolveScopeID(input.sessionID)
+      await Storage.write(StoragePath.sessionDag(scopeID, asSessionID(input.sessionID)), input.nodes)
+      Bus.publish(Event.Updated, { sessionID: input.sessionID, nodes: input.nodes, ready })
+    })
   }
 
   export async function get(sessionID: string) {

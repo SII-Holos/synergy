@@ -1,4 +1,4 @@
-import fs from "node:fs/promises"
+import { z } from "zod"
 import path from "node:path"
 import webpush from "web-push"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -18,11 +18,6 @@ export namespace PushStore {
     return path.join(Global.Path.data, ...key) + ".json"
   }
 
-  async function writeCredential<T>(key: string[], content: T): Promise<void> {
-    await Storage.write(key, content)
-    await fs.chmod(credentialFile(key), 0o600).catch(() => undefined)
-  }
-
   export async function list(): Promise<PushTypes.Subscription[]> {
     const ids = await Storage.scan(StoragePath.pushSubscriptionsRoot())
     const records = await Storage.readMany<PushTypes.Subscription>(ids.map((id) => StoragePath.pushSubscription(id)))
@@ -34,30 +29,35 @@ export namespace PushStore {
    * refreshes its keys/categories instead of duplicating fan-out targets.
    */
   export async function upsert(input: PushTypes.SubscribeInput): Promise<PushTypes.Subscription> {
-    const existing = await findByEndpoint(input.endpoint)
-    const record: PushTypes.Subscription = {
-      id: existing?.id ?? `push_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`,
-      endpoint: input.endpoint,
-      keys: input.keys,
-      ...(input.deviceLabel !== undefined ? { deviceLabel: input.deviceLabel } : {}),
-      created: existing?.created ?? Date.now(),
-      categories: input.categories ?? existing?.categories ?? PushTypes.DEFAULT_CATEGORIES,
-    }
-    await writeCredential(StoragePath.pushSubscription(record.id), record)
-    return record
+    return Storage.transaction(async () => {
+      const existing = await findByEndpoint(input.endpoint)
+      const record: PushTypes.Subscription = {
+        id: existing?.id ?? `push_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`,
+        endpoint: input.endpoint,
+        keys: input.keys,
+        ...(input.deviceLabel !== undefined ? { deviceLabel: input.deviceLabel } : {}),
+        created: existing?.created ?? Date.now(),
+        categories: input.categories ?? existing?.categories ?? PushTypes.DEFAULT_CATEGORIES,
+      }
+      await Storage.write(StoragePath.pushSubscription(record.id), record)
+      return record
+    })
   }
 
   export async function removeByEndpoint(endpoint: string): Promise<void> {
-    const existing = await findByEndpoint(endpoint)
-    if (!existing) return
-    await Storage.remove(StoragePath.pushSubscription(existing.id))
+    await Storage.transaction(async () => {
+      const existing = await findByEndpoint(endpoint)
+      if (existing) await Storage.remove(StoragePath.pushSubscription(existing.id))
+    })
   }
 
   export async function removeById(id: string): Promise<boolean> {
-    const existing = await Storage.read<PushTypes.Subscription>(StoragePath.pushSubscription(id)).catch(() => undefined)
-    if (!existing) return false
-    await Storage.remove(StoragePath.pushSubscription(id))
-    return true
+    return Storage.transaction(async () => {
+      const [existing] = await Storage.readMany<PushTypes.Subscription>([StoragePath.pushSubscription(id)])
+      if (!existing) return false
+      await Storage.remove(StoragePath.pushSubscription(id))
+      return true
+    })
   }
 
   export async function findByEndpoint(endpoint: string): Promise<PushTypes.Subscription | undefined> {
@@ -66,9 +66,10 @@ export namespace PushStore {
   }
 
   export async function updateCategories(id: string, categories: PushTypes.Categories): Promise<void> {
-    const existing = await Storage.read<PushTypes.Subscription>(StoragePath.pushSubscription(id)).catch(() => undefined)
-    if (!existing) return
-    await writeCredential(StoragePath.pushSubscription(id), { ...existing, categories })
+    await Storage.transaction(async () => {
+      const [existing] = await Storage.readMany<PushTypes.Subscription>([StoragePath.pushSubscription(id)])
+      if (existing) await Storage.write(StoragePath.pushSubscription(id), { ...existing, categories })
+    })
   }
 
   // Memoized first-use generation keyed by the data home: two concurrent
@@ -88,12 +89,17 @@ export namespace PushStore {
     if (vapidInit && vapidInitHome === home) return vapidInit
     vapidInitHome = home
     vapidInit = (async () => {
-      const existing = await Storage.read<{ publicKey: string; privateKey: string }>(StoragePath.pushVapid()).catch(
-        () => undefined,
-      )
-      if (existing?.publicKey && existing?.privateKey) return existing
+      const filename = credentialFile(StoragePath.pushVapid())
+      const existing = await Bun.file(filename)
+        .json()
+        .catch((error) => {
+          if (error?.code === "ENOENT") return
+          throw error
+        })
+      if (existing !== undefined)
+        return z.object({ publicKey: z.string().min(1), privateKey: z.string().min(1) }).parse(existing)
       const generated = webpush.generateVAPIDKeys()
-      await writeCredential(StoragePath.pushVapid(), generated)
+      await Storage.writeJsonAtomic(filename, JSON.stringify(generated), { private: true, durable: true })
       log.info("generated VAPID key pair")
       return generated
     })().catch((error) => {

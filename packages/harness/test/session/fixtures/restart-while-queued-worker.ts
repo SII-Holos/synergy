@@ -1,3 +1,5 @@
+import { StorageMaintenance } from "../../../src/storage/maintenance"
+await using storageHandle = await StorageMaintenance.open({ migrate: false, recover: true })
 import fs from "fs/promises"
 import path from "path"
 import { Global } from "../../../src/global"
@@ -115,6 +117,7 @@ if (phase === "enqueue") {
   })
   // Exits without draining the inbox: the queued task must survive in the
   // durable store for a fresh process to recover.
+  await storageHandle.close()
   process.exit(0)
 }
 
@@ -164,6 +167,7 @@ if (phase === "recover") {
       )
     },
   })
+  await storageHandle.close()
   process.exit(0)
 }
 

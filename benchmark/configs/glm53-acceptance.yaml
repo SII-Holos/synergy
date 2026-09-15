@@ -1,0 +1,53 @@
+version: 2
+suite: ../suites/local-24.json
+output: ../../.artifacts/benchmark/acceptance
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 20260914
+repeat: 1
+concurrency: auto
+task_repeats:
+  terminal-bench-2.1/openssl-selfsigned-cert: 3
+  terminal-bench-2.1/polyglot-c-py: 3
+selection:
+  tasks:
+    - terminal-bench-2.1/build-cython-ext
+    - terminal-bench-2.1/large-scale-text-editing
+    - terminal-bench-2.1/openssl-selfsigned-cert
+    - terminal-bench-2.1/polyglot-c-py
+    - deepswe-1.1/dasel-html-document-format
+    - deepswe-1.1/fd-deterministic-multi-key-sorting
+harnesses:
+  synergy-core:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: core
+  codex:
+    kind: codex
+    package_version: 0.154.0
+  opencode:
+    kind: opencode
+    package_version: 1.15.13
+  pi:
+    kind: pi
+    package_version: 0.85.1
+  deepseek:
+    kind: deepseek
+    package_version: 0.1.5-rc.1
+models:
+  glm53flash:
+    model: glm-5.3-flash
+    protocol: chat-completions
+    base_url: https://open.bigmodel.cn/api/coding/paas/v4
+    api_key_env: ZHIPU_CODING_PLAN_API_KEY
+    context_window: 1048576
+    max_output_tokens: 131072
+    supports_developer_role: false
+    parameters:
+      temperature: 1
+      top_p: 0.95
+      thinking:
+        type: enabled
+        clear_thinking: false
+      tool_stream: true

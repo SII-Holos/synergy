@@ -3,6 +3,7 @@ import { GlobalBus } from "../bus/global"
 import { Context } from "../util/context"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
+import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import type { MessageV2 } from "./message-v2"
@@ -136,30 +137,30 @@ export namespace SessionManager {
   // `updatePart` only needs the scopeID to build the storage path, not the full
   // session info. Entries are tiny (ULID -> scopeID strings) and dropped when a
   // session is deleted (`forgetSession`).
-  const scopeIDCache = new Map<string, string>()
-  const historyRevisions = new Map<string, number>()
+  const scopeIDCache = Storage.state(() => new Map<string, string>())
+  const historyRevisions = Storage.state(() => new Map<string, number>())
 
   function rememberScopeID(sessionID: string, scopeID: string) {
-    scopeIDCache.set(sessionID, scopeID)
+    scopeIDCache().set(sessionID, scopeID)
   }
 
   export function forgetSession(sessionID: string) {
-    scopeIDCache.delete(sessionID)
-    historyRevisions.delete(sessionID)
+    scopeIDCache().delete(sessionID)
+    historyRevisions().delete(sessionID)
   }
 
   /** Cached scopeID lookup, warm during an active loop. */
   export function cachedScopeID(sessionID: string): string | undefined {
-    return scopeIDCache.get(sessionID)
+    return scopeIDCache().get(sessionID)
   }
 
   export function historyRevision(sessionID: string) {
-    return historyRevisions.get(sessionID) ?? 0
+    return historyRevisions().get(sessionID) ?? 0
   }
 
   export function bumpHistoryRevision(sessionID: string) {
     const revision = historyRevision(sessionID) + 1
-    historyRevisions.set(sessionID, revision)
+    historyRevisions().set(sessionID, revision)
     return revision
   }
 
@@ -170,11 +171,14 @@ export namespace SessionManager {
    * path so per-delta persistence never re-reads session state.
    */
   export async function resolveScopeID(sessionID: string): Promise<string> {
-    const cached = scopeIDCache.get(sessionID)
+    const cached = scopeIDCache().get(sessionID)
     if (cached) return cached
     const indexed = await Storage.read<{ scopeID: string }>(
       StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
-    ).catch(() => undefined)
+    ).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!indexed) throw new Storage.NotFoundError({ message: `Session ${sessionID} not found` })
     rememberScopeID(sessionID, indexed.scopeID)
     return indexed.scopeID
@@ -205,7 +209,10 @@ export namespace SessionManager {
   sweepTimer.unref()
 
   async function readSessionInfo(scopeID: string, sessionID: Identifier.SessionID): Promise<Info | undefined> {
-    return Storage.read<Info>(StoragePath.sessionInfo(Identifier.asScopeID(scopeID), sessionID)).catch(() => undefined)
+    return Storage.read<Info>(StoragePath.sessionInfo(Identifier.asScopeID(scopeID), sessionID)).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
   }
 
   export async function getSessionID(endpoint: SessionEndpoint.Info, scopeID?: string): Promise<string | undefined> {
@@ -216,7 +223,10 @@ export namespace SessionManager {
       const sessionID = Identifier.asSessionID(candidateSessionID)
       const indexed = await Storage.read<{ scopeID: string }>(
         StoragePath.endpointSession(endpointKey, sessionID),
-      ).catch(() => undefined)
+      ).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      })
       if (!indexed || (scopeID && indexed.scopeID !== scopeID)) continue
 
       const info = await readSessionInfo(indexed.scopeID, sessionID)
@@ -232,12 +242,18 @@ export namespace SessionManager {
     if (!sessionID) return undefined
     const indexed = await Storage.read<{ scopeID: string }>(
       StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
-    ).catch(() => undefined)
+    ).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!indexed) return undefined
     rememberScopeID(sessionID, indexed.scopeID)
     return Storage.read<Info>(
       StoragePath.sessionInfo(Identifier.asScopeID(indexed.scopeID), Identifier.asSessionID(sessionID)),
-    ).catch(() => undefined)
+    ).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
   }
 
   export async function requireSession(input: string | SessionEndpoint.Info): Promise<Info> {
@@ -450,6 +466,7 @@ export namespace SessionManager {
   }
 
   export function acquire(sessionID: string): LoopLease | undefined {
+    StorageRecovery.assertRunnable(sessionID)
     if (!accepting) throw new Error("Synergy runtime is shutting down")
     const runtime = registerRuntime(sessionID)
     if (occupied(runtime)) return undefined
@@ -785,7 +802,10 @@ export namespace SessionManager {
       for (const sessionID of ids) {
         const info = await Storage.read<Info>(
           StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-        ).catch(() => undefined)
+        ).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
         if (!info || !info.time || info.time.archived || info.pendingReply !== true) continue
         sessionIDs.add(info.id)
       }
@@ -804,7 +824,10 @@ export namespace SessionManager {
         if (isRunning(sessionID)) continue
         const info = await Storage.read<Info>(
           StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-        ).catch(() => undefined)
+        ).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
         if (!info || !info.time || info.time.archived) continue
         if (info.cortex?.status !== "queued" && info.cortex?.status !== "running") continue
         sessionIDs.add(info.id)
@@ -823,7 +846,10 @@ export namespace SessionManager {
       for (const sessionID of ids) {
         const info = await Storage.read<Info>(
           StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-        ).catch(() => undefined)
+        ).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
         if (!info || !info.time || info.time.archived || !info.cortex) continue
         if (
           info.cortex.status !== "completed" &&

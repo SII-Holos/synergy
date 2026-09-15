@@ -143,13 +143,17 @@ export namespace SnapshotArchive {
     return refs
   }
 
-  async function mergeRepository(source: string, target: string) {
+  async function mergeRepository(source: string, target: string, skipped: ReadonlySet<string> = new Set()) {
     await SnapshotGit.checked(source, ["fsck", "--full"])
     await SnapshotStore.initializeBareRepository(target)
     if (await Bun.file(path.join(target, "objects", "info", "alternates")).exists())
       throw new SnapshotStore.StorageError("Destination snapshot store is not self-contained")
     await SnapshotGit.checked(target, ["fsck", "--full"])
-    const incoming = await references(source)
+    const incoming = new Map(
+      [...(await references(source))].filter(
+        ([ref]) => !skipped.has(/^refs\/synergy\/snapshots\/([^/]+)\//.exec(ref)?.[1] ?? ""),
+      ),
+    )
     const existing = await references(target)
     for (const [ref, oid] of incoming) {
       if (existing.has(ref) && existing.get(ref) !== oid)
@@ -176,7 +180,11 @@ export namespace SnapshotArchive {
 
   // An archive is independent of the source home, including legacy alternates.
   // Provenance: https://git-scm.com/docs/git-index-pack (--strict and --keep).
-  export async function merge(sourceData: string, targetData: string) {
+  export async function merge(
+    sourceData: string,
+    targetData: string,
+    options: { metadata?: boolean; skipped?: ReadonlySet<string> } = {},
+  ) {
     if (path.resolve(sourceData) === path.resolve(targetData))
       throw new SnapshotStore.StorageError("Snapshot merge source equals destination")
     const sourceV2 = path.join(sourceData, "snapshot-v2")
@@ -192,7 +200,7 @@ export namespace SnapshotArchive {
       const to = path.join(targetV2, scope.name)
       const owners = new Map<string, z.infer<typeof SnapshotStore.Owner>>()
       for (const entry of await SnapshotRecords.entries(path.join(from, "owners"))) {
-        if (!entry.isFile() || !entry.name.endsWith(".json")) continue
+        if (!entry.isFile() || !entry.name.endsWith(".json") || options.skipped?.has(entry.name.slice(0, -5))) continue
         SnapshotStore.component(entry.name.slice(0, -5))
         const incoming = SnapshotStore.Owner.parse(await read(path.join(from, "owners", entry.name)))
         const value = await read(path.join(to, "owners", entry.name))
@@ -206,28 +214,31 @@ export namespace SnapshotArchive {
       const marker = await read(path.join(from, "repository.json"))
       if (marker !== undefined) z.object({ version: z.literal(2), objectFormat: z.literal("sha1") }).parse(marker)
       if (await Bun.file(path.join(from, "store.git", "HEAD")).exists()) {
-        await mergeRepository(path.join(from, "store.git"), path.join(to, "store.git"))
-        await write(path.join(to, "repository.json"), { version: 2, objectFormat: "sha1" })
+        await mergeRepository(path.join(from, "store.git"), path.join(to, "store.git"), options.skipped)
+        if (options.metadata !== false)
+          await write(path.join(to, "repository.json"), { version: 2, objectFormat: "sha1" })
       } else if (marker !== undefined || [...owners.values()].some((owner) => owner.backend === "shared"))
         throw new SnapshotStore.StorageError("Archive is missing its shared snapshot object store")
-      for (const directory of ["migrations", "deletions"])
-        await copyMetadata(path.join(from, directory), path.join(to, directory))
-      for (const [name, owner] of owners) await write(path.join(to, "owners", name), owner)
+      if (options.metadata !== false) {
+        for (const directory of ["migrations", "deletions"])
+          await copyMetadata(path.join(from, directory), path.join(to, directory))
+        for (const [name, owner] of owners) await write(path.join(to, "owners", name), owner)
+      }
     }
     for (const scope of await SnapshotRecords.entries(path.join(sourceData, "snapshot"))) {
       if (!scope.isDirectory()) continue
       const sourceScope = path.join(sourceData, "snapshot", scope.name)
       if (await Bun.file(path.join(sourceScope, "HEAD")).exists()) {
-        await mergeRepository(sourceScope, path.join(targetData, "snapshot", scope.name))
+        await mergeRepository(sourceScope, path.join(targetData, "snapshot", scope.name), options.skipped)
         continue
       }
       for (const entry of await SnapshotRecords.entries(sourceScope)) {
-        if (!entry.isDirectory()) continue
+        if (!entry.isDirectory() || options.skipped?.has(entry.name)) continue
         const from = path.join(sourceScope, entry.name)
         if (!(await Bun.file(path.join(from, "HEAD")).exists())) continue
         const to = path.join(targetData, "snapshot", scope.name, entry.name)
         await mergeRepository(from, to)
-        if (!entry.name.startsWith(".") && !scope.name.startsWith(".")) {
+        if (options.metadata !== false && !entry.name.startsWith(".") && !scope.name.startsWith(".")) {
           SnapshotStore.component(entry.name)
           const owner = path.join(targetV2, scope.name, "owners", entry.name + ".json")
           if ((await read(owner)) === undefined) await write(owner, { version: 2, backend: "legacy" })

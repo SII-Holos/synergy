@@ -101,13 +101,19 @@ async function validateDirectoryChain(target: string, create: boolean): Promise<
 }
 
 async function readForward(hash: string): Promise<OwnershipRecord | undefined> {
-  const raw = await Storage.read<unknown>(StoragePath.channelManagedOwnership(hash)).catch(() => undefined)
+  const raw = await Storage.read<unknown>(StoragePath.channelManagedOwnership(hash)).catch((error) => {
+    if (error instanceof Storage.NotFoundError) return undefined
+    throw error
+  })
   if (raw === undefined) return undefined
   return OwnershipRecord.parse(raw)
 }
 
 async function readReverse(scopeID: string): Promise<OwnershipIdentity | undefined> {
-  const raw = await Storage.read<unknown>(StoragePath.channelManagedOwnershipReverse(scopeID)).catch(() => undefined)
+  const raw = await Storage.read<unknown>(StoragePath.channelManagedOwnershipReverse(scopeID)).catch((error) => {
+    if (error instanceof Storage.NotFoundError) return undefined
+    throw error
+  })
   if (raw === undefined) return undefined
   const identity = z
     .object({
@@ -163,83 +169,85 @@ export namespace ManagedProjectOwnership {
     await validateDirectoryChain(directory, true)
     const scope = await resolveScope(directory)
 
-    const reverseIdentity = await readReverse(scope.id)
-    if (reverseIdentity && identityHash(reverseIdentity) !== hash) {
-      throw new OwnershipMismatchError({
-        scopeID: scope.id,
-        actualChannelType: reverseIdentity.channelType,
-        actualAccountId: reverseIdentity.accountId,
-        actualExternalProjectId: reverseIdentity.externalProjectId,
-      })
-    }
-
-    const existing = await readForward(hash)
-
-    if (existing) {
-      validateReverseIndex(hash, existing)
-
-      if (existing.scopeID !== scope.id) {
+    return Storage.transaction(async () => {
+      const reverseIdentity = await readReverse(scope.id)
+      if (reverseIdentity && identityHash(reverseIdentity) !== hash) {
         throw new OwnershipMismatchError({
-          scopeID: existing.scopeID,
-          actualChannelType: scope.id,
-          actualAccountId: input.accountId,
-          actualExternalProjectId: input.externalProjectId,
+          scopeID: scope.id,
+          actualChannelType: reverseIdentity.channelType,
+          actualAccountId: reverseIdentity.accountId,
+          actualExternalProjectId: reverseIdentity.externalProjectId,
         })
       }
 
-      if (path.resolve(existing.directory) !== path.resolve(directory)) {
-        throw new OwnershipMismatchError({
-          scopeID: existing.scopeID,
-          actualChannelType: existing.directory,
-          actualAccountId: directory,
-          actualExternalProjectId: input.externalProjectId,
+      const existing = await readForward(hash)
+
+      if (existing) {
+        validateReverseIndex(hash, existing)
+
+        if (existing.scopeID !== scope.id) {
+          throw new OwnershipMismatchError({
+            scopeID: existing.scopeID,
+            actualChannelType: scope.id,
+            actualAccountId: input.accountId,
+            actualExternalProjectId: input.externalProjectId,
+          })
+        }
+
+        if (path.resolve(existing.directory) !== path.resolve(directory)) {
+          throw new OwnershipMismatchError({
+            scopeID: existing.scopeID,
+            actualChannelType: existing.directory,
+            actualAccountId: directory,
+            actualExternalProjectId: input.externalProjectId,
+          })
+        }
+
+        const updated: OwnershipRecord = {
+          ...existing,
+          remoteState: input.remoteState,
+          lastSeenAt: Date.now(),
+        }
+
+        if (input.projectName !== undefined && existing.lastSeenAt === existing.createdAt && scope.name === undefined) {
+          await Scope.updatePersisted({ scopeID: scope.id, name: input.projectName })
+        }
+
+        await writeForward(hash, updated)
+        await writeReverse(scope.id, {
+          channelType: input.channelType,
+          accountId: input.accountId,
+          externalProjectId: input.externalProjectId,
         })
+        return { ...updated }
       }
 
-      const updated: OwnershipRecord = {
-        ...existing,
-        remoteState: input.remoteState,
-        lastSeenAt: Date.now(),
-      }
+      const now = Date.now()
 
-      if (input.projectName !== undefined && existing.lastSeenAt === existing.createdAt && scope.name === undefined) {
+      if (input.projectName !== undefined) {
         await Scope.updatePersisted({ scopeID: scope.id, name: input.projectName })
       }
 
-      await writeForward(hash, updated)
+      const record: OwnershipRecord = {
+        channelType: input.channelType,
+        accountId: input.accountId,
+        externalProjectId: input.externalProjectId,
+        scopeID: scope.id,
+        directory: scope.directory,
+        remoteState: input.remoteState,
+        createdAt: now,
+        lastSeenAt: now,
+      }
+
+      await writeForward(hash, record)
       await writeReverse(scope.id, {
         channelType: input.channelType,
         accountId: input.accountId,
         externalProjectId: input.externalProjectId,
       })
-      return { ...updated }
-    }
 
-    const now = Date.now()
-
-    if (input.projectName !== undefined) {
-      await Scope.updatePersisted({ scopeID: scope.id, name: input.projectName })
-    }
-
-    const record: OwnershipRecord = {
-      channelType: input.channelType,
-      accountId: input.accountId,
-      externalProjectId: input.externalProjectId,
-      scopeID: scope.id,
-      directory: scope.directory,
-      remoteState: input.remoteState,
-      createdAt: now,
-      lastSeenAt: now,
-    }
-
-    await writeForward(hash, record)
-    await writeReverse(scope.id, {
-      channelType: input.channelType,
-      accountId: input.accountId,
-      externalProjectId: input.externalProjectId,
+      return { ...record }
     })
-
-    return { ...record }
   }
 
   export async function find(input: OwnershipIdentity): Promise<OwnershipRecord | undefined> {

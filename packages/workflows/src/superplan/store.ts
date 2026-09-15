@@ -33,61 +33,63 @@ export namespace SuperPlanStore {
     nodes?: NodeCreateInput[]
     merges?: MergeCreateInput[]
   }): Promise<SuperPlanTypes.Run> {
-    const scopeID = ScopeContext.current.scope.id
-    const sid = Identifier.asScopeID(scopeID)
-    const now = Date.now()
-    const runID = Identifier.ascending("superplan_run")
+    return Storage.transaction(async () => {
+      const scopeID = ScopeContext.current.scope.id
+      const sid = Identifier.asScopeID(scopeID)
+      const now = Date.now()
+      const runID = Identifier.ascending("superplan_run")
 
-    const nodes = (input.nodes ?? []).map(
-      (node): SuperPlanTypes.Node =>
-        SuperPlanTypes.Node.parse({
-          id: node.id ?? Identifier.ascending("superplan_node"),
-          runID,
-          title: node.title,
-          description: node.description,
-          deps: node.deps ?? [],
-          blueprintNoteID: node.blueprintNoteID,
-          baseCommit: node.baseCommit ?? input.baseCommit,
-          status: "pending",
-          time: { created: now, updated: now },
-        }),
-    )
+      const nodes = (input.nodes ?? []).map(
+        (node): SuperPlanTypes.Node =>
+          SuperPlanTypes.Node.parse({
+            id: node.id ?? Identifier.ascending("superplan_node"),
+            runID,
+            title: node.title,
+            description: node.description,
+            deps: node.deps ?? [],
+            blueprintNoteID: node.blueprintNoteID,
+            baseCommit: node.baseCommit ?? input.baseCommit,
+            status: "pending",
+            time: { created: now, updated: now },
+          }),
+      )
 
-    const merges = (input.merges ?? []).map(
-      (merge): SuperPlanTypes.Merge =>
-        SuperPlanTypes.Merge.parse({
-          id: merge.id ?? Identifier.ascending("superplan_merge"),
-          runID,
-          wave: merge.wave,
-          inputNodeIDs: merge.inputNodeIDs,
-          inputCommits: merge.inputCommits ?? [],
-          baseCommit: merge.baseCommit ?? input.baseCommit,
-          status: "pending",
-          time: { created: now, updated: now },
-        }),
-    )
+      const merges = (input.merges ?? []).map(
+        (merge): SuperPlanTypes.Merge =>
+          SuperPlanTypes.Merge.parse({
+            id: merge.id ?? Identifier.ascending("superplan_merge"),
+            runID,
+            wave: merge.wave,
+            inputNodeIDs: merge.inputNodeIDs,
+            inputCommits: merge.inputCommits ?? [],
+            baseCommit: merge.baseCommit ?? input.baseCommit,
+            status: "pending",
+            time: { created: now, updated: now },
+          }),
+      )
 
-    const run = SuperPlanTypes.Run.parse({
-      id: runID,
-      scopeID,
-      title: input.title,
-      description: input.description,
-      status: "planning",
-      plannerSessionID: input.plannerSessionID,
-      summarySessionID: input.summarySessionID,
-      baseCommit: input.baseCommit,
-      nodes,
-      merges,
-      time: { created: now, updated: now },
+      const run = SuperPlanTypes.Run.parse({
+        id: runID,
+        scopeID,
+        title: input.title,
+        description: input.description,
+        status: "planning",
+        plannerSessionID: input.plannerSessionID,
+        summarySessionID: input.summarySessionID,
+        baseCommit: input.baseCommit,
+        nodes,
+        merges,
+        time: { created: now, updated: now },
+      })
+
+      await Storage.write(StoragePath.superPlanRun(sid, runID), run)
+      await Bus.publish(SuperPlanEvent.Created, { run })
+      await appendEvent(scopeID, runID, {
+        kind: "run_created",
+        message: `SuperPlan run created: ${run.title}`,
+      })
+      return run
     })
-
-    await Storage.write(StoragePath.superPlanRun(sid, runID), run)
-    await Bus.publish(SuperPlanEvent.Created, { run })
-    await appendEvent(scopeID, runID, {
-      kind: "run_created",
-      message: `SuperPlan run created: ${run.title}`,
-    })
-    return run
   }
 
   export async function get(scopeID: string, runID: string): Promise<SuperPlanTypes.Run> {
@@ -108,15 +110,17 @@ export namespace SuperPlanStore {
     runID: string,
     editor: (run: SuperPlanTypes.Run) => void,
   ): Promise<SuperPlanTypes.Run> {
-    const sid = Identifier.asScopeID(scopeID)
-    const run = await Storage.update<SuperPlanTypes.Run>(StoragePath.superPlanRun(sid, runID), (draft) => {
-      editor(draft)
-      draft.time.updated = Date.now()
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const run = await Storage.update<SuperPlanTypes.Run>(StoragePath.superPlanRun(sid, runID), (draft) => {
+        editor(draft)
+        draft.time.updated = Date.now()
+      })
+      const parsed = SuperPlanTypes.Run.parse(run)
+      await Storage.write(StoragePath.superPlanRun(sid, runID), parsed)
+      await Bus.publish(SuperPlanEvent.Updated, { run: parsed })
+      return parsed
     })
-    const parsed = SuperPlanTypes.Run.parse(run)
-    await Storage.write(StoragePath.superPlanRun(sid, runID), parsed)
-    await Bus.publish(SuperPlanEvent.Updated, { run: parsed })
-    return parsed
   }
 
   export async function appendEvent(
@@ -130,21 +134,23 @@ export namespace SuperPlanStore {
       data?: Record<string, unknown>
     },
   ): Promise<SuperPlanTypes.EventInfo> {
-    const sid = Identifier.asScopeID(scopeID)
-    const event = SuperPlanTypes.EventInfo.parse({
-      id: Identifier.ascending("superplan_event"),
-      runID,
-      scopeID,
-      kind: input.kind,
-      nodeID: input.nodeID,
-      mergeID: input.mergeID,
-      message: input.message,
-      data: input.data,
-      time: { created: Date.now() },
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const event = SuperPlanTypes.EventInfo.parse({
+        id: Identifier.ascending("superplan_event"),
+        runID,
+        scopeID,
+        kind: input.kind,
+        nodeID: input.nodeID,
+        mergeID: input.mergeID,
+        message: input.message,
+        data: input.data,
+        time: { created: Date.now() },
+      })
+      await Storage.write(StoragePath.superPlanEvent(sid, runID, event.id), event)
+      await Bus.publish(SuperPlanEvent.EventAppended, { event })
+      return event
     })
-    await Storage.write(StoragePath.superPlanEvent(sid, runID, event.id), event)
-    await Bus.publish(SuperPlanEvent.EventAppended, { event })
-    return event
   }
 
   export async function listEvents(scopeID: string, runID: string): Promise<SuperPlanTypes.EventInfo[]> {

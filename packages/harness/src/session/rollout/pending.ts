@@ -1,14 +1,11 @@
-import z from "zod"
+import { z } from "zod"
 import { Storage } from "../../storage/storage"
 import { StoragePath } from "../../storage/path"
-import { Lock } from "../../util/lock"
 import { RolloutSchema } from "./schema"
 import { record, RolloutRecordingError } from "./error"
 export namespace RolloutPending {
   type Document = { version: 1; owners: RolloutSchema.Owner[] }
   type Loaded = { kind: "absent" } | { kind: "ok"; owners: RolloutSchema.Owner[] } | { kind: "untrusted" }
-  const options = { compact: true, durable: true, private: true } as const
-  const lockKey = "rollout-recovery-pending"
 
   // Recovery-scoped suspension: while recovery settles owners, journal
   // writes must not consult the ledger. Listed owners are already listed,
@@ -40,7 +37,7 @@ export namespace RolloutPending {
       raw = await Storage.read(key(), { silentNotFound: true })
     } catch (error) {
       if (error instanceof Storage.NotFoundError) return { kind: "absent" }
-      return { kind: "untrusted" }
+      throw error
     }
     const full = z
       .object({ version: z.literal(1), owners: z.array(RolloutSchema.Owner) })
@@ -82,26 +79,28 @@ export namespace RolloutPending {
     // can establish that a missing ledger covers every historical owner.
     if (probe.kind === "absent") return
     if (probe.kind === "ok" && probe.owners.some((entry) => sameOwner(entry, identity))) return
-    await record(async () => {
-      using lock = await Lock.write(lockKey)
-      const current = await load()
-      // An unreadable ledger must not be silently reset: it may list other
-      // owners. Fail the recording so execution admission stops, and let the
-      // next exhaustive recovery re-arm the ledger.
-      if (current.kind === "untrusted")
-        throw new RolloutRecordingError({ message: "Rollout recovery pending set is unreadable" })
-      if (current.kind === "ok" && current.owners.some((entry) => sameOwner(entry, identity))) return
-      if (current.kind === "absent") return
-      const owners = [...current.owners, identity]
-      await Storage.write(key(), { version: 1, owners }, options)
-    })
+    await record(() =>
+      Storage.transaction(async () => {
+        const current = await load()
+        // An unreadable ledger must not be silently reset: it may list other
+        // owners. Fail the recording so execution admission stops, and let the
+        // next exhaustive recovery re-arm the ledger.
+        if (current.kind === "untrusted")
+          throw new RolloutRecordingError({ message: "Rollout recovery pending set is unreadable" })
+        if (current.kind === "ok" && current.owners.some((entry) => sameOwner(entry, identity))) return
+        if (current.kind === "absent") return
+        const owners = [...current.owners, identity]
+        await Storage.write(key(), { version: 1, owners })
+      }),
+    )
   }
 
   /** Re-arms the fast path after a verified recovery pass. */
   export async function markClean(): Promise<void> {
-    await record(async () => {
-      using lock = await Lock.write(lockKey)
-      await Storage.write(key(), { version: 1, owners: [] } satisfies Document, options)
-    })
+    await record(() =>
+      Storage.transaction(async () => {
+        await Storage.write(key(), { version: 1, owners: [] } satisfies Document)
+      }),
+    )
   }
 }

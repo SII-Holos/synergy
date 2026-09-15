@@ -13,13 +13,16 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## Implement the Current Model
 
-### File-backed JSON
+### Authoritative Agent records
 
-1. Build logical keys through `StoragePath`; use `Storage` for locks, atomic writes, reads, scans, and removal.
-2. Keep independently updated or streamed records independently addressable. Do not rewrite a whole session or collection for one leaf update.
-3. Update derived indexes and events in the same owner transaction/lifecycle as the canonical write.
-4. Preserve the atomic-write transient-retry contract: `Storage` write+rename retries `EPERM`/`EACCES`/`EBUSY` (classified by `isRetryableIOError`) so Windows sharing violations do not fail persistence, permanent errors fail fast, and temp files are removed (with the same transient retry) on the failure path. Do not bypass `Storage` with a bare rename; extend `test/storage/storage-retry.test.ts` when changing write-path failure behavior.
-5. Authoritative rollout evidence uses private, durable Storage writes and the bounded `RolloutArtifact` stream store. Keep progress independently committed, verify content hashes, and preserve partial observations. Do not replace its persistence failures with diagnostic warnings, empty data, or successful completion; propagate `RolloutRecordingError` so execution admission can stop.
+1. Build logical keys through `StoragePath`; use an explicit `Storage.Handle`. Normal Agent record code must never read or write legacy JSON files.
+2. Keep independently updated or streamed records independently addressable. Wrap the complete business mutation, indexes, receipts and outbox notifications in `Storage.transaction()`.
+3. Nested writes join the caller's transaction. Defer cache and event effects until commit. Never run tools, network calls, plugin reloads, filesystem writes or buffer drains inside a retryable SQL transaction. Keep transaction-owned part writes out of streaming retry buffers; verify rollback followed by a delivery retry cannot resurrect the abandoned parts.
+4. Treat commit uncertainty as an unresolved result; reconcile the operation receipt before retrying. Preserve storage, ownership and integrity errors instead of treating them as missing records.
+5. Flush artifact bytes before publishing references. Stage unpublished large imports and register resumable post-deletion cleanup. Rollout evidence retains its separate allocation/evidence and projection/head transactions.
+6. Physical writes retain the atomic-file transient-retry contract for Windows sharing violations. Extend the real-file retry tests when changing that helper.
+7. Keep the SQLite subprocess alive through owner process-group cancellation so terminal evidence can drain. Verify real `SIGINT`/`SIGTERM` delivery to an isolated owner group and forced owner loss; explicit shutdown, request deadlines and parent-disconnection cleanup must still terminate the worker.
+8. Run the shared SQLite/PostgreSQL contract tests for engine changes; CI requires real PostgreSQL 16–18. macOS source development needs the verified SQLite engine from `bun packages/harness/script/build-sqlite.ts`. For engine packaging changes, run `bun test --config /dev/null test/script/release/workspace-sqlite.test.ts` on macOS to open the actual unpacked archive with host libraries masked.
 
 ### SQLite and other domain stores
 

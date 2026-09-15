@@ -15,7 +15,7 @@ export namespace RolloutContinuationMigration {
     if (owner.kind !== "session") return
     const root = [...RolloutArtifact.root(owner), "runs"]
     const candidates: RolloutSchema.RunRecord[] = []
-    for (const id of await Storage.scan(root, { strict: true })) {
+    for (const id of await Storage.scan(root)) {
       const run = await RolloutLedger.getRun(owner, id)
       if (run.status === "completed" && run.recording !== "failed" && !run.cancelRequestedAt) candidates.push(run)
     }
@@ -24,10 +24,7 @@ export namespace RolloutContinuationMigration {
     const scopeID = Identifier.asScopeID(owner.scopeID)
     const sessionID = Identifier.asSessionID(owner.sessionID)
     const history = StoragePath.sessionHistoryRoot(scopeID, sessionID)
-    const [infos, eventIDs] = await Promise.all([
-      MessageV2.readInfoList({ scopeID, sessionID }),
-      Storage.scan(history, { strict: true }),
-    ])
+    const [infos, eventIDs] = await Promise.all([MessageV2.readInfoList({ scopeID, sessionID }), Storage.scan(history)])
     const events = await Promise.all(eventIDs.sort().map((id) => Storage.read<History.Event>([...history, id])))
     const messages = SessionHistory.applyEvents(
       MessageV2.deriveSemantics(infos.map((info) => ({ info, parts: [] }))),
@@ -47,8 +44,8 @@ export namespace RolloutContinuationMigration {
     async up(progress) {
       progress(0, 0)
       const owners: RolloutSchema.Owner[] = []
-      for (const scopeID of await Storage.scan(["sessions"], { strict: true }))
-        for (const sessionID of await Storage.scan(["sessions", scopeID], { strict: true }))
+      for (const scopeID of await Storage.scan(["sessions"]))
+        for (const sessionID of await Storage.scan(["sessions", scopeID]))
           owners.push({ kind: "session", scopeID, sessionID })
       progress(0, owners.length)
       for (const [index, owner] of owners.entries()) {

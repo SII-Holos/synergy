@@ -4,6 +4,7 @@ import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
 export interface CommandEntry {
   command: string | string[]
   describe: string
+  storage?: "maintenance"
   load(): Promise<CommandModule>
 }
 
@@ -24,6 +25,7 @@ export function coreCommands(
     },
     {
       command: "agent",
+      storage: "maintenance",
       describe: "manage agents",
       load: async () => (await import("./cmd/agent")).AgentCommand as unknown as CommandModule,
     },
@@ -39,36 +41,43 @@ export function coreCommands(
     },
     {
       command: "models [provider]",
+      storage: "maintenance",
       describe: "list all available models",
       load: async () => (await import("./cmd/models")).ModelsCommand as unknown as CommandModule,
     },
     {
       command: "export [sessionID]",
+      storage: "maintenance",
       describe: "export a session transcript or self-contained rollout ZIP",
       load: async () => (await import("./cmd/export")).ExportCommand as unknown as CommandModule,
     },
     {
       command: "import <file>",
+      storage: "maintenance",
       describe: "import a session transcript or rollout ZIP",
       load: async () => (await import("./cmd/import")).ImportCommand as unknown as CommandModule,
     },
     {
       command: "session",
+      storage: "maintenance",
       describe: "manage sessions",
       load: async () => (await import("./cmd/session")).SessionCommand as unknown as CommandModule,
     },
     {
       command: "config",
+      storage: "maintenance",
       describe: "manage synergy configuration",
       load: async () => (await import("./cmd/config")).ConfigCommand as unknown as CommandModule,
     },
     {
       command: "doctor",
+      storage: "maintenance",
       describe: "diagnose synergy sandbox and environment",
       load: async () => (await import("./cmd/doctor")).DoctorCommand as unknown as CommandModule,
     },
     {
       command: "diagnostics",
+      storage: "maintenance",
       describe: "create a local diagnostics package",
       load: async () => (await import("./cmd/diagnostics")).DiagnosticsCommand as unknown as CommandModule,
     },
@@ -80,6 +89,7 @@ export function coreCommands(
     },
     {
       command: "migration",
+      storage: "maintenance",
       describe: "manage schema and data migrations",
       load: async () => (await import("./cmd/migration")).MigrationCommand as unknown as CommandModule,
     },

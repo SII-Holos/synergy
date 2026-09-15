@@ -116,6 +116,16 @@ export namespace ConfigDomain {
       uiSection: "runtime",
       importable: true,
     },
+    {
+      id: "storage",
+      filename: "130-storage.jsonc",
+      label: "Storage",
+      ownedKeys: ["storage"],
+      mergePolicy: "replace-domain",
+      reloadTargets: [],
+      uiSection: "storage",
+      importable: false,
+    },
   ] satisfies Definition[]
 
   export const byId = new Map<Id, Definition>(definitions.map((item) => [item.id, item]))

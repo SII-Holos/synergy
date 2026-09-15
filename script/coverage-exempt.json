@@ -1402,6 +1402,14 @@
         {
           "glob": "src/session/tool-resolver.ts",
           "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/storage/sql-contract.ts",
+          "reason": "types-only SQL and IPC contracts, no runtime logic"
+        },
+        {
+          "glob": "src/storage/sqlite-worker.ts",
+          "reason": "dedicated IPC child process exercised by test/storage/transactional-store.test.ts and test/storage/crash-recovery.test.ts, including committed snapshots, rollback, owner loss and process-group cancellation; Bun does not merge child-process coverage"
         }
       ]
     },

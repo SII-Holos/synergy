@@ -1,3 +1,4 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import path from "path"
 import fs from "fs/promises"
 import z from "zod"
@@ -70,9 +71,9 @@ export namespace BrowserStorage {
   export type StoredAnnotation = z.infer<typeof StoredAnnotationSchema>
   export type SessionState = Omit<z.infer<typeof StoredSessionSchema>, "version"> & { version?: number }
 
-  function stateFilePath(owner: BrowserOwner.Info): string {
+  export function keyForOwner(owner: BrowserOwner.Info): string[] {
     BrowserOwner.assertValid(owner)
-    return path.join(Global.Path.data, "browser", "sessions-v4", `${BrowserOwner.storageID(owner)}.json`)
+    return ["browser", "sessions-v4", BrowserOwner.storageID(owner)]
   }
 
   export function profileDir(owner: BrowserOwner.Info): string {
@@ -102,18 +103,11 @@ export namespace BrowserStorage {
     }
   }
 
-  /** Read state. Returns null if no state file or on any read error. */
   export async function load(owner: BrowserOwner.Info): Promise<SessionState | null> {
-    const fp = stateFilePath(owner)
-    try {
-      await assertSecureDirectory(path.dirname(fp), path.join(Global.Path.data, "browser"))
-      const stat = await fs.lstat(fp)
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 64 * 1024 * 1024) return null
-      const state = StoredSessionSchema.parse(JSON.parse(await fs.readFile(fp, "utf8")))
-      return { ...state, page: state.page ? { ...state.page, url: sanitizeUrl(state.page.url) } : null }
-    } catch {
-      return null
-    }
+    const [raw] = await Storage.readMany([keyForOwner(owner)])
+    if (raw === undefined) return null
+    const state = StoredSessionSchema.parse(raw)
+    return { ...state, page: state.page ? { ...state.page, url: sanitizeUrl(state.page.url) } : null }
   }
 
   /** Persist session state. Creates parent dirs if needed. */
@@ -131,44 +125,15 @@ export namespace BrowserStorage {
               : "empty",
       page: state.page ? { ...state.page, url: sanitizeUrl(state.page.url) } : null,
     })
-    const fp = stateFilePath(owner)
-    await ensureSecureDirectory(path.dirname(fp), path.join(Global.Path.data, "browser"))
-    const temporary = `${fp}.${crypto.randomUUID()}.tmp`
-    let failure: unknown
-    try {
-      await fs.writeFile(temporary, JSON.stringify(sanitized, null, 2), { flag: "wx", mode: 0o600 })
-      await replaceFileAtomically(temporary, fp)
-    } catch (error) {
-      failure = error
-    }
-    try {
-      await fs.rm(temporary, { force: true })
-    } catch (cleanupError) {
-      if (failure) throw new AggregateError([failure, cleanupError], "Browser state save and cleanup both failed.")
-      throw cleanupError
-    }
-    if (failure) throw failure
+    await Storage.write(keyForOwner(owner), sanitized)
   }
 
-  /** Remove session state. */
   export async function remove(owner: BrowserOwner.Info): Promise<void> {
-    const fp = stateFilePath(owner)
-    try {
-      await assertSecureDirectory(path.dirname(fp), path.join(Global.Path.data, "browser"))
-      await fs.unlink(fp)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-    }
-  }
-
-  /** Get storage path for an owner. */
-  export function pathForOwner(owner: BrowserOwner.Info): string {
-    return stateFilePath(owner)
+    await Storage.remove(keyForOwner(owner))
   }
 
   export async function ensureOwnerDirs(owner: BrowserOwner.Info): Promise<void> {
     const browserRoot = path.join(Global.Path.data, "browser")
-    await ensureSecureDirectory(path.dirname(stateFilePath(owner)), browserRoot)
     await ensureSecureDirectory(profileDir(owner), path.join(browserRoot, "profiles"))
     await ensureSecureDirectory(uploadsDir(owner), path.join(browserRoot, "uploads"))
     await ensureSecureDirectory(downloadsDir(owner), path.join(browserRoot, "downloads"))

@@ -183,10 +183,14 @@ export type CreateUserMessageInput = InvokeInput & {
   origin?: MessageV2.OriginUser
 }
 
-export async function createUserMessage(input: CreateUserMessageInput, rootIDOverride?: string) {
+export async function createUserMessage(
+  input: CreateUserMessageInput,
+  rootIDOverride?: string,
+  commitOptions?: SessionUserMessageMaterialization.CommitOptions,
+) {
   if (input.noReply === true) {
     if (input.experiment) throw new Error("Experiment configuration requires a new root task")
-    return materializeUserMessage(input, rootIDOverride)
+    return materializeUserMessage(input, rootIDOverride, commitOptions)
   }
   const { Session } = await import(".")
   const { RolloutLifecycle } = await import("./rollout/lifecycle")
@@ -201,7 +205,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
   try {
     return await Experiment.provide(configuration, () =>
       RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID: rootIDOverride ?? messageID }, () =>
-        materializeUserMessage({ ...input, messageID }, rootIDOverride),
+        materializeUserMessage({ ...input, messageID }, rootIDOverride, commitOptions),
       ),
     )
   } catch (error) {
@@ -210,7 +214,11 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
   }
 }
 
-async function materializeUserMessage(input: CreateUserMessageInput, rootIDOverride?: string) {
+async function materializeUserMessage(
+  input: CreateUserMessageInput,
+  rootIDOverride?: string,
+  commitOptions?: SessionUserMessageMaterialization.CommitOptions,
+) {
   const { Session } = await import(".")
   const { Agent } = await import("../agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
@@ -757,7 +765,7 @@ async function materializeUserMessage(input: CreateUserMessageInput, rootIDOverr
       ;(part as MessageV2.TextPart).origin = "user"
     }
   }
-  return SessionUserMessageMaterialization.write({ info, parts })
+  return SessionUserMessageMaterialization.write({ info, parts }, commitOptions)
 }
 
 async function effectiveMessages(sessionID: string) {

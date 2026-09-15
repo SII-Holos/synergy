@@ -1,3 +1,4 @@
+import { StorageConfiguration } from "../storage/config"
 import { Log } from "../util/log"
 import z from "zod"
 import { MAX_EXECUTION_CANCEL_GRACE_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
@@ -467,6 +468,9 @@ const CoreInfo = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
     logLevel: Log.Level.optional().describe("Log level"),
+    storage: StorageConfiguration.optional().describe(
+      "Global authoritative storage; backend changes require an explicit storage migration",
+    ),
     server: Server.optional().describe("Server configuration for synergy serve and web commands"),
     command: z.record(z.string(), Command).optional().describe("Command configuration"),
     timeout: z

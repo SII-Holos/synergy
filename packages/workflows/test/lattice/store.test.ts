@@ -107,7 +107,7 @@ describe("LatticeStore v2", () => {
     })
   })
 
-  test("quarantines the selected duplicate before an interrupted cleanup can expose its effect", async () => {
+  test("rolls back interrupted duplicate quarantine and retries the complete reconciliation", async () => {
     await withScope(async () => {
       const scopeID = ScopeContext.current.scope.id
       const sid = Identifier.asScopeID(scopeID)
@@ -146,12 +146,8 @@ describe("LatticeStore v2", () => {
         ;(LatticeMachine.quarantineDuplicate as typeof quarantine) = quarantine
       }
 
-      expect(await LatticeStore.getByRunID(scopeID, second.id)).toMatchObject({
-        status: "paused",
-        statusReason: "duplicate_active_run",
-      })
-      expect((await LatticeStore.getByRunID(scopeID, second.id))?.effect).toBeUndefined()
-      expect((await LatticeStore.getByRunID(scopeID, first.id))?.status).toBe("active")
+      expect(await LatticeStore.getByRunID(scopeID, second.id)).toEqual(second)
+      expect(await LatticeStore.getByRunID(scopeID, first.id)).toEqual(firstWithEffect)
 
       await LatticeStore.listCurrent(scopeID)
       expect(await LatticeStore.getByRunID(scopeID, first.id)).toMatchObject({

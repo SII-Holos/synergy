@@ -1,186 +1,213 @@
-import path from "path"
-import fs from "fs/promises"
-import { Global } from "../global"
-import { Lock } from "../util/lock"
-import { isRetryableIOError } from "../util/io-retry"
-import { NamedError } from "@ericsanchezok/synergy-util/error"
-import z from "zod"
+import path from "node:path"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { AtomicFile } from "./atomic-file"
+import { NotFoundError as MissingRecord, StorageClosedError, StorageConflictError } from "./errors"
+import {
+  TransactionalStore,
+  type StoreTransaction,
+  type TransactionOptions,
+  type RecordQuery,
+  type StoredEvent,
+} from "./transactional-store"
 import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { ObservabilityResources } from "../observability/resources"
 
 export namespace Storage {
-  const READ_MANY_CONCURRENCY = 32
-  // Successful duration samples are high-cardinality and previously amplified
-  // telemetry write load under UI polling (#343). Keep errors at 100%.
   const STORAGE_DURATION_SAMPLE_RATE = 0.02
-
-  export const NotFoundError = NamedError.create(
-    "NotFoundError",
-    z.object({
-      message: z.string(),
-    }),
-  )
-
-  function resolveDir() {
-    return Global.Path.data
+  export const NotFoundError = MissingRecord
+  export const writeJsonAtomic = AtomicFile.writeJsonAtomic
+  export interface Handle {
+    store: TransactionalStore
+    artifactDirectory: string
   }
-
-  export async function remove(key: string[]) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
-    return measureStorage("remove", key, async () => {
-      await fs.unlink(target).catch(() => {})
-      await pruneEmptyParents(path.dirname(target), dir)
-    })
+  interface Context extends Handle {
+    transaction?: StoreTransaction
+    effects?: Array<() => Promise<unknown> | void>
+    pending?: Promise<unknown>[]
   }
+  const context = new AsyncLocalStorage<Context>()
+  let installed: Handle | undefined
 
-  export async function read<T>(key: string[], options: { silentNotFound?: boolean } = {}) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
-    return measureStorage(
-      "read",
-      key,
-      async () =>
-        withErrorHandling(async () => {
-          using _ = await Lock.read(target)
-          const file = Bun.file(target)
-          const result = await file.json()
-          const size = file.size
-          ObservabilityResources.addRead(size)
-          return result as T
-        }),
-      options,
-    )
-  }
-
-  export async function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
-    const dir = resolveDir()
-    return measureStorage("readMany", [keys[0]?.[0] ?? "root"], async () => {
-      const result: (T | undefined)[] = new Array(keys.length)
-      let next = 0
-      let readBytes = 0
-      const workers = Array.from({ length: Math.min(READ_MANY_CONCURRENCY, keys.length) }, async () => {
-        while (next < keys.length) {
-          const index = next++
-          const key = keys[index]
-          const target = path.join(dir, ...key) + ".json"
-          try {
-            using _ = await Lock.read(target)
-            const file = Bun.file(target)
-            result[index] = (await file.json()) as T
-            readBytes += file.size
-          } catch {
-            result[index] = undefined
-          }
-        }
-      })
-      await Promise.all(workers)
-      if (readBytes) ObservabilityResources.addRead(readBytes)
-      return result
-    })
-  }
-
-  export interface WriteOptions {
-    compact?: boolean
-    durable?: boolean
-    private?: boolean
-  }
-
-  function serialize(content: unknown, options?: WriteOptions) {
-    return options?.compact ? JSON.stringify(content) : JSON.stringify(content, null, 2)
-  }
-
-  export async function update<T>(key: string[], fn: (draft: T) => void, options?: WriteOptions) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
-    return measureStorage("update", key, async () =>
-      withErrorHandling(async () => {
-        using _ = await Lock.write(target)
-        const content = await Bun.file(target).json()
-        fn(content)
-        const serialized = serialize(content, options)
-        await writeJsonAtomic(target, serialized, options)
-        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
-        return content as T
-      }),
-    )
-  }
-
-  export async function write<T>(key: string[], content: T, options?: WriteOptions) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
-    return measureStorage("write", key, async () =>
-      withErrorHandling(async () => {
-        using _ = await Lock.write(target)
-        const serialized = serialize(content, options)
-        await writeJsonAtomic(target, serialized, options)
-        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
-      }),
-    )
-  }
-
-  export async function scan(prefix: string[], options?: { strict?: boolean }): Promise<string[]> {
-    const dir = resolveDir()
-    const target = path.join(dir, ...prefix)
-    return measureStorage("scan", prefix, async () => {
-      try {
-        const entries = await fs.readdir(target)
-        return entries
-          .filter((e) => !isTempFile(e))
-          .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
-          .sort()
-      } catch (error) {
-        if (options?.strict && !(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
-        return []
+  export function state<T>(create: () => T): () => T {
+    const values = new WeakMap<TransactionalStore, T>()
+    return () => {
+      const store = current().store
+      let value = values.get(store)
+      if (value === undefined) {
+        value = create()
+        values.set(store, value)
       }
+      return value
+    }
+  }
+
+  export function install(handle: Handle) {
+    if (installed === handle) return () => {}
+    if (installed && installed !== handle) throw new StorageConflictError("A storage Handle is already installed")
+    installed = handle
+    return () => {
+      if (installed === handle) installed = undefined
+    }
+  }
+
+  export function current(): Context {
+    const value = context.getStore() ?? installed
+    if (!value) throw new StorageClosedError()
+    return value
+  }
+
+  export function available() {
+    return Boolean(context.getStore() ?? installed)
+  }
+
+  export function provide<T>(handle: Handle, body: () => T): T {
+    return context.run(handle, body)
+  }
+
+  export async function transaction<T>(
+    body: (tx: StoreTransaction) => Promise<T>,
+    options?: TransactionOptions,
+  ): Promise<T> {
+    const parent = current()
+    if (parent.transaction) {
+      if (options?.operationID) throw new StorageConflictError("Idempotency belongs to the outer business transaction")
+      return body(parent.transaction)
+    }
+    let effects: Array<() => Promise<unknown> | void> = []
+    const result = await parent.store.transaction(async (tx) => {
+      effects = []
+      const pending: Promise<unknown>[] = []
+      return context.run({ ...parent, transaction: tx, effects, pending }, async () => {
+        const result = await body(tx)
+        for (let offset = 0; offset < pending.length; ) {
+          const batch = pending.slice(offset)
+          offset += batch.length
+          await Promise.all(batch)
+        }
+        return result
+      })
+    }, options)
+    for (const effect of effects) {
+      try {
+        await effect()
+      } catch (error) {
+        ObservabilityIssues.raise({
+          code: "STORAGE_POST_COMMIT_FAILED",
+          severity: "error",
+          module: "storage",
+          title: "A committed change could not publish its notification",
+          message: "The database commit succeeded. Pending events remain available for reconciliation.",
+          evidence: { errorName: error instanceof Error ? error.name : "unknown" },
+        })
+      }
+    }
+    return result
+  }
+
+  export function snapshot<T>(body: (tx: StoreTransaction) => Promise<T>): Promise<T> {
+    const parent = current()
+    if (parent.transaction) return body(parent.transaction)
+    return parent.store.snapshot((tx) => context.run({ ...parent, transaction: tx }, () => body(tx)))
+  }
+
+  export function inTransaction() {
+    return Boolean(context.getStore()?.transaction)
+  }
+
+  export function afterCommit(effect: () => Promise<unknown> | void): void {
+    const active = context.getStore()
+    if (!active?.effects) throw new StorageConflictError("Post-commit effects require a write transaction")
+    active.effects.push(effect)
+  }
+
+  export function enqueue(event: StoredEvent, effect: () => Promise<void>): Promise<void> {
+    const active = context.getStore()
+    if (!active?.transaction || !active.effects || !active.pending)
+      throw new StorageConflictError("An event requires a write transaction")
+    const pending = active.transaction.enqueue(event)
+    active.pending.push(pending)
+    void pending.catch(() => {})
+    active.effects.push(async () => {
+      await effect()
+      await active.store.acknowledgeEvents([event.id])
     })
+    return pending
+  }
+
+  export function read<T>(key: string[], options: { silentNotFound?: boolean } = {}): Promise<T> {
+    return measureStorage("read", key, () => snapshot((tx) => tx.read<T>(key)), options)
+  }
+
+  export function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
+    return measureStorage("readMany", [keys[0]?.[0] ?? "root"], () => snapshot((tx) => tx.readMany<T>(keys)))
+  }
+
+  export function versioned<T>(key: string[]) {
+    return snapshot((tx) => tx.versioned<T>(key))
+  }
+
+  export function write<T>(key: string[], value: T) {
+    return measureStorage("write", key, () => transaction((tx) => tx.write(key, value)))
+  }
+
+  export function update<T>(key: string[], change: (value: T) => void): Promise<T> {
+    return measureStorage("update", key, () => transaction((tx) => tx.update(key, change)))
+  }
+
+  export function remove(key: string[]) {
+    return measureStorage("remove", key, () => transaction((tx) => tx.remove(key)))
+  }
+
+  export function removeTree(prefix: string[]) {
+    return measureStorage("removeTree", prefix, () => transaction((tx) => tx.removeTree(prefix)))
+  }
+
+  export function scan(prefix: string[]) {
+    return measureStorage("scan", prefix, () => snapshot((tx) => tx.scan(prefix)))
+  }
+
+  export function list(prefix: string[]) {
+    return measureStorage("list", prefix, () => snapshot((tx) => tx.list(prefix)))
+  }
+
+  export function query<T>(input: RecordQuery) {
+    return snapshot((tx) => tx.query<T>(input))
+  }
+
+  export async function* records<T>(input: Omit<RecordQuery, "after"> = {}) {
+    let after: string[] | undefined
+    for (;;) {
+      const page = await query<T>({ ...input, after, limit: input.limit ?? 256 })
+      if (!page.length) return
+      yield* page
+      after = page.at(-1)!.key
+    }
+  }
+
+  function binaryPath(key: string[]) {
+    if (!key.length || key.some((part) => !part || part === "." || part === ".." || /[\\/\0]/.test(part)))
+      throw new StorageConflictError("Invalid artifact key")
+    return path.join(current().artifactDirectory, ...key) + ".bin"
   }
 
   export async function writeBinary(key: string[], content: Uint8Array) {
-    const target = path.join(resolveDir(), ...key) + ".bin"
-    return measureStorage("write", key, async () =>
-      withErrorHandling(async () => {
-        using _ = await Lock.write(target)
-        await writeFileAtomic(target, content, { private: true, durable: true })
-        ObservabilityResources.addWrite(content.byteLength)
-      }),
-    )
+    await AtomicFile.writeFileAtomic(binaryPath(key), content, { private: true, durable: true })
+    ObservabilityResources.addWrite(content.byteLength)
   }
 
   export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
-    const target = path.join(resolveDir(), ...key) + ".bin"
-    return measureStorage("read", key, async () =>
-      withErrorHandling(async () => {
-        using _ = await Lock.read(target)
-        const file = Bun.file(target)
-        if (options?.maxBytes !== undefined && file.size > options.maxBytes) {
-          throw new Error("Binary record exceeds its byte limit")
-        }
-        const content = await file.bytes()
-        ObservabilityResources.addRead(content.byteLength)
-        return content
-      }),
-    )
-  }
-
-  export async function removeTree(prefix: string[]) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...prefix)
-    await fs.rm(target, { recursive: true, force: true })
-    await pruneEmptyParents(path.dirname(target), dir)
-  }
-
-  async function pruneEmptyParents(current: string, root: string) {
-    while (current !== root && current.startsWith(root)) {
-      try {
-        const entries = await fs.readdir(current)
-        if (entries.length > 0) break
-        await fs.rmdir(current)
-        current = path.dirname(current)
-      } catch {
-        break
-      }
+    const file = Bun.file(binaryPath(key))
+    if (options?.maxBytes !== undefined && file.size > options.maxBytes)
+      throw new StorageConflictError("Binary record exceeds its byte limit")
+    try {
+      const content = await file.bytes()
+      ObservabilityResources.addRead(content.byteLength)
+      return content
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+        throw new NotFoundError({ message: "Artifact does not exist" })
+      throw error
     }
   }
 
@@ -244,115 +271,5 @@ export namespace Storage {
         })
       }
     }
-  }
-
-  async function withErrorHandling<T>(body: () => Promise<T>) {
-    return body().catch((e) => {
-      if (!(e instanceof Error)) throw e
-      const errnoException = e as NodeJS.ErrnoException
-      if (errnoException.code === "ENOENT") {
-        throw new NotFoundError({ message: `Resource not found: ${errnoException.path}` })
-      }
-      throw e
-    })
-  }
-
-  const glob = new Bun.Glob("**/*")
-  export async function list(prefix: string[]) {
-    const dir = resolveDir()
-    return measureStorage("list", prefix, async () => {
-      try {
-        const result = await Array.fromAsync(
-          glob.scan({
-            cwd: path.join(dir, ...prefix),
-            onlyFiles: true,
-          }),
-        ).then((results) =>
-          results
-            .filter((x) => x.endsWith(".json") && !isTempFile(path.basename(x)))
-            .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
-        )
-        result.sort()
-        return result
-      } catch {
-        return []
-      }
-    })
-  }
-
-  // Windows maps rename onto MoveFileEx: when another process (antivirus,
-  // OneDrive, a cross-process reader of these JSON files) briefly holds a
-  // handle on the source or target without FILE_SHARE_DELETE, the rename
-  // fails with EPERM/EACCES. Sharing violations clear within milliseconds,
-  // so retry the whole write+rename sequence with short backoff instead of
-  // failing session persistence and terminating the owning session (#1247).
-  const ATOMIC_WRITE_ATTEMPTS = 4
-  const ATOMIC_WRITE_RETRY_BASE_MS = 50
-  const ATOMIC_WRITE_RETRY_MAX_MS = 200
-
-  export async function writeJsonAtomic(target: string, serialized: string, options?: WriteOptions) {
-    return writeFileAtomic(target, serialized, options)
-  }
-
-  async function writeFileAtomic(target: string, content: string | Uint8Array, options?: WriteOptions) {
-    await fs.mkdir(path.dirname(target), { recursive: true, ...(options?.private ? { mode: 0o700 } : {}) })
-    const tmp = path.join(
-      path.dirname(target),
-      `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-    )
-    for (let attempt = 1; ; attempt++) {
-      try {
-        if (options?.private || options?.durable) {
-          const file = await fs.open(tmp, "w", options.private ? 0o600 : 0o666)
-          try {
-            await file.writeFile(content)
-            if (options.durable) await file.sync()
-          } finally {
-            await file.close()
-          }
-        } else {
-          await Bun.write(tmp, content)
-        }
-        await fs.rename(tmp, target)
-        if (options?.durable && process.platform !== "win32") {
-          const directory = await fs.open(path.dirname(target), "r")
-          try {
-            await directory.sync()
-          } finally {
-            await directory.close()
-          }
-        }
-        return
-      } catch (error) {
-        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) {
-          await removeTempFile(tmp)
-          throw error
-        }
-        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
-      }
-    }
-  }
-
-  // The terminal-failure cleanup can hit the same Windows sharing violation
-  // that failed the rename (antivirus holding the temp handle), so transient
-  // unlink errors retry with the same backoff before being suppressed (#1247).
-  async function removeTempFile(tmp: string) {
-    for (let attempt = 1; attempt <= ATOMIC_WRITE_ATTEMPTS; attempt++) {
-      try {
-        await fs.unlink(tmp)
-        return
-      } catch (error) {
-        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) return
-        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
-      }
-    }
-  }
-
-  function atomicRetryDelayMs(attempt: number) {
-    return Math.min(ATOMIC_WRITE_RETRY_MAX_MS, ATOMIC_WRITE_RETRY_BASE_MS * 2 ** (attempt - 1))
-  }
-
-  function isTempFile(name: string) {
-    return name.includes(".tmp-") || name.endsWith(".tmp")
   }
 }

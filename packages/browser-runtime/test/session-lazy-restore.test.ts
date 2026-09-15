@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import fs from "fs/promises"
 import { BrowserOwner } from "../src/owner"
 import { BrowserSessionImpl } from "../src/session"
 import { BrowserStorage } from "../src/storage"
@@ -17,7 +16,7 @@ const owner: BrowserOwner.Info = {
 }
 
 afterEach(async () => {
-  await fs.rm(BrowserStorage.pathForOwner(owner), { force: true })
+  await BrowserStorage.remove(owner)
   BrowserEvent.remove(owner)
 })
 

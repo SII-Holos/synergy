@@ -10,4 +10,6 @@ Usage notes:
   - HTTP URLs will be automatically upgraded to HTTPS
   - Format options: "markdown" (default), "text", or "html"
   - This tool is read-only and does not modify any files
+  - Transient network and HTTP failures may retry up to three total requests within the same timeout, including body reads and waits
+  - Cancellation stops requests and retry waits; permanent failures are returned without retry
   - Results may be summarized if the content is very large

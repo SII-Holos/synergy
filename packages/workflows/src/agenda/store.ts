@@ -23,7 +23,10 @@ export namespace AgendaStore {
   type IndexedRun = RunIndexEntry & { scopeID: Identifier.ScopeID }
 
   async function readRunIndex(scopeID: Identifier.ScopeID): Promise<RunIndex> {
-    return Storage.read<RunIndex>(StoragePath.agendaRunIndex(scopeID)).catch(() => ({ entries: [] }))
+    return Storage.read<RunIndex>(StoragePath.agendaRunIndex(scopeID)).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return { entries: [] }
+      throw error
+    })
   }
 
   async function writeRunIndex(scopeID: Identifier.ScopeID, index: RunIndex): Promise<void> {
@@ -95,50 +98,52 @@ export namespace AgendaStore {
     input: InternalCreateInput,
     id: string = Identifier.ascending("agenda"),
   ): Promise<AgendaTypes.Item> {
-    const scope = ScopeContext.current.scope
-    const now = Date.now()
-    const triggers = input.triggers ?? []
+    return Storage.transaction(async () => {
+      const scope = ScopeContext.current.scope
+      const now = Date.now()
+      const triggers = input.triggers ?? []
 
-    for (const trigger of triggers) {
-      if (trigger.type === "webhook" && !trigger.token) {
-        trigger.token = randomUUID()
+      for (const trigger of triggers) {
+        if (trigger.type === "webhook" && !trigger.token) {
+          trigger.token = randomUUID()
+        }
       }
-    }
 
-    const item: AgendaTypes.Item = {
-      id,
-      status: triggers.length > 0 ? "active" : "pending",
-      title: input.title,
-      description: input.description,
-      tags: input.tags,
-      global: input.global ?? false,
-      triggers,
-      prompt: input.prompt,
-      deliveryMode: input.deliveryMode,
-      agent: input.agent,
-      model: input.model,
-      controlProfile: input.controlProfile,
-      sessionMode: input.sessionMode,
-      sessionRefs: input.sessionRefs,
-      timeout: input.timeout,
-      wake: input.wake ?? true,
-      silent: input.silent ?? false,
-      autoDone: input.autoDone ?? false,
-      origin: { scope, sessionID: input.sessionID, endpoint: input.endpoint },
-      createdBy: input.createdBy ?? "user",
-      state: {
-        consecutiveErrors: 0,
-        runCount: 0,
-        nextRunAt: computeNextRunAt(triggers, now),
-      },
-      time: { created: now, updated: now },
-    }
+      const item: AgendaTypes.Item = {
+        id,
+        status: triggers.length > 0 ? "active" : "pending",
+        title: input.title,
+        description: input.description,
+        tags: input.tags,
+        global: input.global ?? false,
+        triggers,
+        prompt: input.prompt,
+        deliveryMode: input.deliveryMode,
+        agent: input.agent,
+        model: input.model,
+        controlProfile: input.controlProfile,
+        sessionMode: input.sessionMode,
+        sessionRefs: input.sessionRefs,
+        timeout: input.timeout,
+        wake: input.wake ?? true,
+        silent: input.silent ?? false,
+        autoDone: input.autoDone ?? false,
+        origin: { scope, sessionID: input.sessionID, endpoint: input.endpoint },
+        createdBy: input.createdBy ?? "user",
+        state: {
+          consecutiveErrors: 0,
+          runCount: 0,
+          nextRunAt: computeNextRunAt(triggers, now),
+        },
+        time: { created: now, updated: now },
+      }
 
-    const scopeID = Identifier.asScopeID(item.global ? HOME_SCOPE_ID : scope.id)
-    await Storage.write(StoragePath.agendaItem(scopeID, id), item)
-    log.info("created", { id, title: input.title, global: item.global })
-    await Bus.publish(AgendaEvent.ItemCreated, { item })
-    return item
+      const scopeID = Identifier.asScopeID(item.global ? HOME_SCOPE_ID : scope.id)
+      await Storage.write(StoragePath.agendaItem(scopeID, id), item)
+      log.info("created", { id, title: input.title, global: item.global })
+      await Bus.publish(AgendaEvent.ItemCreated, { item })
+      return item
+    })
   }
 
   export async function get(scopeID: string, itemID: string): Promise<AgendaTypes.Item> {
@@ -168,40 +173,42 @@ export namespace AgendaStore {
     patch: AgendaTypes.PatchInput,
     options?: { recomputeNextRunAt?: boolean },
   ): Promise<AgendaTypes.Item> {
-    const sid = Identifier.asScopeID(scopeID)
-    const now = Date.now()
-    const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
-      if (patch.title !== undefined) draft.title = patch.title
-      if (patch.description !== undefined) draft.description = patch.description
-      if (patch.status !== undefined) draft.status = patch.status
-      if (patch.tags !== undefined) draft.tags = patch.tags
-      if (patch.triggers !== undefined) {
-        for (const trigger of patch.triggers) {
-          if (trigger.type === "webhook" && !trigger.token) {
-            trigger.token = randomUUID()
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const now = Date.now()
+      const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
+        if (patch.title !== undefined) draft.title = patch.title
+        if (patch.description !== undefined) draft.description = patch.description
+        if (patch.status !== undefined) draft.status = patch.status
+        if (patch.tags !== undefined) draft.tags = patch.tags
+        if (patch.triggers !== undefined) {
+          for (const trigger of patch.triggers) {
+            if (trigger.type === "webhook" && !trigger.token) {
+              trigger.token = randomUUID()
+            }
           }
+          draft.triggers = patch.triggers
+          draft.state.nextRunAt = computeNextRunAt(patch.triggers, now)
         }
-        draft.triggers = patch.triggers
-        draft.state.nextRunAt = computeNextRunAt(patch.triggers, now)
-      }
-      if (patch.prompt !== undefined) draft.prompt = patch.prompt
-      if (patch.global !== undefined) draft.global = patch.global
-      if (patch.wake !== undefined) draft.wake = patch.wake
-      if (patch.silent !== undefined) draft.silent = patch.silent
-      if (patch.agent !== undefined) draft.agent = patch.agent
-      if (patch.model !== undefined) draft.model = patch.model
-      if (patch.controlProfile !== undefined) draft.controlProfile = patch.controlProfile
-      if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
-      if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
-      if (patch.timeout !== undefined) draft.timeout = patch.timeout
-      if (options?.recomputeNextRunAt) {
-        draft.state.nextRunAt = computeNextRunAt(draft.triggers, now)
-      }
-      draft.time.updated = now
+        if (patch.prompt !== undefined) draft.prompt = patch.prompt
+        if (patch.global !== undefined) draft.global = patch.global
+        if (patch.wake !== undefined) draft.wake = patch.wake
+        if (patch.silent !== undefined) draft.silent = patch.silent
+        if (patch.agent !== undefined) draft.agent = patch.agent
+        if (patch.model !== undefined) draft.model = patch.model
+        if (patch.controlProfile !== undefined) draft.controlProfile = patch.controlProfile
+        if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
+        if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
+        if (patch.timeout !== undefined) draft.timeout = patch.timeout
+        if (options?.recomputeNextRunAt) {
+          draft.state.nextRunAt = computeNextRunAt(draft.triggers, now)
+        }
+        draft.time.updated = now
+      })
+      log.info("updated", { id: itemID })
+      await Bus.publish(AgendaEvent.ItemUpdated, { item })
+      return item
     })
-    log.info("updated", { id: itemID })
-    await Bus.publish(AgendaEvent.ItemUpdated, { item })
-    return item
   }
 
   export async function updateRunState(
@@ -219,67 +226,74 @@ export namespace AgendaStore {
     triggers: AgendaTypes.Trigger[],
     signalType: string,
   ): Promise<{ item: AgendaTypes.Item; nextRunAt: number | undefined }> {
-    const sid = Identifier.asScopeID(scopeID)
-    const newNextRunAt = computeNextRunAt(triggers)
-    const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
-      draft.state.lastRunAt = result.startTime
-      draft.state.lastRunStatus = result.status
-      draft.state.lastRunError = result.error
-      draft.state.lastRunDuration = result.duration
-      draft.state.lastRunSessionID = result.sessionID
-      draft.state.runCount++
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      const newNextRunAt = computeNextRunAt(triggers)
+      const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
+        draft.state.lastRunAt = result.startTime
+        draft.state.lastRunStatus = result.status
+        draft.state.lastRunError = result.error
+        draft.state.lastRunDuration = result.duration
+        draft.state.lastRunSessionID = result.sessionID
+        draft.state.runCount++
 
-      if (result.status === "error") {
-        draft.state.consecutiveErrors++
-      } else {
-        draft.state.consecutiveErrors = 0
-      }
-
-      draft.state.nextRunAt = newNextRunAt
-
-      if (result.autoDone && result.status !== "error") {
-        draft.status = "done"
-      } else {
-        const hasNonTimeTriggers = triggers.some(
-          (t) => t.type === "watch" || t.type === "webhook" || t.type === "github",
-        )
-        const hasRecurringSessionTrigger = triggers.some((t) => t.type === "session" && t.once === false)
-        if (
-          newNextRunAt === undefined &&
-          signalType !== "manual" &&
-          !hasNonTimeTriggers &&
-          !hasRecurringSessionTrigger
-        ) {
-          draft.status = "done"
+        if (result.status === "error") {
+          draft.state.consecutiveErrors++
+        } else {
+          draft.state.consecutiveErrors = 0
         }
-      }
 
-      draft.time.updated = Date.now()
+        draft.state.nextRunAt = newNextRunAt
+
+        if (result.autoDone && result.status !== "error") {
+          draft.status = "done"
+        } else {
+          const hasNonTimeTriggers = triggers.some(
+            (t) => t.type === "watch" || t.type === "webhook" || t.type === "github",
+          )
+          const hasRecurringSessionTrigger = triggers.some((t) => t.type === "session" && t.once === false)
+          if (
+            newNextRunAt === undefined &&
+            signalType !== "manual" &&
+            !hasNonTimeTriggers &&
+            !hasRecurringSessionTrigger
+          ) {
+            draft.status = "done"
+          }
+        }
+
+        draft.time.updated = Date.now()
+      })
+      await Bus.publish(AgendaEvent.ItemUpdated, { item })
+      return { item, nextRunAt: newNextRunAt }
     })
-    await Bus.publish(AgendaEvent.ItemUpdated, { item })
-    return { item, nextRunAt: newNextRunAt }
   }
 
   export async function remove(scopeID: string, itemID: string): Promise<void> {
-    const sid = Identifier.asScopeID(scopeID)
-    await Storage.remove(StoragePath.agendaItem(sid, itemID))
-    await Storage.removeTree(StoragePath.agendaRunsRoot(sid, itemID))
-    const index = await readRunIndex(sid)
-    if (index.entries.length > 0) {
-      index.entries = index.entries.filter((e) => e.itemID !== itemID)
-      await writeRunIndex(sid, index)
-    }
-    log.info("removed", { id: itemID })
-    await Bus.publish(AgendaEvent.ItemDeleted, { id: itemID, scopeID })
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      await Storage.remove(StoragePath.agendaItem(sid, itemID))
+      await Storage.removeTree(StoragePath.agendaRunsRoot(sid, itemID))
+      const index = await readRunIndex(sid)
+      if (index.entries.length > 0) {
+        index.entries = index.entries.filter((e) => e.itemID !== itemID)
+        await writeRunIndex(sid, index)
+      }
+      log.info("removed", { id: itemID })
+      await Bus.publish(AgendaEvent.ItemDeleted, { id: itemID, scopeID })
+    })
   }
 
   export async function appendRun(scopeID: string, run: AgendaTypes.RunLog): Promise<void> {
-    const sid = Identifier.asScopeID(scopeID)
-    await Storage.write(StoragePath.agendaRun(sid, run.itemID, run.id), run)
-    const index = await readRunIndex(sid)
-    // New runs always have the latest started time, so unshift preserves descending order
-    index.entries.unshift({ id: run.id, itemID: run.itemID, started: run.time.started })
-    await writeRunIndex(sid, index)
+    return Storage.transaction(async () => {
+      const sid = Identifier.asScopeID(scopeID)
+      await Storage.write(StoragePath.agendaRun(sid, run.itemID, run.id), run)
+      const index = await readRunIndex(sid)
+      index.entries = index.entries.filter((entry) => entry.id !== run.id)
+      index.entries.push({ id: run.id, itemID: run.itemID, started: run.time.started })
+      index.entries.sort((a, b) => b.started - a.started || b.id.localeCompare(a.id))
+      await writeRunIndex(sid, index)
+    })
   }
 
   export async function listRuns(scopeID: string, itemID: string): Promise<AgendaTypes.RunLog[]> {

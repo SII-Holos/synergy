@@ -1,3 +1,4 @@
+import { StorageRecovery } from "@ericsanchezok/synergy-harness/storage/recovery"
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { Plugin } from "."
 
@@ -8,7 +9,13 @@ import { Plugin } from "."
  * right after the listeners, before session recovery. Registered through
  * src/product-registration.ts.
  */
+async function recoverInstallations() {
+  const { PluginInstallationRecovery } = await import("./installation-recovery")
+  await PluginInstallationRecovery.recover()
+}
+
 export function registerPluginStartup() {
+  StorageRecovery.register("plugin-installation", recoverInstallations)
   ScopeStartup.register({
     name: "plugin-activate",
     phase: "core",

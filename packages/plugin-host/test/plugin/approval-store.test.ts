@@ -1,3 +1,4 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
@@ -47,7 +48,8 @@ describe("approval store concurrent read-modify-write", () => {
     for (const id of ids) expect(present.has(id)).toBe(true)
     expect(present.has(removedId)).toBe(false)
 
-    JSON.parse(await Bun.file(storeFile()).text())
+    expect(await Storage.read(["plugin-approvals", "records", ids[0]!])).toMatchObject({ pluginId: ids[0] })
+    expect(await Bun.file(storeFile()).exists()).toBe(false)
     expect(await tempResidue()).toEqual([])
   })
 })

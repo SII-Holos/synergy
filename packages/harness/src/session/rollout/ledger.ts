@@ -151,7 +151,7 @@ export namespace RolloutLedger {
 
   export async function segments(owner: Owner, runID: string) {
     const base = [...root(owner, runID), "segments"]
-    const ids = await Storage.scan(base, { strict: true })
+    const ids = await Storage.scan(base)
     return Promise.all(ids.map(async (id) => RolloutSchema.ExecutionSegment.parse(await Storage.read([...base, id]))))
   }
 
@@ -172,7 +172,7 @@ export namespace RolloutLedger {
   }
 
   export async function calls(owner: Owner, runID: string) {
-    const ids = await Storage.scan([...root(owner, runID), "calls"], { strict: true })
+    const ids = await Storage.scan([...root(owner, runID), "calls"])
     const result: RolloutSchema.CallRecord[] = []
     for (const id of ids) result.push(await getCall(owner, runID, id))
     return result
@@ -190,7 +190,7 @@ export namespace RolloutLedger {
 
   export async function attempts(owner: Owner, runID: string, callID: string) {
     const base = attemptRoot(owner, runID, callID)
-    const ids = await Storage.scan(base, { strict: true })
+    const ids = await Storage.scan(base)
     const result: RolloutSchema.AttemptRecord[] = []
     for (const id of ids) result.push(RolloutSchema.AttemptRecord.parse(await Storage.read([...base, id])))
     return result.sort((a, b) => a.index - b.index)
@@ -253,7 +253,7 @@ export namespace RolloutLedger {
 
   export async function tools(owner: Owner, runID: string) {
     const base = [...root(owner, runID), "tools"]
-    const ids = await Storage.scan(base, { strict: true })
+    const ids = await Storage.scan(base)
     const result: RolloutSchema.ToolExecutionRecord[] = []
     for (const id of ids) result.push(RolloutSchema.ToolExecutionRecord.parse(await Storage.read([...base, id])))
     return result
@@ -261,7 +261,7 @@ export namespace RolloutLedger {
 
   export async function processes(owner: Owner, runID: string) {
     const base = [...root(owner, runID), "processes"]
-    const ids = await Storage.scan(base, { strict: true })
+    const ids = await Storage.scan(base)
     const result: RolloutSchema.ProcessRecord[] = []
     for (const id of ids) result.push(RolloutSchema.ProcessRecord.parse(await Storage.read([...base, id])))
     return result

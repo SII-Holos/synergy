@@ -6,9 +6,12 @@ import {
   gitProtectedSubpaths,
   protectedMetadataUnderWritableRoot,
   PROTECTED_METADATA_PATH_NAMES,
+  READ_DENY_PATHS,
+  readDenyHomeDirs,
   uniqueRoots,
   isMetadataWriteDenied,
 } from "./policy"
+import { normalizeSlashes } from "../util/path"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "sandbox-policy-engine" })
@@ -23,6 +26,7 @@ export interface SynergyFileSystemSandboxPolicy {
   protectedMetadataNames: string[]
   protectedPaths: string[]
   dataDenyRoots: string[]
+  readDenyPaths?: string[]
   includePlatformDefaults: boolean
   workspace: string
 }
@@ -140,6 +144,27 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     readableRoots.push(input.executionCwd)
   }
 
+  // Deny-list read model (macOS deny-default backend): reads are allowed
+  // globally and only credential-bearing locations stay denied. Denies are
+  // derived from every read-deny home — the OS home plus the Synergy
+  // runtime home when it differs — so custom SYNERGY_HOME installs keep
+  // their provider/MCP/account/plugin stores protected, and explicit
+  // non-default dataDenyRoots merge in. A deny equal to or inside the
+  // workspace or a writable root is dropped (a project's own files must
+  // stay readable), but a deny CONTAINING them is kept: the compiled
+  // writable-root allow is deeper than the ancestor subpath deny and wins
+  // under most-specific-match, so a workspace nested in a credential
+  // directory works while its credential siblings stay unreadable.
+  const readDenyScope = [input.workspace, ...writableRoots].map((root) => normalizeSlashes(root))
+  const defaultHomeDeny = normalizeSlashes(homedir)
+  const explicitDataDenyRoots = (input.dataDenyRoots ?? []).filter((p) => normalizeSlashes(p) !== defaultHomeDeny)
+  const readDenyPaths = uniqueRoots([
+    ...readDenyHomeDirs().flatMap((home) => READ_DENY_PATHS(home)),
+    ...explicitDataDenyRoots,
+  ]).filter((p) => {
+    const normalized = normalizeSlashes(p)
+    return !readDenyScope.some((root) => root === normalized || normalized.startsWith(root + "/"))
+  })
   const fileSystem: SynergyFileSystemSandboxPolicy = {
     readableRoots,
     writableRoots,
@@ -148,6 +173,7 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     protectedMetadataNames: protectedNames,
     protectedPaths,
     dataDenyRoots,
+    readDenyPaths,
     includePlatformDefaults: true,
     workspace: input.workspace,
   }

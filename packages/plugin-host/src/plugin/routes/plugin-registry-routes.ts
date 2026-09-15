@@ -8,7 +8,7 @@ import { errors } from "@ericsanchezok/synergy-server/server/error"
 import { checkPathContainment } from "@ericsanchezok/synergy-harness/util/path-contain"
 import { PluginMarketplaceRegistry } from "../marketplace-registry"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { localRegistryPath, localRegistryStoreDir } from "../local-registry-store"
+import { readLocalRegistry, writeLocalRegistry, localRegistryStoreDir } from "../local-registry-store"
 
 const log = Log.create({ service: "plugin.registry.route" })
 const OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE = "Official plugin registry temporarily unavailable"
@@ -172,28 +172,8 @@ const PublishInput = RegistryPluginEntry.omit({ createdAt: true, updatedAt: true
 
 // ── Helpers ──
 
-function registryPath(): string {
-  return localRegistryPath()
-}
-
-function missingFileError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  return (err as NodeJS.ErrnoException).code === "ENOENT"
-}
-
 async function loadRegistry(): Promise<RegistryPluginEntry[]> {
-  const file = Bun.file(registryPath())
-  try {
-    const exists = await file.exists()
-    if (!exists) return []
-  } catch (err) {
-    if (missingFileError(err)) return []
-    throw err
-  }
-  const text = await file.text()
-  const parsed = JSON.parse(text)
-  const plugins = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.plugins) ? parsed.plugins : []
-  return z.array(RegistryPluginEntry).parse(plugins.map(normalizeLegacyRegistryEntry))
+  return z.array(RegistryPluginEntry).parse((await readLocalRegistry()).map(normalizeLegacyRegistryEntry))
 }
 
 function normalizeLegacyRegistryEntry(value: unknown): unknown {
@@ -300,12 +280,7 @@ function mergeSummaries(
 }
 
 async function saveRegistry(plugins: RegistryPluginEntry[]): Promise<void> {
-  const realPath = registryPath()
-  const tmpPath = realPath + ".tmp"
-  const dir = path.dirname(realPath)
-  fs.mkdirSync(dir, { recursive: true })
-  await Bun.write(tmpPath, JSON.stringify({ plugins }, null, 2))
-  fs.renameSync(tmpPath, realPath)
+  await writeLocalRegistry(plugins)
 }
 
 function isLoopbackHost(input: string): boolean {
@@ -718,3 +693,7 @@ export const RegistryRoute = new Hono()
       return c.json(created)
     },
   )
+
+function missingFileError(error: unknown) {
+  return error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT"
+}

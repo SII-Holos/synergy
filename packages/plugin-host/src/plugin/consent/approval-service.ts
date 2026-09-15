@@ -12,7 +12,7 @@ import { getDisabledPlugin, state as loaderState } from "../loader"
 import { resolvePluginSpec } from "../spec-resolver"
 import * as Lockfile from "../lockfile"
 import { PluginMarketplaceRegistry } from "../marketplace-registry"
-import { localRegistryPath, resolveLocalRegistryInstallSpec } from "../local-registry-store"
+import { readLocalRegistry, resolveLocalRegistryInstallSpec } from "../local-registry-store"
 import { pathToFileURL } from "url"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 
@@ -131,10 +131,7 @@ export async function resolveRegistrySpec(
       official: true,
     }
   }
-  const registry = JSON.parse(await Bun.file(localRegistryPath()).text()) as {
-    plugins?: Array<Record<string, unknown>>
-  }
-  const entry = registry.plugins?.find((candidate) => candidate.id === id)
+  const entry = (await readLocalRegistry()).find((candidate) => candidate.id === id)
   if (!entry) throw new ApprovalPluginNotFoundError(`Local registry plugin not found: ${id}`)
   const versions = Array.isArray(entry.versions) ? entry.versions : []
   const matched = versions.find(

@@ -6,7 +6,6 @@ import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
-import { Lock } from "../util/lock"
 import { Info as SessionInfo } from "./types"
 import { SessionManagedProjects } from "./managed-projects"
 
@@ -254,8 +253,9 @@ export namespace SessionNav {
   }
 
   export async function buildNavIndex(scopeID: string): Promise<ScopeNavIndex> {
-    using _ = await Lock.write(mutationKey(scopeID))
-    return buildNavIndexUnlocked(scopeID)
+    return Storage.transaction(async () => {
+      return buildNavIndexUnlocked(scopeID)
+    })
   }
 
   async function readNavIndexUnlocked(scopeID: string): Promise<ScopeNavIndex> {
@@ -270,12 +270,14 @@ export namespace SessionNav {
   }
 
   export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
-    const existing = await Storage.read<ScopeNavIndex>(
-      StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)),
-    ).catch(() => undefined)
-    if (existing) return existing
-    using _ = await Lock.write(mutationKey(scopeID))
-    return readNavIndexUnlocked(scopeID)
+    return Storage.transaction(async () => {
+      const existing = await Storage.read<ScopeNavIndex>(
+        StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)),
+      ).catch(() => undefined)
+      if (existing) return existing
+
+      return readNavIndexUnlocked(scopeID)
+    })
   }
 
   export async function rebuildAllNavIndexes(progress?: (done: number, total: number) => void): Promise<void> {
@@ -437,31 +439,33 @@ export namespace SessionNav {
     entry: SessionNavEntry,
     options?: { preserveActivityAt?: boolean },
   ): Promise<SessionNavEntry> {
-    using _ = await Lock.write(mutationKey(entry.scopeID))
-    const index = await readNavIndexUnlocked(entry.scopeID)
-    const existing = index.entries.findIndex((e) => e.id === entry.id)
-    const nextEntry =
-      options?.preserveActivityAt && existing >= 0
-        ? { ...entry, lastActivityAt: index.entries[existing].lastActivityAt }
-        : entry
-    if (existing >= 0) index.entries.splice(existing, 1)
-    const insertAt = index.entries.findIndex(
-      (e) =>
-        e.lastActivityAt < nextEntry.lastActivityAt ||
-        (e.lastActivityAt === nextEntry.lastActivityAt && e.id < nextEntry.id),
-    )
-    if (insertAt === -1) index.entries.push(nextEntry)
-    else index.entries.splice(insertAt, 0, nextEntry)
-    index.updatedAt = Date.now()
-    await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(nextEntry.scopeID)), index)
-    return nextEntry
+    return Storage.transaction(async () => {
+      const index = await readNavIndexUnlocked(entry.scopeID)
+      const existing = index.entries.findIndex((e) => e.id === entry.id)
+      const nextEntry =
+        options?.preserveActivityAt && existing >= 0
+          ? { ...entry, lastActivityAt: index.entries[existing].lastActivityAt }
+          : entry
+      if (existing >= 0) index.entries.splice(existing, 1)
+      const insertAt = index.entries.findIndex(
+        (e) =>
+          e.lastActivityAt < nextEntry.lastActivityAt ||
+          (e.lastActivityAt === nextEntry.lastActivityAt && e.id < nextEntry.id),
+      )
+      if (insertAt === -1) index.entries.push(nextEntry)
+      else index.entries.splice(insertAt, 0, nextEntry)
+      index.updatedAt = Date.now()
+      await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(nextEntry.scopeID)), index)
+      return nextEntry
+    })
   }
 
   export async function removeNavEntry(scopeID: string, sessionID: string): Promise<void> {
-    using _ = await Lock.write(mutationKey(scopeID))
-    const index = await readNavIndexUnlocked(scopeID)
-    index.entries = index.entries.filter((e) => e.id !== sessionID)
-    index.updatedAt = Date.now()
-    await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)), index)
+    return Storage.transaction(async () => {
+      const index = await readNavIndexUnlocked(scopeID)
+      index.entries = index.entries.filter((e) => e.id !== sessionID)
+      index.updatedAt = Date.now()
+      await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)), index)
+    })
   }
 }

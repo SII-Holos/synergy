@@ -1,3 +1,4 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import fs from "fs/promises"
 import path from "path"
 import { Global } from "@ericsanchezok/synergy-harness/global"
@@ -36,39 +37,16 @@ export namespace BrowserMigration {
     [key: string]: unknown
   }
 
-  function legacyStateFilePath(owner: BrowserOwner.Info): string {
-    const base = path.join(Global.Path.data, "browser", "sessions", legacyComponent(owner.scopeID, "scope"))
-    if (owner.mode === "scope") return path.join(base, "scope.json")
+  function legacyStateKey(owner: BrowserOwner.Info): string[] {
+    const base = ["browser", "sessions", legacyComponent(owner.scopeID, "scope")]
+    if (owner.mode === "scope") return [...base, "scope"]
     BrowserOwner.assertValid(owner)
-    return path.join(base, "session", `${legacyComponent(owner.sessionID!, "session")}.json`)
+    return [...base, "session", legacyComponent(owner.sessionID!, "session")]
   }
 
-  async function exists(filepath: string): Promise<boolean> {
-    try {
-      await fs.access(filepath)
-      return true
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false
-      throw error
-    }
-  }
-
-  async function readState(filepath: string): Promise<StoredState | null> {
-    let text: string
-    try {
-      const info = await fs.lstat(filepath)
-      if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024 * 1024) return null
-      text = await Bun.file(filepath).text()
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
-      throw error
-    }
-    try {
-      const parsed = JSON.parse(text)
-      return parsed && typeof parsed === "object" ? (parsed as StoredState) : null
-    } catch {
-      return null
-    }
+  async function readState(key: string[]): Promise<StoredState | undefined> {
+    const [value] = await Storage.readMany<StoredState>([key])
+    return value
   }
 
   function isPage(value: unknown): value is { id: string; url: string; title: string; lastActiveAt?: number | null } {
@@ -226,14 +204,17 @@ export namespace BrowserMigration {
     }
   }
 
-  async function migrateFile(owner: BrowserOwner.Info, filepath: string): Promise<Result> {
-    const state = await readState(filepath)
+  async function migrateRecord(owner: BrowserOwner.Info, key: string[]): Promise<Result> {
+    const state = await readState(key)
     if (!state) return { ownerKey: BrowserOwner.key(owner), changed: false, version: BrowserStorage.CURRENT_VERSION }
     const next = migrateState(state)
-    const changed = JSON.stringify(state) !== JSON.stringify(next)
-    const target = BrowserStorage.pathForOwner(owner)
-    if (changed || filepath !== target) await BrowserStorage.save(owner, next)
-    if (filepath !== target) await fs.rm(filepath, { force: true })
+    const target = BrowserStorage.keyForOwner(owner)
+    const moved = JSON.stringify(key) !== JSON.stringify(target)
+    const changed = moved || JSON.stringify(state) !== JSON.stringify(next)
+    await Storage.transaction(async () => {
+      if (changed) await BrowserStorage.save(owner, next)
+      if (moved) await Storage.remove(key)
+    })
     await removeRetiredProfilePath(state.storageStatePath)
     await removeRetiredProfilePath(state.profileDir)
     return { ownerKey: BrowserOwner.key(owner), changed, version: BrowserStorage.CURRENT_VERSION }
@@ -260,54 +241,26 @@ export namespace BrowserMigration {
     await fs.rm(realTarget, { recursive: true, force: true })
   }
 
-  async function collectStateFiles(): Promise<{ owner: BrowserOwner.Info; filepath: string }[]> {
-    const sessionsRoot = path.join(Global.Path.data, "browser", "sessions")
-    const entries: { owner: BrowserOwner.Info; filepath: string }[] = []
-    const scopes = await directoryEntries(sessionsRoot)
-    for (const scopeID of scopes) {
-      const scopeDir = path.join(sessionsRoot, scopeID)
-      const scopeInfo = await fs.lstat(scopeDir)
-      if (!scopeInfo.isDirectory() || scopeInfo.isSymbolicLink()) continue
-      const scopeFile = path.join(scopeDir, "scope.json")
-      if (await exists(scopeFile))
-        entries.push({ owner: { mode: "scope", scopeID, directory: "" }, filepath: scopeFile })
-      const sessionDir = path.join(scopeDir, "session")
-      let files: string[] = []
-      try {
-        const sessionInfo = await fs.lstat(sessionDir)
-        if (sessionInfo.isDirectory() && !sessionInfo.isSymbolicLink()) files = await directoryEntries(sessionDir)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-      }
-      for (const filename of files) {
-        if (!filename.endsWith(".json")) continue
-        const filepath = path.join(sessionDir, filename)
-        const fileInfo = await fs.lstat(filepath)
-        if (!fileInfo.isFile() || fileInfo.isSymbolicLink() || fileInfo.size > 64 * 1024 * 1024) continue
-        entries.push({
-          owner: { mode: "session", scopeID, directory: "", sessionID: filename.slice(0, -5) },
-          filepath,
-        })
-      }
-    }
-    return entries
-  }
-
   export async function run(owner: BrowserOwner.Info): Promise<Result> {
-    const current = BrowserStorage.pathForOwner(owner)
-    if (await exists(current)) return migrateFile(owner, current)
-    return migrateFile(owner, legacyStateFilePath(owner))
+    const current = BrowserStorage.keyForOwner(owner)
+    if (await readState(current)) return migrateRecord(owner, current)
+    return migrateRecord(owner, legacyStateKey(owner))
   }
 
   export async function runAll(progress?: (current: number, total: number) => void): Promise<void> {
-    const files = await collectStateFiles()
+    const keys = await Storage.list(["browser", "sessions"])
     let current = 0
-    for (const entry of files) {
-      await migrateFile(entry.owner, entry.filepath)
-      progress?.(++current, files.length)
+    for (const key of keys) {
+      const scopeID = key[2]
+      if (!scopeID) throw new Error("Historical Browser state has no owner")
+      const owner: BrowserOwner.Info =
+        key[3] === "scope"
+          ? { mode: "scope", scopeID, directory: "" }
+          : { mode: "session", scopeID, sessionID: key[4], directory: "" }
+      await migrateRecord(owner, key)
+      progress?.(++current, keys.length)
     }
-    await removeLegacySessionsRoot(path.join(Global.Path.data, "browser", "sessions"))
-    if (files.length === 0) progress?.(0, 0)
+    if (!keys.length) progress?.(0, 0)
   }
 }
 
@@ -316,36 +269,6 @@ function legacyComponent(value: string, label: string): string {
     throw new Error(`Legacy Browser ${label} identifier is unsafe.`)
   }
   return value
-}
-
-async function directoryEntries(directory: string): Promise<string[]> {
-  try {
-    return await fs.readdir(directory)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return []
-    throw error
-  }
-}
-
-async function removeLegacySessionsRoot(sessionsRoot: string): Promise<void> {
-  let info: Awaited<ReturnType<typeof fs.lstat>>
-  try {
-    info = await fs.lstat(sessionsRoot)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return
-    throw error
-  }
-  if (!info.isDirectory() || info.isSymbolicLink()) {
-    throw new Error("Legacy Browser sessions root is unsafe.")
-  }
-  const [realSessionsRoot, realBrowserRoot] = await Promise.all([
-    fs.realpath(sessionsRoot),
-    fs.realpath(path.join(Global.Path.data, "browser")),
-  ])
-  if (!realSessionsRoot.startsWith(`${realBrowserRoot}${path.sep}`)) {
-    throw new Error("Legacy Browser sessions root escaped Browser storage.")
-  }
-  await fs.rm(realSessionsRoot, { recursive: true, force: true })
 }
 
 export const migrations: Migration[] = [

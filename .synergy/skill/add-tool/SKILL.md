@@ -55,6 +55,8 @@ The tool icon registry is separate from the product semantic-token registry. Loa
 
 ## Verify
 
+For external reads with automatic retries, reuse the shared network classifier and cancellable backoff, verify that the operation is safe to replay, and put all attempts, body reads, and waits under one caller deadline. Keep one permission and deduplication admission per tool invocation. Test transient recovery, permanent rejection, cancelled backoff, body failure and size limits; do not turn a generic tool or MCP failure into automatic side-effect replay.
+
 From the tool’s owning package, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
 
 ```bash

@@ -1,10 +1,10 @@
 import { open } from "node:fs/promises"
 
 export function terminate(child: Bun.Subprocess, signal: NodeJS.Signals) {
-  if (child.exitCode !== null) return
   try {
-    if (process.platform === "win32") child.kill(signal)
-    else process.kill(-child.pid, signal)
+    if (process.platform === "win32") {
+      if (child.exitCode === null) child.kill(signal)
+    } else process.kill(-child.pid, signal)
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
   }
@@ -46,6 +46,7 @@ export async function runProcess(input: {
       }
     } finally {
       clearTimeout(deadline)
+      terminate(child, "SIGKILL")
     }
   } finally {
     await log.close()

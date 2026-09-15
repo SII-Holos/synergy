@@ -1,7 +1,20 @@
-import type { RunOptions } from "@ericsanchezok/synergy-harness/migration/types"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
+import { ensureMigrations } from "@ericsanchezok/synergy-harness/migration"
 import type { Argv, InferredOptionTypes } from "yargs"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { ensureMigrations } from "@ericsanchezok/synergy-harness/migration"
+
+export async function loadNetworkConfig() {
+  if (Storage.available()) {
+    await ensureMigrations({ output: "silent" })
+  } else if ((await StorageBootstrap.status(Global.Path.root))?.phase !== "active") {
+    await using maintenance = await StorageMaintenance.open()
+  }
+  Config.global.reset()
+  return Config.global()
+}
 
 interface ResolveNetworkInput {
   argv?: string[]
@@ -55,15 +68,11 @@ export async function isServerReachable(url: string): Promise<boolean> {
   }
 }
 
-export async function resolveNetworkOptions(
-  args: NetworkOptions,
-  migrationOptions: Pick<RunOptions, "output" | "reporter"> = { output: "interactive" },
-) {
-  await ensureMigrations(migrationOptions)
+export async function resolveNetworkOptions(args: NetworkOptions) {
   Config.global.reset()
   return resolveNetworkArgv({
     argv: process.argv,
-    config: await Config.global(),
+    config: await loadNetworkConfig(),
     defaults: {
       hostname: args.hostname,
       port: args.port,
@@ -85,10 +94,9 @@ export async function resolveNetworkArgv(
 ) {
   const argv = input.argv ?? process.argv
   if (!input.config) {
-    await ensureMigrations({ output: "interactive" })
     Config.global.reset()
   }
-  const config = input.config ?? (await Config.global())
+  const config = input.config ?? (await loadNetworkConfig())
   const portExplicitlySet = argv.includes("--port")
   const hostnameExplicitlySet = argv.includes("--hostname")
   const mdnsExplicitlySet = argv.includes("--mdns")

@@ -1,24 +1,21 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
+import { PluginInstallationRecovery } from "./installation-recovery"
 import type { LoadedPlugin } from "./loader"
 import type { PluginLockEntry } from "./lockfile-schema"
 import type { PluginApprovalRecord } from "./consent/approval-store"
 import fs from "fs/promises"
-import fsSync from "fs"
 import path from "path"
-import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import * as Lockfile from "./lockfile"
 import { addEntry, removePluginEntries } from "./lockfile"
-import { readApprovals, removeApproval, saveApproval, writeApprovals } from "./consent/approval-store"
+import { removeApproval, saveApproval } from "./consent/approval-store"
 import type { ResolvedPluginSpec } from "./spec-resolver"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { recordEvent } from "./audit"
 import { IncompatiblePluginStore } from "./incompatible-store"
 
 const log = Log.create({ service: "plugin.install.transaction" })
-
-const LOCK_STALE_MS = 120_000
-const LOCK_POLL_MS = 50
-const LOCK_TIMEOUT_MS = 30_000
 
 export interface CanonicalizePluginSpecsInput {
   specs: string[]
@@ -88,47 +85,10 @@ export interface PluginDoctorResult {
   changed: boolean
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function acquireLock(): Promise<() => Promise<void>> {
-  const lockDir = path.join(Global.Path.state, "plugin-install", "transaction.lock")
-  const deadline = Date.now() + LOCK_TIMEOUT_MS
-  await fs.mkdir(path.dirname(lockDir), { recursive: true })
-
-  while (true) {
-    try {
-      await fs.mkdir(lockDir)
-      await Bun.write(path.join(lockDir, "owner.json"), JSON.stringify({ pid: process.pid, createdAt: Date.now() }))
-      let released = false
-      return async () => {
-        if (released) return
-        released = true
-        await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {})
-      }
-    } catch (err: any) {
-      if (err?.code !== "EEXIST") throw err
-      const stat = await fs.stat(lockDir).catch(() => null)
-      if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-        await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {})
-        continue
-      }
-      if (Date.now() > deadline) {
-        throw new Error("Timed out waiting for plugin installation lock")
-      }
-      await sleep(LOCK_POLL_MS)
-    }
-  }
-}
-
 export async function withPluginInstallationLock<T>(fn: () => Promise<T>): Promise<T> {
-  const release = await acquireLock()
-  try {
-    return await fn()
-  } finally {
-    await release()
-  }
+  using lock = await Lock.write("plugin-installation")
+  await PluginInstallationRecovery.recoverUnlocked()
+  return fn()
 }
 
 export async function canonicalizePluginSpecs(
@@ -220,52 +180,6 @@ function resolvedPathAfterPromotion(resolved: ResolvedPluginSpec): string {
   return path.join(resolved.finalPluginDir, path.relative(resolved.stagingDir, resolvedFile))
 }
 
-async function promoteStagingDir(resolved: ResolvedPluginSpec): Promise<{
-  finalDir?: string
-  backupDir?: string
-  restore: () => Promise<void>
-  cleanup: () => Promise<void>
-}> {
-  if (!resolved.stagingDir || !resolved.finalPluginDir) {
-    return { restore: async () => {}, cleanup: async () => {} }
-  }
-
-  const finalDir = resolved.finalPluginDir
-  const backupDir = path.join(
-    Global.Path.state,
-    "plugin-install",
-    "rollback",
-    `${path.basename(finalDir)}-${process.pid}-${Date.now()}`,
-  )
-  await fs.mkdir(path.dirname(backupDir), { recursive: true })
-  await fs.mkdir(path.dirname(finalDir), { recursive: true })
-
-  let hasBackup = false
-  if (fsSync.existsSync(finalDir)) {
-    await fs.rm(backupDir, { recursive: true, force: true })
-    await fs.rename(finalDir, backupDir)
-    hasBackup = true
-  }
-
-  await fs.rename(resolved.stagingDir, finalDir)
-
-  return {
-    finalDir,
-    backupDir: hasBackup ? backupDir : undefined,
-    restore: async () => {
-      await fs.rm(finalDir, { recursive: true, force: true }).catch(() => {})
-      if (hasBackup) {
-        await fs.rename(backupDir, finalDir).catch(async () => {
-          await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {})
-        })
-      }
-    },
-    cleanup: async () => {
-      if (hasBackup) await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {})
-    },
-  }
-}
-
 function assertSingleLoadedPlugin(pluginId: string, loaded: LoadedPlugin[]) {
   const matches = loaded.filter((plugin) => plugin.id === pluginId)
   if (matches.length > 1) {
@@ -282,7 +196,6 @@ export namespace PluginInstallationTransaction {
     return withPluginInstallationLock(async () => {
       const previousDomain = await Config.domainGet("plugins")
       const previousLockfile = await Lockfile.read()
-      const previousApprovals = await readApprovals()
       const previousIncompatible = await IncompatiblePluginStore.read()
       const currentPlugins = previousDomain.plugin ?? []
       const resolveConfiguredPluginId = async (spec: string): Promise<string | null> => {
@@ -299,29 +212,31 @@ export namespace PluginInstallationTransaction {
         resolvePluginId: resolveConfiguredPluginId,
       })
 
-      const promoted = await promoteStagingDir(input.resolved)
+      const nextDomain = { ...previousDomain, plugin: nextConfig.plugins }
+      const recovery = await PluginInstallationRecovery.begin(input.pluginId, nextDomain, input.resolved)
       const lockEntry: PluginLockEntry = {
         ...input.lockEntry,
         resolved: resolvedPathAfterPromotion(input.resolved),
       }
 
       try {
-        await Lockfile.write(addEntry(previousLockfile, input.pluginId, lockEntry))
-        await Config.domainUpdate("plugins", { ...previousDomain, plugin: nextConfig.plugins } as any, {
-          mode: "replace-domain",
+        await recovery.promote()
+        await Config.domainUpdate("plugins", nextDomain, { mode: "replace-domain" })
+        await Storage.transaction(async () => {
+          await Lockfile.write(addEntry(await Lockfile.read(), input.pluginId, lockEntry))
+          if (input.approval) await saveApproval(input.approval)
+          await IncompatiblePluginStore.write(
+            IncompatiblePluginStore.withoutPlugin(previousIncompatible, input.pluginId, [
+              input.spec,
+              ...nextConfig.removed,
+            ]),
+          )
         })
-        if (input.approval) await saveApproval(input.approval)
-        await IncompatiblePluginStore.write(
-          IncompatiblePluginStore.withoutPlugin(previousIncompatible, input.pluginId, [
-            input.spec,
-            ...nextConfig.removed,
-          ]),
-        )
         if (input.autoReload !== false) await input.reload()
 
         const loaded = await input.getLoaded()
         const plugin = assertSingleLoadedPlugin(input.pluginId, loaded)
-        await promoted.cleanup()
+        await recovery.finish()
         return plugin
       } catch (err) {
         const previousEntry = previousLockfile.plugins[input.pluginId]
@@ -329,11 +244,7 @@ export namespace PluginInstallationTransaction {
           pluginId: input.pluginId,
           error: err instanceof Error ? err.message : String(err),
         })
-        await Lockfile.write(previousLockfile).catch(() => {})
-        await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
-        await writeApprovals(previousApprovals).catch(() => {})
-        await IncompatiblePluginStore.write(previousIncompatible).catch(() => {})
-        await promoted.restore().catch(() => {})
+        await recovery.rollback()
         if (input.autoReload !== false) await input.reload().catch(() => {})
         if (previousEntry) {
           await recordEvent({
@@ -361,7 +272,6 @@ export namespace PluginInstallationTransaction {
     await withPluginInstallationLock(async () => {
       const previousDomain = await Config.domainGet("plugins")
       const previousLockfile = await Lockfile.read()
-      const previousApprovals = await readApprovals()
       const previousIncompatible = await IncompatiblePluginStore.read()
       const currentPlugins = previousDomain.plugin ?? []
       const recordedIds = new Map<string, string>()
@@ -387,19 +297,20 @@ export namespace PluginInstallationTransaction {
       }
 
       await input.beforeCommit?.()
+      const recovery = await PluginInstallationRecovery.begin(input.pluginId, nextDomain)
       try {
         await Config.domainUpdate("plugins", nextDomain, { mode: "replace-domain" })
-        await Lockfile.write(removePluginEntries(previousLockfile, input.pluginId, selected.removed))
-        await removeApproval(input.pluginId)
-        await IncompatiblePluginStore.write(
-          IncompatiblePluginStore.withoutPlugin(previousIncompatible, input.pluginId, selected.removed),
-        )
+        await Storage.transaction(async () => {
+          await Lockfile.write(removePluginEntries(await Lockfile.read(), input.pluginId, selected.removed))
+          await removeApproval(input.pluginId)
+          await IncompatiblePluginStore.write(
+            IncompatiblePluginStore.withoutPlugin(previousIncompatible, input.pluginId, selected.removed),
+          )
+        })
         await input.reload()
+        await recovery.finish()
       } catch (err) {
-        await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
-        await Lockfile.write(previousLockfile).catch(() => {})
-        await writeApprovals(previousApprovals).catch(() => {})
-        await IncompatiblePluginStore.write(previousIncompatible).catch(() => {})
+        await recovery.rollback()
         await input.reload().catch(() => {})
         throw err
       }
@@ -413,20 +324,21 @@ export namespace PluginInstallationTransaction {
     getLoaded: () => Promise<LoadedPlugin[]>
   }): Promise<LoadedPlugin> {
     return withPluginInstallationLock(async () => {
-      const previousApprovals = await readApprovals()
       const approval = typeof input.approval === "function" ? await input.approval() : input.approval
-
+      const recovery = await PluginInstallationRecovery.begin(input.pluginId)
       try {
         await saveApproval(approval)
         await input.reload()
         const loaded = await input.getLoaded()
-        return assertSingleLoadedPlugin(input.pluginId, loaded)
+        const plugin = assertSingleLoadedPlugin(input.pluginId, loaded)
+        await recovery.finish()
+        return plugin
       } catch (err) {
         log.warn("plugin approval transaction failed; rolling back", {
           pluginId: input.pluginId,
           error: err instanceof Error ? err.message : String(err),
         })
-        await writeApprovals(previousApprovals).catch(() => {})
+        await recovery.rollback()
         await input.reload().catch(() => {})
         throw err
       }

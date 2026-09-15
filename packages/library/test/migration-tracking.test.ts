@@ -13,6 +13,8 @@ test("legacy Library tracking stays untouched until its owner registers", async 
       const { runMigrations } = await import("@ericsanchezok/synergy-harness/migration")
       const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
       const { StoragePath } = await import("@ericsanchezok/synergy-harness/storage/path")
+      const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+      await using maintenance = await StorageMaintenance.open({ migrate: false })
       const oldKey = StoragePath.metaMigrationLogDomain("engram")
       const newKey = StoragePath.metaMigrationLogDomain("library")
       const old = { "20260324-engram-experience-source-model": 42, "unknown-engram-step": 24 }

@@ -1,13 +1,10 @@
-import path from "path"
 import { manifestHasTrustedUI, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import {
   computePermissionsHash,
   permissionsHashPayload,
   type PluginGrantContract,
 } from "@ericsanchezok/synergy-plugin/integrity"
-import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import type { PluginSource, TrustTier } from "../trust.js"
 import { comparePluginAccess } from "./diff.js"
 
@@ -24,40 +21,20 @@ export interface PluginApprovalRecord {
   approvedCapabilities: string[]
 }
 
-function approvalPath() {
-  return path.join(Global.Path.data, "plugin-approvals.json")
-}
-
 async function readAll(): Promise<PluginApprovalRecord[]> {
-  try {
-    const value = JSON.parse(await Bun.file(approvalPath()).text())
-    return Array.isArray(value)
-      ? value.filter(
-          (record): record is PluginApprovalRecord =>
-            record?.schemaVersion === 2 &&
-            typeof record.pluginId === "string" &&
-            typeof record.grantHash === "string" &&
-            record.grant &&
-            typeof record.grant === "object",
-        )
-      : []
-  } catch {
-    return []
-  }
-}
-
-// Lock is not reentrant: writeAll must stay lock-free because saveApproval,
-// removeApproval, and writeApprovals already hold Lock.write across their
-// read-modify-write, which serializes concurrent approval mutations in-process.
-async function writeAll(records: PluginApprovalRecord[]) {
-  await Storage.writeJsonAtomic(approvalPath(), `${JSON.stringify(records, null, 2)}\n`)
+  const keys = await Storage.list(["plugin-approvals", "records"])
+  return (await Storage.readMany<PluginApprovalRecord>(keys))
+    .filter((record): record is PluginApprovalRecord => record !== undefined)
+    .sort((a, b) => a.pluginId.localeCompare(b.pluginId))
 }
 
 export const readApprovals = readAll
 
 export async function writeApprovals(records: PluginApprovalRecord[]) {
-  using _ = await Lock.write(approvalPath())
-  await writeAll(records)
+  await Storage.transaction(async (tx) => {
+    await tx.removeTree(["plugin-approvals", "records"])
+    for (const record of records) await tx.write(["plugin-approvals", "records", record.pluginId], record)
+  })
 }
 
 export function createApprovalRecord(input: {
@@ -84,22 +61,16 @@ export function createApprovalRecord(input: {
 }
 
 export async function getApproval(pluginId: string, manifest?: PluginManifestType) {
-  const records = (await readAll())
-    .filter((record) => record.pluginId === pluginId)
-    .sort((left, right) => right.approvedAt - left.approvedAt)
-  return manifest ? records.find((record) => verifyApproval(record, manifest)) : records[0]
+  const [record] = await Storage.readMany<PluginApprovalRecord>([["plugin-approvals", "records", pluginId]])
+  return record && (!manifest || verifyApproval(record, manifest)) ? record : undefined
 }
 
 export async function saveApproval(record: PluginApprovalRecord) {
-  using _ = await Lock.write(approvalPath())
-  const records = (await readAll()).filter((item) => item.pluginId !== record.pluginId)
-  records.push(record)
-  await writeAll(records)
+  await Storage.write(["plugin-approvals", "records", record.pluginId], record)
 }
 
 export async function removeApproval(pluginId: string) {
-  using _ = await Lock.write(approvalPath())
-  await writeAll((await readAll()).filter((record) => record.pluginId !== pluginId))
+  await Storage.remove(["plugin-approvals", "records", pluginId])
 }
 
 export function verifyApproval(

@@ -987,9 +987,15 @@ export namespace SessionProcessor {
           agent: input.assistantMessage.agent,
         })
         const shouldBreak = (await Config.current()).execution?.continueOnDeny !== true
+        const retainedPartIDs = new Set(
+          (await MessageV2.parts({ sessionID: input.sessionID, messageID: input.assistantMessage.id })).map(
+            (part) => part.id,
+          ),
+        )
         try {
           while (true) {
             let streamAborted = false
+            let retryEligible = false
             let contextUsageEnrichment:
               | {
                   draft: Promise<ContextUsage.Draft | undefined>
@@ -998,6 +1004,27 @@ export namespace SessionProcessor {
               | undefined
             try {
               input.abort.throwIfAborted()
+              if (attempt > 0) {
+                await waitForTrackedSettlements()
+                await Promise.all(toolCallStateUpdates.values())
+                await Session.flushPartWrites(input.sessionID)
+                const parts = await MessageV2.parts({
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                })
+                for (const part of parts) {
+                  if (retainedPartIDs.has(part.id) || part.type === "patch" || part.type === "step-finish") continue
+                  await Session.removePart({
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    partID: part.id,
+                  })
+                }
+                dispose("retry")
+                blocked = false
+                input.assistantMessage.finish = undefined
+                await Session.updateMessage(input.assistantMessage)
+              }
               let currentText: MessageV2.TextPart | undefined
               let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
               const deferredToolCalls: Array<{
@@ -1018,6 +1045,7 @@ export namespace SessionProcessor {
                 resolverInput: _resolverInput,
                 ...agentTurnInput
               } = streamInput
+              retryEligible = true
               const stream = await AgentTurn.stream(agentTurnInput)
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
@@ -1510,10 +1538,17 @@ export namespace SessionProcessor {
                       input.assistantMessage.finish = value.finishReason
                       input.assistantMessage.cost += usage.cost
                       input.assistantMessage.tokens = usage.tokens
-                      if (hasProviderInputUsage(value.usage) && stream.contextUsageDraft) {
+                      const exactProviderInputTotal = rollout
+                        ? stepAccounting?.tokens.input.total
+                        : ModelLimit.actualInput(usage.tokens)
+                      if (
+                        hasProviderInputUsage(value.usage) &&
+                        stream.contextUsageDraft &&
+                        exactProviderInputTotal != null
+                      ) {
                         contextUsageEnrichment = {
                           draft: stream.contextUsageDraft,
-                          totalInput: ModelLimit.actualInput(usage.tokens),
+                          totalInput: exactProviderInputTotal,
                         }
                       }
                       const step = await Session.updatePart({
@@ -1629,6 +1664,7 @@ export namespace SessionProcessor {
                       break
                   }
                 }
+                retryEligible = false
                 ObservabilitySpans.end(llmSpan, {
                   attributes: { provider: input.model.providerID, model: input.model.id },
                 })
@@ -1767,7 +1803,7 @@ export namespace SessionProcessor {
                 error: e,
               })
               const error = MessageV2.fromError(e, { providerID: input.model.providerID, modelID: input.model.id })
-              const retry = fastAbort ? undefined : SessionRetry.retryable(error)
+              const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error)
               if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
                 attempt++
                 const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)

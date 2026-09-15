@@ -68,7 +68,10 @@ export namespace Scope {
   }
 
   async function readPersisted(scopeID: string) {
-    return Storage.read<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID))).catch(() => undefined)
+    return Storage.read<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID))).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
   }
 
   export async function fromID(scopeID: string): Promise<Scope | undefined> {
@@ -89,6 +92,17 @@ export namespace Scope {
     }
   }
 
+  function publish<Definition extends BusEvent.Definition>(
+    definition: Definition,
+    properties: z.output<Definition["properties"]>,
+    scopeID: string,
+  ) {
+    const payload = { type: definition.type, properties: structuredClone(properties) }
+    return Storage.enqueue({ id: crypto.randomUUID(), scopeID, type: definition.type, payload }, async () => {
+      GlobalBus.emit("event", { payload })
+    })
+  }
+
   async function writePersisted(data: z.infer<typeof Info>) {
     await Storage.write(StoragePath.scope(pid(data.id)), data)
   }
@@ -96,7 +110,7 @@ export namespace Scope {
   async function findByWorktree(worktree: string): Promise<z.infer<typeof Info> | undefined> {
     const resolved = path.resolve(worktree)
     for (const rawID of await Storage.scan(StoragePath.scopeRoot())) {
-      const data = await readPersisted(rawID).catch(() => undefined)
+      const data = await readPersisted(rawID)
       if (!data || data.time?.archived) continue
       if (path.resolve(data.worktree) === resolved) return data
     }
@@ -352,7 +366,23 @@ export namespace Scope {
       project.vcs !== existing.vcs ||
       project.sandboxes.length !== previousSandboxes.length ||
       project.sandboxes.some((entry, index) => entry !== previousSandboxes[index])
-    if (persist && recordChanged) await writePersisted(project)
+    if (persist && recordChanged)
+      await Storage.transaction(async () => {
+        const latest = await readPersisted(project.id)
+        const merged = latest
+          ? {
+              ...latest,
+              directory: project.directory,
+              worktree: project.worktree,
+              vcs: project.vcs,
+              sandboxes: [...new Set([...(latest.sandboxes ?? []), ...project.sandboxes])].filter((entry) =>
+                existsSync(entry),
+              ),
+            }
+          : project
+        await writePersisted(merged)
+        await publish(Event.Updated, merged, merged.id)
+      })
 
     const scope: Scope.Project = {
       type: "project",
@@ -365,15 +395,6 @@ export namespace Scope {
       pinned: project.pinned,
       sandboxes: project.sandboxes,
       time: project.time,
-    }
-
-    if (persist && recordChanged) {
-      GlobalBus.emit("event", {
-        payload: {
-          type: Event.Updated.type,
-          properties: project,
-        },
-      })
     }
 
     return { scope, sandbox }
@@ -441,60 +462,54 @@ export namespace Scope {
     archived?: number | null
     sandboxes?: string[]
   }) {
-    if (input.scopeID === "home") return undefined
-    if (input.archived !== undefined && input.archived !== null) {
-      for (const guard of archiveGuards) await guard(input.scopeID)
-    }
-    const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
-      if (input.name !== undefined) draft.name = input.name
-      if (input.icon !== undefined) {
-        draft.icon = { ...draft.icon }
-        if (input.icon.url !== undefined) draft.icon!.url = input.icon.url
-        if (input.icon.color !== undefined) draft.icon!.color = input.icon.color
+    return Storage.transaction(async () => {
+      if (input.scopeID === "home") return undefined
+      if (input.archived !== undefined && input.archived !== null) {
+        for (const guard of archiveGuards) await guard(input.scopeID)
       }
-      if (input.pinned !== undefined) {
-        draft.pinned = input.pinned ?? undefined
-      }
-      if (input.archived !== undefined) {
-        draft.time.archived = input.archived ?? undefined
-      }
-      if (input.sandboxes !== undefined) {
-        const worktree = path.resolve(draft.worktree)
-        const seen = new Set<string>()
-        draft.sandboxes = input.sandboxes
-          .filter((s) => path.isAbsolute(s))
-          .filter((s) => {
-            const resolved = path.resolve(s)
-            if (resolved === worktree) return false
-            if (seen.has(resolved)) return false
-            seen.add(resolved)
-            return true
-          })
-      }
-      draft.time.updated = Date.now()
+      const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
+        if (input.name !== undefined) draft.name = input.name
+        if (input.icon !== undefined) {
+          draft.icon = { ...draft.icon }
+          if (input.icon.url !== undefined) draft.icon!.url = input.icon.url
+          if (input.icon.color !== undefined) draft.icon!.color = input.icon.color
+        }
+        if (input.pinned !== undefined) {
+          draft.pinned = input.pinned ?? undefined
+        }
+        if (input.archived !== undefined) {
+          draft.time.archived = input.archived ?? undefined
+        }
+        if (input.sandboxes !== undefined) {
+          const worktree = path.resolve(draft.worktree)
+          const seen = new Set<string>()
+          draft.sandboxes = input.sandboxes
+            .filter((s) => path.isAbsolute(s))
+            .filter((s) => {
+              const resolved = path.resolve(s)
+              if (resolved === worktree) return false
+              if (seen.has(resolved)) return false
+              seen.add(resolved)
+              return true
+            })
+        }
+        draft.time.updated = Date.now()
+      })
+      await publish(Event.Updated, result, result.id)
+      return result
     })
-    GlobalBus.emit("event", {
-      payload: {
-        type: Event.Updated.type,
-        properties: result,
-      },
-    })
-    return result
   }
 
   export async function remove(scopeID: string) {
-    if (scopeID === "home") return undefined
-    for (const guard of archiveGuards) await guard(scopeID)
-    const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
-      draft.time.archived = Date.now()
+    return Storage.transaction(async () => {
+      if (scopeID === "home") return undefined
+      for (const guard of archiveGuards) await guard(scopeID)
+      const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
+        draft.time.archived = Date.now()
+      })
+      await publish(Event.Removed, { id: scopeID, directory: result.worktree }, scopeID)
+      return result
     })
-    GlobalBus.emit("event", {
-      payload: {
-        type: Event.Removed.type,
-        properties: { id: scopeID, directory: result.worktree },
-      },
-    })
-    return result
   }
 
   export async function sandboxes(scopeID: string) {

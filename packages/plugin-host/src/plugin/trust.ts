@@ -1,5 +1,4 @@
 import path from "path"
-import fs from "fs"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import {
   defaultPluginTrustDecision,
@@ -29,10 +28,9 @@ export {
 } from "@ericsanchezok/synergy-util/plugin-policy"
 export type { PluginSource, PluginTrustDecision, TrustTier } from "@ericsanchezok/synergy-util/plugin-policy"
 
-function sourceFromLockfile(pluginDir: string): PluginSource | undefined {
+async function sourceFromLockfile(pluginDir: string): Promise<PluginSource | undefined> {
   try {
-    const lockfilePath = path.join(Global.Path.root, "plugin.lock")
-    const parsed = JSON.parse(fs.readFileSync(lockfilePath, "utf-8"))
+    const parsed = await Lockfile.read()
     const entries = Object.values(parsed?.plugins ?? {}) as Array<{
       spec?: string
       source?: PluginSource
@@ -53,8 +51,8 @@ function sourceFromLockfile(pluginDir: string): PluginSource | undefined {
  * Derive the plugin source classification from its lockfile entry and directory path.
  * Lockfile specs win because cache paths alone cannot distinguish npm from git/url archives.
  */
-export function derivePluginSource(pluginDir: string): PluginSource {
-  const fromLockfile = sourceFromLockfile(pluginDir)
+export async function derivePluginSource(pluginDir: string): Promise<PluginSource> {
+  const fromLockfile = await sourceFromLockfile(pluginDir)
   if (fromLockfile) return fromLockfile
 
   const cacheRoot = Global.Path.cache
@@ -121,7 +119,7 @@ export interface InstalledPluginPolicyDecision extends PluginPolicyDecision {
 export async function resolveInstalledPluginPolicy(
   input: InstalledPluginPolicyInput,
 ): Promise<InstalledPluginPolicyDecision> {
-  const source = input.source ?? derivePluginSource(input.pluginDir)
+  const source = input.source ?? (await derivePluginSource(input.pluginDir))
   const [approval, integrity] = await Promise.all([
     input.approval === undefined ? getApproval(input.pluginId, input.manifest) : Promise.resolve(input.approval),
     input.verifiedIntegrity === undefined ? resolvePluginIntegrity(input.pluginDir) : Promise.resolve(undefined),

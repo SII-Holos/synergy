@@ -30,6 +30,7 @@ import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./globa
 import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planSessionVolatileResync } from "./session-volatile-resync"
+import { parseEventWriteStamp, ScopeWriteTracker } from "./scope-snapshot-merge"
 import { removeMaterializedInboxItems } from "../components/session/session-inbox-utils"
 import {
   parseSyncVersion,
@@ -272,6 +273,11 @@ function createGlobalSync() {
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
+  // Reactivity for the scope-store registry: consumers reading
+  // peekScopeState() re-run when a store is created or evicted, so a sidebar
+  // row that first observed `undefined` picks the store up once an event or
+  // prefetch creates it (the plain object below is invisible to Solid).
+  const [scopeRegistryVersion, setScopeRegistryVersion] = createSignal(0)
   const scopeRetention = createScopeRetention(releaseScopeState)
   let disposed = false
   const instanceRequestConcurrency = 2
@@ -453,6 +459,7 @@ function createGlobalSync() {
   }
 
   function peekScopeState(scopeKey: string) {
+    scopeRegistryVersion()
     return children[scopeKey]
   }
 
@@ -498,6 +505,7 @@ function createGlobalSync() {
         latestContextMessage: {},
         part: {},
       })
+      setScopeRegistryVersion((version) => version + 1)
       scheduleBootstrap(scopeKey)
     }
     scopeRetention.touch(scopeKey)
@@ -538,8 +546,12 @@ function createGlobalSync() {
 
   function releaseScopeState(scopeKey: string) {
     contextProjectionRevision.releaseScope(scopeKey)
-    delete children[scopeKey]
+    if (children[scopeKey]) {
+      delete children[scopeKey]
+      setScopeRegistryVersion((version) => version + 1)
+    }
     watermarks.delete(scopeKey)
+    writeTrackers.delete(scopeKey)
     replayInFlight.delete(scopeKey)
     replayPending.delete(scopeKey)
     recoveryRetryScheduler.cancel(scopeKey)
@@ -872,9 +884,10 @@ function createGlobalSync() {
 
   function reconcileCortexFromSession(store: State, setStore: SetStoreFunction<State>, info: Session) {
     const cortex = info.cortex
-    if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
+    if (!cortex || !terminalCortexStatuses.has(cortex.status)) return undefined
     const idx = store.cortex.findIndex((task) => task.sessionID === info.id)
-    if (idx === -1) return
+    if (idx === -1) return undefined
+    const taskID = store.cortex[idx].id
     setStore(
       "cortex",
       idx,
@@ -886,6 +899,7 @@ function createGlobalSync() {
         error: cortex.error ?? store.cortex[idx].error,
       }),
     )
+    return taskID
   }
 
   function applyScopeBootstrapSnapshot(
@@ -896,6 +910,16 @@ function createGlobalSync() {
     headers: Pick<Headers, "get"> | undefined,
   ) {
     const sessions = data.sessions?.data.filter((session) => !!session?.id && !session.time?.archived)
+    // The server stamps the response sequence before reading snapshot
+    // fields, so a same-epoch response whose seq trails an event already
+    // applied was read before that event happened. Events stay authoritative
+    // only for the keys they wrote after the stamp (per-key tracking in
+    // ScopeWriteTracker); every other key converges to the snapshot,
+    // including its deletions, so state left stale by a missed event (an
+    // idle that never arrived, an archived session) cannot survive a
+    // fail-open resync.
+    const version = readSyncVersion(headers)
+    const tracker = writeTrackers.get(scopeKey)
     batch(() => {
       setStore("scopeID", data.scopeID)
       setStore("provider", internProviderList(data.provider))
@@ -903,13 +927,25 @@ function createGlobalSync() {
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
-      if (data.sessionStatus) setStore("session_status", reconcile(data.sessionStatus))
+      if (data.sessionStatus)
+        setStore(
+          "session_status",
+          reconcile(tracker?.mergeStatus(version, data.sessionStatus, store.session_status) ?? data.sessionStatus),
+        )
       if (sessions) {
-        setStore("session", reconcile(sessions, { key: "id" }))
-        setStore("sessionTotal", data.sessions!.total)
+        const mergedSessions = tracker?.mergeSessions(version, sessions, store.session)
+        setStore("session", reconcile(mergedSessions ?? sessions, { key: "id" }))
+        setStore(
+          "sessionTotal",
+          mergedSessions ? Math.max(data.sessions!.total, mergedSessions.length) : data.sessions!.total,
+        )
       }
       if (data.mcp) setStore("mcp", reconcile(data.mcp))
-      if (data.cortex) setStore("cortex", reconcile(data.cortex, { key: "id" }))
+      if (data.cortex)
+        setStore(
+          "cortex",
+          reconcile(tracker?.mergeCortex(version, data.cortex, store.cortex) ?? data.cortex, { key: "id" }),
+        )
       if (data.agenda) {
         setStore(
           "agenda",
@@ -923,7 +959,6 @@ function createGlobalSync() {
       if (data.vcs) setStore("vcs", reconcile(data.vcs))
     })
 
-    const version = readSyncVersion(headers)
     if (!version) return
     const current = watermarks.get(scopeKey)
     if (!current || current.epoch !== version.epoch || version.seq > current.seq) {
@@ -1055,6 +1090,20 @@ function createGlobalSync() {
   // for reconnect replay and gap detection (frontend sync redesign, phase 1).
   const watermarks = new Map<string, Watermark>()
   const replayInFlight = new Map<string, Promise<boolean>>()
+  // Per-scope post-stamp event-write tracking for the event-authoritative
+  // buckets (session status/list, Cortex), consumed when a bootstrap
+  // snapshot applies so only keys written after the response stamp keep
+  // their event value.
+  const writeTrackers = new Map<string, ScopeWriteTracker>()
+
+  function scopeWriteTracker(scopeKey: string) {
+    let tracker = writeTrackers.get(scopeKey)
+    if (!tracker) {
+      tracker = new ScopeWriteTracker()
+      writeTrackers.set(scopeKey, tracker)
+    }
+    return tracker
+  }
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
   // switches between sessions (C7). Only the actively-viewed session is never
@@ -1202,6 +1251,7 @@ function createGlobalSync() {
   })
 
   function applyEvent(scopeKey: string, event: any) {
+    const stamp = parseEventWriteStamp(event)
     if (event?.type === "global.disposed") {
       bootstrap()
       return
@@ -1312,7 +1362,12 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info as Session
-        reconcileCortexFromSession(store, setStore, info)
+        const touchedCortex = reconcileCortexFromSession(store, setStore, info)
+        if (stamp) {
+          const tracker = scopeWriteTracker(scopeKey)
+          tracker.sessionWrite(stamp, info.id, !info.time.archived)
+          if (touchedCortex) tracker.cortexWrite(stamp, touchedCortex)
+        }
         const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
           if (index !== -1) {
@@ -1365,6 +1420,7 @@ function createGlobalSync() {
       case "session.status": {
         // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
+        if (stamp) scopeWriteTracker(scopeKey).statusWrite(stamp, event.properties.sessionID)
         if (event.properties.status.type === "idle") {
           if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
           if (
@@ -1739,6 +1795,7 @@ function createGlobalSync() {
             }
           }),
         )
+        if (stamp) scopeWriteTracker(scopeKey).cortexWrite(stamp, task.id)
         break
       }
       case "cortex.task.completed": {
@@ -1752,10 +1809,12 @@ function createGlobalSync() {
             }
           }),
         )
+        if (stamp) scopeWriteTracker(scopeKey).cortexWrite(stamp, task.id)
         break
       }
       case "cortex.tasks.updated": {
         setStore("cortex", reconcile(event.properties.tasks))
+        if (stamp) scopeWriteTracker(scopeKey).cortexReplace(stamp)
         break
       }
       case "agenda.item.created":

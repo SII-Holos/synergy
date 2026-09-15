@@ -584,6 +584,35 @@ describe("SessionProcessor context usage persistence", () => {
     expect(JSON.stringify(enriched?.contextUsage)).not.toContain("prompt")
   })
 
+  test("uses rollout input total when cache breakdown is unavailable", async () => {
+    await rolloutFixture(async ({ call }) => {
+      await completeRollout(call, { inputTokens: 93_898, omitCacheDetails: true })
+      const persisted: MessageV2.Assistant[] = []
+      await runSettlementScenario({
+        messageID: "msg_context_usage_rollout_cache_gap",
+        rollout: { owner: call.owner, runID: call.runID, callID: call.id },
+        contextUsageDraft,
+        updateMessage(message) {
+          persisted.push(structuredClone(message))
+        },
+        async *stream() {
+          yield {
+            type: "finish-step",
+            finishReason: "stop",
+            usage: { inputTokens: 93_898, outputTokens: 306 },
+          }
+        },
+      })
+
+      const enriched = persisted.findLast((message) => message.contextUsage !== undefined)
+      expect(enriched?.tokens).toEqual({ input: 0, output: 500, reasoning: 100, cache: { read: 0, write: 0 } })
+      expect(enriched?.contextUsage?.totalInput).toBe(93_898)
+      expect(enriched?.contextUsage?.reconciliation).toEqual({ mode: "residual", factor: 1 })
+      expect(enriched?.contextUsage?.overhead.attributedTokens).toBe(93_888)
+      expect(enriched?.contextUsage && ContextUsage.attributedTotal(enriched.contextUsage)).toBe(93_898)
+    })
+  })
+
   test("does not persist a snapshot when provider input usage is unavailable", async () => {
     let persisted: MessageV2.Assistant | undefined
     await runSettlementScenario({

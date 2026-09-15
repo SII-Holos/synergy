@@ -105,7 +105,7 @@ test("artifact storage failure still blocks migration and retries after storage 
       mime: "text/plain",
       url: "data:text/plain;base64,b3JpZ2luYWw=",
     })
-    const directory = path.join(Global.Path.data, ...RolloutArtifact.root(call.owner), "artifacts")
+    const directory = path.join(Global.Path.data, ...RolloutArtifact.root(call.owner), "blobs")
     const backup = directory + "-fixture"
     await mkdir(directory, { recursive: true })
     await rename(directory, backup)

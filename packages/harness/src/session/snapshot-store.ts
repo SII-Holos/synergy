@@ -39,7 +39,7 @@ export namespace SnapshotStore {
   }
 
   export function root(scopeID: string) {
-    return path.join(Global.Path.data, "snapshot-v2", component(scopeID))
+    return path.join(Storage.current().artifactDirectory, "snapshot-v2", component(scopeID))
   }
 
   export function repository(scopeID: string) {
@@ -47,13 +47,18 @@ export namespace SnapshotStore {
   }
 
   export function legacyRepository(scopeID: string, sessionID: string) {
-    return path.join(Global.Path.snapshot, component(scopeID), component(sessionID))
+    return path.join(
+      path.join(Storage.current().artifactDirectory, "snapshot"),
+      component(scopeID),
+      component(sessionID),
+    )
   }
 
   export function cache(scopeID: string, sessionID?: string) {
     return path.join(
       Global.Path.cache,
       "snapshot-index",
+      createHash("sha256").update(Storage.current().artifactDirectory).digest("hex").slice(0, 16),
       component(scopeID),
       ...(sessionID ? [component(sessionID)] : []),
     )
@@ -67,7 +72,7 @@ export namespace SnapshotStore {
   }
 
   export function write<T>(key: string[], value: T) {
-    return Storage.write(key, value, { durable: true })
+    return Storage.write(key, value)
   }
 
   export async function owner(scopeID: string, sessionID: string) {
@@ -139,12 +144,15 @@ export namespace SnapshotStore {
           return
         }
         await initializeRepository(operation.scopeID)
-        if (!(await owner(operation.scopeID, operation.sessionID))) {
-          await write(StoragePath.snapshotOwner(operation.scopeID, operation.sessionID), {
-            version: 2,
-            backend: "shared",
-          } satisfies Owner)
-        }
+        await Storage.transaction(async () => {
+          const current = await owner(operation.scopeID, operation.sessionID)
+          if (current?.backend === "deleted") throw new StorageError("Session snapshot ownership was deleted")
+          if (!current)
+            await write(StoragePath.snapshotOwner(operation.scopeID, operation.sessionID), {
+              version: 2,
+              backend: "shared",
+            } satisfies Owner)
+        })
       },
     )
   }

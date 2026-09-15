@@ -1,3 +1,4 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -12,10 +13,8 @@ test("doctor reports without mutation, then repairs duplicate config, stale lock
   await using tmp = await tmpdir({})
   const domain = await Config.domainGet("plugins")
   const lock = await Lockfile.read()
-  const statePath = path.join(Global.Path.data, "plugin-runtime-state.json")
-  const state = await Bun.file(statePath)
-    .text()
-    .catch(() => undefined)
+  const statePath = ["plugin-runtime-state"]
+  const [state] = await Storage.readMany([statePath])
   const orphan = path.join(Global.Path.cache, "plugin-archives", `doctor-${crypto.randomUUID()}`)
   const a = path.join(tmp.path, "a")
   const b = path.join(tmp.path, "b")
@@ -39,7 +38,7 @@ test("doctor reports without mutation, then repairs duplicate config, stale lock
       manifestHash: "hash",
     }
     await Lockfile.write({ version: 2, plugins: { duplicate: entry, stale: { ...entry, spec: "file:///unused" } } })
-    await Bun.write(statePath, JSON.stringify([runtime, { pluginId: "missing-entry", pluginDir: b }, null]))
+    await Storage.write(statePath, [runtime, { pluginId: "missing-entry", pluginDir: b }, null])
     const observed = await doctor()
     expect(observed.changed).toBe(false)
     expect(observed.issues.map((issue) => issue.type)).toEqual(
@@ -58,14 +57,14 @@ test("doctor reports without mutation, then repairs duplicate config, stale lock
     expect(repaired.changed).toBe(true)
     expect((await Config.domainGet("plugins")).plugin).toEqual([specB, missingSpec])
     expect(Object.keys((await Lockfile.read()).plugins)).toEqual(["duplicate"])
-    expect(await Bun.file(statePath).json()).toEqual([runtime])
+    expect(await Storage.read<Array<typeof runtime>>(statePath)).toEqual([runtime])
     expect(await fs.stat(orphan).catch(() => undefined)).toBeUndefined()
     expect((await doctor()).issues.map((issue) => issue.type)).toEqual(["unresolved_config_spec"])
   } finally {
     await Config.domainUpdate("plugins", domain, { mode: "replace-domain" })
     await Lockfile.write(lock)
-    if (state === undefined) await fs.rm(statePath, { force: true })
-    else await Bun.write(statePath, state)
+    if (state === undefined) await Storage.remove(statePath)
+    else await Storage.write(statePath, state)
     await fs.rm(orphan, { recursive: true, force: true })
   }
 })

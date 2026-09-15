@@ -1,3 +1,4 @@
+import { Storage } from "../../src/storage/storage"
 import { expect, test } from "bun:test"
 import { Uint8ArrayWriter, Uint8ArrayReader, ZipWriter, ZipReader } from "@zip.js/zip.js"
 import { fixture, complete } from "@ericsanchezok/synergy-harness/test/support/rollout"
@@ -206,6 +207,7 @@ test("rollout ZIP retains file snapshot objects after the source store is remove
     await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
     await Session.remove(session.id)
     await fs.rm(SnapshotStore.root(session.scope.id), { recursive: true, force: true })
+    await Storage.removeTree(["snapshot-v2", session.scope.id])
     const restored = await SessionImport.fromBuffer(await writer.getData())
     try {
       expect(await SnapshotStore.owns(session.scope.id, restored.rootSessionID, hash)).toBe(true)

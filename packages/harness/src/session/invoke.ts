@@ -470,7 +470,7 @@ export namespace SessionInvoke {
                 // so they can trigger a model call in this iteration. Context items follow
                 // in ② after the predicate confirms a call is needed (piggyback).
                 if (!rollbackActive) {
-                  const steerItems = await SessionInbox.drainSteer(sessionID)
+                  const steerItems = await SessionInbox.peekSteer(sessionID)
                   if (steerItems.length > 0) {
                     log.info("drained steer items into session", { sessionID, count: steerItems.length })
                     for (const item of steerItems) {
@@ -531,7 +531,7 @@ export namespace SessionInvoke {
               // Mode-based drain ②: context items piggyback on confirmed model call.
               // Materialized after needsModelCall is true; do NOT wake idle sessions.
               if (!rollbackActive) {
-                const contextItems = await SessionInbox.drainContext(sessionID)
+                const contextItems = await SessionInbox.peekContext(sessionID)
                 if (contextItems.length > 0) {
                   log.info("drained context items (piggyback)", { sessionID, count: contextItems.length })
                   for (const item of contextItems) {

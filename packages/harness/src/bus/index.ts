@@ -1,3 +1,4 @@
+import { Storage } from "../storage/storage"
 import z from "zod"
 import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
@@ -62,7 +63,15 @@ export namespace Bus {
   export async function publish<Definition extends BusEvent.Definition>(
     def: Definition,
     properties: z.output<Definition["properties"]>,
-  ) {
+  ): Promise<void> {
+    if (Storage.inTransaction()) {
+      const scope = ScopeContext.current.scope
+      const value = structuredClone(properties)
+      return Storage.enqueue(
+        { id: crypto.randomUUID(), scopeID: scope.id, type: def.type, payload: { scope, properties: value } },
+        () => ScopeContext.provide({ scope, fn: () => publish(def, value) }),
+      )
+    }
     const payload: {
       type: string
       properties: unknown

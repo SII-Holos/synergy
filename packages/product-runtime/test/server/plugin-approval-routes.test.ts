@@ -19,7 +19,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { compilePluginManifest, definePlugin, operation, capability } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
-import { localRegistryPath } from "@ericsanchezok/synergy-plugin-host/plugin/local-registry-store"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 Log.init({ print: false })
 
@@ -610,8 +610,6 @@ describe("plugin approval routes", () => {
     const registryVersion = "1.0.0"
     try {
       // Build a local registry that resolves the fixture
-      const registryPath = localRegistryPath()
-      fs.mkdirSync(path.dirname(registryPath), { recursive: true })
       const registry = {
         plugins: [
           {
@@ -625,7 +623,7 @@ describe("plugin approval routes", () => {
           },
         ],
       }
-      fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2))
+      for (const entry of registry.plugins) await Storage.write(["registry", "entries", entry.id], entry)
 
       await ScopeContext.provide({
         scope,
@@ -665,7 +663,7 @@ describe("plugin approval routes", () => {
     } finally {
       // Clean up registry file
       try {
-        fs.unlinkSync(localRegistryPath())
+        await Storage.removeTree(["registry", "entries"])
       } catch {}
       await restoreState()
     }
@@ -679,8 +677,6 @@ describe("plugin approval routes", () => {
     const fixture = createPluginFixture(tmp.path, "reg-stale-test")
     const registryVersion = "1.0.0"
     try {
-      const registryPath = localRegistryPath()
-      fs.mkdirSync(path.dirname(registryPath), { recursive: true })
       const registry = {
         plugins: [
           {
@@ -689,7 +685,7 @@ describe("plugin approval routes", () => {
           },
         ],
       }
-      fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2))
+      for (const entry of registry.plugins) await Storage.write(["registry", "entries", entry.id], entry)
 
       await ScopeContext.provide({
         scope,
@@ -719,7 +715,7 @@ describe("plugin approval routes", () => {
       })
     } finally {
       try {
-        fs.unlinkSync(localRegistryPath())
+        await Storage.removeTree(["registry", "entries"])
       } catch {}
       await restoreState()
     }
@@ -731,23 +727,10 @@ describe("plugin approval routes", () => {
     const targetPluginId = "reg-manifest-target"
     const registryVersion = "1.0.0"
     try {
-      const registryPath = localRegistryPath()
-      fs.mkdirSync(path.dirname(registryPath), { recursive: true })
-      fs.writeFileSync(
-        registryPath,
-        JSON.stringify(
-          {
-            plugins: [
-              {
-                id: targetPluginId,
-                versions: [{ version: registryVersion, downloadUrl: fixture.spec }],
-              },
-            ],
-          },
-          null,
-          2,
-        ),
-      )
+      await Storage.write(["registry", "entries", targetPluginId], {
+        id: targetPluginId,
+        versions: [{ version: registryVersion, downloadUrl: fixture.spec }],
+      })
 
       await ScopeContext.provide({
         scope,
@@ -776,7 +759,7 @@ describe("plugin approval routes", () => {
       })
     } finally {
       try {
-        fs.unlinkSync(localRegistryPath())
+        await Storage.removeTree(["registry", "entries"])
       } catch {}
       await restoreState()
     }

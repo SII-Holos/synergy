@@ -151,60 +151,61 @@ export namespace SessionHistory {
       numTurns: z.number().int().min(1).optional(),
       cutMessageID: z.string().optional(),
     }),
-    async (input) => {
-      if ((input.numTurns == null) === (input.cutMessageID == null)) {
-        throw new Error("Provide exactly one of numTurns or cutMessageID")
-      }
-      SessionManager.assertIdle(input.sessionID)
-      const [raw, events] = await Promise.all([
-        rawMessages({ sessionID: input.sessionID }),
-        readEvents(input.sessionID),
-      ])
-      const effective = applyEvents(raw, events)
-
-      let cutMessageID: string | undefined
-      let dropped: MessageV2.WithParts[] = []
-
-      if (input.cutMessageID) {
-        // cutMessageID mode: drop everything from cutMessageID onward
-        cutMessageID = input.cutMessageID
-        const cutIndex = effective.findIndex((msg) => msg.info.id === cutMessageID)
-        if (cutIndex >= 0) {
-          dropped = effective.slice(cutIndex)
+    async (input) =>
+      Storage.transaction(async () => {
+        if ((input.numTurns == null) === (input.cutMessageID == null)) {
+          throw new Error("Provide exactly one of numTurns or cutMessageID")
         }
-      } else {
-        // numTurns mode (must be defined due to .refine)
-        const numTurns = input.numTurns!
-        const turnStarts = effective.map((msg, index) => ({ msg, index })).filter(({ msg }) => isRollbackUser(msg))
-        if (turnStarts.length === 0) return latestInfo(input.sessionID, raw, events)
-        const selected = turnStarts.slice(-numTurns)
-        const cutoff = selected[0].index
-        dropped = effective.slice(cutoff)
-        if (dropped.length === 0) return latestInfo(input.sessionID, raw, events)
-        cutMessageID = selected[0].msg.info.id
-      }
+        SessionManager.assertIdle(input.sessionID)
+        const [raw, events] = await Promise.all([
+          rawMessages({ sessionID: input.sessionID }),
+          readEvents(input.sessionID),
+        ])
+        const effective = applyEvents(raw, events)
 
-      const selectedTurns = dropped.filter(isRollbackUser).length
+        let cutMessageID: string | undefined
+        let dropped: MessageV2.WithParts[] = []
 
-      const event: RollbackEvent = {
-        id: Identifier.ascending("history"),
-        sessionID: input.sessionID,
-        type: "rollback",
-        time: {
-          created: Date.now(),
-        },
-        numTurns: selectedTurns,
-        cutMessageID,
-        droppedMessageIDs: dropped.map((msg) => msg.info.id),
-        droppedUserMessageIDs: dropped.filter(isRollbackUser).map((msg) => msg.info.id),
-        ...summarizePatches(dropped),
-      }
-      await writeEvent(event)
+        if (input.cutMessageID) {
+          // cutMessageID mode: drop everything from cutMessageID onward
+          cutMessageID = input.cutMessageID
+          const cutIndex = effective.findIndex((msg) => msg.info.id === cutMessageID)
+          if (cutIndex >= 0) {
+            dropped = effective.slice(cutIndex)
+          }
+        } else {
+          // numTurns mode (must be defined due to .refine)
+          const numTurns = input.numTurns!
+          const turnStarts = effective.map((msg, index) => ({ msg, index })).filter(({ msg }) => isRollbackUser(msg))
+          if (turnStarts.length === 0) return latestInfo(input.sessionID, raw, events)
+          const selected = turnStarts.slice(-numTurns)
+          const cutoff = selected[0].index
+          dropped = effective.slice(cutoff)
+          if (dropped.length === 0) return latestInfo(input.sessionID, raw, events)
+          cutMessageID = selected[0].msg.info.id
+        }
 
-      const nextEvents = [...events, event]
-      await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
-      return event
-    },
+        const selectedTurns = dropped.filter(isRollbackUser).length
+
+        const event: RollbackEvent = {
+          id: Identifier.ascending("history"),
+          sessionID: input.sessionID,
+          type: "rollback",
+          time: {
+            created: Date.now(),
+          },
+          numTurns: selectedTurns,
+          cutMessageID,
+          droppedMessageIDs: dropped.map((msg) => msg.info.id),
+          droppedUserMessageIDs: dropped.filter(isRollbackUser).map((msg) => msg.info.id),
+          ...summarizePatches(dropped),
+        }
+        await writeEvent(event)
+
+        const nextEvents = [...events, event]
+        await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
+        return event
+      }),
   )
 
   export const unrollback = fn(
@@ -212,47 +213,48 @@ export namespace SessionHistory {
       sessionID: Identifier.schema("session"),
       rollbackID: Identifier.schema("history").optional(),
     }),
-    async (input) => {
-      SessionManager.assertIdle(input.sessionID)
-      const [raw, events] = await Promise.all([
-        rawMessages({ sessionID: input.sessionID }),
-        readEvents(input.sessionID),
-      ])
-      const target = input.rollbackID
-        ? activeRollbacks(events).find((event) => event.id === input.rollbackID)
-        : latest(events)
-      if (!target) return latestInfo(input.sessionID, raw, events)
+    async (input) =>
+      Storage.transaction(async () => {
+        SessionManager.assertIdle(input.sessionID)
+        const [raw, events] = await Promise.all([
+          rawMessages({ sessionID: input.sessionID }),
+          readEvents(input.sessionID),
+        ])
+        const target = input.rollbackID
+          ? activeRollbacks(events).find((event) => event.id === input.rollbackID)
+          : latest(events)
+        if (!target) return latestInfo(input.sessionID, raw, events)
 
-      const latestRollback = latest(events)
-      if (!latestRollback || latestRollback.id !== target.id) {
-        throw new UnrollbackConflictError({
-          message: "Only the latest rollback can be restored.",
+        const latestRollback = latest(events)
+        if (!latestRollback || latestRollback.id !== target.id) {
+          throw new UnrollbackConflictError({
+            message: "Only the latest rollback can be restored.",
+            rollbackID: target.id,
+          })
+        }
+
+        if (!canUnrollback(raw, target)) {
+          throw new UnrollbackConflictError({
+            message: "Cannot redo this rollback after new session messages have been added.",
+            rollbackID: target.id,
+          })
+        }
+
+        const event: UnrollbackEvent = {
+          id: Identifier.ascending("history"),
+          sessionID: input.sessionID,
+          type: "unrollback",
+          time: {
+            created: Date.now(),
+          },
           rollbackID: target.id,
-        })
-      }
+        }
+        await writeEvent(event)
 
-      if (!canUnrollback(raw, target)) {
-        throw new UnrollbackConflictError({
-          message: "Cannot redo this rollback after new session messages have been added.",
-          rollbackID: target.id,
-        })
-      }
-
-      const event: UnrollbackEvent = {
-        id: Identifier.ascending("history"),
-        sessionID: input.sessionID,
-        type: "unrollback",
-        time: {
-          created: Date.now(),
-        },
-        rollbackID: target.id,
-      }
-      await writeEvent(event)
-
-      const nextEvents = [...events, event]
-      await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
-      return event
-    },
+        const nextEvents = [...events, event]
+        await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
+        return event
+      }),
   )
 
   export const restoreFiles = fn(
@@ -629,17 +631,17 @@ export namespace SessionHistory {
 
   async function writeEvent(event: Event) {
     const { SessionSummary } = await import("./summary")
-    SessionManager.bumpHistoryRevision(event.sessionID)
     const session = await SessionManager.requireSession(event.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await SessionSummary.invalidateDerivedState(event.sessionID, scopeID)
     await Storage.write(
       StoragePath.sessionHistoryEvent(scopeID, asSessionID(event.sessionID), asHistoryID(event.id)),
       event,
     )
     await SessionSummary.invalidateDerivedState(event.sessionID, scopeID)
-    SessionManager.bumpHistoryRevision(event.sessionID)
-    SessionMessageCache.invalidate(event.sessionID)
+    Storage.afterCommit(() => {
+      SessionManager.bumpHistoryRevision(event.sessionID)
+      SessionMessageCache.invalidate(event.sessionID)
+    })
   }
 
   async function updateSessionHistory(sessionID: string, history: Info["history"] | undefined) {

@@ -19,12 +19,8 @@ function pauseFirstSessionInfoUpdate(infoPath: string[]) {
   const release = Promise.withResolvers<void>()
   const originalUpdate = Storage.update
   let updates = 0
-  const spy = spyOn(Storage, "update").mockImplementation((async <T>(
-    key: string[],
-    editor: (draft: T) => void,
-    options?: Storage.WriteOptions,
-  ) => {
-    const result = await originalUpdate(key, editor, options)
+  const spy = spyOn(Storage, "update").mockImplementation((async <T>(key: string[], editor: (draft: T) => void) => {
+    const result = await originalUpdate(key, editor)
     if (sameKey(key, infoPath) && ++updates === 1) {
       reached.resolve()
       await release.promise
@@ -44,12 +40,12 @@ function pauseFirstIndexWrite(indexPath: string[]) {
   const release = Promise.withResolvers<void>()
   const originalWrite = Storage.write
   let writes = 0
-  const spy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+  const spy = spyOn(Storage, "write").mockImplementation(async (key, content) => {
     if (sameKey(key, indexPath) && ++writes === 1) {
       reached.resolve()
       await release.promise
     }
-    return originalWrite(key, content, options)
+    return originalWrite(key, content)
   })
   return {
     reached: reached.promise,

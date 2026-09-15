@@ -4,6 +4,8 @@ import path from "node:path"
 import { createIsolatedTestEnv } from "../../src/env"
 import {
   batchShardCount,
+  batchInvocation,
+  relocateCoverage,
   collectTests,
   ISOLATED_BATCH_FILES,
   runBatches,
@@ -45,6 +47,7 @@ describe("coverage batch splitting", () => {
       "packages/agent-integrations/test/lsp/owner-runtime.test.ts",
       "packages/agent-integrations/test/mcp/owner-lifecycle.test.ts",
       "packages/cli/test/cli/data-home-command.test.ts",
+      "packages/cli/test/cli/data-storage-command.test.ts",
       "packages/cli/test/cli/migration-command.test.ts",
       "packages/cli/test/cli/read-commands.test.ts",
       "packages/cli/test/cli/transcript-commands.test.ts",
@@ -103,6 +106,24 @@ describe("coverage batch splitting", () => {
 })
 
 describe("main batch sharding", () => {
+  test("Runtime-owning suites receive only the isolation preload and cannot share a batch", () => {
+    const root = path.resolve(import.meta.dir, "../../..")
+    const owner = path.join(root, "cli")
+    const file = "test/cli/data-storage-command.test.ts"
+    expect(batchInvocation(["test", file, "--reporter-outfile=reports/test.xml"], owner)).toEqual({
+      args: ["test", path.join(owner, file), `--reporter-outfile=${path.join(owner, "reports/test.xml")}`],
+      cwd: path.join(root, "testing"),
+    })
+    expect(() => batchInvocation(["test", file, "test/other.test.ts"], owner)).toThrow("own batch")
+  })
+
+  test("coverage relocation preserves counts and attributes paths to the original package", () => {
+    const root = path.resolve(import.meta.dir, "../../..")
+    const source = "SF:../cli/src/command.ts\nDA:1,3\nend_of_record\nSF:src/env.ts\nDA:2,5\nend_of_record\n"
+    expect(relocateCoverage(source, path.join(root, "testing"), path.join(root, "cli"))).toBe(
+      "SF:src/command.ts\nDA:1,3\nend_of_record\nSF:../testing/src/env.ts\nDA:2,5\nend_of_record\n",
+    )
+  })
   test("batchShardCount reads SYNERGY_BATCH_SHARDS and defaults to 4", () => {
     expect(batchShardCount({})).toBe(4)
     expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "6" })).toBe(6)

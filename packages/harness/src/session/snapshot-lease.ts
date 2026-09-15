@@ -5,7 +5,6 @@ import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { Global } from "../global"
 
 export namespace SnapshotLease {
   const Owner = z.object({
@@ -24,7 +23,7 @@ export namespace SnapshotLease {
     }
   }
 
-  export function directory(dataRoot = Global.Path.data) {
+  export function directory(dataRoot = Storage.current().artifactDirectory) {
     return path.join(dataRoot, "snapshot-v2", ".locks")
   }
 
@@ -84,7 +83,7 @@ export namespace SnapshotLease {
   // process start identities, not lease age, determine abandoned ownership.
   export async function acquire(scopeID: string, exclusive: boolean, options: Options = {}) {
     if (!/^[a-zA-Z0-9_-]+$/.test(scopeID)) throw new Error("Invalid snapshot lease Scope")
-    const dataRoot = options.dataRoot ?? Global.Path.data
+    const dataRoot = options.dataRoot ?? Storage.current().artifactDirectory
     const home = await admit("", false, { ...options, dataRoot })
     try {
       const scope = await admit(scopeID, exclusive, { ...options, dataRoot })
@@ -108,7 +107,7 @@ export namespace SnapshotLease {
   }
 
   async function admit(scopeID: string, exclusive: boolean, options: Options) {
-    const dataRoot = options.dataRoot ?? Global.Path.data
+    const dataRoot = options.dataRoot ?? Storage.current().artifactDirectory
     const owner: Owner = {
       token: randomUUID(),
       pid: process.pid,

@@ -17,6 +17,36 @@ import path from "node:path"
 
 import { createIsolatedTestEnv } from "../src/env"
 const repositoryRoot = path.resolve(import.meta.dir, "../../..")
+const ownsRuntimeFiles = new Set(["packages/cli/test/cli/data-storage-command.test.ts"])
+
+function repositoryFile(file: string, packageRoot: string) {
+  return file.startsWith("packages/")
+    ? file
+    : path.relative(repositoryRoot, path.resolve(packageRoot, file)).split(path.sep).join("/")
+}
+
+export function batchInvocation(args: string[], packageRoot = process.cwd()) {
+  const files = args.filter((arg) => /\.(test|spec)\.tsx?$/.test(arg))
+  if (!files.some((file) => ownsRuntimeFiles.has(repositoryFile(file, packageRoot)))) return { args, cwd: packageRoot }
+  if (files.length !== 1) throw new Error("A Runtime-owning test must run in its own batch")
+  // The shared preload isolates the Home without installing a harness Runtime.
+  return {
+    args: args.map((arg) => {
+      if (arg === files[0]) return path.resolve(repositoryRoot, repositoryFile(arg, packageRoot))
+      if (arg.startsWith("--reporter-outfile="))
+        return `--reporter-outfile=${path.resolve(packageRoot, arg.slice("--reporter-outfile=".length))}`
+      return arg
+    }),
+    cwd: path.join(repositoryRoot, "packages/testing"),
+  }
+}
+
+export function relocateCoverage(source: string, from: string, to: string) {
+  return source.replace(
+    /^SF:(.+)$/gm,
+    (_, file: string) => `SF:${path.relative(to, path.resolve(from, file)).split(path.sep).join("/")}`,
+  )
+}
 
 /**
  * Test files that fail even inside a small coverage shard. Each passes in
@@ -68,6 +98,7 @@ const repositoryRoot = path.resolve(import.meta.dir, "../../..")
  *   load on CI. Passes in its own process with coverage (verified 2026-09-04).
  */
 export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
+  ...ownsRuntimeFiles,
   // This suite owns stderr/TTY capture and resets process-wide migration progress.
   "packages/harness/test/migration/terminal-progress.test.ts",
   // Config projection registration is permanent for the process composition.
@@ -146,10 +177,7 @@ export interface CoverageBatches {
 
 export function splitBatchFiles(files: string[], packageRoot = process.cwd()): CoverageBatches {
   const isIsolated = (file: string) => {
-    const key = file.startsWith("packages/")
-      ? file
-      : path.relative(repositoryRoot, path.resolve(packageRoot, file)).split(path.sep).join("/")
-    return ISOLATED_BATCH_FILES.has(key)
+    return ISOLATED_BATCH_FILES.has(repositoryFile(file, packageRoot))
   }
   return { main: files.filter((file) => !isIsolated(file)), isolated: files.filter(isIsolated) }
 }
@@ -201,26 +229,28 @@ export async function runBatch(
   env: Record<string, string | undefined>,
 ): Promise<number> {
   if (files.length === 0) return 0
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "test",
-      "--timeout",
-      "30000",
-      "--coverage",
-      "--coverage-reporter=lcov",
-      `--coverage-dir=${path.join("coverage", "shards", String(shard))}`,
-      ...files,
-    ],
-    {
-      cwd: process.cwd(),
-      env,
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-    },
-  )
-  return child.exited
+  const invocation = batchInvocation([
+    "test",
+    "--timeout",
+    "30000",
+    "--coverage",
+    "--coverage-reporter=lcov",
+    `--coverage-dir=${path.resolve("coverage", "shards", String(shard))}`,
+    ...files,
+  ])
+  const child = Bun.spawn([process.execPath, ...invocation.args], {
+    cwd: invocation.cwd,
+    env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  const code = await child.exited
+  if (invocation.cwd !== process.cwd()) {
+    const report = Bun.file(path.resolve("coverage", "shards", String(shard), "lcov.info"))
+    if (await report.exists()) await report.write(relocateCoverage(await report.text(), invocation.cwd, process.cwd()))
+  }
+  return code
 }
 
 export async function runBatches(

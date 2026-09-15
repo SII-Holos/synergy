@@ -29,6 +29,8 @@ defaults:
     working-directory: .oryn-runtime
 jobs:
   run:
+    outputs:
+      result-artifact: ${{ steps.result.outputs.artifact-id }}
     runs-on: ubuntu-22.04
     timeout-minutes: 65
     steps:
@@ -100,9 +102,10 @@ jobs:
           ORYN_READ_TOKEN: ${{ steps.target.outputs.token }}
           ORYN_BOT_LOGIN: ${{ steps.target.outputs.app-slug }}[bot]
       - if: always()
+        id: result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: result-${{ inputs.slug }}-${{ inputs.number }}
+          name: result-${{ inputs.slug }}-${{ inputs.number }}-attempt-${{ github.run_attempt }}
           path: .oryn-runtime/.artifacts/result/
           include-hidden-files: true
           if-no-files-found: error
@@ -123,9 +126,14 @@ jobs:
         with:
           client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
           private-key: ${{ secrets.ORYN_APP_PRIVATE_KEY }}
+      - if: needs.run.outputs.result-artifact == ''
+        run: |
+          echo "::error::The producing execution has no result artifact ID."
+          exit 1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: result-${{ inputs.slug }}-${{ inputs.number }}
+          artifact-ids: ${{ needs.run.outputs.result-artifact }}
+          merge-multiple: true
           path: .oryn-runtime/.artifacts/result
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         id: target
@@ -142,7 +150,7 @@ jobs:
           permission-actions: read
       - id: artifact
         run: |
-          if test -f .artifacts/result/result.json && test ! -f .artifacts/result/failure.json; then
+          if test -f .artifacts/result/result.json && test ! -f .artifacts/result/failure.json && test ! -f .artifacts/result/outcome.json; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"

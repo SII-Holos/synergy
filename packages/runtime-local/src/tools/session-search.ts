@@ -458,7 +458,7 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
       // been seen — then persist the rebuilt record. Because the scan always
       // covers the full session, the committed record is never partial.
       scannedSessions++
-      const startedAt = Date.now()
+      const revision = await SessionSearchIndex.dirtyRevision(scopeID, sessionID)
       const indexEntries: SessionSearchIndex.IndexedMessage[] = []
       for await (const msg of MessageV2.stream({ scopeID, sessionID })) {
         ctx.abort.throwIfAborted()
@@ -476,10 +476,8 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
           phase: "tool.session_search.progress",
         })
       }
-      // Race guard: only clear a dirty marker written before this scan began;
-      // a marker landed mid-scan means content changed under us and must
-      // survive to force another pass.
-      await SessionSearchIndex.commitRebuild(scopeID, sessionID, indexEntries, { sinceMs: startedAt })
+      // Revision equality preserves writes that arrive during the scan, including within the same millisecond.
+      await SessionSearchIndex.commitRebuild(scopeID, sessionID, indexEntries, { revision })
     }
 
     for (const match of matches) ranked.push({ match, session })

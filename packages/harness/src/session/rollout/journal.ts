@@ -7,7 +7,6 @@ import type { RolloutSchema } from "./schema"
 import { record } from "./error"
 
 export namespace RolloutJournal {
-  const options = { compact: true, durable: true, private: true } as const
   const Revision = z.number().int().nonnegative().safe()
   const Head = z
     .object({ allocated: Revision, committed: Revision })
@@ -50,22 +49,21 @@ export namespace RolloutJournal {
     const previous = await head(owner)
     const gaps: number[] = []
     for (let seq = previous.committed + 1; seq <= previous.allocated; seq++) {
-      let event: Event
-      try {
-        event = Event.parse(await Storage.read(eventKey(owner, seq)))
-      } catch (error) {
-        if (!(error instanceof Storage.NotFoundError)) throw error
-        event = { version: 1, seq, time: Date.now(), kind: "gap" }
-        await Storage.write(eventKey(owner, seq), event, options)
-      }
-      if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
-      if (event.kind === "record") {
-        await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value, options)
-      } else gaps.push(seq)
+      await Storage.transaction(async () => {
+        let event: Event
+        try {
+          event = Event.parse(await Storage.read(eventKey(owner, seq)))
+        } catch (error) {
+          if (!(error instanceof Storage.NotFoundError)) throw error
+          event = { version: 1, seq, time: Date.now(), kind: "gap" }
+          await Storage.write(eventKey(owner, seq), event)
+        }
+        if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
+        if (event.kind === "record") await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value)
+        else gaps.push(seq)
+        await Storage.write([...root(owner), "head"], { ...previous, committed: seq })
+      })
       onProgress?.()
-    }
-    if (previous.committed !== previous.allocated) {
-      await Storage.write([...root(owner), "head"], { ...previous, committed: previous.allocated }, options)
     }
     return { recovered: previous.allocated - previous.committed, gaps }
   }
@@ -80,8 +78,7 @@ export namespace RolloutJournal {
       const base = RolloutArtifact.root(owner)
       if (!base.every((segment, index) => key[index] === segment)) throw new Error("Rollout write escapes its owner")
       using lock = await Lock.write(lockKey(owner))
-      // Record the owner before any mutation so a crash cannot leave mutated journal work unlisted.
-      await RolloutPending.track(owner)
+      if (Storage.inTransaction()) throw new Error("Rollout evidence requires its own commit boundary")
       await recoverPending(owner)
       const previous = await head(owner)
       const seq = Revision.parse(previous.allocated + 1)
@@ -94,11 +91,15 @@ export namespace RolloutJournal {
         value: JSON.parse(JSON.stringify(value)),
       })
       if (event.kind !== "record") throw new Error("Invalid rollout record")
-      // Reservation prevents reuse of a sequence whose evidence survived a failed commit.
-      await Storage.write([...root(owner), "head"], { ...previous, allocated: seq }, options)
-      await Storage.write(eventKey(owner, seq), event, options)
-      await Storage.write(key, event.value, options)
-      await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq }, options)
+      await Storage.transaction(async () => {
+        await RolloutPending.track(owner)
+        await Storage.write([...root(owner), "head"], { ...previous, allocated: seq })
+        await Storage.write(eventKey(owner, seq), event)
+      })
+      await Storage.transaction(async () => {
+        await Storage.write(key, event.value)
+        await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })
+      })
       return seq
     })
   }

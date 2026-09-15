@@ -80,3 +80,79 @@ def test_recovery_hands_private_files_back_without_changing_original(
     assert (target / "home/retained-marker").read_text() == "original"
     assert (original / "evidence.json").read_bytes() == before
     assert sorted(file.name for file in home.iterdir()) == ["retained-marker"]
+
+
+@pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Container-owned private log handoff")
+@pytest.mark.parametrize("stopped", [False, True])
+def test_orphaned_logs_handoff_preserves_private_modes_and_bytes(tmp_path, stopped):
+    import uuid
+
+    from synergy_bench.runner import handoff_environment, remove_environment
+
+    suffix = uuid.uuid4().hex[:8]
+    root = tmp_path / ("run-" + suffix)
+    attempt = root / "trials/0000/attempt-001"
+    project = "sb-" + suffix + "-trials-0000-attempt-001"
+    logs = attempt / project / "agent"
+    logs.mkdir(parents=True)
+    ownership = attempt / "environment.json"
+    atomic_json(ownership, {"project": project})
+    container = command(
+        [
+            "docker",
+            "run",
+            "-d",
+            "--platform",
+            "linux/amd64",
+            "--network",
+            "none",
+            "--label",
+            "com.docker.compose.project=" + project,
+            "-v",
+            f"{logs}:/logs/agent",
+            "python:3.12-slim-bookworm",
+            "sleep",
+            "120",
+        ]
+    )
+    try:
+        command(
+            [
+                "docker",
+                "exec",
+                container,
+                "python",
+                "-c",
+                "from pathlib import Path; import os; os.umask(0o077); "
+                "Path('/logs/agent/home').mkdir(); Path('/logs/agent/home/secret').write_text('original private data')",
+            ]
+        )
+        if stopped:
+            command(["docker", "stop", "-t", "0", container])
+        handoff_environment(root, ownership)
+        observed = command(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--platform",
+                "linux/amd64",
+                "-v",
+                f"{logs}:/logs/agent:ro",
+                "python:3.12-slim-bookworm",
+                "python",
+                "-c",
+                "from pathlib import Path; import json; "
+                "print(json.dumps({name:[p.stat().st_uid,p.stat().st_gid,p.stat().st_mode & 0o777] "
+                "for name in ['home','home/secret'] for p in [Path('/logs/agent') / name]}))",
+            ]
+        )
+        assert json.loads(observed) == {
+            "home": [os.getuid(), os.getgid(), 0o700],
+            "home/secret": [os.getuid(), os.getgid(), 0o600],
+        }
+        assert (logs / "home/secret").read_text() == "original private data"
+    finally:
+        remove_environment(root, ownership)

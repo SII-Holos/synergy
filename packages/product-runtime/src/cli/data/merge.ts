@@ -4,7 +4,7 @@ import {
   mergeLibraryDB,
   type LibraryConflictStrategy,
 } from "@ericsanchezok/synergy-library/cli/data"
-import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
+import { DataTransfer } from "./transfer"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
@@ -19,7 +19,6 @@ import {
   shortenPath,
   dirExists,
   copyDirSkipExisting,
-  invalidatePendingRolloutLedger,
   dataRoot,
 } from "@ericsanchezok/synergy-cli/cli/cmd/data/shared"
 
@@ -174,7 +173,7 @@ export const DataMergeCommand = cmd({
         }
       }
 
-      await using homes = await SnapshotArchive.lockHomes([source.dataDir, targetRoot])
+      await using homes = await DataTransfer.lockHomes([source.dataDir, targetRoot])
 
       // Step 4: Execute merge
       UI.empty()
@@ -213,18 +212,20 @@ export const DataMergeCommand = cmd({
           spinner.start(`Merging ${subdir}/...`)
 
           try {
-            if (subdir === "data") await SnapshotArchive.merge(src, dst)
-            const result = await copyDirSkipExisting(
-              src,
-              dst,
-              (p) => {
-                const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-                spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-              },
-              undefined,
-              undefined,
-              archiveExclusions(subdir),
-            )
+            const result =
+              subdir === "data"
+                ? await DataTransfer.merge(source.dataDir, targetRoot)
+                : await copyDirSkipExisting(
+                    src,
+                    dst,
+                    (p) => {
+                      const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+                      spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+                    },
+                    undefined,
+                    undefined,
+                    archiveExclusions(subdir),
+                  )
             const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
             spinner.stop(`Merged ${subdir}/${skippedNote}`)
           } catch (e) {
@@ -233,13 +234,11 @@ export const DataMergeCommand = cmd({
           }
         }
       }
-      // Imported owner trees can hold journals the target ledger never
-      // listed, so force one exhaustive recovery on the next startup.
-      await invalidatePendingRolloutLedger(path.join(targetRoot, "data"))
 
       // Report
       UI.empty()
       if (errors.length > 0) {
+        process.exitCode = 1
         prompts.log.warn("Merge completed with errors:")
         for (const err of errors) prompts.log.error(`  ${err}`)
       } else {

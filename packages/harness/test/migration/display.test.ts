@@ -1,24 +1,20 @@
 import { describe, expect, test, afterEach } from "bun:test"
-import { unlinkSync, writeFileSync, mkdirSync } from "node:fs"
-import path from "node:path"
+import { Storage } from "../../src/storage/storage"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { resetMigrations, runMigrations } from "../../src/migration"
 
-const dataDir = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "data")
 const TEST_DOMAIN = "test-display"
 
-function trackingPath(domain: string): string {
-  return path.join(dataDir, "meta", "migration", `log-${domain}.json`)
-}
+const trackingPath = (domain: string) => ["meta", "migration", `log-${domain}`]
 
 describe("summary display when all domains up to date", () => {
   let originalWrite: typeof process.stderr.write
 
-  afterEach(() => {
+  afterEach(async () => {
     process.stderr.write = originalWrite
     const p = trackingPath(TEST_DOMAIN)
     try {
-      unlinkSync(p)
+      await Storage.remove(p)
     } catch {}
     MigrationRegistry.unregister(TEST_DOMAIN)
     resetMigrations()
@@ -38,8 +34,8 @@ describe("summary display when all domains up to date", () => {
 
     // Pre-write tracking entry so the migration looks "completed"
     const p = trackingPath(TEST_DOMAIN)
-    mkdirSync(path.dirname(p), { recursive: true })
-    writeFileSync(p, JSON.stringify({ "20260615-display-test": Date.now() }))
+
+    await Storage.write(p, { "20260615-display-test": Date.now() })
 
     // Capture stderr to inspect output
     originalWrite = process.stderr.write.bind(process.stderr)

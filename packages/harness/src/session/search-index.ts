@@ -2,24 +2,22 @@ import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { Lock } from "../util/lock"
 import { Log } from "../util/log"
 
 /**
  * Versioned per-session search index (session-search P2). The index is an
  * optimization: a query reads one compact record per clean session instead of
- * streaming every message file. Correctness never depends on it — dirty,
+ * streaming every message record. Correctness never depends on it — dirty,
  * missing, or stale records fall back to the existing message scan path and
  * are rebuilt write-through.
  *
  * Write path: message/session mutations mark the owning session dirty via a
- * tiny marker file; the next search rebuilds lazily. Part streaming deltas
+ * small marker record; the next search rebuilds lazily. Part streaming deltas
  * (updatePartDelta) deliberately do NOT mark dirty — text/tool parts settle
  * into a message before Session.updateMessage fires, which is the single hook.
  *
  * Concurrency: markDirty (message writers) and commit/rebuild (search queries)
- * serialize on a per-session lock so a marker can never be cleared after a
- * newer write — the last writer wins and any interleaved rebuild observes it.
+ * use SQL revisions so a rebuild cannot clear a marker changed during its scan.
  */
 export namespace SessionSearchIndex {
   const log = Log.create({ service: "session.search-index" })
@@ -214,7 +212,10 @@ export namespace SessionSearchIndex {
   ): Promise<SearchIndexRecord | undefined> {
     const record = await Storage.read<SearchIndexRecord>(recordKey(scopeID, sessionID), {
       silentNotFound: true,
-    }).catch(() => undefined)
+    }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
     // A record from an older format lacks current semantics (e.g. nested tool
     // attachments); treat it as absent so the next query rescans and rebuilds
     // instead of trusting content that no longer matches the scan path.
@@ -224,77 +225,36 @@ export namespace SessionSearchIndex {
 
   export async function isDirty(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<boolean> {
     const marker = await Storage.read<DirtyMarker>(dirtyKey(scopeID, sessionID), { silentNotFound: true }).catch(
-      () => undefined,
+      (error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      },
     )
     return marker !== undefined
   }
 
-  /**
-   * Record that the session's searchable content changed. Callers invoke this
-   * BEFORE the content mutation persists (a crash between invalidation and the
-   * write costs only one extra scan) and again AFTER it (a scan that started
-   * before the mutation must see a marker newer than its scan start; see
-   * commitRebuild). When the marker write itself fails, the index record is
-   * dropped instead — under the same lock, so a concurrent commitRebuild
-   * cannot republish a clean record between the failed marker write and this
-   * removal. Never throws.
-   */
   export async function markDirty(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
-    try {
-      using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
+    await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker)
+  }
+
+  export async function dirtyRevision(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<bigint> {
+    return Storage.snapshot(async (tx) => {
       try {
-        await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker, {
-          compact: true,
-        })
+        return (await tx.versioned(dirtyKey(scopeID, sessionID))).revision
       } catch (error) {
-        // The marker could not be persisted. A stale-but-clean record must not
-        // survive, so remove it while still holding the lock; if that also
-        // fails, the record is only ever read as absent on a later query when
-        // the session's messages are scanned anyway.
-        try {
-          await Storage.remove(recordKey(scopeID, sessionID))
-          log.warn("marking session search dirty failed; dropped index record", {
-            scopeID,
-            sessionID,
-            error: String(error),
-          })
-        } catch (recordError) {
-          log.warn("failed to mark session search dirty and drop stale record", {
-            scopeID,
-            sessionID,
-            error: String(error),
-            recordError: String(recordError),
-          })
-        }
+        if (error instanceof Storage.NotFoundError) return 0n
+        throw error
       }
-    } catch (error) {
-      log.warn("failed to acquire session search index lock for markDirty", {
-        scopeID,
-        sessionID,
-        error: String(error),
-      })
-    }
+    })
   }
 
-  async function clearDirtyLocked(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
-    await Storage.remove(dirtyKey(scopeID, sessionID))
-  }
-
-  /**
-   * Persist a rebuilt record and clear the dirty marker — but only when no
-   * write landed after the rebuild started. `sinceMs` is the timestamp the
-   * caller began collecting; a marker newer than it means a mutation raced in
-   * during the rebuild, so the marker must survive to trigger another pass.
-   * Never throws.
-   */
   export async function commitRebuild(
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
     messages: IndexedMessage[],
-    opts?: { sinceMs?: number },
+    opts: { revision: bigint },
   ): Promise<void> {
-    try {
-      using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
+    await Storage.transaction(async (tx) => {
       const record: SearchIndexRecord = {
         version: VERSION,
         tokenizerVersion: TOKENIZER_VERSION,
@@ -303,48 +263,35 @@ export namespace SessionSearchIndex {
         updatedAt: Date.now(),
         messages,
       }
-      await Storage.write(recordKey(scopeID, sessionID), record, { compact: true })
-      if (opts?.sinceMs === undefined) {
-        await clearDirtyLocked(scopeID, sessionID)
-        return
-      }
-      const marker = await Storage.read<DirtyMarker>(dirtyKey(scopeID, sessionID), {
-        silentNotFound: true,
-      }).catch(() => undefined)
-      if (!marker || marker.dirtyAt <= opts.sinceMs) await clearDirtyLocked(scopeID, sessionID)
-    } catch (error) {
-      log.warn("failed to commit session search index", { scopeID, sessionID, error: String(error) })
-    }
+      await tx.write(recordKey(scopeID, sessionID), record)
+      if ((await dirtyRevision(scopeID, sessionID)) === opts.revision) await tx.remove(dirtyKey(scopeID, sessionID))
+    })
   }
 
-  /** Delete a session's index record and dirty marker. Never throws. */
   export async function removeRecords(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
-    try {
-      using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
-      await Storage.remove(recordKey(scopeID, sessionID))
-      await Storage.remove(dirtyKey(scopeID, sessionID))
-    } catch (error) {
-      log.warn("failed to remove session search index", { scopeID, sessionID, error: String(error) })
-    }
+    await Storage.transaction(async (tx) => {
+      await tx.remove(recordKey(scopeID, sessionID))
+      await tx.remove(dirtyKey(scopeID, sessionID))
+    })
   }
 
   /**
    * Rebuild a session's index record from its persisted messages and parts via
    * the canonical MessageV2 read path, then clear its dirty marker (guarded by
-   * the rebuild start time). Returns the fresh record.
+   * the dirty record revision). Returns the fresh record.
    */
   export async function rebuildSession(
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
   ): Promise<SearchIndexRecord> {
-    const startedAt = Date.now()
+    const revision = await dirtyRevision(scopeID, sessionID)
     const infos = await MessageV2.readInfoList({ scopeID, sessionID })
     const messages: IndexedMessage[] = []
     for (const info of infos) {
       const parts = await MessageV2.parts({ scopeID, sessionID, messageID: info.id })
       messages.push(messageEntryFromParts(info, parts))
     }
-    await commitRebuild(scopeID, sessionID, messages, { sinceMs: startedAt })
+    await commitRebuild(scopeID, sessionID, messages, { revision })
     log.debug("rebuilt session search index", { scopeID, sessionID, messages: messages.length })
     return {
       version: VERSION,
