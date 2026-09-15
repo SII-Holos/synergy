@@ -1555,19 +1555,23 @@ export namespace Session {
       asMessageID(part.messageID),
       asPartID(part.id),
     )
-    if (delta !== undefined) {
+    const transactional = Storage.inTransaction()
+    if (delta !== undefined && !transactional) {
       partWriteBuffer().defer(part.id, path, part)
     } else {
-      await partWriteBuffer().writeNow(part.id, path, part, (key, value) =>
+      const write = (key: string[], value: MessageV2.Part) =>
         Storage.transaction(async (tx) => {
           await assertPartOwner(tx, key)
           await Storage.write(key, value)
           if (value.type === "text" || value.type === "tool" || value.type === "attachment")
             await SessionSearchIndex.markDirty(scopeID, asSessionID(value.sessionID))
           SessionMessageCache.upsertPart(value.sessionID, value)
-          await Bus.publish(MessageV2.Event.PartUpdated, { part: value })
-        }),
-      )
+          await Bus.publish(MessageV2.Event.PartUpdated, { part: value, delta })
+        })
+      if (transactional) {
+        partWriteBuffer().assertDrained(part.id)
+        await write(path, part)
+      } else await partWriteBuffer().writeNow(part.id, path, part, write)
     }
     if (part.type === "tool") {
       // Tool parts are published as unsequenced streaming events. Keep a
@@ -1584,7 +1588,7 @@ export namespace Session {
         durable: delta === undefined,
       })
     }
-    if (delta !== undefined) await Bus.publish(MessageV2.Event.PartUpdated, { part, delta })
+    if (delta !== undefined && !transactional) await Bus.publish(MessageV2.Event.PartUpdated, { part, delta })
     return part
   }
 

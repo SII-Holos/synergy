@@ -16,6 +16,9 @@ on:
       - "test/script/watcher-native.test.ts"
       - "packages/harness/script/build-sqlite.ts"
       - "packages/harness/src/storage/sqlite-engine.ts"
+      - "script/pack-workspace.ts"
+      - "script/build-workspace.ts"
+      - "test/script/release/workspace-sqlite.test.ts"
   push:
     branches: [dev, main]
     paths:
@@ -29,6 +32,9 @@ on:
       - "test/script/watcher-native.test.ts"
       - "packages/harness/script/build-sqlite.ts"
       - "packages/harness/src/storage/sqlite-engine.ts"
+      - "script/pack-workspace.ts"
+      - "script/build-workspace.ts"
+      - "test/script/release/workspace-sqlite.test.ts"
 
 permissions:
   contents: read
@@ -149,6 +155,9 @@ jobs:
         with:
           bun-version: "1.3.14"
       - run: bun packages/harness/script/build-sqlite.ts
+      - run: bun install --frozen-lockfile
+      - name: Verify packaged SQLite without host libraries
+        run: bun test --config /dev/null test/script/release/workspace-sqlite.test.ts
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sqlite-assets-darwin

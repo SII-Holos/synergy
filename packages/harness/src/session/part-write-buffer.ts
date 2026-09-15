@@ -83,6 +83,11 @@ export class PartWriteBuffer<T, P = string> {
     return this.flushWhere(() => true)
   }
 
+  assertDrained(key: string): void {
+    if (this.latest.has(key) || this.running.has(key) || this.failures.has(key))
+      throw new StorageBusyError("Drain streaming part writes before entering a business transaction")
+  }
+
   async flushWhere(predicate: (value: T, path: P) => boolean): Promise<void> {
     const keys = new Set<string>()
     for (const [key, entry] of this.latest) if (predicate(entry.value, entry.path)) keys.add(key)

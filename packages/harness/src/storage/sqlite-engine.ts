@@ -7,11 +7,12 @@ export function initializeSqliteEngine() {
   if (initialized) return
   if (process.platform === "darwin") {
     const packaged = path.resolve(path.dirname(process.execPath), "../libsqlite3.dylib")
+    const moduleEngine = path.resolve(import.meta.dirname, "../libsqlite3.dylib")
     const source = path.resolve(import.meta.dirname, "../../.artifacts/sqlite/libsqlite3.dylib")
-    const candidates = [packaged, source]
+    const candidates = [moduleEngine, packaged, source]
     // Source development can use a verified Homebrew engine; packaged builds
     // include their own engine and never depend on machine-wide libraries.
-    if (existsSync(path.resolve(import.meta.dirname, "../../package.json")))
+    if (existsSync(path.resolve(import.meta.dirname, "../../script/build-sqlite.ts")))
       candidates.push("/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib", "/usr/local/opt/sqlite/lib/libsqlite3.dylib")
     const selected = candidates.find(existsSync)
     if (!selected)

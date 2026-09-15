@@ -12,6 +12,29 @@ function recorder() {
 }
 
 describe("PartWriteBuffer", () => {
+  test("transaction admission requires buffered, running and failed writes to drain first", async () => {
+    let fail = true
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const buffer = new PartWriteBuffer<string>(async () => {
+      await blocked
+      if (fail) throw new Error("transient")
+    }, 10_000)
+    expect(() => buffer.assertDrained("part")).not.toThrow()
+    buffer.defer("part", "part", "stream")
+    expect(() => buffer.assertDrained("part")).toThrow("Drain")
+    const pending = buffer.flush("part")
+    expect(() => buffer.assertDrained("part")).toThrow("Drain")
+    release()
+    await expect(pending).rejects.toThrow("transient")
+    expect(() => buffer.assertDrained("part")).toThrow("Drain")
+    fail = false
+    await buffer.flushAll()
+    expect(() => buffer.assertDrained("part")).not.toThrow()
+  })
+
   test("terminal writes wait for an already executing streaming write", async () => {
     const writes: string[] = []
     let release!: () => void

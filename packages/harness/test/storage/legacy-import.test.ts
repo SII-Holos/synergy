@@ -30,7 +30,13 @@ test("backs up and imports historical records without dropping unloaded fields o
   const fixtureData = await fixture()
   const { store, data, backup } = fixtureData
   try {
-    const session = { id: "session", projectID: "scope", title: "old", unknownOwner: { value: 2 } }
+    const session = {
+      id: "session",
+      scope: { id: "scope" },
+      title: "old",
+      time: { created: 1, updated: 2 },
+      unknownOwner: { value: 2 },
+    }
     await json(data, ["sessions", "scope", "session", "info"], session)
     await json(data, ["meta", "migration", "log-workflows"], { historical: 123 })
     await json(data, ["auth", "provider-auth"], { private: "must-not-become-a-record" })
@@ -58,14 +64,15 @@ test("quarantines malformed evidence with original bytes and blocks the affected
   try {
     const target = await json(data, ["sessions", "scope", "broken", "messages", "message", "info"], {})
     await Bun.write(target, "{broken-json")
-    await json(data, ["sessions", "scope", "good", "info"], { id: "good" })
+    const good = { id: "good", scope: { id: "scope" }, title: "retained", time: { created: 1, updated: 2 } }
+    await json(data, ["sessions", "scope", "good", "info"], good)
     const result = await new LegacyJsonImporter({ dataRoot: data, backupRoot: backup, store }).run()
     expect(result.quarantined).toBe(1)
     expect(await Bun.file(path.join(backup, "data", path.relative(data, target))).text()).toBe("{broken-json")
     expect(await store.read<Record<string, unknown>>(["storage_recovery", "sessions", "broken", "info"])).toMatchObject(
       { blocked: true },
     )
-    expect(await store.read<Record<string, unknown>>(["sessions", "scope", "good", "info"])).toEqual({ id: "good" })
+    expect(await store.read<Record<string, unknown>>(["sessions", "scope", "good", "info"])).toEqual(good)
   } finally {
     await store.close()
   }

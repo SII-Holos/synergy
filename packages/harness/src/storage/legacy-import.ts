@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { createReadStream } from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { AtomicFile } from "./atomic-file"
 import { StorageIntegrityError } from "./errors"
 import { TransactionalStore } from "./transactional-store"
@@ -90,6 +91,12 @@ export interface ImportResult {
 }
 
 const stateKey = ["storage_import", "info"]
+
+const legacySessionInfo = z.object({
+  scope: z.object({ id: z.string() }),
+  title: z.string(),
+  time: z.object({ created: z.number(), updated: z.number() }),
+})
 
 function entryKey(relative: string) {
   return ["storage_import_files", createHash("sha256").update(relative).digest("hex")]
@@ -314,6 +321,24 @@ export class LegacyJsonImporter {
       { private: true, durable: true },
     )
 
+    // Validate owners first so migrations never see children of a quarantined Session.
+    let sessionAfter: string[] | undefined
+    for (;;) {
+      const batch = await store.query<ImportFile>({ kind: "storage_import_files", after: sessionAfter, limit: 128 })
+      if (!batch.length) break
+      for (const record of batch) {
+        const entry = record.value
+        if (
+          entry.disposition === "backed-up" &&
+          entry.key?.length === 4 &&
+          entry.key[0] === "sessions" &&
+          entry.key[3] === "info"
+        )
+          await this.import(record.key, entry)
+      }
+      sessionAfter = batch.at(-1)!.key
+    }
+
     const result: ImportResult = { files: count, bytes, imported: 0, quarantined: 0, retained: 0 }
     let after: string[] | undefined
     progress?.({ stage: "import", current: 0, total: count, bytes: 0 })
@@ -385,9 +410,18 @@ export class LegacyJsonImporter {
       await store.write(recordKey, entry)
       return
     }
+    const [owner, recovery] =
+      entry.key[0] === "sessions" && entry.key.length > 4
+        ? await store.readMany([
+            [...entry.key.slice(0, 3), "info"],
+            ["storage_recovery", "sessions", entry.key[2], "info"],
+          ])
+        : []
     let value: unknown
     try {
       value = JSON.parse(await fs.readFile(path.join(backupRoot, "data", entry.relative), "utf8"))
+      if (owner === undefined && recovery !== undefined)
+        throw new StorageIntegrityError("Legacy Session owner metadata is quarantined")
       if (
         entry.key[0] === "projects" &&
         (!value || typeof value !== "object" || Array.isArray(value) || !("id" in value) || value.id !== entry.key[1])
@@ -406,11 +440,17 @@ export class LegacyJsonImporter {
         const expectedID = entry.key.at(-1) === "info" ? entry.key.at(-2) : entry.key.at(-1)
         if (!value || typeof value !== "object" || Array.isArray(value) || !("id" in value) || value.id !== expectedID)
           throw new StorageIntegrityError("Legacy record identity does not match its owner")
+        if (entry.key.length === 4 && entry.key[3] === "info") {
+          const parsed = legacySessionInfo.safeParse(value)
+          if (!parsed.success) throw new StorageIntegrityError("Legacy Session metadata is malformed")
+          if (parsed.data.scope.id !== entry.key[1])
+            throw new StorageIntegrityError("Legacy Session Scope does not match its owner")
+        }
       }
     } catch (error) {
       if (!(error instanceof SyntaxError) && !(error instanceof StorageIntegrityError)) throw error
       entry.disposition = "quarantined"
-      entry.error = error instanceof SyntaxError ? "Invalid JSON" : "Invalid record identity"
+      entry.error = error instanceof SyntaxError ? "Invalid JSON" : error.message
       await store.transaction(async (tx) => {
         await tx.write(recordKey, entry)
         if (entry.key?.[0] === "sessions" && entry.key[2]) {

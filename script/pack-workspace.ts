@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { buildWatcher } from "../packages/runtime-local/script/build-watcher"
+import { buildSqlite } from "../packages/harness/script/build-sqlite"
 import { cp, mkdir, mkdtemp, rm, chmod } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -68,6 +69,8 @@ export async function packWorkspace(
       const process = Bun.spawn(command, { cwd: sourceDirectory, stdout: "inherit", stderr: "inherit" })
       if (await process.exited) throw new Error(`Package build failed: ${name}`)
     }
+    if (pkg.directory === "packages/harness" && target.os === "darwin")
+      await cp(await buildSqlite(), path.join(sourceDirectory, "dist/libsqlite3.dylib"))
     if (pkg.directory === "packages/runtime-local") {
       await stageWorkspaceSandbox(path.join(sourceDirectory, "dist"), target, options.assetsRoot)
       if (target.os === "linux") {
@@ -104,8 +107,8 @@ export async function packWorkspace(
           engines: { bun: ">=1.3.14" },
         }
         if (pkg.directory === "packages/product-runtime") (manifest.files as string[]).push("dist/schema")
+        if (["packages/harness", "packages/runtime-local"].includes(pkg.directory)) manifest.os = [target.os]
         if (pkg.directory === "packages/runtime-local") {
-          manifest.os = [target.os]
           manifest.cpu = [target.arch]
         }
         delete manifest.scripts
