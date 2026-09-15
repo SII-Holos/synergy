@@ -11,7 +11,15 @@ import {
 } from "./errors"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { StorageQueue } from "./queue"
-import type { SqlConnection, SqlDriver, SqliteRequest, SqliteResponse, SqlRow, SqlValue } from "./sql-contract"
+import type {
+  SqlConnection,
+  SqlDriver,
+  SqlQueryOptions,
+  SqliteRequest,
+  SqliteResponse,
+  SqlRow,
+  SqlValue,
+} from "./sql-contract"
 
 export class SqliteDriver implements SqlDriver {
   readonly backend = "sqlite" as const
@@ -87,7 +95,17 @@ export class SqliteDriver implements SqlDriver {
         }
       }
       await driver.request({ action: "open", filename, readonly })
-      if (!readonly && process.platform !== "win32") await fs.chmod(filename, 0o600)
+      if (!readonly && process.platform !== "win32") {
+        // The worker's umask keeps new files owner-only; chmod also repairs
+        // sidecars left behind by an older engine before this invariant.
+        for (const suffix of ["", "-wal", "-shm"]) {
+          try {
+            await fs.chmod(`${filename}${suffix}`, 0o600)
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+          }
+        }
+      }
       return driver
     } catch (error) {
       driver.worker.kill()
@@ -108,12 +126,16 @@ export class SqliteDriver implements SqlDriver {
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
+    // Maintenance statements (integrity verification over the whole database)
+    // legitimately outlast ordinary operations; killing the worker at the
+    // shared deadline would close the driver mid-maintenance.
+    const deadline = request.maintenance ? 600_000 : 30_000
     const promise = new Promise<SqlRow[]>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.closed = true
         this.worker.kill()
         reject(new StorageBusyError("SQLite worker exceeded its request deadline"))
-      }, 30_000)
+      }, deadline)
       this.pending.set(id, { resolve, reject, bytes, timeout })
     })
     this.queuedBytes += bytes
@@ -129,10 +151,14 @@ export class SqliteDriver implements SqlDriver {
     return promise
   }
 
-  query<Row extends SqlRow = SqlRow>(statement: string, values: SqlValue[] = []): Promise<Row[]> {
-    return this.readerQueue.run(() => this.request({ action: "query", reader: true, statement, values })) as Promise<
-      Row[]
-    >
+  query<Row extends SqlRow = SqlRow>(
+    statement: string,
+    values: SqlValue[] = [],
+    options?: SqlQueryOptions,
+  ): Promise<Row[]> {
+    return this.readerQueue.run(() =>
+      this.request({ action: "query", reader: true, statement, values, maintenance: options?.maintenance }),
+    ) as Promise<Row[]>
   }
 
   transaction<T>(
@@ -141,8 +167,18 @@ export class SqliteDriver implements SqlDriver {
   ): Promise<T> {
     const queue = options.readOnly ? this.readerQueue : this.writerQueue
     return queue.run(async () => {
-      const query = <Row extends SqlRow = SqlRow>(statement: string, values: SqlValue[] = []) =>
-        this.request({ action: "query", reader: options.readOnly, statement, values }) as Promise<Row[]>
+      const query = <Row extends SqlRow = SqlRow>(
+        statement: string,
+        values: SqlValue[] = [],
+        queryOptions?: SqlQueryOptions,
+      ) =>
+        this.request({
+          action: "query",
+          reader: options.readOnly,
+          statement,
+          values,
+          maintenance: queryOptions?.maintenance,
+        }) as Promise<Row[]>
       await query(options.readOnly ? "BEGIN" : "BEGIN IMMEDIATE")
       let committing = false
       try {

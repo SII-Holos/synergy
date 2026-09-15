@@ -161,3 +161,19 @@ for (const backend of ["sqlite", ...(process.env.SYNERGY_TEST_POSTGRES_URL ? ["p
     })
   })
 }
+
+test("sqlite keeps the database and WAL sidecars owner-only", async () => {
+  const filename = path.join(root, "permissions.sqlite")
+  const store = await TransactionalStore.open({ backend: "sqlite", namespace: "permissions", filename })
+  try {
+    await store.write(["record"], { value: 1 })
+    const mode = async (suffix: string) => (await fs.stat(`${filename}${suffix}`)).mode & 0o777
+    if (process.platform !== "win32") {
+      expect(await mode("")).toBe(0o600)
+      expect(await mode("-wal")).toBe(0o600)
+      expect(await mode("-shm")).toBe(0o600)
+    }
+  } finally {
+    await store.close()
+  }
+})

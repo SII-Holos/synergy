@@ -1,8 +1,14 @@
 export type SqlValue = string | number | bigint | Uint8Array | null
 export type SqlRow = Record<string, SqlValue>
 
+export interface SqlQueryOptions {
+  // Maintenance statements (integrity verification) legitimately run longer
+  // than ordinary operations; engines may extend their deadline.
+  maintenance?: boolean
+}
+
 export interface SqlConnection {
-  query<Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[]): Promise<Row[]>
+  query<Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions): Promise<Row[]>
 }
 
 export interface SqlDriver extends SqlConnection {
@@ -29,6 +35,7 @@ export type SqliteRequest = {
   reader?: boolean
   statement?: string
   values?: SqlValue[]
+  maintenance?: boolean
 }
 
 export type SqliteResponse = {

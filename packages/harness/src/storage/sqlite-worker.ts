@@ -3,6 +3,11 @@ import { Database } from "bun:sqlite"
 import { watchManagedParent } from "../util/managed-parent"
 import type { SqliteRequest, SqliteResponse } from "./sql-contract"
 
+// SQLite creates the database and its WAL sidecars (-wal/-shm) directly,
+// outside AtomicFile's private mode; a restrictive umask keeps every storage
+// file at owner-only permissions no matter when SQLite recreates them.
+if (process.platform !== "win32") process.umask(0o077)
+
 let writer: Database | undefined
 let reader: Database | undefined
 

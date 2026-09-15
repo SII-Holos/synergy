@@ -617,7 +617,7 @@ export class TransactionalStore {
     return this.driver.transaction(
       async (connection) => {
         if (this.driver.backend === "sqlite") {
-          const rows = await connection.query("PRAGMA integrity_check")
+          const rows = await connection.query("PRAGMA integrity_check", [], { maintenance: true })
           if (rows.length !== 1 || rows[0].integrity_check !== "ok")
             throw new StorageIntegrityError("SQLite integrity verification failed")
         }
