@@ -39,7 +39,14 @@ test("portable data preserves revisions, unknown fields, and committed command r
   )
   const filename = path.join(data.root, "records.ndjson")
   await StoragePortable.exportFile(data.source, filename)
-  await StoragePortable.importFile(data.target, filename)
+  const progress: Array<{ stage: string; current: number; bytes: number }> = []
+  await StoragePortable.importFile(data.target, filename, { progress: (value) => progress.push(value) })
+  expect(progress.map((value) => value.stage)).toContain("archive-verify")
+  expect(progress.map((value) => value.stage)).toContain("archive-import")
+  expect(progress.filter((value) => value.stage === "archive-verify").at(-1)?.bytes).toBe(
+    (await fs.stat(filename)).size,
+  )
+  expect(progress.filter((value) => value.stage === "archive-import").at(-1)?.current).toBeGreaterThan(0)
   expect(await data.target.versioned(["record"])).toEqual(await data.source.versioned(["record"]))
   expect(
     await data.target.transaction<{ accepted: boolean }>(

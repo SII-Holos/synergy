@@ -74,12 +74,37 @@ test("command-loading failures set nonzero status and leave no process listeners
   }
 })
 
+test("version is available when plugin storage cannot be opened", async () => {
+  const { runCli } = await import("../../src/main")
+  const original = process.exitCode
+  let discovered = false
+  try {
+    await runCli({
+      argv: ["--version"],
+      runtimeFactory: async () => {
+        throw new Error("version must not open a runtime")
+      },
+      pluginCommands: async () => {
+        discovered = true
+        throw new Error("interrupted storage")
+      },
+    })
+    expect(discovered).toBe(false)
+    expect(process.exitCode ?? 0).toBe(original ?? 0)
+  } finally {
+    process.exitCode = original ?? 0
+  }
+})
+
 test("host contributes its default command without loading unselected commands", async () => {
   const { runCli } = await import("../../src/main")
   const calls: string[] = []
   await runCli({
     argv: [],
     defaultCommand: "server",
+    pluginCommands: async () => {
+      throw new Error("Plugin metadata cannot open an interrupted storage upgrade")
+    },
     beforeCommand: async (command) => {
       calls.push(`before:${command}`)
     },

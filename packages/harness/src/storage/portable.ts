@@ -5,6 +5,8 @@ import path from "node:path"
 import { z } from "zod"
 import type { StoreTransaction, TransactionalStore } from "./transactional-store"
 import { StorageIntegrityError } from "./errors"
+import type { StorageStartupProgress } from "@ericsanchezok/synergy-util/runtime-startup"
+import { observeStorageProgress } from "./progress"
 
 export const StorageEntry = z.discriminatedUnion("type", [
   z
@@ -103,50 +105,66 @@ export namespace StoragePortable {
       accept?: (entry: StorageEntry, tx: StoreTransaction) => boolean | Promise<boolean>
       operationID?: string
       afterImport?: (tx: StoreTransaction) => Promise<void>
+      progress?: (progress: StorageStartupProgress) => void
     } = {},
   ) {
     const fileHash = createHash("sha256")
-    for await (const chunk of createReadStream(filename)) fileHash.update(chunk)
+    let bytes = 0
+    options.progress?.({ stage: "archive-verify", current: 0, total: 0, bytes: 0 })
+    for await (const chunk of createReadStream(filename)) {
+      fileHash.update(chunk)
+      bytes += Buffer.byteLength(chunk)
+      options.progress?.({ stage: "archive-verify", current: bytes, total: 0, bytes })
+    }
     const requestHash = fileHash.digest("hex")
-    return store.transaction(
-      async (tx) => {
-        let count = 0
-        let accepted = 0
-        let header = false
-        let footer = false
-        const hash = createHash("sha256")
-        const consumed = createHash("sha256")
-        for await (const line of lines(filename)) {
-          consumed.update(line + "\n")
-          if (!header) {
-            Header.parse(JSON.parse(line))
-            header = true
-            continue
-          }
-          if (footer) throw new StorageIntegrityError("Portable archive contains trailing data")
-          const parsed: unknown = JSON.parse(line)
-          if (parsed && typeof parsed === "object" && "end" in parsed) {
-            const last = Footer.parse(parsed)
-            if (last.count !== count || last.sha256 !== hash.digest("hex"))
-              throw new StorageIntegrityError("Portable archive checksum mismatch")
-            footer = true
-            continue
-          }
-          hash.update(line + "\n")
-          count++
-          const entry = StorageEntry.parse(parsed)
-          if (options.accept && !(await options.accept(entry, tx))) continue
-          await tx.restoreEntry(entry)
-          accepted++
-        }
-        if (!header || !footer)
-          throw new StorageIntegrityError("Portable archive is truncated; checksum footer is missing")
-        if (consumed.digest("hex") !== requestHash)
-          throw new StorageIntegrityError("Portable archive changed during import")
-        await options.afterImport?.(tx)
-        return { count, accepted, sha256: requestHash }
-      },
-      options.operationID ? { operationID: options.operationID, requestHash } : undefined,
+    let work = 0
+    let consumedBytes = 0
+    options.progress?.({ stage: "archive-import", current: 0, total: 0, bytes: 0 })
+    return observeStorageProgress(
+      (record) =>
+        store.transaction(
+          async (tx) => {
+            let count = 0
+            let accepted = 0
+            let header = false
+            let footer = false
+            const hash = createHash("sha256")
+            const consumed = createHash("sha256")
+            for await (const line of lines(filename)) {
+              consumed.update(line + "\n")
+              consumedBytes += Buffer.byteLength(line) + 1
+              record({ stage: "archive-import", current: ++work, total: 0, bytes: consumedBytes })
+              if (!header) {
+                Header.parse(JSON.parse(line))
+                header = true
+                continue
+              }
+              if (footer) throw new StorageIntegrityError("Portable archive contains trailing data")
+              const parsed: unknown = JSON.parse(line)
+              if (parsed && typeof parsed === "object" && "end" in parsed) {
+                const last = Footer.parse(parsed)
+                if (last.count !== count || last.sha256 !== hash.digest("hex"))
+                  throw new StorageIntegrityError("Portable archive checksum mismatch")
+                footer = true
+                continue
+              }
+              hash.update(line + "\n")
+              count++
+              const entry = StorageEntry.parse(parsed)
+              if (options.accept && !(await options.accept(entry, tx))) continue
+              await tx.restoreEntry(entry)
+              accepted++
+            }
+            if (!header || !footer)
+              throw new StorageIntegrityError("Portable archive is truncated; checksum footer is missing")
+            if (consumed.digest("hex") !== requestHash)
+              throw new StorageIntegrityError("Portable archive changed during import")
+            await options.afterImport?.(tx)
+            return { count, accepted, sha256: requestHash }
+          },
+          options.operationID ? { operationID: options.operationID, requestHash } : undefined,
+        ),
+      options.progress,
     )
   }
 }

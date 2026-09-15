@@ -4,6 +4,38 @@ import { DesktopServerStartup } from "../src/server-startup.js"
 const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
 
 describe("managed startup progress", () => {
+  test("waits through storage scanning, domain migrations and activation without accepting stale work", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    const storage = (step: number, current: number, stage = "scan", bytes = 0) =>
+      line({ phase: "storage", step, stage, current, total: 0, bytes })
+    startup.receive(storage(1, 0))
+    now = 31_000
+    expect(startup.remainingMs()).toBe(269_000)
+    startup.receive(storage(1, 1))
+    expect(startup.status().title).toBe("Updating saved data")
+    now = 331_000
+    startup.receive(storage(1, 1))
+    expect(startup.remainingMs()).toBe(0)
+    startup.receive(storage(1, 2))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(storage(2, 0, "backup"))
+    startup.receive(storage(1, 999))
+    expect(startup.status().detail).toContain("Backing up")
+    startup.receive(line({ phase: "migration", step: 1, current: 0, total: 0 }))
+    startup.receive(line({ phase: "starting" }))
+    startup.receive(storage(3, 0, "activate"))
+    now += 31_000
+    expect(startup.remainingMs()).toBe(269_000)
+    startup.receive(storage(4, 0, "complete"))
+    expect(startup.remainingMs()).toBe(30_000)
+    startup.receive(line({ phase: "recovery", current: 1 }))
+    startup.receive(line({ phase: "starting" }))
+    now += 30_000
+    startup.receive(storage(5, 10))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
   test("waits for advancing recovery after migrations and bounds the final health check", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })

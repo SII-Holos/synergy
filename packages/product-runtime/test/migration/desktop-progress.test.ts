@@ -3,7 +3,16 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import { runMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
-import { createManagedMigrationReporter, createManagedRecoveryReporter } from "../../src/cli/managed-startup"
+import {
+  createManagedMigrationReporter,
+  createManagedRecoveryReporter,
+  createManagedStorageReporter,
+} from "../../src/cli/managed-startup"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { RuntimeStartupProgress, RUNTIME_STARTUP_PREFIX } from "@ericsanchezok/synergy-util/runtime-startup"
+import fs from "node:fs/promises"
+import path from "node:path"
 
 const domain = "test-desktop-progress"
 
@@ -13,6 +22,63 @@ afterEach(async () => {
 })
 
 describe("desktop migration reporting", () => {
+  test("streams real storage bootstrap and activation as bounded aggregate records", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, ".synergy")
+    await fs.mkdir(path.join(root, "data", "notes", "scope"), { recursive: true })
+    await Bun.write(path.join(root, "data", "notes", "scope", "private-name.json"), '{"text":"private payload"}')
+    const lines: string[] = []
+    let now = 0
+    const reporter = createManagedStorageReporter(
+      (line) => lines.push(line),
+      () => now,
+    )
+    const prepared = await StorageBootstrap.prepare({
+      root,
+      progress: (progress) => {
+        now += 31_000
+        reporter(progress)
+      },
+    })
+    try {
+      await prepared.activate()
+      const records = lines.map((line) =>
+        RuntimeStartupProgress.parse(JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length))),
+      )
+      expect(records[0]).toMatchObject({ phase: "storage", stage: "prepare", current: 0 })
+      expect(
+        records.some((record) => record.phase === "storage" && record.stage === "scan" && record.current === 1),
+      ).toBe(true)
+      expect(
+        records.some((record) => record.phase === "storage" && record.stage === "activate" && record.current === 1),
+      ).toBe(true)
+      expect(lines.join("")).not.toContain("private")
+      expect(lines.join("")).not.toContain(root)
+    } finally {
+      await prepared.store.close()
+    }
+  })
+
+  test("throttles advancing storage work and reports phase transitions immediately", () => {
+    const lines: string[] = []
+    let now = 0
+    const reporter = createManagedStorageReporter(
+      (line) => lines.push(line),
+      () => now,
+    )
+    reporter({ stage: "scan", current: 0, total: 0, bytes: 0 })
+    for (let current = 1; current < 1000; current++) reporter({ stage: "scan", current, total: 0, bytes: current })
+    expect(lines).toHaveLength(1)
+    now = 250
+    reporter({ stage: "scan", current: 1000, total: 0, bytes: 1000 })
+    reporter({ stage: "backup", current: 0, total: 1000, bytes: 0 })
+    expect(lines).toHaveLength(3)
+    expect(JSON.parse(lines.at(-1)!.slice(RUNTIME_STARTUP_PREFIX.length))).toMatchObject({ step: 2, stage: "backup" })
+    now = 500
+    reporter({ stage: "backup", current: 0, total: 1000, bytes: 0 })
+    expect(lines).toHaveLength(3)
+  })
+
   test("reports recovery immediately, bounds output frequency and announces completion", () => {
     const lines: string[] = []
     let now = 0

@@ -30,3 +30,17 @@ test("startup records round trip without accepting unbounded or private fields",
     expect(RuntimeStartupProgress.safeParse({ phase: "recovery", current }).success).toBe(false)
   expect(RuntimeStartupProgress.safeParse({ phase: "recovery", current: 1, sessionID: "private" }).success).toBe(false)
 })
+
+test("validates bounded aggregate storage records with unknown totals", () => {
+  const progress = { phase: "storage", stage: "scan", step: 1, current: 10, total: 0, bytes: 200 }
+  expect(RuntimeStartupProgress.safeParse(progress).success).toBe(true)
+  for (const value of [
+    { ...progress, total: 9 },
+    { ...progress, bytes: -1 },
+    { ...progress, current: Infinity },
+    { ...progress, step: 0 },
+    { ...progress, stage: "unknown" },
+    { ...progress, path: "private" },
+  ])
+    expect(RuntimeStartupProgress.safeParse(value).success).toBe(false)
+})

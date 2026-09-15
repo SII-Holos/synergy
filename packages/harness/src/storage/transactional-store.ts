@@ -8,6 +8,7 @@ import {
   StorageOwnershipError,
 } from "./errors"
 import { StorageQueue } from "./queue"
+import { observeStorageProgress } from "./progress"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
 import type { SqlConnection, SqlDriver, SqlRow, SqlValue, StoreOptions } from "./sql-contract"
@@ -612,58 +613,66 @@ export class TransactionalStore {
     )
   }
 
-  async verify() {
+  async verify(progress?: (current: number) => void) {
     this.check()
-    return this.driver.transaction(
-      async (connection) => {
-        if (this.driver.backend === "sqlite") {
-          const rows = await connection.query("PRAGMA integrity_check", [], { maintenance: true })
-          if (rows.length !== 1 || rows[0].integrity_check !== "ok")
-            throw new StorageIntegrityError("SQLite integrity verification failed")
-        }
-        const tx = new StoreTransaction(connection, this.options.namespace, true)
-        const issues: Array<{ key: string[]; reason: string }> = []
-        const kinds: Record<string, number> = {}
-        let records = 0
-        try {
-          let after: string[] | undefined
-          for (;;) {
-            const batch = await tx.query<Record<string, unknown>>({ after, limit: 256 })
-            if (!batch.length) break
-            for (const record of batch) {
-              records++
-              const meta = metadata(record.key)
-              kinds[meta.kind] = (kinds[meta.kind] ?? 0) + 1
-              const key = record.key
-              if (key[0] !== "sessions") continue
-              const parents: string[][] = []
-              if (key[3] !== "info") parents.push([...key.slice(0, 3), "info"])
-              if (meta.kind === "part") parents.push([...key.slice(0, 5), "info"])
-              const values = await tx.readMany(parents)
-              for (const [index, parent] of values.entries()) {
-                if (parent === undefined)
-                  issues.push({ key, reason: index === 0 ? "missing_session" : "missing_message" })
-              }
-              if (["session", "message", "part"].includes(meta.kind)) {
-                const expectedID = meta.kind === "part" ? key.at(-1) : key.at(-2)
-                if (!record.value || typeof record.value !== "object" || record.value.id !== expectedID)
-                  issues.push({ key, reason: "identity_mismatch" })
-              }
+    progress?.(0)
+    let work = 0
+    return observeStorageProgress(
+      (recordProgress) =>
+        this.driver.transaction(
+          async (connection) => {
+            if (this.driver.backend === "sqlite") {
+              const rows = await connection.query("PRAGMA integrity_check", [], { maintenance: true })
+              if (rows.length !== 1 || rows[0].integrity_check !== "ok")
+                throw new StorageIntegrityError("SQLite integrity verification failed")
             }
-            after = batch.at(-1)!.key
-          }
-          const [invalid] = await connection.query(
-            "SELECT COUNT(*) AS count FROM storage_records r LEFT JOIN storage_nodes n ON r.namespace = n.namespace AND r.key_id = n.key_id WHERE r.namespace = ? AND r.body IS NOT NULL AND (n.key_id IS NULL OR n.key_text <> r.key_text OR r.revision < 1)",
-            [this.options.namespace],
-          )
-          if (Number(invalid.count))
-            throw new StorageIntegrityError("Logical storage index integrity verification failed")
-          return { backend: this.driver.backend, namespace: this.options.namespace, records, kinds, issues }
-        } finally {
-          tx.finish()
-        }
-      },
-      { readOnly: true },
+            const tx = new StoreTransaction(connection, this.options.namespace, true)
+            const issues: Array<{ key: string[]; reason: string }> = []
+            const kinds: Record<string, number> = {}
+            let records = 0
+            try {
+              let after: string[] | undefined
+              for (;;) {
+                const batch = await tx.query<Record<string, unknown>>({ after, limit: 256 })
+                if (!batch.length) break
+                for (const record of batch) {
+                  records++
+                  const meta = metadata(record.key)
+                  kinds[meta.kind] = (kinds[meta.kind] ?? 0) + 1
+                  const key = record.key
+                  if (key[0] !== "sessions") continue
+                  const parents: string[][] = []
+                  if (key[3] !== "info") parents.push([...key.slice(0, 3), "info"])
+                  if (meta.kind === "part") parents.push([...key.slice(0, 5), "info"])
+                  const values = await tx.readMany(parents)
+                  for (const [index, parent] of values.entries()) {
+                    if (parent === undefined)
+                      issues.push({ key, reason: index === 0 ? "missing_session" : "missing_message" })
+                  }
+                  if (["session", "message", "part"].includes(meta.kind)) {
+                    const expectedID = meta.kind === "part" ? key.at(-1) : key.at(-2)
+                    if (!record.value || typeof record.value !== "object" || record.value.id !== expectedID)
+                      issues.push({ key, reason: "identity_mismatch" })
+                  }
+                }
+                work += batch.length
+                recordProgress(work)
+                after = batch.at(-1)!.key
+              }
+              const [invalid] = await connection.query(
+                "SELECT COUNT(*) AS count FROM storage_records r LEFT JOIN storage_nodes n ON r.namespace = n.namespace AND r.key_id = n.key_id WHERE r.namespace = ? AND r.body IS NOT NULL AND (n.key_id IS NULL OR n.key_text <> r.key_text OR r.revision < 1)",
+                [this.options.namespace],
+              )
+              if (Number(invalid.count))
+                throw new StorageIntegrityError("Logical storage index integrity verification failed")
+              return { backend: this.driver.backend, namespace: this.options.namespace, records, kinds, issues }
+            } finally {
+              tx.finish()
+            }
+          },
+          { readOnly: true },
+        ),
+      progress,
     )
   }
 

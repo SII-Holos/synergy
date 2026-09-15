@@ -31,6 +31,18 @@ async function run() {
       )
       console.log(`Startup progress: ${mode} page loaded`)
       const startup = new DesktopServerStartup()
+      startup.receive(
+        'SYNERGY_STARTUP_V1 {"phase":"storage","step":1,"stage":"scan","current":10001,"total":0,"bytes":1000}\n',
+      )
+      await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('[role="status"]').textContent`),
+        "Updating saved data",
+      )
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.body.textContent.includes('Scanning saved files. 10001')`),
+        true,
+      )
       startup.receive('SYNERGY_STARTUP_V1 {"phase":"migration","step":1,"current":358,"total":8494}\n')
       await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
       await window.webContents.executeJavaScript(`(async () => {

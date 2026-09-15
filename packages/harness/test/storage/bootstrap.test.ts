@@ -3,6 +3,7 @@ import { afterAll, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { StorageBootstrap } from "../../src/storage/bootstrap"
+import { StoragePortable } from "../../src/storage/portable"
 
 const fixtures = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "storage-bootstrap-"))
 afterAll(() => fs.rm(fixtures, { recursive: true, force: true }))
@@ -12,6 +13,29 @@ async function home() {
   await fs.mkdir(path.join(root, "data"), { recursive: true })
   return root
 }
+
+test("restored portable records report hashing and import before activation", async () => {
+  const source = await StorageBootstrap.prepare({ root: await home() })
+  const root = await home()
+  try {
+    await source.store.write(["notes", "scope", "archive"], { preserved: true })
+    await StoragePortable.exportFile(source.store, path.join(root, "data", "agent-records.ndjson"))
+  } finally {
+    await source.store.close()
+  }
+  const stages: string[] = []
+  const restored = await StorageBootstrap.prepare({ root, progress: (value) => stages.push(value.stage) })
+  try {
+    expect(stages).toContain("archive-verify")
+    expect(stages).toContain("archive-import")
+    expect(await restored.store.read<{ preserved: boolean }>(["notes", "scope", "archive"])).toEqual({
+      preserved: true,
+    })
+    await restored.activate()
+  } finally {
+    await restored.store.close()
+  }
+})
 
 test("keeps JSON intact until validation and activation and then uses only the database", async () => {
   const root = await home()
@@ -81,6 +105,49 @@ test("rejects legacy records recreated by an old writer after activation", async
   )
   expect(failure).toMatchObject({ name: "StorageIntegrityError" })
 })
+
+test.each([
+  "data/channel/provider/account.json",
+  "data/browser/sessions-v2/session.json",
+  "data/push/subscriptions/device.json",
+  "data/library/stats/info.json",
+  "data/snapshot-v2/scope/owners/session.json",
+  "data/sessions/scope/session/rollout/artifacts/artifact/chunks/000000000000.json",
+  "plugin.lock",
+])("active startup detects recreated legacy record %s", async (relative) => {
+  const root = await home()
+  const prepared = await StorageBootstrap.prepare({ root })
+  await prepared.activate()
+  await prepared.store.close()
+  const filename = path.join(root, relative)
+  await fs.mkdir(path.dirname(filename), { recursive: true })
+  await Bun.write(filename, "{}")
+  await expect(StorageBootstrap.prepare({ root })).rejects.toThrow("Legacy JSON records appeared")
+})
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "active database startup does not require access to unrelated artifact trees",
+  async () => {
+    const root = await home()
+    const artifacts = path.join(root, "data", "snapshot", "scope", "session")
+    await fs.mkdir(artifacts, { recursive: true })
+    await Bun.write(path.join(artifacts, "unrelated.json"), "{}")
+    const prepared = await StorageBootstrap.prepare({ root })
+    await prepared.activate()
+    await prepared.store.close()
+    await fs.chmod(path.join(root, "data", "snapshot"), 0)
+    try {
+      const reopened = await StorageBootstrap.prepare({ root })
+      try {
+        expect(reopened.manifest.phase).toBe("active")
+      } finally {
+        await reopened.store.close()
+      }
+    } finally {
+      await fs.chmod(path.join(root, "data", "snapshot"), 0o700)
+    }
+  },
+)
 
 test("explicit target migration preserves data and switches configuration only after verification", async () => {
   const root = await home()

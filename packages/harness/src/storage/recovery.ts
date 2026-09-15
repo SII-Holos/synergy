@@ -17,8 +17,8 @@ export namespace StorageRecovery {
 
   const blocked = new WeakMap<object, Set<string>>()
 
-  export async function validate() {
-    const report = await Storage.current().store.verify()
+  export async function validate(progress?: (current: number) => void) {
+    const report = await Storage.current().store.verify(progress)
     for (const issue of report.issues) {
       if (issue.key[0] !== "sessions" || !issue.key[2])
         throw new StorageIntegrityError("Authoritative data failed validation")
