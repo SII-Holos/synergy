@@ -54,6 +54,7 @@ export class PartWriteBuffer<T, P = string> {
     const promise = writing.then(
       () => {
         this.bytes -= entry.bytes
+        this.failures.delete(key)
         if (this.running.get(key)?.promise === promise) this.running.delete(key)
       },
       (error: unknown) => {
@@ -71,8 +72,6 @@ export class PartWriteBuffer<T, P = string> {
 
   async writeNow(key: string, path: P, value: T, write = this.write): Promise<void> {
     this.cancel(key)
-    const failure = this.failures.get(key)
-    if (failure) throw failure.error
     await this.execute(
       key,
       { path, value: structuredClone(value), bytes: Buffer.byteLength(JSON.stringify(value)) },
@@ -88,10 +87,15 @@ export class PartWriteBuffer<T, P = string> {
     const keys = new Set<string>()
     for (const [key, entry] of this.latest) if (predicate(entry.value, entry.path)) keys.add(key)
     for (const [key, { entry }] of this.running) if (predicate(entry.value, entry.path)) keys.add(key)
-    const results = await Promise.allSettled([...keys].map((key) => this.flush(key)))
+    // Retained failures retry at every drain boundary instead of poisoning
+    // later turns: one transient storage error must not wedge a session
+    // until the Runtime restarts. Keys with a newer buffered or running
+    // entry flush that entry instead, and its success clears the failure.
+    const retries = [...this.failures.entries()]
+      .filter(([key, { entry }]) => predicate(entry.value, entry.path) && !keys.has(key))
+      .map(([key, { entry }]) => this.execute(key, entry))
+    const results = await Promise.allSettled([...keys].map((key) => this.flush(key)).concat(retries))
     const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
-    for (const { entry, error } of this.failures.values())
-      if (predicate(entry.value, entry.path) && !errors.includes(error)) errors.push(error)
     if (errors.length === 1) throw errors[0]
     if (errors.length) throw new AggregateError(errors, "Part persistence failed")
   }

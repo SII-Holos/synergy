@@ -40,6 +40,34 @@ describe("PartWriteBuffer", () => {
     await Bun.sleep(10)
     await expect(buffer.flushAll()).rejects.toThrow("disk full")
   })
+
+  test("a later successful write clears the retained failure for the same key", async () => {
+    let fail = true
+    const writes: string[] = []
+    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
+      if (fail) throw new Error("transient")
+      writes.push(value)
+    }, 10_000)
+    buffer.defer("part", "part", "stream")
+    await expect(buffer.flush("part")).rejects.toThrow("transient")
+    fail = false
+    await buffer.writeNow("part", "part", "complete")
+    expect(writes).toEqual(["complete"])
+    await buffer.flushAll()
+    expect(writes).toEqual(["complete"])
+  })
+
+  test("a transient part failure does not block later drains of the same session", async () => {
+    let fail = true
+    const buffer = new PartWriteBuffer<{ sessionID: string; text: string }>(async (_path, value) => {
+      if (fail) throw new Error("transient")
+    }, 10_000)
+    buffer.defer("p1", "path/p1", { sessionID: "ses_1", text: "one" })
+    await expect(buffer.flushWhere((value) => value.sessionID === "ses_1")).rejects.toThrow("transient")
+    fail = false
+    buffer.defer("p2", "path/p2", { sessionID: "ses_1", text: "two" })
+    await buffer.flushWhere((value) => value.sessionID === "ses_1")
+  })
   test("coalesces deferred writes: many defers, one flush writes the latest", () => {
     const r = recorder()
     const buf = new PartWriteBuffer<string>(r.write, 10_000)

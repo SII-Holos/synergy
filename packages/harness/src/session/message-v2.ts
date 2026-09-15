@@ -1436,29 +1436,24 @@ export namespace MessageV2 {
       return cached
     }
 
-    const [rawState, storedMarkers] = await Promise.all([
-      Storage.read<unknown>(StoragePath.sessionMessageOrderState(scopeID, sessionID)).catch(() => undefined),
-      Storage.scan(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID)),
-    ])
-    const state = MessageOrderState.safeParse(rawState)
-    const markers = storedMarkers.toSorted(compareMessageOrderMarker)
-    const indexedIDs = new Set(markers.map(markerMessageID).filter((id): id is string => id !== undefined))
-    if (state.success && state.data.count === markers.length && indexedIDs.size === markers.length) {
-      return cacheMessageOrder(scopeID, sessionID, markers)
-    }
-    return rebuildMessageOrder(scopeID, sessionID)
-  }
-
-  async function messageOrderSnapshot(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
-    return Storage.transaction(async () => {
-      const key = messageOrderKey(scopeID, sessionID)
-      if (messageOrderCache().has(key)) {
-        const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
-        if (cached) return cached.markers.slice()
-      }
-
-      return (await loadMessageOrder(scopeID, sessionID)).markers.slice()
+    // A read-only snapshot keeps the hot read path off the single SQLite
+    // writer; a rebuild escalates to its own transaction only when the
+    // stored index is unusable.
+    const consistent = await Storage.snapshot(async () => {
+      const [rawState, storedMarkers] = await Promise.all([
+        Storage.read<unknown>(StoragePath.sessionMessageOrderState(scopeID, sessionID)).catch(() => undefined),
+        Storage.scan(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID)),
+      ])
+      const state = MessageOrderState.safeParse(rawState)
+      const markers = storedMarkers.toSorted(compareMessageOrderMarker)
+      const indexedIDs = new Set(markers.map(markerMessageID).filter((id): id is string => id !== undefined))
+      return state.success && state.data.count === markers.length && indexedIDs.size === markers.length
+        ? markers
+        : undefined
     })
+    if (consistent) return cacheMessageOrder(scopeID, sessionID, consistent)
+    if (Storage.inTransaction()) return rebuildMessageOrder(scopeID, sessionID)
+    return Storage.transaction(() => rebuildMessageOrder(scopeID, sessionID))
   }
 
   export async function writeInfo(input: { scopeID: Identifier.ScopeID; info: Info }) {
@@ -1553,7 +1548,7 @@ export namespace MessageV2 {
   }
 
   export async function* readNewestInfos(input: { scopeID: Identifier.ScopeID; sessionID: Identifier.SessionID }) {
-    const markers = await messageOrderSnapshot(input.scopeID, input.sessionID)
+    const markers = (await loadMessageOrder(input.scopeID, input.sessionID)).markers.slice()
     let index = markers.length - 1
     let yielded = 0
     while (index >= 0) {
