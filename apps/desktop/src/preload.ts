@@ -12,7 +12,11 @@ import {
 } from "@ericsanchezok/synergy-browser"
 import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 import type { DesktopWindowState } from "./window-chrome.js"
-import { mapSelectDirectoryDialogResponse, type SelectDirectoryDialogBridgeResponse } from "./directory-picker.js"
+import {
+  mapSelectDirectoryDialogResponse,
+  type PortalDeniedDialogResponse,
+  type SelectDirectoryDialogBridgeResponse,
+} from "./directory-picker.js"
 import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
 import type { DesktopBadgeState } from "./ipc-contract.js"
 
@@ -63,7 +67,10 @@ const server = {
   },
 }
 
-function openDirectoryPickerDialog(opts?: { title?: string; multiple?: boolean }): Promise<string | string[] | null> {
+function openDirectoryPickerDialog(opts?: {
+  title?: string
+  multiple?: boolean
+}): Promise<string | string[] | PortalDeniedDialogResponse | null> {
   const multiple = opts?.multiple ?? false
   return ipcRenderer
     .invoke("dialog:select-directory", { title: opts?.title, multiple })

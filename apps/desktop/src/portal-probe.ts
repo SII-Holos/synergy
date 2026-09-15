@@ -2,14 +2,8 @@ import { execFile } from "node:child_process"
 
 export type PortalFileAccessProbe = "allowed" | "denied" | "unavailable"
 
-// xdg-desktop-portal routes every portal method call through the same
-// authorize_callback caller inspection (opening /proc/<pid>/root, gated by
-// ptrace_may_access). ReadAll therefore fails with the same AccessDenied as
-// FileChooser.OpenFile when the calling process's primary group diverges from
-// the desktop session (newgrp), while Properties.Get/Introspect bypass
-// authorization and would false-positive. Chromium maps the OpenFile error to
-// a silent cancel, so this probe is the only way to detect the condition.
-// See flatpak/xdg-desktop-portal#1490 and SII-Holos/synergy#1396.
+// Provenance: https://github.com/flatpak/xdg-desktop-portal/issues/1490 — every portal method call passes authorize_callback caller inspection (opening /proc/<pid>/root, gated by ptrace_may_access), so Settings.ReadAll fails with the same AccessDenied as FileChooser.OpenFile when the caller's primary group diverges from the desktop session (newgrp), while Properties.Get/Introspect bypass authorization and would false-positive; Chromium's portal dialog maps the OpenFile failure to a silent cancel (ui/shell_dialogs/select_file_dialog_linux_portal.cc), so a probe is the only detection path.
+// Local adaptation: Synergy classifies a read-only gdbus Settings.ReadAll round-trip (Linux only, 3 s timeout) into allowed/denied/unavailable and gates the native directory picker on the cached verdict.
 export const GDBUS_PROBE_ARGS = [
   "call",
   "--session",

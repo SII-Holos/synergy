@@ -128,18 +128,11 @@ describe("desktop preload bridge", () => {
     expect(await desktop.openDirectoryPickerDialog({ multiple: true })).toBeNull()
   })
 
-  test("surfaces portal denial as a permission sentinel error", async () => {
-    expectInvoke("dialog:select-directory", [{ title: "Add project", multiple: true }], {
-      denied: true,
-      message: "Portal file dialogs are not allowed for this process",
-    })
-    const error = await desktop.openDirectoryPickerDialog({ title: "Add project", multiple: true }).then(
-      () => null,
-      (thrown: unknown) => thrown,
-    )
-    expect(error).toBeInstanceOf(Error)
-    expect((error as Error).name).toBe("PortalPermissionError")
-    expect((error as Error).message).toBe("Portal file dialogs are not allowed for this process")
+  test("surfaces portal denial as a plain-data response across the bridge", async () => {
+    const denial = { denied: true, message: "Portal file dialogs are not allowed for this process" }
+    expectInvoke("dialog:select-directory", [{ title: "Add project", multiple: true }], denial)
+    const selected = await desktop.openDirectoryPickerDialog({ title: "Add project", multiple: true })
+    expect(selected).toEqual(denial)
   })
 
   test("forwards theme and window state operations and subscribes to events", async () => {

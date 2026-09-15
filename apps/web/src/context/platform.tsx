@@ -147,6 +147,11 @@ export type DesktopBadgeBridge = {
   setState(state: { count: number }): Promise<void>
 }
 
+export type DirectoryPickerDenied = {
+  denied: true
+  message: string
+}
+
 export type Platform = {
   /** Platform discriminator */
   platform: "web" | "desktop"
@@ -166,8 +171,11 @@ export type Platform = {
   /** Send a system notification (optional deep link; tag collapses duplicates) */
   notify(title: string, description?: string, href?: string, tag?: string): Promise<void>
 
-  /** Open directory picker dialog */
-  openDirectoryPickerDialog?(opts?: { title?: string; multiple?: boolean }): Promise<string | string[] | null>
+  /** Open directory picker dialog; portal denial resolves as plain { denied: true; message } data */
+  openDirectoryPickerDialog?(opts?: {
+    title?: string
+    multiple?: boolean
+  }): Promise<string | string[] | DirectoryPickerDenied | null>
 
   /** Fetch override */
   fetch?: typeof fetch

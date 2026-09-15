@@ -188,6 +188,7 @@ describe("desktop ipc contract", () => {
       serverStatus: managedRunningStatus,
       showOpenDialog: (async () => ({ canceled: true, filePaths: [] })) as any,
       rawRequest: {},
+      probePortalFileAccess: async () => "allowed",
     })
     expect(cancel).toEqual({ canceled: true, directoryPaths: [] })
 
@@ -197,6 +198,7 @@ describe("desktop ipc contract", () => {
       serverStatus: managedRunningStatus,
       showOpenDialog: (async () => ({ canceled: false, filePaths: ["/repo-a", "/repo-b"] })) as any,
       rawRequest: { multiple: true },
+      probePortalFileAccess: async () => "allowed",
     })
     expect(selected).toEqual({ canceled: false, directoryPaths: ["/repo-a", "/repo-b"] })
 
@@ -207,6 +209,7 @@ describe("desktop ipc contract", () => {
         serverStatus: managedRunningStatus,
         showOpenDialog: (async () => ({ canceled: false, filePaths: ["/repo-a", "/repo-b"] })) as any,
         rawRequest: {},
+        probePortalFileAccess: async () => "allowed",
       }),
     ).rejects.toThrow("multiple paths")
   })
@@ -268,5 +271,8 @@ describe("desktop ipc contract", () => {
     expect(mapSelectDirectoryDialogResponse({ canceled: false, directoryPaths: ["/repo-a", "/repo-b"] }, true)).toEqual(
       ["/repo-a", "/repo-b"],
     )
+    expect(
+      mapSelectDirectoryDialogResponse({ denied: true, message: "Portal file dialogs are not allowed" }, true),
+    ).toEqual({ denied: true, message: "Portal file dialogs are not allowed" })
   })
 })

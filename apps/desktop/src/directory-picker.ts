@@ -74,12 +74,8 @@ export async function selectDirectoryWithNativeDialog(
 export function mapSelectDirectoryDialogResponse(
   response: SelectDirectoryDialogBridgeResponse,
   multiple: boolean,
-): string | string[] | null {
-  if ("denied" in response) {
-    const error = new Error(response.message)
-    error.name = "PortalPermissionError"
-    throw error
-  }
+): string | string[] | PortalDeniedDialogResponse | null {
+  if ("denied" in response) return response
   const directoryPaths = response.canceled ? [] : response.directoryPaths
   if (response.canceled) return null
   return multiple ? directoryPaths : (directoryPaths[0] ?? null)

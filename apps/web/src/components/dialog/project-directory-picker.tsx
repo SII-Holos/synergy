@@ -1,5 +1,6 @@
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useLingui } from "@lingui/solid"
 import { createSignal } from "solid-js"
 import { usePlatform } from "@/context/platform"
 import { DialogSelectDirectory } from "./dialog-select-directory"
@@ -15,6 +16,7 @@ export function useProjectDirectoryPicker(): {
 } {
   const platform = usePlatform()
   const dialog = useDialog()
+  const { _ } = useLingui()
   const [pending, setPending] = createSignal(false)
 
   async function pickServer(options: PickProjectDirectoriesOptions): Promise<PickProjectDirectoriesResult | null> {
@@ -40,6 +42,7 @@ export function useProjectDirectoryPicker(): {
         platform,
         pickServer,
         showErrorToast: showToast,
+        translate: _,
         isPending: pending,
         setPending,
       },

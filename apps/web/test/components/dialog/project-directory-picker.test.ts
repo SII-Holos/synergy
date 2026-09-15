@@ -51,6 +51,7 @@ function runtime(
       showErrorToast(toast: unknown) {
         toasts.push(toast)
       },
+      translate: (descriptor: { message: string }) => descriptor.message,
       isPending() {
         return pending
       },
@@ -154,17 +155,17 @@ describe("project directory picker", () => {
     const context = runtime({
       platform: {
         desktopServer: { status: async () => managedRunningStatus, restart: async () => managedRunningStatus },
-        openDirectoryPickerDialog: async () => {
-          const error = new Error("Portal file dialogs are not allowed for this process")
-          error.name = "PortalPermissionError"
-          throw error
-        },
+        openDirectoryPickerDialog: async () => ({
+          denied: true,
+          message: "Portal file dialogs are not allowed for this process",
+        }),
       },
     })
     await expect(
       pickProjectDirectoriesWithRuntime(context.runtime, { title: "Add project", multiple: true }),
     ).resolves.toBeNull()
     expect(context.toasts).toHaveLength(1)
+    expect(context.serverBrowserOpenCount()).toBe(0)
     const toast = context.toasts[0] as { type: string; title: string; description: string }
     expect(toast.type).toBe("error")
     expect(toast.title).toBe(dialog.directoryPickerDenied.message)
