@@ -4,8 +4,10 @@ import os
 import re
 import shlex
 import shutil
+import struct
 import sys
 import uuid
+import zlib
 
 import pytest
 import yaml
@@ -22,16 +24,29 @@ from synergy_bench.storage import atomic_json, read_json
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit native Docker matrix")
 
 
-async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None):
+async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None, image_path=None):
     body = await request.json()
     responses = request.path.endswith("/responses")
     messages = body["input"] if responses else body["messages"]
     if isinstance(messages, str):
         messages = [{"role": "user", "content": messages}]
     tools = body.get("tools", [])
+    marker = re.search(r"BENCHMARK_TOOL_[a-f0-9]{32}", json.dumps(messages))
+    tool_outputs = [
+        message
+        for message in messages
+        if message.get("role") == "tool" or message.get("type") == "function_call_output"
+    ]
+    image_roundtrip = image_path is not None and marker is None
     call = bool(tools) and not any(
         message.get("role") == "tool" or message.get("type") == "function_call_output" for message in messages
     )
+    if image_roundtrip:
+        call = len(tool_outputs) < 2
+        if tool_outputs:
+            parts = tool_outputs[0].get("output" if responses else "content")
+            assert isinstance(parts, list)
+            assert any(part.get("type") == ("input_image" if responses else "image_url") for part in parts)
     if force_tool is not None:
         call = bool(tools) and force_tool
     call_id = "fixture-call-" + uuid.uuid4().hex
@@ -44,11 +59,12 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
                 functions.extend({**nested, "namespace": tool["name"]} for nested in tool["tools"])
             elif tool["type"] == "function":
                 functions.append(tool.get("function", tool))
-        selected = next(
-            tool
-            for tool in functions
-            if tool["name"].split("__")[-1].lower() in {"bash", "exec_command", "shell", "shell_command"}
+        names = (
+            {"view_image"}
+            if image_roundtrip and not tool_outputs
+            else {"bash", "exec_command", "shell", "shell_command"}
         )
+        selected = next(tool for tool in functions if tool["name"].split("__")[-1].lower() in names)
         namespace = selected.get("namespace")
         properties = selected.get("parameters", {}).get("properties", {})
         args = {}
@@ -61,11 +77,12 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
                 if spec.get("type") in {"number", "integer"}
                 else "benchmark fixture"
             )
-        marker = re.search(r"BENCHMARK_TOOL_[a-f0-9]{32}", json.dumps(messages))
         command = "printf '" + marker[0] + "\\n'" if marker else "printf verified > /app/marker"
         command = command_prefix + command
         field = next((key for key in ["command", "cmd", "code"] if key in properties), "command")
         args[field] = ["sh", "-c", command] if properties.get(field, {}).get("type") == "array" else command
+        if image_roundtrip and not tool_outputs:
+            args = {"path": image_path}
         message = {
             "role": "assistant",
             "tool_calls": [
@@ -223,8 +240,11 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
 
 
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
-async def test_native_matrix_uses_restricted_egress_and_two_independent_models(tmp_path, monkeypatch, protocol):
-    create_matrix_suite(tmp_path)
+@pytest.mark.parametrize("image_roundtrip", [False, True], ids=["shell", "codex-image"])
+async def test_native_matrix_uses_restricted_egress_and_two_independent_models(
+    tmp_path, monkeypatch, protocol, image_roundtrip
+):
+    create_matrix_suite(tmp_path, image=image_roundtrip)
     runtime_probe = """from pathlib import Path
 import os
 pid = os.getppid()
@@ -245,7 +265,10 @@ while pid > 1:
         return await fixture_provider(
             request,
             command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
-            + "python3 -c " + shlex.quote(runtime_probe) + "; ",
+            + "python3 -c "
+            + shlex.quote(runtime_probe)
+            + "; ",
+            image_path="/app/fixture.png" if image_roundtrip else None,
         )
 
     app = web.Application()
@@ -256,6 +279,8 @@ while pid > 1:
     await web.TCPSite(provider, "127.0.0.1", 0).start()
     artifacts = json.loads(os.environ.get("SYNERGY_BENCH_NATIVE_ARTIFACTS", "{}"))
     kinds = os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy,codex,opencode,pi,deepseek").split(",")
+    if image_roundtrip:
+        kinds = ["codex"]
     harnesses = {
         kind: {
             "kind": kind,
@@ -367,7 +392,7 @@ while pid > 1:
         await provider.cleanup()
 
 
-def create_matrix_suite(tmp_path, *, workload: bool = False):
+def create_matrix_suite(tmp_path, *, workload: bool = False, image: bool = False):
     dataset = tmp_path / "dataset"
     task = dataset / "tasks/marker"
     shutil.copytree(BENCHMARK / "test/fixtures/task", task)
@@ -382,6 +407,15 @@ def create_matrix_suite(tmp_path, *, workload: bool = False):
             "for index in range(400000): hashlib.sha256(str(index).encode()).digest()\n"
         )
         dockerfile.write_text(dockerfile.read_text() + "COPY workload.py /fixture/workload.py\n")
+    if image:
+
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 2, 0, 0, 0))
+        png += chunk(b"IDAT", zlib.compress((b"\x00" + b"\xff\x00\x00" * 64) * 64)) + chunk(b"IEND", b"")
+        (task / "environment/fixture.png").write_bytes(png)
+        dockerfile.write_text(dockerfile.read_text() + "COPY fixture.png /app/fixture.png\n")
     for args in [
         ("init", "--quiet"),
         ("add", "."),

@@ -133,6 +133,8 @@ run/
 
 账本在发送网络请求前持久化意图，正常结束、错误、取消、未知送达和缺失 usage 分开记录。原生记录交叉核对主任务、辅助调用、重试和压缩请求。累计 usage 帧及重复终态不重复计量；未知输入/输出保留已知下界，缓存和推理保持输入/输出子集关系。字节不冒充 token。Synergy 继续使用公开 rollout/accounting 合同；按公开归档中的请求摘要逐条核对。Codex 使用原生 token_usage_record 的 response ID，与账本中的下游 response ID 逐条核对，累计事件不重复计量。协议桥同时保留转换前后的响应字节。
 
+`responses-chat-v2` 在 Responses `input_image` 与 Chat Completions `image_url` 之间映射 URL 或 Data URL，保留混合文本顺序、`detail`、消息角色和工具调用 ID。普通消息、函数工具和自定义工具的图片结果使用同一内容映射；不新增用户消息、不做 OCR、不下载或重编码图片。不支持的文件引用、音频或无法映射的图片字段明确报错，拒绝发生在 dispatch 前时另存 `rejected-*.json`，不伪计为 provider 请求。[GLM 图片输入格式](https://docs.z.ai/guides/vlm/glm-5.3-flash) 不等于所有模型都接受图片工具结果；实际 provider 的完整原生图片工具往返须单独验收。桥接修复使用新冻结实验，原终态和成本保留，详见[图片桥接决策](../docs/decisions/implemented/bug-fix/2026-09-16-benchmark-image-tool-results.md)。
+
 报告统计所有 attempts，包括预检和失败重跑；评分预先选定每个计划单元的首次模型执行。已结束的失败是终态，resume 不自动重抽样。恢复先核对原有执行终态、归档和账本摘要，再修复调度状态；改变 evaluator、Python 版本、冻结输入或任务摘要会拒绝续跑。`resume`、`doctor`、`prewarm` 和 `debug` 的 `--recorded-evaluator` 显式使用已校验的冻结评测器；它不会用新代码续跑旧实验。
 
 只有明确发生在首次模型请求前的原生启动超时可以自动重试：原生生命周期确认模型未开始、请求账本目录为空、归档已完成且没有清理错误。预检每次调用最多三次启动尝试；正式任务的三次上限随调度状态持久化，恢复不重置。退避为 1、2 秒，每次创建新的 attempt 并记录原因，原失败证据保持终态。账本残片、送达不明、已请求模型、输出中断或原生判题失败都不进入这条自动重试路径。

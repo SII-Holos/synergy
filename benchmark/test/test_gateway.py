@@ -3,6 +3,7 @@ import json
 from contextlib import asynccontextmanager
 
 import aiohttp
+import pytest
 from aiohttp import web
 
 from synergy_bench.config import ModelProfile
@@ -14,6 +15,7 @@ from synergy_bench.usage import aggregate_usage
 async def provider(handler):
     app = web.Application()
     app.router.add_post("/v1/chat/completions", handler)
+    app.router.add_post("/v1/responses", handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
@@ -53,6 +55,65 @@ def test_model_profile_controls_all_sampling_including_absent_native_defaults(tm
     assert "reasoning_effort" not in payload
     assert "top_p" not in payload
     assert "seed" not in payload
+
+
+@pytest.mark.parametrize("protocol", ["responses", "chat-completions"])
+async def test_image_tool_results_preserve_exact_content_and_accounting_over_http(tmp_path, monkeypatch, protocol):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    url = "data:image/png;base64,fixture"
+    content = [{"type": "input_text", "text": "picture"}, {"type": "input_image", "image_url": url, "detail": "high"}]
+    chat_content = [
+        {"type": "text", "text": "picture"},
+        {"type": "image_url", "image_url": {"url": url, "detail": "high"}},
+    ]
+    responses_body = {
+        "model": "fixture-one",
+        "input": [{"type": "function_call_output", "call_id": "c", "output": content}],
+    }
+    chat_body = {"model": "fixture-one", "messages": [{"role": "tool", "tool_call_id": "c", "content": chat_content}]}
+    received = []
+
+    async def handler(request):
+        received.append(await request.read())
+        body = json.loads(received[-1])
+        if protocol == "chat-completions":
+            assert body["messages"] == chat_body["messages"]
+            return web.json_response(
+                {
+                    "model": "fixture-one",
+                    "choices": [{"message": {"role": "assistant", "content": "seen"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 12, "completion_tokens": 3},
+                }
+            )
+        assert body["input"] == responses_body["input"]
+        return web.json_response(
+            {
+                "id": "r",
+                "model": "fixture-one",
+                "status": "completed",
+                "output": [
+                    {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "seen"}]}
+                ],
+                "usage": {"input_tokens": 12, "output_tokens": 3, "total_tokens": 15},
+            }
+        )
+
+    async with provider(handler) as base_url:
+        profile = model(base_url).model_copy(update={"protocol": protocol})
+        async with Gateway(profile, tmp_path, bind="127.0.0.1") as gateway:
+            async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
+                route = "/responses" if protocol == "chat-completions" else "/chat/completions"
+                async with client.post(
+                    gateway.url + route, json=responses_body if protocol == "chat-completions" else chat_body
+                ) as response:
+                    assert response.status == 200
+                    assert "seen" in await response.text()
+    records = read_ledger(tmp_path)
+    assert len(records) == len(received) == 1
+    assert records[0]["status"] == "completed"
+    assert records[0]["bridge"] == "responses-chat-v2"
+    assert (tmp_path / records[0]["id"] / "upstream.bin").read_bytes() == received[0]
+    assert aggregate_usage(records)["tokens"]["total"]["total"] == 15
 
 
 async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkeypatch):

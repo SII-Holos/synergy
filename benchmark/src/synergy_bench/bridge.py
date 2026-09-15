@@ -8,7 +8,7 @@ from typing import Any
 
 # Wire contracts: https://platform.openai.com/docs/api-reference/responses-streaming
 # and https://platform.openai.com/docs/api-reference/chat/streaming . No agent policy lives here.
-BRIDGE_VERSION = "responses-chat-v1"
+BRIDGE_VERSION = "responses-chat-v2"
 
 
 def wire_name(name: str, namespace: str | None = None) -> str:
@@ -44,6 +44,50 @@ def content_text(value: Any) -> str:
     raise ValueError("Unsupported non-text content in the text protocol bridge")
 
 
+def content_parts(value: Any, *, responses: bool) -> str | list[dict[str, Any]]:
+    if not isinstance(value, list) or all(
+        isinstance(part, dict) and part.get("type") in {"input_text", "output_text", "text", "summary_text"}
+        for part in value
+    ):
+        return content_text(value)
+    result = []
+    for part in value:
+        if not isinstance(part, dict):
+            raise ValueError("Unsupported content part in the protocol bridge")
+        if part.get("type") in {"input_text", "output_text", "text"} and set(part) <= {"type", "text"}:
+            if not isinstance(part.get("text"), str):
+                raise ValueError("Unsupported text content in the protocol bridge")
+            result.append({"type": "input_text" if responses else "text", "text": part["text"]})
+            continue
+        if responses and part.get("type") == "image_url" and set(part) == {"type", "image_url"}:
+            image = part["image_url"]
+        elif not responses and part.get("type") == "input_image" and set(part) <= {"type", "image_url", "detail"}:
+            image = {"url": part.get("image_url"), **({"detail": part["detail"]} if "detail" in part else {})}
+        else:
+            raise ValueError("Unsupported content part in the protocol bridge")
+        if (
+            not isinstance(image, dict)
+            or set(image) - {"url", "detail"}
+            or not isinstance(image.get("url"), str)
+            or not image["url"]
+            or (
+                "detail" in image
+                and (not isinstance(image["detail"], str) or image["detail"] not in {"auto", "low", "high"})
+            )
+        ):
+            raise ValueError("Unsupported image content in the protocol bridge")
+        result.append(
+            {
+                "type": "input_image",
+                "image_url": image["url"],
+                **({"detail": image["detail"]} if "detail" in image else {}),
+            }
+            if responses
+            else {"type": "image_url", "image_url": dict(image)}
+        )
+    return result
+
+
 def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
     if body.get("previous_response_id"):
         raise ValueError("previous_response_id requires retained history; send explicit input")
@@ -59,7 +103,7 @@ def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
         kind = item.get("type", "message")
         if kind == "message":
             role = item["role"]
-            content = content_text(item["content"])
+            content = content_parts(item["content"], responses=False)
             if (
                 role == "assistant"
                 and messages
@@ -91,7 +135,13 @@ def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
         elif kind in {"function_call_output", "custom_tool_call_output"}:
-            messages.append({"role": "tool", "tool_call_id": item["call_id"], "content": content_text(item["output"])})
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": item["call_id"],
+                    "content": content_parts(item["output"], responses=False),
+                }
+            )
         else:
             raise ValueError(f"Unsupported Responses input: {kind}")
     tools = []
@@ -158,7 +208,7 @@ def chat_to_responses(body: dict[str, Any]) -> dict[str, Any]:
                 {
                     "type": "function_call_output",
                     "call_id": message["tool_call_id"],
-                    "output": content_text(message["content"]),
+                    "output": content_parts(message["content"], responses=True),
                 }
             )
             continue
@@ -167,7 +217,7 @@ def chat_to_responses(body: dict[str, Any]) -> dict[str, Any]:
                 {"type": "reasoning", "summary": [{"type": "summary_text", "text": message["reasoning_content"]}]}
             )
         if message.get("content") is not None:
-            inputs.append({"role": role, "content": content_text(message["content"])})
+            inputs.append({"role": role, "content": content_parts(message["content"], responses=True)})
         for call in message.get("tool_calls", []):
             inputs.append({"type": "function_call", "call_id": call["id"], **call["function"]})
     result = {"model": body["model"], "input": inputs, "stream": body.get("stream", False), "store": False}
