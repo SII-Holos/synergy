@@ -67,6 +67,49 @@ test("merge keeps the target session aggregate and retains skipped source eviden
   }
 })
 
+test("merge refuses authority records from another home; trusted relocation keeps them", async () => {
+  await using tmp = await tmpdir()
+  const sourceRoot = path.join(tmp.path, "source")
+  const targetRoot = path.join(tmp.path, "target")
+  const trustedRoot = path.join(tmp.path, "trusted")
+  const source = await StorageBootstrap.prepare({ root: sourceRoot })
+  try {
+    await source.store.write(["plugin-approvals", "records", "plugin-x"], { grant: "broad" })
+    await source.store.write(["notes", "scope", "note"], { text: "payload" })
+    await source.activate()
+  } finally {
+    await source.store.close()
+  }
+  for (const root of [targetRoot, trustedRoot]) {
+    const prepared = await StorageBootstrap.prepare({ root })
+    try {
+      await prepared.activate()
+    } finally {
+      await prepared.store.close()
+    }
+  }
+  await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot, trustedRoot])
+  await DataTransfer.merge(sourceRoot, targetRoot)
+  const target = await StorageBootstrap.inspect(targetRoot)
+  if (!target) throw new Error("missing target")
+  try {
+    expect((await target.store.readMany([["plugin-approvals", "records", "plugin-x"]]))[0]).toBeUndefined()
+    expect(await target.store.read<{ text: string }>(["notes", "scope", "note"])).toEqual({ text: "payload" })
+  } finally {
+    await target.store.close()
+  }
+  await DataTransfer.merge(sourceRoot, trustedRoot, { trusted: true })
+  const trusted = await StorageBootstrap.inspect(trustedRoot)
+  if (!trusted) throw new Error("missing trusted target")
+  try {
+    expect(await trusted.store.read<{ grant: string }>(["plugin-approvals", "records", "plugin-x"])).toEqual({
+      grant: "broad",
+    })
+  } finally {
+    await trusted.store.close()
+  }
+})
+
 test("portable pack restores authority without copying the source database identity", async () => {
   await using tmp = await tmpdir()
   const sourceRoot = path.join(tmp.path, "source")

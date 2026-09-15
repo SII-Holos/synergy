@@ -39,6 +39,21 @@ const Header = z.object({ format: z.literal("synergy-agent-data"), version: z.li
 const Footer = z
   .object({ end: z.literal(true), count: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })
   .strict()
+// Record roots that carry grants, consent or trust decisions. Portable
+// archives from another home must not pre-place them: an imported approval
+// would suppress the consent prompt for a later plugin install. Same-home
+// relocation (data move / target switch) is the only trusted transfer.
+export const authorityRecordRoots = new Set([
+  "plugin-approvals",
+  "plugin-audit",
+  "plugin-incompatible",
+  "plugin-install-intents",
+  "plugin-lock",
+  "plugin-runtime-state",
+  "permission-rules",
+  "permissions",
+  "registry",
+])
 const MAX_LINE_BYTES = 32 * 1024 * 1024
 
 export namespace StoragePortable {

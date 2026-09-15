@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url"
 import { existsSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
-import { StoragePortable, type StorageEntry } from "@ericsanchezok/synergy-harness/storage/portable"
+import {
+  authorityRecordRoots,
+  StoragePortable,
+  type StorageEntry,
+} from "@ericsanchezok/synergy-harness/storage/portable"
 import { legacyRecordKey } from "@ericsanchezok/synergy-harness/storage/legacy-import"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -63,7 +67,11 @@ export namespace DataTransfer {
     }
   }
 
-  export async function merge(sourceRoot: string, targetRoot: string, progress?: (progress: CopyProgress) => void) {
+  export async function merge(
+    sourceRoot: string,
+    targetRoot: string,
+    options: { progress?: (progress: CopyProgress) => void; trusted?: boolean } = {},
+  ) {
     const source = await StorageBootstrap.inspect(sourceRoot)
     if (!source) throw new Error("Source storage has not been initialized")
     let target: StorageBootstrap.Prepared | undefined
@@ -81,7 +89,7 @@ export namespace DataTransfer {
       const copied = await copyDirSkipExisting(
         source.artifactDirectory,
         path.join(targetRoot, "data"),
-        progress,
+        options.progress,
         undefined,
         undefined,
         (relative) => exclude(relative, skipped),
@@ -94,6 +102,11 @@ export namespace DataTransfer {
           if (entry.type === "event") return false
           if (entry.type === "receipt") return true
           if (local.has(entry.key[0]) || derived.has(entry.key[0])) return false
+          // Grants, consent and trust decisions never cross homes through an
+          // untrusted merge: an imported approval would silently satisfy the
+          // consent prompt for a later plugin install. Same-home relocation
+          // (data move) opts in explicitly.
+          if (!options.trusted && authorityRecordRoots.has(entry.key[0])) return false
           const owner = sessionOwner(entry)
           if (owner && skipped.has(owner)) {
             conflicts.add(owner)

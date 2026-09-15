@@ -5,7 +5,7 @@ import path from "node:path"
 import { z } from "zod"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { AtomicFile } from "./atomic-file"
-import { StoragePortable } from "./portable"
+import { authorityRecordRoots, StoragePortable } from "./portable"
 import { StorageConfiguration, readStorageConfiguration, resolveStoreOptions } from "./config"
 import { StorageIntegrityError } from "./errors"
 import { LegacyJsonImporter, legacySources, legacyRecordKey, type ImportProgress } from "./legacy-import"
@@ -244,13 +244,16 @@ export namespace StorageBootstrap {
               operationID: `portable-${manifest.backupID}`,
               accept: (entry) =>
                 entry.type !== "record" ||
-                ![
+                (![
                   "storage_meta",
                   "storage_import",
                   "storage_import_files",
                   "storage_staging",
                   "storage_transfer",
-                ].includes(entry.key[0]),
+                ].includes(entry.key[0]) &&
+                  // A convenience archive may originate from another home;
+                  // grants and trust decisions must not arrive with it.
+                  !authorityRecordRoots.has(entry.key[0])),
             })
           manifest.phase = "validating"
           await persist()

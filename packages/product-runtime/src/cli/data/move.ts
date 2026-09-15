@@ -249,7 +249,7 @@ export async function executeMove(opts: MoveOptions) {
       try {
         const result =
           subdir === "data"
-            ? await DataTransfer.merge(sourceRoot, targetPath)
+            ? await DataTransfer.merge(sourceRoot, targetPath, { trusted: true })
             : await copyDirSkipExisting(
                 src,
                 dst,
