@@ -240,11 +240,4 @@ export namespace MacOSSbpl {
     }
     return lines.join("\n")
   }
-
-  // ------------------------------------------------------------------
-  // Parameterized path generation
-  // ------------------------------------------------------------------
-
-  /** Generate a Seatbelt parameter name for indexed path variables */
-  export const SBPL_PARAM_NAME = (index: number): string => `PATH_READ_${index}`
 }

@@ -169,7 +169,7 @@ export namespace RolloutCall {
         status = "failed"
         failure ??= error instanceof Error ? error.message : String(error)
       } finally {
-        await settle(status)
+        await settle(failure ? "failed" : status)
       }
     }
 

@@ -107,11 +107,11 @@ export namespace MacBackend {
 
     // ── Deny-default (Codex parity) SBPL path (DEFAULT) ──────────
     // Unless explicitly overridden to "seatbelt-legacy-allow-default",
-    // use the parameterized (deny default) profile compiler. The deny-default
-    // path intentionally does not consume legacy dataDenyRoots directly;
+    // use the parameterized (deny default) profile compiler. Explicit
+    // dataDenyRoots are forwarded into the profile's read deny list;
     // `MacOSPolicy.compileProfile` enforces user-data isolation through
-    // sibling-blocking so broad parent denies cannot override workspace allows.
-    // This matches Codex's macOS sandbox behavior.
+    // the credential read-deny list, and deeper writable-root parameter
+    // allows carve out the active workspace.
     if (opts.backend !== "seatbelt-legacy-allow-default") {
       const runtimeReadRoots = [
         ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
@@ -126,6 +126,7 @@ export namespace MacBackend {
         approvedWritePaths: writableRoots,
         approvedNetwork: opts.networkMode === "full",
         approvedUnixSockets: [],
+        ...(opts.dataDenyRoots ? { dataDenyRoots: opts.dataDenyRoots } : {}),
       })
       const sbplContent = MacOSPolicy.compileProfile(policyProfile)
       const params = MacOSPolicy.generateParams(policyProfile)

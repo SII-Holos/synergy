@@ -1,5 +1,6 @@
 import { normalizeSlashes } from "../util/path"
 import * as fs from "fs"
+import * as os from "os"
 import * as path from "path"
 
 // ------------------------------------------------------------------
@@ -225,11 +226,16 @@ export function controlledTempRoot(workspace: string, sessionKey?: string): stri
 export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   // ── Synergy internal auth secrets ───────────────────────────────
   joinPathLike(homedir, ".synergy", "data", "auth"),
+  // Plugin OAuth/API tokens live under data/plugin/<id>/auth.json
+  joinPathLike(homedir, ".synergy", "data", "plugin"),
   // ── Network & cloud credentials ─────────────────────────────────
   joinPathLike(homedir, ".netrc"),
+  joinPathLike(homedir, ".git-credentials"),
   joinPathLike(homedir, ".ssh"),
   joinPathLike(homedir, ".gnupg"),
   joinPathLike(homedir, ".aws"),
+  joinPathLike(homedir, ".azure"),
+  joinPathLike(homedir, ".kube"),
   joinPathLike(homedir, ".config", "gcloud"),
   joinPathLike(homedir, ".docker", "config.json"),
   joinPathLike(homedir, ".npmrc"),
@@ -245,6 +251,64 @@ export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   joinPathLike(homedir, ".codex"),
   joinPathLike(homedir, ".gemini"),
 ]
+
+/**
+ * Credential-bearing paths deliberately kept readable under the deny-list
+ * read model. kubectl and docker load their config stores at startup with
+ * no credential-injection fallback (a kubeconfig embeds client certs and
+ * tokens; docker reads config.json for registry auth), so denying the
+ * store breaks the tool outright. Operator decision 2026-09-14: tool
+ * compatibility first; write protection is unaffected because these stay
+ * in CREDENTIAL_PATHS. Flip back to strict read denial by shrinking this
+ * list.
+ */
+const READ_EXEMPT_CREDENTIAL_PATHS = (homedir: string): string[] => [
+  joinPathLike(homedir, ".kube"),
+  joinPathLike(homedir, ".docker", "config.json"),
+]
+
+/**
+ * Paths that stay unreadable under the deny-list read model of the macOS
+ * deny-default backend, where file reads are allowed globally and only
+ * credential-bearing locations are denied. Everything in CREDENTIAL_PATHS
+ * is included except the tool-compatibility exemptions above, plus registry
+ * token files and browser/mail data stores that the global read allow would
+ * otherwise expose (cookie jars, session stores, local mail databases).
+ *
+ * `~/.config/gh` is deliberately NOT denied: gh hard-fails when it cannot
+ * read hosts.yml as configuration even when GH_TOKEN is present, keyring
+ * mode keeps the token out of that directory, and the Bash tool injects
+ * the managed credential as GH_TOKEN for gh invocations.
+ */
+export const READ_DENY_PATHS = (homedir: string): string[] => [
+  ...CREDENTIAL_PATHS(homedir).filter((p) => !READ_EXEMPT_CREDENTIAL_PATHS(homedir).includes(p)),
+  joinPathLike(homedir, ".cargo", "credentials.toml"),
+  joinPathLike(homedir, ".cargo", "credentials"),
+  joinPathLike(homedir, ".mozilla"),
+  joinPathLike(homedir, "Library", "Cookies"),
+  joinPathLike(homedir, "Library", "Mail"),
+  joinPathLike(homedir, "Library", "Application Support", "Firefox"),
+  joinPathLike(homedir, "Library", "Application Support", "Google", "Chrome"),
+  joinPathLike(homedir, "Library", "Application Support", "Microsoft Edge"),
+  joinPathLike(homedir, "Library", "Application Support", "BraveSoftware"),
+]
+
+/**
+ * Home directories the read deny list is derived from. The OS user home
+ * carries tool credentials; the Synergy runtime home (SYNERGY_HOME /
+ * SYNERGY_TEST_HOME when set) carries the active provider, MCP, account,
+ * and plugin credential stores and can point outside the user home, so
+ * denies are derived from both. Mirrors Global.Path.home resolution
+ * without importing the global module, which asserts test-home isolation
+ * at import time.
+ */
+export function readDenyHomeDirs(): string[] {
+  return uniqueRoots([
+    os.homedir(),
+    ...(process.env.SYNERGY_HOME ? [process.env.SYNERGY_HOME] : []),
+    ...(process.env.SYNERGY_TEST_HOME ? [process.env.SYNERGY_TEST_HOME] : []),
+  ])
+}
 export const PROTECTED_METADATA_PATH_NAMES = [".git", ".agents", ".codex"]
 
 /**

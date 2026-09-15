@@ -1,3 +1,4 @@
+import { SessionRetry } from "../session/retry"
 import { Experiment } from "../config/experiment"
 import { RolloutLedger } from "../session/rollout/ledger"
 import type { ModelMessage } from "ai"
@@ -106,6 +107,8 @@ export namespace AgentCall {
       input = { ...input, signal: AbortSignal.any([causal.signal, ...(input.signal ? [input.signal] : [])]) }
     if (input.sessionId && (!input.user || input.user.sessionID !== input.sessionId))
       throw new Error("invalid_owner", "Session agent calls require the triggering root user from that session")
+    if (!Number.isInteger(input.retries) || input.retries < 0)
+      throw new RangeError("Agent retries must be a nonnegative integer")
     if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
     if (input.maxInputChars !== undefined && inputCharacters(input.messages) > input.maxInputChars) {
       throw new Error("input_too_large", `Agent ${input.agent} input exceeded ${input.maxInputChars} characters`)
@@ -178,54 +181,73 @@ export namespace AgentCall {
     const wait = <T>(promise: Promise<T>) => Promise.race([promise, interrupted.promise])
 
     try {
-      const starting = AgentTurn.stream({
-        agent,
-        user,
-        toolDefinitions: [],
-        model,
-        small: input.small ?? true,
-        messages: input.messages,
-        abort,
-        sessionID,
-        system: [],
-        retries: input.retries,
-        recording: {
-          owner,
-          runID,
-          purpose: input.agent,
-        },
-        maxOutputTokens: input.maxOutputTokens,
-      })
-      let stream: AgentTurn.Stream
-      try {
-        stream = await wait(starting)
-      } catch (error) {
-        await starting.then(
-          (late) => late.dispose(),
-          (failure: unknown) => {
-            if (RolloutRecordingError.isInstance(failure)) throw failure
-          },
-        )
-        throw error
-      }
-      try {
-        let value = ""
-        const iterator = stream.fullStream[Symbol.asyncIterator]()
-        while (true) {
-          const next = await wait(iterator.next())
-          if (next.done) break
-          const part = next.value
-          if (part.type !== "text-delta" || !part.text) continue
-          value += part.text
-          if (value.length <= input.maxOutputChars) continue
-          output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
-          throw new Error("output_too_large", `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`)
+      for (let attempt = 0; ; attempt++) {
+        try {
+          abort.throwIfAborted()
+          const starting = AgentTurn.stream({
+            agent,
+            user,
+            toolDefinitions: [],
+            model,
+            small: input.small ?? true,
+            messages: input.messages,
+            abort,
+            sessionID,
+            system: [],
+            retries: 0,
+            recording: {
+              owner,
+              runID,
+              purpose: input.agent,
+            },
+            maxOutputTokens: input.maxOutputTokens,
+          })
+          let stream: AgentTurn.Stream
+          try {
+            stream = await wait(starting)
+          } catch (error) {
+            await starting.then(
+              (late) => late.dispose(),
+              (failure: unknown) => {
+                if (RolloutRecordingError.isInstance(failure)) throw failure
+              },
+            )
+            throw error
+          }
+          try {
+            let value = ""
+            const iterator = stream.fullStream[Symbol.asyncIterator]()
+            while (true) {
+              const next = await wait(iterator.next())
+              if (next.done) break
+              const part = next.value
+              if (part.type === "error") throw part.error
+              if (part.type === "abort") throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
+              if (part.type !== "text-delta" || !part.text) continue
+              value += part.text
+              if (value.length <= input.maxOutputChars) continue
+              output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
+              throw new Error(
+                "output_too_large",
+                `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`,
+              )
+            }
+            const usage = await wait(stream.usage)
+            status = "completed"
+            return { text: value, model, usage }
+          } finally {
+            await stream.dispose()
+          }
+        } catch (error) {
+          const classified = MessageV2.fromError(error, { providerID: model.providerID, modelID: model.id })
+          if (abort.aborted || attempt >= input.retries || SessionRetry.retryable(classified) === undefined) throw error
+          await wait(
+            SessionRetry.sleep(
+              SessionRetry.delay(attempt + 1, classified.name === "APIError" ? classified : undefined),
+              abort,
+            ),
+          )
         }
-        const usage = await wait(stream.usage)
-        status = "completed"
-        return { text: value, model, usage }
-      } finally {
-        await stream.dispose()
       }
     } catch (error) {
       failure = error

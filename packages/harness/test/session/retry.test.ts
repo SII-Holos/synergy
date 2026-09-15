@@ -15,9 +15,22 @@ function apiError(headers?: Record<string, string>): MessageV2.APIError {
 }
 
 describe("session.retry.delay", () => {
+  test("caps fallback delay even when unrelated headers exist", () => {
+    const delay = SessionRetry.delay(10, apiError({ "content-type": "application/json" }))
+    expect(delay).toBeGreaterThanOrEqual(15000)
+    expect(delay).toBeLessThanOrEqual(30000)
+  })
+  test.each(["-1", "Infinity", "3garbage"])("ignores unsafe retry-after-ms %s", (value) => {
+    expect(SessionRetry.delay(1, apiError({ "retry-after-ms": value }))).toBeGreaterThanOrEqual(1000)
+    expect(SessionRetry.delay(1, apiError({ "retry-after-ms": value }))).toBeLessThanOrEqual(2000)
+  })
+  test("sleep rejects an already aborted signal", async () => {
+    const reason = new DOMException("cancelled", "AbortError")
+    await expect(SessionRetry.sleep(1, AbortSignal.abort(reason))).rejects.toBe(reason)
+  })
   test("caps delay at 30 seconds when headers missing", () => {
     const error = apiError()
-    const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error))
+    const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
     expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
   })
 
@@ -41,18 +54,18 @@ describe("session.retry.delay", () => {
 
   test("ignores invalid retry hints", () => {
     const error = apiError({ "retry-after": "not-a-number" })
-    expect(SessionRetry.delay(1, error)).toBe(2000)
+    expect(SessionRetry.delay(1, error, () => 1)).toBe(2000)
   })
 
   test("ignores malformed date retry hints", () => {
     const error = apiError({ "retry-after": "Invalid Date String" })
-    expect(SessionRetry.delay(1, error)).toBe(2000)
+    expect(SessionRetry.delay(1, error, () => 1)).toBe(2000)
   })
 
   test("ignores past date retry hints", () => {
     const pastDate = new Date(Date.now() - 5000).toUTCString()
     const error = apiError({ "retry-after": pastDate })
-    expect(SessionRetry.delay(1, error)).toBe(2000)
+    expect(SessionRetry.delay(1, error, () => 1)).toBe(2000)
   })
 
   test("uses retry-after values even when exceeding 10 minutes with headers", () => {
@@ -85,6 +98,75 @@ describe("session.retry.delay", () => {
 })
 
 describe("session.message-v2.fromError", () => {
+  test.each(["ETIMEOUT", "EHOSTUNREACH", "ESERVFAIL", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"])(
+    "preserves retry classification for nested %s through the worker protocol",
+    (code) => {
+      const source = new TypeError("request failed", {
+        cause: new AggregateError([Object.assign(new Error("connection failed"), { code, syscall: "getaddrinfo" })]),
+      })
+      for (const error of [source, AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source))]) {
+        const result = MessageV2.fromError(error, { providerID: "any-provider" })
+        expect(result).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+        expect(SessionRetry.retryable(result)).toBeDefined()
+      }
+    },
+  )
+
+  test.each(["ENOTFOUND", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "UND_ERR_ABORTED"])(
+    "does not retry nested %s despite an optimistic SDK retry flag",
+    (code) => {
+      const source = new APICallError({
+        message: "fetch failed",
+        url: "https://provider.invalid",
+        requestBodyValues: {},
+        isRetryable: true,
+        cause: new TypeError("fetch failed", { cause: Object.assign(new Error("failure"), { code }) }),
+      })
+      for (const error of [source, AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source))]) {
+        expect(SessionRetry.retryable(MessageV2.fromError(error, { providerID: "any-provider" }))).toBeUndefined()
+      }
+    },
+  )
+
+  test.each([408, 429, 502, 503, 504])("recognizes HTTP %s without SDK retry metadata", (statusCode) => {
+    const source = Object.assign(new Error("upstream unavailable"), {
+      statusCode,
+      responseHeaders: { "Retry-After": "2" },
+    })
+    const result = MessageV2.fromError(AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source)), {
+      providerID: "test",
+    })
+    expect(result).toMatchObject({ name: "APIError", data: { statusCode, responseHeaders: { "Retry-After": "2" } } })
+    expect(SessionRetry.retryable(result)).toBeDefined()
+  })
+
+  test.each([400, 401, 403, 404, 422, 501, 505])("does not retry HTTP %s from a generic fetch error", (statusCode) => {
+    const source = new APICallError({
+      message: "fetch failed",
+      url: "https://provider.invalid",
+      requestBodyValues: {},
+      statusCode,
+    })
+    expect(SessionRetry.retryable(MessageV2.fromError(source, { providerID: "test" }))).toBeUndefined()
+  })
+
+  test.each([
+    { type: "error", error: { type: "overloaded_error", message: "busy" } },
+    { type: "error", error: { type: "server_error", message: "busy" } },
+  ])("recognizes structured stream overload without a code", (source) => {
+    const error = AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source))
+    expect(SessionRetry.retryable(MessageV2.fromError(error, { providerID: "test" }))).toBeDefined()
+  })
+
+  test.each(["invalid_api_key", "invalid_request_error", "insufficient_quota"])(
+    "does not retry a JSON %s error",
+    (type) => {
+      const source = new Error(
+        JSON.stringify({ type: "error", code: "bad_request", error: { type, message: "rejected" } }),
+      )
+      expect(SessionRetry.retryable(MessageV2.fromError(source, { providerID: "test" }))).toBeUndefined()
+    },
+  )
   test("preserves structured provider recovery metadata", () => {
     const result = MessageV2.fromError(
       new ProviderAuthRecovery.Error({
@@ -231,7 +313,7 @@ describe("session.message-v2.fromError", () => {
 
   test("keeps unknown errors unknown when no retry metadata survives", () => {
     const restored = AgentTurnProtocol.deserializeError(
-      AgentTurnProtocol.serializeError({ type: "server_error", message: "boom" }),
+      AgentTurnProtocol.serializeError({ type: "unknown_provider_error", message: "boom" }),
     )
 
     const result = MessageV2.fromError(restored, { providerID: "test" })
@@ -252,4 +334,10 @@ describe("session.message-v2.fromError", () => {
 
     expect(SessionRetry.retryable(result)).toBeUndefined()
   })
+})
+
+test("a timeout wrapper cannot hide a permanent certificate cause", () => {
+  const error = Object.assign(new DOMException("timeout", "TimeoutError"), { cause: { code: "CERT_HAS_EXPIRED" } })
+  const parsed = MessageV2.fromError(error, { providerID: "test" })
+  expect(SessionRetry.retryable(parsed)).toBeUndefined()
 })

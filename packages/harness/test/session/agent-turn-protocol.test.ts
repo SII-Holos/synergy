@@ -446,6 +446,31 @@ describe("AgentTurnProtocol", () => {
     expect(restored.name).toBe("AbortError")
   })
 
+  test("preserves nested plain causes and aggregate failures through validated events", () => {
+    const source = new TypeError("fetch failed", {
+      cause: new AggregateError([{ message: "DNS failure", code: "ETIMEOUT", syscall: "getaddrinfo" }]),
+    })
+    const encoded = AgentTurnProtocol.SerializedError.parse(AgentTurnProtocol.serializeError(source))
+    expect(AgentTurnProtocol.deserializeError(encoded)).toMatchObject({
+      cause: {
+        name: "AggregateError",
+        errors: [{ message: "DNS failure", code: "ETIMEOUT", syscall: "getaddrinfo" }],
+      },
+    })
+  })
+
+  test("bounds cause graphs and makes truncation explicit", () => {
+    const cyclic = Object.assign(new Error("cyclic"), { cause: undefined as unknown })
+    cyclic.cause = cyclic
+    expect(AgentTurnProtocol.SerializedError.parse(AgentTurnProtocol.serializeError(cyclic)).cause).toBeUndefined()
+    const errors = Array.from({ length: 20 }, () => new Error("failure"))
+    const serialized = AgentTurnProtocol.SerializedError.parse(
+      AgentTurnProtocol.serializeError(new AggregateError(errors)),
+    )
+    expect(serialized.errors?.length).toBeLessThanOrEqual(16)
+    expect(serialized.errors?.some((error) => error.code === "ERR_CAUSE_TRUNCATED")).toBe(true)
+  })
+
   test("preserves structured errors embedded in stream events", () => {
     const source = new APICallError({
       message: "provider unavailable",

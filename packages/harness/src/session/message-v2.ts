@@ -4,6 +4,8 @@ import path from "path"
 import z from "zod"
 import { RolloutSchema } from "./rollout/schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { classifyNetworkError } from "@ericsanchezok/synergy-util/network-error"
+import { providerRetryable } from "../provider/retry"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { ProviderModelUnavailableError } from "../provider/model-unavailable-error"
 import { ProviderModelVariantUnavailableError } from "../provider/model-variant-unavailable-error"
@@ -25,49 +27,14 @@ import { Log } from "../util/log"
 import { SessionBounds } from "./bounds"
 import { ContextUsageSchema } from "./context-usage-schema"
 
-function isTLSError(message: string) {
-  return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
-}
-
-const RETRYABLE_NETWORK_ERROR_CODES = new Set([
-  "ConnectionRefused",
-  "ConnectionClosed",
-  "FailedToOpenSocket",
-  "ECONNREFUSED",
-  "ETIMEDOUT",
-  "EPIPE",
-  "ENETUNREACH",
-  "ECONNABORTED",
-  "EAI_AGAIN",
-])
-
-function systemErrorCode(error: unknown) {
-  const code = (error as Partial<SystemError> | undefined)?.code
-  return typeof code === "string" ? code : undefined
-}
-
-function retryableNetworkMessage(message: string) {
-  return (
-    /^(fetch failed|failed to fetch)$/i.test(message) ||
-    /unable to connect\. is the computer able to access the url\?/i.test(message) ||
-    /^(network error|connection error)$/i.test(message)
-  )
-}
-
-function isRetryableNetworkError(error: unknown) {
-  if (!(error instanceof Error)) return false
-  const code = systemErrorCode(error)
-  if (code && RETRYABLE_NETWORK_ERROR_CODES.has(code)) return true
-  return retryableNetworkMessage(error.message)
-}
-
 function networkErrorMetadata(error: Error) {
   const metadata: Record<string, string> = {
     message: error.message,
   }
-  const code = systemErrorCode(error)
+  const classification = classifyNetworkError(error)
+  const code = classification?.code
   if (code) metadata.code = code
-  const syscall = (error as Partial<SystemError>).syscall
+  const syscall = classification?.syscall
   if (typeof syscall === "string") metadata.syscall = syscall
   return metadata
 }
@@ -1723,12 +1690,13 @@ export namespace MessageV2 {
   }
 
   export function fromError(e: unknown, ctx: { providerID: string; modelID?: string }) {
+    const network = classifyNetworkError(e)
     switch (true) {
       case RolloutRecordingError.isInstance(e):
         return e.toObject()
-      case e instanceof DOMException && e.name === "AbortError":
+      case network?.kind === "aborted":
         return new MessageV2.AbortedError(
-          { message: e.message },
+          { message: e instanceof Error ? e.message : "Request aborted" },
           {
             cause: e,
           },
@@ -1737,7 +1705,7 @@ export namespace MessageV2 {
         return new MessageV2.APIError(
           {
             message: e.message || "Idle timeout: no data received from provider",
-            isRetryable: true,
+            isRetryable: providerRetryable(e) ?? false,
           },
           { cause: e },
         ).toObject()
@@ -1779,7 +1747,7 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
-      case (e as SystemError)?.code === "ECONNRESET":
+      case (e as SystemError)?.code === "ECONNRESET" && providerRetryable(e) === true:
         return new MessageV2.APIError(
           {
             message: "Connection reset by server",
@@ -1789,25 +1757,6 @@ export namespace MessageV2 {
               syscall: (e as SystemError).syscall ?? "",
               message: (e as SystemError).message ?? "",
             },
-          },
-          { cause: e },
-        ).toObject()
-      case isRetryableNetworkError(e):
-        return new MessageV2.APIError(
-          {
-            message: (e as Error).message,
-            isRetryable: true,
-            metadata: networkErrorMetadata(e as Error),
-          },
-          { cause: e },
-        ).toObject()
-      case e instanceof Error &&
-        typeof (e as SystemError).message === "string" &&
-        isTLSError((e as SystemError).message):
-        return new MessageV2.APIError(
-          {
-            message: (e as SystemError).message,
-            isRetryable: true,
           },
           { cause: e },
         ).toObject()
@@ -1841,28 +1790,35 @@ export namespace MessageV2 {
 
           return `${msg}: ${e.responseBody}`
         }).trim()
-        const cause = (e as Error & { cause?: unknown }).cause
 
         return new MessageV2.APIError(
           {
             message,
             statusCode: e.statusCode,
-            isRetryable: e.isRetryable || retryableNetworkMessage(message) || isRetryableNetworkError(cause),
+            isRetryable: providerRetryable(e) ?? false,
             responseHeaders: e.responseHeaders,
             responseBody: e.responseBody,
+            metadata: network ? networkErrorMetadata(e) : undefined,
           },
           { cause: e },
         ).toObject()
-      case e instanceof Error && typeof (e as { isRetryable?: unknown }).isRetryable === "boolean":
-        const structured = e as Error & { statusCode?: unknown; isRetryable?: boolean; code?: unknown }
+      case e instanceof Error && providerRetryable(e) !== undefined:
+        const structured = e as Error & {
+          statusCode?: unknown
+          responseHeaders?: Record<string, string>
+          responseBody?: string
+          code?: unknown
+        }
         return new MessageV2.APIError(
           {
             message: structured.message,
             statusCode: typeof structured.statusCode === "number" ? structured.statusCode : undefined,
-            isRetryable: structured.isRetryable ?? false,
+            isRetryable: providerRetryable(e) ?? false,
+            responseHeaders: structured.responseHeaders,
+            responseBody: structured.responseBody,
             metadata: {
               ...(typeof structured.code === "string" ? { code: structured.code } : {}),
-              message: structured.message,
+              ...networkErrorMetadata(structured),
             },
           },
           { cause: e },
