@@ -8,6 +8,37 @@ import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstr
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { DataStorageCommand } from "../../src/cli/cmd/data/storage"
+import { executeSnapshots } from "../../src/cli/cmd/data/snapshots"
+import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-store"
+
+test("legacy snapshot packing works before SQL initialization without importing records", async () => {
+  const repo = path.join(Global.Path.data, "snapshot", "scope", "session")
+  await SnapshotStore.initializeBareRepository(repo)
+  const file = path.join(home, "retained.txt")
+  await Bun.write(file, "retained")
+  const oid = await SnapshotStore.command(repo, ["hash-object", "-w", file])
+  const legacy = path.join(Global.Path.data, "notes", "home", "retained.json")
+  await Bun.write(legacy, JSON.stringify({ text: "unmigrated" }))
+  expect((await executeSnapshots({ action: "pack-legacy", scope: "scope", session: "session" })).ok).toBe(true)
+  expect(await StorageBootstrap.status(Global.Path.root)).toBeUndefined()
+  {
+    const lock = await ServerProcessLock.acquire()
+    try {
+      expect(await executeSnapshots({ action: "pack-legacy", scope: "scope", apply: true })).toMatchObject({
+        error: { code: "busy" },
+      })
+    } finally {
+      await lock.release()
+    }
+  }
+  expect((await executeSnapshots({ action: "pack-legacy", scope: "scope", session: "session", apply: true })).ok).toBe(
+    true,
+  )
+  expect(await SnapshotStore.command(repo, ["cat-file", "-p", oid])).toBe("retained")
+  expect(await StorageBootstrap.status(Global.Path.root)).toBeUndefined()
+  expect(await Bun.file(legacy).json()).toEqual({ text: "unmigrated" })
+  expect(await ServerProcessLock.read()).toBeUndefined()
+})
 
 const originalHome = process.env.SYNERGY_HOME
 const originalLog = console.log

@@ -54,6 +54,8 @@ Use `SnapshotStore` for backend resolution, `SnapshotLifecycle` for copied/delet
 
 ## Verify
 
+For snapshot capacity work, measure filesystem allocation separately from logical bytes and count legacy/shared owners. Pilot one repository before bulk maintenance; the filter must cover registration as well as execution. Preserve exact object IDs, historical tree listings and reconstructed file bytes across packing, migration and non-pruning compaction. Keep inventories on disk and verify staged packs before publication; inject actual corrupt output and test a clean retry. Exercise a publication failure before the owner switch. Legacy packing must remain usable before SQL bootstrap and must refuse to rewrite a source covered by an interrupted backup. Keep bulk reference publication durable before removing any loose reference or legacy source, including on Git versions without reference fsync; see [snapshot architecture](../../../docs/architecture/workspace-and-files.md#snapshots-rollback-and-restore).
+
 Test:
 
 - fresh state

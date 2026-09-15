@@ -455,6 +455,11 @@ move synergy data to a new location
 pack synergy data into a zip archive
 
 
+## pack-legacy
+
+pack all local legacy snapshot objects without deleting history or requiring a storage upgrade
+
+
 ## patch <hash>
 
 show patch for a snapshot hash
