@@ -1,5 +1,6 @@
 import * as LibraryConfigSchema from "@ericsanchezok/synergy-library/config-schema"
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
+import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -340,6 +341,12 @@ describe.serial("ExperienceReencode repair integration", () => {
           }
         })
         const llmRetries: number[] = []
+        const callRetries: number[] = []
+        const agentCall = AgentCall.text
+        using calls = spyOn(AgentCall, "text").mockImplementation((input) => {
+          callRetries.push(input.retries)
+          return agentCall(input)
+        })
         ;(LLM.stream as any) = mock(async (input: { agent: { name: string }; retries: number }) => {
           llmRetries.push(input.retries)
           const text =
@@ -436,7 +443,8 @@ describe.serial("ExperienceReencode repair integration", () => {
         )
 
         expect(positionalOutcome.encoded).toBe(true)
-        expect(llmRetries.slice(-2)).toEqual([7, 7])
+        expect(callRetries.slice(-2)).toEqual([7, 7])
+        expect(llmRetries.slice(-2)).toEqual([0, 0])
       },
     })
   })
