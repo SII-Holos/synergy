@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import uuid
@@ -224,9 +225,28 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 async def test_native_matrix_uses_restricted_egress_and_two_independent_models(tmp_path, monkeypatch, protocol):
     create_matrix_suite(tmp_path)
+    runtime_probe = """from pathlib import Path
+import os
+pid = os.getppid()
+while pid > 1:
+    process = Path('/proc') / str(pid)
+    argv = (process / 'cmdline').read_bytes().split(b'\\0')
+    for role, entry in [('OBSERVER', b'/opt/synergy/runtime/trial.ts'), ('NATIVE', b'/opt/synergy/runtime/entry.ts')]:
+        if entry in argv:
+            value = next((item.split(b'=', 1)[1] for item in (process / 'environ').read_bytes().split(b'\\0')
+                          if item.startswith(b'BUN_JSC_useJIT=')), b'unset')
+            assert value in (b'0', b'1', b'unset')
+            print('BENCH_' + role + '_JIT=' + value.decode())
+    pid = int(next(line.split(':')[1] for line in (process / 'status').read_text().splitlines()
+                   if line.startswith('PPid:')))
+"""
 
     async def provider_with_runtime_evidence(request):
-        return await fixture_provider(request, command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ')
+        return await fixture_provider(
+            request,
+            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
+            + "python3 -c " + shlex.quote(runtime_probe) + "; ",
+        )
 
     app = web.Application()
     app.router.add_post("/v1/chat/completions", provider_with_runtime_evidence)
@@ -327,7 +347,12 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
                         if "native" in options:
                             assert options["native"]["env"]["BUN_JSC_useJIT"] == "0"
                         events = next(attempt.glob("*/agent/events.jsonl")).read_text()
-                        assert "BENCH_JIT=0" in events
+                        if "native" in options:
+                            assert "BENCH_JIT=0" in events
+                        else:
+                            assert "BENCH_JIT=unset" in events
+                            assert "BENCH_OBSERVER_JIT=0" in events
+                            assert "BENCH_NATIVE_JIT=0" in events
             return results
 
         results = await asyncio.to_thread(retained_results)
