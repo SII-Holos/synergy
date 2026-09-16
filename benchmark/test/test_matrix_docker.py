@@ -387,7 +387,9 @@ while pid > 1:
         assert all(result["evidence"]["valid"] for result in results), results
         assert all(result["reconciliation"]["status"] != "mismatch" for result in results), results
         assert all(result["wire_usage"]["tokens"]["total"]["unknown"] == 0 for result in results), results
-        assert read_json(root / "doctor.json")["status"] == "completed"
+        preflights = await asyncio.to_thread(lambda: [read_json(file) for file in root.glob("probes/*/doctor.json")])
+        assert len(preflights) == 2 * len(harnesses)
+        assert all(row["status"] == "completed" for row in preflights)
     finally:
         await provider.cleanup()
 
