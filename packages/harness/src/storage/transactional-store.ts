@@ -282,9 +282,11 @@ export class StoreTransaction {
     }
     if (input.after !== undefined) {
       const comparison = input.descending ? "<" : ">"
-      conditions.push(`(order_key ${comparison} ? OR (order_key = ? AND key_id ${comparison} ?))`)
+      // Row-value bounds let SQLite seek past the cursor instead of filtering the index prefix.
+      // https://www.sqlite.org/rowvalue.html#scrolling_window_queries
+      conditions.push(`(order_key, key_id) ${comparison} (?, ?)`)
       const order = metadata(input.after).order
-      values.push(order, order, keyID(input.after))
+      values.push(order, keyID(input.after))
     }
     const limit = input.limit ?? 100
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000)
@@ -302,15 +304,28 @@ export class StoreTransaction {
     }))
   }
 
-  async *exportEntries(): AsyncGenerator<StorageEntry> {
-    let after: string[] | undefined
+  async *records<T = unknown>(): AsyncGenerator<StoredRecord<T>> {
+    let after = ""
     for (;;) {
-      const page = await this.query({ after, limit: 256 })
+      this.check()
+      const page = await this.connection.query<RecordRow & { key_id: string }>(
+        "SELECT key_id, key_text, body, revision FROM storage_records WHERE namespace = ? AND body IS NOT NULL AND key_id > ? ORDER BY key_id LIMIT 256",
+        [this.namespace, after],
+      )
       if (!page.length) break
-      for (const record of page)
-        yield { type: "record", key: record.key, value: record.value, revision: record.revision.toString() }
-      after = page.at(-1)!.key
+      for (const row of page)
+        yield {
+          key: JSON.parse(row.key_text) as string[],
+          value: JSON.parse(row.body!) as T,
+          revision: BigInt(row.revision),
+        }
+      after = page.at(-1)!.key_id
     }
+  }
+
+  async *exportEntries(): AsyncGenerator<StorageEntry> {
+    for await (const record of this.records())
+      yield { type: "record", key: record.key, value: record.value, revision: record.revision.toString() }
     let operationID = ""
     for (;;) {
       const page = await this.connection.query(
@@ -634,33 +649,27 @@ export class TransactionalStore {
             const kinds: Record<string, number> = {}
             let records = 0
             try {
-              let after: string[] | undefined
-              for (;;) {
-                const batch = await tx.query<Record<string, unknown>>({ after, limit: 256 })
-                if (!batch.length) break
-                for (const record of batch) {
-                  records++
-                  const meta = metadata(record.key)
-                  kinds[meta.kind] = (kinds[meta.kind] ?? 0) + 1
-                  const key = record.key
-                  if (key[0] !== "sessions") continue
-                  const parents: string[][] = []
-                  if (key[3] !== "info") parents.push([...key.slice(0, 3), "info"])
-                  if (meta.kind === "part") parents.push([...key.slice(0, 5), "info"])
-                  const values = await tx.readMany(parents)
-                  for (const [index, parent] of values.entries()) {
-                    if (parent === undefined)
-                      issues.push({ key, reason: index === 0 ? "missing_session" : "missing_message" })
-                  }
-                  if (["session", "message", "part"].includes(meta.kind)) {
-                    const expectedID = meta.kind === "part" ? key.at(-1) : key.at(-2)
-                    if (!record.value || typeof record.value !== "object" || record.value.id !== expectedID)
-                      issues.push({ key, reason: "identity_mismatch" })
-                  }
+              for await (const record of tx.records<Record<string, unknown>>()) {
+                records++
+                work++
+                if (work % 256 === 0) recordProgress(work)
+                const meta = metadata(record.key)
+                kinds[meta.kind] = (kinds[meta.kind] ?? 0) + 1
+                const key = record.key
+                if (key[0] !== "sessions") continue
+                const parents: string[][] = []
+                if (key[3] !== "info") parents.push([...key.slice(0, 3), "info"])
+                if (meta.kind === "part") parents.push([...key.slice(0, 5), "info"])
+                const values = await tx.readMany(parents)
+                for (const [index, parent] of values.entries()) {
+                  if (parent === undefined)
+                    issues.push({ key, reason: index === 0 ? "missing_session" : "missing_message" })
                 }
-                work += batch.length
-                recordProgress(work)
-                after = batch.at(-1)!.key
+                if (["session", "message", "part"].includes(meta.kind)) {
+                  const expectedID = meta.kind === "part" ? key.at(-1) : key.at(-2)
+                  if (!record.value || typeof record.value !== "object" || record.value.id !== expectedID)
+                    issues.push({ key, reason: "identity_mismatch" })
+                }
               }
               const [invalid] = await connection.query(
                 "SELECT COUNT(*) AS count FROM storage_records r LEFT JOIN storage_nodes n ON r.namespace = n.namespace AND r.key_id = n.key_id WHERE r.namespace = ? AND r.body IS NOT NULL AND (n.key_id IS NULL OR n.key_text <> r.key_text OR r.revision < 1)",

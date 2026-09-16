@@ -163,6 +163,44 @@ for (const backend of ["sqlite", ...(process.env.SYNERGY_TEST_POSTGRES_URL ? ["p
       expect((await store.versioned(["part"])).revision).toBeGreaterThan(before.revision)
     })
 
+    test("cursor pages preserve tied ordering, tombstones and complete exports", async () => {
+      const store = await open()
+      await store.transaction(async (tx) => {
+        for (let index = 0; index < 40; index++) {
+          const key = [index % 2 ? "page-first" : "page-second", String(index), String(index % 3)]
+          await tx.write(key, { index })
+          if (index % 7 === 0) await tx.remove(key)
+        }
+      })
+      for (const kind of [undefined, "page-first", "page-second"]) {
+        for (const descending of [false, true]) {
+          const expected = await store.query({ kind, descending, limit: 100 })
+          const actual = []
+          let after: string[] | undefined
+          for (;;) {
+            const page = await store.query({ kind, descending, after, limit: 3 })
+            if (!page.length) break
+            actual.push(...page)
+            after = page.at(-1)!.key
+            expect(actual.length).toBeLessThanOrEqual(expected.length)
+          }
+          expect(actual).toEqual(expected)
+        }
+      }
+      const first = await store.query({ kind: "page-first", limit: 3 })
+      const cursor = first.at(-1)!.key
+      const following = await store.query({ kind: "page-first", after: cursor, limit: 3 })
+      await store.remove(cursor)
+      expect(await store.query({ kind: "page-first", after: cursor, limit: 3 })).toEqual(following)
+      const expected = await store.query({ limit: 100 })
+      const exported = await store.snapshot(async (tx) => Array.fromAsync(tx.exportEntries()))
+      expect(exported).toHaveLength(expected.length)
+      expect(new Set(exported.map((entry) => entry.type === "record" && JSON.stringify(entry.key)))).toEqual(
+        new Set(expected.map((record) => JSON.stringify(record.key))),
+      )
+      expect((await store.verify()).records).toBe(expected.length)
+    })
+
     test("records notifications in the same transaction and acknowledges them explicitly", async () => {
       const store = await open()
       expect(
