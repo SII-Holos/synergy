@@ -1,6 +1,34 @@
 from synergy_bench.maintenance import prepare_items, probe_observed
 
 
+async def test_cell_preflight_keeps_matrix_index_and_isolated_report(tmp_path, monkeypatch):
+    import pytest
+
+    from synergy_bench import runner
+    from synergy_bench.maintenance import doctor_plan
+    from synergy_bench.storage import read_json
+
+    plan = {
+        "host": {"capacity": {"cpus": 2, "memory_bytes": 200}},
+        "concurrency": 2,
+        "schedule": [{"task": name, "variant": "native"} for name in ["first", "second"]],
+        "tasks": {name: {"resources": {"cpus": 1, "memory_bytes": 100}} for name in ["first", "second"]},
+    }
+    called = []
+
+    async def broken(root, plan, item, attempt, **kwargs):
+        called.append(item["task"])
+        raise ValueError("startup failure")
+
+    monkeypatch.setattr(runner, "execute_trial", broken)
+    with pytest.raises(ValueError, match="connectivity failed"):
+        await doctor_plan(tmp_path, plan, cell=("second", "native"))
+    assert called == ["second"]
+    assert not (tmp_path / "probes/0000").exists()
+    assert not (tmp_path / "doctor.json").exists()
+    assert read_json(tmp_path / "probes/0001/doctor.json")["status"] == "failed"
+
+
 async def test_prewarm_backfills_beyond_a_blocked_batch(tmp_path, monkeypatch):
     import asyncio
 

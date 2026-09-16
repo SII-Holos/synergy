@@ -341,6 +341,8 @@ async def execute_plan(
     root: Path,
     plan: dict[str, Any],
     execute: Callable[[dict[str, Any], Path], Awaitable[dict[str, Any]]],
+    *,
+    preflight: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> None:
     state_file = root / "state.json"
     state = read_json(state_file) if state_file.exists() else {"trials": {}}
@@ -350,6 +352,7 @@ async def execute_plan(
         Capacity(**capacity), concurrency, admission=admission_for(root, plan), **shared_pool_options(root, plan)
     )
     pairs: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    preflight_failures: list[str] = []
     for index, item in enumerate(plan["schedule"]):
         pairs.setdefault(item["pair"], []).append((f"{index:04d}", item))
 
@@ -378,6 +381,13 @@ async def execute_plan(
                     break
                 if startup_retry:
                     verify_terminal(prior_result.parent, read_json(prior_result))
+                if preflight is not None:
+                    try:
+                        await preflight(item)
+                    except Exception as error:
+                        preflight_failures.append(trial_id)
+                        progress(f"run: trial {trial_id} blocked by preflight: {type(error).__name__}")
+                        break
                 async with pool.reserve(request):
                     startup_attempt = (
                         previous.get("startup_attempt", 1) + 1 if startup_retry else previous.get("startup_attempt", 1)
@@ -450,6 +460,8 @@ async def execute_plan(
     async with asyncio.TaskGroup() as group:
         for items in pairs.values():
             group.create_task(pair(items))
+    if preflight_failures:
+        raise ValueError(f"Tasks blocked by preflight failures: {', '.join(preflight_failures)}")
 
 
 async def execute_trial(
@@ -1054,10 +1066,21 @@ async def _resume(root: Path, *, debug_trial: str | None = None, maintenance: st
             attempt.mkdir(parents=True)
             atomic_json(attempt / "evidence.json", await execute_trial(root, plan, item, attempt, debug=True))
             return
+        preflight = None
         if plan["config"].get("version") == 2:
             from .maintenance import doctor_plan, prewarm_plan
 
             if not (root / "prewarm.json").exists() or read_json(root / "prewarm.json")["status"] != "completed":
                 await prewarm_plan(root, plan)
-            await doctor_plan(root, plan)
-        await execute_plan(root, plan, lambda item, attempt: execute_trial(root, plan, item, attempt))
+            checks: dict[tuple[str, str], asyncio.Task[dict[str, Any]]] = {}
+
+            async def ensure_preflight(item: dict[str, Any]) -> None:
+                key = (item["task"], item["variant"])
+                if key not in checks:
+                    checks[key] = asyncio.create_task(doctor_plan(root, plan, cell=key))
+                await checks[key]
+
+            preflight = ensure_preflight
+        await execute_plan(
+            root, plan, lambda item, attempt: execute_trial(root, plan, item, attempt), preflight=preflight
+        )

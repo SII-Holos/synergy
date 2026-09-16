@@ -170,7 +170,12 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
-async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
+async def doctor_plan(
+    root: Path,
+    plan: dict[str, Any],
+    *,
+    cell: tuple[str, str] | None = None,
+) -> dict[str, Any]:
     from .runner import (
         execute_trial,
         progress,
@@ -191,6 +196,9 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
     selected: dict[tuple[str, str], dict[str, Any]] = {}
     for item in plan["schedule"]:
         selected.setdefault((item["task"], item["variant"]), item)
+    indexed = [(index, item) for index, (key, item) in enumerate(selected.items()) if cell is None or key == cell]
+    if not indexed:
+        raise ValueError("Unknown preflight cell")
     records = []
 
     async def probe(index: int, item: dict[str, Any]) -> None:
@@ -275,17 +283,18 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
 
     try:
         async with asyncio.TaskGroup() as group:
-            for index, item in enumerate(selected.values()):
+            for index, item in indexed:
                 group.create_task(probe(index, item))
     finally:
         report = {
             "version": 1,
             "status": "completed"
-            if len(records) == len(selected) and all(row["status"] == "completed" for row in records)
+            if len(records) == len(indexed) and all(row["status"] == "completed" for row in records)
             else "failed",
             "records": records,
         }
-        atomic_json(root / "doctor.json", report)
+        destination = root if cell is None else root / "probes" / f"{indexed[0][0]:04d}"
+        atomic_json(destination / "doctor.json", report)
     if report["status"] != "completed":
         raise ValueError("Harness/model connectivity failed; inspect retained preflight attempts before running tasks")
     return report

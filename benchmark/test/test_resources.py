@@ -5,6 +5,50 @@ import pytest
 from synergy_bench.resources import Capacity, Request, ResourcePool
 
 
+async def test_fixed_reservations_admit_eight_native_tasks_across_schedulers(tmp_path):
+    from contextlib import AsyncExitStack
+
+    from synergy_bench.storage import read_json
+
+    native = Request(4.2, 8 * 1024**3 + 128 * 1024**2)
+    options = dict(
+        shared_directory=tmp_path,
+        shared_concurrency=8,
+        memory_reservation_bytes=1024**3,
+        cpu_reservation=1,
+    )
+    pools = [ResourcePool(Capacity(12, 13 * 1024**3), 8, **options) for _ in range(2)]
+    ninth = asyncio.Event()
+
+    async def waiting():
+        async with pools[1].reserve(native):
+            ninth.set()
+
+    async with AsyncExitStack() as stack:
+        for index in range(8):
+            await stack.enter_async_context(pools[index % 2].reserve(native))
+        rows = [read_json(file) for file in tmp_path.glob("leases/*.json")]
+        assert len(rows) == 8
+        assert all(row["memory_bytes"] == 1024**3 and row["cpus"] == 1 for row in rows)
+        assert all(row["unscaled_memory_bytes"] == native.memory_bytes and row["unscaled_cpus"] == 4.2 for row in rows)
+        pending = asyncio.create_task(waiting())
+        await asyncio.sleep(0)
+        assert not ninth.is_set()
+    await asyncio.wait_for(pending, 3)
+    assert ninth.is_set()
+
+
+@pytest.mark.parametrize("field", ["cpu_reservation", "memory_reservation_gib"])
+@pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
+def test_fixed_reservation_config_rejects_invalid_values(field, value):
+    from pydantic import ValidationError
+
+    from synergy_bench.config import Resources
+
+    with pytest.raises(ValidationError):
+        Resources(**{field: value})
+
+
 async def test_admission_sampling_does_not_block_other_async_work():
     import threading
 

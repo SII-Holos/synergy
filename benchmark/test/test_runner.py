@@ -6,6 +6,41 @@ from synergy_bench.runner import execute_plan
 from synergy_bench.storage import atomic_json, read_json
 
 
+async def test_ready_cell_solves_while_another_preflight_is_pending(tmp_path):
+    import asyncio
+
+    released = asyncio.Event()
+    solved = asyncio.Event()
+    plan = {
+        "schedule": [{"pair": name, "variant": name} for name in ["ready", "pending", "broken"]],
+        "concurrency": 2,
+    }
+
+    async def preflight(item):
+        if item["variant"] == "pending":
+            await released.wait()
+        if item["variant"] == "broken":
+            raise ValueError("failed connectivity")
+
+    async def execute(item, attempt):
+        assert item["variant"] != "broken"
+        if item["variant"] == "ready":
+            solved.set()
+        return {"execution": {"outcome": "completed"}}
+
+    running = asyncio.create_task(execute_plan(tmp_path, plan, execute, preflight=preflight))
+    try:
+        await asyncio.wait_for(solved.wait(), 2)
+        assert not running.done()
+    finally:
+        released.set()
+        with pytest.raises(ValueError, match="preflight"):
+            await running
+    state = read_json(tmp_path / "state.json")["trials"]
+    assert set(state) == {"0000", "0001"}
+    assert all(row["status"] == "completed" for row in state.values())
+
+
 @pytest.mark.parametrize("status", ["completed", "interrupted"])
 async def test_resume_skips_terminal_large_task_before_resource_admission(tmp_path, monkeypatch, status):
     import asyncio

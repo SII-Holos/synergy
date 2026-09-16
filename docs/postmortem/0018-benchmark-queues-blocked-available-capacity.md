@@ -13,6 +13,7 @@
 - 2026-09-16：核对原生事件、已结束请求和进程采样，确认停滞观测，保留内部原因未知的结论。
 - 2026-09-16：复现固定批次阻塞与终态跳过之前申请资源的两个问题，新增回归测试后修复。
 - 2026-09-16：经用户要求提高实际吞吐，保留停滞尝试并正常取消归档，单独声明新的调度条件。
+- 2026-09-16：发现按半数内存预留仍只能容纳少量重任务，整批预检仍阻塞正式解题；增加固定预留上界与共享并发名额，改为逐题预检准入。
 
 ## Root cause
 
@@ -23,6 +24,7 @@
 - [预热行为测试](../../benchmark/test/test_maintenance.py) 在独立调度器占用资源时验证后续小任务能够完成。
 - [续跑行为测试](../../benchmark/test/test_runner.py) 验证 completed 和可恢复终态在申请资源之前被跳过。
 - [资源测试](../../benchmark/test/test_resources.py) 核对显式预留比例、原始上限和 Docker 压力准入；[报告测试](../../benchmark/test/test_report.py) 拒绝跨预留策略直接配对。
+- [逐题准入测试](../../benchmark/test/test_runner.py) 验证另一题预检未结束或失败时，就绪题仍能完成；资源测试同时验证跨调度器八个名额和第九项等待。设计见[逐题准入决策](../decisions/implemented/bug-fix/2026-09-16-benchmark-per-cell-admission.md)。
 - [开发流程](../../.synergy/skill/develop-benchmark/SKILL.md) 要求区分存活、实际进展、预留和实测占用；[调度决策](../decisions/implemented/bug-fix/2026-09-16-benchmark-resource-queue-progress.md) 保留默认完整预留和显式超额订阅的取舍。
 
 ## Lessons

@@ -86,11 +86,21 @@ class SharedResources:
                 capacity.memory_bytes - sum(row["memory_bytes"] for row in rows),
             )
 
-    def acquire(self, key: str, request: Request, capacity: Capacity, *, unscaled_memory_bytes: int) -> bool:
+    def acquire(
+        self,
+        key: str,
+        request: Request,
+        capacity: Capacity,
+        *,
+        unscaled_memory_bytes: int,
+        unscaled_cpus: float | None = None,
+        max_concurrency: int | None = None,
+    ) -> bool:
         with cache_lock(self.directory / "budget", timeout=5):
             rows = self._rows()
             if (
-                sum(row["cpus"] for row in rows) + request.cpus > capacity.cpus
+                (max_concurrency is not None and len(rows) >= max_concurrency)
+                or sum(row["cpus"] for row in rows) + request.cpus > capacity.cpus
                 or sum(row["memory_bytes"] for row in rows) + request.memory_bytes > capacity.memory_bytes
             ):
                 return False
@@ -100,6 +110,7 @@ class SharedResources:
                 {
                     **asdict(request),
                     "unscaled_memory_bytes": unscaled_memory_bytes,
+                    "unscaled_cpus": request.cpus if unscaled_cpus is None else unscaled_cpus,
                     "scope": self.scope,
                     "pid": os.getpid(),
                     "started_at": time.time(),
@@ -153,12 +164,21 @@ class ResourcePool:
         shared_directory: Path | None = None,
         scope: str | None = None,
         memory_reservation_fraction: float = 1,
+        memory_reservation_bytes: int | None = None,
+        cpu_reservation: float | None = None,
+        shared_concurrency: int | None = None,
     ) -> None:
         if capacity.cpus <= 0 or capacity.memory_bytes <= 0 or concurrency < 1:
             raise ValueError("Insufficient scheduler capacity")
         if not 0 < memory_reservation_fraction <= 1:
             raise ValueError("Memory reservation fraction must be in (0, 1]")
         self.memory_reservation_fraction = memory_reservation_fraction
+        for value in (memory_reservation_bytes, cpu_reservation, shared_concurrency):
+            if value is not None and (not math.isfinite(value) or value <= 0):
+                raise ValueError("Resource reservation caps must be positive and finite")
+        self.memory_reservation_bytes = memory_reservation_bytes
+        self.cpu_reservation = cpu_reservation
+        self.shared_concurrency = shared_concurrency
         self.admission = admission or (lambda: True)
         self.pressure_timeout_seconds = pressure_timeout_seconds
         self.shared = SharedResources(shared_directory, scope) if shared_directory is not None else None
@@ -192,7 +212,7 @@ class ResourcePool:
             return False
         return next((row for row in self._queue if self.fits(row.request)), None) is token
 
-    async def admit(self, token: Waiting, shared_key: str, unscaled_memory_bytes: int) -> bool:
+    async def admit(self, token: Waiting, shared_key: str, native: Request) -> bool:
         if self.shared:
             self._available = self.shared.available(self.capacity)
         return (
@@ -204,7 +224,9 @@ class ResourcePool:
                     shared_key,
                     token.request,
                     self.capacity,
-                    unscaled_memory_bytes=unscaled_memory_bytes,
+                    unscaled_memory_bytes=native.memory_bytes,
+                    unscaled_cpus=native.cpus,
+                    max_concurrency=self.shared_concurrency,
                 )
             )
         )
@@ -212,15 +234,19 @@ class ResourcePool:
     @asynccontextmanager
     async def reserve(self, request: Request) -> AsyncIterator[None]:
         self.validate(request)
-        unscaled_memory_bytes = request.memory_bytes
-        request = Request(request.cpus, math.ceil(request.memory_bytes * self.memory_reservation_fraction))
+        native = request
+        memory = math.ceil(request.memory_bytes * self.memory_reservation_fraction)
+        request = Request(
+            min(request.cpus, self.cpu_reservation) if self.cpu_reservation is not None else request.cpus,
+            min(memory, self.memory_reservation_bytes) if self.memory_reservation_bytes is not None else memory,
+        )
         token = Waiting(request)
         shared_key = uuid.uuid4().hex
         async with self._condition:
             self._queue.append(token)
             idle_pressure_since = time.monotonic()
             try:
-                while not await self.admit(token, shared_key, unscaled_memory_bytes):
+                while not await self.admit(token, shared_key, native):
                     if self.active or (self.shared and self.shared.active):
                         idle_pressure_since = time.monotonic()
                     elif time.monotonic() - idle_pressure_since >= self.pressure_timeout_seconds:
@@ -306,7 +332,7 @@ def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[], bool]:
             ),
         ):
             return False
-        if settings.get("memory_reservation_fraction", 1) == 1:
+        if settings.get("memory_reservation_fraction", 1) == 1 and settings.get("memory_reservation_gib") is None:
             return True
         if time.monotonic() - sampled_at >= 5:
             docker_ready = False
@@ -327,8 +353,14 @@ def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[], bool]:
 
 
 def shared_pool_options(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
+    settings = plan.get("config", {}).get("resources", {})
     options: dict[str, Any] = {
-        "memory_reservation_fraction": plan.get("config", {}).get("resources", {}).get("memory_reservation_fraction", 1)
+        "memory_reservation_fraction": settings.get("memory_reservation_fraction", 1),
+        "memory_reservation_bytes": math.ceil(settings["memory_reservation_gib"] * 1024**3)
+        if settings.get("memory_reservation_gib") is not None
+        else None,
+        "cpu_reservation": settings.get("cpu_reservation"),
+        "shared_concurrency": settings.get("max_concurrency", 8),
     }
     if plan.get("cache"):
         options.update(shared_directory=Path(plan["cache"]) / "resources", scope="sb-" + root.name[-8:] + "-")

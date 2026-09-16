@@ -37,24 +37,26 @@ bun bench clean /absolute/path/to/run
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。
 
-| 字段                                         | 含义                                                                             |
-| -------------------------------------------- | -------------------------------------------------------------------------------- |
-| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment      |
-| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT        |
-| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数             |
-| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                       |
-| `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                |
-| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                             |
-| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                       |
-| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                 |
-| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                    |
-| `resources.memory_reservation_fraction`      | 调度内存预留比例，默认 1；小于 1 显式允许内存超额订阅，不改变原题容器上限        |
-| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                     |
-| `timeout_seconds`                            | 可选 agent 期限；省略时保留原题期限                                              |
-| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                             |
-| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                           |
-| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始 |
-| `probe_timeout_seconds`                      | 原生工具预检的独立模型执行期限，默认 120 秒；不改变正式解题或判题期限            |
+| 字段                                                   | 含义                                                                             |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `harnesses.<name>`                                     | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment      |
+| `harnesses.<name>.bun_jit`                             | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT        |
+| `models.<name>`                                        | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数             |
+| `matrix.include` / `exclude`                           | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                       |
+| `suite`                                                | 锁定的原题清单、上游 revision、内容摘要及原生期限                                |
+| `selection.tasks` / `tags` / `limit`                   | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                             |
+| `repeat` / `task_repeats`                              | 默认每题重复次数及逐题覆盖                                                       |
+| `seed` / `concurrency`                                 | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                 |
+| `resources`                                            | Docker 配额预留、构建并发、缓存预算和磁盘余量                                    |
+| `resources.memory_reservation_fraction`                | 调度内存预留比例，默认 1；小于 1 显式允许内存超额订阅，不改变原题容器上限        |
+| `resources.memory_reservation_gib` / `cpu_reservation` | 可选的每项调度预留上界；不改变原题容器内存和 CPU 上限                            |
+| `resources.max_concurrency`                            | 共用缓存的调度器共享运行名额，默认 8；`concurrency` 另限制单个运行               |
+| `platform`                                             | 默认 `linux/amd64`；原始镜像也必须支持该架构                                     |
+| `timeout_seconds`                                      | 可选 agent 期限；省略时保留原题期限                                              |
+| `cleanup_seconds` / `export_timeout_seconds`           | 独立清理与导出期限，默认 60 / 300 秒                                             |
+| `preparation_timeout_seconds`                          | 准备期限，默认 1800 秒                                                           |
+| `startup_timeout_seconds`                              | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始 |
+| `probe_timeout_seconds`                                | 原生工具预检的独立模型执行期限，默认 120 秒；不改变正式解题或判题期限            |
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。平台实现不绑定该模型或智谱端点。
 
@@ -189,7 +191,9 @@ SYNERGY_BENCH_PERFORMANCE=1 SYNERGY_BENCH_NATIVE_ARTIFACTS='{"pi":"/absolute/pat
 
 完整矩阵共享只读安装包挂载和镜像前置依赖，预热按题目去重，全部进入资源队列；资源池限制实际并发，较小任务可以在大任务等待时填补空闲容量。开始前及每次任务完成后检查缓存预算，预算失败取消并保留未完成的准备记录。续跑先跳过已有终态的单元，再为需要执行的单元申请资源；每个 harness/model 的真实运行兼容性仍由 doctor 独立检查。冻结输入受 run 引用保护，执行期间允许回收其他无引用缓存。缺失的冻结镜像只能恢复到记录的 image ID；重新构建应使用新的缓存目录和实验，原实验继续只读保留。
 
-`memory_reservation_fraction` 的范围是 `(0, 1]`。小于 1 时，原题 CPU 和内存上限保持原值，调度租约分别记录缩放后的预留和原始资源请求（含运行开销）。调度器同时检查宿主压力和全部 Docker 容器的实际内存使用，Docker 使用量达到可调度容量的 80% 或采样失败时暂停新任务准入；采样最多缓存 5 秒。它不能保证同时运行的进程不会突然增长或 OOM，也不停止已有任务。此选项必须根据已保留的资源观测声明新实验，与并发度共同进入条件摘要，不应把不同预留策略的时延直接配对。默认值不进行超额订阅。调度取舍见[资源队列决策](../docs/decisions/implemented/bug-fix/2026-09-16-benchmark-resource-queue-progress.md)。
+`memory_reservation_fraction` 的范围是 `(0, 1]`，可选的 `memory_reservation_gib` 再限制每项调度预留的上界；`cpu_reservation` 对 CPU 预留设置上界。例如 1 GiB / 1 核的调度预留允许原题 8 GiB / 4 核的容器参与更高并发，而非将容器硬限制为 1 GiB / 1 核。租约保留实际预留和原始请求（含运行开销）；已有租约保持原值，切换期间仍占旧额度。全部调度器共享 `max_concurrency` 名额。启用内存超额订阅时，Docker 使用量达到可调度容量的 80% 或采样失败会暂停新准入；采样最多缓存 5 秒，并继续检查宿主压力。它不能保证已有进程同时增长时不会 OOM，也不停止已有任务。预留和并发变化必须声明为新实验条件，不能与旧运行直接比较耗时。默认完整预留。调度取舍见[资源队列决策](../docs/decisions/implemented/bug-fix/2026-09-16-benchmark-resource-queue-progress.md)和[逐题准入决策](../docs/decisions/implemented/bug-fix/2026-09-16-benchmark-per-cell-admission.md)。
+
+正式运行逐题等待自己的原生预检，通过后即可解题，不等待其他题目的预检。单题预检报告位于 `probes/<index>/doctor.json`；显式 `doctor` 命令仍检查整个矩阵并产生根目录报告。失败的预检阻止对应题目执行，其他已通过题目继续；运行结束后汇总报错。已有正式终态在预检和资源申请前跳过。
 
 CI 使用轻量确定性任务（1 核、2 GiB），并为临时 runner 显式设置 10 GiB 缓存、2 GiB 磁盘余量。研究实验仍默认 32 GiB 缓存与 20 GiB 余量；CPU/内存预留不变。CI 配置依据 [GitHub 标准 runner 资源说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，实际可用资源仍由 doctor 检查。
 
