@@ -133,20 +133,24 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
 
     failure = None
     failure_trace = None
+    pending: set[asyncio.Task[None]] = set()
     try:
         items = prepare_items(plan)
-        width = plan["config"]["resources"]["build_concurrency"]
-        for offset in range(0, len(items), width):
-            await check_budget()
-            async with asyncio.TaskGroup() as group:
-                for index in range(offset, min(offset + width, len(items))):
-                    group.create_task(prepare(index, items[index]))
+        await check_budget()
+        pending = {asyncio.create_task(prepare(index, item)) for index, item in enumerate(items)}
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                task.result()
             await check_budget()
     except BaseException as error:
         failure = type(error).__name__
         failure_trace = error_trace(error)
         raise
     finally:
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
         report = {
             "version": 1,
             "started_at": started,

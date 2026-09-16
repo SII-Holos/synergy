@@ -48,6 +48,7 @@ bun bench clean /absolute/path/to/run
 | `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                       |
 | `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                 |
 | `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                    |
+| `resources.memory_reservation_fraction`      | 调度内存预留比例，默认 1；小于 1 显式允许内存超额订阅，不改变原题容器上限        |
 | `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                     |
 | `timeout_seconds`                            | 可选 agent 期限；省略时保留原题期限                                              |
 | `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                             |
@@ -186,7 +187,9 @@ SYNERGY_BENCH_PERFORMANCE=1 SYNERGY_BENCH_NATIVE_ARTIFACTS='{"pi":"/absolute/pat
   uv run --locked --project benchmark pytest -s benchmark/test/test_performance_docker.py
 ```
 
-完整矩阵共享只读安装包挂载和镜像前置依赖，预热按题目去重并分批检查缓存预算；每个 harness/model 的真实运行兼容性仍由 doctor 独立检查。冻结输入受 run 引用保护，执行期间允许回收其他无引用缓存。缺失的冻结镜像只能恢复到记录的 image ID；重新构建应使用新的缓存目录和实验，原实验继续只读保留。
+完整矩阵共享只读安装包挂载和镜像前置依赖，预热按题目去重，全部进入资源队列；资源池限制实际并发，较小任务可以在大任务等待时填补空闲容量。开始前及每次任务完成后检查缓存预算，预算失败取消并保留未完成的准备记录。续跑先跳过已有终态的单元，再为需要执行的单元申请资源；每个 harness/model 的真实运行兼容性仍由 doctor 独立检查。冻结输入受 run 引用保护，执行期间允许回收其他无引用缓存。缺失的冻结镜像只能恢复到记录的 image ID；重新构建应使用新的缓存目录和实验，原实验继续只读保留。
+
+`memory_reservation_fraction` 的范围是 `(0, 1]`。小于 1 时，原题 CPU 和内存上限保持原值，调度租约分别记录缩放后的预留和原始资源请求（含运行开销）。调度器同时检查宿主压力和全部 Docker 容器的实际内存使用，Docker 使用量达到可调度容量的 80% 或采样失败时暂停新任务准入；采样最多缓存 5 秒。它不能保证同时运行的进程不会突然增长或 OOM，也不停止已有任务。此选项必须根据已保留的资源观测声明新实验，与并发度共同进入条件摘要，不应把不同预留策略的时延直接配对。默认值不进行超额订阅。调度取舍见[资源队列决策](../docs/decisions/implemented/bug-fix/2026-09-16-benchmark-resource-queue-progress.md)。
 
 CI 使用轻量确定性任务（1 核、2 GiB），并为临时 runner 显式设置 10 GiB 缓存、2 GiB 磁盘余量。研究实验仍默认 32 GiB 缓存与 20 GiB 余量；CPU/内存预留不变。CI 配置依据 [GitHub 标准 runner 资源说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，实际可用资源仍由 doctor 检查。
 

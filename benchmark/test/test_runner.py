@@ -6,6 +6,43 @@ from synergy_bench.runner import execute_plan
 from synergy_bench.storage import atomic_json, read_json
 
 
+@pytest.mark.parametrize("status", ["completed", "interrupted"])
+async def test_resume_skips_terminal_large_task_before_resource_admission(tmp_path, monkeypatch, status):
+    import asyncio
+
+    from synergy_bench import runner
+    from synergy_bench.resources import Capacity, Request, ResourcePool
+
+    plan = {
+        "host": {"capacity": {"cpus": 4, "memory_bytes": 400}},
+        "concurrency": 2,
+        "schedule": [{"task": task, "pair": "same", "variant": "native"} for task in ["large", "small"]],
+        "tasks": {
+            task: {"resources": {"cpus": 1, "memory_bytes": memory}}
+            for task, memory in [("large", 400), ("small", 100)]
+        },
+    }
+    root = tmp_path / "run"
+    atomic_json(root / "state.json", {"trials": {"0000": {"status": status, "attempt": 1}}})
+    atomic_json(
+        root / "trials/0000/attempt-001/evidence.json",
+        {"attempt_status": "completed", "execution": {"outcome": "completed"}},
+    )
+    shared = tmp_path / "resources"
+    monkeypatch.setattr(runner, "shared_pool_options", lambda *args: {"shared_directory": shared})
+    called = []
+
+    async def execute(item, attempt):
+        called.append(item["task"])
+        return {"execution": {"outcome": "completed"}}
+
+    other = ResourcePool(Capacity(4, 400), 1, shared_directory=shared)
+    async with other.reserve(Request(1, 200)):
+        await asyncio.wait_for(execute_plan(root, plan, execute), 2)
+    assert called == ["small"]
+    assert read_json(root / "state.json")["trials"]["0000"]["status"] == "completed"
+
+
 @pytest.mark.parametrize("startup_failures,requests,expected", [(1, 0, 2), (5, 0, 3), (1, 1, 1)])
 async def test_only_unstarted_native_timeouts_retry_with_a_durable_bound(
     tmp_path, monkeypatch, startup_failures, requests, expected

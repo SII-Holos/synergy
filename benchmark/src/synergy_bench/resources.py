@@ -7,6 +7,7 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -85,7 +86,7 @@ class SharedResources:
                 capacity.memory_bytes - sum(row["memory_bytes"] for row in rows),
             )
 
-    def acquire(self, key: str, request: Request, capacity: Capacity) -> bool:
+    def acquire(self, key: str, request: Request, capacity: Capacity, *, unscaled_memory_bytes: int) -> bool:
         with cache_lock(self.directory / "budget", timeout=5):
             rows = self._rows()
             if (
@@ -94,7 +95,16 @@ class SharedResources:
             ):
                 return False
             file = self.directory / "leases" / (key + ".json")
-            atomic_json(file, {**asdict(request), "scope": self.scope, "pid": os.getpid(), "started_at": time.time()})
+            atomic_json(
+                file,
+                {
+                    **asdict(request),
+                    "unscaled_memory_bytes": unscaled_memory_bytes,
+                    "scope": self.scope,
+                    "pid": os.getpid(),
+                    "started_at": time.time(),
+                },
+            )
             fd = os.open(file, os.O_RDWR | os.O_NOFOLLOW)
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.held[key] = fd
@@ -142,9 +152,13 @@ class ResourcePool:
         pressure_timeout_seconds: float = 600,
         shared_directory: Path | None = None,
         scope: str | None = None,
+        memory_reservation_fraction: float = 1,
     ) -> None:
         if capacity.cpus <= 0 or capacity.memory_bytes <= 0 or concurrency < 1:
             raise ValueError("Insufficient scheduler capacity")
+        if not 0 < memory_reservation_fraction <= 1:
+            raise ValueError("Memory reservation fraction must be in (0, 1]")
+        self.memory_reservation_fraction = memory_reservation_fraction
         self.admission = admission or (lambda: True)
         self.pressure_timeout_seconds = pressure_timeout_seconds
         self.shared = SharedResources(shared_directory, scope) if shared_directory is not None else None
@@ -178,25 +192,35 @@ class ResourcePool:
             return False
         return next((row for row in self._queue if self.fits(row.request)), None) is token
 
-    def admit(self, token: Waiting, shared_key: str) -> bool:
+    async def admit(self, token: Waiting, shared_key: str, unscaled_memory_bytes: int) -> bool:
         if self.shared:
             self._available = self.shared.available(self.capacity)
         return (
             self.eligible(token)
-            and self.admission()
-            and (self.shared is None or self.shared.acquire(shared_key, token.request, self.capacity))
+            and await asyncio.to_thread(self.admission)
+            and (
+                self.shared is None
+                or self.shared.acquire(
+                    shared_key,
+                    token.request,
+                    self.capacity,
+                    unscaled_memory_bytes=unscaled_memory_bytes,
+                )
+            )
         )
 
     @asynccontextmanager
     async def reserve(self, request: Request) -> AsyncIterator[None]:
         self.validate(request)
+        unscaled_memory_bytes = request.memory_bytes
+        request = Request(request.cpus, math.ceil(request.memory_bytes * self.memory_reservation_fraction))
         token = Waiting(request)
         shared_key = uuid.uuid4().hex
         async with self._condition:
             self._queue.append(token)
             idle_pressure_since = time.monotonic()
             try:
-                while not self.admit(token, shared_key):
+                while not await self.admit(token, shared_key, unscaled_memory_bytes):
                     if self.active or (self.shared and self.shared.active):
                         idle_pressure_since = time.monotonic()
                     elif time.monotonic() - idle_pressure_since >= self.pressure_timeout_seconds:
@@ -268,22 +292,47 @@ def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[], bool]:
     settings = plan.get("config", {}).get("resources")
     if not settings:
         return lambda: True
-    return lambda: pressure_ready(
-        root,
-        min_free_bytes=int(settings["min_free_disk_gib"] * 1024**3),
-        reserve_memory_bytes=max(
-            int(settings["reserve_memory_gib"] * 1024**3),
-            int(psutil.virtual_memory().total * settings["reserve_memory_fraction"]),
-        ),
-    )
+    sampled_at = -math.inf
+    docker_ready = False
+
+    def ready() -> bool:
+        nonlocal sampled_at, docker_ready
+        if not pressure_ready(
+            root,
+            min_free_bytes=int(settings["min_free_disk_gib"] * 1024**3),
+            reserve_memory_bytes=max(
+                int(settings["reserve_memory_gib"] * 1024**3),
+                int(psutil.virtual_memory().total * settings["reserve_memory_fraction"]),
+            ),
+        ):
+            return False
+        if settings.get("memory_reservation_fraction", 1) == 1:
+            return True
+        if time.monotonic() - sampled_at >= 5:
+            docker_ready = False
+            try:
+                output = command(["docker", "stats", "--no-stream", "--format", "{{.MemUsage}}"], timeout=15)
+                usage = [parse_bytes(line.split("/")[0]) for line in output.splitlines() if line.strip()]
+                docker_ready = (
+                    all(value is not None for value in usage)
+                    and sum(value for value in usage if value is not None)
+                    < plan["host"]["capacity"]["memory_bytes"] * 0.8
+                )
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                pass
+            sampled_at = time.monotonic()
+        return docker_ready
+
+    return ready
 
 
 def shared_pool_options(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
-    return (
-        {"shared_directory": Path(plan["cache"]) / "resources", "scope": "sb-" + root.name[-8:] + "-"}
-        if plan.get("cache")
-        else {}
-    )
+    options: dict[str, Any] = {
+        "memory_reservation_fraction": plan.get("config", {}).get("resources", {}).get("memory_reservation_fraction", 1)
+    }
+    if plan.get("cache"):
+        options.update(shared_directory=Path(plan["cache"]) / "resources", scope="sb-" + root.name[-8:] + "-")
+    return options
 
 
 class BuildSlots:
@@ -340,7 +389,7 @@ def build_reservation(cache: Path, *, timeout: float, settings: Resources | None
     started = time.monotonic()
     acquired = False
     try:
-        while not (acquired := shared.acquire(key, request, capacity)):
+        while not (acquired := shared.acquire(key, request, capacity, unscaled_memory_bytes=request.memory_bytes)):
             if time.monotonic() - started >= timeout:
                 raise TimeoutError("Build resource admission timed out")
             time.sleep(0.2)

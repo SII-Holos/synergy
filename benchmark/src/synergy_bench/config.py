@@ -160,6 +160,7 @@ class Resources(StrictModel):
     reserve_cpus: float = Field(default=2, ge=0)
     reserve_memory_gib: float = Field(default=2, ge=0)
     reserve_memory_fraction: float = Field(default=0.15, ge=0, lt=1)
+    memory_reservation_fraction: float = Field(default=1, gt=0, le=1)
     min_free_disk_gib: float = Field(default=20, ge=0)
     cache_budget_gib: float = Field(default=32, gt=0)
 

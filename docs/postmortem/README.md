@@ -54,6 +54,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0015 | Repeated normalization erased reasoning | implemented | 2026-09-14 |
 | 0016 | Stale frame invalidated DOOM verifier | implemented | 2026-09-15 |
 | 0017 | Agent configuration permission schema removed the tool from availability | implemented | 2026-09-15 |
+| 0018 | Benchmark queues blocked available capacity | implemented | 2026-09-16 |
 
 ## History rules
 

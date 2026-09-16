@@ -1,6 +1,58 @@
 from synergy_bench.maintenance import prepare_items, probe_observed
 
 
+async def test_prewarm_backfills_beyond_a_blocked_batch(tmp_path, monkeypatch):
+    import asyncio
+
+    from synergy_bench import runner
+    from synergy_bench.maintenance import prewarm_plan
+    from synergy_bench.resources import Capacity, Request, ResourcePool
+    from synergy_bench.trial import BenchmarkTrial
+
+    plan = {
+        "host": {"capacity": {"cpus": 4, "memory_bytes": 400}},
+        "config": {"resources": {"build_concurrency": 2}},
+        "schedule": [{"task": name, "variant": "native"} for name in ["small", "large", "later"]],
+        "tasks": {
+            name: {"resources": {"cpus": 1, "memory_bytes": memory}}
+            for name, memory in [("small", 100), ("large", 400), ("later", 100)]
+        },
+        "variants": {"native": {"artifact_id": "fixed"}},
+    }
+    shared = tmp_path / "resources"
+    monkeypatch.setattr("synergy_bench.maintenance.admission_for", lambda *args: lambda: True)
+    monkeypatch.setattr("synergy_bench.maintenance.shared_pool_options", lambda *args: {"shared_directory": shared})
+    monkeypatch.setattr(runner, "trial_configuration", lambda root, plan, item, *args, **kwargs: (item, None, "trial"))
+    later = asyncio.Event()
+    prepared = []
+
+    async def create(item):
+        trial = object.__new__(BenchmarkTrial)
+        trial.test_task = item["task"]
+        return trial
+
+    async def prewarm(self):
+        prepared.append(self.test_task)
+        if self.test_task == "later":
+            later.set()
+
+    monkeypatch.setattr(BenchmarkTrial, "create", create)
+    monkeypatch.setattr(BenchmarkTrial, "prewarm", prewarm)
+    other = ResourcePool(Capacity(4, 400), 1, shared_directory=shared)
+    async with other.reserve(Request(1, 200)):
+        running = asyncio.create_task(prewarm_plan(tmp_path / "run", plan))
+        try:
+            await asyncio.wait_for(later.wait(), 2)
+            assert prepared == ["small", "later"]
+        except BaseException:
+            running.cancel()
+            await asyncio.gather(running, return_exceptions=True)
+            raise
+    result = await asyncio.wait_for(running, 3)
+    assert result["status"] == "completed"
+    assert prepared == ["small", "later", "large"]
+
+
 def test_prewarm_deduplicates_models_but_not_task_images():
     plan = {
         "schedule": [

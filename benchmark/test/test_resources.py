@@ -5,6 +5,81 @@ import pytest
 from synergy_bench.resources import Capacity, Request, ResourcePool
 
 
+async def test_admission_sampling_does_not_block_other_async_work():
+    import threading
+
+    release = threading.Event()
+    entered = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def sample():
+        loop.call_soon_threadsafe(entered.set)
+        assert release.wait(2), "admission sampling blocked the event loop"
+        return True
+
+    async def unblock():
+        await entered.wait()
+        release.set()
+
+    async def job():
+        async with ResourcePool(Capacity(1, 100), 1, admission=sample).reserve(Request(1, 100)):
+            pass
+
+    await asyncio.gather(job(), unblock())
+
+
+async def test_explicit_memory_reservation_changes_admission_not_native_request(tmp_path):
+    from synergy_bench.storage import read_json
+
+    native = Request(2, 800)
+    pool = ResourcePool(Capacity(8, 1400), 3, shared_directory=tmp_path, memory_reservation_fraction=0.5)
+    async with pool.reserve(native), pool.reserve(native), pool.reserve(native):
+        leases = [read_json(file) for file in tmp_path.glob("leases/*.json")]
+        assert len(leases) == 3
+        assert all(row["memory_bytes"] == 400 and row["unscaled_memory_bytes"] == 800 for row in leases)
+        assert not pool.fits(Request(2, 400))
+        assert native.memory_bytes == 800
+    assert not list(tmp_path.glob("leases/*.json"))
+
+
+def test_overcommitted_admission_requires_observed_docker_headroom(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from synergy_bench import resources
+
+    monkeypatch.setattr(resources, "pressure_ready", lambda *args, **kwargs: True)
+    monkeypatch.setattr(resources.psutil, "virtual_memory", lambda: SimpleNamespace(total=1000))
+    plan = {
+        "host": {"capacity": {"memory_bytes": 1000}},
+        "config": {
+            "resources": {
+                "memory_reservation_fraction": 0.5,
+                "reserve_memory_gib": 0,
+                "reserve_memory_fraction": 0,
+                "min_free_disk_gib": 0,
+            }
+        },
+    }
+    monkeypatch.setattr(resources, "command", lambda *args, **kwargs: "900B / 1200B\n")
+    assert not resources.admission_for(tmp_path, plan)()
+    monkeypatch.setattr(resources, "command", lambda *args, **kwargs: "300B / 1200B\n200B / 1200B\n")
+    assert resources.admission_for(tmp_path, plan)()
+    monkeypatch.setattr(resources, "command", lambda *args, **kwargs: "-- / --\n")
+    assert not resources.admission_for(tmp_path, plan)()
+
+
+@pytest.mark.parametrize("fraction", [0, -1, 1.01, float("nan"), float("inf")])
+def test_invalid_memory_reservation_fraction_is_rejected(fraction):
+    from pydantic import ValidationError
+
+    from synergy_bench.config import Resources
+
+    with pytest.raises(ValidationError):
+        Resources(memory_reservation_fraction=fraction)
+    with pytest.raises(ValueError):
+        ResourcePool(Capacity(4, 1000), 2, memory_reservation_fraction=fraction)
+
+
 def test_memory_limits_admission_even_when_cpu_is_available():
     pool = ResourcePool(Capacity(cpus=12, memory_bytes=12 * 1024**3), concurrency=8)
     assert pool.fits(Request(cpus=1, memory_bytes=8 * 1024**3))

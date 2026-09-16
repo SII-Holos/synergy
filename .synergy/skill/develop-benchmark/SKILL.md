@@ -41,7 +41,11 @@ For full-product research, record the composition's registered tools, all agent 
 ## Control resources and cache ownership
 
 1. Inspect Docker quotas, host pressure and native task/verifier declarations. Use shared resource reservations for concurrent evaluators using the same cache. Keep reserved resources and admission decisions in evidence; do not kill running tasks to make room.
+
+   Verify useful progress independently of controller liveness. Queue all preparation candidates through the bounded resource pool instead of waiting for a fixed batch; skip retained terminal cells before requesting capacity. When explicitly studying memory overcommit, freeze `memory_reservation_fraction` as a new condition, retain native container limits, inspect observed peaks and Docker headroom, and report contention/OOM risks. A reserved limit is not measured RAM usage. A confirmed native stall requires retained observations and an explicit recovery record; absence of model calls alone does not establish a stall while a tool is running.
+
    Deduplicate kernel OOM observations by container identity and nanosecond event time, independently of CLI/API serialization metadata. Validate resource parsers against a real container: Docker process inspection requires a PID column alongside RSS. Preserve unknown metrics when inspection fails, and distinguish sampled peaks from kernel maxima.
+
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.

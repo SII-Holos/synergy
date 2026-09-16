@@ -360,25 +360,25 @@ async def execute_plan(
             )
             while True:
                 queued = time.monotonic()
+                previous = state["trials"].get(trial_id, {})
+                prior_result = (
+                    root / "trials" / trial_id / f"attempt-{previous.get('attempt', 0):03d}" / "evidence.json"
+                )
+                if previous.get("status") in {"running", "interrupted"} and prior_result.exists():
+                    if read_json(prior_result).get("attempt_status") == "completed":
+                        previous["status"] = "completed"
+                        atomic_json(state_file, state)
+                startup_retry = (
+                    previous.get("status") == "completed"
+                    and prior_result.exists()
+                    and previous.get("startup_attempt", 1) < 3
+                    and startup_retryable(prior_result.parent, read_json(prior_result))
+                )
+                if previous.get("status") == "completed" and not startup_retry:
+                    break
+                if startup_retry:
+                    verify_terminal(prior_result.parent, read_json(prior_result))
                 async with pool.reserve(request):
-                    previous = state["trials"].get(trial_id, {})
-                    prior_result = (
-                        root / "trials" / trial_id / f"attempt-{previous.get('attempt', 0):03d}" / "evidence.json"
-                    )
-                    if previous.get("status") in {"running", "interrupted"} and prior_result.exists():
-                        if read_json(prior_result).get("attempt_status") == "completed":
-                            previous["status"] = "completed"
-                            atomic_json(state_file, state)
-                    startup_retry = (
-                        previous.get("status") == "completed"
-                        and prior_result.exists()
-                        and previous.get("startup_attempt", 1) < 3
-                        and startup_retryable(prior_result.parent, read_json(prior_result))
-                    )
-                    if previous.get("status") == "completed" and not startup_retry:
-                        break
-                    if startup_retry:
-                        verify_terminal(prior_result.parent, read_json(prior_result))
                     startup_attempt = (
                         previous.get("startup_attempt", 1) + 1 if startup_retry else previous.get("startup_attempt", 1)
                     )
