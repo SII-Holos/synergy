@@ -606,16 +606,19 @@ export namespace SessionInbox {
   }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
-    const { RolloutLifecycle } = await import("./rollout/lifecycle")
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
     const mode: ItemMode = input.noReply === true ? "steer" : "task"
-    if (mode === "task")
-      await RolloutLifecycle.configuration(await Session.get(input.sessionID), messageID, input.experiment, input.model)
-    else if (input.experiment) throw new Error("Experiment configuration requires a root task")
+    if (input.experiment) {
+      if (mode !== "task") throw new Error("Experiment configuration requires a root task")
+      // Admission stays fail-fast; the rollout run itself opens when the
+      // queued task materializes, off the request path.
+      const { RolloutLifecycle } = await import("./rollout/lifecycle")
+      await RolloutLifecycle.assertQueuedExperiment(await Session.get(input.sessionID), input.experiment)
+    }
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
@@ -646,7 +649,9 @@ export namespace SessionInbox {
       input: queuedInput,
     }
     const stored = await writeItem(item)
-    await Session.recordActivity(input.sessionID).catch((error) => {
+    // Activity bump is presentation state, not admission: keep it off the
+    // enqueue critical path so a queued task is durable and visible first.
+    void Session.recordActivity(input.sessionID).catch((error) => {
       log.warn("failed to record session activity after user inbox enqueue", { sessionID: input.sessionID, error })
     })
     return publicItem(stored)

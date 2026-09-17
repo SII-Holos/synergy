@@ -8,7 +8,7 @@ import { SessionInbox } from "../inbox"
 import { SessionWorkflowService } from "../workflow"
 import { Storage } from "../../storage/storage"
 import { RolloutLedger } from "./ledger"
-import type { RolloutSchema } from "./schema"
+import { RolloutSchema } from "./schema"
 import { RolloutRecordingError } from "./error"
 import { Config } from "../../config/config"
 import { Experiment } from "../../config/experiment"
@@ -85,14 +85,53 @@ export namespace RolloutLifecycle {
     return RolloutLedger.configureRun(owner(session), runID, snapshot)
   }
 
+  /** Cheap admission for a queued task's experiment: preserves the
+   *  enqueue-time rejections of full admission without opening a rollout
+   *  run; the run and its evidence open at materialization instead. */
+  export async function assertQueuedExperiment(session: Session.Info, file?: Experiment.File) {
+    if (!file) return
+    Experiment.assertRuntime(file.runtime)
+    const lineage = await parent(session)
+    const inherited = lineage?.runID
+      ? (
+          await RolloutLedger.getRun(lineage.owner, lineage.runID).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+        )?.configuration
+      : undefined
+    if (inherited) throw new Error("Delegated runs inherit their parent experiment")
+  }
+
   export async function cancel(sessionID: string, runID: string) {
     const session = await Session.get(sessionID)
     const identity = owner(session)
-    const run = await RolloutLedger.requestCancel(identity, runID)
+    const run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!run) {
+      // A queued task that has not materialized yet has no rollout run; the
+      // run opens lazily at materialization. Cancel its queued work instead.
+      // A runID with neither a run nor queued work is genuinely unknown.
+      for (const item of await SessionInbox.list(sessionID)) {
+        if (item.messageID !== runID) continue
+        await SessionInbox.remove({ sessionID, itemID: item.id })
+        return RolloutSchema.RunRecord.parse({
+          version: 1,
+          id: runID,
+          owner: identity,
+          started: item.time.created,
+          status: "cancelled",
+          recording: "partial",
+          cancelRequestedAt: Date.now(),
+        })
+      }
+      throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
+    }
     if (run.status !== "running") return run
     for (const item of await SessionInbox.list(sessionID))
       if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
-    SessionManager.signalAbort(sessionID, { rootID: runID })
     await Promise.all(
       (await Session.children(sessionID)).map(async (child) => {
         if ((await parent(child))?.runID !== runID) return
