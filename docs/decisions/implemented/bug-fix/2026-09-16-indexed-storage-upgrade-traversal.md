@@ -12,6 +12,8 @@ Ordered queries express the cursor as a row-value comparison of `order_key` and 
 
 The query bound follows SQLite's [scrolling window queries](https://www.sqlite.org/rowvalue.html#scrolling_window_queries). The owning implementation cites this source beside the bound. Real SQLite query-plan regression tests require cursor seeks and reject repeated sorting; the shared SQLite/PostgreSQL contract exercises ties, descending pages, deleted cursors and complete exports.
 
+Prefix scans and lists also drive final record lookups from the recursive frontier into `(namespace, key_id)`. Immediate-child enumeration uses a correlated existence probe and stops at the first live descendant, avoiding full subtree collection and a temporary distinct sort. Existing and absent prefixes preserve their sorted result sets and namespace isolation. Real query-plan regressions cover both cases.
+
 ## Alternatives considered
 
 **Add a namespace/order/key index.** This accelerates ordered whole-namespace queries, but duplicates ordering and key data for every record. A local 100,000-record layout prototype added about 12.1 MiB for this index. Maintenance operations only need to enumerate every live record and can use the existing primary index.
