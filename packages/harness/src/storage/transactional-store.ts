@@ -670,6 +670,7 @@ export class TransactionalStore {
                     issues.push({ key, reason: "identity_mismatch" })
                 }
               }
+              recordProgress(work)
               const [invalid] = await connection.query(
                 "SELECT COUNT(*) AS count FROM storage_records r LEFT JOIN storage_nodes n ON r.namespace = n.namespace AND r.key_id = n.key_id WHERE r.namespace = ? AND r.body IS NOT NULL AND (n.key_id IS NULL OR n.key_text <> r.key_text OR r.revision < 1)",
                 [this.options.namespace],
