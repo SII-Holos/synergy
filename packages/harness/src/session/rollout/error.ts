@@ -3,12 +3,18 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 
 export const RolloutRecordingError = NamedError.create("RolloutRecordingError", z.object({ message: z.string() }))
 
+/** A deterministic admission failure: the queued task's experiment or the
+ *  resolved execution configuration cannot produce a run, and retrying the
+ *  same input will fail again. Materialization parks these instead of
+ *  letting the queue retry forever. */
+export const RolloutAdmissionError = NamedError.create("RolloutAdmissionError", z.object({ message: z.string() }))
+
 export function findRecordingError(error: unknown): InstanceType<typeof RolloutRecordingError> | undefined {
   const pending = [error]
   const visited = new Set<object>()
   for (let index = 0; index < pending.length && index < 64; index++) {
     const value = pending[index]
-    if (!value || typeof value !== "object" || visited.has(value)) continue
+    if (!value || typeof value !== "object") continue
     visited.add(value)
     if (RolloutRecordingError.isInstance(value)) return value
     for (const key of ["cause", "error", "suppressed", "lastError"] as const) {

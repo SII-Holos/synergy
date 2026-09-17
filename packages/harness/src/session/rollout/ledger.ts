@@ -101,6 +101,36 @@ export namespace RolloutLedger {
     return reopened
   }
 
+  /** Terminalize a queued task whose run shell never landed (its enqueue was
+   *  best-effort): persist a durable cancelled record so materialization
+   *  admission observes the cancellation instead of executing cancelled work.
+   *  A run that appeared meanwhile only gets its cancel request marked; the
+   *  live owner settles it through the normal cancel path. */
+  export async function cancelUnopenedRun(owner: Owner, runID: string, started: number) {
+    using lock = await Lock.write(lockKey(owner, runID))
+    const existing = await getRun(owner, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (existing) {
+      if (existing.status !== "running" || existing.cancelRequestedAt) return existing
+      const updated = { ...existing, cancelRequestedAt: Date.now() }
+      await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], updated))
+      return updated
+    }
+    const cancelled = RolloutSchema.RunRecord.parse({
+      version: 1,
+      id: runID,
+      owner,
+      started,
+      status: "cancelled",
+      recording: "partial",
+      cancelRequestedAt: Date.now(),
+    })
+    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], cancelled))
+    return cancelled
+  }
+
   export async function beginSegment(input: {
     owner: Owner
     runID: string
@@ -247,6 +277,19 @@ export namespace RolloutLedger {
     }
     if (run.recording === "failed") throw new RolloutRecordingError({ message: "Rollout recording has already failed" })
     if (run.cancelRequestedAt) throw new DOMException("Run was cancelled", "AbortError")
+    // A run interrupted before opening any segment is a queued task that
+    // never started executing (startup recovery terminalizes its shell);
+    // materialization reopens it instead of refusing a terminal rollout.
+    if (run.status === "interrupted" && (await segments(owner, runID)).length === 0) {
+      const reopened = RolloutSchema.RunRecord.parse({
+        ...run,
+        ended: undefined,
+        status: "running",
+        recording: "partial",
+      })
+      await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], reopened))
+      return reopened
+    }
     if (run.status !== "running") throw new Error("Cannot append execution to a terminal rollout")
     return run
   }

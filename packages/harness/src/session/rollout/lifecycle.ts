@@ -9,12 +9,13 @@ import { SessionWorkflowService } from "../workflow"
 import { Storage } from "../../storage/storage"
 import { RolloutLedger } from "./ledger"
 import { RolloutSchema } from "./schema"
-import { RolloutRecordingError } from "./error"
 import { Config } from "../../config/config"
 import { Experiment } from "../../config/experiment"
 import { SessionManager } from "../manager"
 import { LoopJob } from "../loop-job"
 import { SessionCortexRuntime } from "../cortex-runtime"
+import { RolloutAdmissionError, RolloutRecordingError } from "./error"
+import { StorageBusyError, StorageClosedError } from "../../storage/errors"
 
 export namespace RolloutLifecycle {
   export function owner(session: Session.Info): RolloutSchema.Owner {
@@ -62,32 +63,49 @@ export namespace RolloutLifecycle {
       throw error
     })
     if (existing?.configuration) return existing.configuration
-    if (file) Experiment.assertRuntime(file.runtime)
-    const lineage = await parent(session)
-    const inherited = lineage?.runID
-      ? (
-          await RolloutLedger.getRun(lineage.owner, lineage.runID).catch((error) => {
-            if (error instanceof Storage.NotFoundError) return undefined
-            throw error
-          })
-        )?.configuration
-      : undefined
-    if (inherited && file) throw new Error("Delegated runs inherit their parent experiment")
-    const resolution = inherited ? undefined : await Config.resolveExecutionDetails()
-    const snapshot =
-      inherited ??
-      Experiment.capture(
-        resolution!.config,
-        file,
-        model ? { model: `${model.providerID}/${model.modelID}` } : {},
-        resolution!.sources,
+    try {
+      if (file) Experiment.assertRuntime(file.runtime)
+      const lineage = await parent(session)
+      const inherited = lineage?.runID
+        ? (
+            await RolloutLedger.getRun(lineage.owner, lineage.runID).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return undefined
+              throw error
+            })
+          )?.configuration
+        : undefined
+      if (inherited && file)
+        throw new RolloutAdmissionError({ message: "Delegated runs inherit their parent experiment" })
+      const resolution = inherited ? undefined : await Config.resolveExecutionDetails()
+      const snapshot =
+        inherited ??
+        Experiment.capture(
+          resolution!.config,
+          file,
+          model ? { model: `${model.providerID}/${model.modelID}` } : {},
+          resolution!.sources,
+        )
+      return await RolloutLedger.configureRun(owner(session), runID, snapshot)
+    } catch (cause) {
+      // Deterministic admission failures park the queued task instead of
+      // letting the queue retry the same input forever. Transient storage
+      // pressure, recording failures, and cancellation aborts keep their own
+      // retry and terminal semantics.
+      if (
+        RolloutAdmissionError.isInstance(cause) ||
+        RolloutRecordingError.isInstance(cause) ||
+        cause instanceof DOMException ||
+        cause instanceof StorageBusyError ||
+        cause instanceof StorageClosedError
       )
-    return RolloutLedger.configureRun(owner(session), runID, snapshot)
+        throw cause
+      throw new RolloutAdmissionError({ message: "Unable to resolve the task's execution configuration" }, { cause })
+    }
   }
 
   /** Cheap admission for a queued task's experiment: preserves the
-   *  enqueue-time rejections of full admission without opening a rollout
-   *  run; the run and its evidence open at materialization instead. */
+   *  enqueue-time rejections of full admission while the run shell stays
+   *  lightweight; configuration and provenance attach at materialization. */
   export async function assertQueuedExperiment(session: Session.Info, file?: Experiment.File) {
     if (!file) return
     Experiment.assertRuntime(file.runtime)
@@ -100,7 +118,7 @@ export namespace RolloutLifecycle {
           })
         )?.configuration
       : undefined
-    if (inherited) throw new Error("Delegated runs inherit their parent experiment")
+    if (inherited) throw new RolloutAdmissionError({ message: "Delegated runs inherit their parent experiment" })
   }
 
   export async function cancel(sessionID: string, runID: string) {
@@ -111,27 +129,26 @@ export namespace RolloutLifecycle {
       throw error
     })
     if (!run) {
-      // A queued task that has not materialized yet has no rollout run; the
-      // run opens lazily at materialization. Cancel its queued work instead.
-      // A runID with neither a run nor queued work is genuinely unknown.
+      // The enqueue-time run shell is best-effort; a queued task whose shell
+      // never landed still needs durable cancellation so concurrent
+      // materialization observes it. Persist the terminal record under the
+      // run lock, then remove the queued work.
       for (const item of await SessionInbox.list(sessionID)) {
         if (item.messageID !== runID) continue
+        const cancelled = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created)
         await SessionInbox.remove({ sessionID, itemID: item.id })
-        return RolloutSchema.RunRecord.parse({
-          version: 1,
-          id: runID,
-          owner: identity,
-          started: item.time.created,
-          status: "cancelled",
-          recording: "partial",
-          cancelRequestedAt: Date.now(),
-        })
+        return cancelled
       }
+      // A runID with neither a run nor queued work is genuinely unknown.
       throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
     }
     if (run.status !== "running") return run
     for (const item of await SessionInbox.list(sessionID))
       if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
+    // Signal the live owner before waiting on it: requestCancel only marks
+    // the ledger, so without the root-scoped abort the wait below would
+    // block until the model or tool call finishes naturally.
+    SessionManager.signalAbort(sessionID, { rootID: runID })
     await Promise.all(
       (await Session.children(sessionID)).map(async (child) => {
         if ((await parent(child))?.runID !== runID) return

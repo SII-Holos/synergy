@@ -28,6 +28,7 @@ import { SessionUserMessageMaterialization } from "./user-message-materializatio
 import { SessionRootVariant } from "./root-variant"
 import { Experiment } from "../config/experiment"
 import { RolloutContext } from "./rollout/context"
+import { Storage } from "../storage/storage"
 import { RolloutLedger } from "./rollout/ledger"
 
 const log = Log.create({ service: "session.input" })
@@ -196,20 +197,27 @@ export async function createUserMessage(
   const { RolloutLifecycle } = await import("./rollout/lifecycle")
   const session = await Session.get(input.sessionID)
   const messageID = input.messageID ?? Identifier.ascending("message")
-  const configuration = await RolloutLifecycle.configuration(
-    session,
-    rootIDOverride ?? messageID,
-    input.experiment,
-    input.model,
-  )
+  const runID = rootIDOverride ?? messageID
   try {
+    const configuration = await RolloutLifecycle.configuration(session, runID, input.experiment, input.model)
     return await Experiment.provide(configuration, () =>
-      RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID: rootIDOverride ?? messageID }, () =>
+      RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID }, () =>
         materializeUserMessage({ ...input, messageID }, rootIDOverride, commitOptions),
       ),
     )
   } catch (error) {
-    await RolloutLedger.finishRun(RolloutLifecycle.owner(session), rootIDOverride ?? messageID, "failed")
+    // Terminalize the run so the failure is visible and retryable (rearm
+    // reopens it); a cancelled run settles as cancelled via its marker. The
+    // enqueue shell is best-effort, so a run that never landed stays absent
+    // without masking the materialization error.
+    await RolloutLedger.finishRun(RolloutLifecycle.owner(session), runID, "failed").catch((finishError) => {
+      if (!(finishError instanceof Storage.NotFoundError))
+        log.warn("failed to terminalize run after materialization error", {
+          sessionID: input.sessionID,
+          runID,
+          error: finishError,
+        })
+    })
     throw error
   }
 }

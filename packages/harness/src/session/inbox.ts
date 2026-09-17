@@ -10,6 +10,7 @@ import { Lock } from "../util/lock"
 import { sha256Content } from "../util/crypto"
 import { Log } from "../util/log"
 import { fn } from "../util/fn"
+import { RolloutAdmissionError } from "./rollout/error"
 import { Agent } from "../agent/agent"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { SessionContextContributions } from "./context-contributions"
@@ -612,13 +613,16 @@ export namespace SessionInbox {
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
     const mode: ItemMode = input.noReply === true ? "steer" : "task"
-    if (input.experiment) {
-      if (mode !== "task") throw new Error("Experiment configuration requires a root task")
-      // Admission stays fail-fast; the rollout run itself opens when the
-      // queued task materializes, off the request path.
-      const { RolloutLifecycle } = await import("./rollout/lifecycle")
-      await RolloutLifecycle.assertQueuedExperiment(await Session.get(input.sessionID), input.experiment)
-    }
+    let taskSession: Info | undefined
+    if (mode === "task") {
+      taskSession = await readSession(input.sessionID)
+      if (input.experiment) {
+        // Admission stays fail-fast before the item is stored; configuration
+        // resolution itself happens at materialization, off the request path.
+        const { RolloutLifecycle } = await import("./rollout/lifecycle")
+        await RolloutLifecycle.assertQueuedExperiment(taskSession, input.experiment)
+      }
+    } else if (input.experiment) throw new Error("Experiment configuration requires a root task")
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
@@ -649,6 +653,18 @@ export namespace SessionInbox {
       input: queuedInput,
     }
     const stored = await writeItem(item)
+    if (taskSession) {
+      // Open a lightweight run shell (no configuration or provenance) so
+      // status polls and cancellation observe a durable record immediately;
+      // heavy admission work attaches at materialization, off this path. The
+      // shell is best-effort — materialization opens the run lazily when the
+      // shell write failed.
+      const { RolloutLifecycle } = await import("./rollout/lifecycle")
+      const { RolloutLedger } = await import("./rollout/ledger")
+      await RolloutLedger.beginRun(RolloutLifecycle.owner(taskSession), messageID).catch((error) => {
+        log.warn("failed to open queued task run shell", { sessionID: input.sessionID, messageID, error })
+      })
+    }
     // Activity bump is presentation state, not admission: keep it off the
     // enqueue critical path so a queued task is durable and visible first.
     void Session.recordActivity(input.sessionID).catch((error) => {
@@ -1048,11 +1064,12 @@ export namespace SessionInbox {
     | { status: "empty" }
 
   /**
-   * Materialize the next runnable task. A payload that deterministically
-   * cannot become a message (attachment capture failures and similar
-   * InvalidUrlError-class input errors) is parked as failed instead of
-   * throwing: the item stays visible with a reason, the queue behind it
-   * proceeds, and retry can re-drive it after the payload is repaired.
+   * Materialize the next runnable task. Inputs that deterministically cannot
+   * become a runnable root (attachment capture failures and similar
+   * InvalidUrlError-class payload errors, plus RolloutAdmissionError-class
+   * configuration failures) are parked as failed instead of throwing: the
+   * item stays visible with a reason, the queue behind it proceeds, and
+   * retry can re-drive it after the underlying input is repaired.
    */
   export async function materializeNextTask(sessionID: string): Promise<TaskMaterializationResult> {
     const task = await peekTask(sessionID)
@@ -1064,9 +1081,20 @@ export namespace SessionInbox {
         return { status: "failed", itemID: task.id, reason: "Inbox task payload could not be materialized" }
       }
     } catch (error) {
-      if (!(error instanceof Attachment.InvalidUrlError)) throw error
-      await parkTaskFailure(sessionID, task, error.message)
-      return { status: "failed", itemID: task.id, reason: error.message }
+      // A cancellation racing materialization removed the queued item and
+      // terminalized its run; report no runnable work instead of parking
+      // (parking would resurrect the cancelled item) or surfacing an error.
+      if (error instanceof DOMException) return { status: "empty" }
+      if (!(error instanceof Attachment.InvalidUrlError) && !RolloutAdmissionError.isInstance(error)) throw error
+      const reason = RolloutAdmissionError.isInstance(error)
+        ? error.data.message
+        : (error as Attachment.InvalidUrlError).message
+      // A concurrent cancel may have removed the item while admission was
+      // resolving; parking must not resurrect cancelled work.
+      const current = await getStored(sessionID, task.id).catch(() => undefined)
+      if (!current) return { status: "empty" }
+      await parkTaskFailure(sessionID, task, reason)
+      return { status: "failed", itemID: task.id, reason }
     }
     return { status: "materialized", itemID: task.id, messageID: task.messageID }
   }
