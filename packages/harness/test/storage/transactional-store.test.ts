@@ -125,6 +125,29 @@ for (const backend of ["sqlite", ...(process.env.SYNERGY_TEST_POSTGRES_URL ? ["p
       expect(await store.read<Record<string, unknown>>(["a", "b/c"])).toEqual({ value: 1 })
     })
 
+    test("traversal reports a child for any live descendant and drops tombstoned subtrees", async () => {
+      const store = await open()
+      await store.write(["tree", "live", "deep", "leaf"], { value: 1 })
+      await store.write(["tree", "gone", "deep", "leaf"], { value: 2 })
+      await store.write(["tree", "gone", "deep"], { value: 3 })
+      await store.write(["tree", "kept", "leaf"], { value: 4 })
+      expect(await store.scan(["tree"])).toEqual(["gone", "kept", "live"])
+      expect(await store.list(["tree"])).toEqual([
+        ["tree", "gone", "deep"],
+        ["tree", "gone", "deep", "leaf"],
+        ["tree", "kept", "leaf"],
+        ["tree", "live", "deep", "leaf"],
+      ])
+      await store.removeTree(["tree", "gone"])
+      expect(await store.scan(["tree"])).toEqual(["kept", "live"])
+      expect(await store.scan(["tree", "gone"])).toEqual([])
+      expect(await store.list(["tree"])).toEqual([
+        ["tree", "kept", "leaf"],
+        ["tree", "live", "deep", "leaf"],
+      ])
+      expect(await store.read<Record<string, unknown>>(["tree", "live", "deep", "leaf"])).toEqual({ value: 1 })
+    })
+
     test("rejects stale revisions and never reuses the revision of deleted records", async () => {
       const store = await open()
       await store.write(["part"], { status: "running" })

@@ -229,10 +229,13 @@ export class StoreTransaction {
 
   // SQLite must drive recursion from the frontier to use both columns of the parent index.
   // CROSS JOIN prevents a namespace-wide node scan for every visited node.
+  // The liveness check must probe storage_records by its (namespace, key_id) primary key: a
+  // joined `body IS NOT NULL` condition makes the planner read the namespace-wide covering
+  // index for every call, which costs the whole record set regardless of the subtree.
   async scan(prefix: string[]): Promise<string[]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { child: string }>(
-      "WITH RECURSIVE tree(key_id, child) AS (SELECT key_id, segment FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id, tree.child FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT DISTINCT tree.child FROM tree JOIN storage_records record ON record.key_id = tree.key_id AND record.namespace = ? WHERE record.body IS NOT NULL",
+      "WITH RECURSIVE tree(key_id, child) AS (SELECT key_id, segment FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id, tree.child FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT DISTINCT tree.child FROM tree WHERE EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = tree.key_id AND record.body IS NOT NULL)",
       [this.namespace, keyID(prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => row.child).sort()
@@ -241,7 +244,7 @@ export class StoreTransaction {
   async list(prefix: string[]): Promise<string[][]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { key_text: string }>(
-      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT record.key_text FROM tree JOIN storage_records record ON record.key_id = tree.key_id AND record.namespace = ? WHERE record.body IS NOT NULL",
+      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT record.key_text FROM storage_records record WHERE record.namespace = ? AND record.body IS NOT NULL AND record.key_id IN (SELECT key_id FROM tree)",
       [this.namespace, keyID(prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => JSON.parse(row.key_text) as string[]).sort()
