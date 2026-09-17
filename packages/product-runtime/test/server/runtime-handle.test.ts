@@ -30,6 +30,7 @@ test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent s
     expect((await ServerProcessLock.read())?.mode).toBe("oneshot")
     expect(ScopeStartup.resident()).toBe(false)
     expect(runtime.config.execution?.agentWorkers).toBe(DEFAULT_AGENT_WORKER_POOL_OPTIONS.size)
+    expect(runtime.config.execution?.agentWorkerMinIdle).toBe(0)
     expect(() =>
       Experiment.assertRuntime({ execution: { agentWorkers: DEFAULT_AGENT_WORKER_POOL_OPTIONS.size } }),
     ).not.toThrow()

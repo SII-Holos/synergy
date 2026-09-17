@@ -1,3 +1,4 @@
+import { Log } from "../../util/log"
 import { ProviderRetryCoordinator, providerRetryKey } from "../../provider/retry-coordinator"
 import { LLM } from "../llm"
 import { ToolCatalog } from "../tool-catalog"
@@ -29,6 +30,7 @@ export namespace AgentTurn {
   let stopPromise: Promise<void> | undefined
   let inProcessStream: InProcessStream | undefined
 
+  const log = Log.create({ service: "agent.turn" })
   export function configure(input: Partial<AgentWorkerPoolOptions> = {}): void {
     if (pool) throw new Error("Agent worker pool cannot be reconfigured after it has started")
     accepting = true
@@ -59,8 +61,10 @@ export namespace AgentTurn {
     if (!accepting || stopPromise || inProcessStream) return
     try {
       pool ??= new AgentWorkerPool(options)
-    } catch {
-      // Option validation failures resurface when the first turn creates the pool lazily.
+    } catch (error) {
+      // Option validation cannot succeed in any later attempt either; log it
+      // and let the first turn surface the failure through lazy creation.
+      log.warn("agent worker pool prewarm rejected the configured options", { error })
     }
   }
 

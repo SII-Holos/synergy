@@ -201,7 +201,7 @@
           "maximum": 64
         },
         "agentWorkerMinIdle": {
-          "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+          "description": "Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)",
           "type": "integer",
           "minimum": 0,
           "maximum": 64

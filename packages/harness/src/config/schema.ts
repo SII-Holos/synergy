@@ -593,7 +593,9 @@ const CoreInfo = z
           .nonnegative()
           .max(64)
           .optional()
-          .describe("Minimum number of idle Agent workers kept warm (default: 1; cannot exceed agentWorkers)"),
+          .describe(
+            "Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)",
+          ),
         agentWorkerIdleTimeoutMs: z
           .number()
           .int()

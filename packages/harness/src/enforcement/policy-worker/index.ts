@@ -1,3 +1,4 @@
+import { Log } from "../../util/log"
 import type { GateOptions, ClassifyResult } from "../gate"
 import type { PolicyClassificationContext } from "./protocol"
 import { DEFAULT_POLICY_WORKER_POOL_OPTIONS, PolicyWorkerPool, type PolicyWorkerPoolOptions } from "./worker-pool"
@@ -7,6 +8,8 @@ export namespace PolicyWorker {
   let options = DEFAULT_POLICY_WORKER_POOL_OPTIONS
   let accepting = true
   let stopPromise: Promise<void> | undefined
+
+  const log = Log.create({ service: "policy.worker" })
 
   export function configure(input: Partial<PolicyWorkerPoolOptions> = {}): void {
     if (pool) throw new Error("Policy worker pool cannot be reconfigured after it has started")
@@ -48,8 +51,10 @@ export namespace PolicyWorker {
     try {
       pool ??= new PolicyWorkerPool(options)
       pool.start()
-    } catch {
-      // Option validation failures resurface when the first classification creates the pool lazily.
+    } catch (error) {
+      // Option validation cannot succeed in any later attempt either; log it
+      // and let the first classification surface the failure through lazy creation.
+      log.warn("policy worker pool prewarm rejected the configured options", { error })
     }
   }
 

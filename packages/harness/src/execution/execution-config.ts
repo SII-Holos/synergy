@@ -6,7 +6,7 @@ import { DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS, ToolScheduler } from "../session/t
 import { PolicyWorker, DEFAULT_POLICY_WORKER_POOL_OPTIONS } from "../enforcement/policy-worker"
 import { resolveRuntimeShutdownTimeoutMs } from "@ericsanchezok/synergy-util/runtime-shutdown"
 
-export function configureExecution(config: Config.Info) {
+export function configureExecution(config: Config.Info, mode: "server" | "oneshot") {
   const shutdownTimeoutMs = resolveRuntimeShutdownTimeoutMs(
     Math.max(
       config.execution?.agentCancelGraceMs ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.cancelGraceMs,
@@ -17,7 +17,7 @@ export function configureExecution(config: Config.Info) {
   CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
   AgentTurn.configure({
     size: config.execution?.agentWorkers,
-    minIdle: config.execution?.agentWorkerMinIdle,
+    minIdle: defaultAgentWorkerMinIdle(config, mode),
     idleTimeoutMs: config.execution?.agentWorkerIdleTimeoutMs,
     maxQueued: config.execution?.agentQueueMax,
     maxQueuedBytes:
@@ -72,14 +72,14 @@ export function configureExecution(config: Config.Info) {
   return shutdownTimeoutMs
 }
 
-export function resolveExecutionConfiguration(config: Config.Info): Config.Info {
+export function resolveExecutionConfiguration(config: Config.Info, mode: "server" | "oneshot"): Config.Info {
   return {
     ...config,
     cortex: { ...config.cortex, maxConcurrentTasks: CortexConcurrency.desiredGlobalLimit() },
     execution: {
       ...config.execution,
       agentWorkers: config.execution?.agentWorkers ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.size,
-      agentWorkerMinIdle: config.execution?.agentWorkerMinIdle ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.minIdle,
+      agentWorkerMinIdle: config.execution?.agentWorkerMinIdle ?? defaultAgentWorkerMinIdle(config, mode),
       agentWorkerIdleTimeoutMs:
         config.execution?.agentWorkerIdleTimeoutMs ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.idleTimeoutMs,
       agentQueueMax: config.execution?.agentQueueMax ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxQueued,
@@ -128,4 +128,11 @@ export function resolveExecutionConfiguration(config: Config.Info): Config.Info 
       },
     },
   }
+}
+
+function defaultAgentWorkerMinIdle(config: Config.Info, mode: "server" | "oneshot"): number {
+  if (config.execution?.agentWorkerMinIdle !== undefined) return config.execution.agentWorkerMinIdle
+  // The warm idle reserve only pays off on a resident server; a one-shot
+  // runtime exits after its last turn, so a reserved worker would never serve.
+  return mode === "server" ? DEFAULT_AGENT_WORKER_POOL_OPTIONS.minIdle : 0
 }

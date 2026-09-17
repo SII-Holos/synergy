@@ -100,7 +100,7 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
 }
 ```
 
-`agentWorkers` is the maximum Agent-turn concurrency, not an eagerly allocated pool size. It defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. Global-runtime startup prewarms the pool toward the warm reserve without waiting on worker readiness; beyond that reserve the pool starts workers on demand, keeps `agentWorkerMinIdle` idle workers warm (default 1), and retires excess workers after `agentWorkerIdleTimeoutMs` (default 60 seconds). `agentWorkerMinIdle` cannot exceed the effective `agentWorkers` limit.
+`agentWorkers` is the maximum Agent-turn concurrency, not an eagerly allocated pool size. It defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. Global-runtime startup prewarms the pool toward the warm reserve without waiting on worker readiness; beyond that reserve the pool starts workers on demand, keeps `agentWorkerMinIdle` idle workers warm (default 1 on resident servers; one-shot runs default to 0), and retires excess workers after `agentWorkerIdleTimeoutMs` (default 60 seconds). `agentWorkerMinIdle` cannot exceed the effective `agentWorkers` limit.
 
 `agentWorkers` can be changed from Settings → Agents or the Runtime domain while the global runtime is running. Increasing it raises the ceiling and admits queued demand without eagerly filling unused capacity. Decreasing it releases excess idle workers immediately, while excess active workers finish their current turns before retiring.
 

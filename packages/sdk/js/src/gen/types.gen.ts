@@ -4320,7 +4320,7 @@ export type Config = {
      */
     agentWorkers?: number
     /**
-     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
     agentWorkerMinIdle?: number
     /**
@@ -5997,7 +5997,7 @@ export type ExperimentRuntime = {
      */
     agentWorkers?: number
     /**
-     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
     agentWorkerMinIdle?: number
     /**
