@@ -43,6 +43,16 @@ export namespace PolicyWorker {
     }
   }
 
+  export function prewarm(): void {
+    if (!accepting || stopPromise) return
+    try {
+      pool ??= new PolicyWorkerPool(options)
+      pool.start()
+    } catch {
+      // Option validation failures resurface when the first classification creates the pool lazily.
+    }
+  }
+
   export async function start(): Promise<void> {
     if (!accepting || stopPromise) throw new Error("Policy worker pool is stopping")
     pool ??= new PolicyWorkerPool(options)

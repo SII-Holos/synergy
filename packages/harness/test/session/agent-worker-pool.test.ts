@@ -1674,4 +1674,21 @@ describe("AgentWorkerPool", () => {
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
     await pool.stop()
   })
+  test("keeps one warm worker by default", () => {
+    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.minIdle).toBe(1)
+  })
+
+  test("records worker ready latency when a spawned worker becomes ready", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, minIdle: 1 }, fake.spawn)
+    using _metrics = spyOn(ObservabilityMetrics, "record")
+    fake.workers[0].ready()
+    const calls = (
+      _metrics as unknown as {
+        mock: { calls: Array<Array<{ name?: string; unit?: string }>> }
+      }
+    ).mock.calls
+    expect(calls.some((call) => call[0]?.name === "agent.worker.ready_latency" && call[0]?.unit === "ms")).toBe(true)
+    await pool.stop()
+  })
 })

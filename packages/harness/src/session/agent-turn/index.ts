@@ -55,6 +55,15 @@ export namespace AgentTurn {
     pool?.resize(size)
   }
 
+  export function prewarm(): void {
+    if (!accepting || stopPromise || inProcessStream) return
+    try {
+      pool ??= new AgentWorkerPool(options)
+    } catch {
+      // Option validation failures resurface when the first turn creates the pool lazily.
+    }
+  }
+
   export async function stream(input: Input): Promise<Stream> {
     if (!accepting || stopPromise) throw new Error("Agent worker pool is stopping")
     const { contextUsageProvenance, recording, ...turnInput } = input

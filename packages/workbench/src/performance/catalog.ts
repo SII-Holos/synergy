@@ -94,6 +94,16 @@ export namespace PerformanceCatalog {
       "process",
       [],
     ),
+    metric(
+      "agent.worker.ready_latency",
+      "Agent worker startup latency",
+      "ms",
+      "duration",
+      "p95",
+      "session",
+      "process",
+      [],
+    ),
     metric("session.tool.count", "Session tool calls", "count", "counter", "sum", "session", "backend", ["tool"]),
     metric("session.llm.count", "Session LLM calls", "count", "counter", "sum", "session", "backend", [
       "providerID",
