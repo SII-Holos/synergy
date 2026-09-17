@@ -2,6 +2,9 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { TransactionalStore } from "../src/storage/transactional-store"
+import { Storage } from "../src/storage/storage"
+import { RolloutArtifact } from "../src/session/rollout/artifact"
+import { RolloutJournal } from "../src/session/rollout/journal"
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-storage-benchmark-"))
 const count = 1000
@@ -60,4 +63,73 @@ try {
   }
 } finally {
   await fs.rm(root, { recursive: true, force: true })
+}
+
+// Key traversal and journal reads are measured separately from commit throughput: their cost is
+// dominated by how the store probes the record table, not by transaction or fsync cost. The
+// traversal probe deliberately runs against a namespace with many unrelated live records, which
+// is the shape that made a small-subtree read scan the whole record set.
+const traversalRecords = Number(process.env.SYNERGY_BENCH_TRAVERSAL_RECORDS ?? 20_000)
+const journalEvents = Number(process.env.SYNERGY_BENCH_JOURNAL_EVENTS ?? 5_000)
+const traversalRoot = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-storage-traversal-"))
+try {
+  const namespace = `traversal_${crypto.randomUUID()}`
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace,
+    filename: path.join(traversalRoot, "agent.sqlite"),
+  })
+  const release = Storage.install({ store, artifactDirectory: path.join(traversalRoot, "artifacts") })
+  try {
+    await store.transaction(async (tx) => {
+      for (let index = 0; index < traversalRecords; index++)
+        await tx.write(["bulk", String(index).padStart(8, "0")], { index })
+      await tx.write(["probe", "leaf"], { value: 1 })
+    })
+    const scanStarted = performance.now()
+    const children = await store.scan(["probe"])
+    const scanMs = performance.now() - scanStarted
+    const listStarted = performance.now()
+    const keys = await store.list(["probe"])
+    const listMs = performance.now() - listStarted
+    if (children.length !== 1 || keys.length !== 1) throw new Error("Traversal benchmark verification failed")
+
+    const owner = { kind: "operation" as const, scopeID: "benchmark", operationID: crypto.randomUUID() }
+    const journal = [...RolloutArtifact.root(owner), "journal"]
+    await store.transaction(async (tx) => {
+      for (let seq = 1; seq <= journalEvents; seq++)
+        await tx.write([...journal, "events", String(seq).padStart(12, "0")], {
+          version: 1,
+          kind: "gap",
+          seq,
+          time: Date.now(),
+        })
+      await tx.write([...journal, "head"], { allocated: journalEvents, committed: journalEvents })
+    })
+    const journalStarted = performance.now()
+    const sequence: number[] = []
+    for await (const event of RolloutJournal.events(owner, journalEvents)) sequence.push(event.seq)
+    const journalReadMs = performance.now() - journalStarted
+    if (sequence.length !== journalEvents || sequence[0] !== 1 || sequence.at(-1) !== journalEvents)
+      throw new Error("Journal benchmark verification failed")
+
+    console.log(
+      JSON.stringify({
+        harness: "storage-traversal",
+        backend: "sqlite",
+        namespaceRecords: traversalRecords + 1,
+        probeSubtreeRecords: 1,
+        scanMs: +scanMs.toFixed(2),
+        listMs: +listMs.toFixed(2),
+        journalEvents,
+        journalReadMs: +journalReadMs.toFixed(2),
+        journalMsPerEvent: +(journalReadMs / journalEvents).toFixed(4),
+      }),
+    )
+  } finally {
+    release()
+    await store.close()
+  }
+} finally {
+  await fs.rm(traversalRoot, { recursive: true, force: true })
 }

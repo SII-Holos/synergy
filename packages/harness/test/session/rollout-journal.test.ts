@@ -87,3 +87,87 @@ test("a historical missing reserved event remains an explicit gap", async () => 
   expect(events[0]).toMatchObject({ seq: 1, kind: "gap" })
   expect(events[1]).toMatchObject({ seq: 2, kind: "record", value: { status: "failed" } })
 })
+
+// One event more than the reader's internal window, so the range spans two read batches.
+const SEEDED_EVENTS = 513
+
+async function seedEvents(target: ReturnType<typeof owner>, count: number) {
+  const journal = [...RolloutArtifact.root(target), "journal"]
+  await Storage.transaction(async () => {
+    for (let seq = 1; seq <= count; seq++) {
+      const event =
+        seq === count
+          ? {
+              version: 1,
+              kind: "record" as const,
+              seq,
+              time: Date.now(),
+              key: ["runs", "run", "info"],
+              value: { status: "completed" },
+            }
+          : { version: 1, kind: "gap" as const, seq, time: Date.now() }
+      await Storage.write([...journal, "events", String(seq).padStart(12, "0")], event)
+    }
+    await Storage.write([...journal, "head"], { allocated: count, committed: count })
+  })
+}
+
+async function collectEvents(target: ReturnType<typeof owner>, through: number, after = 0) {
+  const events: RolloutJournal.Event[] = []
+  for await (const event of RolloutJournal.events(target, through, after)) events.push(event)
+  return events
+}
+
+test("reads a journal range across read batches and keeps every event in sequence", async () => {
+  const target = owner()
+  await seedEvents(target, SEEDED_EVENTS)
+  const events = await collectEvents(target, SEEDED_EVENTS)
+  expect(events).toHaveLength(SEEDED_EVENTS)
+  expect(events.map((event) => event.seq)).toEqual(Array.from({ length: SEEDED_EVENTS }, (_, index) => index + 1))
+  expect(events[SEEDED_EVENTS - 2]).toMatchObject({ seq: SEEDED_EVENTS - 1, kind: "gap" })
+  expect(events[SEEDED_EVENTS - 1]).toMatchObject({
+    seq: SEEDED_EVENTS,
+    kind: "record",
+    value: { status: "completed" },
+  })
+})
+
+test("bounds a batched journal range by the requested boundary", async () => {
+  const target = owner()
+  await seedEvents(target, SEEDED_EVENTS)
+  expect((await collectEvents(target, SEEDED_EVENTS, SEEDED_EVENTS - 1)).map((event) => event.seq)).toEqual([
+    SEEDED_EVENTS,
+  ])
+  expect(await collectEvents(target, 0, 0)).toEqual([])
+  await expect(collectEvents(target, 0, 1)).rejects.toThrow("Invalid rollout journal boundary")
+})
+
+test("a missing committed event inside a batch stays a typed miss", async () => {
+  const target = owner()
+  const journal = [...RolloutArtifact.root(target), "journal"]
+  await Storage.transaction(async () => {
+    await Storage.write([...journal, "events", String(1).padStart(12, "0")], {
+      version: 1,
+      kind: "gap",
+      seq: 1,
+      time: Date.now(),
+    })
+    await Storage.write([...journal, "head"], { allocated: 2, committed: 2 })
+  })
+  await expect(collectEvents(target, 2)).rejects.toMatchObject({ name: "NotFoundError" })
+})
+
+test("a mismatched journal sequence inside a batch stays fatal", async () => {
+  const target = owner()
+  const journal = [...RolloutArtifact.root(target), "journal"]
+  await Storage.transaction(async () => {
+    await Storage.write([...journal, "events", String(1).padStart(12, "0")], {
+      version: 1,
+      kind: "gap",
+      seq: 2,
+      time: Date.now(),
+    })
+    await Storage.write([...journal, "head"], { allocated: 1, committed: 1 })
+  })
+  await expect(collectEvents(target, 1)).rejects.toThrow("Rollout journal sequence mismatch")
+})
