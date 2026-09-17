@@ -8,9 +8,6 @@ import { record } from "./error"
 
 export namespace RolloutJournal {
   const Revision = z.number().int().nonnegative().safe()
-  // Reading the range one key at a time costs three IPC round trips per event and makes a long
-  // journal the dominant storage load; one batched read per window bounds memory and round trips.
-  const EVENT_READ_BATCH = 512
   const Head = z
     .object({ allocated: Revision, committed: Revision })
     .strict()
@@ -110,19 +107,10 @@ export namespace RolloutJournal {
     Revision.parse(through)
     Revision.parse(after)
     if (after > through || through > (await head(owner)).committed) throw new Error("Invalid rollout journal boundary")
-    for (let start = after + 1; start <= through; start += EVENT_READ_BATCH) {
-      const end = Math.min(through, start + EVENT_READ_BATCH - 1)
-      const sequence: number[] = []
-      for (let seq = start; seq <= end; seq++) sequence.push(seq)
-      const values = await Storage.readMany<unknown>(sequence.map((seq) => eventKey(owner, seq)))
-      for (const [index, seq] of sequence.entries()) {
-        const value = values[index]
-        // A committed event is never expected to be absent; keep the single-key read so a
-        // corruption case still raises the typed miss and its storage observability issue.
-        const event = Event.parse(value === undefined ? await Storage.read(eventKey(owner, seq)) : value)
-        if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
-        yield event
-      }
+    for (let seq = after + 1; seq <= through; seq++) {
+      const event = Event.parse(await Storage.read(eventKey(owner, seq)))
+      if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
+      yield event
     }
   }
 }
