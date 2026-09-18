@@ -68,7 +68,16 @@ class ModelProfile(StrictModel):
             raise ValueError("Model parameters cannot override transport, messages or credentials")
         common = {"temperature", "top_p"}
         allowed = common | (
-            {"seed", "stop", "frequency_penalty", "presence_penalty", "reasoning_effort", "thinking", "tool_stream"}
+            {
+                "seed",
+                "stop",
+                "frequency_penalty",
+                "presence_penalty",
+                "reasoning_effort",
+                "thinking",
+                "tool_stream",
+                "chat_template_kwargs",
+            }
             if self.protocol == "chat-completions"
             else {"reasoning"}
         )
@@ -120,6 +129,16 @@ class ModelProfile(StrictModel):
                 or value.get("summary", "auto") not in ("auto", "concise", "detailed")
             ):
                 raise ValueError("Invalid reasoning parameters")
+        if "chat_template_kwargs" in self.parameters:
+            value = self.parameters["chat_template_kwargs"]
+            if not isinstance(value, dict) or value.keys() - {"enable_thinking", "thinking_budget"}:
+                raise ValueError("Invalid chat_template_kwargs parameters")
+            if "enable_thinking" in value and type(value["enable_thinking"]) is not bool:
+                raise ValueError("Invalid chat_template_kwargs enable_thinking")
+            if "thinking_budget" in value and (
+                type(value["thinking_budget"]) is not int or value["thinking_budget"] < 0
+            ):
+                raise ValueError("Invalid chat_template_kwargs thinking_budget")
         return self
 
 

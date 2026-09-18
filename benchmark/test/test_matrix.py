@@ -192,3 +192,50 @@ def test_invalid_reasoning_parameters_raise_validation_errors(parameters):
             max_output_tokens=10,
             parameters=parameters,
         )
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"chat_template_kwargs": {"enable_thinking": True, "thinking_budget": 1024}},
+        {"chat_template_kwargs": {"enable_thinking": False}},
+    ],
+)
+def test_chat_template_kwargs_accept_valid_shapes(parameters):
+    from synergy_bench.config import ModelProfile
+
+    profile = ModelProfile(
+        model="m",
+        protocol="chat-completions",
+        base_url="https://provider.test/v1",
+        api_key_env="KEY",
+        context_window=100,
+        max_output_tokens=10,
+        parameters=parameters,
+    )
+    assert profile.parameters == parameters
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"chat_template_kwargs": "enabled"},
+        {"chat_template_kwargs": {"enable_thinking": "yes"}},
+        {"chat_template_kwargs": {"thinking_budget": 1.5}},
+        {"chat_template_kwargs": {"thinking_budget": -1}},
+        {"chat_template_kwargs": {"unknown_key": True}},
+    ],
+)
+def test_chat_template_kwargs_reject_invalid_shapes(parameters):
+    from synergy_bench.config import ModelProfile
+
+    with pytest.raises(ValueError):
+        ModelProfile(
+            model="m",
+            protocol="chat-completions",
+            base_url="https://provider.test/v1",
+            api_key_env="KEY",
+            context_window=100,
+            max_output_tokens=10,
+            parameters=parameters,
+        )
