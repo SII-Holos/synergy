@@ -141,12 +141,41 @@ function probeId(): string {
   return `${process.pid}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/**
+ * Workspace for a real-execution probe.
+ *
+ * The Linux helper binds `<workspace>/.synergy/tmp` over `/tmp`, so a workspace
+ * created under `/tmp` — where the test fixture root lives — is shadowed inside
+ * its own sandbox and every command fails to start. Linux probes therefore take
+ * a workspace under the runtime home, mirroring the real-helper end-to-end in
+ * `linux-readable-roots.test.ts`. On macOS the ordinary fixture root is visible
+ * and is used as-is.
+ */
+async function probeWorkspace(): Promise<{ path: string; dispose: () => void }> {
+  if (process.platform !== "linux") {
+    const fixture = await tmpdir()
+    return { path: fixture.path, dispose: () => {} }
+  }
+  const root = path.join(os.homedir(), ".synergy", "tmp")
+  fs.mkdirSync(root, { recursive: true })
+  const workspace = fs.mkdtempSync(path.join(root, "containment-baseline-"))
+  return { path: workspace, dispose: () => fs.rmSync(workspace, { recursive: true, force: true }) }
+}
+
+/**
+ * A probe proves nothing if the shell never started. Each probe reports whether
+ * it emitted its sentinel at all, and every caller asserts that, so a backend
+ * that fails to launch cannot make a containment assertion pass by producing
+ * empty output.
+ */
 async function writeProbe(workspace: string, target: string) {
   const result = await runInSandbox(workspace, `echo probe > ${shellQuote(target)} && echo WROTE || echo BLOCKED`)
   return {
+    ran: result.stdout.includes("WROTE") || result.stdout.includes("BLOCKED"),
     wrote: result.stdout.includes("WROTE"),
     blocked: result.stdout.includes("BLOCKED"),
     hostFileExists: fs.existsSync(target),
+    stdout: result.stdout,
     stderr: result.stderr.trim(),
   }
 }
@@ -156,33 +185,44 @@ async function readProbe(workspace: string, target: string) {
     workspace,
     `if cat ${shellQuote(target)} >/dev/null 2>&1; then echo LEAKED; else echo NOT_READABLE; fi`,
   )
-  return { readable: result.stdout.includes("LEAKED"), stdout: result.stdout, stderr: result.stderr.trim() }
+  return {
+    ran: result.stdout.includes("LEAKED") || result.stdout.includes("NOT_READABLE"),
+    readable: result.stdout.includes("LEAKED"),
+    stdout: result.stdout,
+    stderr: result.stderr.trim(),
+  }
 }
 
 describe.skipIf(!availability.available)("OS sandbox containment baseline", () => {
   test("external write targets stay unwritable", async () => {
-    await using fixture = await tmpdir()
+    const workspace = await probeWorkspace()
     const id = probeId()
     const targets: Record<string, string> = {
       "system /etc": `/etc/harness-baseline-probe-${id}`,
       "user home": path.join(os.homedir(), `.harness-baseline-probe-${id}`),
       "shared temp": `/tmp/harness-baseline-probe-${id}`,
     }
-    const recorded: Record<string, { blocked: boolean; wrote: boolean; hostFileExists: boolean }> = {}
+    const recorded: Record<string, { ran: boolean; blocked: boolean; wrote: boolean; hostFileExists: boolean }> = {}
     try {
       for (const [label, target] of Object.entries(targets)) {
-        const result = await writeProbe(fixture.path, target)
+        const result = await writeProbe(workspace.path, target)
         recorded[label] = {
+          ran: result.ran,
           blocked: result.blocked,
           wrote: result.wrote,
           hostFileExists: result.hostFileExists,
         }
       }
 
+      // A probe that never emitted a sentinel proves nothing, so the shell
+      // must have actually run before any containment claim is made.
+      for (const [label, result] of Object.entries(recorded)) {
+        expect({ label, ran: result.ran }).toEqual({ label, ran: true })
+      }
       // The containment property is that no host file is created, and that
       // holds on every backend. The observable *signal* differs by backend:
       // macOS denies the write (allow-list Seatbelt profile, denial reported),
-      // while the Linux plan starts from `tmpfs /` so the write lands in the
+      // while the Linux plan starts from `tmpfs /`, so the write lands in the
       // sandbox's private filesystem and the command reports success without
       // ever reaching the host. Asserting the signal would make one platform's
       // shape a requirement for the other; the invariant is asserted instead,
@@ -190,14 +230,20 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
       // "wrote to the host" cannot pass.
       for (const [label, result] of Object.entries(recorded)) {
         expect({ label, hostFileExists: result.hostFileExists }).toEqual({ label, hostFileExists: false })
-        expect({ label, wroteToHost: result.wrote && result.hostFileExists }).toEqual({
-          label,
-          wroteToHost: false,
-        })
       }
       if (process.platform === "darwin") {
-        expect(recorded["system /etc"]).toEqual({ blocked: true, wrote: false, hostFileExists: false })
-        expect(recorded["user home"]).toEqual({ blocked: true, wrote: false, hostFileExists: false })
+        expect(recorded["system /etc"]).toEqual({
+          ran: true,
+          blocked: true,
+          wrote: false,
+          hostFileExists: false,
+        })
+        expect(recorded["user home"]).toEqual({
+          ran: true,
+          blocked: true,
+          wrote: false,
+          hostFileExists: false,
+        })
       }
       // The home target is writable by this user outside the sandbox, so a
       // `false` above is attributable to the sandbox rather than to host
@@ -205,14 +251,15 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
       expect(hostWriteBaseline(targets["user home"]!)).toBe(true)
       console.log(`[containment-baseline] external writes contained: ${JSON.stringify(recorded)}`)
     } finally {
-      for (const target of Object.values(targets)) fs.rmSync(target, { force: true })
+      for (const target of Object.values(targets)) fs.rmSync(target, { force: true, recursive: true })
+      workspace.dispose()
     }
   })
 
   test("credential paths stay unreadable", async () => {
     const testHome = process.env["SYNERGY_TEST_HOME"]
     if (!testHome) throw new Error("SYNERGY_TEST_HOME is not set; the test preload is not active")
-    await using fixture = await tmpdir()
+    const workspace = await probeWorkspace()
 
     const marker = `SYNERGY-CONTAINMENT-MARKER-${probeId()}`
     const synthetic = {
@@ -224,20 +271,20 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
       fs.writeFileSync(target, `${marker}-${index}\n`)
     }
 
-    const recorded: Record<string, { readable: boolean; hostFileExists: boolean }> = {}
+    const recorded: Record<string, { ran: boolean; readable: boolean; hostFileExists: boolean }> = {}
     const outputs: string[] = []
     try {
       for (const [label, target] of Object.entries(synthetic)) {
         // Host baseline: the isolated test home is fully readable outside the
         // sandbox, so a denial inside it is attributable to the sandbox.
         expect(fs.readFileSync(target, "utf8")).toContain(marker)
-        const result = await readProbe(fixture.path, target)
+        const result = await readProbe(workspace.path, target)
         outputs.push(result.stdout, result.stderr)
-        recorded[label] = { readable: result.readable, hostFileExists: fs.existsSync(target) }
+        recorded[label] = { ran: result.ran, readable: result.readable, hostFileExists: fs.existsSync(target) }
       }
       expect(recorded).toEqual({
-        "ssh private key": { readable: false, hostFileExists: true },
-        "aws credentials": { readable: false, hostFileExists: true },
+        "ssh private key": { ran: true, readable: false, hostFileExists: true },
+        "aws credentials": { ran: true, readable: false, hostFileExists: true },
       })
       // Defense in depth: no channel of the run exposed the credential body.
       expect(outputs.join("\n")).not.toContain(marker)
@@ -247,22 +294,23 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
       const homeStores = [path.join(os.homedir(), ".ssh"), path.join(os.homedir(), ".aws")]
       for (const store of homeStores) {
         if (!fs.existsSync(store)) continue
-        const result = await readProbe(fixture.path, store)
-        expect({ store, readable: result.readable }).toEqual({ store, readable: false })
+        const result = await readProbe(workspace.path, store)
+        expect({ store, ran: result.ran, readable: result.readable }).toEqual({ store, ran: true, readable: false })
       }
       console.log(`[containment-baseline] credential reads denied: ${JSON.stringify(recorded)}`)
     } finally {
       for (const target of Object.values(synthetic)) fs.rmSync(target, { force: true })
+      workspace.dispose()
     }
   })
 
   test("ordinary external reads still work", async () => {
-    await using fixture = await tmpdir()
+    const workspace = await probeWorkspace()
 
     const systemRoot = DEFAULT_SYSTEM_RUNTIME_READ_ROOTS.find((root) => fs.existsSync(root))
     expect(systemRoot).toBeDefined()
     const listing = await runInSandbox(
-      fixture.path,
+      workspace.path,
       `if ls ${shellQuote(systemRoot!)} >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
     )
     expect(listing.stdout).toContain("READ_OK")
@@ -271,7 +319,7 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
     // host-readable on macOS through the global read allow.
     if (process.platform === "darwin") {
       const hosts = await runInSandbox(
-        fixture.path,
+        workspace.path,
         `if cat /etc/hosts >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
       )
       expect(hosts.stdout).toContain("READ_OK")
@@ -280,33 +328,35 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
     const gitconfig = path.join(os.homedir(), ".gitconfig")
     if (fs.existsSync(gitconfig)) {
       const git = await runInSandbox(
-        fixture.path,
+        workspace.path,
         `if git config --get user.email >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
       )
       expect(git.stdout).toContain("READ_OK")
     }
     console.log(`[containment-baseline] ordinary external reads permitted through ${systemRoot}`)
+    workspace.dispose()
   })
 
   test("workspace writes succeed", async () => {
-    await using fixture = await tmpdir()
-    const target = path.join(fixture.path, "workspace-probe.txt")
-    const result = await runInSandbox(fixture.path, `echo payload > workspace-probe.txt && cat workspace-probe.txt`)
+    const workspace = await probeWorkspace()
+    const target = path.join(workspace.path, "workspace-probe.txt")
+    const result = await runInSandbox(workspace.path, `echo payload > workspace-probe.txt && cat workspace-probe.txt`)
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe("payload")
     expect(fs.readFileSync(target, "utf8").trim()).toBe("payload")
+    workspace.dispose()
   })
 
   test("workspace-scoped controlled temp root writes succeed", async () => {
-    await using fixture = await tmpdir()
-    const controlled = controlledTempRoot(fixture.path, "containment-baseline")
+    const workspace = await probeWorkspace()
+    const controlled = controlledTempRoot(workspace.path, "containment-baseline")
     // Production (tools/bash/local.ts) creates this root host-side and points
     // TMPDIR/TMP/TEMP at it for sandboxed children.
     fs.mkdirSync(controlled, { recursive: true })
     const target = path.join(controlled, "tmp-probe.txt")
 
     const result = await runInSandbox(
-      fixture.path,
+      workspace.path,
       `echo payload > "$TMPDIR/tmp-probe.txt" && echo WROTE || echo BLOCKED`,
       { TMPDIR: controlled, TMP: controlled, TEMP: controlled },
     )
@@ -315,25 +365,30 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
 
     // A child may also create the root itself, because it is inside the
     // workspace writable root.
-    const nested = controlledTempRoot(fixture.path, "containment-baseline-nested")
+    const nested = controlledTempRoot(workspace.path, "containment-baseline-nested")
     const created = await runInSandbox(
-      fixture.path,
+      workspace.path,
       `mkdir -p "$TMPDIR" && echo payload > "$TMPDIR/tmp-probe.txt" && echo WROTE || echo BLOCKED`,
       { TMPDIR: nested, TMP: nested, TEMP: nested },
     )
     expect(created.stdout).toContain("WROTE")
     expect(fs.readFileSync(path.join(nested, "tmp-probe.txt"), "utf8").trim()).toBe("payload")
+    workspace.dispose()
   })
 
   test("protected metadata names stay blocked without a pre-existing directory", async () => {
-    await using fixture = await tmpdir()
-    for (const name of [".agents", ".codex"]) {
-      const result = await runInSandbox(
-        fixture.path,
-        `mkdir -p ${name} && echo payload > ${name}/probe.txt && echo WROTE || echo BLOCKED`,
-      )
-      expect(result.stdout).toContain("BLOCKED")
-      expect(fs.existsSync(path.join(fixture.path, name, "probe.txt"))).toBe(false)
+    const workspace = await probeWorkspace()
+    try {
+      for (const name of [".agents", ".codex"]) {
+        const result = await runInSandbox(
+          workspace.path,
+          `mkdir -p ${name} && echo payload > ${name}/probe.txt && echo WROTE || echo BLOCKED`,
+        )
+        expect(result.stdout).toContain("BLOCKED")
+        expect(fs.existsSync(path.join(workspace.path, name, "probe.txt"))).toBe(false)
+      }
+    } finally {
+      workspace.dispose()
     }
   })
 
