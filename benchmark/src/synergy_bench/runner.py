@@ -627,7 +627,10 @@ def trial_configuration(
                 }
             },
         ),
-        verifier=VerifierConfig(disable=bool(probe_instruction)),
+        verifier=VerifierConfig(
+            disable=bool(probe_instruction),
+            override_timeout_sec=task.get("verifier_seconds"),
+        ),
         environment=EnvironmentConfig.model_validate(
             {
                 "import_path": "synergy_bench.environment:CachedDockerEnvironment",

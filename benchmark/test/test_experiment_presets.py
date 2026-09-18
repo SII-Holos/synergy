@@ -16,7 +16,7 @@ PRESETS = {
 
 @pytest.mark.parametrize("filename", sorted(PRESETS))
 @pytest.mark.parametrize("native_seconds", [900, 10800])
-def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tmp_path, filename, native_seconds):
+def test_preset_deadlines_and_suite_verifier_budgets_reach_every_native_launch(tmp_path, filename, native_seconds):
     preset = PRESETS[filename]
     path = Path(__file__).parents[1] / "configs" / filename
     config = load_config(path)
@@ -34,7 +34,7 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
     root = tmp_path / "run-12345678"
     for name, variant in config.variants.items():
         atomic_json(root / "inputs" / name / "config.json", {})
-        task = {"local_path": str(tmp_path / "task"), "agent_seconds": native_seconds}
+        task = {"local_path": str(tmp_path / "task"), "agent_seconds": native_seconds, "verifier_seconds": 2400}
         plan = {
             "config": config.model_dump(),
             "cache": str(tmp_path / "cache"),
@@ -60,7 +60,7 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
             trial.agent.override_timeout_sec
             == expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
         )
-        assert trial.verifier.override_timeout_sec is None
+        assert trial.verifier.override_timeout_sec == 2400
         assert not trial.verifier.disable
         assert task["agent_seconds"] == native_seconds
         if variant.harness == "opencode":
