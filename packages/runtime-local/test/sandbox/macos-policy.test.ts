@@ -1,4 +1,7 @@
 import { describe, test, expect } from "bun:test"
+import * as fs from "node:fs"
+import * as os from "node:os"
+import * as path from "node:path"
 import { MacOSPolicy } from "../../src/sandbox/macos-policy"
 import { compileGlobToSeatbeltRegex } from "../../src/sandbox/macos-policy"
 import type { SynergySandboxPermissionProfile } from "@ericsanchezok/synergy-harness/sandbox/policy-engine"
@@ -210,5 +213,73 @@ describe("compileProfile with unix sockets", () => {
     // Both paths present
     expect(sbpl).toContain('(allow file-read* file-write* (subpath "/var/run/docker.sock"))')
     expect(sbpl).toContain('(allow file-read* file-write* (subpath "/tmp/agent.sock"))')
+  })
+})
+
+// ------------------------------------------------------------------
+// 4. Path canonicalization for paths that do not exist yet
+//
+// The writable root is always bound through its canonical spelling, so a
+// protected subpath deny must resolve aliases even when its final component
+// does not exist — otherwise the deny and the allow use different spellings
+// and never intersect, letting the deeper write allow win. A symlink alias
+// reproduces the same divergence on any platform that macOS firmlinks cause
+// with /var/folders and /tmp.
+// ------------------------------------------------------------------
+describe("compileProfile canonicalizes paths that do not exist yet", () => {
+  test("non-existent protected subpath is denied in the same spelling as the writable root", () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "synergy-canon-")))
+    const real = path.join(root, "real-workspace")
+    fs.mkdirSync(real)
+    const alias = path.join(root, "alias-workspace")
+    fs.symlinkSync(real, alias)
+    const protectedHooks = path.join(alias, ".git", "hooks")
+    expect(fs.existsSync(protectedHooks)).toBe(false)
+
+    try {
+      const profile = buildProfile([])
+      profile.fileSystem.writableRoots = [alias]
+      profile.fileSystem.readOnlySubpaths = [protectedHooks, path.join(alias, ".git", "config")]
+
+      // The allow is bound through the resolved path...
+      expect(MacOSPolicy.generateParams(profile).PATH_WRITE_0).toBe(real)
+
+      const sbpl = MacOSPolicy.compileProfile(profile)
+      // ...so the deny must be emitted through that same resolved spelling for
+      // the two rules to intersect.
+      expect(sbpl).toContain(`(deny file-write* (subpath "${real}/.git/hooks"))`)
+      expect(sbpl).not.toContain(`(subpath "${alias}/.git/hooks")`)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("existing paths and unresolvable paths keep their prior behavior", () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "synergy-canon-x-")))
+    const real = path.join(root, "real-workspace")
+    fs.mkdirSync(path.join(real, ".git", "hooks"), { recursive: true })
+    const alias = path.join(root, "alias-workspace")
+    fs.symlinkSync(real, alias)
+
+    try {
+      const profile = buildProfile([])
+      profile.fileSystem.writableRoots = [alias]
+      profile.fileSystem.readOnlySubpaths = [path.join(alias, ".git", "hooks")]
+
+      const params = MacOSPolicy.generateParams(profile)
+      expect(params.PATH_WRITE_0).toBe(real)
+      expect(MacOSPolicy.compileProfile(profile)).toContain(`(deny file-write* (subpath "${real}/.git/hooks"))`)
+
+      // A path with no existing ancestor is emitted verbatim rather than
+      // dropped, so the rule set stays available to the kernel's own resolution.
+      const orphan = buildProfile([])
+      orphan.fileSystem.writableRoots = [alias]
+      orphan.fileSystem.readOnlySubpaths = ["/nonexistent-synergy-root/.git/hooks"]
+      expect(MacOSPolicy.compileProfile(orphan)).toContain(
+        '(deny file-write* (subpath "/nonexistent-synergy-root/.git/hooks"))',
+      )
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 })

@@ -12,6 +12,7 @@
 // parameterized writable roots.
 // ------------------------------------------------------------------
 import * as fs_node from "fs"
+import * as path_node from "path"
 
 import type { SynergySandboxPermissionProfile } from "@ericsanchezok/synergy-harness/sandbox/policy-engine"
 import { MacOSSbpl } from "./macos-sbpl"
@@ -178,13 +179,33 @@ function compileGlobBody(glob: string): string {
  * SBPL rules using user-visible paths may not match kernel-resolved paths,
  * so we resolve all paths to their canonical form before Rule generation.
  *
- * Returns the original path if realpath fails (e.g. path doesn't exist yet).
+ * `realpathSync` fails for a path that does not exist yet, which is the common
+ * case for protected subpaths such as `<workspace>/.git/hooks` — the whole
+ * point of denying them is that nothing has created them. Falling back to the
+ * raw string would emit that deny in whatever spelling the caller used, while
+ * the writable-root parameter is always bound through its canonical spelling.
+ * The deny then covers a path the kernel never resolves and the deeper write
+ * allow wins, so a firmlink alias (`/var/folders/...` for
+ * `/private/var/folders/...`) escapes the protected subpath entirely.
+ *
+ * Resolving the nearest existing ancestor and re-appending the missing
+ * components keeps every emitted rule in the kernel's spelling, whether or not
+ * the target exists. Only a genuinely unresolvable path (no existing ancestor)
+ * falls back to the input.
  */
 function canonicalize(p: string): string {
-  try {
-    return fs_node.realpathSync(p)
-  } catch {
-    return p
+  let existing = p
+  const trailing: string[] = []
+  for (;;) {
+    try {
+      const resolved = fs_node.realpathSync(existing)
+      return trailing.length === 0 ? resolved : path_node.join(resolved, ...trailing)
+    } catch {
+      const parent = path_node.dirname(existing)
+      if (parent === existing) return p
+      trailing.unshift(path_node.basename(existing))
+      existing = parent
+    }
   }
 }
 
