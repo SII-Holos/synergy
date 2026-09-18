@@ -65,11 +65,11 @@ describe("SessionManager.listStatuses without a scope", () => {
         scope: Scope.home(),
         fn: async () => {
           const global = await SessionManager.listStatuses()
-          expect(global[recoveredID]).toEqual({ type: "recovering" })
+          expect(global[recoveredID]).toEqual({ type: "recovering", reason: "incomplete-turn" })
           expect(global[runningID]).toEqual({ type: "busy", description: "working" })
 
           const otherScope = await SessionManager.listStatuses(project.id)
-          expect(otherScope[recoveredID]).toEqual({ type: "recovering" })
+          expect(otherScope[recoveredID]).toEqual({ type: "recovering", reason: "incomplete-turn" })
           expect(otherScope[runningID]).toEqual({ type: "busy", description: "working" })
         },
       })
@@ -99,7 +99,10 @@ describe("SessionManager.listStatuses without a scope", () => {
         scope: Scope.home(),
         fn: async () => {
           expect((await SessionManager.listStatuses("home"))[sessionID]).toBeUndefined()
-          expect((await SessionManager.listStatuses())[sessionID]).toEqual({ type: "recovering" })
+          expect((await SessionManager.listStatuses())[sessionID]).toEqual({
+            type: "recovering",
+            reason: "incomplete-turn",
+          })
         },
       })
     } finally {
