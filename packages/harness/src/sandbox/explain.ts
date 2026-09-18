@@ -138,6 +138,136 @@ function computeRecovery(inputs: {
   return recovery
 }
 
+export interface SandboxModelExplanationOptions {
+  /** Control profile that governs this session, when known. */
+  controlProfile?: string
+  /** Path already approved for this session, when the denial is now unblocked. */
+  approved?: { path: string; access: "read" | "write" } | null
+  /** Backend message used when no structured explanation was produced. */
+  message?: string
+}
+
+/**
+ * The single path a sandbox block can be approved for, when the backend parsed
+ * one. Approval plumbing keys off this so a denial without a concrete path
+ * never produces an ask.
+ */
+export function approvablePath(
+  expl: SandboxBlockExplanation | null | undefined,
+): { path: string; access: "read" | "write" } | undefined {
+  const action = expl?.recovery.find((item) => item.type === "approve_path")
+  if (!action || action.type !== "approve_path") return undefined
+  return { path: action.path, access: action.access }
+}
+
+const PARTIAL_SIDE_EFFECT_WARNING = [
+  "The command may already have produced partial side effects inside the workspace before it hit this boundary.",
+  "Do not assume nothing happened: inspect the workspace (for example `git status`) before continuing.",
+].join(" ")
+
+/**
+ * Format a sandbox block for the model.
+ *
+ * A sandbox block is an execution-time boundary, not a policy refusal: the
+ * command was authorized and then stopped while running. The text therefore
+ * keeps the two apart, names the denied path when the backend parsed one, and
+ * states whether that path is approvable for this profile. `autonomous` never
+ * prompts, so its denials stay fail-closed and the command cannot be retried
+ * as-is. A backend that cannot parse a path still yields a usable explanation.
+ */
+export function formatExplanationForModel(
+  expl: SandboxBlockExplanation | null | undefined,
+  options: SandboxModelExplanationOptions = {},
+): string {
+  const lines: string[] = []
+  const autonomous = options.controlProfile === "autonomous"
+
+  lines.push("Sandbox blocked this command at execution time.")
+  lines.push(
+    "This is an execution-time boundary enforced by the OS sandbox, not a policy refusal: the command was authorized, then stopped while it was running.",
+  )
+  lines.push("")
+
+  if (!expl) {
+    if (options.message) {
+      lines.push(options.message)
+      lines.push("")
+    }
+    lines.push(PARTIAL_SIDE_EFFECT_WARNING)
+    lines.push("")
+    if (autonomous) {
+      lines.push(
+        "The autonomous profile never prompts: no approval is possible and the command cannot be retried as-is.",
+      )
+    }
+    return lines.join("\n")
+  }
+
+  if (expl.path && expl.access) {
+    lines.push(`Sandbox denied ${expl.access} access to: ${expl.path}`)
+  } else if (expl.networkTarget) {
+    lines.push(`Sandbox denied network access to: ${expl.networkTarget}`)
+  } else if (expl.deniedPaths.length > 0) {
+    lines.push(`Sandbox denied access to: ${expl.deniedPaths.join(", ")}`)
+  } else {
+    lines.push("Sandbox denied the operation without naming a specific path.")
+  }
+  if (expl.rawMessage) lines.push(`Raw OS message: ${expl.rawMessage}`)
+  lines.push(
+    `Platform: ${expl.platform}, Backend: ${expl.backend ?? "none"}, Profile: ${expl.profileMode}, Network: ${expl.networkMode}`,
+  )
+  if (expl.allowedWriteRoots.length > 0) lines.push(`Writable roots: ${expl.allowedWriteRoots.join(", ")}`)
+  if (expl.allowedReadRoots.length > 0) lines.push(`Readable roots: ${expl.allowedReadRoots.join(", ")}`)
+  if (expl.deniedPaths.length > 0) lines.push(`Denied paths: ${expl.deniedPaths.join(", ")}`)
+  lines.push("")
+
+  lines.push(PARTIAL_SIDE_EFFECT_WARNING)
+  lines.push("")
+
+  if (options.approved) {
+    lines.push(
+      `The user approved ${options.approved.access} access to ${options.approved.path} for this session; it is now part of the sandbox roots. Retry the same command as-is.`,
+    )
+    return lines.join("\n")
+  }
+
+  const offersApproval = expl.recovery.some((item) => item.type === "approve_path")
+  const writeApprovable = offersApproval && expl.access === "write"
+  if (expl.path) {
+    lines.push(`To proceed with ${expl.path}:`)
+    lines.push("- Move the operation into the workspace and use a workspace-relative path, then retry.")
+    if (autonomous && offersApproval) {
+      lines.push(
+        "- The autonomous profile never prompts, so no approval is possible: this path cannot be approved and the command cannot be retried as-is. Move the operation into the workspace, or switch profiles, first.",
+      )
+    } else if (writeApprovable && options.controlProfile === "guarded") {
+      lines.push(
+        `- Under the guarded profile, request approval for exactly this path: ${expl.path}. Once approved the path enters the sandbox write roots and the same command can be retried.`,
+      )
+    }
+  } else {
+    lines.push(
+      "No specific path could be identified from this sandbox denial. Re-run with an explicit path inside the workspace, or inspect the raw OS message above.",
+    )
+    if (autonomous && offersApproval) {
+      lines.push(
+        "- The autonomous profile never prompts: no approval is possible and the command cannot be retried as-is.",
+      )
+    }
+  }
+
+  if (expl.denialSource === "fallback-deny") {
+    lines.push(
+      "- The sandbox is unavailable on this platform and this profile fails closed: the command did not run unsandboxed.",
+    )
+  }
+  if (expl.denialSource === "helper-missing" || expl.denialSource === "helper-unverified") {
+    lines.push("- Install the platform sandbox helper to restore sandboxed execution.")
+  }
+
+  return lines.join("\n")
+}
+
 /**
  * Format a SandboxBlockExplanation into a human-readable string.
  */
