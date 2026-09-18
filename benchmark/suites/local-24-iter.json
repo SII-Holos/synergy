@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "name": "local-24-iter",
+  "selection": "Seed 0; SHA-256 rank of seed:task within fixed language/category quotas; CPU Linux tasks with <=4 CPUs and <=8192 MiB RAM. Selection uses metadata only, never measured outcomes. This is a development subset, not an official score.",
+  "sources": {
+    "deepswe-1.1": {
+      "url": "https://github.com/datacurve-ai/deep-swe",
+      "commit": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
+      "license": "LICENSE"
+    },
+    "terminal-bench-2.1": {
+      "url": "https://github.com/harbor-framework/terminal-bench-2-1",
+      "commit": "7131e4375048a0e408a8fb404b5f499d726b695b",
+      "license": "LICENSE"
+    }
+  },
+  "tasks": [
+    {
+      "id": "deepswe-1.1/dasel-html-document-format",
+      "source": "deepswe-1.1",
+      "path": "tasks/dasel-html-document-format",
+      "digest": "dca5f40de1b3fad7c4917da8762990b5f3b112f291cb58955ec8f407bdcaa5bd",
+      "tags": [
+        "deepswe-1.1",
+        "feature_request",
+        "go"
+      ],
+      "agent_seconds": 3600,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/fd-deterministic-multi-key-sorting",
+      "source": "deepswe-1.1",
+      "path": "tasks/fd-deterministic-multi-key-sorting",
+      "digest": "d7bc1a5bc96128183f01fe8251d840a4a30f35382a2cbd799e8a0c3efaddcff3",
+      "tags": [
+        "deepswe-1.1",
+        "feature_request",
+        "rust"
+      ],
+      "agent_seconds": 3600,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "terminal-bench-2.1/large-scale-text-editing",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/large-scale-text-editing",
+      "digest": "3efcd0c61662ab681f9e6e73407a56276178e5e2f38c36501495590a983a688c",
+      "tags": [
+        "file-operations",
+        "large-scale-text-manipulation",
+        "terminal-bench-2.1",
+        "text-editing",
+        "vim",
+        "vim-macros"
+      ],
+      "agent_seconds": 1200.0,
+      "verifier_seconds": 1200.0
+    },
+    {
+      "id": "terminal-bench-2.1/openssl-selfsigned-cert",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/openssl-selfsigned-cert",
+      "digest": "887b6437e4a30bdbf090aaa5185fead08bc33dbcc6fcc298b6dcfac454183578",
+      "tags": [
+        "coding",
+        "file-operations",
+        "security",
+        "system",
+        "terminal-bench-2.1"
+      ],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 2400
+    },
+    {
+      "id": "terminal-bench-2.1/polyglot-c-py",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/polyglot-c-py",
+      "digest": "39f07cf87a1373d7942eb345d5fb84280961e7662e710393970968c0a9557600",
+      "tags": [
+        "coding",
+        "software-engineering",
+        "terminal-bench-2.1"
+      ],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 2400
+    }
+  ]
+}
