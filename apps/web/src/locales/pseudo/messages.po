@@ -17017,10 +17017,6 @@ msgid "settings.mcp.builtins.apiKey.clearUndo"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.apiKey.configured"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.description"
 msgstr ""
 
@@ -17029,7 +17025,23 @@ msgid "settings.mcp.builtins.apiKey.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.unset"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17045,18 +17057,6 @@ msgid "settings.mcp.builtins.section.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.connected"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.disabled"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.other"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr ""
 
@@ -17066,10 +17066,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.enabled"
 msgstr ""
 
 #. js-lingui-explicit-id

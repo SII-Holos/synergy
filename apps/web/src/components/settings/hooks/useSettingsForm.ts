@@ -10,6 +10,7 @@ import {
   resolvePermissionForUi,
   snapToastDuration,
 } from "../types"
+import { builtinServerEnabled } from "./useConfigPatch"
 
 export type EnsureInitParams = {
   cfg: Config | undefined
@@ -109,7 +110,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     }),
     builtins: (params.builtinMcps ?? []).map((info) => ({
       ...info,
-      toggle: info.status.status !== "disabled",
+      toggle: builtinServerEnabled(cfg, info.name),
       apiKeyDraft: "",
       clearApiKey: false,
     })),

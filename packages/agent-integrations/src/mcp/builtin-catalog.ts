@@ -100,6 +100,19 @@ export function builtinApiKeyOf(entry: unknown): string | undefined {
   const apiKey = (entry as Record<string, unknown>).apiKey
   return typeof apiKey === "string" && apiKey.trim() !== "" ? apiKey : undefined
 }
+
+/**
+ * Display-only masked hint for a stored built-in API key: a fixed four-dot
+ * mask plus the key's last four characters. Server-side only, because client
+ * config read-backs only ever contain REDACTED_SENTINEL. Short keys fall back
+ * to the bare mask so the hint never reveals a large fraction of the secret.
+ */
+export function builtinApiKeyHint(entry: unknown): string | undefined {
+  const apiKey = builtinApiKeyOf(entry)
+  if (!apiKey) return undefined
+  return apiKey.length > 8 ? `••••${apiKey.slice(-4)}` : "••••"
+}
+
 /**
  * True when the named server is staged from the builtin catalog right now:
  * the catalog ships it, the disable switch is off, and no user entry owns

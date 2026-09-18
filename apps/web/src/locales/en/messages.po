@@ -17017,10 +17017,6 @@ msgid "settings.mcp.builtins.apiKey.clearUndo"
 msgstr "Keep stored key"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.apiKey.configured"
-msgstr "Key set"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.description"
 msgstr "Optional. Sent as a Bearer token to raise rate limits beyond the anonymous quota."
 
@@ -17029,8 +17025,24 @@ msgid "settings.mcp.builtins.apiKey.label"
 msgstr "API key"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.pending"
+msgstr "Not saved yet"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.placeholder"
 msgstr "Paste key to raise rate limits"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.replace"
+msgstr "Paste a new key to replace the saved one"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.saved"
+msgstr "Key saved"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.unset"
+msgstr "No key set"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.builtins.badge"
@@ -17045,18 +17057,6 @@ msgid "settings.mcp.builtins.section.title"
 msgstr "Built-in servers"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.connected"
-msgstr "Connected"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.disabled"
-msgstr "Off"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.other"
-msgstr "Unavailable"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "Collapse server details"
 
@@ -17067,10 +17067,6 @@ msgstr "Command not set"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "Connection type"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.enabled"
-msgstr "Enabled"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.env"

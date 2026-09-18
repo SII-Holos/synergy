@@ -24846,6 +24846,9 @@
                       },
                       "keyConfigured": {
                         "type": "boolean"
+                      },
+                      "keyHint": {
+                        "type": "string"
                       }
                     },
                     "required": ["name", "url", "status", "keyConfigured"]

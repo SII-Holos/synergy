@@ -22304,6 +22304,7 @@ export type McpBuiltinsResponses = {
     url: string
     status: McpStatus
     keyConfigured: boolean
+    keyHint?: string
   }>
 }
 

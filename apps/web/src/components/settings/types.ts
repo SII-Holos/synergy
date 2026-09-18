@@ -192,6 +192,8 @@ export type BuiltinMcpInfo = {
   url: string
   status: McpStatus
   keyConfigured: boolean
+  /** Server-computed masked tail of the stored key; absent when none is stored. */
+  keyHint?: string
 }
 
 export type BuiltinMcpDraft = BuiltinMcpInfo & {

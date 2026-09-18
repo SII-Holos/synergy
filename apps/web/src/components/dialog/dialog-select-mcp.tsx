@@ -10,91 +10,12 @@ import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useLingui } from "@lingui/solid"
 import { dialog } from "@/locales/messages"
+import { mcpStatusCopy, mcpStatusError } from "@/components/mcp/status-presentation"
 import "./dialog-select-mcp.css"
 
 type McpItem = {
   name: string
   status: McpStatus
-}
-
-type McpStatusTone = "success" | "progress" | "warning" | "danger" | "neutral"
-
-type McpStatusCopy = {
-  label: string
-  description: string
-  tone: McpStatusTone
-}
-
-function statusCopy(
-  status: McpStatus | undefined,
-  _: (id: string, values?: Record<string, unknown>) => string,
-): McpStatusCopy {
-  switch (status?.status) {
-    case "connected":
-      return {
-        label: _(dialog.mcpStatusConnected.id),
-        description: _(dialog.mcpStatusConnectedDesc.id),
-        tone: "success",
-      }
-    case "starting":
-      return {
-        label: _(dialog.mcpStatusStarting.id),
-        description: _(dialog.mcpStatusStartingDesc.id),
-        tone: "progress",
-      }
-    case "connecting":
-      return {
-        label: _(dialog.mcpStatusConnecting.id),
-        description: _(dialog.mcpStatusConnectingDesc.id),
-        tone: "progress",
-      }
-    case "listing_tools":
-      return {
-        label: _(dialog.mcpStatusLoadingTools.id),
-        description: _(dialog.mcpStatusLoadingToolsDesc.id),
-        tone: "progress",
-      }
-    case "reconnecting":
-      return {
-        label: _(dialog.mcpStatusReconnecting.id),
-        description: _(dialog.mcpStatusReconnectingDesc.id, {
-          attempt: status.attempt,
-          maxAttempts: status.maxAttempts,
-        }),
-        tone: "progress",
-      }
-    case "failed":
-      return { label: _(dialog.mcpStatusFailed.id), description: _(dialog.mcpStatusFailedDesc.id), tone: "danger" }
-    case "needs_auth":
-      return {
-        label: _(dialog.mcpStatusNeedsAuth.id),
-        description: _(dialog.mcpStatusNeedsAuthDesc.id),
-        tone: "warning",
-      }
-    case "needs_client_registration":
-      return {
-        label: _(dialog.mcpStatusRegistration.id),
-        description: _(dialog.mcpStatusRegistrationDesc.id),
-        tone: "warning",
-      }
-    case "stopping":
-      return {
-        label: _(dialog.mcpStatusStopping.id),
-        description: _(dialog.mcpStatusStoppingDesc.id),
-        tone: "progress",
-      }
-    case "disabled":
-      return { label: _(dialog.mcpStatusDisabled.id), description: _(dialog.mcpStatusDisabledDesc.id), tone: "neutral" }
-    case "uninitialized":
-    default:
-      return { label: _(dialog.mcpStatusReady.id), description: _(dialog.mcpStatusReadyDesc.id), tone: "neutral" }
-  }
-}
-
-function statusError(status: McpStatus | undefined): string | undefined {
-  if (status?.status === "failed") return status.error
-  if (status?.status === "needs_client_registration") return status.error
-  return undefined
 }
 
 export const DialogSelectMcp: Component = () => {
@@ -142,8 +63,8 @@ export const DialogSelectMcp: Component = () => {
     const query = state.filter.trim().toLowerCase()
     if (!query) return items()
     return items().filter((item) => {
-      const copy = statusCopy(item.status, (id) => id)
-      const error = statusError(item.status)
+      const copy = mcpStatusCopy(item.status, (id) => id)
+      const error = mcpStatusError(item.status)
       return [item.name, item.status.status, copy.label, copy.description, error ?? ""].some((value) =>
         value.toLowerCase().includes(query),
       )
@@ -232,8 +153,8 @@ export const DialogSelectMcp: Component = () => {
             <For each={filteredItems()}>
               {(item) => {
                 const liveStatus = () => sync.data.mcp[item.name] ?? item.status
-                const copy = () => statusCopy(liveStatus(), _)
-                const error = () => statusError(liveStatus())
+                const copy = () => mcpStatusCopy(liveStatus(), _)
+                const error = () => mcpStatusError(liveStatus())
                 const enabled = () => liveStatus().status === "connected"
                 const loading = () => state.loading === item.name
                 const disabled = () => Boolean(state.loading)

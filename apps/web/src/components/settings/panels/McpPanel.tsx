@@ -6,6 +6,9 @@ import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import { mcpStatusCopy, mcpStatusError } from "@/components/mcp/status-presentation"
+import { apiKeyClearPending, builtinKeyChip } from "@/components/mcp/builtin-key-presentation"
 import type { BuiltinMcpDraft, McpEntry } from "../types"
 import { McpCard } from "../components/McpCard"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
@@ -29,26 +32,24 @@ const builtinsSectionDescription = {
   message: "Shipped with Synergy and usable without an API key. Turning one off disables its tools.",
 }
 const builtinBadgeLabel = { id: "settings.mcp.builtins.badge", message: "Built-in" }
-const builtinStatusConnected = { id: "settings.mcp.builtins.status.connected", message: "Connected" }
-const builtinStatusDisabled = { id: "settings.mcp.builtins.status.disabled", message: "Off" }
-const builtinStatusOther = { id: "settings.mcp.builtins.status.other", message: "Unavailable" }
 const apiKeyLabel = { id: "settings.mcp.builtins.apiKey.label", message: "API key" }
 const apiKeyDescription = {
   id: "settings.mcp.builtins.apiKey.description",
   message: "Optional. Sent as a Bearer token to raise rate limits beyond the anonymous quota.",
 }
 const apiKeyPlaceholder = { id: "settings.mcp.builtins.apiKey.placeholder", message: "Paste key to raise rate limits" }
-const apiKeyConfiguredLabel = { id: "settings.mcp.builtins.apiKey.configured", message: "Key set" }
-const apiKeyClearLabel = { id: "settings.mcp.builtins.apiKey.clear", message: "Clear stored key" }
-const apiKeyClearPendingLabel = {
-  id: "settings.mcp.builtins.apiKey.clearPending",
-  message: "Key will be removed on save",
+const apiKeyReplacePlaceholder = {
+  id: "settings.mcp.builtins.apiKey.replace",
+  message: "Paste a new key to replace the saved one",
 }
+const apiKeyClearLabel = { id: "settings.mcp.builtins.apiKey.clear", message: "Clear stored key" }
 const apiKeyClearUndoLabel = { id: "settings.mcp.builtins.apiKey.clearUndo", message: "Keep stored key" }
 
 export function McpPanel(props: {
   entries: McpEntry[]
   builtins?: BuiltinMcpDraft[]
+  /** Live connection status by server name; falls back to the catalog snapshot. */
+  statuses?: Record<string, McpStatus>
   onAdd: () => void
   onChange: (index: number, field: string, value: string | boolean) => void
   onRemove: (index: number) => void
@@ -91,6 +92,7 @@ export function McpPanel(props: {
               {(entry, index) => (
                 <McpCard
                   entry={entry}
+                  status={props.statuses?.[entry.key.trim()]}
                   onChange={(field, value) => props.onChange(index(), field, value)}
                   onRemove={() => props.onRemove(index())}
                 />
@@ -107,6 +109,10 @@ export function McpPanel(props: {
               {(builtin) => {
                 const displayName = () => builtin.name.charAt(0).toUpperCase() + builtin.name.slice(1)
                 const keyPendingClear = () => builtin.clearApiKey && builtin.keyConfigured
+                const liveStatus = () => props.statuses?.[builtin.name] ?? builtin.status
+                const copy = () => mcpStatusCopy(liveStatus(), _)
+                const error = () => mcpStatusError(liveStatus())
+                const chip = () => builtinKeyChip(builtin, _)
                 return (
                   <section class="settings-mcp-card">
                     <div class="settings-mcp-card-header">
@@ -123,12 +129,8 @@ export function McpPanel(props: {
                         </span>
                       </span>
                       <div class="settings-mcp-actions">
-                        <span class="settings-mcp-state" classList={{ "settings-mcp-state-paused": !builtin.toggle }}>
-                          {builtin.status.status === "connected"
-                            ? _(builtinStatusConnected)
-                            : builtin.status.status === "disabled"
-                              ? _(builtinStatusDisabled)
-                              : _(builtinStatusOther)}
+                        <span class="settings-mcp-state" data-tone={copy().tone} title={error() ?? copy().description}>
+                          {copy().label}
                         </span>
                         <Show when={props.onBuiltinToggle}>
                           <Switch
@@ -141,6 +143,9 @@ export function McpPanel(props: {
                         </Show>
                       </div>
                     </div>
+                    <Show when={error()}>
+                      <p class="settings-mcp-card-error">{error()}</p>
+                    </Show>
                     <div class="settings-mcp-builtin-key">
                       <TextField
                         type="password"
@@ -150,14 +155,17 @@ export function McpPanel(props: {
                         description={_(apiKeyDescription)}
                         placeholder={
                           keyPendingClear()
-                            ? _(apiKeyClearPendingLabel)
+                            ? _(apiKeyClearPending)
                             : builtin.keyConfigured
-                              ? `${_(apiKeyConfiguredLabel)} — ${_(apiKeyPlaceholder)}`
+                              ? _(apiKeyReplacePlaceholder)
                               : _(apiKeyPlaceholder)
                         }
                         value={builtin.apiKeyDraft}
                         onChange={(value) => props.onBuiltinApiKeyChange?.(builtin.name, String(value))}
                       />
+                      <span class="settings-mcp-key-chip" data-tone={chip().tone}>
+                        {chip().label}
+                      </span>
                       <Show when={builtin.keyConfigured && props.onBuiltinClearKey && !builtin.apiKeyDraft}>
                         <IconButton
                           type="button"

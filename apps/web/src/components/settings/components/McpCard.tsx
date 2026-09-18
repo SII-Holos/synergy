@@ -5,6 +5,8 @@ import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import { mcpStatusCopy, mcpStatusError } from "@/components/mcp/status-presentation"
 import type { McpEntry } from "../types"
 import { SegmentPill } from "./SegmentPill"
 import { SettingsSubsection } from "./SettingsPrimitives"
@@ -17,7 +19,6 @@ const commandNotSet = { id: "settings.mcp.card.commandNotSet", message: "Command
 const urlNotSet = { id: "settings.mcp.card.urlNotSet", message: "URL not set" }
 const localPillLabel = { id: "settings.mcp.card.pill.local", message: "Local" }
 const remotePillLabel = { id: "settings.mcp.card.pill.remote", message: "Remote" }
-const enabledLabel = { id: "settings.mcp.card.enabled", message: "Enabled" }
 const pausedLabel = { id: "settings.mcp.card.paused", message: "Paused" }
 const expandByDefaultLabel = { id: "settings.mcp.card.expandByDefault", message: "Expand by default" }
 const expandByDefaultDesc = {
@@ -70,6 +71,8 @@ const headersPlaceholder = {
 
 export function McpCard(props: {
   entry: McpEntry
+  /** Live connection status for this server, when the supervisor knows it. */
+  status?: McpStatus
   onChange: (field: string, value: string | boolean) => void
   onRemove: () => void
 }) {
@@ -81,6 +84,13 @@ export function McpCard(props: {
     if (props.entry.type === "local") return props.entry.command.trim() || _(commandNotSet)
     return props.entry.url.trim() || _(urlNotSet)
   })
+  // The switch expresses configuration intent, so a paused server never claims
+  // a connection state; an enabled one reports its real status instead of a
+  // bare "Enabled" that hid "switched on but not connected".
+  const stateCopy = createMemo(() => mcpStatusCopy(props.status, _))
+  const stateError = createMemo(() => mcpStatusError(props.status))
+  const stateLabel = createMemo(() => (props.entry.enabled ? stateCopy().label : _(pausedLabel)))
+  const stateTone = createMemo(() => (props.entry.enabled ? stateCopy().tone : "neutral"))
 
   return (
     <section class="settings-mcp-card">
@@ -104,8 +114,8 @@ export function McpCard(props: {
         </button>
 
         <div class="settings-mcp-actions">
-          <span class="settings-mcp-state" classList={{ "settings-mcp-state-paused": !props.entry.enabled }}>
-            {props.entry.enabled ? _(enabledLabel) : _(pausedLabel)}
+          <span class="settings-mcp-state" data-tone={stateTone()} title={stateError()}>
+            {stateLabel()}
           </span>
           <Switch checked={props.entry.enabled} hideLabel onChange={(value) => props.onChange("enabled", value)}>
             {`${name()} server`}

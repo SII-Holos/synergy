@@ -7,6 +7,7 @@ import {
   For,
   onCleanup,
   Show,
+  untrack,
   type Component,
   type JSX,
 } from "solid-js"
@@ -29,6 +30,7 @@ import type {
   ConfigDomainSummary,
   ControlProfileSummary,
   CortexConcurrencyStatus,
+  McpStatus,
   ModelRoleSummary,
   SandboxStatus,
   SkillList,
@@ -65,7 +67,7 @@ import type {
 import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
 import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
-import { buildPatch } from "./hooks/useConfigPatch"
+import { buildPatch, builtinServerEnabled } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import {
   hasExplicitSettingsChanges,
@@ -337,6 +339,19 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
   onCleanup(unsubscribeChannelStatuses)
 
+  const [mcpStatuses, { refetch: refetchMcpStatuses }] = createResource(async () => {
+    const res = await globalSDK.client.mcp.status()
+    return (res.data ?? {}) as Record<string, McpStatus>
+  })
+
+  // The builtin catalog resource is fetched once, so a server that finishes
+  // connecting while the panel is open would otherwise keep reading as
+  // not-yet-connected.
+  const unsubscribeMcpStatuses = globalSDK.event.listen((event) => {
+    if (event.details?.type.startsWith("mcp.")) void refetchMcpStatuses()
+  })
+  onCleanup(unsubscribeMcpStatuses)
+
   const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
     const res = await globalSDK.client.cortex.concurrency()
     return res.data as CortexConcurrencyStatus | undefined
@@ -498,12 +513,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
   createEffect(() => {
     const list = builtinMcps()
     if (!list) return
+    // Read config untracked: the builtin list stays the only re-seed trigger,
+    // so an unrelated config refetch cannot wipe an in-progress key draft.
+    const cfg = untrack(() => config())
     setSettings(
       "mcps",
       "builtins",
       list.map((info) => ({
         ...info,
-        toggle: info.status.status !== "disabled",
+        toggle: builtinServerEnabled(cfg, info.name),
         apiKeyDraft: "",
         clearApiKey: false,
       })),
@@ -974,6 +992,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <McpPanel
         entries={settings.mcps.entries}
         builtins={settings.mcps.builtins}
+        statuses={mcpStatuses()}
         onAdd={() => setSettings("mcps", "entries", (prev) => [...prev, emptyMcp()])}
         onChange={(index, field, value) =>
           setSettings("mcps", "entries", index, field as keyof McpEntry, value as never)

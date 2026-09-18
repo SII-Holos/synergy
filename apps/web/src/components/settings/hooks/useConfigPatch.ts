@@ -1,4 +1,5 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import { isDeepEqual } from "remeda"
 import { UI_DEFAULTS, MODEL_ROLES, resolvePermissionForUi } from "../types"
 import { normalizeServerToast, toastPatchFromPreferences } from "../toast-preferences"
 import type { SettingsState } from "../types"
@@ -7,6 +8,19 @@ export type BuildPatchParams = {
   cfg: Config
   state: SettingsState
   originalMcps: Record<string, Record<string, unknown>>
+}
+
+/**
+ * Configuration intent for a built-in server: a full typed user entry or an
+ * `enabled: false` stub disables it, while an absent entry or a bare
+ * `enabled: true`/`apiKey` stub keeps it enabled. Read from config rather than
+ * from a live connection status so the settings switch tracks what is saved
+ * and never flips while the server is reconnecting.
+ */
+export function builtinServerEnabled(cfg: Config | undefined, name: string): boolean {
+  const configured = cfg?.mcp?.[name]
+  if (!configured || typeof configured !== "object") return true
+  return (configured as Record<string, unknown>).enabled !== false
 }
 
 export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
@@ -220,7 +234,10 @@ function buildMcpPatch(
     newMcp[builtin.name] = stub
   }
 
-  if (JSON.stringify(newMcp) !== JSON.stringify(cfg.mcp ?? {})) patch.mcp = newMcp
+  // Structural, not textual: stubs are hoisted ahead of typed servers while the
+  // domain file keeps its own insertion order, so a JSON.stringify comparison
+  // reported a change on every save and left the panel permanently unsaved.
+  if (!isDeepEqual(newMcp, cfg.mcp ?? {})) patch.mcp = newMcp
 }
 
 function buildSafetyPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {

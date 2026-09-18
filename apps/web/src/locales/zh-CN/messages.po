@@ -17017,10 +17017,6 @@ msgid "settings.mcp.builtins.apiKey.clearUndo"
 msgstr "保留已存储的密钥"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.apiKey.configured"
-msgstr "已设置密钥"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.description"
 msgstr "可选。将作为 Bearer 令牌发送，用于提升匿名额度之外的速率限制。"
 
@@ -17029,8 +17025,24 @@ msgid "settings.mcp.builtins.apiKey.label"
 msgstr "API 密钥"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.pending"
+msgstr "尚未保存"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.placeholder"
 msgstr "粘贴密钥以提升速率限制"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.replace"
+msgstr "粘贴新密钥以替换已存储的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.saved"
+msgstr "已设置密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.unset"
+msgstr "未设置密钥"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.builtins.badge"
@@ -17045,18 +17057,6 @@ msgid "settings.mcp.builtins.section.title"
 msgstr "内置服务器"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.disabled"
-msgstr "已关闭"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.other"
-msgstr "不可用"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "收起服务器详情"
 
@@ -17067,10 +17067,6 @@ msgstr "未设置命令"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "连接类型"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.enabled"
-msgstr "已启用"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.env"
