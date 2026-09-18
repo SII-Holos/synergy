@@ -384,8 +384,24 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
           workspace.path,
           `mkdir -p ${name} && echo payload > ${name}/probe.txt && echo WROTE || echo BLOCKED`,
         )
-        expect(result.stdout).toContain("BLOCKED")
-        expect(fs.existsSync(path.join(workspace.path, name, "probe.txt"))).toBe(false)
+        // The invariant is that no protected metadata entry survives: macOS
+        // refuses the write outright (BLOCKED), while the Linux helper lets the
+        // sandbox create it and then removes the violating entry from the host
+        // through its create monitor, so the command reports success. Asserting
+        // one backend's signal would make it a requirement for the other, and
+        // asserting only the signal would miss a backend that failed to launch.
+        expect({ name, ran: result.stdout.includes("WROTE") || result.stdout.includes("BLOCKED") }).toEqual({
+          name,
+          ran: true,
+        })
+        expect({ name, persisted: fs.existsSync(path.join(workspace.path, name, "probe.txt")) }).toEqual({
+          name,
+          persisted: false,
+        })
+        expect({ name, persistedDir: fs.existsSync(path.join(workspace.path, name)) }).toEqual({
+          name,
+          persistedDir: false,
+        })
       }
     } finally {
       workspace.dispose()
