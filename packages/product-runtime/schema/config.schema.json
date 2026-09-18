@@ -934,7 +934,7 @@
                 "retentionMs": {
                   "description": "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
                   "type": "integer",
-                  "exclusiveMinimum": 0,
+                  "minimum": 0,
                   "maximum": 9007199254740991
                 },
                 "walCheckpointIntervalMs": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }

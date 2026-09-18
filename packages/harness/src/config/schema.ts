@@ -184,7 +184,7 @@ export const ObservabilityConfig = z
             retentionMs: z
               .number()
               .int()
-              .positive()
+              .min(0)
               .optional()
               .describe(
                 "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
