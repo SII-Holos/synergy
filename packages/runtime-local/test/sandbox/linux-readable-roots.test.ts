@@ -99,7 +99,7 @@ describe("Linux helper profile readable roots", () => {
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
 
-  test("helper install directory is bound so stage 2 can re-exec", async () => {
+  test("helper under the host tmpdir is staged outside the shadowed /tmp", async () => {
     await using tmp = await tmpdir()
     const helperDir = path.join(tmp.path, "helper-install")
     await fs.promises.mkdir(helperDir, { recursive: true })
@@ -117,7 +117,19 @@ describe("Linux helper profile readable roots", () => {
     })
 
     expect(wrapper.sandboxed).toBe(true)
-    expect(readProfile(wrapper)).toContain(helperDir)
+    const roots = readProfile(wrapper)
+    const relToTmp = path.relative(os.tmpdir(), helperPath)
+    if (relToTmp !== "" && !relToTmp.startsWith("..") && !path.isAbsolute(relToTmp)) {
+      // The controlled-/tmp bind shadows every host path under /tmp, so the
+      // exec copy must be staged into the real-home cache dir and that
+      // directory must be a read root.
+      expect(wrapper.command).not.toBe(helperPath)
+      expect(roots).toContain(path.dirname(wrapper.command))
+      // Never leave a test helper behind in the real home.
+      fs.rmSync(wrapper.command, { force: true })
+    } else {
+      expect(roots).toContain(helperDir)
+    }
 
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
@@ -179,10 +191,9 @@ describe("Linux helper profile readable roots", () => {
         workspace: wsPath,
         sandboxMode: "workspace_write",
         // Test-only helper override; production discovery is exercised
-        // outside test isolation. No extraReadRoots here: binding the
-        // helper's install directory for the stage-2 re-exec is the
-        // backend's own invariant, and this execution is its regression
-        // test.
+        // outside test isolation. No extraReadRoots here: staging the exec
+        // copy for the stage-2 re-exec is the backend's own invariant, and
+        // this execution is its regression test.
         forceHelperPath: helperPath,
         forceHelperVerified: true,
       })

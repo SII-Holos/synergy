@@ -602,6 +602,32 @@ export namespace LinuxBackend {
       // sandboxed stage 2 re-reads the profile.
     }
 
+    // A helper resolved under os.tmpdir() — test homes and custom
+    // SYNERGY_HOME setups — sits under the plan's final controlled-/tmp
+    // bind, which shadows every host path under /tmp: stage 2 re-execs the
+    // same absolute path inside the sandbox and dies with execvp ENOENT
+    // before any command runs. Mirror the profile staging above: copy the
+    // verified binary into the real-home staging dir, which is never under
+    // /tmp, and exec that copy. Production installs live under the real
+    // home and keep running in place.
+    let helperExecPath = helper.path
+    const relHelperToTmp = path.relative(os.tmpdir(), helper.path)
+    if (relHelperToTmp !== "" && !relHelperToTmp.startsWith("..") && !path.isAbsolute(relHelperToTmp)) {
+      try {
+        const staged = path.join(stagingDir, "synergy-sandbox-linux")
+        if (!isTarballHelperUpToDate(helper.path, staged)) {
+          fs.copyFileSync(helper.path, staged)
+          fs.chmodSync(staged, 0o755)
+        }
+        helperExecPath = staged
+      } catch (e) {
+        log.warn("failed to stage sandbox helper outside /tmp; stage 2 re-exec will fail", {
+          helper: helper.path,
+          error: String(e),
+        })
+      }
+    }
+
     // Dynamically linked children cannot start unless the ELF interpreter
     // and libc are visible at their PT_INTERP / default search paths. On
     // usr-merged distros /lib and /lib64 are those entry points and
@@ -610,12 +636,13 @@ export namespace LinuxBackend {
     // above via networkConfigRoots.
     const linkerRoots = ["/lib", "/lib64"].filter((p) => fs.existsSync(p))
 
-    // The plan's inner command is this helper re-execing itself for stage 2,
-    // so its install directory must be visible inside the sandbox. The
-    // backend owns the two-stage re-exec contract: callers pass read roots
-    // for their own data and never need to know about the helper. Existence
-    // filtering below drops test override paths whose directory is absent.
-    const helperRoots = [path.dirname(helper.path)]
+    // The plan's inner command re-execs this helper for stage 2, so the exec
+    // copy's directory must be visible inside the sandbox — staging above
+    // keeps that copy out of the shadowed /tmp. The backend owns the
+    // two-stage re-exec contract: callers pass read roots for their own data
+    // and never need to know about the helper. Existence filtering below
+    // drops test override paths whose directory is absent.
+    const helperRoots = [path.dirname(helperExecPath)]
 
     // Read roots aggregate platform defaults (which include macOS-only
     // entries on Linux), gate-forwarded roots, and approved read paths.
@@ -681,7 +708,7 @@ export namespace LinuxBackend {
     }
 
     return {
-      command: helper.path,
+      command: helperExecPath,
       args: ["--sandbox-policy-cwd", opts.workspace, "--permission-profile", profilePath, "--", command, ...args],
       sandboxed: true,
       tempPath: profilePath,
