@@ -802,11 +802,28 @@ export namespace Session {
     }
   }
 
-  export function defaultControlProfileForSessionSource(session?: Pick<Info, "endpoint">): ProfileId {
-    if (session?.endpoint?.kind === "channel") return "autonomous"
-    const contributed = SessionSchemaRegistry.defaultControlProfile(session)
-    if (contributed) return contributed
-    return "guarded"
+  const NON_INTERACTIVE_DEFAULT: ProfileId = "autonomous"
+
+  /** True for root sessions with no human available to answer an approval prompt. */
+  function isNonInteractiveSource(session?: object): boolean {
+    const endpoint = (session as { endpoint?: { kind?: string } } | undefined)?.endpoint
+    if (endpoint?.kind === "channel") return true
+    return session ? SessionSchemaRegistry.isBackground(session) : false
+  }
+
+  /**
+   * Single owner of the default profile for a session source. Hiding behind
+   * non-interactive roots is the configured non-interactive profile (default
+   * `autonomous`); `guarded` is deliberately excluded there because an unattended
+   * session under `guarded` can leave a permission ask pending with no one to
+   * answer it.
+   */
+  export async function defaultControlProfileForSessionSource(session?: object): Promise<ProfileId> {
+    if (!isNonInteractiveSource(session)) return "guarded"
+    const configured = await Config.current()
+      .then((cfg) => cfg.nonInteractiveControlProfile)
+      .catch(() => undefined)
+    return configured ? ControlProfileCompiler.normalize(configured) : NON_INTERACTIVE_DEFAULT
   }
 
   export async function resolveSessionControlProfile(sessionID: string): Promise<Info["controlProfile"] | undefined> {
@@ -821,6 +838,14 @@ export namespace Session {
     const sessionState = input.sessionID ? await sessionControlProfileState(input.sessionID) : undefined
     if (sessionState?.controlProfile) return ControlProfileCompiler.normalize(sessionState.controlProfile)
     if (input.agentControlProfile) return ControlProfileCompiler.normalize(input.agentControlProfile)
+
+    // A non-interactive root resolves through the non-interactive key ahead of the
+    // generic global controlProfile: an operator's interactive default must not turn
+    // unattended Channel or Agenda work into a profile that can only stall on an
+    // approval prompt no one can answer.
+    if (isNonInteractiveSource(sessionState?.root)) {
+      return defaultControlProfileForSessionSource(sessionState?.root)
+    }
 
     const topLevelProfile =
       input.topLevelControlProfile ??

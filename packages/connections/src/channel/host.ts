@@ -215,7 +215,6 @@ export namespace ChannelHost {
           const endpoint = taskEndpoint(hostIdentity, input.externalProjectId, input.externalTaskId)
           const session = await Session.getOrCreateForEndpoint(endpoint, {
             scope,
-            controlProfile: "autonomous",
             interaction: SessionInteraction.unattended(`channel:${channelType}`),
             title: input.title,
             agentOverride: input.agent,

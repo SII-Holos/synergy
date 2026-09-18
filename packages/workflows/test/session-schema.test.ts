@@ -50,7 +50,7 @@ test("registered Agenda creation preserves scheduling index and default control 
     fn: async () => {
       const scheduled = await Session.create({ agenda: { itemID: "agenda-owner" } })
       expect(scheduled.category).toBe("background")
-      expect(Session.defaultControlProfileForSessionSource(scheduled)).toBe("autonomous")
+      expect(await Session.defaultControlProfileForSessionSource(scheduled)).toBe("autonomous")
       expect(
         await Storage.read<{ sessionID: string; scopeID: string }>(
           StoragePath.agendaSession("agenda-owner", scheduled.id),

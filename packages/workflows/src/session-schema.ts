@@ -118,7 +118,6 @@ declare module "@ericsanchezok/synergy-harness/session/types" {
 const contribution: SessionSchemaRegistry.Contribution = {
   shape: SessionFields,
   isBackground: (input) => Boolean(input.agenda),
-  defaultControlProfile: (input) => (input.agenda ? "autonomous" : undefined),
   async created(input) {
     const agenda = SessionFields.agenda.parse(input.agenda)
     if (!agenda) return
