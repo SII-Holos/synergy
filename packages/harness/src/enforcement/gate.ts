@@ -1,12 +1,4 @@
-import {
-  extractShellHeredocBodies,
-  lexCompoundCommands,
-  splitCompoundCommands,
-  stripWrappers,
-  walkShellChars,
-} from "./shell-command"
-
-export { splitCompoundCommands, stripWrappers } from "./shell-command"
+import { extractShellHeredocBodies, lexCompoundCommands, walkShellChars } from "./shell-command"
 
 export interface ApprovalCacheEntry {
   decision: "approved_for_session" | "denied"
@@ -128,107 +120,6 @@ export interface GateOptions {
   synergyRoot?: string
 }
 
-const DESTRUCTIVE_PATTERNS = [
-  // File deletion
-  "rm -rf",
-  "rm -fr",
-  "rm -r ",
-  "rm -f ",
-  "rmdir ",
-  // Filesystem destruction
-  "mkfs ",
-  "fdisk ",
-  "parted ",
-  // LVM destructive
-  "lvremove ",
-  "pvremove ",
-  "vgremove ",
-  // Git destructive operations (force/delete/hard-reset only — ordinary feature-branch push is shell_remote_publish)
-  "git reset --hard",
-  "git clean -f",
-  "git clean -x",
-  "git branch -D",
-  "git push --force",
-  "git push -f",
-  "git push --delete",
-  "git stash clear",
-  "git stash drop",
-  "git stash pop",
-  // Git history rewriting
-  "git rebase ",
-  "git filter-branch",
-  "git reflog expire",
-  "git reflog delete",
-  // Git refined classifications — defense-in-depth (only truly destructive variants)
-  "git pull --rebase",
-  "git pull -r",
-  "git revert ",
-  "git rm ",
-  "git commit --amend",
-  "git reset ",
-]
-
-const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
-
-export interface DestructiveMatch {
-  matched: boolean
-  reason?: string
-  pattern?: string
-}
-
-/**
- * Resilient destructive patterns. Uses regex with flexible whitespace and
- * handles common bypass techniques (extra spaces, quotes around paths).
- */
-const DESTRUCTIVE_PATTERNS_RESILIENT: { regex: RegExp; label: string }[] = [
-  // rm -rf with flexible whitespace, optional quotes around target
-  { regex: /\brm\s+(-[a-z]*r[a-z]*f?|--recursive|--force)[^\n]*\b/s, label: "rm recursive/force" },
-  { regex: /\brm\s+-[a-z]*f[a-z]*r?[^\n]*\b/s, label: "rm force" },
-  // rm with wildcard or root/home target
-  { regex: /\brm\s+[^\n]*\s+\/(\s|$|\*)/, label: "rm targeting root" },
-  { regex: /\brm\s+[^\n]*\s+~(\s|$|\*)/, label: "rm targeting home" },
-  { regex: /\brm\s+[^\n]*\s+\*(\s|$)/, label: "rm with wildcard" },
-  // git history rewrite / destructive ops
-  { regex: /\bgit\s+push\b[^\n]*--force\b/i, label: "git push --force" },
-  { regex: /\bgit\s+push\b[^\n]*-f\b/i, label: "git push -f" },
-  { regex: /\bgit\s+reset\s+--hard\b/i, label: "git reset --hard" },
-  { regex: /\bgit\s+clean\s+-[a-z]*d[a-z]*f?/i, label: "git clean -d" },
-  // chmod 777 on sensitive paths
-  { regex: /\bchmod\s+(-R\s+)?[0-7]{3,4}\s+\/(\s|$)/i, label: "chmod on root" },
-  // shred (secure delete)
-  { regex: /\bshred\b/i, label: "shred (secure delete)" },
-  // dd to a device (not a file)
-  { regex: /\bdd\b[^\n]*\bof=\/dev\//i, label: "dd to device" },
-  // mkfs (filesystem format)
-  { regex: /\bmkfs\b/i, label: "mkfs (format filesystem)" },
-  // Mass deletion via find -delete or find -exec rm
-  { regex: /\bfind\b[^\n]*-delete\b/i, label: "find -delete" },
-  { regex: /\bfind\b[^\n]*-exec\s+rm\b/i, label: "find -exec rm" },
-]
-
-/**
- * Analyze a shell command for destructive patterns. Splits compound commands,
- * strips wrappers, and checks each sub-command independently.
- */
-export function analyzeDestructiveCommand(command: string): DestructiveMatch {
-  if (!command || !command.trim()) return { matched: false }
-  const subCommands = splitCompoundCommands(command)
-  for (const sub of subCommands) {
-    const stripped = stripWrappers(sub).trim()
-    if (!stripped) continue
-    for (const pattern of DESTRUCTIVE_PATTERNS_RESILIENT) {
-      if (pattern.regex.test(stripped)) {
-        return {
-          matched: true,
-          reason: `Destructive pattern: ${pattern.label}`,
-          pattern: pattern.regex.source,
-        }
-      }
-    }
-  }
-  return { matched: false }
-}
-
 const NETWORK_PATTERNS = [
   "curl ",
   "wget ",
@@ -328,16 +219,6 @@ function pathArgs(args: Record<string, any>): string[] {
 function imagePathArgs(args: Record<string, any>): { read: string[]; write: string[] } {
   const write = [...stringPathArgs(args.output_path), ...stringPathArgs(args.outputPath)]
   return { read: stringPathArgs(args.input_paths), write: [...new Set(write)] }
-}
-
-function isDestructive(command: string): string | null {
-  const lower = command.toLowerCase()
-  if (ShellSafety.hasSudoInvocation(command)) return "sudo"
-  for (const p of DESTRUCTIVE_PATTERNS) {
-    if (lower.includes(p)) return p
-  }
-  if (DESTRUCTIVE_REGEX.test(lower)) return "dd with raw device"
-  return null
 }
 
 function extractAbsolutePaths(command: string): string[] {
@@ -1147,38 +1028,17 @@ export namespace EnforcementGate {
         // shell_remote_publish covers ordinary branch push and PR creation.
         // shell_remote_write is broader remote mutation and stays Smart allow eligible.
         // shell_remote_execute applies when linkID/targetID targets a remote Synergy Link host.
-        caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
+        // The classifier is the single owner of every shell risk: it decides
+        // host-level destruction, irreversibility, privilege escalation, and
+        // remote mutation by tokenizing the command, so no substring
+        // second-opinion layer runs here.
+        caps.push({
+          class: risk,
+          nonBypassable: risk === "shell_destructive",
+          ...(risk === "shell_destructive" ? { reason: `destructive shell command: ${command.slice(0, 200)}` } : {}),
+        })
         if (requestsSynergyLink(args)) {
           caps.push({ class: "shell_remote_execute", nonBypassable: true })
-        }
-
-        // Defense-in-depth: secondary destructive pattern checks.
-        if (risk !== "shell_destructive") {
-          const resilient = analyzeDestructiveCommand(command)
-          if (resilient.matched) {
-            caps.push({
-              class: "shell_destructive",
-              nonBypassable: true,
-              reason: resilient.reason,
-              metadata: { pattern: resilient.pattern },
-            })
-          } else {
-            const matched = isDestructive(command)
-            if (matched) {
-              caps.push({
-                class: "shell_destructive",
-                nonBypassable: true,
-                reason: `matched destructive pattern: ${matched}`,
-              })
-            }
-          }
-        } else {
-          // ShellSafety already classified as shell_destructive — annotate the
-          // existing capability with diagnostic reason from the pattern list.
-          const matched = isDestructive(command)
-          if (matched) {
-            caps[caps.length - 1].reason = `matched destructive pattern: ${matched}`
-          }
         }
 
         const cwd = args.workdir ?? activeWorkspace

@@ -190,30 +190,48 @@ function pushTargetBranchName(target: string): string | null {
   return target || null
 }
 
+/** One resolved refspec destination, used to decide remote irreversibility. */
+interface PushTarget {
+  protected: boolean
+  /** Source is a symbolic ref (HEAD/@) with no explicit destination. */
+  runtimeResolved: boolean
+  /** Destination is a concrete, non-protected branch this push can publish. */
+  publishable: boolean
+}
+
+/** Symbolic refspec sources whose concrete branch is only known at runtime. */
+const RUNTIME_RESOLVED_REFS = new Set(["head", "@"])
+
 function analyzePushTargets(
   words: string[],
   subIndex: number,
-): { destructive: boolean; protected: boolean; explicitPublish: boolean } {
+): {
+  targets: PushTarget[]
+} {
   const positionals = words.slice(subIndex + 1).filter((word) => word && !word.startsWith("-") && !word.includes("="))
-  // Bare push or push with only remote (no refspec) — equivalent to
-  // explicit feature-branch push via push.default (typically "simple").
-  if (positionals.length <= 1) return { destructive: false, protected: false, explicitPublish: true }
-  return positionals.slice(1).reduce<{ destructive: boolean; protected: boolean; explicitPublish: boolean }>(
-    (result, refspec) => {
-      const force = refspec.startsWith("+")
-      const target = refspec.replace(/^\+/, "").split(":").pop() ?? refspec
-      const deletesRef = target.length === 0 || refspec.startsWith(":")
-      const branchName = pushTargetBranchName(target)
+  // Bare push or push with only remote (no refspec): the destination comes from
+  // push.default at runtime and is reclassified by the gate.
+  if (positionals.length <= 1) return { targets: [] }
+  return {
+    targets: positionals.slice(1).map((refspec) => {
+      const parts = refspec.replace(/^\+/, "").split(":")
+      const source = parts[0] ?? ""
+      const destination = parts.length > 1 ? (parts[1] ?? "") : source
+      // Delete forms: `:dst` deletes the destination, `src:` deletes the
+      // source. Either way the affected remote branch is the named side.
+      const deletesDestination = refspec.replace(/^\+/, "").startsWith(":")
+      const deletesSource = !deletesDestination && destination === ""
+      const branch = deletesDestination ? destination : deletesSource ? source : destination
+      const branchName = branch ? pushTargetBranchName(branch) : null
+      const runtimeResolved = RUNTIME_RESOLVED_REFS.has(source.toLowerCase()) && parts.length === 1
       const protectedTarget = branchName !== null && PROTECTED_PUSH_TARGETS.has(branchName)
-      const publishableBranch = !force && !deletesRef && branchName !== null && !protectedTarget
       return {
-        destructive: result.destructive || force || deletesRef,
-        protected: result.protected || protectedTarget,
-        explicitPublish: result.explicitPublish || publishableBranch,
+        protected: protectedTarget,
+        runtimeResolved,
+        publishable: branchName !== null && !protectedTarget && !runtimeResolved,
       }
-    },
-    { destructive: false, protected: false, explicitPublish: false },
-  )
+    }),
+  }
 }
 
 function isGitRepoSelectorAssignment(word: string | undefined): boolean {
@@ -372,52 +390,80 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   }
 
   // ── clean ──────────────────────────────────────────────────
+  // Removing ignored files (`-x`) can delete build outputs and credentials
+  // that no VCS operation can restore. Removing only untracked files (`-f`,
+  // `-fd`) is an ordinary development reset inside the workspace.
   if (sub === "clean") {
     if (hasExact("-n") || flags.some((f) => f.startsWith("--dry-run"))) return "shell_read"
     const shortChars = flags.filter((f) => f.startsWith("-") && !f.startsWith("--")).join("")
-    if (shortChars.includes("x") && shortChars.includes("f") && shortChars.includes("d")) return "shell_destructive"
-    if (shortChars.includes("f") && shortChars.includes("d")) return "shell_destructive"
+    if (shortChars.includes("f") && shortChars.includes("x")) return "shell_destructive"
+    if (shortChars.includes("f")) return "shell"
     return null // unrecognized clean flags — fall through to isReadOnly
   }
 
   // ── commit ─────────────────────────────────────────────────
+  // `--amend` rewrites the tip, which the reflog still references; the message
+  // and tree are recoverable until gc. Not an irreversible boundary.
   if (sub === "commit") {
-    if (hasExact("--amend") || flags.some((f) => f.startsWith("--amend"))) return "shell_destructive"
-    return "shell" // safe_write
+    return "shell"
   }
 
   // ── pull ──────────────────────────────────────────────────
+  // `--rebase` is a local reapplication of commits and is recoverable through
+  // the reflog; it is not a remote-irreversible operation.
   if (sub === "pull") {
-    if (flags.some((f) => f.startsWith("--rebase") || f === "-r")) return "shell_destructive"
-    return "shell" // plain pull → warn
+    return "shell"
   }
 
   // ── push ───────────────────────────────────────────────────
+  // Remote irreversibility follows the *target branch*, not the flag spelling.
+  // `--force-with-lease` is git's recommended safe alternative to `--force`,
+  // and both are ordinary when the destination is a non-protected branch; the
+  // loss is recoverable precisely when the destination is not shared history.
   if (sub === "push") {
-    const hasForce =
+    const { targets } = analyzePushTargets(words, subIndex)
+    const forcedRefspec = words.slice(subIndex + 1).some((word) => word.startsWith("+"))
+    const destructiveFlags =
       hasExact("--force") ||
       hasExact("-f") ||
       hasExact("--mirror") ||
-      flags.some((f) => f.startsWith("--force-with-lease"))
-    const hasDelete = hasExact("--delete") || hasExact("-d")
-    const targetRisk = analyzePushTargets(words, subIndex)
-    if (hasForce || hasDelete || targetRisk.destructive) return "shell_destructive"
-    if (
-      hasRepoSelector ||
-      hasExact("--all") ||
-      hasExact("--tags") ||
-      targetRisk.protected ||
-      !targetRisk.explicitPublish
-    )
-      return "shell_remote_write"
-    // Bare push (no refspec, explicitPublish: true from analyzePushTargets) or
-    // explicit non-protected feature-branch push — safe for automation.
+      hasExact("-d") ||
+      hasExact("--delete") ||
+      forcedRefspec ||
+      flags.some((f) => f.startsWith("--force-with-lease") || f.startsWith("--force-if-includes"))
+
+    // Repository-selecting flags and all-ref pushes bypass the refspec analysis:
+    // their destination set is not bounded by one named branch.
+    const unboundedTarget = hasRepoSelector || hasExact("--all") || hasExact("--tags") || hasExact("--mirror")
+    if (unboundedTarget) return "shell_remote_write"
+
+    // Remote irreversibility is decided by the destination branch: a force or
+    // delete against shared history cannot be undone, while the same operation
+    // on a non-protected branch only loses that branch's own commits.
+    const boundTargets = targets.filter((target) => !target.runtimeResolved)
+    const allPublishable = boundTargets.length > 0 && boundTargets.every((target) => target.publishable)
+    if (destructiveFlags) return allPublishable ? "shell_remote_publish" : "shell_remote_write"
+
+    // Non-forced push: protected destinations and non-branch refs (tags, notes)
+    // mutate shared state, everything else publishes a branch.
+    if (targets.some((target) => target.protected)) return "shell_remote_write"
+    if (targets.length > 0 && !allPublishable) return "shell_remote_write"
+
+    // Bare push and explicit non-protected feature-branch push are publishable
+    // for automation.
     return "shell_remote_publish"
   }
 
   // ── reset ──────────────────────────────────────────────────
+  // `--soft`/`--mixed`/`--keep` move only the ref and index; the working tree
+  // and the reflog keep the previous commit reachable. `--hard`/`--merge`
+  // discard uncommitted work irrecoverably.
   if (sub === "reset") {
-    return "shell_destructive" // all forms → destructive
+    const hard = hasExact("--hard") || hasExact("--merge")
+    const soft = hasExact("--soft") || hasExact("--mixed") || hasExact("--keep")
+    if (hard) return "shell_destructive"
+    if (soft) return "shell"
+    return "shell" // bare reset is --mixed
   }
 
   // ── restore ────────────────────────────────────────────────
@@ -431,22 +477,21 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   }
 
   // ── stash ──────────────────────────────────────────────────
+  // `drop`/`clear` destroy a stash that has no other ref; `pop`/`apply` move
+  // the changes back into the working tree and are recoverable.
   if (sub === "stash") {
     const subsub = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (subsub === "clear") return "shell_destructive"
     if (subsub === "drop") return "shell_destructive"
-    if (subsub === "pop") return "shell_destructive"
-    if (subsub === "apply" || subsub === "push" || subsub === "save" || subsub === "branch") return "shell" // safe_write
     if (subsub === "list" || subsub === "show") return "shell_read"
-    return "shell" // stash without subcommand → safe_write
+    return "shell"
   }
 
   // ── rebase ─────────────────────────────────────────────────
+  // A local reapplication of commits. The pre-rebase tip stays in the reflog
+  // and `--abort` returns to it, so this is not an irreversible boundary.
   if (sub === "rebase") {
-    if (hasExact("--abort")) return "shell"
-    if (hasExact("--continue")) return "shell"
-    if (hasExact("-i") || hasExact("--interactive")) return "shell_destructive"
-    return "shell_destructive" // rebase without abort/continue → destructive
+    return "shell"
   }
 
   // ── reflog ─────────────────────────────────────────────────
@@ -498,6 +543,10 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   }
 
   // ── fall-through to taxonomy map ───────────────────────────
+  // `revert` records an inverse commit and `rm` deletes a working-tree path;
+  // both leave the original object reachable, and whether the path is inside
+  // the workspace is the sandbox's decision.
+  if (sub === "revert" || sub === "rm") return "shell"
   return GIT_TAXONOMY.get(sub) ?? null
 }
 
@@ -975,22 +1024,137 @@ function isSafeSimpleCommand(segment: string): boolean {
 // Patterns for commands that can NEVER be executed regardless of profile.
 const FORK_BOMB_RE = /:\(\)\s*\{?\s*:\s*\|[^}]*&\s*}?\s*;:/
 const DEVICE_WRITE_RE = /(?:^|[\s;&|])(?:dd|mkfs|fdisk|parted)\s.*\/dev\/(sd|xvd|nvme|hd)/
-const RECURSIVE_ROOT_RM_RE = /rm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*\s+)/
-
-const HARDLINE_PREFIXES = [
-  "mkfs ",
-  "fdisk ",
-  "parted ",
-  "lvremove ",
-  "pvremove ",
-  "vgremove ",
-  "shutdown ",
-  "reboot ",
-  "halt ",
-  "poweroff ",
-]
 
 const HARDLINE_EXACTS = ["init 0", "init 6", "telinit 0", "telinit 6"]
+
+/**
+ * Targets whose destruction is unrecoverable for the whole machine rather than
+ * for one workspace subtree: filesystem root, home directory, and the wildcard
+ * forms of either. Anything deeper (`./dist`, `/tmp/scratch`) belongs to the
+ * OS sandbox, which decides it from the real syscall instead of from argument
+ * text.
+ */
+const HOST_LEVEL_TARGETS = new Set([
+  "/",
+  "/*",
+  "//",
+  "~",
+  "~/",
+  "~/*",
+  "$home",
+  "${home}",
+  "$home/",
+  "$home/*",
+  "${home}/",
+  "${home}/*",
+  ".",
+  "./",
+  "./*",
+  "..",
+  "../",
+  "*",
+])
+
+/** System locations where irreversible data destruction is never acceptable. */
+const CRITICAL_SYSTEM_PREFIXES = [
+  "/etc",
+  "/usr",
+  "/bin",
+  "/sbin",
+  "/lib",
+  "/lib64",
+  "/boot",
+  "/var",
+  "/dev",
+  "/System",
+  "/Applications",
+  "/Library",
+  "/private",
+]
+
+/** Tools that reformat, repartition, or power down the machine. */
+const HOST_DESTRUCTIVE_TOOLS = new Set([
+  "fdisk",
+  "parted",
+  "lvremove",
+  "pvremove",
+  "vgremove",
+  "shutdown",
+  "reboot",
+  "halt",
+  "poweroff",
+])
+
+function isHostLevelTarget(raw: string): boolean {
+  const token = raw.trim().toLowerCase()
+  if (!token) return false
+  if (HOST_LEVEL_TARGETS.has(token)) return true
+  const stripped = token.replace(/\/+$/, "")
+  return stripped !== token && HOST_LEVEL_TARGETS.has(stripped)
+}
+
+function isCriticalSystemPath(raw: string): boolean {
+  const token = raw.trim()
+  if (!token) return false
+  if (token === "/") return true
+  return CRITICAL_SYSTEM_PREFIXES.some((prefix) => token === prefix || token.startsWith(`${prefix}/`))
+}
+
+function isFilesystemFormatTool(executable: string): boolean {
+  return executable === "mkfs" || executable.startsWith("mkfs.")
+}
+
+/**
+ * Whether the invocation only inspects the tool (`-l`/`--list`) or asks for
+ * help. `-h` is excluded for the power tools, where it means "halt" rather
+ * than "help".
+ */
+function isToolHelpOrListingForm(executable: string, args: string[]): boolean {
+  const has = (flag: string) => args.some((arg) => arg === flag)
+  if (has("--help") || has("--version") || has("--usage")) return true
+  if (executable === "shutdown" || executable === "reboot" || executable === "halt" || executable === "poweroff") {
+    return false
+  }
+  if (has("-h")) return true
+  if ((executable === "fdisk" || executable === "parted") && (has("-l") || has("--list"))) return true
+  return false
+}
+
+function isHostDestructiveInvocation(executable: string, args: string[]): boolean {
+  const hostTool = HOST_DESTRUCTIVE_TOOLS.has(executable) || isFilesystemFormatTool(executable)
+  if (!hostTool) return false
+  return !isToolHelpOrListingForm(executable, args)
+}
+
+function isHostLevelRemoval(executable: string, args: string[]): boolean {
+  if (executable !== "rm") return false
+  return args.filter((arg) => !arg.startsWith("-")).some(isHostLevelTarget)
+}
+
+function isRecursivePermissionChangeOnHost(executable: string, args: string[]): boolean {
+  if (executable !== "chmod" && executable !== "chown" && executable !== "chgrp") return false
+  const recursive = args.some((arg) => arg === "--recursive" || /^-[^-]*[rR]/.test(arg))
+  if (!recursive) return false
+  return args.filter((arg) => !arg.startsWith("-")).some(isHostLevelTarget)
+}
+
+function isIrreversibleCriticalWrite(executable: string, args: string[]): boolean {
+  if (executable !== "shred" && executable !== "truncate") return false
+  return args.filter((arg) => !arg.startsWith("-")).some((arg) => isCriticalSystemPath(arg) || isHostLevelTarget(arg))
+}
+
+/** Leading simple command of every compound segment, with argv[0] normalized. */
+function leadingInvocations(command: string): Array<{ name: string; args: string[] }> {
+  const compound = lexCompoundCommands(command)
+  const segments = compound.segments.length > 0 ? compound.segments : [command]
+  const invocations: Array<{ name: string; args: string[] }> = []
+  for (const segment of segments) {
+    const { name, args } = simpleCommandParts(controlCommandSegment(segment))
+    const executable = commandBasename(name ?? "")
+    if (executable) invocations.push({ name: executable, args })
+  }
+  return invocations
+}
 
 const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\b(?:rg|ripgrep)\b.*--pre(?:-glob)?\b/, reason: "ripgrep with preprocessor execution" },
@@ -1175,24 +1339,28 @@ function checkHardline(command: string): boolean {
 
   if (FORK_BOMB_RE.test(lower) || lower.includes(":() {")) return true
   if (DEVICE_WRITE_RE.test(lower)) return true
-  if (HARDLINE_PREFIXES.some((p) => lower.startsWith(p))) return true
   if (HARDLINE_EXACTS.some((e) => lower === e)) return true
 
-  if (RECURSIVE_ROOT_RM_RE.test(lower)) {
-    if (
-      lower.includes("/ ") ||
-      lower.includes("/* ") ||
-      lower.includes("/\t") ||
-      lower.includes("/*\t") ||
-      lower.includes(" ~ ") ||
-      lower.includes(" $HOME")
-    ) {
-      return true
-    }
+  for (const invocation of leadingInvocations(command)) {
+    if (isHostDestructiveInvocation(invocation.name, invocation.args)) return true
+    if (isHostLevelRemoval(invocation.name, invocation.args)) return true
+    if (isRecursivePermissionChangeOnHost(invocation.name, invocation.args)) return true
   }
 
   if (lower.startsWith("dd ") && /of=\/dev\//.test(lower)) return true
 
+  return false
+}
+
+/**
+ * Irreversible data destruction on a system location, or privilege escalation.
+ * Both stay `shell_destructive` (refused under `autonomous`) without becoming
+ * a machine-wide hardline rule.
+ */
+function isIrreversibleDestruction(command: string): boolean {
+  for (const invocation of leadingInvocations(command)) {
+    if (isIrreversibleCriticalWrite(invocation.name, invocation.args)) return true
+  }
   return false
 }
 
@@ -3588,6 +3756,17 @@ export namespace ShellSafety {
     const normalized = normalizeCommand(command)
 
     if (checkHardline(normalized)) return "shell_hardline"
+
+    // Privilege escalation and irreversible destruction of system locations are
+    // boundaries the OS sandbox cannot express: once a command re-executes as
+    // root, or overwrites a system path, the containment decision was already
+    // made inside the sandbox. Both detectors walk the whole command
+    // themselves (substitutions, heredocs, wrappers, fd replay), so they run
+    // once at the top level and share this classification budget.
+    if (depth === 0) {
+      if (hasSudoInvocationRecursive(command, state, 0)) return "shell_destructive"
+      if (isIrreversibleDestruction(command)) return "shell_destructive"
+    }
 
     if (hasPipeToShell(normalized)) return "shell_destructive"
     if (hasUnsafeExecTarget(normalized, state)) return "shell_destructive"
