@@ -9,7 +9,8 @@ Status: implemented
 ## Decision
 
 - Remove the `ACTIVITY_PRESENTATION_BOUNDARY_PREFIXES` rule from `packages/util/src/activity.ts`; `isActivityGroupableTool` keeps only the `render` presentation boundary plus the metadata-driven `toolCard: hidden` and `media-generation` exclusions.
-- Classify the six built-in MCP search tool ids (`mcp__anysearch__search`/`batch_search`/`extract`/`get_sub_domains`, `mcp__scholight__search_papers`/`extract_url`) as `web` in `TOOL_CATEGORIES`, so folded steps land in the `research-web` family group instead of a generic one.
+- Classify the six built-in MCP search tool ids (`mcp__anysearch__search`/`batch_search`/`extract`/`get_sub_domains`, `mcp__scholight__search_papers`/`extract_url`) as `web` in `TOOL_CATEGORIES`, so folded steps land in the `research-web` family group instead of depending on input-based fallback classification.
+- Resolve Scholight step titles, icons, queries, and URLs through the existing tool-info helper so folded rows retain their search context.
 - Balanced and minimal projections fold these cards like every other ordinary tool; full mode and expanded group details still reach the per-query card renderers through the existing tool registry.
 
 ## Alternatives considered

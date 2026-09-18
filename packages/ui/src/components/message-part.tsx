@@ -48,6 +48,7 @@ import { ToolResultBody } from "./tool-result-body"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
+import { getScholightToolInfo, isScholightToolName } from "./tool/scholight-info"
 import { getTaskToolInfo } from "./tool/task-info"
 import type { MessageDescriptor } from "@lingui/core"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
@@ -359,6 +360,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   if (lattice) return lattice
 
   if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
+  if (isScholightToolName(tool)) return getScholightToolInfo(tool, input)
 
   switch (tool) {
     case "read":
