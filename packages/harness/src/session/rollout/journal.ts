@@ -91,12 +91,12 @@ export namespace RolloutJournal {
         value: JSON.parse(JSON.stringify(value)),
       })
       if (event.kind !== "record") throw new Error("Invalid rollout record")
+      // One commit carries the allocation, its evidence and the projection, so
+      // a crash can never expose a head that disagrees with the persisted
+      // event set or leave an applied projection without its evidence.
       await Storage.transaction(async () => {
         await RolloutPending.track(owner)
-        await Storage.write([...root(owner), "head"], { ...previous, allocated: seq })
         await Storage.write(eventKey(owner, seq), event)
-      })
-      await Storage.transaction(async () => {
         await Storage.write(key, event.value)
         await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })
       })

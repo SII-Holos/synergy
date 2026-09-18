@@ -195,10 +195,8 @@
         },
         "lspIdleReap": { "description": "Reap idle language servers (default: true)", "type": "boolean" },
         "agentWorkers": {
-          "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 64
+          "description": "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+          "anyOf": [{ "type": "integer", "exclusiveMinimum": 0, "maximum": 64 }, { "type": "null" }]
         },
         "agentWorkerMinIdle": {
           "description": "Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)",
@@ -804,6 +802,10 @@
           "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
           "type": "boolean"
         },
+        "logMirror": {
+          "description": "Mirror debug/info records that opt in with `mirror: true` into indexed observability events",
+          "type": "boolean"
+        },
         "retentionDays": {
           "description": "Days to retain optional observability mirror files (default: 7)",
           "type": "integer",
@@ -923,7 +925,18 @@
                   "description": "Enable optional JSONL mirror files for debugging exports",
                   "type": "boolean"
                 },
-                "maxSqliteBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                "maxSqliteBytes": {
+                  "description": "Maximum total authoritative storage bytes (default: 250MB)",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "retentionMs": {
+                  "description": "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
                 "walCheckpointIntervalMs": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
               },
               "additionalProperties": false

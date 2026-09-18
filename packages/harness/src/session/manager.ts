@@ -691,6 +691,16 @@ export namespace SessionManager {
     return Array.from(runtimes.values()).filter(occupied)
   }
 
+  /**
+   * Sessions that currently hold a registered runtime: open in this process,
+   * either running or idle between turns. Retention treats every one as live,
+   * because an idle runtime is still resumable and its newest evidence must
+   * survive until the runtime is swept.
+   */
+  export function liveSessionIDs(): string[] {
+    return [...runtimes.keys()]
+  }
+
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {
     const result: Record<string, StatusInfo> = {}
     for (const runtime of runtimes.values()) {

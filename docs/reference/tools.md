@@ -167,7 +167,7 @@ Create a recurring task that runs in its own separate session, isolated from thi
 | `title` | string | yes | Task title |
 | `prompt` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
 | `trigger` | AgendaTypes.ScheduleTrigger.describe | yes |  |
-| `tags` | string |  | Tags for organization and filtering |
+| `tags` | array |  | Tags for organization and filtering |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 | `wake` | boolean |  | If true, wake this session's agent when execution completes. Default: true |
 | `silent` | boolean |  | If true, suppress result delivery entirely. Default: false |
@@ -176,7 +176,7 @@ Create a recurring task that runs in its own separate session, isolated from thi
 | `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
 | `timeout` | number |  | Execution timeout in milliseconds |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports. |
-| `sessionRefs` | object |  | Sessions whose content is relevant context for execution |
+| `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
 | `sessionID` | string | yes | Session ID to reference |
 | `hint` | string |  | What to focus on in this session |
 
@@ -202,7 +202,7 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 | `title` | string |  | New title |
 | `description` | string |  | New description |
 | `status` | AgendaTypes.ItemStatus.optional |  | New status: pending, active, paused, done, cancelled |
-| `tags` | string |  | New tags (replaces existing) |
+| `tags` | array |  | New tags (replaces existing) |
 | `triggers` | array |  | New triggers (replaces existing, recomputes nextRunAt) |
 | `prompt` | string |  | New execution prompt |
 | `wake` | boolean |  | Whether to wake the origin session on completion |
@@ -212,7 +212,7 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 | `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
 | `timeout` | number |  | Execution timeout in milliseconds |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Set 'ephemeral' to create a fresh session on every fire. |
-| `sessionRefs` | object |  | Sessions whose content is relevant context for execution |
+| `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
 | `sessionID` | string | yes | Session ID to reference |
 | `hint` | string |  | What to focus on in this session |
 
@@ -231,12 +231,12 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `sessionID` | string | yes | Session to watch — wake when it ends a turn |
 | `agent` | string |  | Only wake when the turn's agent matches |
 | `finish` | string |  | Only wake when the turn's finish state matches (e.g. 'stop', 'error') |
-| `onGithub` | "pr" \| "issue" \| "workflow" \| "check" |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
+| `onGithub` | object |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
 | `resource` | "pr" \| "issue" \| "workflow" \| "check" | yes | GitHub resource kind to watch |
 | `repository` | string | yes | Repository in owner/repo form |
 | `number` | number |  | PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set |
 | `ref` | string |  | Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows |
-| `states` | string |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
+| `states` | array |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 
 ## agent_config
@@ -259,8 +259,8 @@ Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep 
 | --- | --- | --- | --- |
 | `pattern` | string | yes | AST pattern with meta-variables ($VAR for single node, $$$ for multiple nodes). Must be a complete AST node. |
 | `lang` | z.enum | yes | Target language for AST parsing |
-| `paths` | string |  | Paths to search (default: current directory) |
-| `globs` | string |  | Include/exclude globs (prefix ! to exclude) |
+| `paths` | array |  | Paths to search (default: current directory) |
+| `globs` | array |  | Include/exclude globs (prefix ! to exclude) |
 | `context` | number |  | Number of context lines around each match |
 
 ## attach
@@ -271,8 +271,8 @@ Deliver files to the user by making them available as conversation attachments. 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `file_path` | string | yes | Absolute or relative path to the file to deliver |
-| `filename` | string |  | Display name for the file (defaults to the original filename) |
+| `file_path` | union | yes | Absolute or relative path to the file to deliver |
+| `filename` | union |  | Display name for the file (defaults to the original filename) |
 
 ## bash
 
@@ -325,9 +325,9 @@ Request independent review only when the one current Blueprint outcome is comple
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `summary` | string | yes | Summary of what was completed. |
-| `completed` | string |  | Completed Blueprint requirement statements. |
-| `evidence` | string |  | Concrete verification evidence such as checks, artifacts, and file paths. |
-| `remaining` | string |  | Any known remaining work or limitations. |
+| `completed` | array |  | Completed Blueprint requirement statements. |
+| `evidence` | array |  | Concrete verification evidence such as checks, artifacts, and file paths. |
+| `remaining` | array |  | Any known remaining work or limitations. |
 
 ## boss_assign
 
@@ -341,7 +341,7 @@ Assign a task to a direct-child worker session in the Boss Mode tree. The task i
 | `taskID` | string | yes | Stable task ID chosen by the caller; idempotent per (caller, taskID). |
 | `task` | string | yes | The task text the worker must complete. |
 | `context` | string |  | Optional context to include with the task. |
-| `acceptance` | string |  | Optional acceptance criteria. |
+| `acceptance` | array |  | Optional acceptance criteria. |
 
 ## boss_cancel
 
@@ -377,7 +377,7 @@ Report a worker's outcome to its parent in the Boss Mode tree. Only workers may 
 | --- | --- | --- | --- |
 | `summary` | string | yes | Summary of what was done, blocked, or needed. |
 | `status` | "completed" \| "blocked" \| "needs_input" |  | Outcome status. Defaults to completed. |
-| `refs` | string |  | Optional references (files, IDs, links). |
+| `refs` | array |  | Optional references (files, IDs, links). |
 
 ## boss_spawn
 
@@ -426,7 +426,7 @@ Read or manage user annotations on browser pages. Annotations are user comments 
 | `ref` | string |  | Reference ID for create action |
 | `element` | string |  | Element selector for create action |
 | `comment` | string |  | Annotation comment text for create action |
-| `styleFeedback` | string |  | Style feedback for create action |
+| `styleFeedback` | record |  | Style feedback for create action |
 | `page` | number |  | Valid only for list; defaults to 0. |
 | `pageSize` | number |  | Valid only for list; defaults to 50. |
 
@@ -537,7 +537,7 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target` | BrowserLocatorSchema | yes |  |
-| `computedStyles` | string |  |  |
+| `computedStyles` | array |  |  |
 
 ## browser_navigation
 
@@ -564,7 +564,7 @@ Read or clear Chromium network requests, responses, failures, redirects, timing,
 | --- | --- | --- | --- |
 | `action` | "list" \| "get" \| "clear" |  |  |
 | `id` | string |  | Required only for get. |
-| `resourceTypes` | string |  |  |
+| `resourceTypes` | array |  |  |
 | `status` | number |  |  |
 | `page` | number |  |  |
 | `pageSize` | number |  |  |
@@ -629,7 +629,7 @@ Upload permission-reviewed workspace files to one uniquely matched file input th
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target` | BrowserLocatorSchema | yes |  |
-| `paths` | string | yes |  |
+| `paths` | array | yes |  |
 
 ## browser_view
 
@@ -765,7 +765,7 @@ Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only n
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `nodes` | object |  | Nodes to update |
+| `nodes` | array |  | Nodes to update |
 | `id` | string | yes | Node ID to update |
 | `status` | string |  | New status: completed, blocked, failed, cancelled, or pending (for retry) |
 | `task_id` | string |  | Background task ID to associate with this node |
@@ -787,7 +787,7 @@ Create and manage a directed acyclic graph (DAG) of tasks for the current sessio
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `nodes` | object | yes | The complete DAG node list |
+| `nodes` | array | yes | The complete DAG node list |
 
 ## edit
 
@@ -812,7 +812,7 @@ Read emails from an IMAP inbox. Use this tool when the user asks to check email,
 | --- | --- | --- | --- |
 | `folder` | string |  | Mailbox folder name, defaults to INBOX |
 | `action` | "search" \| "summaries" \| "read" \| "markSeen" | yes | What to do: search for UIDs, get summaries, read full email, or mark as seen |
-| `uids` | number |  | Email UIDs to fetch or mark as seen |
+| `uids` | array |  | Email UIDs to fetch or mark as seen |
 | `search` | object |  | Search criteria for finding emails |
 | `from` | string |  | Filter by sender email address |
 | `subject` | string |  | Filter by subject keyword |
@@ -831,7 +831,7 @@ Send an email via SMTP. Use this tool when the user asks you to send an email, n
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `to` | string | yes | Recipient email address(es). A single address, comma-separated string, or array of addresses |
+| `to` | union | yes | Recipient email address(es). A single address, comma-separated string, or array of addresses |
 | `subject` | string | yes | Email subject line |
 | `body` | string | yes | Email body in plain text |
 | `html` | string |  | Optional HTML version of the email body for rich formatting |
@@ -844,8 +844,8 @@ Change tool visibility for the current session by expanding deferred groups or a
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `groups` | string |  | Tool group IDs to expand, such as browser, agenda, session, note, memory. |
-| `tools` | string |  | Search-only individual tool IDs to activate. |
+| `groups` | array |  | Tool group IDs to expand, such as browser, agenda, session, note, memory. |
+| `tools` | array |  | Search-only individual tool IDs to activate. |
 | `reason` | string |  | Brief reason this capability is needed. |
 
 ## file_search
@@ -943,7 +943,7 @@ Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a s
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `file_path` | string | yes | Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze |
+| `file_path` | union | yes | Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze |
 | `goal` | string | yes | What specific information to extract from the file(s) |
 | `timeout` | number |  | Optional timeout in seconds. If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes). |
 | `show_to_user` | boolean |  | When true, also deliver the analyzed image(s) to the user as visible attachments. Use this when the user should see the same visual result you are analyzing. |
@@ -957,9 +957,9 @@ Request a completion review for the active Light Loop. Use this when you believe
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `summary` | string | yes | Summary of what was completed. |
-| `completed` | string |  | Completed deliverable or requirement statements. |
-| `evidence` | string |  | Concrete verification evidence (test results, file paths, checks). |
-| `remaining` | string |  | Any known remaining work or limitations. |
+| `completed` | array |  | Completed deliverable or requirement statements. |
+| `evidence` | array |  | Concrete verification evidence (test results, file paths, checks). |
+| `remaining` | array |  | Any known remaining work or limitations. |
 
 ## lsp
 
@@ -1070,7 +1070,7 @@ Archive notes by ID. Archived notes are hidden from the active list but preserve
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `ids` | string | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
+| `ids` | array | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
 | `unarchive` | boolean |  | Set to true to restore archived notes back to active state. |
 
 ## note_delete
@@ -1122,7 +1122,7 @@ Read the full content of one or more notes by ID. Blueprint documents are notes 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `ids` | string | yes | List of note IDs to read (max 10) |
+| `ids` | array | yes | List of note IDs to read (max 10) |
 | `offset` | z.coerce.number |  | Line or block offset to start reading from (0-based) |
 | `limit` | z.coerce.number |  | Maximum number of lines or blocks to return per note (max 2000) |
 | `format` | "markdown" \| "blocks" \| "json" |  | Output format. 'markdown': content as markdown (default). 'blocks': editable block anchors for note_edit. 'json': structured note data. |
@@ -1143,7 +1143,7 @@ Search notes using regex patterns. Searches across note titles and content, retu
 | `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
 | `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
 | `before` | string |  | Only include notes updated before this date (ISO 8601). |
-| `tags` | string |  | Only search notes that have ALL of these tags. |
+| `tags` | array |  | Only search notes that have ALL of these tags. |
 | `pinned` | boolean |  | Filter by pinned status. |
 
 ## note_write
@@ -1158,7 +1158,7 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `title` | string |  | Note title. Required when creating a new note. |
 | `content` | string | yes | Note content in markdown format. |
 | `mode` | "create" \| "append" \| "replace" |  | 'create': new note, 'append': add content to end of existing note, 'replace': overwrite content. |
-| `tags` | string |  | Tags for the note. |
+| `tags` | array |  | Tags for the note. |
 | `kind` | "note" \| "blueprint" |  | Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop. |
 | `description` | string |  | Short blueprint description. Only used when kind is 'blueprint'. |
 | `scope` | "current" \| "home" |  | Which scope to create the note in. Only used for create mode. |
@@ -1219,8 +1219,8 @@ Search code with AST-aware patterns and return anchored file blocks. Use this in
 | --- | --- | --- | --- |
 | `pattern` | string | yes | AST pattern with meta-variables; must be a complete, parseable AST node for the selected language |
 | `lang` | z.enum | yes | Target language for AST parsing |
-| `paths` | string |  | Paths to search; defaults to the current working directory |
-| `globs` | string |  | Additional include/exclude globs; prefix exclusions with ! |
+| `paths` | array |  | Paths to search; defaults to the current working directory |
+| `globs` | array |  | Additional include/exclude globs; prefix exclusions with ! |
 | `context` | number |  | Number of context lines to include around each structural match |
 | `limit` | number |  | Maximum matches to return; defaults to 50 |
 | `skip` | number |  | Matches to skip for pagination |
@@ -1253,7 +1253,7 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 | `action` | "list" \| "poll" \| "log" \| "write" \| "send-keys" \| "kill" \| "clear" \| "remove" | yes | Action to perform on the process |
 | `processId` | string |  | Process ID (required for all actions except list) |
 | `data` | string |  | Data to write to stdin (for write action) |
-| `keys` | string |  | Key tokens to send (for send-keys action) |
+| `keys` | array |  | Key tokens to send (for send-keys action) |
 | `offset` | number |  | Line offset for log retrieval |
 | `limit` | number |  | Number of lines to retrieve for log |
 | `block` | boolean |  | Wait for process to exit before returning (for poll action) |
@@ -1335,7 +1335,7 @@ Reload Synergy runtime state after self-configuration changes. Use this when con
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `target` | array | yes | One target or an array of targets to reload |
+| `target` | union | yes | One target or an array of targets to reload |
 | `scope` | RuntimeSchema.ReloadScope.optional |  | Config reload scope. Defaults to auto |
 | `force` | boolean |  | Reserved for future expansion |
 | `reason` | string |  | Optional short note about why the reload is happening |
@@ -1374,7 +1374,7 @@ Search file contents and return anchored file blocks. Use this instead of `grep`
 | `pattern` | string | yes | Regular expression to search for; matched files are returned with [path#TAG] headers for follow-up edits |
 | `path` | string |  | Directory to search in. Defaults to the current working directory. |
 | `include` | string |  | File pattern to include in the search, e.g. "*.ts" |
-| `globs` | string |  | Additional include/exclude globs; prefix exclusions with ! |
+| `globs` | array |  | Additional include/exclude globs; prefix exclusions with ! |
 | `limitFiles` | number |  | Maximum matched files to return; defaults to 20 |
 | `perFileLimit` | number |  | Maximum matched lines per file; defaults to 20 |
 | `skipFiles` | number |  | Matched files to skip for pagination |
@@ -1431,7 +1431,7 @@ Control a target session remotely — inspect its state and perform actions as i
 | `force` | boolean |  | Force worktree switch/remove operations when supported. |
 | `cleanup` | "keep" \| "remove_if_clean" |  | Cleanup behavior for worktree_leave. |
 | `requestID` | string |  | ID of the pending question or permission request. Required for question_reply, question_reject, and permission_reply. |
-| `answers` | string |  | Answers for question_reply. An array of arrays of selected labels — one array per question, each containing the label(s) selected. |
+| `answers` | array |  | Answers for question_reply. An array of arrays of selected labels — one array per question, each containing the label(s) selected. |
 | `reply` | "once" \| "reject" |  | Reply for permission_reply. 'once' approves this request; 'reject' denies it. |
 | `message` | string |  | Optional feedback message when rejecting a permission request. |
 
@@ -1532,7 +1532,7 @@ Launch a new agent to handle complex, multistep tasks. Available agent types: {a
 | `background` | boolean |  | Run task in background (async). Returns immediately with task_id. Use for parallel exploration or long-running tasks. Default: false (sync) |
 | `category` | string |  | Category preset to override model and inject context: Default: none (uses subagent's original model and prompt) |
 | `output` | CortexTypes.OutputConfig.optional |  |  |
-| `worktree` | "current" \| "fresh" |  |  |
+| `worktree` | object |  |  |
 | `create` | literal | yes |  |
 | `name` | string |  |  |
 | `baseRef` | "current" \| "fresh" |  |  |
@@ -1583,7 +1583,7 @@ Use this tool to create and manage a structured task list for your current codin
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `todos` | object | yes | The updated todo list |
+| `todos` | array | yes | The updated todo list |
 
 ## view_file
 

@@ -200,6 +200,7 @@ export namespace AgentCall {
               runID,
               purpose: input.agent,
             },
+            lane: "background",
             maxOutputTokens: input.maxOutputTokens,
           })
           let stream: AgentTurn.Stream

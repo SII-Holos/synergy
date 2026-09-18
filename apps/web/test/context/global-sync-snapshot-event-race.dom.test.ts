@@ -72,6 +72,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     export const browserPerformanceEnabled=()=>false
     export const startBrowserPerformanceMetrics=()=>{}
     export const stopBrowserPerformanceMetrics=()=>{}
+    export const browserTokenDurationSampleRate=()=>0.1
     export const recordTokenApply=()=>{}
   `,
   )

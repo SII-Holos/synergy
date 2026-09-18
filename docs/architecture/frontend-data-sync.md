@@ -100,7 +100,7 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Page size and cap
 
-- Frontend page loads use `limit: 200`; the store primary-message cap is 500.
+- The initial latest page uses `limit: 100`, sized to the rendered turn bound (`MAX_RENDERED_TURNS`), not the full transcript; history prepends, backfill, and refresh paths keep `limit: 200`. The store primary-message cap is 500.
 - The store's `DEFAULT_CAP` of 500 applies to primary messages in latest loads and to the full retained set during history prepends. Latest mode additionally retains dependency roots referenced by those primary messages, so the visible window may exceed 500 entries without losing a turn anchor.
 
 ### Latest mode
@@ -160,9 +160,9 @@ Scope initialization uses `GET /scope/bootstrap` (`scope.bootstrap()`). The serv
 Session detail loading is split by concern:
 
 - session metadata loads independently;
-- messages load through `session.messagePage()` in page size 200, stored in a bounded window capped at 500;
+- messages load through `session.messagePage()` — an initial latest page of 100 for the rendered bound, 200 for history prepends — stored in a bounded window capped at 500;
 - parts are sorted and reconciled under their owning message;
-- inbox, todo, and DAG refresh together through `session.volatileBatch()`, while diff, permissions, and questions retain separate refresh paths.
+- inbox, todo, and DAG refresh together through `session.volatileBatch()`, while diff and questions retain separate refresh paths and pending permissions load only for the viewed session through the `sessionID` filter on `/permission`;
 
 An accepted local root remains visible through a client-only optimistic marker when the queued response assigns a different canonical message ID. Acceptance atomically rekeys the message, its part bucket, and any history-mode pending ID instead of deleting the rendered root. Authoritative events and latest pages replace the marked message when the same ID materializes; until then, canonical-only actions and new-session transition completion remain blocked, while Inbox timeline cards still deduplicate by rendered message ID.
 
@@ -340,7 +340,7 @@ While the page is hidden, per-part delta frames are merged into one pending delt
 
 Network streaming and disk persistence are separate optimizations.
 
-`PartWriteBuffer` coalesces streaming text/reasoning persistence per part at a default 500 ms interval. It always retains the newest full part value.
+`PartWriteBuffer` coalesces streaming text/reasoning persistence per part at a default 500 ms interval. It retains the caller's newest part value by reference and snapshots it once at flush, so successive deltas are priced incrementally instead of re-serializing the accumulated part.
 
 - streaming increments defer disk writes;
 - discrete tool/status changes write immediately;
@@ -378,7 +378,7 @@ Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to me
 Loaded message and part buckets are memory-bounded independently of session metadata.
 
 - the global LRU spans Scope/session bucket keys;
-- at most 15 session buckets are retained;
+- at most 30 session buckets are retained, covering the recently viewed working set;
 - the actively viewed session is protected even if it is the oldest;
 - board panes get no eviction protection: they enter the normal load path when the board is mounted (touching their bucket, which keeps them near the LRU head) and refill from the loader after eviction, so a board pane can never silently show a blanked timeline;
 - eviction removes that session's message array, all parts owned by those messages, the session's `messageWindow` metadata, and its latest Context projection;

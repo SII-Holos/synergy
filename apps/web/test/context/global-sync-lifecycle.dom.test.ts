@@ -44,6 +44,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     export const browserPerformanceEnabled=()=>false
     export const startBrowserPerformanceMetrics=()=>{}
     export const stopBrowserPerformanceMetrics=()=>{}
+    export const browserTokenDurationSampleRate=()=>0.1
     export const recordTokenApply=()=>{}
   `,
   )

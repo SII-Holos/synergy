@@ -123,7 +123,6 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
           if (process.env.LOG_LEVEL && ["DEBUG", "INFO", "WARN", "ERROR"].includes(process.env.LOG_LEVEL))
             return process.env.LOG_LEVEL as Log.Level
           if (configLogLevel) return configLogLevel as Log.Level
-          if (Installation.isLocal()) return "DEBUG"
           return "INFO"
         })(),
       })

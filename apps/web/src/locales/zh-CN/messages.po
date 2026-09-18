@@ -18117,12 +18117,16 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
-msgstr "自动"
+msgid "settings.runtime.agents.agentWorkers.derived"
+msgstr "自动 · 由机器推导：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
 msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
+msgstr "已配置：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.placeholder"

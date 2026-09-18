@@ -98,6 +98,7 @@ import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import {
   browserPerformanceEnabled,
+  browserTokenDurationSampleRate,
   recordTokenApply,
   startBrowserPerformanceMetrics,
   stopBrowserPerformanceMetrics,
@@ -1111,7 +1112,11 @@ function createGlobalSync() {
   // reload on next view. Board panes get no special protection: they enter the
   // normal load path when the board is mounted (touching their bucket) and
   // refill from the loader after eviction.
-  const MESSAGE_BUCKET_CAP = 15
+  //
+  // The cap holds 30 recently viewed sessions (including the active one)
+  // resident, so moving around a working set of sessions keeps their timelines
+  // in the store instead of re-fetching a page on every switch.
+  const MESSAGE_BUCKET_CAP = 30
   const messageLru: string[] = []
   let activeBucketKey: string | undefined
   const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
@@ -1978,7 +1983,11 @@ function createGlobalSync() {
   createEffect(() => {
     if (!globalStore.ready) return
     if (browserPerformanceEnabled(globalStore.config)) {
-      startBrowserPerformanceMetrics({ url: globalSDK.url, client: globalSDK.client })
+      startBrowserPerformanceMetrics({
+        url: globalSDK.url,
+        client: globalSDK.client,
+        tokenDurationSampleRate: browserTokenDurationSampleRate(globalStore.config),
+      })
     } else {
       stopBrowserPerformanceMetrics()
     }

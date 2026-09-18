@@ -549,6 +549,8 @@ import type {
   RegistryRefreshResponses,
   RewardsInfo,
   RolloutArtifactRef,
+  RuntimeAgentWorkersErrors,
+  RuntimeAgentWorkersResponses,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
   RuntimeReloadScope,
@@ -5659,6 +5661,36 @@ export class Runtime extends HeyApiClient {
   }
 
   /**
+   * Get Agent worker capacity status
+   *
+   * Get the explicit Agent worker ceiling, the capacity the runtime resolves from it, and whether configuration or the machine decided it.
+   */
+  public agentWorkers<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RuntimeAgentWorkersResponses, RuntimeAgentWorkersErrors, ThrowOnError>({
+      url: "/runtime/agent-workers",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Dispose scope runtime
    *
    * Clean up and dispose the current scope runtime, releasing scoped resources.
@@ -7440,6 +7472,7 @@ export class Permission extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7450,6 +7483,7 @@ export class Permission extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
           ],
         },
       ],

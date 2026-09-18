@@ -5,7 +5,7 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Session } from "@ericsanchezok/synergy-sdk/client"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
@@ -38,6 +38,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = scope.state
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
+
+    // The initial latest page only needs to fill the rendered turn bound
+    // (MAX_RENDERED_TURNS in pages/session.tsx), not the whole transcript;
+    // history prepends keep the larger page so "Load earlier" refills the cap.
+    const INITIAL_LATEST_PAGE_LIMIT = 100
     const inflight = new Map<string, TrackedSessionSync>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightInbox = new Map<string, Promise<void>>()
@@ -224,7 +229,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       })
 
     const loadLatestMessages = (sessionID: string, options?: { force?: boolean; reconnectVersion?: number }) =>
-      loadMessagePage(sessionID, { mode: "latest", limit: chunk }, options)
+      loadMessagePage(
+        sessionID,
+        { mode: "latest", limit: hasMessageSnapshot(sessionID) ? chunk : INITIAL_LATEST_PAGE_LIMIT },
+        options,
+      )
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -387,13 +396,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
           const syncPermissions = () =>
-            retry(() => sdk.client.permission.list())
+            retry(() => sdk.client.permission.list({ sessionID }))
               .then((res) => {
-                const entries = (res.data ?? [])
-                  .filter((entry): entry is PermissionRequest => !!entry?.id && entry.sessionID === sessionID)
-                  .slice()
-                  .sort((a, b) => a.id.localeCompare(b.id))
-                setStore("permission", sessionID, reconcile(entries, { key: "id" }))
+                const entries = (res.data ?? []).filter((entry) => !!entry?.id)
+                setStore(
+                  "permission",
+                  sessionID,
+                  reconcile(
+                    entries.slice().sort((a, b) => a.id.localeCompare(b.id)),
+                    { key: "id" },
+                  ),
+                )
               })
               .catch(() => {})
           // Force session/message reloads after reconnect or backend restart.
