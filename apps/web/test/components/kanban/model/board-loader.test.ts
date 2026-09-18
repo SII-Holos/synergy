@@ -183,7 +183,7 @@ describe("createBoardLoader", () => {
   })
 })
 
-test("visible board Scopes survive the inactive budget and release with their final pane", async () => {
+test("visible board Scopes survive the inactive budget and become bounded cache entries after their final pane", async () => {
   const resident = new Set<string>()
   const retention = createScopeRetention((key) => resident.delete(key))
   const held: { resolve: (value: {}) => void; promise: Promise<{}> }[] = []
@@ -217,7 +217,7 @@ test("visible board Scopes survive the inactive budget and release with their fi
     expect(panes.every((pane) => resident.has(pane.scopeKey))).toBe(true)
     loader.syncPanes([{ scopeKey: panes[0]!.scopeKey, sessionID: "second-pane" }])
     expect(resident.has(panes[0]!.scopeKey)).toBe(true)
-    expect(panes.slice(1).every((pane) => !resident.has(pane.scopeKey))).toBe(true)
+    expect(panes.slice(1).filter((pane) => resident.has(pane.scopeKey))).toHaveLength(8)
     expect(panes.every((pane) => signals.get(pane.sessionID)?.aborted)).toBe(true)
     expect(signals.get("second-pane")?.aborted).toBe(false)
     expect(loader.state(panes[1]!.scopeKey, panes[1]!.sessionID).phase).toBe("idle")
@@ -225,9 +225,11 @@ test("visible board Scopes survive the inactive budget and release with their fi
     expect(signals.get("second-pane")?.aborted).toBe(true)
     expect(resident.has(panes[0]!.scopeKey)).toBe(true)
     other()
-    expect(resident.has(panes[0]!.scopeKey)).toBe(false)
+    expect(resident.has(panes[0]!.scopeKey)).toBe(true)
     loader.syncPanes(panes)
     loader.dispose()
+    expect(panes.filter((pane) => resident.has(pane.scopeKey))).toHaveLength(8)
+    for (let i = 0; i < 9; i++) deps.ensureScopeState(`/eviction-${i}`)
     expect(panes.every((pane) => !resident.has(pane.scopeKey))).toBe(true)
     expect(panes.every((pane) => signals.get(pane.sessionID)?.aborted)).toBe(true)
   } finally {

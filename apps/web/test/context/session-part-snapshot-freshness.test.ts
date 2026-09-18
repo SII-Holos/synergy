@@ -31,6 +31,43 @@ describe("session part snapshot freshness", () => {
     expect(freshness.action("scope", "session", "message", request)).toBe("apply")
   })
 
+  test("coalesces back-to-back snapshot-required checkpoints for one message", () => {
+    const freshness = new SessionPartSnapshotFreshness()
+    const stale = freshness.capture("scope", "session")
+
+    freshness.touch("scope", "session", "streaming", { requiresSnapshot: true })
+    freshness.touch("scope", "session", "streaming", { requiresSnapshot: true })
+
+    const fresh = freshness.capture("scope", "session")
+
+    expect(freshness.action("scope", "session", "streaming", stale)).toBe("retry")
+    expect(freshness.action("scope", "session", "streaming", fresh)).toBe("apply")
+  })
+
+  test("re-arms a snapshot-required mark when a capture intervenes", () => {
+    const freshness = new SessionPartSnapshotFreshness()
+    const first = freshness.capture("scope", "session")
+
+    freshness.touch("scope", "session", "streaming", { requiresSnapshot: true })
+
+    const second = freshness.capture("scope", "session")
+
+    freshness.touch("scope", "session", "streaming", { requiresSnapshot: true })
+
+    expect(freshness.action("scope", "session", "streaming", first)).toBe("retry")
+    expect(freshness.action("scope", "session", "streaming", second)).toBe("retry")
+  })
+
+  test("plain revision touches stay preserve without a retry mark", () => {
+    const freshness = new SessionPartSnapshotFreshness()
+    const request = freshness.capture("scope", "session")
+
+    freshness.touch("scope", "session", "live")
+    freshness.touch("scope", "session", "live")
+
+    expect(freshness.action("scope", "session", "live", request)).toBe("preserve")
+  })
+
   test("invalidates captured requests when a scope is released", () => {
     const freshness = new SessionPartSnapshotFreshness()
     const request = freshness.capture("scope", "session")

@@ -74,6 +74,8 @@ import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
+import { mergeTextCheckpoint } from "./part-checkpoint-merge"
+import { createPartRepairScheduler } from "./part-repair-scheduler"
 import { FatalErrorPage } from "../pages/fatal-error"
 import { DialogSelectServer } from "@/components/dialog/dialog-select-server"
 import { recoverGlobalSyncFailure, type GlobalSyncFailure } from "./global-sync-recovery"
@@ -548,6 +550,9 @@ function createGlobalSync() {
   function releaseScopeState(scopeKey: string) {
     contextProjectionRevision.releaseScope(scopeKey)
     if (children[scopeKey]) {
+      for (const sessionID of Object.keys(children[scopeKey][0].message)) {
+        sessionWindowReload.release(bucketKey(scopeKey, sessionID))
+      }
       delete children[scopeKey]
       setScopeRegistryVersion((version) => version + 1)
     }
@@ -558,6 +563,7 @@ function createGlobalSync() {
     recoveryRetryScheduler.cancel(scopeKey)
     resourceFreshness.releaseScope(scopeKey)
     partSnapshotFreshness.releaseScope(scopeKey)
+    partRepairScheduler.clearScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
     for (let i = bootstrapQueue.length - 1; i >= 0; i--) {
       if (bootstrapQueue[i] === scopeKey) bootstrapQueue.splice(i, 1)
@@ -1135,6 +1141,8 @@ function createGlobalSync() {
       const scopeKey = key.slice(0, sep)
       const sessionID = key.slice(sep + 1)
       partSnapshotFreshness.releaseSession(scopeKey, sessionID)
+      partRepairScheduler.clear(scopeKey, sessionID)
+      sessionWindowReload.release(key)
       const state = children[scopeKey]
       if (!state) continue
       const [store, setStore] = state
@@ -1168,20 +1176,22 @@ function createGlobalSync() {
   }
 
   type ScopedClient = ReturnType<typeof createScopedClient>
-  type CompactionMessageLoadInput = {
+  type SessionWindowReloadInput = {
     scopeKey: string
     sessionID: string
-    inboxRequest: SyncResourceRequest
+    // Present only when the caller accepted an inbox event ahead of the
+    // reload (compaction); the repair path must not drop the inbox bucket.
+    inboxRequest?: SyncResourceRequest
   }
-  type CompactionMessageLoadResult = {
+  type SessionWindowReloadResult = {
     response: Awaited<ReturnType<ScopedClient["session"]["messagePage"]>>
     messageRequest: SyncResourceRequest
     partSnapshotRequest: SessionPartSnapshotRequest
     contextProjectionRevision: number
   }
-  const compactionMessageLoader = createSessionMessageLoader<CompactionMessageLoadResult, CompactionMessageLoadInput>({
+  const sessionWindowReload = createSessionMessageLoader<SessionWindowReloadResult, SessionWindowReloadInput>({
     request: async (_key, signal, input) => {
-      if (!input) throw new Error("Missing compaction message load input")
+      if (!input) throw new Error("Missing session window reload input")
       const sdk = createScopedClient(input.scopeKey)
       const messageRequest = captureResourceRequest(input.scopeKey, input.sessionID, "message")
       const partSnapshotRequest = capturePartSnapshotRequest(input.scopeKey, input.sessionID)
@@ -1199,6 +1209,7 @@ function createGlobalSync() {
       const currentMessages = store.message[input.sessionID]
       if (!currentMessages) return "applied"
       const metadata = store.messageWindow[input.sessionID]
+      if (!input.inboxRequest && metadata?.mode !== "latest") return "applied"
       const plan = planMessagePageApply({
         page: result.response.data,
         current: {
@@ -1227,8 +1238,11 @@ function createGlobalSync() {
             setStore(
               produce((draft) => {
                 for (const messageID of plan.droppedIds) delete draft.part[messageID]
-                delete draft.session_diff[input.sessionID]
-                if (isResourceRequestCurrent(input.scopeKey, input.sessionID, "inbox", input.inboxRequest)) {
+                if (input.inboxRequest) delete draft.session_diff[input.sessionID]
+                if (
+                  input.inboxRequest &&
+                  isResourceRequestCurrent(input.scopeKey, input.sessionID, "inbox", input.inboxRequest)
+                ) {
                   delete draft.inbox[input.sessionID]
                 }
               }),
@@ -1252,7 +1266,33 @@ function createGlobalSync() {
       )
       return accepted ? "applied" : "superseded"
     },
-    errorMessage: () => "Couldn’t refresh compacted conversation",
+    errorMessage: () => "Couldn’t refresh conversation",
+  })
+
+  // Reload a session's message window after durable state changed behind the
+  // loaded snapshot: post-compaction rewrites and authoritative part
+  // checkpoints/removals dropped because their message was outside the
+  // window. The loader carries the full freshness gate stack (resource token,
+  // per-message part snapshots, supersede retries), so a repair cannot
+  // clobber newer streaming state.
+  function reloadSessionWindow(scopeKey: string, sessionID: string, options?: { refreshInbox?: boolean }) {
+    if (!options?.refreshInbox && children[scopeKey]?.[0].messageWindow[sessionID]?.mode !== "latest") return
+    const inboxRequest = options?.refreshInbox ? captureResourceRequest(scopeKey, sessionID, "inbox") : undefined
+    void sessionWindowReload
+      .load(bucketKey(scopeKey, sessionID), {
+        force: options?.refreshInbox === true,
+        hasSnapshot: true,
+        input: { scopeKey, sessionID, inboxRequest },
+      })
+      .catch(() => {})
+  }
+
+  // A dropped terminal part checkpoint for a loaded window has no other
+  // convergence path while the user stays on the session; debounced,
+  // budget-bounded reloads turn the drop into one repair fetch instead of a
+  // segment that stays missing until a manual refresh.
+  const partRepairScheduler = createPartRepairScheduler({}, (scopeKey, sessionID) => {
+    reloadSessionWindow(scopeKey, sessionID)
   })
 
   function applyEvent(scopeKey: string, event: any) {
@@ -1612,7 +1652,17 @@ function createGlobalSync() {
         const messageLoaded =
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === part.messageID)
         partSnapshotFreshness.touch(scopeKey, part.sessionID, part.messageID, { requiresSnapshot: !messageLoaded })
-        if (!messageLoaded) break
+        if (!messageLoaded) {
+          // The checkpoint's message is outside the loaded window; the event
+          // drops and nothing else converges the missing part while the user
+          // stays on the session. When the window itself is loaded (the
+          // message merely is not in it — e.g. an inbox materialization
+          // racing the window), schedule one debounced repair reload.
+          if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
+            partRepairScheduler.request(scopeKey, part.sessionID)
+          }
+          break
+        }
         invalidateResource(scopeKey, part.sessionID, "message")
         const parts = store.part[part.messageID]
         if (!parts) {
@@ -1642,9 +1692,12 @@ function createGlobalSync() {
             })
           }
           if (result.found) {
-            // reconcile so a streaming text/tool part only touches changed
-            // leaves instead of re-rendering the whole part on every delta.
-            setStore("part", part.messageID, result.index, reconcile(part))
+            setStore(
+              "part",
+              part.messageID,
+              result.index,
+              reconcile(mergeTextCheckpoint(parts[result.index], part, typeof event.properties.delta === "string")),
+            )
           } else {
             setStore(
               "part",
@@ -1688,7 +1741,12 @@ function createGlobalSync() {
         const messageLoaded =
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === messageID)
         partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: !messageLoaded })
-        if (!messageLoaded) break
+        if (!messageLoaded) {
+          if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
+            partRepairScheduler.request(scopeKey, sessionID)
+          }
+          break
+        }
         invalidateResource(scopeKey, sessionID, "message")
         const parts = store.part[messageID]
         if (!parts) break
@@ -1857,14 +1915,8 @@ function createGlobalSync() {
         const acceptedInbox = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
         const acceptedMessages = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "message" }, version)
         if (!acceptedInbox || !acceptedMessages) break
-        const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
-        void compactionMessageLoader
-          .load(bucketKey(scopeKey, sessionID), {
-            force: true,
-            hasSnapshot: true,
-            input: { scopeKey, sessionID, inboxRequest },
-          })
-          .catch(() => {})
+        partRepairScheduler.clear(scopeKey, sessionID)
+        reloadSessionWindow(scopeKey, sessionID, { refreshInbox: true })
         break
       }
     }
@@ -1899,8 +1951,9 @@ function createGlobalSync() {
     for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
     inboxRefreshTimers.clear()
     cortexRefreshTimers.clear()
-    compactionMessageLoader.dispose()
+    sessionWindowReload.dispose()
     recoveryRetryScheduler.dispose()
+    partRepairScheduler.dispose()
   })
 
   // Reconnect recovery: try to replay only the events missed since our

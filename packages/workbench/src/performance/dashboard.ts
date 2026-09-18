@@ -25,9 +25,7 @@ export namespace PerformanceDashboard {
   let cached: { key: string; at: number; value: Promise<PerformanceSchema.DashboardSummary> } | undefined
   const labelsCache = new WeakMap<object, Record<string, unknown>>()
 
-  // Labels are parsed lazily and memoized per row: the dashboard inspects
-  // labels on only a few metric families, so parsing all 50k rows eagerly on
-  // every refresh is wasted work on the Control Plane hot path.
+  // Ranked and latest detail can reuse the same row across several projections.
   function metricLabels(row: object): Record<string, unknown> {
     const cachedLabels = labelsCache.get(row)
     if (cachedLabels) return cachedLabels
@@ -54,13 +52,22 @@ export namespace PerformanceDashboard {
     input: { windowMs?: number; scopeID?: string } = {},
   ): Promise<PerformanceSchema.DashboardSummary> {
     const windowMs = Math.max(1000, Math.min(input.windowMs ?? 300_000, 86_400_000))
-    const since = Date.now() - windowMs
-    const rows = ObservabilityStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
-    const truncated = rows.length > 50_000
-    const metrics = truncated ? rows.slice(0, 50_000) : rows
-    // Resource samples are process-global (no scope filtering); an explicit
-    // cap keeps truncation semantics identical to the metric row cap so the
-    // newest server row cannot be silently dropped by the store's 10k default.
+    const until = Date.now()
+    const since = until - windowMs
+    const metrics = ObservabilityStore.queryMetricHighlights({ since, until, scopeID: input.scopeID })
+    const aggregate = (name: string) =>
+      ObservabilityStore.queryMetricBuckets({
+        since,
+        until,
+        scopeID: input.scopeID,
+        names: [name],
+        bucketMs: windowMs + 1,
+      })[0]
+    const requests = aggregate("http.request.duration")
+    const turnSummary = aggregate("session.turn.duration")
+    const resourceSummary = aggregate("frontend.resource.duration")
+    const counts = ObservabilityStore.queryMetricCounts({ since, until, scopeID: input.scopeID })
+    const count = (name: string) => counts.filter((row) => row.name === name).reduce((sum, row) => sum + row.count, 0)
     const resourceRows = ObservabilityStore.resourceSince(since, { limit: 50_000 })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
     const resources = serverResourceRows.at(-1)
@@ -114,15 +121,17 @@ export namespace PerformanceDashboard {
       retainedProgressToolCount: cortexTasks.reduce((sum, task) => sum + (task.progress?.recentTools?.length ?? 0), 0),
     }
     const http = metrics.filter((row) => row.name === "http.request.duration")
-    const httpDurations = http.map((row) => row.value)
-    const httpErrors = http.filter((row) => {
-      const labels = metricLabels(row)
-      return labels.status && Number(labels.status) >= 500
-    }).length
     const turns = metrics.filter((row) => row.name === "session.turn.duration")
     const llm = metrics.filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
     const tools = metrics.filter((row) => row.name === "tool.execution.duration")
-    const toolFailures = rankToolFailures(metrics)
+    const toolFailures = rankToolFailures(
+      ObservabilityStore.queryMetricSums({
+        since,
+        until,
+        scopeID: input.scopeID,
+        names: ["tool.execution.count", "tool.execution.error"],
+      }),
+    )
     const storage = metrics.filter((row) => row.name === "storage.operation.duration")
     const library = metrics.filter((row) => row.name === "library.operation.duration")
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
@@ -255,21 +264,18 @@ export namespace PerformanceDashboard {
     return PerformanceSchema.DashboardSummary.parse({
       generatedAt: new Date().toISOString(),
       windowMs,
-      quality: truncated
-        ? {
-            truncated: true,
-            partial: true,
-            unavailableReason: "Dashboard summary reached the protected row cap for this window.",
-          }
-        : undefined,
       health: { status, score, openIssueCount: issueCounts.total, criticalIssueCount },
       backend: {
-        requestCount: http.length,
-        errorRate: http.length ? httpErrors / http.length : 0,
-        p50RequestMs: ObservabilityMetrics.percentile(httpDurations, 50),
-        p95RequestMs: ObservabilityMetrics.percentile(httpDurations, 95),
-        p99RequestMs: ObservabilityMetrics.percentile(httpDurations, 99),
-        activeSessions: activeSessionCount(metrics),
+        requestCount: requests?.count ?? 0,
+        errorRate: requests ? requests.errors / requests.count : 0,
+        p50RequestMs: requests?.p50,
+        p95RequestMs: requests?.p95,
+        p99RequestMs: requests?.p99,
+        activeSessions: ObservabilityStore.countMetricSessions({
+          since: Math.max(since, until - 300_000),
+          until,
+          scopeID: input.scopeID,
+        }),
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
       },
       resources: {
@@ -307,13 +313,12 @@ export namespace PerformanceDashboard {
         owners,
       },
       sessions: {
-        turnCount: turns.length,
-        p95TurnMs: ObservabilityMetrics.percentile(
-          turns.map((row) => row.value),
-          95,
-        ),
-        llmCallCount: llm.length,
-        toolCallCount: tools.length,
+        turnCount: turnSummary?.count ?? 0,
+        p95TurnMs: turnSummary?.p95,
+        llmCallCount: counts
+          .filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
+          .reduce((sum, row) => sum + row.count, 0),
+        toolCallCount: count("tool.execution.duration"),
       },
       frontend: {
         inpMs: frontendVital("INP"),
@@ -321,11 +326,8 @@ export namespace PerformanceDashboard {
         cls: frontendVital("CLS"),
         fcpMs: frontendVital("FCP"),
         ttfbMs: frontendVital("TTFB"),
-        longTaskCount: frontendLongTasks.length,
-        resourceP95Ms: ObservabilityMetrics.percentile(
-          frontendResources.map((row) => row.value),
-          95,
-        ),
+        longTaskCount: count("frontend.long_task.duration"),
+        resourceP95Ms: resourceSummary?.p95,
       },
       runtime: {
         alive:
@@ -435,7 +437,9 @@ export namespace PerformanceDashboard {
       })
   }
 
-  function rankToolFailures(rows: MetricRow[]): PerformanceSchema.ToolFailureItem[] {
+  function rankToolFailures(
+    rows: Array<Pick<MetricRow, "name" | "tool" | "labels_json" | "value">>,
+  ): PerformanceSchema.ToolFailureItem[] {
     const tools = new Map<string, { callCount: number; errorCount: number; categories: Map<string, number> }>()
     for (const row of rows) {
       if (row.name !== "tool.execution.count" && row.name !== "tool.execution.error") continue
@@ -502,15 +506,5 @@ export namespace PerformanceDashboard {
       const value = labels[key]
       if (value !== undefined && value !== null && value !== "") return value
     }
-  }
-
-  function activeSessionCount(rows: MetricRow[]) {
-    const active = new Set<string>()
-    const recentCutoff = Date.now() - 5 * 60_000
-    for (const row of rows) {
-      if (!row.session_id || row.time < recentCutoff) continue
-      active.add(row.session_id)
-    }
-    return active.size
   }
 }

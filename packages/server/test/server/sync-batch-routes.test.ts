@@ -18,6 +18,8 @@ describe("scope bootstrap snapshot", () => {
     expect(response.headers.get("x-synergy-epoch")).toBeTruthy()
     expect(Number(response.headers.get("x-synergy-seq"))).toBeGreaterThanOrEqual(0)
     expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(response.headers.get("server-timing")).toMatch(/provider;dur=\d/)
+    expect(response.headers.get("server-timing")).toMatch(/sessionStatus;dur=\d/)
     expect(await response.json()).toMatchObject({
       scopeID: scope.id,
       path: { directory: scope.directory },

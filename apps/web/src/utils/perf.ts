@@ -33,7 +33,7 @@ function flush(id: string, reason: "complete" | "timeout") {
   if (!nav) return
   if (nav.logged) return
 
-  nav.logged = true
+  nav.logged = reason === "complete"
   if (nav.timer) clearTimeout(nav.timer)
 
   const baseName = nav.marks["navigate:start"] !== undefined ? "navigate:start" : "session:params"
@@ -77,6 +77,8 @@ function flush(id: string, reason: "complete" | "timeout") {
     )
   }
 
+  if (reason === "timeout") return
+
   navs.delete(id)
   const activeKey = key(nav.dir, nav.to)
   if (active.get(activeKey) === id) active.delete(activeKey)
@@ -93,6 +95,15 @@ function maybeFlush(id: string) {
 function ensure(id: string, data: Omit<Nav, "marks" | "logged" | "timer">) {
   const existing = navs.get(id)
   if (existing) return existing
+
+  if (navs.size >= 32) {
+    const oldest = navs.values().next().value!
+    if (oldest.timer) clearTimeout(oldest.timer)
+    navs.delete(oldest.id)
+    const oldestKey = key(oldest.dir, oldest.to)
+    if (active.get(oldestKey) === oldest.id) active.delete(oldestKey)
+    if (pending.get(oldestKey) === oldest.id) pending.delete(oldestKey)
+  }
 
   const nav: Nav = {
     ...data,

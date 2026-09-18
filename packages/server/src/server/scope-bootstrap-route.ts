@@ -108,9 +108,17 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
     async (c) => {
       c.header("cache-control", "no-store")
       const scope = ScopeContext.current.scope
-      const providerRequest = listProvidersForClient()
-      const agentRequest = Agent.list()
-      const configRequest = Config.current().then(Config.redactForClient)
+      const timings: string[] = []
+      const timed = <T>(field: string, request: Promise<T>) => {
+        const start = performance.now()
+        return request.finally(() => {
+          timings.push(`${field.replace(/[^a-zA-Z0-9_-]/g, "_")};dur=${(performance.now() - start).toFixed(1)}`)
+        })
+      }
+      const optional = <T>(field: string, request: Promise<T>) => settle(field, timed(field, request))
+      const providerRequest = timed("provider", listProvidersForClient())
+      const agentRequest = timed("agent", Agent.list())
+      const configRequest = timed("config", Config.current().then(Config.redactForClient))
       const sessionPageRequest = Session.list({ offset: 0, limit: 20, parentOnly: false }).then((result) => ({
         data: result.data,
         total: result.total,
@@ -119,7 +127,7 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
       }))
       const Cortex = import("@ericsanchezok/synergy-harness/cortex/manager").then((module) => module.Cortex)
       const optionalRequests = [
-        settle(
+        optional(
           "path",
           Promise.resolve({
             home: Global.Path.home,
@@ -129,15 +137,15 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
             directory: ScopeContext.current.directory,
           }),
         ),
-        settle("command", Command.list()),
-        settle("sessionStatus", SessionManager.listStatuses(scope.id)),
-        settle("sessions", sessionPageRequest),
-        settle(
+        optional("command", Command.list()),
+        optional("sessionStatus", SessionManager.listStatuses(scope.id)),
+        optional("sessions", sessionPageRequest),
+        optional(
           "cortex",
           Cortex.then((manager) => manager.listVisible()),
         ),
         ...Object.entries(contributions).flatMap(([name, contribution]) =>
-          contribution.projectOnly && scope.type !== "project" ? [] : [settle(name, contribution.load())],
+          contribution.projectOnly && scope.type !== "project" ? [] : [optional(name, contribution.load())],
         ),
       ]
 
@@ -162,6 +170,7 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
         response[field.field] = field.value
       }
       if (Object.keys(fieldErrors).length > 0) response._errors = fieldErrors
+      c.header("server-timing", timings.join(", "))
       return c.json(response as z.infer<typeof ScopeBootstrapResponse>)
     },
   )

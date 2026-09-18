@@ -1,94 +1,107 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import * as browserMetrics from "@/components/performance/browser-metrics"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
+import * as metrics from "../../src/components/performance/browser-metrics"
+import { navMark, navParams, navStart } from "../../src/utils/perf"
 
 type Switch = { sessionID: string; reason: string; marks: Record<string, number> }
 
 const recorded: Switch[] = []
-const pendingTimeouts: Array<() => void> = []
+const timers: Array<() => void> = []
 
-// Bun's mock.module is process-global, so the factory must reproduce every real
-// export. Spreading the statically imported module keeps sibling suites that
-// import this module in the same process working, and only the recorder is
-// replaced.
-mock.module("@/components/performance/browser-metrics", () => ({
-  ...browserMetrics,
-  recordSessionSwitchTiming: (input: Switch) => {
-    recorded.push({ sessionID: input.sessionID, reason: input.reason, marks: input.marks })
-  },
-}))
-
-const realSetTimeout = globalThis.setTimeout
-
-const perf = await import("../../src/utils/perf")
-
-function nav(to: string, marks: string[]) {
-  perf.navStart({ to })
-  perf.navParams({ to })
-  for (const name of marks) perf.navMark({ to, name })
+// The navigation registry is module-level state shared across the file, so every
+// test uses its own session id rather than resetting the module.
+function reasons() {
+  return recorded.map((value) => value.reason)
 }
 
 describe("session navigation completion", () => {
+  let restore: Array<() => void> = []
+
   beforeEach(() => {
     recorded.length = 0
-    pendingTimeouts.length = 0
-    ;(globalThis as unknown as { setTimeout: unknown }).setTimeout = ((fn: () => void) => {
-      pendingTimeouts.push(fn)
-      return pendingTimeouts.length as unknown as ReturnType<typeof setTimeout>
-    }) as unknown
+    timers.length = 0
+    const timer = spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
+      timers.push(callback as () => void)
+      return timers.length as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout)
+    const record = spyOn(metrics, "recordSessionSwitchTiming").mockImplementation(((input: Switch) => {
+      recorded.push(input)
+    }) as never)
+    restore = [() => timer.mockRestore(), () => record.mockRestore()]
   })
 
   afterEach(() => {
-    ;(globalThis as unknown as { setTimeout: unknown }).setTimeout = realSetTimeout
+    while (restore.length > 0) restore.pop()!()
   })
 
   test("resolves complete on session data readiness without any panel mark", () => {
-    nav("ses_ready", ["session:data-ready"])
+    const to = "ses_ready"
+    navStart({ to })
+    navParams({ to })
+    navMark({ to, name: "session:data-ready" })
 
-    expect(recorded).toHaveLength(1)
-    expect(recorded[0]!.reason).toBe("complete")
-    expect(recorded[0]!.sessionID).toBe("ses_ready")
+    expect(reasons()).toEqual(["complete"])
+    expect(recorded[0]!.sessionID).toBe(to)
     expect(recorded[0]!.marks["session:params"]).toBeDefined()
     expect(recorded[0]!.marks["session:data-ready"]).toBeDefined()
   })
 
   test("does not gate completion on panel-level marks", () => {
     const to = "ses_panel_only"
-    perf.navStart({ to })
-    perf.navParams({ to })
+    navStart({ to })
+    navParams({ to })
     for (const name of [
       "session:first-turn-mounted",
       "storage:prompt-ready",
       "storage:terminal-ready",
       "storage:file-view-ready",
     ]) {
-      perf.navMark({ to, name })
+      navMark({ to, name })
     }
 
-    expect(recorded, "panel marks must not complete a switch without data readiness").toHaveLength(0)
+    expect(reasons(), "panel marks must not complete a switch without data readiness").toEqual([])
   })
 
   test("resolves timeout when a required mark never arrives", () => {
     const to = "ses_pending"
-    perf.navStart({ to })
-    perf.navParams({ to })
-    perf.navMark({ to, name: "storage:prompt-ready" })
+    navStart({ to })
+    navParams({ to })
+    navMark({ to, name: "storage:prompt-ready" })
 
-    expect(recorded).toHaveLength(0)
-    expect(pendingTimeouts).toHaveLength(1)
+    expect(reasons()).toEqual([])
+    expect(timers).toHaveLength(1)
 
-    pendingTimeouts[0]!()
+    timers[0]!()
 
-    expect(recorded).toHaveLength(1)
-    expect(recorded[0]!.reason).toBe("timeout")
+    expect(reasons()).toEqual(["timeout"])
     expect(recorded[0]!.sessionID).toBe(to)
     expect(recorded[0]!.marks["session:data-ready"]).toBeUndefined()
   })
 
-  test("resolves once per switch and ignores later marks", () => {
-    nav("ses_once", ["session:data-ready"])
-    perf.navMark({ to: "ses_once", name: "storage:prompt-ready" })
+  test("a navigation still records its actual completion after the slow deadline", () => {
+    const to = "slow-navigation"
+    navStart({ to })
+    navParams({ to })
+    timers[0]!()
+    for (const name of [
+      "session:data-ready",
+      "session:first-turn-mounted",
+      "storage:prompt-ready",
+      "storage:terminal-ready",
+      "storage:file-view-ready",
+    ]) {
+      navMark({ to, name })
+    }
 
-    expect(recorded).toHaveLength(1)
-    expect(pendingTimeouts).toHaveLength(1)
+    expect(reasons()).toEqual(["timeout", "complete"])
+  })
+
+  test("emits once per completed switch and ignores later marks", () => {
+    const to = "ses_once"
+    navStart({ to })
+    navParams({ to })
+    navMark({ to, name: "session:data-ready" })
+    navMark({ to, name: "storage:prompt-ready" })
+
+    expect(reasons()).toEqual(["complete"])
   })
 })

@@ -35,6 +35,7 @@ export namespace AgentCall {
 
   export type TextInput = {
     agent: string
+    ownership?: "operation"
     messages: ModelMessage[]
     user?: MessageV2.User
     sessionId?: string
@@ -92,6 +93,7 @@ export namespace AgentCall {
     if (!Experiment.current()) return Experiment.provide(await Experiment.resolve(), () => text(input))
     const causal = RolloutContext.current()
     if (
+      input.ownership !== "operation" &&
       !input.user &&
       causal?.owner.kind === "session" &&
       (!input.sessionId || input.sessionId === causal.owner.sessionID)
@@ -105,6 +107,8 @@ export namespace AgentCall {
     }
     if (causal?.signal)
       input = { ...input, signal: AbortSignal.any([causal.signal, ...(input.signal ? [input.signal] : [])]) }
+    if (input.ownership === "operation" && (input.user || input.sessionId))
+      throw new Error("invalid_owner", "Independent operations carry source identity in metadata, not a session owner")
     if (input.sessionId && (!input.user || input.user.sessionID !== input.sessionId))
       throw new Error("invalid_owner", "Session agent calls require the triggering root user from that session")
     if (!Number.isInteger(input.retries) || input.retries < 0)
@@ -129,7 +133,8 @@ export namespace AgentCall {
     if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
 
     const owningSessionID = input.user?.sessionID ?? input.sessionId
-    const inheritedOperation = !owningSessionID && causal?.owner.kind === "operation" ? causal : undefined
+    const inheritedOperation =
+      input.ownership !== "operation" && !owningSessionID && causal?.owner.kind === "operation" ? causal : undefined
     const operationID = owningSessionID
       ? undefined
       : inheritedOperation?.owner.kind === "operation"

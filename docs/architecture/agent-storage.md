@@ -30,6 +30,10 @@ Large content remains in artifact storage. Writers flush bytes before publishing
 
 Rollout's application journal is distinct from the database WAL. One transaction writes the allocated sequence, its event evidence, the projection and the committed head, so a committed head always matches the persisted event set and a projection never becomes visible without its evidence. Recovery still projects evidence left uncommitted by an interrupted historical two-transaction write, without repeating the tool or provider request. Historical missing sequences remain explicit gaps. Database rollback does not erase previously committed observations.
 
+Committed journal replay captures a fixed revision and reads bounded batches. It validates every event and sequence in order; a missing committed event remains an integrity failure. Batching must not skip evidence validation or turn recovery into execution replay.
+
+Inbox recovery discovers indexed keys independently of body decoding, then reads bounded batches. It logs unreadable inbox or candidate Session bodies and continues discovery beyond them; storage availability and index/query failures still propagate. This domain-specific isolation does not weaken ordinary typed reads or journal validation.
+
 Plugin installation has a durable recovery intent and a private snapshot of the affected registration, approval, configuration and directory promotion. SQL metadata changes commit together; reload runs afterward. Interrupted installations reconcile before plugin startup. Completed installation cleanup can resume without replaying the installation or its hooks.
 
 ## Streaming and notifications
@@ -67,3 +71,5 @@ Historical upgrade fixtures reconstruct the published v1.2.33, v2.4.4 and v3.0.2
 Recursive key traversal drives each step from the current frontier into the `(namespace, parent_id)` index. Record lookups also run from that frontier through the `(namespace, key_id)` primary index, including absent prefixes. Immediate-child enumeration uses a correlated existence probe and stops at the first live descendant in each child instead of collecting the entire subtree. SQLite requires these join orders to avoid namespace scans; the retention and long Rollout contracts cover broad trees and permanent deletion. Push subscriptions use authority records; the VAPID signing key remains in the private credential file and is preserved across migration.
 
 Data transfer copies file contents to a temporary sibling, synchronizes them, then publishes without replacing an existing destination. Destination directory links are rejected and interrupted temporary copies are excluded from subsequent copies. A successful transfer therefore cannot reference a partially copied file.
+
+Interactive Session metadata and part readers use indexed record queries instead of enumerating logical trees and then loading each record. Startup inbox discovery queries inbox records first and reads only candidate Session metadata. Continuation recovery intents live directly under the Session’s `continuation-recovery` records; the registered Session migration moves historical nested intents transactionally and idempotently before runtime admission. This keeps recovery discovery independent of the number of empty historical inboxes and rollout subtrees.

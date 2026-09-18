@@ -264,7 +264,7 @@ describe("performance routes", () => {
     expect((await tooManyBuckets.json()).code).toBe("PERF_TOO_MANY_BUCKETS")
   })
 
-  test("capped metric queries preserve newest rows and summary exposes partial quality", async () => {
+  test("bounded metric details preserve newest rows while summaries aggregate the complete window", async () => {
     const now = Date.now()
     const conn = ObservabilityStore.open()
     expect(conn).toBeDefined()
@@ -296,7 +296,9 @@ describe("performance routes", () => {
     const summary = await Server.App().request("/global/performance/summary?windowMs=86400000")
     expect(summary.status).toBe(200)
     const body = await summary.json()
-    expect(body.quality).toMatchObject({ truncated: true, partial: true })
+    expect(body.quality?.truncated ?? false).toBe(false)
+    expect(body.backend.requestCount).toBe(50_002)
+    expect(body.backend.p95RequestMs).toBe(47_501)
     expect(body.top.slowRoutes.some((item: { label: string }) => item.label === "/route-50001")).toBe(true)
     expect(body.top.slowRoutes.every((item: { label: string }) => item.label !== "/route-0")).toBe(true)
   })

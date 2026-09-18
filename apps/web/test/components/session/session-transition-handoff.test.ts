@@ -205,3 +205,18 @@ describe("session transition handoff deadline", () => {
     expect(fired).toBe(1)
   })
 })
+
+test("a stalled handoff settles on its canonical root without rearming recovery", () => {
+  const input = {
+    messageID,
+    messages: [],
+    inbox: [],
+    elapsedMs: 31_000,
+    refreshAttempted: true,
+    phase: "error" as const,
+  }
+  expect(decideSessionTransitionHandoff(input)).toBe("waiting")
+  expect(decideSessionTransitionHandoff({ ...input, messages: [{ id: messageID, role: "user", isRoot: true }] })).toBe(
+    "ready",
+  )
+})

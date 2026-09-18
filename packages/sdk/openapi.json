@@ -235,14 +235,21 @@
       "get": {
         "operationId": "global.stats.get",
         "summary": "Get stats snapshot",
-        "description": "Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.",
+        "description": "Read the last computed stats snapshot without scanning history; null means no snapshot exists. Use the progress stream to refresh, or ?recompute=true to force a full recompute.",
         "responses": {
           "200": {
             "description": "Stats snapshot",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StatsSnapshot"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/StatsSnapshot"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
@@ -292,7 +299,7 @@
       "get": {
         "operationId": "global.stats.progress",
         "summary": "Stream stats recompute progress",
-        "description": "Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.",
+        "description": "Refresh changed statistics and stream progress updates until the final snapshot is ready. Concurrent refreshes share one computation.",
         "responses": {
           "200": {
             "description": "Server-sent events containing progress and final snapshot payloads",

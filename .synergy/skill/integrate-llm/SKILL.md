@@ -109,3 +109,5 @@ Report why the operation is sessionless, existing-session, Cortex, or bootstrap;
 Capture provider service-tier metadata when available; unresolved nonstandard pricing must remain unknown. Preserve live authorization evidence before side effects and inherit task snapshots during request preparation, including independent non-chat operations.
 
 Public task cancellation must return after durable cancellation without waiting on held processors. Use explicit Cortex drainage for rollout finalization and runtime shutdown, and test both boundaries with controlled pending calls instead of timing sleeps.
+
+Historical derived retries must not append to a terminal source rollout. Use explicit operation ownership with source identity in metadata, while preserving the caller signal; reserve causal Session ownership for work still owned by the matching root. Test this under an ambient terminal rollout so accidental context inheritance fails.

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url"
 import { build } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
-test("Scope leases protect overlapping pages and reject released bootstrap results", async () => {
+test("Scope leases protect overlapping pages and reject evicted bootstrap results", async () => {
   const directory = await mkdtemp(path.join(import.meta.dir, ".scope-lifecycle-"))
   const entry = path.join(directory, "main.tsx")
   const stub = path.join(directory, "services.tsx")
@@ -149,12 +149,23 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     try {
       await h.started
       const api = h.api()
+      let eviction = 0
+      const evictInactive = async () => {
+        for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${eviction++}`)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
       const old = api.retainScopeState("shared")
       const next = api.retainScopeState("shared")
       expect(next.state).toBe(old.state)
       old.release()
       expect(api.peekScopeState("shared")).toBe(next.state)
       next.release()
+      expect(api.peekScopeState("shared")).toBe(old.state)
+      const warm = api.retainScopeState("shared")
+      expect(warm.state).toBe(old.state)
+      expect(h.requests).toHaveLength(1)
+      warm.release()
+      await evictInactive()
       expect(api.peekScopeState("shared")).toBeUndefined()
       const reopened = api.retainScopeState("shared")
       expect(reopened.state).not.toBe(old.state)
@@ -174,6 +185,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       expect(h.replays.length).toBe(1)
       const oldList = api.scope.loadSessions("shared")
       reopened.release()
+      await evictInactive()
       const current = api.retainScopeState("shared")
       h.complete(2, "current")
       await h.waitComplete(current.state)
@@ -202,6 +214,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       expect(api.peekScopeState("shared")).toBe(current.state)
       const pendingRevision = api.beginContextProjection("shared", "never-loaded")
       current.release()
+      await evictInactive()
       expect(api.peekScopeState("shared")).toBeUndefined()
       const latest = api.retainScopeState("shared")
       api.setLatestContextMessage("shared", "never-loaded", null, pendingRevision)
@@ -214,6 +227,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       h.emit("/repo", 1)
       h.emit("/repo:variant", 1)
       first.release()
+      await evictInactive()
       let timeout: ReturnType<typeof setTimeout> | undefined
       try {
         await Promise.race([

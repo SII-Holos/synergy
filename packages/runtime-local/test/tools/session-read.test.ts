@@ -4,7 +4,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionMemoryPressure } from "@ericsanchezok/synergy-harness/session/memory-pressure"
-import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { SessionReadTool } from "../../src/tools/session-read"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -39,6 +39,7 @@ async function writeMessage(sessionID: string, text: string, created: number) {
     text,
     origin: "user",
   })
+  return message.id
 }
 
 describe("session_read", () => {
@@ -48,20 +49,18 @@ describe("session_read", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({ title: "Long history" })
+        const messageIDs: string[] = []
         for (let index = 0; index < 12; index++) {
-          await writeMessage(session.id, `message ${index}`, 100 + index)
+          messageIDs.push(await writeMessage(session.id, `message ${index}`, 100 + index))
         }
 
-        using readMany = spyOn(Storage, "readMany")
+        using parts = spyOn(MessageV2, "parts")
         using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
         const tool = await SessionReadTool.init()
         const result = await tool.execute({ target: session.id, limit: 3, offset: 5 }, ctx)
 
-        const partReads = readMany.mock.calls.filter((call) => {
-          const keys = call[0] as string[][]
-          return keys.some((key) => key.at(-2) === "parts")
-        })
-        expect(partReads).toHaveLength(3)
+        expect(parts.mock.calls.map(([input]) => input.messageID).sort()).toEqual(messageIDs.slice(4, 7).sort())
+        for (const index of [4, 5, 6]) expect(result.output).toContain(`message ${index}`)
         expect(result.metadata).toMatchObject({ sessionID: session.id, total: 12, shown: 3 })
         expect(release).toHaveBeenCalledWith(expect.objectContaining({ phase: "tool.session_read.complete" }))
         expect(release.mock.calls[0]?.[0]).not.toHaveProperty("forceFull")

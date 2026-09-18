@@ -2,6 +2,8 @@
 
 Synergy includes a first-class Performance settings panel for local runtime, frontend, network, and resource performance. Performance is the user-facing read model over Synergy's indexed observability store. Observability owns the canonical telemetry foundation: context propagation, redaction, events, metrics, spans, issues, resource samples, migrations, and diagnostics. Diagnostics is a support API and package capability backed by the same indexed data plus redacted logs and runtime inspection.
 
+Scope bootstrap responses include per-field `Server-Timing` durations. Inspect these alongside request duration to distinguish provider, session status, command and product contribution loading during cold navigation.
+
 ## What the Performance panel shows
 
 Open the **Performance** workbench panel from the sidebar to inspect the default recent monitoring window. The panel summarizes:
@@ -249,3 +251,5 @@ SYNERGY_BUNDLE_VISUALIZER=1 bun run --cwd apps/web build
 k6 can be used with `script/performance-k6.js` when teams already rely on it, but it is not a runtime dependency because of its AGPL license.
 
 For browser investigations, use Playwright traces/HAR, Lighthouse CI against the Web app, and Rollup/Vite visualizer reports in development workflows. These tools complement the local Performance panel; they do not replace runtime telemetry.
+
+Timeline buckets and dashboard request counts, error rates and percentiles aggregate in SQLite across the selected time window. They do not truncate at 50,000 metric rows. Dashboard detail reads retain only the largest and latest samples per metric; tool-failure counters aggregate before presentation. Session navigation retains bounded timing state after its five-second deadline and records eventual completion; deadline observations do not contribute a false five-second completed duration.
