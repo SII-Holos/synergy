@@ -2033,6 +2033,10 @@
         {
           "glob": "src/setting-condition.ts",
           "reason": "types-only setting condition contract, no runtime logic"
+        },
+        {
+          "glob": "src/tool-timeout.ts",
+          "reason": "types-only tool timeout contract shared by the runtime producer and the shared UI consumer, no runtime logic"
         }
       ]
     },
