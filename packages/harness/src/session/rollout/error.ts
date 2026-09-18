@@ -14,7 +14,7 @@ export function findRecordingError(error: unknown): InstanceType<typeof RolloutR
   const visited = new Set<object>()
   for (let index = 0; index < pending.length && index < 64; index++) {
     const value = pending[index]
-    if (!value || typeof value !== "object") continue
+    if (!value || typeof value !== "object" || visited.has(value)) continue
     visited.add(value)
     if (RolloutRecordingError.isInstance(value)) return value
     for (const key of ["cause", "error", "suppressed", "lastError"] as const) {

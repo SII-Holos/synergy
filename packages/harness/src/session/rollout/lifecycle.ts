@@ -124,7 +124,7 @@ export namespace RolloutLifecycle {
   export async function cancel(sessionID: string, runID: string) {
     const session = await Session.get(sessionID)
     const identity = owner(session)
-    const run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
+    let run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
@@ -135,12 +135,12 @@ export namespace RolloutLifecycle {
       // run lock, then remove the queued work.
       for (const item of await SessionInbox.list(sessionID)) {
         if (item.messageID !== runID) continue
-        const cancelled = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created)
+        run = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created)
         await SessionInbox.remove({ sessionID, itemID: item.id })
-        return cancelled
+        break
       }
       // A runID with neither a run nor queued work is genuinely unknown.
-      throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
+      if (!run) throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
     }
     if (run.status !== "running") return run
     for (const item of await SessionInbox.list(sessionID))

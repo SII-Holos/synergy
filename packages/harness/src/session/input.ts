@@ -29,6 +29,7 @@ import { SessionRootVariant } from "./root-variant"
 import { Experiment } from "../config/experiment"
 import { RolloutContext } from "./rollout/context"
 import { Storage } from "../storage/storage"
+import { StorageBusyError, StorageClosedError } from "../storage/errors"
 import { RolloutLedger } from "./rollout/ledger"
 
 const log = Log.create({ service: "session.input" })
@@ -206,6 +207,12 @@ export async function createUserMessage(
       ),
     )
   } catch (error) {
+    if (
+      error instanceof StorageBusyError ||
+      error instanceof StorageClosedError ||
+      (error instanceof DOMException && error.name !== "AbortError")
+    )
+      throw error
     // Terminalize the run so the failure is visible and retryable (rearm
     // reopens it); a cancelled run settles as cancelled via its marker. The
     // enqueue shell is best-effort, so a run that never landed stays absent

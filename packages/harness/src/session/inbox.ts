@@ -1077,42 +1077,51 @@ export namespace SessionInbox {
     try {
       const materialized = await materializeItem(task)
       if (!materialized) {
-        await parkTaskFailure(sessionID, task, "Inbox task payload could not be materialized")
+        if (!(await parkTaskFailure(sessionID, task, "Inbox task payload could not be materialized")))
+          return { status: "empty" }
         return { status: "failed", itemID: task.id, reason: "Inbox task payload could not be materialized" }
       }
     } catch (error) {
       // A cancellation racing materialization removed the queued item and
       // terminalized its run; report no runnable work instead of parking
       // (parking would resurrect the cancelled item) or surfacing an error.
-      if (error instanceof DOMException) return { status: "empty" }
+      if (error instanceof DOMException && error.name === "AbortError") return { status: "empty" }
       if (!(error instanceof Attachment.InvalidUrlError) && !RolloutAdmissionError.isInstance(error)) throw error
       const reason = RolloutAdmissionError.isInstance(error)
         ? error.data.message
         : (error as Attachment.InvalidUrlError).message
-      // A concurrent cancel may have removed the item while admission was
-      // resolving; parking must not resurrect cancelled work.
-      const current = await getStored(sessionID, task.id).catch(() => undefined)
-      if (!current) return { status: "empty" }
-      await parkTaskFailure(sessionID, task, reason)
+      if (!(await parkTaskFailure(sessionID, task, reason))) return { status: "empty" }
       return { status: "failed", itemID: task.id, reason }
     }
     return { status: "materialized", itemID: task.id, messageID: task.messageID }
   }
 
-  async function parkTaskFailure(sessionID: string, task: StoredItem, reason: string): Promise<void> {
-    const failed: StoredItem = {
-      ...task,
-      status: "failed",
-      failReason: reason,
-      time: { ...task.time, updated: Date.now() },
-    }
-    await writeItem(failed, true)
+  async function parkTaskFailure(sessionID: string, task: StoredItem, reason: string): Promise<boolean> {
+    const parked = await Storage.transaction(async () => {
+      const current = await getStored(sessionID, task.id).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      })
+      if (!current) return false
+      await writeItem(
+        {
+          ...current,
+          status: "failed",
+          failReason: reason,
+          time: { ...current.time, updated: Date.now() },
+        },
+        true,
+      )
+      return true
+    })
+    if (!parked) return false
     log.warn("parked inbox task that cannot materialize", {
       sessionID,
       itemID: task.id,
       messageID: task.messageID,
       reason,
     })
+    return true
   }
 
   /** Clear a parked failure so the item becomes runnable again. */
