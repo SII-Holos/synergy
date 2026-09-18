@@ -1,7 +1,7 @@
 import { createEffect, on } from "solid-js"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
-import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { isWorkingStatus } from "@/utils/session-status"
 
 /**
  * Notifies the Desktop shell when work starts or stops so it can re-check the
@@ -10,7 +10,9 @@ import { HOME_SCOPE_KEY } from "@/utils/scope"
  * The renderer only ever observes the scopes it happens to have loaded, so it
  * must never report a state of its own: that would both miss scopes the UI
  * never opened and latch the assertion on if this component stopped updating.
- * The shell stays authoritative and this is a latency hint only.
+ * The shell stays authoritative and this is a latency hint only, which is why
+ * reading the process-global indexes is enough here — unlike a rendering
+ * surface, a missed session only costs one poll interval of latency.
  */
 export function DesktopPowerSync() {
   const platform = usePlatform()
@@ -18,14 +20,9 @@ export function DesktopPowerSync() {
 
   const hasLocalWork = () => {
     if (!platform.desktopPower) return false
-    const scopeKeys = [HOME_SCOPE_KEY, ...globalSync.data.scope.map((scope) => scope.worktree)]
-    for (const scopeKey of scopeKeys) {
-      const store = globalSync.peekScopeState(scopeKey)?.[0]
-      if (!store) continue
-      for (const status of Object.values(store.session_status)) {
-        if (status.type !== "idle") return true
-      }
-      if (store.cortex.some((task) => task.status === "running")) return true
+    if (globalSync.data.cortex.some((task) => task.status === "running")) return true
+    for (const status of Object.values(globalSync.data.sessionStatus)) {
+      if (isWorkingStatus(status)) return true
     }
     return false
   }

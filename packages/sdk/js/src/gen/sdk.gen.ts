@@ -222,6 +222,8 @@ import type {
   GlobalPathsGetResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
+  GlobalSessionStatusesErrors,
+  GlobalSessionStatusesResponses,
   GlobalStatsGetErrors,
   GlobalStatsGetResponses,
   GlobalStatsProgressErrors,
@@ -1959,6 +1961,19 @@ export class Session extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Global session status
+   *
+   * Retrieve the runtime status of every non-idle session across all scopes, including recovered workflow sessions that no status event publishes.
+   */
+  public statuses<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GlobalSessionStatusesResponses,
+      GlobalSessionStatusesErrors,
+      ThrowOnError
+    >({ url: "/global/session/status", ...options })
   }
 
   /**

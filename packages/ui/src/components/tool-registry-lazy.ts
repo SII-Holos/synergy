@@ -1,12 +1,17 @@
 import { createSignal } from "solid-js"
 import type { Component } from "solid-js"
 import type { AttachmentPart } from "@ericsanchezok/synergy-sdk"
+import type { ToolTimeoutMetadata } from "@ericsanchezok/synergy-util/tool-timeout"
+
+// Index signature is preserved so plugin-authored renderers keep reading their
+// own metadata keys; `toolTimeout` is the one entry with a shared shape.
+export type ToolMetadata = Record<string, any> & { toolTimeout?: ToolTimeoutMetadata }
 
 // ── Tool component type ──────────────────────────────────────
 
 export interface ToolProps {
   input: Record<string, any>
-  metadata: Record<string, any>
+  metadata: ToolMetadata
   tool: string
   title?: string
   output?: string
