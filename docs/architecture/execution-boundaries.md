@@ -88,11 +88,11 @@ The effective profile is resolved in this order:
 
 1. the closest explicit profile on the session or one of its parent sessions
 2. the selected agent's profile
-3. for a non-interactive root, the configured `nonInteractiveControlProfile`
-4. the top-level configured profile
+3. the top-level configured profile, for any session whose source can answer an ask
+4. for a non-interactive root, the configured `nonInteractiveControlProfile`
 5. the source default
 
-Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda — the sources with no human available to answer a prompt — default to `nonInteractiveControlProfile`, whose default is `autonomous`. `guarded` is deliberately not selectable there, because an unattended session under `guarded` would leave a permission ask pending with nobody able to answer it. Step 3 is hoisted above step 4 so an operator's interactive default cannot turn unattended work into the one profile that can only stall on an unanswerable ask. A delegated child inherits an explicit profile from its parent chain unless it defines its own.
+Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda — the sources with no human available to answer a prompt — take the configured `nonInteractiveControlProfile`, whose default is `autonomous`. A top-level profile that can answer for itself still applies to those roots, so an operator who set `full_access` or `autonomous` keeps it; a top-level `guarded` does not apply there, because an ask raised with nobody attached would pend forever. `guarded` is likewise not selectable for the non-interactive key. A delegated child inherits an explicit profile from its parent chain unless it defines its own.
 
 The configured non-interactive profile governs sessions created after the change. An already-created session keeps the profile persisted on it, because an operator changing the setting must not retroactively re-permission a task that is already running.
 

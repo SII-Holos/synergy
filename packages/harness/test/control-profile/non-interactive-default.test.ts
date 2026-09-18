@@ -46,9 +46,9 @@ describe("non-interactive default control profile", () => {
     })
   })
 
-  test("prefers the non-interactive profile over a generic global controlProfile", async () => {
-    // The hoist regression: removing the channel host's explicit profile must not
-    // let an operator's interactive default turn unattended work into `guarded`.
+  test("refuses a top-level guarded for a non-interactive root", async () => {
+    // An ask raised with nobody attached would pend forever, so the generic
+    // interactive default must not reach an unattended root.
     await using dir = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
     await ScopeContext.provide({
       scope: await dir.scope(),
@@ -60,6 +60,40 @@ describe("non-interactive default control profile", () => {
         })
 
         expect(await Session.resolveEffectiveControlProfile({ sessionID: session.id })).toBe("autonomous")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("keeps a top-level profile that can answer for itself on a non-interactive root", async () => {
+    // full_access and autonomous are both valid for unattended work, so the
+    // top-level value still wins over the non-interactive default.
+    await using dir = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await dir.scope(),
+      fn: async () => {
+        const scope = await dir.scope()
+        const session = await Session.getOrCreateForEndpoint(channelEndpoint(), {
+          scope,
+          interaction: SessionInteraction.unattended("channel:test"),
+        })
+
+        expect(await Session.resolveEffectiveControlProfile({ sessionID: session.id })).toBe("full_access")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("still applies a top-level guarded to an interactive session", async () => {
+    await using dir = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
+    await ScopeContext.provide({
+      scope: await dir.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveEffectiveControlProfile({ sessionID: session.id })).toBe("guarded")
 
         await Session.remove(session.id)
       },

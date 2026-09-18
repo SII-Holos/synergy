@@ -812,14 +812,20 @@ export namespace Session {
   }
 
   /**
-   * Single owner of the default profile for a session source. Hiding behind
-   * non-interactive roots is the configured non-interactive profile (default
-   * `autonomous`); `guarded` is deliberately excluded there because an unattended
-   * session under `guarded` can leave a permission ask pending with no one to
-   * answer it.
+   * Single owner of the source default. A top-level profile that can answer for
+   * itself still applies to non-interactive roots, so an operator who set
+   * `full_access` or `autonomous` keeps it. `guarded` cannot: an ask raised with
+   * nobody attached would pend forever, which is why the non-interactive key does
+   * not offer it and why the source default supplies `autonomous` instead.
    */
-  export async function defaultControlProfileForSessionSource(session?: object): Promise<ProfileId> {
-    if (!isNonInteractiveSource(session)) return "guarded"
+  export async function defaultControlProfileForSessionSource(
+    session?: object,
+    topLevelProfile?: string,
+  ): Promise<ProfileId> {
+    const topLevel = topLevelProfile ? ControlProfileCompiler.normalize(topLevelProfile) : undefined
+    if (!isNonInteractiveSource(session)) return topLevel ?? "guarded"
+    if (topLevel && topLevel !== "guarded") return topLevel
+
     const configured = await Config.current()
       .then((cfg) => cfg.nonInteractiveControlProfile)
       .catch(() => undefined)
@@ -839,22 +845,13 @@ export namespace Session {
     if (sessionState?.controlProfile) return ControlProfileCompiler.normalize(sessionState.controlProfile)
     if (input.agentControlProfile) return ControlProfileCompiler.normalize(input.agentControlProfile)
 
-    // A non-interactive root resolves through the non-interactive key ahead of the
-    // generic global controlProfile: an operator's interactive default must not turn
-    // unattended Channel or Agenda work into a profile that can only stall on an
-    // approval prompt no one can answer.
-    if (isNonInteractiveSource(sessionState?.root)) {
-      return defaultControlProfileForSessionSource(sessionState?.root)
-    }
-
     const topLevelProfile =
       input.topLevelControlProfile ??
       (await Config.current()
         .then((cfg) => cfg.controlProfile)
         .catch(() => undefined))
-    if (topLevelProfile) return ControlProfileCompiler.normalize(topLevelProfile)
 
-    return defaultControlProfileForSessionSource(sessionState?.root)
+    return defaultControlProfileForSessionSource(sessionState?.root, topLevelProfile)
   }
 
   export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
