@@ -4,7 +4,6 @@ import { useLingui } from "@lingui/solid"
 import type {
   Agent,
   AssistantMessage,
-  CortexTask,
   FileDiff,
   Message,
   Part,
@@ -47,7 +46,6 @@ export type BoardPaneData = {
   messageWindow: Record<string, MessageWindowMetadata>
   part: Record<string, Part[]>
   session_diff: Record<string, FileDiff[]>
-  cortex: CortexTask[]
   session: Session[]
   agent: Agent[]
 }
@@ -108,10 +106,9 @@ export function KanbanPane(props: {
           waiting:
             (globalSync.permissions[props.pane.sessionID]?.length ?? 0) > 0 ||
             (globalSync.questions[props.pane.sessionID]?.length ?? 0) > 0,
-          runningChildTasks:
-            props.data.cortex?.some(
-              (task) => task.parentSessionID === props.pane.sessionID && task.status === "running",
-            ) ?? false,
+          runningChildTasks: globalSync.cortex.some(
+            (task) => task.parentSessionID === props.pane.sessionID && task.status === "running",
+          ),
         })
       : undefined,
   )

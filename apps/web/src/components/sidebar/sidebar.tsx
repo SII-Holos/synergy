@@ -54,11 +54,7 @@ interface SidebarProps {
 }
 
 function runningChildTasksForEntry(globalSync: ReturnType<typeof useGlobalSync>, entry: NavEntry): boolean {
-  const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
-  if (!scopeKey) return false
-  const store = globalSync.peekScopeState(scopeKey)?.[0]
-  if (!store) return false
-  return store.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running")
+  return globalSync.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running")
 }
 
 function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {

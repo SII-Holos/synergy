@@ -30,6 +30,7 @@ function runtime(input: Partial<Runtime> = {}): Runtime {
     sessionStatus: input.sessionStatus ?? {},
     permissions: input.permissions ?? {},
     questions: input.questions ?? {},
+    cortex: input.cortex ?? [],
   }
 }
 

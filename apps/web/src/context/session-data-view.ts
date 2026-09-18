@@ -1,7 +1,8 @@
 import { createMemo, type Accessor } from "solid-js"
-import type { PermissionRequest, QuestionRequest, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { CortexTask, PermissionRequest, QuestionRequest, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import {
   createSessionDataView,
+  EMPTY_CORTEX,
   EMPTY_PERMISSIONS,
   EMPTY_QUESTIONS,
   type SessionDataRuntime,
@@ -19,6 +20,7 @@ export type GlobalRuntimeIndex = {
   readonly sessionStatus: Record<string, SessionStatus>
   readonly permissions: Record<string, PermissionRequest[]>
   readonly questions: Record<string, QuestionRequest[]>
+  readonly cortex: CortexTask[]
 }
 
 /**
@@ -35,6 +37,7 @@ export function createSessionDataRuntime(globalSync: GlobalRuntimeIndex): Sessio
     statusFor: (sessionID) => globalSync.sessionStatus[sessionID],
     permissionsFor: (sessionID) => globalSync.permissions[sessionID] ?? EMPTY_PERMISSIONS,
     questionsFor: (sessionID) => globalSync.questions[sessionID] ?? EMPTY_QUESTIONS,
+    cortexTasks: () => globalSync.cortex ?? EMPTY_CORTEX,
   }
 }
 

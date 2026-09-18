@@ -32,7 +32,7 @@ import {
   MobileDrawerSettingsButton,
   type MobileDrawerRecentVisual,
 } from "./mobile-drawer-root"
-import { resolveSessionVisualState, scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
+import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
 import "./mobile-drawer.css"
 
 export function MobileDrawer() {
@@ -213,14 +213,13 @@ function ScopeListView(props: {
   // for the localization contract (see script/localization-check.ts).
   const translateSessionState = (descriptor: MessageDescriptor) => _(descriptor)
   const recentVisualFor = (entry: NavEntry): MobileDrawerRecentVisual => {
-    const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
-    const store = scopeKey ? globalSync.peekScopeState(scopeKey)?.[0] : undefined
     const visual = resolveSessionVisualState({
       entry,
       status: globalSync.sessionStatus[entry.id],
       waiting: (globalSync.permissions[entry.id]?.length ?? 0) > 0 || (globalSync.questions[entry.id]?.length ?? 0) > 0,
-      runningChildTasks:
-        store?.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running") ?? false,
+      runningChildTasks: globalSync.cortex.some(
+        (task) => task.parentSessionID === entry.id && task.status === "running",
+      ),
     })
     const meaningful = visual.completionUnread || visual.tone !== "default"
     return { visual, label: meaningful ? translateSessionState(visual.label) : "" }

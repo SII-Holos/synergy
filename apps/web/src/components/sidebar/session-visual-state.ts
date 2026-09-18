@@ -35,27 +35,26 @@ export interface SessionVisualScope {
  *
  * Identity (Blueprint binding and phase, worktree, child, Light Loop) comes from
  * the nav entry, which is paginated, persisted, and refreshed by
- * `session.updated`; runtime activity and the pending-decision signal come from
- * the global indexes. Nothing here reads a per-Scope store, so evicting an
- * inactive Scope — which happens the moment its last retention lease is
- * released, i.e. as soon as the user switches project — can no longer degrade a
- * row to a category fallback.
+ * `session.updated`; runtime activity, the pending-decision signal, and the
+ * delegated-child-task pulse come from the global indexes. Nothing here reads a
+ * per-Scope store, so evicting an inactive Scope — which happens the moment its
+ * last retention lease is released, i.e. as soon as the user switches project —
+ * can no longer degrade a row to a category fallback.
  *
  * The row's identity wins over its activity: a Blueprint-bound or Light Loop
  * session keeps its loop glyph while the loop is active, with tone and pulse
  * carrying whether it is working, waiting, or resting.
  *
- * The delegated-child-task pulse is the one input this function does not own:
- * it is a per-Scope Cortex collection, so a caller that can only read the
- * global indexes passes `runningChildTasks: false` and the row shows its
- * resting loop identity instead of pulsing. Identity and the session's own
- * runtime state are unaffected, which is why the pulse is a separate input
- * rather than part of the resolution.
+ * The pulse is an input rather than part of the resolution because the caller
+ * already holds the task collection and filtering it per row would repeat the
+ * same scan. It is the global Cortex index, whose reach is process-wide, so it
+ * survives eviction like the other two carriers.
  */
 export interface SessionVisualInput {
   entry: NavEntry
   status?: SessionStatus
   waiting?: boolean
+  /** Whether this session has a running delegated child task, from the global Cortex index. */
   runningChildTasks?: boolean
 }
 

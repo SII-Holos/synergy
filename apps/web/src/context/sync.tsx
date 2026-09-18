@@ -58,25 +58,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const hasMessageSnapshot = (sessionID: string) =>
       hasMessageWindowSnapshot(store.message[sessionID], store.messageWindow[sessionID])
 
-    const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
-
-    const reconcileCortexFromSession = (session: Session) => {
-      const cortex = session.cortex
-      if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
-      const idx = store.cortex.findIndex((task) => task.sessionID === session.id)
-      if (idx === -1) return
-      setStore(
-        "cortex",
-        idx,
-        reconcile({
-          ...store.cortex[idx],
-          status: cortex.status,
-          completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
-          output: cortex.output ?? store.cortex[idx].output,
-          error: cortex.error ?? store.cortex[idx].error,
-        }),
-      )
-    }
+    const reconcileCortexFromSession = (session: Session) => globalSync.reconcileCortexFromSession(session)
 
     const upsertSession = (session: Session) => {
       reconcileCortexFromSession(session)

@@ -24,6 +24,7 @@ type ScopeApi = {
   sessionStatus: Record<string, { type?: string }>
   permissions: Record<string, Array<{ id: string }> | undefined>
   questions: Record<string, Array<{ id: string }> | undefined>
+  cortex: Array<{ id: string; parentSessionID?: string; status: string }>
 }
 
 type Fixture = {
@@ -36,6 +37,7 @@ type Fixture = {
     waitForRequest(key: string): Promise<void>
     waitComplete(state: ScopeState): Promise<void>
     watchPeek(key: string, sink: (state: ScopeState | undefined) => void): () => void
+    resolveEntry(sessionID: string): { tone?: string; pulse?: boolean }
   }
 }
 
@@ -66,6 +68,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>stamped({})},
+      cortex:{list:()=>ok([])},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>
@@ -87,12 +90,23 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
     import { requests, emit } from ${JSON.stringify(stub)}
+    import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
       return {started,dispose,emit,api:()=>api,
+      resolveEntry(sessionID) {
+        return resolveSessionVisualState({
+          entry: { id: sessionID },
+          status: api.sessionStatus[sessionID],
+          waiting: (api.permissions[sessionID]?.length ?? 0) > 0 || (api.questions[sessionID]?.length ?? 0) > 0,
+          runningChildTasks: api.cortex.some(
+            (task) => task.parentSessionID === sessionID && task.status === "running",
+          ),
+        })
+      },
         complete(key,data,version) {
           const request=requests.find(r=>!r.done&&r.key===key)
           if(!request) throw new Error("no pending bootstrap for "+key)
@@ -228,7 +242,11 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.sessionStatus["missed-idle"]).toBeUndefined()
       expect(stale.state[0].session.some((session) => session.id === "b-session")).toBe(true)
       expect(stale.state[0].session.some((session) => session.id === "snap-only")).toBe(true)
-      expect(stale.state[0].cortex.some((task) => task.id === "task-live")).toBe(false)
+      // The whole-bucket `cortex.tasks.updated` at seq 9 postdates the response
+      // stamp (seq 6), so its empty list wins over the snapshot's task in the
+      // global Cortex index — the same post-stamp discipline the per-Scope
+      // bucket had, now applied to the eviction-independent carrier.
+      expect(api.cortex.some((task) => task.id === "task-live")).toBe(false)
       stale.release()
       // The store registry is reactive: a consumer that observed undefined
       // before the store existed re-runs on creation and on eviction.
@@ -422,6 +440,23 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.sessionStatus["stale-runner"]).toBeUndefined()
       expect(api.sessionStatus["fresh-runner"]).toEqual({ type: "busy" })
       revived.release()
+      // The delegated-child pulse is the third resolver input that lives in a
+      // global index. A session with no status of its own is the interesting
+      // case: its running child task is the only input that can make the row
+      // read as running, and it must keep doing so after its Scope is evicted.
+      // The pulse previously came from the Scope store's Cortex bucket, so a
+      // resting row lost its running state on a project switch while its task
+      // was still running.
+      const pulseScope = api.retainScopeState("pulse-scope")
+      h.emit("pulse-scope", 1, "cortex.task.created", {
+        task: { id: "task-pulse", parentSessionID: "resting-child", status: "running" },
+      })
+      expect(api.sessionStatus["resting-child"]).toBeUndefined()
+      expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
+      pulseScope.release()
+      await evictScope("pulse-scope")
+      expect(api.cortex.some((task) => task.id === "task-pulse" && task.status === "running")).toBe(true)
+      expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
       shared.release()
     } finally {
       h.dispose()

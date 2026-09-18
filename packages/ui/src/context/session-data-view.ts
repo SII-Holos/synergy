@@ -54,6 +54,7 @@ export interface SessionDataRuntime {
   statusFor(sessionID: string): SessionStatus | undefined
   permissionsFor(sessionID: string): PermissionRequest[]
   questionsFor(sessionID: string): QuestionRequest[]
+  cortexTasks(): CortexTask[]
 }
 
 /**
@@ -98,7 +99,7 @@ export function createSessionDataView(data: Data | undefined, runtime?: SessionD
     todosFor: (sessionID) => data?.todo?.[sessionID] ?? EMPTY_TODOS,
     dagNodesFor: (sessionID) => data?.dag?.[sessionID] ?? EMPTY_DAG,
     questionsFor: (sessionID) => runtime?.questionsFor(sessionID) ?? EMPTY_QUESTIONS,
-    cortexTasks: () => data?.cortex ?? EMPTY_CORTEX,
+    cortexTasks: () => runtime?.cortexTasks() ?? EMPTY_CORTEX,
     // Reads the store at call time like every other accessor: a view created
     // outside a reactive scope (or memoized against a non-reactive property)
     // must not freeze the session list at creation time.

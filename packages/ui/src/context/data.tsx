@@ -1,5 +1,5 @@
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
-import type { CortexTask, DagNode, Message, Part, Session, FileDiff, Todo } from "@ericsanchezok/synergy-sdk"
+import type { DagNode, Message, Part, Session, FileDiff, Todo } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "./helper"
 import { createSessionDataView, type SessionDataRuntime } from "./session-data-view"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
@@ -27,7 +27,6 @@ export type Data = {
   dag?: {
     [sessionID: string]: DagNode[]
   }
-  cortex?: CortexTask[]
 }
 
 export type PermissionRespondFn = (input: {
@@ -45,10 +44,11 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     directory: string
     serverUrl: string
     /**
-     * Session runtime state (status, pending permissions, pending questions).
-     * It is keyed by session id and lives outside the Scope store, which is
-     * evicted as soon as the user switches project, so the host resolves it
-     * from its own global index instead of from `data`.
+     * Session runtime state (status, pending permissions, pending questions,
+     * and the global Cortex task list). All of it is keyed by session id or
+     * process-wide and lives outside the Scope store, which is evicted as soon
+     * as the user switches project, so the host resolves it from its own global
+     * index instead of from `data`.
      */
     runtime?: SessionDataRuntime
     onPermissionRespond?: PermissionRespondFn

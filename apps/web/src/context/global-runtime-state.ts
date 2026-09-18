@@ -59,6 +59,8 @@ export class GlobalRuntimeWriteTracker {
   private readonly status = new Map<string, number>()
   private readonly permission = new Map<string, number>()
   private readonly question = new Map<string, number>()
+  private readonly cortex = new Map<string, number>()
+  private cortexReplaceSeq: number | undefined
 
   statusWrite(stamp: EventWriteStamp, sessionID: string) {
     this.syncEpoch(stamp)
@@ -73,6 +75,17 @@ export class GlobalRuntimeWriteTracker {
   questionWrite(stamp: EventWriteStamp, requestID: string) {
     this.syncEpoch(stamp)
     this.question.set(requestID, stamp.seq)
+  }
+
+  cortexWrite(stamp: EventWriteStamp, taskID: string) {
+    this.syncEpoch(stamp)
+    this.cortex.set(taskID, stamp.seq)
+  }
+
+  cortexReplace(stamp: EventWriteStamp) {
+    this.syncEpoch(stamp)
+    this.cortex.clear()
+    this.cortexReplaceSeq = stamp.seq
   }
 
   /**
@@ -156,6 +169,39 @@ export class GlobalRuntimeWriteTracker {
     return merged.toSorted((a, b) => a.id.localeCompare(b.id))
   }
 
+  /**
+   * Snapshot overlaid with post-stamp Cortex task writes.
+   *
+   * `Cortex.listVisible()` is process-global rather than Scope-scoped, so any
+   * Scope's bootstrap response carries the whole visible task set and one
+   * response is authoritative for the entire index. A whole-bucket
+   * `cortex.tasks.updated` that postdates the response wins outright;
+   * otherwise only the tasks an event wrote after the response stamp are
+   * overlaid, so a task that finished while the response was in flight is not
+   * reverted to its snapshot status. `undefined` means the snapshot is
+   * authoritative for every task.
+   */
+  mergeCortex<T extends { id: string }>(
+    version: EventWriteStamp | undefined,
+    snapshot: readonly T[],
+    local: readonly T[],
+  ): T[] | undefined {
+    if (!version || this.epoch !== version.epoch) return undefined
+    if (this.cortexReplaceSeq !== undefined && this.cortexReplaceSeq > version.seq) return local.slice()
+    const upsertIDs = new Set<string>()
+    const upserts: T[] = []
+    for (const [id, seq] of this.cortex) {
+      if (seq <= version.seq) continue
+      const entry = local.find((item) => item.id === id)
+      if (entry) {
+        upsertIDs.add(id)
+        upserts.push(entry)
+      }
+    }
+    if (upserts.length === 0) return undefined
+    return [...upserts, ...snapshot.filter((item) => !upsertIDs.has(item.id))]
+  }
+
   private postStampKeys(version: EventWriteStamp | undefined, writes: Map<string, number>): Set<string> | undefined {
     if (!version || this.epoch !== version.epoch) return undefined
     let keys: Set<string> | undefined
@@ -172,5 +218,7 @@ export class GlobalRuntimeWriteTracker {
     this.status.clear()
     this.permission.clear()
     this.question.clear()
+    this.cortex.clear()
+    this.cortexReplaceSeq = undefined
   }
 }

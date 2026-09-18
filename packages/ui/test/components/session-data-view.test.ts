@@ -46,7 +46,6 @@ function fullData(): Data {
     inbox: { s1: [] },
     todo: { s1: [] },
     dag: { s1: [] },
-    cortex: [],
   }
 }
 
@@ -54,6 +53,7 @@ const runtime = {
   statusFor: (sessionID: string) => (sessionID === "s1" ? ({ type: "idle" } as const) : undefined),
   permissionsFor: () => [] as never[],
   questionsFor: () => [] as never[],
+  cortexTasks: () => [] as never[],
 }
 
 describe("createSessionDataView", () => {
@@ -93,9 +93,6 @@ describe("createSessionDataView", () => {
     expect(view.dagNodesFor("missing-session")).toBe(EMPTY_DAG)
     expect(view.questionsFor("missing-session")).toBe(EMPTY_QUESTIONS)
     expect(view.cortexTasks()).toEqual([])
-
-    const withoutCortex = { ...fullData(), cortex: undefined }
-    expect(createSessionDataView(withoutCortex).cortexTasks()).toBe(EMPTY_CORTEX)
   })
 
   test("returns shared empty arrays for missing optional buckets on a partial store", () => {

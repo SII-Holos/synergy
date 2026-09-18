@@ -158,7 +158,6 @@ type State = {
     [name: string]: McpStatus
   }
   lsp: LspStatus[]
-  cortex: CortexTask[]
   agenda: AgendaItem[]
   vcs: VcsInfo | undefined
   sessionTotal: number
@@ -292,6 +291,7 @@ function createGlobalSync() {
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
+    cortex: CortexTask[]
     sessionStatus: SessionStatusIndex
     permission: Record<string, PermissionRequest[]>
     question: Record<string, QuestionRequest[]>
@@ -314,6 +314,7 @@ function createGlobalSync() {
     },
     provider_auth: {},
     agenda: [],
+    cortex: [],
     sessionStatus: {},
     permission: {},
     question: {},
@@ -540,7 +541,6 @@ function createGlobalSync() {
         inbox: {},
         mcp: {},
         lsp: [],
-        cortex: [],
         agenda: [],
         vcs: undefined,
         sessionTotal: 0,
@@ -615,9 +615,6 @@ function createGlobalSync() {
     if (activeBucketKey?.startsWith(`${scopeKey}\n`)) activeBucketKey = undefined
     for (const timer of inboxRefreshTimers.get(scopeKey)?.values() ?? []) clearTimeout(timer)
     inboxRefreshTimers.delete(scopeKey)
-    const cortexTimer = cortexRefreshTimers.get(scopeKey)
-    if (cortexTimer !== undefined) clearTimeout(cortexTimer)
-    cortexRefreshTimers.delete(scopeKey)
     scopeReconnectRecovery.release(scopeKey)
     setScopeReconnectVersions(
       produce((draft) => {
@@ -857,7 +854,6 @@ function createGlobalSync() {
   }
 
   const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
-  const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
 
   function refreshInbox(scopeKey: string, sessionID: string) {
@@ -887,40 +883,36 @@ function createGlobalSync() {
     )
   }
 
-  function refreshCortex(scopeKey: string) {
-    const existing = cortexRefreshTimers.get(scopeKey)
-    if (existing) clearTimeout(existing)
-    cortexRefreshTimers.set(
-      scopeKey,
-      setTimeout(() => {
-        cortexRefreshTimers.delete(scopeKey)
-        const state = children[scopeKey]
-        if (!state) return
-        const [, setStore] = state
-        const sdk = createScopedClient(scopeKey)
-        sdk.cortex
-          .list({})
-          .then((result) => setStore("cortex", reconcile(result.data ?? [])))
-          .catch(() => {})
-      }, 250),
-    )
+  // `cortex.list()` without a session filter returns the process-global visible
+  // set, so the refetch is global too and one timer suffices: a per-Scope timer
+  // would fetch the same list once per Scope.
+  let cortexRefreshTimer: ReturnType<typeof setTimeout> | undefined
+  function refreshCortex() {
+    if (cortexRefreshTimer !== undefined) clearTimeout(cortexRefreshTimer)
+    cortexRefreshTimer = setTimeout(() => {
+      cortexRefreshTimer = undefined
+      globalSDK.client.cortex
+        .list()
+        .then((result) => setGlobalStore("cortex", reconcile(result.data ?? [], { key: "id" })))
+        .catch(() => {})
+    }, 250)
   }
 
-  function reconcileCortexFromSession(store: State, setStore: SetStoreFunction<State>, info: Session) {
+  function reconcileCortexFromSession(info: Session) {
     const cortex = info.cortex
     if (!cortex || !terminalCortexStatuses.has(cortex.status)) return undefined
-    const idx = store.cortex.findIndex((task) => task.sessionID === info.id)
+    const idx = globalStore.cortex.findIndex((task) => task.sessionID === info.id)
     if (idx === -1) return undefined
-    const taskID = store.cortex[idx].id
-    setStore(
+    const taskID = globalStore.cortex[idx].id
+    setGlobalStore(
       "cortex",
       idx,
       reconcile({
-        ...store.cortex[idx],
+        ...globalStore.cortex[idx],
         status: cortex.status,
-        completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
-        output: cortex.output ?? store.cortex[idx].output,
-        error: cortex.error ?? store.cortex[idx].error,
+        completedAt: cortex.completedAt ?? globalStore.cortex[idx].completedAt,
+        output: cortex.output ?? globalStore.cortex[idx].output,
+        error: cortex.error ?? globalStore.cortex[idx].error,
       }),
     )
     return taskID
@@ -984,11 +976,13 @@ function createGlobalSync() {
         )
       }
       if (data.mcp) setStore("mcp", reconcile(data.mcp))
-      if (data.cortex)
-        setStore(
-          "cortex",
-          reconcile(tracker?.mergeCortex(version, data.cortex, store.cortex) ?? data.cortex, { key: "id" }),
-        )
+      // `Cortex.listVisible()` is process-global, so the bootstrap response
+      // carries the whole visible task set and is authoritative for the global
+      // index rather than for this Scope's tasks.
+      if (data.cortex) {
+        const mergedCortex = globalRuntimeTracker.mergeCortex(version, data.cortex, globalStore.cortex)
+        setGlobalStore("cortex", reconcile(mergedCortex ?? data.cortex, { key: "id" }))
+      }
       if (data.agenda) {
         setStore(
           "agenda",
@@ -1165,6 +1159,7 @@ function createGlobalSync() {
       setGlobalStore("sessionStatus", reconcile({}))
       setGlobalStore("permission", reconcile({}))
       setGlobalStore("question", reconcile({}))
+      setGlobalStore("cortex", reconcile([]))
     })
     globalRuntimeTracker = new GlobalRuntimeWriteTracker()
   }
@@ -1499,11 +1494,10 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info as Session
-        const touchedCortex = reconcileCortexFromSession(store, setStore, info)
+        const touchedCortex = reconcileCortexFromSession(info)
         if (stamp) {
-          const tracker = scopeWriteTracker(scopeKey)
-          tracker.sessionWrite(stamp, info.id, !info.time.archived)
-          if (touchedCortex) tracker.cortexWrite(stamp, touchedCortex)
+          scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
+          if (touchedCortex) globalRuntimeTracker.cortexWrite(stamp, touchedCortex)
         }
         // `recovering` reaches the client only through snapshots and this
         // derived field, so fill a status the index holds no event for. A real
@@ -1574,13 +1568,13 @@ function createGlobalSync() {
           )
           if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
           if (
-            store.cortex.some(
+            globalStore.cortex.some(
               (task) =>
                 task.sessionID === event.properties.sessionID &&
                 (task.status === "running" || task.status === "queued"),
             )
           ) {
-            refreshCortex(scopeKey)
+            refreshCortex()
           }
         } else setGlobalStore("sessionStatus", event.properties.sessionID, reconcile(event.properties.status))
         break
@@ -1919,39 +1913,27 @@ function createGlobalSync() {
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
         break
       }
-      case "cortex.task.created": {
-        const task = event.properties.task
-        setStore(
-          "cortex",
-          produce((draft) => {
-            const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx === -1) {
-              draft.push(task)
-            } else {
-              draft[idx] = task
-            }
-          }),
-        )
-        if (stamp) scopeWriteTracker(scopeKey).cortexWrite(stamp, task.id)
-        break
-      }
+      // Cortex events carry the whole visible task set (or one whole task), and
+      // `Cortex.listVisible()` is process-global, so they write the global index
+      // directly. A per-Scope copy would have to be rebuilt per Scope and would
+      // still be evicted.
+      case "cortex.task.created":
       case "cortex.task.completed": {
         const task = event.properties.task
-        setStore(
+        setGlobalStore(
           "cortex",
           produce((draft) => {
             const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx !== -1) {
-              draft[idx] = task
-            }
+            if (idx === -1) draft.push(task)
+            else draft[idx] = task
           }),
         )
-        if (stamp) scopeWriteTracker(scopeKey).cortexWrite(stamp, task.id)
+        if (stamp) globalRuntimeTracker.cortexWrite(stamp, task.id)
         break
       }
       case "cortex.tasks.updated": {
-        setStore("cortex", reconcile(event.properties.tasks))
-        if (stamp) scopeWriteTracker(scopeKey).cortexReplace(stamp)
+        setGlobalStore("cortex", reconcile(event.properties.tasks, { key: "id" }))
+        if (stamp) globalRuntimeTracker.cortexReplace(stamp)
         break
       }
       case "agenda.item.created":
@@ -2022,9 +2004,8 @@ function createGlobalSync() {
     for (const timers of inboxRefreshTimers.values()) {
       for (const timer of timers.values()) clearTimeout(timer)
     }
-    for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
+    if (cortexRefreshTimer !== undefined) clearTimeout(cortexRefreshTimer)
     inboxRefreshTimers.clear()
-    cortexRefreshTimers.clear()
     sessionWindowReload.dispose()
     recoveryRetryScheduler.dispose()
     partRepairScheduler.dispose()
@@ -2219,6 +2200,9 @@ function createGlobalSync() {
     get agenda() {
       return globalStore.agenda
     },
+    get cortex() {
+      return globalStore.cortex
+    },
     get sessionStatus() {
       return globalStore.sessionStatus
     },
@@ -2233,6 +2217,7 @@ function createGlobalSync() {
     },
     seedGlobalPermissions,
     seedGlobalQuestions,
+    reconcileCortexFromSession,
     loadGlobalAgenda,
     refreshConfig,
     refreshAllConfigs,
