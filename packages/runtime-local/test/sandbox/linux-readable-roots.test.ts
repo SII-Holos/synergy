@@ -99,6 +99,29 @@ describe("Linux helper profile readable roots", () => {
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
 
+  test("helper install directory is bound so stage 2 can re-exec", async () => {
+    await using tmp = await tmpdir()
+    const helperDir = path.join(tmp.path, "helper-install")
+    await fs.promises.mkdir(helperDir, { recursive: true })
+    const helperPath = path.join(helperDir, "synergy-sandbox-linux")
+    await fs.promises.writeFile(helperPath, "#!/bin/sh\n", { mode: 0o755 })
+
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "echo",
+      args: ["hello"],
+      workspace: tmp.path,
+      sandboxMode: "workspace_write",
+      forcePlatform: "linux",
+      forceHelperPath: helperPath,
+      forceHelperVerified: true,
+    })
+
+    expect(wrapper.sandboxed).toBe(true)
+    expect(readProfile(wrapper)).toContain(helperDir)
+
+    fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+
   test("real helper executes a child end to end when the host allows it", async () => {
     // SYNERGY_TEST_LINUX_SANDBOX_E2E=1 (CI runtime shard) turns every skip
     // below into a hard failure: CI installs bwrap, the AppArmor userns
@@ -156,12 +179,12 @@ describe("Linux helper profile readable roots", () => {
         workspace: wsPath,
         sandboxMode: "workspace_write",
         // Test-only helper override; production discovery is exercised
-        // outside test isolation.
+        // outside test isolation. No extraReadRoots here: binding the
+        // helper's install directory for the stage-2 re-exec is the
+        // backend's own invariant, and this execution is its regression
+        // test.
         forceHelperPath: helperPath,
         forceHelperVerified: true,
-        // Mirrors the production call site: the helper re-execs itself inside
-        // the sandbox, so its install root must be readable there.
-        extraReadRoots: [path.join(os.homedir(), ".synergy")],
       })
       expect(wrapper.sandboxed).toBe(true)
 

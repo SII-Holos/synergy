@@ -185,6 +185,8 @@ The sandbox network mode follows the gate-approved network capability: when the 
 
 Every Linux helper mount source must exist: bwrap hard-fails when a `--ro-bind` source is missing, so readable roots — platform defaults, gate-forwarded roots, and approved read paths — are existence-filtered at wrapper preparation, the same invariant protected paths already follow, and the dynamic-linker entry points (`/lib`, `/lib64`) are added so restricted-mode children can start at all. The helper's permission profile is staged under `~/.synergy/cache/synergy-sandbox/`, a default sandbox read root that the final controlled-`/tmp` bind never shadows, so stage 2 re-reads the same absolute path inside the sandbox; homes or workspaces that cannot host it fall back to the workspace controlled tmp and then the host tmpdir with a warning, where only stage 1 reads the file. See [the decision record](../decisions/implemented/bug-fix/2026-09-18-linux-sandbox-readable-roots.md).
 
+The backend also owns the helper's own visibility: the mount plan re-execs the helper inside the sandbox (stage 2), so `LinuxBackend.prepare` binds the helper's install directory as a read root itself. Callers grant read roots for their own data and never need to know about the two-stage re-exec; the enforced CI end-to-end runs with no caller-side helper grant.
+
 ## OOM Victim Preference
 
 On Linux, Synergy increases the chance that local Bash tool processes are selected before the core runtime during an out-of-memory kill.

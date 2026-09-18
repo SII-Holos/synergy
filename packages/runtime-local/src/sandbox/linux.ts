@@ -610,6 +610,13 @@ export namespace LinuxBackend {
     // above via networkConfigRoots.
     const linkerRoots = ["/lib", "/lib64"].filter((p) => fs.existsSync(p))
 
+    // The plan's inner command is this helper re-execing itself for stage 2,
+    // so its install directory must be visible inside the sandbox. The
+    // backend owns the two-stage re-exec contract: callers pass read roots
+    // for their own data and never need to know about the helper. Existence
+    // filtering below drops test override paths whose directory is absent.
+    const helperRoots = [path.dirname(helper.path)]
+
     // Read roots aggregate platform defaults (which include macOS-only
     // entries on Linux), gate-forwarded roots, and approved read paths.
     // bwrap hard-fails when a --ro-bind source is missing, so every entry is
@@ -620,6 +627,7 @@ export namespace LinuxBackend {
       ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(homedir)),
       ...(opts.extraReadRoots ?? []),
       ...networkConfigRoots,
+      ...helperRoots,
       stagingDir,
     ]).filter((p) => fs.existsSync(p))
 
