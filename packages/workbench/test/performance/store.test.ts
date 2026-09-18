@@ -125,6 +125,56 @@ describe.serial("performance observability store", () => {
     expect(summary.frontend.lcpMs).toBe(200)
   })
 
+  test("dashboard totals and percentiles cover the full scoped window beyond ranked details", async () => {
+    const time = Date.now() - 1000
+    const families = [
+      ["session.turn.duration", "session"],
+      ["tool.execution.duration", "tool"],
+      ["frontend.long_task.duration", "frontend"],
+      ["frontend.resource.duration", "frontend"],
+      ["llm.stream.initialization.duration", "llm"],
+      ["llm.stream.output_chars", "llm"],
+      ["unrelated.duration", "server"],
+    ] as const
+    for (const [name, module] of families) {
+      for (let value = 1; value <= 100; value++) {
+        ObservabilityStore.insertMetric({
+          metricId: `${name}-${value}`,
+          time: time + value,
+          name,
+          value,
+          unit: "ms",
+          module,
+          source: "backend",
+          scopeID: "scope_totals",
+          labels: {},
+          sampleRate: 1,
+        })
+      }
+      for (const [suffix, scopeID, at] of [
+        ["old", "scope_totals", time - 600_000],
+        ["other", "scope_other", time],
+      ] as const) {
+        ObservabilityStore.insertMetric({
+          metricId: `${name}-${suffix}`,
+          time: at,
+          name,
+          value: 10_000,
+          unit: "ms",
+          module,
+          source: "backend",
+          scopeID,
+          labels: {},
+          sampleRate: 1,
+        })
+      }
+    }
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000, scopeID: "scope_totals" })
+    expect(summary.sessions).toMatchObject({ turnCount: 100, llmCallCount: 100, toolCallCount: 100, p95TurnMs: 95 })
+    expect(summary.frontend).toMatchObject({ longTaskCount: 100, resourceP95Ms: 95 })
+    expect(summary.top.slowTools.length).toBeLessThanOrEqual(5)
+  })
+
   test("dashboard summary ranks provider and library durations from recorded metrics", async () => {
     ObservabilityMetrics.record({
       name: "llm.stream.initialization.duration",

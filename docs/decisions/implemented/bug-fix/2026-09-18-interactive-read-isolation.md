@@ -12,11 +12,15 @@ Recently viewed Scopes join the bounded inactive LRU. Library controls remain ou
 
 Session and part reads use existing typed SQL indexes. Inbox recovery discovers candidate records before loading Session metadata. A registered migration moves continuation intents to an indexed Session record kind, with atomic source removal; normal startup has one current discovery path. Message chronology, rollback and canonical derivation remain unchanged. Automatic adjacent-session prefetch no longer competes with the requested page.
 
+Inbox discovery pages over indexed keys before decoding bounded record batches. If decoding fails, it isolates and logs unreadable records while continuing through later pages and candidate owners. Query and store-availability failures remain fatal; normal typed record reads still reject corrupt evidence.
+
 Startup recovery reads committed journal evidence in bounded batches at a fixed revision. Every event still passes schema and sequence validation, and missing committed evidence still fails recovery. This removes a separate read transaction per historical event without weakening the recovery boundary.
 
 Workflow status recovery uses the same indexed Session discovery contract. Scope bootstrap exposes per-field `Server-Timing` durations so remaining cold-start dependencies can be distinguished from message loading and rendering.
 
 Handoffs still converge after a timeout. Navigation timing retains at most 32 attempts and records eventual completion. Performance read models aggregate window counts and percentiles in SQLite instead of discarding older rows at a fixed sample cap. Historical knowledge retries use independently recorded operations with source attribution; matching live-root encoding retains causal ownership.
+
+Ranked and latest metric samples only supply detail lists and last-observed values. Session, LLM, tool and frontend totals, and turn/resource percentiles, use full-window SQL aggregates with the same Scope and time bounds as HTTP totals.
 
 ## Alternatives considered
 

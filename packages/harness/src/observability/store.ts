@@ -528,6 +528,19 @@ export namespace ObservabilityStore {
     )
   }
 
+  export function queryMetricCounts(opts: Parameters<typeof queryMetrics>[0]) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return []
+    const { filters, params } = metricFilters(opts)
+    return allRows<{ name: string; module: string; count: number }>(
+      conn,
+      `SELECT name, module, COUNT(*) AS count FROM obs_metrics
+      WHERE ${filters.join(" AND ")} GROUP BY name, module`,
+      ...params,
+    )
+  }
+
   export function countMetricSessions(opts: Parameters<typeof queryMetrics>[0]) {
     flush()
     const conn = queryConnection()

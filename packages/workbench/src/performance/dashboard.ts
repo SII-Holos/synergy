@@ -25,9 +25,7 @@ export namespace PerformanceDashboard {
   let cached: { key: string; at: number; value: Promise<PerformanceSchema.DashboardSummary> } | undefined
   const labelsCache = new WeakMap<object, Record<string, unknown>>()
 
-  // Labels are parsed lazily and memoized per row: the dashboard inspects
-  // labels on only a few metric families, so parsing all 50k rows eagerly on
-  // every refresh is wasted work on the Control Plane hot path.
+  // Ranked and latest detail can reuse the same row across several projections.
   function metricLabels(row: object): Record<string, unknown> {
     const cachedLabels = labelsCache.get(row)
     if (cachedLabels) return cachedLabels
@@ -57,13 +55,19 @@ export namespace PerformanceDashboard {
     const until = Date.now()
     const since = until - windowMs
     const metrics = ObservabilityStore.queryMetricHighlights({ since, until, scopeID: input.scopeID })
-    const requests = ObservabilityStore.queryMetricBuckets({
-      since,
-      until,
-      scopeID: input.scopeID,
-      names: ["http.request.duration"],
-      bucketMs: windowMs + 1,
-    })[0]
+    const aggregate = (name: string) =>
+      ObservabilityStore.queryMetricBuckets({
+        since,
+        until,
+        scopeID: input.scopeID,
+        names: [name],
+        bucketMs: windowMs + 1,
+      })[0]
+    const requests = aggregate("http.request.duration")
+    const turnSummary = aggregate("session.turn.duration")
+    const resourceSummary = aggregate("frontend.resource.duration")
+    const counts = ObservabilityStore.queryMetricCounts({ since, until, scopeID: input.scopeID })
+    const count = (name: string) => counts.filter((row) => row.name === name).reduce((sum, row) => sum + row.count, 0)
     const resourceRows = ObservabilityStore.resourceSince(since, { limit: 50_000 })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
     const resources = serverResourceRows.at(-1)
@@ -309,13 +313,12 @@ export namespace PerformanceDashboard {
         owners,
       },
       sessions: {
-        turnCount: turns.length,
-        p95TurnMs: ObservabilityMetrics.percentile(
-          turns.map((row) => row.value),
-          95,
-        ),
-        llmCallCount: llm.length,
-        toolCallCount: tools.length,
+        turnCount: turnSummary?.count ?? 0,
+        p95TurnMs: turnSummary?.p95,
+        llmCallCount: counts
+          .filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
+          .reduce((sum, row) => sum + row.count, 0),
+        toolCallCount: count("tool.execution.duration"),
       },
       frontend: {
         inpMs: frontendVital("INP"),
@@ -323,11 +326,8 @@ export namespace PerformanceDashboard {
         cls: frontendVital("CLS"),
         fcpMs: frontendVital("FCP"),
         ttfbMs: frontendVital("TTFB"),
-        longTaskCount: frontendLongTasks.length,
-        resourceP95Ms: ObservabilityMetrics.percentile(
-          frontendResources.map((row) => row.value),
-          95,
-        ),
+        longTaskCount: count("frontend.long_task.duration"),
+        resourceP95Ms: resourceSummary?.p95,
       },
       runtime: {
         alive:

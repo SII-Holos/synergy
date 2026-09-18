@@ -5,6 +5,7 @@ import { BusEvent } from "../bus/bus-event"
 import { Identifier } from "../id/id"
 import { Scope } from "../scope"
 import { Storage } from "../storage/storage"
+import { StorageIntegrityError } from "../storage/errors"
 import { StoragePath } from "../storage/path"
 import { Lock } from "../util/lock"
 import { sha256Content } from "../util/crypto"
@@ -401,16 +402,24 @@ export namespace SessionInbox {
    */
   export async function listRunnableSessions(scopeID?: string): Promise<string[]> {
     const candidates = new Map<string, string>()
-    for await (const { key, value: item } of Storage.records<StoredItem>({ kind: "inbox", scopeID })) {
-      if (!item?.id) continue
-      const normalized = normalizeStored(item)
-      if (normalized.mode === "task" && normalized.status !== "failed") candidates.set(key[2], key[1])
+    let after: string[] | undefined
+    for (;;) {
+      const keys = await Storage.queryKeys({ kind: "inbox", scopeID, after, limit: 256 })
+      const items = await readRecoveryBatch<StoredItem>(keys)
+      for (let i = 0; i < keys.length; i++) {
+        const item = items[i]
+        if (!item?.id) continue
+        const normalized = normalizeStored(item)
+        if (normalized.mode === "task" && normalized.status !== "failed") candidates.set(keys[i][2], keys[i][1])
+      }
+      if (keys.length < 256) break
+      after = keys.at(-1)
     }
     const result: string[] = []
     const entries = [...candidates]
     for (let offset = 0; offset < entries.length; offset += 256) {
       const batch = entries.slice(offset, offset + 256)
-      const infos = await Storage.readMany<Info>(
+      const infos = await readRecoveryBatch<Info>(
         batch.map(([sessionID, scope]) =>
           StoragePath.sessionInfo(Identifier.asScopeID(scope), Identifier.asSessionID(sessionID)),
         ),
@@ -418,6 +427,30 @@ export namespace SessionInbox {
       for (const info of infos) if (info?.time && !info.time.archived) result.push(info.id)
     }
     return result.sort()
+  }
+
+  async function readRecoveryBatch<T>(keys: string[][]): Promise<(T | undefined)[]> {
+    try {
+      return await Storage.readMany<T>(keys)
+    } catch (error) {
+      if (!(error instanceof StorageIntegrityError)) throw error
+    }
+    return Promise.all(
+      keys.map(async (key) => {
+        try {
+          return await Storage.read<T>(key, { silentNotFound: true })
+        } catch (error) {
+          if (error instanceof Storage.NotFoundError) return undefined
+          if (!(error instanceof StorageIntegrityError)) throw error
+          log.warn("startup inbox discovery skipped an unreadable record", {
+            scopeID: key[1],
+            sessionID: key[2],
+            error,
+          })
+          return undefined
+        }
+      }),
+    )
   }
 
   export async function list(sessionID: string): Promise<Item[]> {

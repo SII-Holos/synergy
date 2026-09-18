@@ -86,4 +86,6 @@ Report canonical owner, key/table/schema changes, derived indexes, migration ID/
 
 Recovery discovery should query the indexed record kind before reading candidate owners. Do not scan every historical Session for a usually absent inbox or recovery intent. When relocating recovery authority to an indexed kind, migrate old intents transactionally through the registered runner; test fresh writes, repeated upgrade, and eventual execution without newly queued work.
 
+When a recovery domain permits skipping malformed bodies, page over indexed identities before decoding so an entirely corrupt page cannot hide later valid work. Preserve bounded batch reads for healthy data, log isolated failures, and test unreadable candidate owners as well as records. Query and store-availability failures must still propagate; do not make ordinary authority reads silently tolerant.
+
 Replay committed journal evidence in bounded reads at a captured revision. Test order, gaps and corruption across batch boundaries; reducing read transactions must preserve per-event validation and must never replay tools or provider calls.

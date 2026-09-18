@@ -15,6 +15,7 @@ Library opening awaited a global usage refresh even though a persisted snapshot 
 - Code tracing located last-lease eviction, serial historical recovery discovery and the loading-only handoff observer.
 - Regression fixtures reproduced these contracts before their fixes. A metric window exceeding 50,000 samples separately reproduced missing early buckets.
 - Restart verification exposed serial journal replay during saved-work recovery. A bounded-read regression reproduced one storage read per historical event and retained missing-event and sequence checks across batch boundaries.
+- Review found summary counts and percentiles incorrectly derived from ranked metric samples, malformed inbox bodies aborting discovery, and stale retention wording. Regression fixtures now distinguish full-window aggregates from detail samples and carry recovery past an entirely corrupt page.
 
 ## Root cause
 

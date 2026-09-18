@@ -3,7 +3,6 @@ import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
-import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../support/fixture"
 
 async function writeMessage(sessionID: string, id: string, text: string, created: number) {
@@ -38,7 +37,7 @@ describe("MessageV2.stream memory", () => {
         const newestID = Identifier.ascending("message")
         await writeMessage(session.id, newestID, "newest", 4)
 
-        using readMany = spyOn(Storage, "readMany")
+        using parts = spyOn(MessageV2, "parts")
         const iterator = MessageV2.stream({
           scopeID: ScopeContext.current.scope.id,
           sessionID: session.id,
@@ -46,12 +45,9 @@ describe("MessageV2.stream memory", () => {
         const first = await iterator.next()
         await iterator.return?.()
 
-        const partReads = readMany.mock.calls.filter((call) => {
-          const keys = call[0] as string[][]
-          return keys.some((key) => key.at(-2) === "parts")
-        })
         expect(first.value?.info.id).toBe(newestID)
-        expect(partReads).toHaveLength(1)
+        expect(first.value?.parts).toEqual([expect.objectContaining({ type: "text", text: "newest" })])
+        expect(parts.mock.calls.map(([input]) => input.messageID)).toEqual([newestID])
       },
     })
   })

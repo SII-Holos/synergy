@@ -179,6 +179,10 @@ export namespace Storage {
     return snapshot((tx) => tx.query<T>(input))
   }
 
+  export function queryKeys(input: RecordQuery) {
+    return snapshot((tx) => tx.queryKeys(input))
+  }
+
   export async function* records<T>(input: Omit<RecordQuery, "after"> = {}) {
     let after: string[] | undefined
     for (;;) {

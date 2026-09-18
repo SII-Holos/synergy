@@ -32,6 +32,8 @@ Rollout's application journal is distinct from the database WAL. The first trans
 
 Committed journal replay captures a fixed revision and reads bounded batches. It validates every event and sequence in order; a missing committed event remains an integrity failure. Batching must not skip evidence validation or turn recovery into execution replay.
 
+Inbox recovery discovers indexed keys independently of body decoding, then reads bounded batches. It logs unreadable inbox or candidate Session bodies and continues discovery beyond them; storage availability and index/query failures still propagate. This domain-specific isolation does not weaken ordinary typed reads or journal validation.
+
 Plugin installation has a durable recovery intent and a private snapshot of the affected registration, approval, configuration and directory promotion. SQL metadata changes commit together; reload runs afterward. Interrupted installations reconcile before plugin startup. Completed installation cleanup can resume without replaying the installation or its hooks.
 
 ## Streaming and notifications
