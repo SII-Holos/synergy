@@ -1,11 +1,12 @@
 import { Database } from "bun:sqlite"
 import fs from "fs"
 
-export namespace ObservabilitySqliteMaintenance {
+export namespace SqliteMaintenance {
   const DELETE_CHUNK = 500
   const MAX_PASSES = 10_000
   const TARGET_RATIO = 0.95
   const DEFAULT_BUDGET_MS = 500
+  const DEFAULT_MAX_PAGES = 512
 
   export interface Table {
     table: string
@@ -16,6 +17,23 @@ export namespace ObservabilitySqliteMaintenance {
   export interface EnforceResult {
     capExceededBytes: number
     deferred?: boolean
+  }
+
+  export interface ReclaimResult {
+    releasedPages: number
+    freelistPages: number
+    autoVacuum: AutoVacuumMode
+  }
+
+  export type AutoVacuumMode = "none" | "full" | "incremental"
+
+  export function autoVacuumMode(db: Database): AutoVacuumMode {
+    const mode = pragmaNumber(db, "auto_vacuum")
+    return mode === 2 ? "incremental" : mode === 1 ? "full" : "none"
+  }
+
+  export function physicalFootprint(path: string) {
+    return [path, `${path}-wal`, `${path}-shm`].reduce((total, file) => total + fileSize(file), 0)
   }
 
   export function enforce(input: {
@@ -47,16 +65,66 @@ export namespace ObservabilitySqliteMaintenance {
     }
   }
 
+  /**
+   * Moves an existing database to incremental auto-vacuum. SQLite only applies
+   * the pragma to an empty database, so an existing one needs the following
+   * VACUUM to rewrite its pages, and VACUUM may only run outside a
+   * transaction. A database already in incremental mode is left untouched.
+   */
   export function enableIncrementalVacuum(db: Database) {
-    if (pragmaNumber(db, "auto_vacuum") === 2) return
+    if (autoVacuumMode(db) === "incremental") return false
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     db.exec("PRAGMA auto_vacuum=INCREMENTAL")
     db.exec("VACUUM")
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    return true
   }
 
-  export function physicalFootprint(path: string) {
-    return [path, `${path}-wal`, `${path}-shm`].reduce((total, file) => total + fileSize(file), 0)
+  /**
+   * Returns free pages to the filesystem without rewriting the database. Both a
+   * page count and a time budget bound one pass so a scheduled run interleaves
+   * with ordinary requests instead of monopolizing the writer.
+   */
+  export function reclaim(
+    db: Database,
+    path: string,
+    input: { maxPages?: number; budgetMs?: number } = {},
+  ): ReclaimResult {
+    const deadline = performance.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS)
+    const maxPages = input.maxPages ?? DEFAULT_MAX_PAGES
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    let releasedPages = 0
+    while (releasedPages < maxPages && performance.now() <= deadline) {
+      const before = pragmaNumber(db, "freelist_count")
+      if (before <= 0) break
+      db.exec(`PRAGMA incremental_vacuum(${Math.min(before, maxPages - releasedPages)})`)
+      const after = pragmaNumber(db, "freelist_count")
+      if (after >= before) break
+      releasedPages += before - after
+    }
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    return { releasedPages, freelistPages: pragmaNumber(db, "freelist_count"), autoVacuum: autoVacuumMode(db) }
+  }
+
+  function reclaimFreePages(db: Database, path: string, maxBytes: number, deadline: number): boolean {
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    const pageSize = pragmaNumber(db, "page_size")
+    for (let pass = 0; pass < 16 && physicalFootprint(path) > maxBytes; pass++) {
+      const freePages = pragmaNumber(db, "freelist_count")
+      if (freePages <= 0) return true
+      const excessPages = Math.max(1, Math.ceil((physicalFootprint(path) - maxBytes) / Math.max(1, pageSize)) + 2)
+      releasePages(db, Math.min(freePages, excessPages))
+      db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+      if (performance.now() > deadline) return false
+    }
+    return true
+  }
+
+  function releasePages(db: Database, maxPages: number) {
+    const before = pragmaNumber(db, "freelist_count")
+    if (before <= 0) return 0
+    db.exec(`PRAGMA incremental_vacuum(${Math.min(before, maxPages)})`)
+    return before - pragmaNumber(db, "freelist_count")
   }
 
   function deleteUntilUnderCap(
@@ -104,20 +172,6 @@ export namespace ObservabilitySqliteMaintenance {
       `DELETE FROM ${table.table} WHERE rowid IN (SELECT rowid FROM ${table.table} ${where} ORDER BY ${table.orderBy} ASC LIMIT ?)`,
       limit,
     ).changes
-  }
-
-  function reclaimFreePages(db: Database, path: string, maxBytes: number, deadline: number): boolean {
-    db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-    const pageSize = pragmaNumber(db, "page_size")
-    for (let pass = 0; pass < 16 && physicalFootprint(path) > maxBytes; pass++) {
-      const freePages = pragmaNumber(db, "freelist_count")
-      if (freePages <= 0) return true
-      const excessPages = Math.max(1, Math.ceil((physicalFootprint(path) - maxBytes) / Math.max(1, pageSize)) + 2)
-      db.exec(`PRAGMA incremental_vacuum(${Math.min(freePages, excessPages)})`)
-      db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-      if (performance.now() > deadline) return false
-    }
-    return true
   }
 
   function logicalFootprint(db: Database) {

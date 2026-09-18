@@ -18181,11 +18181,15 @@ msgid "settings.runtime.agents.agent.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
+msgid "settings.runtime.agents.agentWorkers.derived"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -18181,12 +18181,16 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "Agent"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
-msgstr "Automatic"
+msgid "settings.runtime.agents.agentWorkers.derived"
+msgstr "Auto · machine-derived: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
 msgstr "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
+msgstr "Configured: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.placeholder"

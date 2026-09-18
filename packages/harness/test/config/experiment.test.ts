@@ -66,3 +66,25 @@ test("attach checks process worker settings", () => {
     Experiment.configureRuntime()
   }
 })
+
+test("reuses one parsed configuration while its inputs are unchanged and re-parses a changed input", () => {
+  const live: Config.Info = { model: "test/base", compaction: { auto: true } }
+  const snapshot = Experiment.capture(live)
+  const otherSnapshot = Experiment.capture({ ...live, model: "test/other" })
+
+  Experiment.provide(snapshot, () => {
+    const first = Experiment.apply(live)
+    const second = Experiment.apply(live)
+    expect(second).toBe(first)
+
+    const changed: Config.Info = { ...live, permission: { bash: "deny" } }
+    const reparsed = Experiment.apply(changed)
+    expect(reparsed).not.toBe(first)
+    expect(reparsed.permission).toEqual({ bash: "deny" })
+  })
+
+  Experiment.provide(otherSnapshot, () => {
+    const applied = Experiment.apply(live)
+    expect(applied.model).toBe("test/other")
+  })
+})

@@ -1,5 +1,5 @@
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
-import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "@ericsanchezok/synergy-harness/session/agent-turn/worker-pool"
+import { resolveAgentWorkerCapacity } from "@ericsanchezok/synergy-harness/execution/execution-config"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { expect, test } from "bun:test"
 import { ProductRuntimeHandle } from "@ericsanchezok/synergy-product-runtime/server/runtime-handle"
@@ -29,11 +29,10 @@ test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent s
     expect(recovery.at(-1)).toBe("completed")
     expect((await ServerProcessLock.read())?.mode).toBe("oneshot")
     expect(ScopeStartup.resident()).toBe(false)
-    expect(runtime.config.execution?.agentWorkers).toBe(DEFAULT_AGENT_WORKER_POOL_OPTIONS.size)
+    const capacity = resolveAgentWorkerCapacity({} as never, "oneshot")
+    expect(runtime.config.execution?.agentWorkers).toBe(capacity.size)
     expect(runtime.config.execution?.agentWorkerMinIdle).toBe(0)
-    expect(() =>
-      Experiment.assertRuntime({ execution: { agentWorkers: DEFAULT_AGENT_WORKER_POOL_OPTIONS.size } }),
-    ).not.toThrow()
+    expect(() => Experiment.assertRuntime({ execution: { agentWorkers: capacity.size } })).not.toThrow()
     await expect(
       ProductRuntimeHandle.open({ mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } }),
     ).rejects.toThrow("already owns")

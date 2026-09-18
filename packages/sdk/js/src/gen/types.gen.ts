@@ -1024,6 +1024,7 @@ export type PerfConfig = {
     sqliteEnabled: boolean
     jsonlMirrorEnabled: boolean
     maxSqliteBytes: number
+    retentionMs: number
     walCheckpointIntervalMs: number
   }
   thresholds: {
@@ -1060,6 +1061,7 @@ export type PerformanceConfigPatch = {
     sqliteEnabled: boolean
     jsonlMirrorEnabled: boolean
     maxSqliteBytes: number
+    retentionMs: number
     walCheckpointIntervalMs: number
   }
   thresholds?: {
@@ -2582,6 +2584,10 @@ export type ObservabilityConfig = {
    */
   enabled?: boolean
   /**
+   * Mirror debug/info records that opt in with `mirror: true` into indexed observability events
+   */
+  logMirror?: boolean
+  /**
    * Days to retain optional observability mirror files (default: 7)
    */
   retentionDays?: number
@@ -2666,7 +2672,14 @@ export type ObservabilityConfig = {
        * Enable optional JSONL mirror files for debugging exports
        */
       jsonlMirrorEnabled?: boolean
+      /**
+       * Maximum total authoritative storage bytes (default: 250MB)
+       */
       maxSqliteBytes?: number
+      /**
+       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days); retention stays off until this is set
+       */
+      retentionMs?: number
       walCheckpointIntervalMs?: number
     }
     thresholds?: {
@@ -4351,9 +4364,9 @@ export type Config = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
      */
-    agentWorkers?: number
+    agentWorkers?: number | null
     /**
      * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
@@ -5678,6 +5691,21 @@ export type ConfigDomainImportApplyInput = {
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
+export type AgentWorkerCapacityStatus = {
+  /**
+   * Explicit execution.agentWorkers ceiling, or null when the machine derives it
+   */
+  configured: number | null
+  /**
+   * Capacity the Agent worker pool runs with
+   */
+  effective: number
+  /**
+   * Whether configuration or the machine sizes the pool
+   */
+  source: "explicit" | "derived"
+}
+
 export type ControlProfileSummary = {
   id: "guarded" | "autonomous" | "full_access"
   label: string
@@ -6010,9 +6038,9 @@ export type ExperimentRuntime = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
      */
-    agentWorkers?: number
+    agentWorkers?: number | null
     /**
      * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
@@ -13372,6 +13400,34 @@ export type RuntimeReloadResponses = {
 
 export type RuntimeReloadResponse = RuntimeReloadResponses[keyof RuntimeReloadResponses]
 
+export type RuntimeAgentWorkersData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/runtime/agent-workers"
+}
+
+export type RuntimeAgentWorkersErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RuntimeAgentWorkersError = RuntimeAgentWorkersErrors[keyof RuntimeAgentWorkersErrors]
+
+export type RuntimeAgentWorkersResponses = {
+  /**
+   * Agent worker capacity status
+   */
+  200: AgentWorkerCapacityStatus
+}
+
+export type RuntimeAgentWorkersResponse = RuntimeAgentWorkersResponses[keyof RuntimeAgentWorkersResponses]
+
 export type ControlProfileListData = {
   body?: never
   path?: never
@@ -15657,6 +15713,10 @@ export type PermissionListData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Only return pending permission requests owned by this session
+     */
+    sessionID?: string
   }
   url: "/permission"
 }
