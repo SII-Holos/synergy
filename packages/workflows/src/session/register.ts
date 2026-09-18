@@ -107,9 +107,7 @@ export function registerWorkflowSessions() {
   CoreModePolicy.register({
     id: "workflows",
     visibility: SessionModePolicy.visibility,
-    evaluateCall: SessionModePolicy.evaluateCall,
-    unavailable: (input) =>
-      SessionModePolicy.isPlan(input.session) ? SessionModePolicy.unavailable(input) : undefined,
+    unavailable: SessionModePolicy.unavailable,
     availability: workflowToolAvailability,
     forcedGroups: (session) =>
       session?.workflow?.kind === "plan" || session?.workflow?.kind === "lattice" || session?.blueprint?.loopID

@@ -52,6 +52,43 @@ describe("Plan Blueprint prompt contract", () => {
     expect(PLAN_SYNERGY_MAX).toContain("parallel state or duplicate ownership")
   })
 
+  test("keeps the Blueprint quality bar that makes a plan detailed and professional", () => {
+    expect(PLAN).toContain("create or refine a high-quality Blueprint")
+    expect(PLAN).toContain("A Blueprint is an executable delivery contract.")
+    expect(PLAN).toContain("It must be decision-complete")
+    expect(PLAN).toContain("a later execution session should not need to choose")
+    expect(PLAN).toContain("A Blueprint is not a machine checklist.")
+    expect(PLAN).toContain("Every Blueprint must contain these sections in this order.")
+    expect(PLAN).toContain("cannot substitute a materially different route while claiming compliance")
+    expect(PLAN).toContain("could two competent executors follow the Blueprint")
+    expect(PLAN_SYNERGY).toContain("Producing a Blueprint that a downstream agent can follow autonomously")
+    expect(PLAN_SYNERGY).toContain('explain what to do, why, what to avoid, and what "done" looks like')
+    expect(PLAN_SYNERGY).toContain("Finalizing only decision-complete Blueprints with one material delivery route")
+    expect(PLAN_SYNERGY_MAX).toContain("strong enough for autonomous implementation")
+    expect(PLAN_SYNERGY_MAX).toContain("Explicitly reject plausible alternatives")
+  })
+
+  test("frames Plan as deliverable guidance rather than an enforced toolkit boundary", () => {
+    expect(PLAN).toContain("Deliver a Blueprint, not the requested outcome.")
+    expect(PLAN).toContain("This workflow does not gate your tools.")
+    expect(PLAN).toContain("Investigation is unrestricted and expected")
+    expect(PLAN).toContain("run commands, tests, and builds")
+    expect(PLAN).toContain("The boundary is the deliverable, not the toolkit.")
+    expect(PLAN).toContain("belong to the execution session")
+    expect(PLAN).toContain("Do not launch execution agents that implement or modify the requested deliverable.")
+    expect(PLAN).not.toContain("toolkit is restricted")
+    expect(PLAN).not.toContain("You CANNOT modify project files")
+    expect(PLAN).not.toContain("Plan restrictions")
+    expect(PLAN).not.toContain("bypass Plan mode")
+  })
+
+  test("describes the permission boundary without restoring tool prohibitions", () => {
+    expect(PLAN).not.toContain("You MUST NOT")
+    expect(PLAN).not.toContain("Run shell commands that write files")
+    expect(PLAN).not.toContain("Use read-only tools")
+    expect(PLAN).not.toContain("Use bash for read-only repository inspection")
+  })
+
   test("requires Lattice-authored Blueprints to use the same route contract", () => {
     expect(LATTICE_CLARIFYING).toContain("submit_requirements")
     expect(LATTICE_CLARIFYING).toContain("blocking question")
