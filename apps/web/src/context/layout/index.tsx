@@ -1298,6 +1298,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         unreadCompletionCount,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
+        navEntryForSession,
         scopeIndexLoaded,
       },
       scopes: {
