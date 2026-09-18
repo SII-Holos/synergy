@@ -38,6 +38,8 @@ export const useGlobalSync=()=>({
   touchMessageBucket:()=>{},
   invalidateResource:()=>{},
   markActiveSession:()=>{},
+  reconcileCortexFromSession:()=>{},
+  seedSessionPermissions:()=>{},
 });
 export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};
 export const updatePlanBlueprintOfferState=()=>{};

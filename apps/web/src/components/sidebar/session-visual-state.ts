@@ -1,8 +1,10 @@
 import type { MessageDescriptor } from "@lingui/core"
+import type { SessionStatus } from "@ericsanchezok/synergy-sdk"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { classifySessionActivity } from "@/utils/session-status"
 
 export type SessionVisualState = {
   icon: IconName
@@ -10,6 +12,7 @@ export type SessionVisualState = {
   tone:
     | "default"
     | "active"
+    | "retry"
     | "waiting"
     | "worktree"
     | "muted"
@@ -17,22 +20,9 @@ export type SessionVisualState = {
     | "blueprint-running"
     | "blueprint-waiting"
     | "blueprint-audit"
+    | "loop"
   pulse?: boolean
   completionUnread?: boolean
-}
-
-export interface SessionVisualStore {
-  session_status: Record<string, { type?: string } | undefined>
-  permission: Record<string, unknown[] | undefined>
-  question: Record<string, unknown[] | undefined>
-  cortex: { sessionID?: string; parentSessionID?: string; status?: string }[]
-  session: {
-    id: string
-    parentID?: string
-    category?: string
-    workspace?: { type?: string }
-    blueprint?: { loopID?: string; loopRole?: "execution" | "audit" }
-  }[]
 }
 
 export interface SessionVisualScope {
@@ -40,108 +30,158 @@ export interface SessionVisualScope {
   worktree?: string
 }
 
+/**
+ * Resolve a session row's leading glyph from data that outlives a Scope store.
+ *
+ * Identity (Blueprint binding and phase, worktree, child, Light Loop) comes from
+ * the nav entry, which is paginated, persisted, and refreshed by
+ * `session.updated`; runtime activity, the pending-decision signal, and the
+ * delegated-child-task pulse come from the global indexes. Nothing here reads a
+ * per-Scope store, so evicting an inactive Scope — which happens the moment its
+ * last retention lease is released, i.e. as soon as the user switches project —
+ * can no longer degrade a row to a category fallback.
+ *
+ * The row's identity wins over its activity: a Blueprint-bound or Light Loop
+ * session keeps its loop glyph while the loop is active, with tone and pulse
+ * carrying whether it is working, waiting, or resting.
+ *
+ * The pulse is an input rather than part of the resolution because the caller
+ * already holds the task collection and filtering it per row would repeat the
+ * same scan. It is the global Cortex index, whose reach is process-wide, so it
+ * survives eviction like the other two carriers.
+ */
+export interface SessionVisualInput {
+  entry: NavEntry
+  status?: SessionStatus
+  waiting?: boolean
+  /** Whether this session has a running delegated child task, from the global Cortex index. */
+  runningChildTasks?: boolean
+}
+
 export function scopeKeyForNavEntry(entry: Pick<NavEntry, "scopeID" | "scopeType">, scopes: SessionVisualScope[]) {
   if (entry.scopeType === "home" || entry.scopeID === HOME_SCOPE_KEY) return HOME_SCOPE_KEY
   return scopes.find((scope) => scope.id === entry.scopeID)?.worktree
 }
 
-export function resolveSessionVisualState(store: SessionVisualStore | undefined, entry: NavEntry): SessionVisualState {
+export function resolveSessionVisualState(input: SessionVisualInput): SessionVisualState {
+  const { entry } = input
   const unread = entry.completionNotice?.unread
-  if (store) {
-    const status = store.session_status[entry.id]
-    const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
-    const running = status?.type === "busy" || status?.type === "retry"
-    const childTasksRunning = store.cortex.some(
-      (task) => task.parentSessionID === entry.id && task.status === "running",
-    )
-    const fullSession = store.session.find((session) => session.id === entry.id)
+  const activity = classifySessionActivity({ status: input.status, waiting: input.waiting })
+  const childTasksRunning = input.runningChildTasks === true
+  const blueprintIcon = getSemanticIcon("blueprint.main")
 
-    if (fullSession?.blueprint?.loopID) {
-      const boundLoopID = fullSession.blueprint.loopID
-      const blueprintIcon = getSemanticIcon("blueprint.main")
-      if (waiting)
-        return {
-          icon: blueprintIcon,
-          label: { id: "session.state.blueprintWaiting", message: "Blueprint waiting for you" },
-          tone: "blueprint-waiting",
-          pulse: true,
-        }
-      if (fullSession.blueprint.loopRole === "audit") {
-        return {
-          icon: getSemanticIcon("command.review"),
-          label: { id: "session.state.auditingBlueprint", message: "Auditing Blueprint" },
-          tone: "blueprint-audit",
-          pulse: running || childTasksRunning ? true : undefined,
-        }
-      }
-      if (running)
-        return {
-          icon: blueprintIcon,
-          label: { id: "session.state.runningBlueprint", message: "Running Blueprint" },
-          tone: "blueprint-running",
-          pulse: true,
-        }
-      const auditTaskRunning = store.cortex.some((task) => {
-        if (task.parentSessionID !== entry.id || task.status !== "running") return false
-        const child = task.sessionID ? store.session.find((s) => s.id === task.sessionID) : undefined
-        return child?.blueprint?.loopID === boundLoopID && child?.blueprint?.loopRole === "audit"
-      })
-      if (auditTaskRunning)
-        return {
-          icon: getSemanticIcon("command.review"),
-          label: { id: "session.state.auditingBlueprint", message: "Auditing Blueprint" },
-          tone: "blueprint-audit",
-          pulse: true,
-        }
-      if (childTasksRunning)
-        return {
-          icon: blueprintIcon,
-          label: { id: "session.state.runningBlueprint", message: "Running Blueprint" },
-          tone: "blueprint-running",
-          pulse: true,
-        }
+  if (entry.blueprint?.loopID) {
+    if (activity === "waiting")
       return {
         icon: blueprintIcon,
-        label: { id: "session.state.blueprint", message: "Blueprint session" },
-        tone: "blueprint",
-      }
-    }
-    if (waiting)
-      return {
-        icon: getSemanticIcon("session.waiting"),
-        label: { id: "session.state.waiting", message: "Waiting for you" },
-        tone: "waiting",
+        label: { id: "session.state.blueprintWaiting", message: "Blueprint waiting for you" },
+        tone: "blueprint-waiting",
         pulse: true,
       }
-    if (running || childTasksRunning)
+    if (entry.blueprint.loopRole === "audit" || entry.blueprint.phase === "auditing")
       return {
-        icon: getSemanticIcon("session.running"),
-        label: { id: "session.state.running", message: "Running session" },
-        tone: "active",
+        icon: getSemanticIcon("command.review"),
+        label: { id: "session.state.auditingBlueprint", message: "Auditing Blueprint" },
+        tone: "blueprint-audit",
+        pulse: activity === "working" || childTasksRunning ? true : undefined,
+      }
+    if (activity === "working")
+      return {
+        icon: blueprintIcon,
+        label: { id: "session.state.runningBlueprint", message: "Running Blueprint" },
+        tone: "blueprint-running",
         pulse: true,
       }
-    if (fullSession?.workspace?.type === "git_worktree") {
+    if (childTasksRunning)
       return {
-        icon: getSemanticIcon("workspace.worktree"),
-        label: unread
-          ? { id: "session.state.worktree.unread", message: "Worktree session; response ready" }
-          : { id: "session.state.worktree", message: "Worktree session" },
-        tone: "worktree",
-        completionUnread: unread || undefined,
+        icon: blueprintIcon,
+        label: { id: "session.state.runningBlueprint", message: "Running Blueprint" },
+        tone: "blueprint-running",
+        pulse: true,
       }
-    }
-    if (entry.parentID) {
-      return {
-        icon: getSemanticIcon("session.child"),
-        label: unread
-          ? { id: "session.state.child.unread", message: "Child session; response ready" }
-          : { id: "session.state.child", message: "Child session" },
-        tone: "muted",
-        completionUnread: unread || undefined,
-      }
+    return {
+      icon: blueprintIcon,
+      label: { id: "session.state.blueprint", message: "Blueprint session" },
+      tone: "blueprint",
+      completionUnread: unread || undefined,
     }
   }
 
+  if (entry.workflow?.kind === "lightloop" && entry.workflow.active) {
+    if (activity === "waiting")
+      return {
+        icon: getSemanticIcon("prompt.lightLoop"),
+        label: { id: "session.state.loopWaiting", message: "Light Loop waiting for you" },
+        tone: "waiting",
+        pulse: true,
+      }
+    if (activity === "working")
+      return {
+        icon: getSemanticIcon("prompt.lightLoop"),
+        label: { id: "session.state.runningLoop", message: "Running Light Loop" },
+        tone: "loop",
+        pulse: true,
+      }
+    return {
+      icon: getSemanticIcon("prompt.lightLoop"),
+      label: unread
+        ? { id: "session.state.loop.unread", message: "Light Loop session; response ready" }
+        : { id: "session.state.loop", message: "Light Loop session" },
+      tone: "loop",
+      completionUnread: unread || undefined,
+    }
+  }
+
+  if (activity === "waiting")
+    return {
+      icon: getSemanticIcon("session.waiting"),
+      label: { id: "session.state.waiting", message: "Waiting for you" },
+      tone: "waiting",
+      pulse: true,
+    }
+
+  if (input.status?.type === "retry" || input.status?.type === "recovering")
+    return {
+      icon: getSemanticIcon("session.retry"),
+      label: { id: "session.state.recovering", message: "Session recovering" },
+      tone: "retry",
+      pulse: true,
+    }
+
+  if (activity === "working" || childTasksRunning)
+    return {
+      icon: getSemanticIcon("session.running"),
+      label: { id: "session.state.running", message: "Running session" },
+      tone: "active",
+      pulse: true,
+    }
+
+  if (entry.workspaceType === "git_worktree") {
+    return {
+      icon: getSemanticIcon("workspace.worktree"),
+      label: unread
+        ? { id: "session.state.worktree.unread", message: "Worktree session; response ready" }
+        : { id: "session.state.worktree", message: "Worktree session" },
+      tone: "worktree",
+      completionUnread: unread || undefined,
+    }
+  }
+
+  if (entry.parentID) {
+    return {
+      icon: getSemanticIcon("session.child"),
+      label: unread
+        ? { id: "session.state.child.unread", message: "Child session; response ready" }
+        : { id: "session.state.child", message: "Child session" },
+      tone: "muted",
+      completionUnread: unread || undefined,
+    }
+  }
+
+  return categoryVisualState(entry, unread)
+}
+
+function categoryVisualState(entry: NavEntry, unread: boolean | undefined): SessionVisualState {
   if (entry.category === "github") {
     return {
       icon: getSemanticIcon("github.main"),
@@ -183,14 +223,12 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
       completionUnread: unread || undefined,
     }
   }
-  {
-    return {
-      icon: getSemanticIcon("session.default"),
-      label: unread
-        ? { id: "session.state.default.unread", message: "Session; response ready" }
-        : { id: "session.state.default", message: "Session" },
-      tone: "default",
-      completionUnread: unread || undefined,
-    }
+  return {
+    icon: getSemanticIcon("session.default"),
+    label: unread
+      ? { id: "session.state.default.unread", message: "Session; response ready" }
+      : { id: "session.state.default", message: "Session" },
+    tone: "default",
+    completionUnread: unread || undefined,
   }
 }

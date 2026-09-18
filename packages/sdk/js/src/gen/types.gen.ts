@@ -1707,6 +1707,25 @@ export type AgendaItem = {
   }
 }
 
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      type: "busy"
+      description?: string
+    }
+  | {
+      type: "recovering"
+      description?: string
+    }
+
 export type SessionNavEntry = {
   id: string
   scopeID: string
@@ -1740,6 +1759,16 @@ export type SessionNavEntry = {
         externalProjectId: string
         externalTaskId: string
       }
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+    phase?: "running" | "waiting" | "auditing"
+  }
+  workspaceType?: string
+  workflow?: {
+    kind: string
+    active: boolean
+  }
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -4778,25 +4807,6 @@ export type Command = {
   hints: Array<string>
 }
 
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-      description?: string
-    }
-  | {
-      type: "recovering"
-      description?: string
-    }
-
 export type SessionScope = {
   id: string
   type?: string
@@ -5098,6 +5108,7 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
+    phase?: "running" | "waiting" | "auditing"
   }
 }
 
@@ -12180,6 +12191,33 @@ export type GlobalSessionSearchResponses = {
 }
 
 export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
+
+export type GlobalSessionStatusesData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/session/status"
+}
+
+export type GlobalSessionStatusesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalSessionStatusesError = GlobalSessionStatusesErrors[keyof GlobalSessionStatusesErrors]
+
+export type GlobalSessionStatusesResponses = {
+  /**
+   * Cross-scope session status map
+   */
+  200: {
+    [key: string]: SessionStatus
+  }
+}
+
+export type GlobalSessionStatusesResponse = GlobalSessionStatusesResponses[keyof GlobalSessionStatusesResponses]
 
 export type GlobalNavRecentData = {
   body?: never

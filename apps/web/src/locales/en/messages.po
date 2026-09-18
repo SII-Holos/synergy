@@ -13650,12 +13650,32 @@ msgid "session.state.home.unread"
 msgstr "Home session; response ready"
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr "Light Loop session"
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr "Light Loop session; response ready"
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr "Light Loop waiting for you"
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr "Session recovering"
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr "Running session"
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
 msgstr "Running Blueprint"
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
+msgstr "Running Light Loop"
 
 #. js-lingui-explicit-id
 msgid "session.state.waiting"

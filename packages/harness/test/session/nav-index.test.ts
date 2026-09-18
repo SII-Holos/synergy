@@ -1,13 +1,15 @@
 import { describe, expect, test, beforeAll } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { Session } from "../../src/session"
-import { SessionNav, type SessionNavEntry, type ScopeNavIndex } from "../../src/session/nav"
+import { SessionNav, SessionNavEntry, type ScopeNavIndex } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { Identifier } from "../../src/id/id"
+import type { Scope } from "../../src/scope/types"
+import { migrations } from "../../src/session/migration"
 
 Log.init({ print: false })
 
@@ -554,6 +556,117 @@ describe("SessionNav updatedAt authority", () => {
         expect(entry.updatedAt!).toBeGreaterThan(frozen.lastActivityAt)
 
         await Session.remove(session!.id)
+      },
+    })
+  })
+})
+
+describe("SessionNav session identity", () => {
+  // `blueprint` is owned by the workflows product domain, which covers its
+  // projection in the workflow session suite. Registering an owner here would
+  // be process-global and would leak into sibling suites in the same shard, so
+  // this suite covers the identity the harness owns.
+  async function identitySession(scope: Scope) {
+    return Session.create({
+      title: "Identity Session",
+      workspace: { type: "git_worktree", path: scope.directory, scopeID: scope.id },
+      workflow: { kind: "plan" },
+    })
+  }
+
+  function stripIdentity(entry: SessionNavEntry): SessionNavEntry {
+    const { blueprint: _blueprint, workspaceType: _workspaceType, workflow: _workflow, ...rest } = entry
+    return rest
+  }
+
+  async function stripStoredIdentity(scopeID: string, sessionID: string) {
+    const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))
+    const stored = await Storage.read<ScopeNavIndex>(key)
+    await Storage.write(key, {
+      ...stored,
+      entries: stored.entries.map((entry) => (entry.id === sessionID ? stripIdentity(entry) : entry)),
+    })
+  }
+
+  test("both producers project the same identity fields for the same session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await identitySession(scope)
+
+        const live = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+        const rebuilt = (await SessionNav.buildNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+        expect(live).toBeDefined()
+        expect(rebuilt).toBeDefined()
+
+        expect(live!.workspaceType).toBe("git_worktree")
+        expect(live!.workflow).toEqual({ kind: "plan", active: false })
+        expect(rebuilt!.workspaceType).toBe(live!.workspaceType)
+        expect(rebuilt!.workflow).toEqual(live!.workflow)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("keeps identity through later updates and parses entries written without it", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await identitySession(scope)
+        const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
+
+        await Session.update(session.id, (draft) => {
+          draft.title = "Identity Session Renamed"
+        })
+        const renamed = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+        expect(renamed.title).toBe("Identity Session Renamed")
+        expect(renamed.workspaceType).toBe("git_worktree")
+        expect(renamed.workflow).toEqual({ kind: "plan", active: false })
+
+        const stored = await Storage.read<ScopeNavIndex>(key)
+        expect(SessionNavEntry.safeParse(stored.entries.find((e) => e.id === session.id)).success).toBe(true)
+
+        await stripStoredIdentity(scope.id, session.id)
+        const legacy = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+        expect(legacy.workspaceType).toBeUndefined()
+        expect(legacy.workflow).toBeUndefined()
+        expect(SessionNavEntry.safeParse(legacy).success).toBe(true)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("backfills identity into an index that predates the fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await identitySession(scope)
+        await stripStoredIdentity(scope.id, session.id)
+        expect(
+          (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!.workspaceType,
+        ).toBeUndefined()
+
+        const migration = migrations.find((entry) => entry.id === "20260918-session-nav-identity")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+        await migration!.up(() => {})
+
+        const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+        expect(migrated.workspaceType).toBe("git_worktree")
+        expect(migrated.workflow).toEqual({ kind: "plan", active: false })
+
+        await Session.remove(session.id)
       },
     })
   })

@@ -21,6 +21,8 @@ export function registerWorkflowSessions() {
       id: kind,
       managesLock: true,
       conflicts: ["plan", "lightloop", "lattice", "boss"],
+      activeForPresentation:
+        kind === "lightloop" ? (session) => isActiveLightLoopWorkflow(session.workflow) : undefined,
       async enable({ sessionID, args }) {
         if (kind === "plan") return WorkflowSessionService.enablePlan(sessionID)
         if (kind === "boss") return WorkflowSessionService.enableBoss(sessionID)

@@ -4,6 +4,8 @@ import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
 import { FileProvider } from "@/context/file"
+import { useGlobalSync } from "@/context/global-sync"
+import { createSessionDataRuntime } from "@/context/session-data-view"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"
@@ -22,6 +24,7 @@ export default function Layout(props: ParentProps) {
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
+            const globalSync = useGlobalSync()
             const navigateToSession = useNavigateToSession()
             const respond = (input: {
               sessionID: string
@@ -32,6 +35,7 @@ export default function Layout(props: ParentProps) {
             return (
               <DataProvider
                 data={sync.data}
+                runtime={createSessionDataRuntime(globalSync)}
                 directory={scopeKey()}
                 serverUrl={sdk.url}
                 onPermissionRespond={respond}

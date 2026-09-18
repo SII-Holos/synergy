@@ -715,10 +715,14 @@ export namespace SessionManager {
       }
       result[runtime.sessionID] = runtime.status
     }
-    if (scopeID) {
-      const { SessionRecovery } = await import("./recovery")
-      const recovered = await SessionRecovery.recoverableStatuses(scopeID).catch((error) => {
-        log.warn("failed to resolve recoverable session statuses", { scopeID, error })
+    const { SessionNav } = await import("./nav")
+    const { SessionRecovery } = await import("./recovery")
+    const scopeIDs = scopeID ? [scopeID] : await SessionNav.getAllScopeIDs()
+    // Sequential like the other cross-scope scans: each scope reads session records from the same
+    // store, so parallel scans only contend.
+    for (const id of scopeIDs) {
+      const recovered = await SessionRecovery.recoverableStatuses(id).catch((error) => {
+        log.warn("failed to resolve recoverable session statuses", { scopeID: id, error })
         return {}
       })
       for (const [sessionID, status] of Object.entries(recovered)) {
