@@ -100,16 +100,49 @@ describe("Linux helper profile readable roots", () => {
   })
 
   test("real helper executes a child end to end when the host allows it", async () => {
-    if (process.platform !== "linux") return
+    // SYNERGY_TEST_LINUX_SANDBOX_E2E=1 (CI runtime shard) turns every skip
+    // below into a hard failure: CI installs bwrap, the AppArmor userns
+    // profile, and the helper, so a silent skip would hide a broken sandbox
+    // behind a green build. Locally the test still skips honestly — a
+    // missing helper or blocked user namespaces there is environment, not
+    // a code defect.
+    const enforced = process.env.SYNERGY_TEST_LINUX_SANDBOX_E2E === "1"
+    if (process.platform !== "linux") {
+      if (enforced) throw new Error("SYNERGY_TEST_LINUX_SANDBOX_E2E=1 requires a Linux runner")
+      return
+    }
     // Real helper from the host install: proves the full prepare → stage-1 →
     // bwrap → stage-2 → child chain, including the cache-dir profile staging
-    // that stage 2 re-reads inside the sandbox. Skips honestly where the
-    // host has no helper or blocks unprivileged user namespaces
-    // (environment, not a code defect).
+    // that stage 2 re-reads inside the sandbox.
     const helperPath = path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-linux")
-    if (!fs.existsSync(helperPath)) return
-    const probe = Bun.spawnSync(["bwrap", "--dev-bind", "/", "/", "/bin/true"])
-    if (probe.exitCode !== 0) return
+    if (!fs.existsSync(helperPath)) {
+      if (enforced) {
+        throw new Error(
+          `SYNERGY_TEST_LINUX_SANDBOX_E2E=1 but the sandbox helper is missing at ${helperPath}; ` +
+            "the CI runtime shard must build and install it",
+        )
+      }
+      return
+    }
+    const probe = Bun.spawnSync({
+      cmd: ["bwrap", "--dev-bind", "/", "/", "/bin/true"],
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    if (probe.exitCode !== 0) {
+      if (enforced) {
+        const detail = [probe.stderr, probe.stdout]
+          .filter((bytes) => bytes.length > 0)
+          .map((bytes) => new TextDecoder().decode(bytes))
+          .join(" ")
+          .trim()
+        throw new Error(
+          `SYNERGY_TEST_LINUX_SANDBOX_E2E=1 but bwrap cannot create a sandbox (exit ${probe.exitCode}); ` +
+            `install the AppArmor userns profile for /usr/bin/bwrap${detail ? `: ${detail}` : ""}`,
+        )
+      }
+      return
+    }
     // The helper's controlled-tmp bind shadows everything under /tmp, so the
     // workspace must live outside it — mirrors production, where workspaces
     // are real project directories.
