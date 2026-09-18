@@ -29,6 +29,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
   const countdownSeconds = () => props.request.timeout as number | undefined
+  const countdownStartedAt = () => props.request.createdAt
 
   const [store, setStore] = createStore({
     tab: 0,
@@ -166,7 +167,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
           </span>
           <span class="question-prompt-collapsed-meta">
             <Show when={countdownSeconds() != null}>
-              <Countdown seconds={countdownSeconds()!} active={true} />
+              <Countdown seconds={countdownSeconds()!} startedAt={countdownStartedAt()} active={true} />
             </Show>
             <span>{_(S.questionOpen)}</span>
           </span>
@@ -198,7 +199,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 <span class="question-prompt-meta-separator" aria-hidden="true">
                   ·
                 </span>
-                <Countdown seconds={countdownSeconds()!} active={true} />
+                <Countdown seconds={countdownSeconds()!} startedAt={countdownStartedAt()} active={true} />
               </Show>
             </div>
             <div class="question-prompt-meta-actions">

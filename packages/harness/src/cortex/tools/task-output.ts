@@ -15,7 +15,7 @@ const parameters = z
         "Output mode: progress for live status, tail for recent session activity, full for final output. Default: full",
       ),
     block: z.boolean().optional().describe("Wait for completion if still running"),
-    timeout: z.number().optional().describe(`Max seconds to wait (default: ${DEFAULT_WAIT_S})`),
+    timeoutSeconds: z.number().optional().describe(`Max seconds to wait (default: ${DEFAULT_WAIT_S})`),
   })
   .superRefine((value, ctx) => {
     if (value.block && value.mode !== undefined && value.mode !== "full") {
@@ -58,7 +58,7 @@ export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>
   - \`full\` — final result with progress summary, including structured output as rendered JSON (default)
   - \`summary\` — compact one-liner (status, health, elapsed)
 - **block** (optional): Wait for completion if still running. Valid only with \`mode="full"\` or the default mode
-- **timeout** (optional): Maximum seconds to wait (default: 300)
+- **timeoutSeconds** (optional): Maximum seconds to wait (default: 300)
 
 Subagents commonly run 5–30 minutes. Do not repeatedly call \`task_output\` while a task is running. Continue independent work, or wait for the automatic completion notification. Use progress, tail, or summary only for a one-shot diagnostic check. The completion notification does not contain the final result; retrieve it once with \`mode="full"\`.
 
@@ -144,14 +144,14 @@ If the task is still running after this wait, continue other work or use a later
         status: task.status,
         found: true,
         description: task.description,
-        timeout: params.timeout,
+        timeout: params.timeoutSeconds,
         mode: params.mode ?? "full",
         visibleTaskIds,
       },
     })
 
     if ((task.status === "running" || task.status === "queued") && params.block) {
-      await Cortex.waitFor(params.task_id, params.timeout ?? DEFAULT_WAIT_S)
+      await Cortex.waitFor(params.task_id, params.timeoutSeconds ?? DEFAULT_WAIT_S)
     }
 
     const current = (await Cortex.getVisibleTaskForOutput(ctx.sessionID, params.task_id)) ?? task
@@ -164,7 +164,7 @@ If the task is still running after this wait, continue other work or use a later
         status: current.status,
         found: true,
         description: current.description,
-        timeout: params.timeout,
+        timeout: params.timeoutSeconds,
         mode: params.mode ?? "full",
         visibleTaskIds,
         output: current.output,

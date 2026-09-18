@@ -9536,9 +9536,29 @@ msgstr "卸载 {name}？它将从此 Synergy 安装中移除。"
 msgid "confirm.uninstallPlugin.title"
 msgstr "卸载插件？"
 
-#. ── Countdown ───────────────────────────────────────────────────────
-msgid "countdown.timeout-label"
-msgstr "{remaining} 秒超时"
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.backgrounded"
+msgstr "已转后台"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.past-limit"
+msgstr "已超出限制"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.remaining"
+msgstr "剩余 {remaining} 秒"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.timed-out"
+msgstr "已超时"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-background"
+msgstr "{remaining} 秒后转后台"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-timeout"
+msgstr "{remaining} 秒后超时"
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
 msgid "dag.chrome.blocked"

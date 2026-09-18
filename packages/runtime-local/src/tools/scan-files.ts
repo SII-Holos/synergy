@@ -94,7 +94,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
     limitFiles: z.number().int().min(1).optional().describe("Maximum matched files to return; defaults to 20"),
     perFileLimit: z.number().int().min(1).optional().describe("Maximum matched lines per file; defaults to 20"),
     skipFiles: z.number().int().min(0).optional().describe("Matched files to skip for pagination"),
-    timeoutMs: z.number().int().min(1000).optional().describe("Search timeout in milliseconds; defaults to 10000"),
+    timeoutSeconds: z.number().int().min(1).optional().describe("Search timeout in seconds; defaults to 10"),
     outputMode: z
       .enum(["matches", "files"])
       .optional()
@@ -112,7 +112,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
     const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
     const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)
     const skipFiles = Math.max(params.skipFiles ?? 0, 0)
-    const timeoutMs = Math.max(params.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1000)
+    const timeoutMs = Math.max((params.timeoutSeconds ?? DEFAULT_TIMEOUT_MS / 1_000) * 1_000, 1_000)
     const outputMode = params.outputMode ?? "matches"
 
     const timeoutSignal = AbortSignal.timeout(timeoutMs)

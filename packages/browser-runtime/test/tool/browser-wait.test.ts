@@ -45,7 +45,7 @@ describe("tool.browser_wait", () => {
     const result = await tool.execute(
       {
         condition: { type: "text", values: ["Ready"], match: "any" },
-        timeoutMs: 10_000,
+        timeoutSeconds: 10,
       },
       context(),
     )
@@ -68,7 +68,7 @@ describe("tool.browser_wait", () => {
     const result = await tool.execute(
       {
         condition: { type: "load", state: "load" },
-        timeoutMs: 10_000,
+        timeoutSeconds: 10,
       },
       context(),
     )

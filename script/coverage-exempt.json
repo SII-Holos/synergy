@@ -1738,7 +1738,7 @@
         },
         {
           "glob": "src/components/countdown.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+          "reason": "Rendered by test/components/countdown-anchor.dom.test.ts, but that suite bundles the component through a temporary Vite fixture, so lcov records the fixture bundle path and never attributes coverage to this source file"
         },
         {
           "glob": "src/components/dag-graph.tsx",
