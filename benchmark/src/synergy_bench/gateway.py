@@ -184,6 +184,18 @@ class Gateway:
                 ]
             elif any(message.get("role") == "developer" for message in body.get("messages", [])):
                 raise ValueError("Native harness ignored the model's disabled developer-role capability")
+        if self.model.merge_system_messages and self.model.protocol == "chat-completions":
+            messages = body.get("messages")
+            leading = 0
+            if isinstance(messages, list):
+                for message in messages:
+                    if isinstance(message, dict) and message.get("role") == "system":
+                        leading += 1
+                    else:
+                        break
+                if leading > 1:
+                    merged = "\n\n".join(str(message.get("content") or "") for message in messages[:leading]).strip()
+                    body["messages"] = [{"role": "system", "content": merged}, *messages[leading:]]
         body["model"] = self.model.model
         for key in MODEL_PARAMETERS:
             body.pop(key, None)
@@ -233,6 +245,7 @@ class Gateway:
             "bridge": bridge,
             "model_parameter_policy": "profile-exclusive-v1",
             "developer_role_supported": self.model.supports_developer_role,
+            "merge_system_messages": self.model.merge_system_messages,
             "parameter_overrides": {
                 key: {"native": original.get(key), "effective": effective.get(key)}
                 for key in MODEL_PARAMETERS

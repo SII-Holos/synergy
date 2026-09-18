@@ -51,6 +51,7 @@ class ModelProfile(StrictModel):
     context_window: int = Field(gt=0)
     max_output_tokens: int = Field(gt=0)
     supports_developer_role: bool = True
+    merge_system_messages: bool = False
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -131,11 +132,14 @@ class HarnessProfile(StrictModel):
     config: str | None = None
     experiment: str | None = None
     bun_jit: StrictBool | None = None
+    merge_system_messages: StrictBool | None = None
 
     @model_validator(mode="after")
     def validate_native_options(self) -> HarnessProfile:
         if self.bun_jit is not None and self.kind != "opencode":
             raise ValueError("bun_jit is supported only for opencode")
+        if self.merge_system_messages is not None and self.kind != "synergy":
+            raise ValueError("merge_system_messages is supported only for synergy")
         if self.kind != "synergy":
             if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
@@ -180,6 +184,7 @@ class Variant(StrictModel):
     model_profile: ModelProfile | None = None
     package_version: str | None = None
     bun_jit: StrictBool | None = None
+    merge_system_messages: StrictBool | None = None
 
 
 class Selection(StrictModel):
@@ -256,6 +261,7 @@ class ExperimentConfig(StrictModel):
                 model_profile=model,
                 package_version=harness.package_version,
                 bun_jit=harness.bun_jit,
+                merge_system_messages=harness.merge_system_messages,
             )
         if not resolved:
             raise ValueError("No matrix combinations selected")

@@ -59,6 +59,42 @@ def test_opencode_jit_controls_the_native_process_without_changing_model_or_tool
         assert actual["env"]["BUN_JSC_useJIT"] == str(int(enabled))
 
 
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_synergy_merge_system_messages_is_a_named_provider_condition(enabled):
+    model = ModelProfile(
+        model="m",
+        protocol="chat-completions",
+        base_url="https://provider.test/v1",
+        api_key_env="KEY",
+        context_window=32000,
+        max_output_tokens=2000,
+    )
+    baseline = harness_configuration("synergy", model, "http://localhost:1/v1", "/home/fixture")
+    actual = harness_configuration(
+        "synergy", model, "http://localhost:1/v1", "/home/fixture", merge_system_messages=enabled
+    )
+    assert actual["protocol"] == baseline["protocol"]
+    assert actual["env"] == baseline["env"]
+    assert actual["argv"] == baseline["argv"]
+    if enabled is None:
+        assert actual["config"] == baseline["config"]
+    else:
+        assert actual["config"]["provider"]["benchmark"]["options"]["mergeSystemMessages"] is enabled
+
+
+def test_merge_system_messages_is_rejected_for_verified_native_runtimes():
+    model = ModelProfile(
+        model="m",
+        protocol="chat-completions",
+        base_url="https://provider.test/v1",
+        api_key_env="KEY",
+        context_window=32000,
+        max_output_tokens=2000,
+    )
+    with pytest.raises(ValueError, match="merge_system_messages.*synergy"):
+        harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture", merge_system_messages=True)
+
+
 @pytest.mark.parametrize("kind", ["pi", "deepseek"])
 def test_native_provider_can_explicitly_disable_developer_role(kind):
     model = ModelProfile(

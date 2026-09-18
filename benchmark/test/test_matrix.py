@@ -109,6 +109,27 @@ def test_jit_control_requires_an_explicit_boolean(value):
         HarnessProfile(kind="opencode", bun_jit=value)
 
 
+def test_synergy_merge_system_messages_is_a_named_harness_condition():
+    from synergy_bench.config import HarnessProfile
+
+    value = matrix_config()
+    value["harnesses"] = {
+        "baseline": {"kind": "synergy"},
+        "merged": {"kind": "synergy", "merge_system_messages": True},
+        "explicit": {"kind": "synergy", "merge_system_messages": False},
+    }
+    config = ExperimentConfig.model_validate(value)
+    for model in value["models"]:
+        assert config.variants[f"baseline__{model}"].merge_system_messages is None
+        assert config.variants[f"merged__{model}"].merge_system_messages is True
+        assert config.variants[f"explicit__{model}"].merge_system_messages is False
+    assert ExperimentConfig.model_validate(config.model_dump()) == config
+    with pytest.raises(ValueError, match="merge_system_messages.*synergy"):
+        HarnessProfile(kind="opencode", merge_system_messages=True)
+    with pytest.raises(ValueError):
+        HarnessProfile(kind="synergy", merge_system_messages="true")
+
+
 def test_profile_rejects_unmapped_or_transport_overriding_parameters():
     import pytest
 

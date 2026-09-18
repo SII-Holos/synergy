@@ -44,6 +44,8 @@ from .storage import atomic_json, digest, locked, read_json
 from .trial import BenchmarkTrial
 from .usage import aggregate_usage
 
+PROBE_DIAGNOSTIC_SECONDS = 300
+
 
 def inspect_config(path: Path) -> tuple[ExperimentConfig, Suite, dict[str, Any]]:
     config = load_config(path)
@@ -178,7 +180,11 @@ def _initialize(path: Path) -> Path:
             validate_credentials(settings)
             if variant.model_profile and variant.harness == "synergy":
                 generated = harness_configuration(
-                    "synergy", variant.model_profile, "http://benchmark.invalid/v1", "/logs/agent/home"
+                    "synergy",
+                    variant.model_profile,
+                    "http://benchmark.invalid/v1",
+                    "/logs/agent/home",
+                    merge_system_messages=variant.merge_system_messages,
                 )
                 settings.update(generated["config"])
             settings = {"controlProfile": "full_access", **settings}
@@ -551,7 +557,9 @@ def trial_configuration(
     shutil.copytree(root / "inputs" / item["variant"], inputs)
     cleanup = plan["config"]["cleanup_seconds"]
     export_timeout = plan["config"]["export_timeout_seconds"]
-    timeout = 120 if probe_instruction else plan["config"]["timeout_seconds"] or task["agent_seconds"]
+    timeout = (
+        PROBE_DIAGNOSTIC_SECONDS if probe_instruction else plan["config"]["timeout_seconds"] or task["agent_seconds"]
+    )
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
         "config": "/benchmark-input/config.json",
@@ -569,6 +577,7 @@ def trial_configuration(
             gateway.url,
             "/logs/agent/home",
             bun_jit=variant.get("bun_jit"),
+            merge_system_messages=variant.get("merge_system_messages"),
         )
         if variant["harness"] == "synergy":
             settings = read_json(inputs / "config.json")
