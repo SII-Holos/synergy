@@ -757,7 +757,10 @@ export namespace ToolResolver {
         smartAllow = { skipped: true, reason: "Non-bypassable capability" }
       }
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
-      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId, {
+        permanent: envelope.refusal?.permanent ?? true,
+        guidance: envelope.refusal?.guidance,
+      })
     }
 
     if (profile.profileId === "autonomous" && decision.action === "ask") {
@@ -770,7 +773,10 @@ export namespace ToolResolver {
         smartAllow = { skipped: true, reason: "Non-bypassable capability" }
       }
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
-      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId, {
+        permanent: envelope.refusal?.permanent ?? true,
+        guidance: envelope.refusal?.guidance,
+      })
     }
 
     // Pre-authorization origin: sessions created by system scheduling (e.g. agenda wake)
@@ -830,12 +836,7 @@ export namespace ToolResolver {
     }
 
     if (error instanceof EnforcementError.PolicyDenied) {
-      return [
-        `Permission denied by profile "${error.profileId}".`,
-        `Blocked capabilities: ${error.capabilities.join(", ")}`,
-        `This is a policy restriction. Do not retry the same approach.`,
-        error.message,
-      ].join("\n")
+      return error.modelMessage
     }
 
     if (error instanceof EnforcementError.SandboxBlocked) {

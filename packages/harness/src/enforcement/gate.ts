@@ -1710,7 +1710,7 @@ export namespace EnforcementGate {
         deniedCapClass = deniedCapClass ?? capabilities.find((c) => c.class !== "file_read")?.class ?? "tool_request"
       }
 
-      if (policyFailure) {
+      if (policyFailure && profileId !== "full_access") {
         decision = "deny"
         deniedCapClass = "protected_op"
         amendment = undefined
@@ -1737,7 +1737,7 @@ export namespace EnforcementGate {
 
       // Populate refusal info for deny decisions
       let refusal: Envelope["refusal"]
-      if (policyFailure) {
+      if (policyFailure && profileId !== "full_access") {
         refusal = {
           reason: `Policy classification is unavailable (${policyFailure}); the operation was not executed`,
           permanent: false,
