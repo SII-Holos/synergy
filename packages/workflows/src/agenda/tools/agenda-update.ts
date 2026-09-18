@@ -1,3 +1,4 @@
+import { GithubWatchPreflight } from "./github-watch-preflight"
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -41,6 +42,12 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
+    if (params.triggers?.some((t) => t.type === "github")) {
+      // A GitHub trigger without a credential never fires; reject at update
+      // with concrete connection steps instead of persisting a silent item.
+      const rejected = await GithubWatchPreflight.check("agenda_update")
+      if (rejected) return rejected
+    }
     const patch: AgendaTypes.PatchInput = {}
 
     if (params.title !== undefined) patch.title = params.title
