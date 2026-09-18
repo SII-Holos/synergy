@@ -13650,11 +13650,31 @@ msgid "session.state.home.unread"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -8,6 +8,7 @@ import {
   type FileDiff,
   type Todo,
   type SessionStatus,
+  type SessionWorkingInfo,
   type ProviderListResponse,
   type ProviderAuthResponse,
   type Command,
@@ -31,6 +32,12 @@ import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planSessionVolatileResync } from "./session-volatile-resync"
 import { parseEventWriteStamp, ScopeWriteTracker } from "./scope-snapshot-merge"
+import {
+  flattenBuckets,
+  GlobalRuntimeWriteTracker,
+  groupBySession,
+  type SessionStatusIndex,
+} from "./global-runtime-state"
 import { removeMaterializedInboxItems } from "../components/session/session-inbox-utils"
 import {
   parseSyncVersion,
@@ -239,6 +246,47 @@ export function refreshPlanBlueprintOfferFromLoadedParts(
   updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "captured", offer })
 }
 
+function upsertPendingRequest<T extends { id: string; sessionID: string }>(
+  index: Record<string, T[] | undefined>,
+  request: T,
+) {
+  const requests = index[request.sessionID]
+  if (!requests) {
+    index[request.sessionID] = [request]
+    return
+  }
+  const result = Binary.search(requests, request.id, (item) => item.id)
+  if (result.found) requests[result.index] = request
+  else requests.splice(result.index, 0, request)
+}
+
+function removePendingRequest<T extends { id: string }>(
+  index: Record<string, T[] | undefined>,
+  sessionID: string,
+  requestID: string,
+) {
+  const requests = index[sessionID]
+  if (!requests) return
+  const result = Binary.search(requests, requestID, (item) => item.id)
+  if (!result.found) return
+  requests.splice(result.index, 1)
+  if (!requests.length) delete index[sessionID]
+}
+
+// `recovering` is derived from persisted session state and never published on
+// the status event bus, so the `working` field of a session.updated payload is
+// its only event-side source.
+function sessionStatusFromWorking(working: SessionWorkingInfo): SessionStatus {
+  switch (working.status) {
+    case "busy":
+      return { type: "busy", description: working.description }
+    case "retry":
+      return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
+    case "recovering":
+      return { type: "recovering" }
+  }
+}
+
 function createGlobalSync() {
   const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
@@ -251,6 +299,9 @@ function createGlobalSync() {
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
+    sessionStatus: SessionStatusIndex
+    permission: Record<string, PermissionRequest[]>
+    question: Record<string, QuestionRequest[]>
   }>({
     ready: false,
     paths: { home: "", root: "", data: "", config: "", state: "", cache: "", log: "" },
@@ -270,6 +321,9 @@ function createGlobalSync() {
     },
     provider_auth: {},
     agenda: [],
+    sessionStatus: {},
+    permission: {},
+    question: {},
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
@@ -927,11 +981,20 @@ function createGlobalSync() {
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
-      if (data.sessionStatus)
+      if (data.sessionStatus) {
         setStore(
           "session_status",
           reconcile(tracker?.mergeStatus(version, data.sessionStatus, store.session_status) ?? data.sessionStatus),
         )
+        // Seed the global index as well. A session that was already running
+        // before this client connected never receives a status event of its
+        // own, so without this the sidebar renders it as idle until its next
+        // transition — and `recovering` would never appear at all, since no
+        // producer publishes it on the bus.
+        const adopted = globalRuntimeTracker.adoptScopeStatusSnapshot(version, data.sessionStatus)
+        if (Object.keys(adopted).length)
+          setGlobalStore("sessionStatus", reconcile({ ...globalStore.sessionStatus, ...adopted }))
+      }
       if (sessions) {
         const mergedSessions = tracker?.mergeSessions(version, sessions, store.session)
         setStore("session", reconcile(mergedSessions ?? sessions, { key: "id" }))
@@ -1046,10 +1109,14 @@ function createGlobalSync() {
         applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
       }),
       sdk.permission.list().then((result) => {
-        if (current()) syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+        if (!current()) return
+        syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+        seedGlobalPermissions(result.data ?? [], result.response?.headers)
       }),
       sdk.question.list().then((result) => {
-        if (current()) syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+        if (!current()) return
+        syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+        seedGlobalQuestions(result.data ?? [], result.response?.headers)
       }),
       refreshVolatileAfterResync(scopeKey, store, setStore),
     ])
@@ -1071,10 +1138,14 @@ function createGlobalSync() {
           if (store.status !== "complete") setStore("status", "partial")
         }),
         sdk.permission.list().then((result) => {
-          if (current()) syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+          if (!current()) return
+          syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+          seedGlobalPermissions(result.data ?? [], result.response?.headers)
         }),
         sdk.question.list().then((result) => {
-          if (current()) syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+          if (!current()) return
+          syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+          seedGlobalQuestions(result.data ?? [], result.response?.headers)
         }),
       ])
       if (!current()) return false
@@ -1103,6 +1174,50 @@ function createGlobalSync() {
       writeTrackers.set(scopeKey, tracker)
     }
     return tracker
+  }
+
+  // Post-stamp event-write tracking for the session runtime index. The keys are
+  // globally unique session ids, so one tracker covers every Scope.
+  let globalRuntimeTracker = new GlobalRuntimeWriteTracker()
+
+  // A reconnect can land in a new runtime epoch, where index entries from the
+  // previous epoch can no longer be verified and no event will clear them. The
+  // index carries no Scope, so the reset can only be global; reconnect recovery
+  // is the one point that observes every Scope at once.
+  function resetGlobalRuntimeIndex() {
+    batch(() => {
+      setGlobalStore("sessionStatus", reconcile({}))
+      setGlobalStore("permission", reconcile({}))
+      setGlobalStore("question", reconcile({}))
+    })
+    globalRuntimeTracker = new GlobalRuntimeWriteTracker()
+  }
+
+  // The permission and question routes are already cross-Scope, so their
+  // response is authoritative for the whole index rather than for one Scope.
+  // A request whose event write postdates the response stamp is newer and is
+  // kept, so a reply that landed while the fetch was in flight is not
+  // resurrected as still pending.
+  function seedGlobalPermissions(requests: readonly PermissionRequest[], headers: Pick<Headers, "get"> | undefined) {
+    const merged =
+      globalRuntimeTracker.mergeRequests(
+        readSyncVersion(headers),
+        "permission",
+        requests,
+        flattenBuckets(globalStore.permission),
+      ) ?? requests
+    setGlobalStore("permission", reconcile(groupBySession(merged)))
+  }
+
+  function seedGlobalQuestions(requests: readonly QuestionRequest[], headers: Pick<Headers, "get"> | undefined) {
+    const merged =
+      globalRuntimeTracker.mergeRequests(
+        readSyncVersion(headers),
+        "question",
+        requests,
+        flattenBuckets(globalStore.question),
+      ) ?? requests
+    setGlobalStore("question", reconcile(groupBySession(merged)))
   }
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
@@ -1253,6 +1368,9 @@ function createGlobalSync() {
   function applyEvent(scopeKey: string, event: any) {
     const stamp = parseEventWriteStamp(event)
     if (event?.type === "global.disposed") {
+      // Every scope runtime was disposed, so every epoch changed; bootstrap
+      // does not re-establish the index, so drop it before refetching.
+      resetGlobalRuntimeIndex()
       bootstrap()
       return
     }
@@ -1368,6 +1486,12 @@ function createGlobalSync() {
           tracker.sessionWrite(stamp, info.id, !info.time.archived)
           if (touchedCortex) tracker.cortexWrite(stamp, touchedCortex)
         }
+        // `recovering` reaches the client only through snapshots and this
+        // derived field, so fill a status the index holds no event for. A real
+        // status event always wins, mirroring SessionManager.listStatuses.
+        const working = info.working
+        if (working && globalStore.sessionStatus[info.id] === undefined)
+          setGlobalStore("sessionStatus", info.id, reconcile(sessionStatusFromWorking(working)))
         const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
           if (index !== -1) {
@@ -1421,7 +1545,16 @@ function createGlobalSync() {
         // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
         if (stamp) scopeWriteTracker(scopeKey).statusWrite(stamp, event.properties.sessionID)
+        if (stamp) globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
+        // The global index is shared by every Scope and holds only non-idle
+        // sessions, so an idle status deletes the key instead of storing it.
         if (event.properties.status.type === "idle") {
+          setGlobalStore(
+            "sessionStatus",
+            produce((draft) => {
+              delete draft[event.properties.sessionID]
+            }),
+          )
           if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
           if (
             store.cortex.some(
@@ -1432,7 +1565,7 @@ function createGlobalSync() {
           ) {
             refreshCortex(scopeKey)
           }
-        }
+        } else setGlobalStore("sessionStatus", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
       case "session.inbox.updated": {
@@ -1705,6 +1838,13 @@ function createGlobalSync() {
       }
       case "permission.asked": {
         const sessionID = event.properties.sessionID
+        setGlobalStore(
+          "permission",
+          produce((draft) => {
+            upsertPendingRequest(draft, event.properties)
+          }),
+        )
+        if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.id)
         const permissions = store.permission[sessionID]
         if (!permissions) {
           setStore("permission", sessionID, [event.properties])
@@ -1728,6 +1868,13 @@ function createGlobalSync() {
       }
       case "permission.replied": {
         const permissions = store.permission[event.properties.sessionID]
+        setGlobalStore(
+          "permission",
+          produce((draft) => {
+            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
+          }),
+        )
+        if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.requestID)
         if (!permissions) break
         const result = Binary.search(permissions, event.properties.requestID, (p) => p.id)
         if (!result.found) break
@@ -1742,6 +1889,13 @@ function createGlobalSync() {
       }
       case "question.asked": {
         const request = event.properties
+        setGlobalStore(
+          "question",
+          produce((draft) => {
+            upsertPendingRequest(draft, request)
+          }),
+        )
+        if (stamp) globalRuntimeTracker.questionWrite(stamp, request.id)
         const requests = store.question[request.sessionID]
         if (!requests) {
           setStore("question", request.sessionID, [request])
@@ -1765,6 +1919,13 @@ function createGlobalSync() {
       case "question.rejected":
       case "question.timed_out": {
         const requests = store.question[event.properties.sessionID]
+        setGlobalStore(
+          "question",
+          produce((draft) => {
+            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
+          }),
+        )
+        if (stamp) globalRuntimeTracker.questionWrite(stamp, event.properties.requestID)
         if (!requests) break
         const result = Binary.search(requests, event.properties.requestID, (r) => r.id)
         if (!result.found) break
@@ -1952,6 +2113,7 @@ function createGlobalSync() {
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
+    resetGlobalRuntimeIndex()
     const generation = reconnectVersion() + 1
     setReconnectVersion(generation)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
@@ -2080,6 +2242,18 @@ function createGlobalSync() {
     partSnapshotAction,
     get agenda() {
       return globalStore.agenda
+    },
+    get sessionStatus() {
+      return globalStore.sessionStatus
+    },
+    get permissions() {
+      return globalStore.permission
+    },
+    get questions() {
+      return globalStore.question
+    },
+    get globalRuntimeTracker() {
+      return globalRuntimeTracker
     },
     loadGlobalAgenda,
     refreshConfig,

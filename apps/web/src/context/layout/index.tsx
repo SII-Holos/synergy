@@ -94,6 +94,13 @@ export interface NavEntry {
   pinned: number
   archived: boolean
   parentID?: string
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+    phase?: "running" | "waiting" | "auditing"
+  }
+  workspaceType?: string
+  workflow?: { kind: string; active: boolean }
   endpointKind?: "channel"
   chatId?: string
   chatName?: string

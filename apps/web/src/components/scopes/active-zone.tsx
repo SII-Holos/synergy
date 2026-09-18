@@ -4,6 +4,7 @@ import { AP } from "@/app-i18n"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
+import { isWorkingStatus } from "@/utils/session-status"
 import type { Session, SessionStatus, PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
@@ -25,13 +26,13 @@ interface ActiveZoneProps {
 
 type ActiveReason = "working" | "permission" | "error" | "notification"
 
-function getActiveReason(
+export function getActiveReason(
   session: Session,
   childStore: ChildStore,
   notification: ActiveZoneProps["notification"],
 ): ActiveReason | null {
   const status = childStore.session_status[session.id]
-  if (status?.type === "busy" || status?.type === "retry" || status?.type === "recovering") return "working"
+  if (isWorkingStatus(status)) return "working"
 
   const permissions = childStore.permission[session.id] ?? []
   if (permissions.length > 0) return "permission"

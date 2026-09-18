@@ -11,6 +11,7 @@ import { useWorkbenchPanels } from "@/context/workbench"
 import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope, resolveProjectScope } from "@/utils/scope"
+import { isWorkingStatus } from "@/utils/session-status"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { sessionScopeRequestFor } from "@/components/session/session-actions"
 import { SessionRow } from "@/components/scopes/session-row"
@@ -214,7 +215,13 @@ function ScopeListView(props: {
   const recentVisualFor = (entry: NavEntry): MobileDrawerRecentVisual => {
     const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
     const store = scopeKey ? globalSync.peekScopeState(scopeKey)?.[0] : undefined
-    const visual = resolveSessionVisualState(store, entry)
+    const visual = resolveSessionVisualState({
+      entry,
+      status: globalSync.sessionStatus[entry.id],
+      waiting: (globalSync.permissions[entry.id]?.length ?? 0) > 0 || (globalSync.questions[entry.id]?.length ?? 0) > 0,
+      runningChildTasks:
+        store?.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running") ?? false,
+    })
     const meaningful = visual.completionUnread || visual.tone !== "default"
     return { visual, label: meaningful ? translateSessionState(visual.label) : "" }
   }
@@ -449,7 +456,7 @@ function SessionListDrawerView(props: {
     if (!store)
       return { isWorking: false, hasPermission: false, hasError: false, hasNotification: false, notificationCount: 0 }
     const status = store.session_status[session.id]
-    const isWorking = status?.type === "busy" || status?.type === "retry" || status?.type === "recovering"
+    const isWorking = isWorkingStatus(status)
     const hasPermission = (store.permission[session.id] ?? []).length > 0
     const unseen = props.notification.session.unseen(session.id)
     const hasError = unseen.some((n) => n.type === "error")

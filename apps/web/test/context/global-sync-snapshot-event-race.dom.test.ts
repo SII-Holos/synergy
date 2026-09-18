@@ -22,6 +22,9 @@ type ScopeApi = {
   retainScopeState(key: string): { state: ScopeState; release(): void }
   ensureScopeState(key: string): ScopeState
   peekScopeState(key: string): ScopeState | undefined
+  sessionStatus: Record<string, { type?: string }>
+  permissions: Record<string, Array<{ id: string }> | undefined>
+  questions: Record<string, Array<{ id: string }> | undefined>
 }
 
 type Fixture = {
@@ -243,6 +246,75 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(fresh.state[0].session_status["other-session"]).toEqual({ type: "busy" })
       expect(fresh.state[0].session.some((session) => session.id === "snapshot-session")).toBe(true)
       fresh.release()
+
+      // Session runtime state lives in the always-present global store keyed by
+      // session id, not in the per-Scope store: the sidebar renders sessions
+      // from every Scope, and a Scope store is evicted the moment its last
+      // retention lease is released. Evicting "index-scope" below is exactly
+      // the switch-project path that used to blank these values.
+      const indexed = api.retainScopeState("index-scope")
+      h.emit("index-scope", 1, "session.status", { sessionID: "watched", status: { type: "busy" } })
+      expect(api.sessionStatus["watched"]).toEqual({ type: "busy" })
+      h.emit("index-scope", 2, "permission.asked", {
+        id: "perm-1",
+        sessionID: "watched",
+        permission: "edit",
+        patterns: [],
+        metadata: {},
+      })
+      h.emit("index-scope", 3, "question.asked", { id: "question-1", sessionID: "watched", questions: [] })
+      expect(api.permissions["watched"]?.map((request) => request.id)).toEqual(["perm-1"])
+      expect(api.questions["watched"]?.map((request) => request.id)).toEqual(["question-1"])
+
+      indexed.release()
+      expect(api.peekScopeState("index-scope")).toBeUndefined()
+      expect(api.sessionStatus["watched"]).toEqual({ type: "busy" })
+      expect(api.permissions["watched"]?.map((request) => request.id)).toEqual(["perm-1"])
+      expect(api.questions["watched"]?.map((request) => request.id)).toEqual(["question-1"])
+
+      h.emit("index-scope", 4, "permission.replied", { sessionID: "watched", requestID: "perm-1" })
+      h.emit("index-scope", 5, "question.timed_out", { sessionID: "watched", requestID: "question-1" })
+      expect(api.permissions["watched"]).toBeUndefined()
+      expect(api.questions["watched"]).toBeUndefined()
+
+      // The index holds only non-idle sessions, so an idle status deletes the
+      // key rather than storing a value every reader must filter out.
+      h.emit("index-scope", 6, "session.status", { sessionID: "watched", status: { type: "idle" } })
+      expect(api.sessionStatus["watched"]).toBeUndefined()
+
+      // Requests stay id-sorted so a reader can binary-search them rather than
+      // scanning, matching the per-Scope bucket shape.
+      h.emit("index-scope", 7, "permission.asked", {
+        id: "perm-2",
+        sessionID: "sorted",
+        permission: "edit",
+        patterns: [],
+        metadata: {},
+      })
+      h.emit("index-scope", 8, "permission.asked", {
+        id: "perm-1",
+        sessionID: "sorted",
+        permission: "edit",
+        patterns: [],
+        metadata: {},
+      })
+      expect(api.permissions["sorted"]?.map((request) => request.id)).toEqual(["perm-1", "perm-2"])
+
+      // `recovering` reaches the client only through the snapshot route or a
+      // session.updated `working` field, so the fallback fills a status the
+      // index has no entry for and never overwrites one it does have — a real
+      // status event always wins, mirroring SessionManager.listStatuses.
+      const recovering = { status: "recovering" }
+      h.emit("index-scope", 9, "session.updated", { info: { id: "derived", time: {}, working: recovering } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "recovering" })
+      h.emit("index-scope", 10, "session.updated", {
+        info: { id: "derived", time: {}, working: { status: "retry", attempt: 1, message: "again", next: 2 } },
+      })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "recovering" })
+      h.emit("index-scope", 11, "session.status", { sessionID: "derived", status: { type: "busy" } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
+      h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: recovering } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
       shared.release()
     } finally {
       h.dispose()
