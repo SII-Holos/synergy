@@ -161,7 +161,7 @@ Common workflows:
 
 Options:
   --port <port>           Port for bun dev server/app
-  --server-port <port>    Server port for web/desktop (default: 4096)
+  --server-port <port>    Server port for web/desktop (default: 4096, managed: sticky then 4096-4099)
   --app-port <port>       Vite app port for web/desktop (default: 3000)
   --hostname <host>       Server and Vite bind hostname (default: 127.0.0.1)
   --attach <url>          Reuse an existing server instead of starting one
@@ -241,6 +241,7 @@ function desktopProcess(input: {
   computerServerUrl?: string
   browserHostSecret?: string
   computerHostSecret?: string
+  serverPort?: number
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const env: Record<string, string | undefined> = {
@@ -254,6 +255,8 @@ function desktopProcess(input: {
   }
   if (input.mode === "external")
     env.SYNERGY_DESKTOP_APP_URL = appUrl(input.appHostname ?? DEFAULT_HOSTNAME, input.appPort ?? DEFAULT_APP_PORT)
+  if (input.mode === "managed" && input.serverPort !== undefined)
+    env.SYNERGY_DESKTOP_SERVER_PORT = String(input.serverPort)
   return {
     label: "desktop",
     command: [input.bunPath, "run", "dev"],
@@ -400,6 +403,9 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   if (command === "desktop") {
     const managed = boolFlag(parsed.flags, "managed")
     if (managed) {
+      const rawServerPort = parsed.flags["server-port"]
+      const managedServerPort =
+        typeof rawServerPort === "string" ? numberFlag(parsed.flags, "server-port", DEFAULT_SERVER_PORT) : undefined
       const dependenciesInstalled = fs.existsSync(path.join(repoRoot, "node_modules"))
       const processes: DevProcessSpec[] = [
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
@@ -414,7 +420,14 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
           cwd: dirs.app,
           env: { SYNERGY_APP_BUILD_KIND: "local" },
         },
-        desktopProcess({ repoRoot, bunPath, mode: "managed", browserHostSecret, computerHostSecret }),
+        desktopProcess({
+          repoRoot,
+          bunPath,
+          mode: "managed",
+          serverPort: managedServerPort,
+          browserHostSecret,
+          computerHostSecret,
+        }),
       ]
       return {
         kind: "run",
@@ -423,7 +436,10 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         help,
         exitCode: 0,
         processes,
-        requiredPorts: [],
+        requiredPorts:
+          managedServerPort === undefined
+            ? []
+            : [{ label: "server", port: managedServerPort, host: displayHost(DEFAULT_HOSTNAME) }],
         requiredServers: [],
       }
     }
@@ -865,7 +881,10 @@ export async function runDevPlan(plan: DevPlan, options: PlanOptions = {}): Prom
   if (plan.mode === "prepare") {
     return runPrepare(options.repoRoot ?? defaultRepoRoot(), options.bunPath ?? process.env.BUN_BIN ?? process.execPath)
   }
-  if (plan.mode === "serial") return runSerial(plan.processes)
+  if (plan.mode === "serial") {
+    await assertPreflight(plan)
+    return runSerial(plan.processes)
+  }
   return runParallel(plan)
 }
 

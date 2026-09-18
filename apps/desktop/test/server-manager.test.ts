@@ -7,12 +7,12 @@ import {
   attachManagedServerExitHandlers,
   buildManagedServerEnv,
   findAvailablePort,
-  findListeningPort,
+  isPortAvailable,
   managedServerArgs,
-  parseListeningPort,
+  managedServerPortCandidates,
+  managedServerPortFromEnv,
   terminateServerProcess,
   waitForHealth,
-  waitForWindowsServerHealth,
 } from "../src/server-manager.js"
 
 describe("desktop server manager", () => {
@@ -80,18 +80,6 @@ describe("desktop server manager", () => {
     ).toBe("")
   })
 
-  test("parses netstat listening entries for IPv4 and IPv6", () => {
-    const output = [
-      "  Proto  Local Address          Foreign Address        State           PID",
-      "  TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       1234",
-      "  TCP    [::1]:4321             [::]:0                 LISTENING       5678",
-    ].join("\r\n")
-
-    expect(parseListeningPort(output, 1234)).toBe(3000)
-    expect(parseListeningPort(output, 5678)).toBe(4321)
-    expect(parseListeningPort(output, 9012)).toBeNull()
-  })
-
   test("bounds a health check by its total timeout", async () => {
     const child = new ChildProcessFixture() as unknown as ChildProcess
     const originalFetch = globalThis.fetch
@@ -141,18 +129,6 @@ describe("desktop server manager", () => {
     } finally {
       globalThis.fetch = originalFetch
     }
-  })
-
-  test("fails immediately on a Windows child error and wins an exit race", async () => {
-    const child = new ChildProcessFixture() as unknown as ChildProcess
-    const pending = waitForWindowsServerHealth(child, 30_000)
-    child.emit("error", new Error("spawn EACCES"))
-    child.exitCode = 1
-    child.emit("exit", 1, null)
-
-    await expect(pending).rejects.toThrow("spawn EACCES")
-    expect(child.listenerCount("error")).toBe(0)
-    expect(child.listenerCount("exit")).toBe(0)
   })
 
   test("closes the server log stream once on spawn error or close", () => {
@@ -277,41 +253,10 @@ describe("desktop server manager", () => {
       await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 0, 0, startup)).rejects.toThrow(
         "no progress",
       )
-      await expect(waitForWindowsServerHealth(child, 0, startup)).rejects.toThrow("no progress")
     } finally {
       globalThis.fetch = originalFetch
     }
   })
-
-  test.skipIf(process.platform !== "win32")(
-    "discovers the atomically assigned child port while a competing port is occupied",
-    async () => {
-      const competitor = net.createServer()
-      await listen(competitor, 0)
-      const occupiedPort = (competitor.address() as net.AddressInfo).port
-      const child = spawn(
-        process.execPath,
-        [
-          "-e",
-          'const net = require("node:net"); const server = net.createServer(); server.listen(0, "127.0.0.1"); setInterval(() => {}, 1000)',
-        ],
-        { stdio: "ignore", windowsHide: true },
-      )
-
-      try {
-        let port: number | null = null
-        for (let attempt = 0; attempt < 20 && port === null; attempt++) {
-          port = await findListeningPort(child.pid ?? 0, 100)
-          if (port === null) await new Promise((resolve) => setTimeout(resolve, 25))
-        }
-        expect(port).not.toBeNull()
-        expect(port).not.toBe(occupiedPort)
-      } finally {
-        await terminateServerProcess(child, 500)
-        await new Promise<void>((resolve) => competitor.close(() => resolve()))
-      }
-    },
-  )
 
   test.skipIf(process.platform === "win32")("force kills a managed server that ignores SIGTERM", async () => {
     const child = spawn(
@@ -356,13 +301,6 @@ describe("desktop server manager", () => {
   })
 })
 
-function listen(server: net.Server, port: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(port, "127.0.0.1", () => resolve())
-  })
-}
-
 async function waitUntilStopped(pid: number): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt++) {
     if (!isProcessRunning(pid)) return
@@ -405,3 +343,40 @@ class LogStreamFixture {
     return this
   }
 }
+
+describe("desktop managed server port chain", () => {
+  test("prefers the environment port, then sticky, then the default scan range", () => {
+    expect(managedServerPortCandidates({ envPort: 5000, stickyPort: 4097 })).toEqual([5000, 4097, 4096, 4098, 4099])
+    expect(managedServerPortCandidates({ stickyPort: 4097 })).toEqual([4097, 4096, 4098, 4099])
+    expect(managedServerPortCandidates({})).toEqual([4096, 4097, 4098, 4099])
+  })
+
+  test("deduplicates candidates and drops unassignable ports", () => {
+    expect(managedServerPortCandidates({ envPort: 4096, stickyPort: 4096 })).toEqual([4096, 4097, 4098, 4099])
+    expect(managedServerPortCandidates({ envPort: 80, stickyPort: 70_000 })).toEqual([4096, 4097, 4098, 4099])
+    expect(managedServerPortCandidates({ envPort: 4097, stickyPort: 4098, scanLength: 0 })).toEqual([4097, 4098])
+  })
+
+  test("reads only a valid port from the environment", () => {
+    expect(managedServerPortFromEnv({ SYNERGY_DESKTOP_SERVER_PORT: "4100" })).toBe(4100)
+    for (const value of ["", "0", "not-a-port", "80", "70000", "4100.5"]) {
+      expect(managedServerPortFromEnv({ SYNERGY_DESKTOP_SERVER_PORT: value })).toBeUndefined()
+    }
+    expect(managedServerPortFromEnv({})).toBeUndefined()
+  })
+
+  test("reports a port as unavailable while another listener holds it", async () => {
+    const competitor = net.createServer()
+    await new Promise<void>((resolve, reject) => {
+      competitor.once("error", reject)
+      competitor.listen(0, "127.0.0.1", () => resolve())
+    })
+    const occupied = (competitor.address() as net.AddressInfo).port
+    try {
+      expect(await isPortAvailable(occupied)).toBe(false)
+    } finally {
+      await new Promise<void>((resolve) => competitor.close(() => resolve()))
+    }
+    expect(await isPortAvailable(occupied)).toBe(true)
+  })
+})
