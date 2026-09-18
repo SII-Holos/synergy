@@ -46,7 +46,7 @@ function testModel(): Provider.Model {
   }
 }
 
-async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cancel") {
+async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cancel" | "tls") {
   await using tmp = await tmpdir({ git: true })
   return ScopeContext.provide({
     scope: await tmp.scope(),
@@ -103,7 +103,9 @@ async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cance
           async () => ({
             fullStream: (async function* () {
               const failed =
-                ((mode === "stream" || mode === "reused" || mode === "cancel") && attempt === 1) || mode === "exhausted"
+                ((mode === "stream" || mode === "reused" || mode === "cancel") && attempt === 1) ||
+                mode === "exhausted" ||
+                mode === "tls"
               yield { type: "text-start" as const, id: "text" }
               yield {
                 type: "text-delta" as const,
@@ -129,7 +131,10 @@ async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cance
               if (failed) {
                 yield {
                   type: "error" as const,
-                  error: Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" }),
+                  error:
+                    mode === "tls"
+                      ? new Error("unknown certificate verification error")
+                      : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" }),
                 }
               }
             })(),
@@ -260,4 +265,33 @@ test("cancelling before retry keeps the final partial output and starts no new a
   expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
     "discard this partial answer",
   ])
+})
+
+// The reported incident: a Cortex run failed on Bun's unmapped BoringSSL fallback string
+// (unknown certificate verification error) and was treated as terminal after one attempt.
+test("an unmapped certificate verification failure retries within a bounded budget and persists evidence", async () => {
+  const result = await run("tls")
+  expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+  expect(result.calls).toBe(3)
+  expect(result.effects).toBe(0)
+  expect(result.message.info).toMatchObject({
+    finish: "error",
+    error: {
+      name: "APIError",
+      data: {
+        isRetryable: true,
+        metadata: {
+          networkKind: "indeterminate",
+          category: "tls-verification",
+          endpointHost: "example.invalid",
+        },
+      },
+    },
+  })
+})
+
+test("keeps the full budget for a classified transport failure", async () => {
+  const result = await run("exhausted")
+  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+  expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
 })

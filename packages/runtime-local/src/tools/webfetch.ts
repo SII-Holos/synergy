@@ -118,7 +118,7 @@ export const WebFetchTool = Tool.define("webfetch", {
             retryIf: (error) =>
               error instanceof WebFetchHTTPError
                 ? isRetryableHttpStatus(error.statusCode)
-                : classifyNetworkError(error)?.kind === "transient",
+                : ["transient", "indeterminate"].includes(classifyNetworkError(error)?.kind ?? ""),
             retryDelay: (error) =>
               error instanceof WebFetchHTTPError ? retryAfterMs(error.responseHeaders) : undefined,
           },

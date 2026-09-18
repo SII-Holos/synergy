@@ -42,6 +42,21 @@ export function providerRetryKey(
     .digest("hex")
 }
 
+// Reports only the host so persisted diagnostics never carry endpoint paths or query credentials.
+export function providerEndpointHost(
+  model: { api?: { url?: string }; options?: Record<string, unknown> },
+  provider?: { options: Record<string, unknown> },
+) {
+  const options = { ...provider?.options, ...model.options }
+  const endpoint = options.baseURL ?? model.api?.url
+  if (typeof endpoint !== "string") return undefined
+  try {
+    return new URL(endpoint).host || undefined
+  } catch {
+    return undefined
+  }
+}
+
 // Provenance: https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker
 // Local adaptation: host-owned cooldown and one recovery probe before worker admission; caller retry budgets remain unchanged.
 export class ProviderRetryCoordinator {

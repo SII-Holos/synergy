@@ -12,6 +12,7 @@ import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
+import { providerEndpointHost } from "../provider/retry-coordinator"
 import type { Provider } from "../provider/provider"
 import { LLM } from "./llm"
 import { Config } from "../config/config"
@@ -1802,9 +1803,13 @@ export namespace SessionProcessor {
               log.error("process", {
                 error: e,
               })
-              const error = MessageV2.fromError(e, { providerID: input.model.providerID, modelID: input.model.id })
+              const error = MessageV2.fromError(e, {
+                providerID: input.model.providerID,
+                modelID: input.model.id,
+                endpointHost: providerEndpointHost(input.model),
+              })
               const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error)
-              if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
+              if (retry !== undefined && attempt < retry.maxAttempts) {
                 attempt++
                 const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
                 ObservabilityMetrics.record({
@@ -1814,7 +1819,7 @@ export namespace SessionProcessor {
                   module: "session",
                   sessionID: input.sessionID,
                   messageID: input.assistantMessage.id,
-                  labels: { attempt, retry, errorName: error.name },
+                  labels: { attempt, retry: retry.message, errorName: error.name },
                 })
                 await Observability.emit("session.turn.retry", {
                   traceId: turnTraceId,
@@ -1824,14 +1829,14 @@ export namespace SessionProcessor {
                   data: {
                     attempt,
                     delay,
-                    retry,
+                    retry: retry.message,
                     error,
                   },
                 })
                 SessionManager.setStatus(input.sessionID, {
                   type: "retry",
                   attempt,
-                  message: retry,
+                  message: retry.message,
                   next: Date.now() + delay,
                 })
                 await SessionRetry.sleep(delay, input.abort).catch(() => {})

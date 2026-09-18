@@ -66,6 +66,16 @@ SYNERGY_HOME="$INSTANCE_HOME" synergy logs --tool-call <call-id> --since 30m --j
 
 Correlate backend PID and port, server start time, reproduction time window, service, session, call, and trace. Find the earliest causal divergence or error; downstream cancellations are usually consequences, not separate root causes.
 
+When a model call fails, logs alone may not carry the cause. The persisted error and the authoritative call record do. Read the assistant message's structured error first: an `APIError` carries `isRetryable` and a `metadata` map that includes `networkKind`, `category`, `code`, `syscall`, and `endpointHost` when the failure was classified as a network failure. `networkKind: "indeterminate"` with `category: "tls-verification"` means a TLS verification failure with no attributing reason code from the runtime — the runtime drops the code precisely when it cannot attribute the failure. `endpointHost` names the host the request was sent to, which distinguishes an endpoint problem from a local interception problem; it carries only the host, never a path or credential.
+
+A `UnknownError` with no metadata means the failure reached neither the network classifier nor a structured provider branch; treat that as "unrecognized" and look for a nested cause rather than assuming a deterministic configuration error. When a terminal error is attributed to a task, confirm how it was surfaced: a Cortex task records `cortex.status = "error"` plus the task error string, and `SessionTerminalError` wraps the original terminal assistant error.
+
+Compare a failing call against its siblings before concluding the endpoint is broken. In the rollout records for the same run, a healthy call has `status: "completed"` with a `complete` response whose `bytes` match a normal payload; a transport break shows a small `partial` response with the error attached. If comparable requests immediately before and after succeeded, the failure is transient, not a persistent configuration fault.
+
+For a local interception hypothesis, check name resolution and routing before editing timeouts: a provider endpoint resolving into `198.18.0.0/15` or `240.0.0.0/4` indicates fake-IP DNS from a transparent proxy, and a default route bound to a `utun*`/`tun*` device indicates TUN-mode interception. Compare the certificate actually presented against the system trust store — genuine end-to-end TLS with a public issuer means the interception is at the DNS/routing layer rather than a TLS replacement. `synergy doctor` reports both checks directly.
+
+Never write a raw provider URL into a report, commit, or issue while doing this: provider keys are commonly embedded in the URL path, so only the host is publishable.
+
 For a long-running local migration that fails a request deadline, correlate the failure with system sleep/wake events before changing query timeouts. On macOS, inspect the relevant time window in `pmset -g log`. An idle-sleep inhibitor does not guarantee execution through lid closure or forced sleep. Resume only after confirming the previous owner exited, reuse committed migration checkpoints, and repeat checks required by the new transaction; do not skip integrity verification or launch a second owner.
 
 ## Escalate to Runtime Reproduction

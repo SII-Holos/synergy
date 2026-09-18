@@ -42,10 +42,21 @@ const PERMANENT_CODES = new Set([
 ])
 const ABORT_CODES = new Set(["ABORT_ERR", "UND_ERR_ABORT", "UND_ERR_ABORTED", "ECANCELLED"])
 
+// Provenance: https://www.rfc-editor.org/rfc/rfc5280
+// Local adaptation: certificate wording without a reason code is reported as a distinct indeterminate
+// kind so callers can apply a narrower retry budget than a proven transient failure.
+const CERTIFICATE_MESSAGE = /\bcertificate\b/i
+const VERIFICATION_MESSAGE = /\bverif/i
+
 export function classifyNetworkError(error: unknown) {
   const seen = new Set<object>()
   let remaining = 32
-  type Classification = { kind: "transient" | "permanent" | "aborted"; code?: string; syscall?: string }
+  type Classification = {
+    kind: "transient" | "permanent" | "aborted" | "indeterminate"
+    code?: string
+    syscall?: string
+    category?: string
+  }
   function visit(value: unknown, depth: number): Classification | undefined {
     if (depth > 8 || --remaining < 0) return { kind: "permanent" }
     if (!value || (typeof value !== "object" && typeof value !== "string")) return undefined
@@ -69,6 +80,8 @@ export function classifyNetworkError(error: unknown) {
       )
     ) {
       result = { kind: "permanent", code, syscall }
+    } else if (!code && CERTIFICATE_MESSAGE.test(message) && VERIFICATION_MESSAGE.test(message)) {
+      result = { kind: "indeterminate", code, syscall, category: "tls-verification" }
     } else if (token && TRANSIENT_CODES.has(token)) result = { kind: "transient", code: code ?? token, syscall }
     else if (
       name === "TimeoutError" ||
@@ -87,7 +100,12 @@ export function classifyNetworkError(error: unknown) {
       if (!nested) continue
       if (nested.kind === "aborted") return nested
       if (result?.kind === "aborted") return result
-      if (nested.kind === "permanent" || !result || (result.kind === "transient" && nested.code)) result = nested
+      if (
+        nested.kind === "permanent" ||
+        !result ||
+        (result.kind === "transient" && (nested.code || nested.kind === "indeterminate"))
+      )
+        result = nested
     }
     return result
   }
