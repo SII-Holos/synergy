@@ -7,7 +7,7 @@ import { PackedBackup, type PackedBackupEntry } from "./packed-backup"
 import { syncRetiredDirectories, legacyBinaryKey, legacyRecordKey, legacySources, sourcePath } from "./legacy-source"
 import { validateLegacyRecord } from "./legacy-record"
 import { StorageIntegrityError } from "./errors"
-import { fileDigest } from "./file-digest"
+import { verifyRetirement } from "./file-digest"
 import type { ImportProgress, ImportResult } from "./legacy-import"
 import type { TransactionalStore, StoreTransaction } from "./transactional-store"
 
@@ -328,8 +328,14 @@ export class PackedLegacyImporter {
       if (legacyRecordKey(entry.relative) || legacyBinaryKey(entry.relative)) {
         const filename = sourcePath(dataRoot, entry.relative)
         try {
-          if ((await fileDigest(filename, entry.size)) !== entry.hash)
-            throw new StorageIntegrityError("A legacy writer changed data during activation")
+          await verifyRetirement(
+            filename,
+            entry.hash,
+            entry.size,
+            { total: state.files, index: position - 1 },
+            "A legacy writer changed data during activation",
+            { tolerateMissing: true },
+          )
           await fs.unlink(filename)
         } catch (error) {
           if (error instanceof StorageIntegrityError)
