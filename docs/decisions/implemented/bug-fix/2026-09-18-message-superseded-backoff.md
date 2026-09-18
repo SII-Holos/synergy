@@ -13,7 +13,7 @@ Three compounding factors: only two attempts with no pause between them (a worst
 The shared session message loader and the per-message part snapshot freshness guard now absorb event bursts instead of failing on the first sustained stream:
 
 - The loader performs up to four superseded attempts, pausing between attempts with a doubling backoff (100 ms, 200 ms, 400 ms) via an injected `wait` so tests stay synchronous.
-- When supersession exhausts on a load with no previously successful snapshot, the loader restarts the whole attempt window once after one pause at the backoff cap before publishing the error. A load with a visible snapshot keeps the immediate error so live state is never flashed away.
+- When supersession exhausts on a load with no previously successful snapshot, the loader restarts the whole attempt window once after an 800 ms pause before publishing the error. A load with a visible snapshot keeps the immediate error so live state is never flashed away.
 - `SessionPartSnapshotFreshness` coalesces back-to-back snapshot-required marks for the same message when no capture happened in between; every in-flight request predates the original mark and already retries, so extra revisions only widened the superseded window. A capture in between re-arms the mark so that request still sees the newer checkpoint.
 
 ## Alternatives considered

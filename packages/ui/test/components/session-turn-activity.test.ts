@@ -724,6 +724,20 @@ describe("session turn activity projection", () => {
     expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "media-pending")).toBe(true)
     expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "tool-attachments")).toBe(true)
   })
+  test("folds built-in MCP search tools into one activity group", () => {
+    const parts = [
+      tool({ id: "any-search", tool: "mcp__anysearch__search", args: { query: "release notes" } }),
+      tool({ id: "any-batch", tool: "mcp__anysearch__batch_search", args: { queries: ["a", "b"] } }),
+      tool({ id: "scholight", tool: "mcp__scholight__search_papers", args: { query: "diffusion" } }),
+    ]
+    const items = project({ parts })
+    const groups = activities(items)
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ family: "research-web", state: "done" })
+    expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["any-search", "any-batch", "scholight"])
+    expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "part")).toBe(false)
+  })
 })
 
 describe("minimal activity projection", () => {
