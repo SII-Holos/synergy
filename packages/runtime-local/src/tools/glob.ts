@@ -69,7 +69,7 @@ export const GlobTool = Tool.define("glob", {
 
     if (timedOut) {
       throw new Error(
-        `glob stopped after ${TIMEOUT_MS}ms before completing the search.\n` +
+        `glob stopped after ${TIMEOUT_MS / 1_000}s before completing the search.\n` +
           `Use a more specific glob pattern or specify a smaller directory path.`,
       )
     }

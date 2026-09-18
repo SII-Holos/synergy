@@ -9,7 +9,13 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
   parameters: z
     .object({
       condition: BrowserWaitConditionSchema,
-      timeoutMs: z.number().int().min(500).max(60_000).default(10_000),
+      timeoutSeconds: z
+        .number()
+        .int()
+        .min(1)
+        .max(60)
+        .default(10)
+        .describe("Maximum seconds to wait for the condition (1-60); defaults to 10."),
     })
     .strict(),
   async execute(params, ctx) {
@@ -21,20 +27,21 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
       "browser_wait",
       "Waiting for page condition",
       async () => {
+        const timeoutMs = params.timeoutSeconds * 1_000
         const result = await BrowserToolHelper.execute(ctx, {
           type: "wait",
           condition: params.condition,
-          timeoutMs: params.timeoutMs,
+          timeoutMs,
         })
         if (result.type !== "wait") throw new Error("Browser wait returned an unexpected result.")
         const pageState = result.page
         return {
           title: "Browser wait satisfied",
-          output: `Condition ${params.condition.type} was satisfied${result.elapsedMs !== undefined ? ` in ${result.elapsedMs}ms` : ` within ${params.timeoutMs}ms`}.`,
+          output: `Condition ${params.condition.type} was satisfied${result.elapsedMs !== undefined ? ` in ${result.elapsedMs / 1_000}s` : ` within ${params.timeoutSeconds}s`}.`,
           metadata: {
             pageId: page.id,
             condition: params.condition,
-            timeoutMs: params.timeoutMs,
+            timeoutMs,
             matched: result.matched,
             ...(result.elapsedMs !== undefined ? { elapsedMs: result.elapsedMs } : {}),
             ...(pageState ? { url: pageState.url, title: pageState.title, isLoading: pageState.isLoading } : {}),
@@ -44,6 +51,6 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
     )
   },
   formatValidationError() {
-    return 'Invalid browser_wait input. Example: {"condition":{"type":"locator","locator":{"kind":"role","role":"button","name":"Continue"},"state":"visible"},"timeoutMs":10000}'
+    return 'Invalid browser_wait input. Example: {"condition":{"type":"locator","locator":{"kind":"role","role":"button","name":"Continue"},"state":"visible"},"timeoutSeconds":10}'
   },
 })

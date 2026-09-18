@@ -1,22 +1,10 @@
-export namespace ToolTimeout {
-  export type Source =
-    | "tool_timeout"
-    | "search"
-    | "fetch"
-    | "download"
-    | "wait"
-    | "auto_background"
-    | "question"
-    | "vision"
-    | "remote_connect"
-    | "document_extract"
+import type { ToolTimeoutMetadata, ToolTimeoutSource } from "@ericsanchezok/synergy-util/tool-timeout"
 
-  export interface Metadata {
-    toolTimeoutMs: number
-    operationTimeoutMs?: number
-    displayMs: number
-    source: Source
-  }
+export type { ToolTimeoutMetadata, ToolTimeoutSource }
+
+export namespace ToolTimeout {
+  export type Source = ToolTimeoutSource
+  export type Metadata = ToolTimeoutMetadata
 
   export const DEFAULTS = {
     globMs: 15_000,
@@ -134,7 +122,10 @@ export namespace ToolTimeout {
       case "list":
         return { timeoutMs: DEFAULTS.listMs, source: "search" }
       case "scan_files":
-        return { timeoutMs: normalizeMinMs(args.timeoutMs, DEFAULTS.scanFilesMs, 1_000), source: "search" }
+        return {
+          timeoutMs: Math.max(secondsToMs(args.timeoutSeconds, DEFAULTS.scanFilesMs), 1_000),
+          source: "search",
+        }
       case "ast_grep":
       case "parse_code":
         return { timeoutMs: DEFAULTS.astGrepMs, source: "search" }
@@ -142,12 +133,12 @@ export namespace ToolTimeout {
         return { timeoutMs: DEFAULTS.documentExtractMs, source: "document_extract" }
       case "webfetch":
         return {
-          timeoutMs: Math.min(secondsToMs(args.timeout, DEFAULTS.webfetchMs), DEFAULTS.webfetchMaxMs),
+          timeoutMs: Math.min(secondsToMs(args.timeoutSeconds, DEFAULTS.webfetchMs), DEFAULTS.webfetchMaxMs),
           source: "fetch",
         }
       case "browser_wait":
         return {
-          timeoutMs: clampMs(args.timeoutMs ?? args.timeout, DEFAULTS.browserWaitMs, 500, DEFAULTS.browserWaitMaxMs),
+          timeoutMs: clampSeconds(args.timeoutSeconds, DEFAULTS.browserWaitMs, 1, DEFAULTS.browserWaitMaxMs / 1_000),
           source: "wait",
         }
       case "browser_action":
@@ -165,7 +156,7 @@ export namespace ToolTimeout {
       case "browser_downloads":
         if (args.action !== "wait") return undefined
         return {
-          timeoutMs: normalizeMs(args.timeoutMs) ?? DEFAULTS.browserDownloadsWaitMs,
+          timeoutMs: secondsToMs(args.timeoutSeconds, DEFAULTS.browserDownloadsWaitMs),
           source: "wait",
         }
       case "connect":
@@ -175,26 +166,21 @@ export namespace ToolTimeout {
         return { timeoutMs: DEFAULTS.taskAutoBackgroundMs, source: "auto_background" }
       case "task_output":
         if (!args.block) return undefined
-        return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.taskOutputWaitMs), source: "wait" }
-      case "bash": {
-        const commandTimeoutMs = secondsToMsOrUndefined(args.timeoutSeconds)
-        const effectiveAutoBackgroundMs =
-          secondsToMsOrUndefined(args.backgroundAfterSeconds) ?? DEFAULTS.bashAutoBackgroundMs
-        if (effectiveAutoBackgroundMs && commandTimeoutMs && commandTimeoutMs < effectiveAutoBackgroundMs) {
-          return { timeoutMs: commandTimeoutMs, source: "wait" }
+        return { timeoutMs: secondsToMs(args.timeoutSeconds, DEFAULTS.taskOutputWaitMs), source: "wait" }
+      case "bash":
+        // `yieldSeconds` is the only timing argument the model can send (the bash
+        // schema is strict); its window auto-backgrounds rather than aborting.
+        return {
+          timeoutMs: secondsToMs(args.yieldSeconds, DEFAULTS.bashAutoBackgroundMs),
+          source: "auto_background",
         }
-        if (effectiveAutoBackgroundMs) {
-          return { timeoutMs: effectiveAutoBackgroundMs, source: "auto_background" }
-        }
-        return commandTimeoutMs ? { timeoutMs: commandTimeoutMs, source: "wait" } : undefined
-      }
       case "process":
         if (args.action !== "poll" || !args.block) return undefined
-        return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.processPollWaitMs), source: "wait" }
+        return { timeoutMs: secondsToMs(args.timeoutSeconds, DEFAULTS.processPollWaitMs), source: "wait" }
       case "question":
         return { timeoutMs: DEFAULTS.questionMs, source: "question" }
       case "look_at":
-        return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.lookAtMs), source: "vision" }
+        return { timeoutMs: secondsToMs(args.timeoutSeconds, DEFAULTS.lookAtMs), source: "vision" }
       default:
         if (mcpCallTimeoutMs !== undefined) return { timeoutMs: mcpCallTimeoutMs, source: "wait" }
         return undefined
@@ -206,23 +192,14 @@ export namespace ToolTimeout {
     return value
   }
 
-  function normalizeMinMs(value: unknown, fallbackMs: number, minMs: number): number {
-    return Math.max(normalizeMs(value) ?? fallbackMs, minMs)
-  }
-
   function secondsToMs(value: unknown, fallbackMs: number): number {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallbackMs
     return value * 1_000
   }
 
-  function secondsToMsOrUndefined(value: unknown): number | undefined {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined
-    return value * 1_000
-  }
-
-  function clampMs(value: unknown, fallbackMs: number, minMs: number, maxMs: number): number {
-    const ms = normalizeMs(value) ?? fallbackMs
-    return Math.min(Math.max(ms, minMs), maxMs)
+  function clampSeconds(value: unknown, fallbackMs: number, minSeconds: number, maxSeconds: number): number {
+    const seconds = typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallbackMs / 1_000
+    return Math.round(Math.min(Math.max(seconds, minSeconds), maxSeconds) * 1_000)
   }
 
   function formatDuration(ms: number): string {
