@@ -4,11 +4,7 @@ import { fileURLToPath } from "node:url"
 import { existsSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
-import {
-  authorityRecordRoots,
-  StoragePortable,
-  type StorageEntry,
-} from "@ericsanchezok/synergy-harness/storage/portable"
+import { authorityRecordRoots, StoragePortable } from "@ericsanchezok/synergy-harness/storage/portable"
 import { legacyRecordKey } from "@ericsanchezok/synergy-harness/storage/legacy-import"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -48,11 +44,20 @@ export namespace DataTransfer {
     return SnapshotArchive.lockHomes(roots)
   }
 
-  function exclude(relative: string, skipped: ReadonlySet<string> = new Set()) {
+  function exclude(relative: string, skipped: ReadonlySet<string> = new Set(), packs?: ReadonlySet<string>) {
     const segments = relative.split(path.sep)
     if (archiveExclusions("data").includes(segments[0])) return true
+    if (segments[0] === "agent-artifacts" && segments.length > 1 && packs && !packs.has(segments[1])) return true
     if (segments[0] === "sessions" && skipped.has(segments[2] ?? "")) return true
     return Boolean(legacyRecordKey(segments.join("/")))
+  }
+
+  async function artifactPacks(handle: Storage.Handle, accept: (key: string[]) => boolean = () => true) {
+    return handle.store.snapshot(async (tx) => {
+      const packs = new Set<string>()
+      for await (const entry of tx.artifacts()) if (accept(entry.key)) packs.add(entry.location.pack)
+      return packs
+    })
   }
 
   export async function pack(sourceRoot: string, destination: string) {
@@ -61,7 +66,17 @@ export namespace DataTransfer {
     try {
       await StoragePortable.exportFile(handle.store, path.join(destination, "agent-records.ndjson"))
       await SnapshotArchive.merge(handle.artifactDirectory, destination, { metadata: false })
-      return await copyDirSkipExisting(handle.artifactDirectory, destination, undefined, undefined, undefined, exclude)
+      const packs = await artifactPacks(handle)
+      const result = await copyDirSkipExisting(
+        handle.artifactDirectory,
+        destination,
+        undefined,
+        undefined,
+        undefined,
+        (relative) => exclude(relative, undefined, packs),
+      )
+      await Storage.validateArtifacts({ store: handle.store, artifactDirectory: destination })
+      return result
     } finally {
       await handle.store.close()
     }
@@ -86,15 +101,29 @@ export namespace DataTransfer {
       const backup = path.join(targetRoot, "data", "storage", "transfers", id)
       // Retain the entire source, including skipped aggregates, before move can remove its home.
       await pack(sourceRoot, path.join(backup, "data"))
+      const acceptArtifact = (key: string[]) => {
+        const owner = sessionOwner({ key })
+        return (
+          !local.has(key[0]) &&
+          !derived.has(key[0]) &&
+          (options.trusted || !authorityRecordRoots.has(key[0])) &&
+          (!owner || !skipped.has(owner))
+        )
+      }
+      const packs = await artifactPacks(source, acceptArtifact)
       const copied = await copyDirSkipExisting(
         source.artifactDirectory,
         path.join(targetRoot, "data"),
         options.progress,
         undefined,
         undefined,
-        (relative) => exclude(relative, skipped),
+        (relative) => exclude(relative, skipped, packs),
       )
       await SnapshotArchive.merge(source.artifactDirectory, path.join(targetRoot, "data"), { metadata: false, skipped })
+      await Storage.validateArtifacts(
+        { store: source.store, artifactDirectory: path.join(targetRoot, "data") },
+        { accept: acceptArtifact },
+      )
       const conflicts = new Set<string>()
       const result = await StoragePortable.importFile(target.store, path.join(backup, "data", "agent-records.ndjson"), {
         operationID: id,
@@ -111,6 +140,15 @@ export namespace DataTransfer {
           if (owner && skipped.has(owner)) {
             conflicts.add(owner)
             return false
+          }
+          if (entry.type === "artifact") {
+            try {
+              await tx.artifact(entry.key)
+              return false
+            } catch (error) {
+              if (error instanceof Storage.NotFoundError) return true
+              throw error
+            }
           }
           return (await tx.readMany([entry.key]))[0] === undefined
         },
@@ -138,7 +176,7 @@ export namespace DataTransfer {
   }
 }
 
-function sessionOwner(entry: Extract<StorageEntry, { type: "record" }>): string | undefined {
+function sessionOwner(entry: { key: string[] }): string | undefined {
   const key = entry.key
   if (key[0] === "sessions" || key[0].startsWith("session_search_") || key[0] === "session_message_order_v1")
     return key[2]

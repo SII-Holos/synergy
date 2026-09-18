@@ -28,6 +28,7 @@ const { SnapshotGit } = await import("@ericsanchezok/synergy-harness/session/sna
 const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
 const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
 const { StoragePath } = await import("@ericsanchezok/synergy-harness/storage/path")
+const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
 
 function p95(values: number[]) {
   return [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1]
@@ -142,6 +143,7 @@ async function run(backend: "legacy" | "shared") {
 }
 
 try {
+  await using storage = await StorageMaintenance.open()
   const results = [await run("legacy"), await run("shared")]
   process.stdout.write(
     JSON.stringify(

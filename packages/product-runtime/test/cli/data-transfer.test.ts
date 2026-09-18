@@ -29,9 +29,14 @@ test("merge keeps the target session aggregate and retains skipped source eviden
           fn: async () => {
             await Storage.write(["projects", scope.id], scope)
             await Session.create({ id, title })
+            await Storage.writeBinary(["sessions", scope.id, id, "rollout", "blobs", "packed"], Buffer.from(title))
             await Storage.write(["sessions", scope.id, id, "owner-extension"], { title })
             if (root === sourceRoot) {
               await Session.create({ id: addedID, title: "new session" })
+              await Storage.writeBinary(
+                ["sessions", scope.id, addedID, "rollout", "blobs", "new-content"],
+                Buffer.from("new evidence"),
+              )
               await Storage.write(["sessions", scope.id, id, "source-only"], { preserve: true })
               await Bun.write(path.join(root, "data", "sessions", scope.id, id, "private.bin"), "source evidence")
             }
@@ -55,6 +60,16 @@ test("merge keeps the target session aggregate and retains skipped source eviden
     expect((await target.store.readMany([["sessions", scope.id, id, "source-only"]]))[0]).toBeUndefined()
     expect(await Bun.file(path.join(targetRoot, "data", "sessions", scope.id, id, "private.bin")).exists()).toBe(false)
     expect(await target.store.read(["session_index", addedID])).toMatchObject({ scopeID: scope.id })
+    await Storage.provide(target, async () => {
+      expect(
+        Buffer.from(await Storage.readBinary(["sessions", scope.id, id, "rollout", "blobs", "packed"])).toString(),
+      ).toBe("target")
+      expect(
+        Buffer.from(
+          await Storage.readBinary(["sessions", scope.id, addedID, "rollout", "blobs", "new-content"]),
+        ).toString(),
+      ).toBe("new evidence")
+    })
     const [transfer] = await target.store.query<{ backup: string }>({ kind: "storage_transfer" })
     expect(
       await Bun.file(

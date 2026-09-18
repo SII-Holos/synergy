@@ -11,6 +11,15 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+function recordingWait() {
+  const pauses: number[] = []
+  const wait = (ms: number) => {
+    pauses.push(ms)
+    return Promise.resolve()
+  }
+  return { pauses, wait }
+}
+
 describe("session message loader", () => {
   test("force starts a new generation and ignores the superseded response", async () => {
     const first = deferred<string[]>()
@@ -46,6 +55,7 @@ describe("session message loader", () => {
   })
 
   test("retries a superseded snapshot before reporting the session ready", async () => {
+    const { wait } = recordingWait()
     const states: string[] = []
     let requests = 0
     let applies = 0
@@ -60,6 +70,7 @@ describe("session message loader", () => {
       },
       errorMessage: (error) => String(error),
       onState: (_sessionID, state) => states.push(state.phase),
+      wait,
     })
 
     await loader.load("ses_1")
@@ -70,7 +81,28 @@ describe("session message loader", () => {
     expect(loader.state("ses_1")).toMatchObject({ phase: "ready", generation: 1, hasSnapshot: true })
   })
 
-  test("fails visibly after repeated snapshot supersession", async () => {
+  test("paces superseded retries with exponential backoff", async () => {
+    const { pauses, wait } = recordingWait()
+    let requests = 0
+    const loader = createSessionMessageLoader<string[]>({
+      request: async () => {
+        requests++
+        return [`page-${requests}`]
+      },
+      apply: (_sessionID, page) => (page[0] === "page-3" ? "applied" : "superseded"),
+      errorMessage: (error) => String(error),
+      wait,
+    })
+
+    await loader.load("ses_1")
+
+    expect(requests).toBe(3)
+    expect(pauses).toEqual([100, 200])
+    expect(loader.state("ses_1")).toMatchObject({ phase: "ready", hasSnapshot: true })
+  })
+
+  test("fails visibly after four superseded attempts when a snapshot is visible", async () => {
+    const { pauses, wait } = recordingWait()
     let requests = 0
     const loader = createSessionMessageLoader<string[]>({
       request: async () => {
@@ -79,17 +111,62 @@ describe("session message loader", () => {
       },
       apply: () => "superseded",
       errorMessage: () => "Conversation changed while loading",
+      wait,
+    })
+
+    await expect(loader.load("ses_1", { hasSnapshot: true })).rejects.toThrow("superseded")
+
+    expect(requests).toBe(4)
+    expect(pauses).toEqual([100, 200, 400])
+    expect(loader.state("ses_1")).toMatchObject({
+      phase: "error",
+      generation: 1,
+      hasSnapshot: true,
+      error: "Conversation changed while loading",
+    })
+  })
+
+  test("restarts the attempt window once for a first view without a snapshot", async () => {
+    const { pauses, wait } = recordingWait()
+    const states: string[] = []
+    let requests = 0
+    const loader = createSessionMessageLoader<string[]>({
+      request: async () => {
+        requests++
+        return []
+      },
+      apply: () => "superseded",
+      errorMessage: () => "Conversation changed while loading",
+      onState: (_sessionID, state) => states.push(state.phase),
+      wait,
     })
 
     await expect(loader.load("ses_1")).rejects.toThrow("superseded")
 
-    expect(requests).toBe(2)
-    expect(loader.state("ses_1")).toMatchObject({
-      phase: "error",
-      generation: 1,
-      hasSnapshot: false,
-      error: "Conversation changed while loading",
+    expect(requests).toBe(8)
+    expect(pauses).toEqual([100, 200, 400, 800, 100, 200, 400])
+    expect(states).toEqual(["loading", "loading", "error"])
+    expect(loader.state("ses_1")).toMatchObject({ phase: "error", hasSnapshot: false })
+  })
+
+  test("recovers a first view when the restarted attempt window applies", async () => {
+    const { pauses, wait } = recordingWait()
+    let applies = 0
+    const loader = createSessionMessageLoader<string[]>({
+      request: async () => [],
+      apply: () => {
+        applies++
+        return applies <= 4 ? "superseded" : "applied"
+      },
+      errorMessage: (error) => String(error),
+      wait,
     })
+
+    await loader.load("ses_1")
+
+    expect(applies).toBe(5)
+    expect(pauses).toEqual([100, 200, 400, 800])
+    expect(loader.state("ses_1")).toMatchObject({ phase: "ready", hasSnapshot: true })
   })
 
   test("a failed forced refresh preserves the successful snapshot state", async () => {

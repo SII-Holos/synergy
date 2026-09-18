@@ -57,6 +57,32 @@
       },
       "additionalProperties": false
     },
+    "attachment": {
+      "description": "Prompt attachment upload limits (count and byte sizes)",
+      "ref": "AttachmentConfig",
+      "type": "object",
+      "properties": {
+        "maxFiles": {
+          "description": "Maximum number of prompt attachments per batch (default: 20)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxFileBytes": {
+          "description": "Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxTotalBytes": {
+          "description": "Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
     "command": {
       "description": "Command configuration",
       "type": "object",
@@ -175,7 +201,7 @@
           "maximum": 64
         },
         "agentWorkerMinIdle": {
-          "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+          "description": "Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)",
           "type": "integer",
           "minimum": 0,
           "maximum": 64

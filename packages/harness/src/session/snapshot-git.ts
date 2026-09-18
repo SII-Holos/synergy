@@ -1,6 +1,7 @@
 import { Log } from "../util/log"
 import { withTimeout } from "../util/timeout"
 import path from "node:path"
+import fs from "node:fs/promises"
 
 export namespace SnapshotGit {
   export async function* lines(repo: string, args: string[], options: { signal?: AbortSignal; input?: string } = {}) {
@@ -75,60 +76,33 @@ export namespace SnapshotGit {
       ? AbortSignal.any([signal, AbortSignal.timeout(30 * 60_000)])
       : AbortSignal.timeout(30 * 60_000)
     abort.throwIfAborted()
-    const pack = Bun.spawn(["git", "--git-dir", source, "pack-objects", "--stdout"], {
-      cwd: path.dirname(source),
-      env: environment(),
-      stdin: Bun.file(inventory),
-      stdout: "pipe",
-      stderr: "pipe",
-      signal: abort,
-    })
-    const packErrors = tail(pack.stderr)
-    let imported: Bun.Subprocess<"pipe", "pipe", "pipe"> | undefined
+    const directory = await fs.mkdtemp(path.join(path.dirname(inventory), "pack-transfer-"))
+    const filename = path.join(directory, "objects.pack")
+    let pack: Bun.Subprocess<Bun.BunFile, Bun.BunFile, "pipe"> | undefined
+    let errors: Promise<string> | undefined
     try {
-      imported = Bun.spawn(["git", "--git-dir", target, "index-pack", "--stdin", "--strict", `--keep=${keepToken}`], {
-        cwd: path.dirname(target),
+      pack = Bun.spawn(["git", "--git-dir", source, "pack-objects", "--stdout"], {
+        cwd: path.dirname(source),
         env: environment(),
-        stdin: "pipe",
-        stdout: "pipe",
+        stdin: Bun.file(inventory),
+        stdout: Bun.file(filename),
         stderr: "pipe",
         signal: abort,
       })
-      const sink = imported.stdin
-      const transport = (async () => {
-        const reader = pack.stdout.getReader()
-        try {
-          for (;;) {
-            const chunk = await withAbort(reader.read(), abort)
-            if (chunk.done) break
-            sink.write(chunk.value)
-            await sink.flush()
-          }
-          await sink.end()
-        } finally {
-          reader.releaseLock()
-        }
-      })()
-      const outputs = await withAbort(
-        Promise.all([
-          pack.exited,
-          imported.exited,
-          packErrors,
-          tail(imported.stderr),
-          tail(imported.stdout),
-          transport,
-        ]),
-        abort,
-      )
-      if (outputs[0] !== 0 || outputs[1] !== 0)
-        throw new Error(`Snapshot pack transfer failed: ${outputs[2]} ${outputs[3]}`)
-      const hash = outputs[4].trim().split(/\s+/).at(-1)
+      errors = tail(pack.stderr)
+      const [code, stderr] = await withAbort(Promise.all([pack.exited, errors]), abort)
+      if (code !== 0) throw new Error(`Snapshot git pack-objects failed: ${stderr.trim()}`)
+      const output = await checked(target, ["index-pack", "--stdin", "--strict", `--keep=${keepToken}`], {
+        signal: abort,
+        input: filename,
+      })
+      const hash = output.trim().split(/\s+/).at(-1)
       if (!hash || !/^[0-9a-f]{40}$/.test(hash)) throw new Error("Snapshot pack import did not report an object ID")
       return hash
     } finally {
-      if (pack.exitCode === null) pack.kill()
-      if (imported?.exitCode === null) imported.kill()
-      await Promise.allSettled([pack.exited, imported?.exited, packErrors])
+      if (pack?.exitCode === null) pack.kill()
+      await Promise.allSettled([pack?.exited, errors])
+      await fs.rm(directory, { recursive: true, force: true })
     }
   }
 

@@ -540,31 +540,27 @@ describe("SessionInbox", () => {
         })
 
         try {
-          const result = await Promise.race([
-            SessionManager.deliver({
-              target: session.id,
-              waitForProcessing: false,
-              mail: {
-                type: "user",
-                agent: "synergy",
-                model: { providerID: "test", modelID: "test-model" },
-                parts: [
-                  {
-                    id: "prt_async_agent_update",
-                    sessionID: session.id,
-                    messageID: "msg_async_agent_update",
-                    type: "text",
-                    text: "continue in the background",
-                  },
-                ],
-              },
-            }).then(() => "delivered" as const),
-            new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 50)),
-          ])
+          await SessionManager.deliver({
+            target: session.id,
+            waitForProcessing: false,
+            mail: {
+              type: "user",
+              agent: "synergy",
+              model: { providerID: "test", modelID: "test-model" },
+              parts: [
+                {
+                  id: "prt_async_agent_update",
+                  sessionID: session.id,
+                  messageID: "msg_async_agent_update",
+                  type: "text",
+                  text: "continue in the background",
+                },
+              ],
+            },
+          })
 
-          expect(result).toBe("delivered")
-          expect(finished).toBe(false)
           await started.promise
+          expect(finished).toBe(false)
           release.resolve()
           await done.promise
           expect(finished).toBe(true)

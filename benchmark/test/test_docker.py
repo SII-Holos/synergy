@@ -220,23 +220,7 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
                 )
                 assert len(containers.splitlines()) == 1
                 container = containers.strip()
-                probe = """
-import json
-import sqlite3
-from contextlib import closing
-from pathlib import Path
-root = Path('/logs/agent/home/.synergy/data/storage')
-namespace = json.loads((root / 'manifest.json').read_text())['namespace']
-with closing(sqlite3.connect((root / 'agent.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
-    rows = [(json.loads(key), json.loads(body)) for key, body in db.execute(
-        "SELECT key_text, body FROM storage_records WHERE namespace=? AND kind='rollout' AND body IS NOT NULL",
-        (namespace,),
-    )]
-calls = {(tuple(key[:6]), key[7]) for key, value in rows
-         if len(key) == 8 and key[4] == 'runs' and key[6] == 'calls' and value['purpose'] == 'synergy'}
-print(any(len(key) == 9 and key[6] == 'attempts' and (tuple(key[:6]), key[7]) in calls
-          and (value.get('response') or {}).get('bytes', 0) > 0 for key, value in rows))
-"""
+                probe = (BENCHMARK / "test/fixtures/rollout_progress.py").read_text()
                 while (
                     await asyncio.to_thread(
                         command, ["docker", "exec", "--user", "0", container, "python", "-c", probe]

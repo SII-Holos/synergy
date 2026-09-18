@@ -73,6 +73,7 @@ interface PoolWorker {
   baselineRssBytes?: number
   peakRssBytes?: number
   lastHeartbeatAt: number
+  spawnedAt: number
 }
 
 interface PoolReadyWaiter {
@@ -318,6 +319,7 @@ export class PolicyWorkerPool {
         stopping: false,
         requests: 0,
         lastHeartbeatAt: Date.now(),
+        spawnedAt: Date.now(),
       }
       this.workers.set(id, worker)
       return true
@@ -338,6 +340,14 @@ export class PolicyWorkerPool {
       worker.pid = message.pid
       worker.lastHeartbeatAt = Date.now()
       this.recordWorkerMemory(worker, message.memory, "ready")
+      ObservabilityMetrics.record({
+        name: "policy.worker.ready_latency",
+        value: Date.now() - worker.spawnedAt,
+        unit: "ms",
+        module: "enforcement",
+        processId: worker.id,
+        pid: message.pid,
+      })
       this.consecutiveStartupFailures = 0
       this.startupCircuitError = undefined
       this.resolveReadyWaiters()

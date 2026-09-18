@@ -11,6 +11,7 @@ import {
 } from "./errors"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { StorageQueue } from "./queue"
+import { sqlParameterBytes } from "./sql-contract"
 import type {
   SqlConnection,
   SqlDriver,
@@ -115,21 +116,27 @@ export class SqliteDriver implements SqlDriver {
     }
   }
 
-  private request(request: Omit<SqliteRequest, "id">): Promise<SqlRow[]> {
+  private async request(
+    request: Omit<SqliteRequest, "id">,
+    onMaintenanceBudget?: (timeoutMs: number) => void,
+  ): Promise<SqlRow[]> {
     if (this.closed) return Promise.reject(new StorageClosedError())
-    const bytes = (request.values ?? []).reduce<number>(
-      (total, value) =>
-        total +
-        (typeof value === "string" ? Buffer.byteLength(value) : value instanceof Uint8Array ? value.byteLength : 8),
-      0,
-    )
+    let deadline = 30_000
+    if (request.maintenance) {
+      const [pages] = await this.request({ action: "query", reader: request.reader, statement: "PRAGMA page_count" })
+      const [size] = await this.request({ action: "query", reader: request.reader, statement: "PRAGMA page_size" })
+      const bytes = Number(pages.page_count) * Number(size.page_size)
+      if (!Number.isSafeInteger(bytes) || bytes < 0)
+        throw new StorageIntegrityError("SQLite maintenance size is invalid")
+      // Full integrity checks revisit every index entry (https://sqlite.org/pragma.html#pragma_integrity_check).
+      // Size the finite budget from the current snapshot, including uncheckpointed WAL growth.
+      deadline = Math.min(2_147_483_647, 600_000 + Math.ceil(bytes / 1024 ** 2) * 1000)
+      onMaintenanceBudget?.(deadline)
+    }
+    const bytes = sqlParameterBytes(request.values ?? [])
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
-    // Maintenance statements (integrity verification over the whole database)
-    // legitimately outlast ordinary operations; killing the worker at the
-    // shared deadline would close the driver mid-maintenance.
-    const deadline = request.maintenance ? 600_000 : 30_000
     const promise = new Promise<SqlRow[]>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.closed = true
@@ -157,7 +164,10 @@ export class SqliteDriver implements SqlDriver {
     options?: SqlQueryOptions,
   ): Promise<Row[]> {
     return this.readerQueue.run(() =>
-      this.request({ action: "query", reader: true, statement, values, maintenance: options?.maintenance }),
+      this.request(
+        { action: "query", reader: true, statement, values, maintenance: options?.maintenance },
+        options?.onMaintenanceBudget,
+      ),
     ) as Promise<Row[]>
   }
 
@@ -172,13 +182,16 @@ export class SqliteDriver implements SqlDriver {
         values: SqlValue[] = [],
         queryOptions?: SqlQueryOptions,
       ) =>
-        this.request({
-          action: "query",
-          reader: options.readOnly,
-          statement,
-          values,
-          maintenance: queryOptions?.maintenance,
-        }) as Promise<Row[]>
+        this.request(
+          {
+            action: "query",
+            reader: options.readOnly,
+            statement,
+            values,
+            maintenance: queryOptions?.maintenance,
+          },
+          queryOptions?.onMaintenanceBudget,
+        ) as Promise<Row[]>
       await query(options.readOnly ? "BEGIN" : "BEGIN IMMEDIATE")
       let committing = false
       try {

@@ -1,3 +1,6 @@
+import fs from "node:fs/promises"
+import path from "node:path"
+import { PackedBackup } from "./packed-backup"
 import { SessionStaging } from "../session/staging"
 import { Global } from "../global"
 import { ensureMigrations } from "../migration"
@@ -8,6 +11,51 @@ import { StorageRecovery } from "./recovery"
 import { StorageIntegrityError } from "./errors"
 
 export namespace StorageMaintenance {
+  export async function restoreBackup(backupRoot: string, destination: string) {
+    const target = path.resolve(destination)
+    const parent = path.dirname(target)
+    await fs.mkdir(parent, { recursive: true, mode: 0o700 })
+    try {
+      await fs.mkdir(target, { mode: 0o700 })
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "EEXIST")
+        throw new StorageIntegrityError("Backup restore destination already exists")
+      throw error
+    }
+    let temporary: string | undefined
+    try {
+      temporary = await fs.mkdtemp(path.join(parent, ".synergy-restore-"))
+      const backup = new PackedBackup({ dataRoot: path.join(temporary, "data"), backupRoot: path.resolve(backupRoot) })
+      const manifest = await backup.manifest()
+      if (!manifest || manifest.selection !== "home")
+        throw new StorageIntegrityError("Restore requires a sealed version 2 legacy Home backup")
+      await backup.restore(path.join(temporary, "data"))
+      if (process.platform !== "win32") {
+        const directory = await fs.open(temporary, "r")
+        try {
+          await directory.sync()
+        } finally {
+          await directory.close()
+        }
+      }
+      await fs.rmdir(target)
+      await fs.rename(temporary, target)
+      if (process.platform !== "win32") {
+        const directory = await fs.open(parent, "r")
+        try {
+          await directory.sync()
+        } finally {
+          await directory.close()
+        }
+      }
+      return { status: "restored", files: manifest.files, bytes: manifest.bytes, destination: target }
+    } catch (error) {
+      if (temporary) await fs.rm(temporary, { recursive: true, force: true })
+      await fs.rmdir(target).catch(() => {})
+      throw error
+    }
+  }
+
   export async function open(options: { readonly?: boolean; migrate?: boolean; recover?: boolean } = {}) {
     if (Storage.available()) throw new StorageIntegrityError("Maintenance cannot replace an installed Runtime Handle")
     if (options.readonly) {

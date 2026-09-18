@@ -1,5 +1,9 @@
 import path from "node:path"
+import { createHash } from "node:crypto"
+import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { StorageQueue } from "./queue"
 import { AsyncLocalStorage } from "node:async_hooks"
+import { ArtifactPack } from "./artifact-pack"
 import { AtomicFile } from "./atomic-file"
 import { NotFoundError as MissingRecord, StorageClosedError, StorageConflictError } from "./errors"
 import {
@@ -185,28 +189,119 @@ export namespace Storage {
     }
   }
 
-  function binaryPath(key: string[]) {
+  const artifactPacks = new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue }>()
+  function artifactPack(key: string[]) {
     if (!key.length || key.some((part) => !part || part === "." || part === ".." || /[\\/\0]/.test(part)))
       throw new StorageConflictError("Invalid artifact key")
-    return path.join(current().artifactDirectory, ...key) + ".bin"
+    const handle = current()
+    let pack = artifactPacks.get(handle.store)
+    if (!pack) {
+      pack = {
+        pack: new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts")),
+        gate: new StorageQueue(),
+      }
+      artifactPacks.set(handle.store, pack)
+    }
+    return pack
   }
 
   export async function writeBinary(key: string[], content: Uint8Array) {
-    await AtomicFile.writeFileAtomic(binaryPath(key), content, { private: true, durable: true })
+    if (current().transaction)
+      throw new StorageConflictError("Artifact bytes must be flushed before the business transaction")
+    const state = artifactPack(key)
+    const bytes = new Uint8Array(content)
+    await state.gate.run(async () => {
+      const hash = createHash("sha256").update(bytes).digest("hex")
+      const previous = await current()
+        .store.snapshot((tx) => tx.artifact(key))
+        .catch((error: unknown) => {
+          if (error instanceof NotFoundError) return undefined
+          throw error
+        })
+      if (previous?.sha256 === hash && previous.size === bytes.byteLength) {
+        await state.pack.verify(previous)
+        return
+      }
+      const owner = JSON.stringify(key.slice(0, ["sessions", "operations"].includes(key[0]) ? 3 : 1))
+      const location = await state.pack.append(bytes, owner)
+      await transaction((tx) => tx.writeArtifacts([{ key, location }]))
+    })
     ObservabilityResources.addWrite(content.byteLength)
   }
 
   export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
-    const file = Bun.file(binaryPath(key))
-    if (options?.maxBytes !== undefined && file.size > options.maxBytes)
-      throw new StorageConflictError("Binary record exceeds its byte limit")
-    try {
-      const content = await file.bytes()
+    const state = artifactPack(key)
+    const handle = current()
+    const read = async () => {
+      const location = handle.transaction
+        ? await handle.transaction.artifact(key)
+        : await handle.store.snapshot((tx) => tx.artifact(key))
+      const content = await state.pack.read(location, options?.maxBytes)
       ObservabilityResources.addRead(content.byteLength)
       return content
+    }
+    return handle.transaction ? read() : state.gate.run(read)
+  }
+
+  export async function validateArtifacts(
+    handle: Handle,
+    options: { accept?: (key: string[]) => boolean; progress?: (count: number) => void } = {},
+  ) {
+    const pack = new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts"))
+    let count = 0
+    await withFileLock(
+      { directory: path.join(handle.artifactDirectory, "storage", ".locks"), key: "artifact-packs" },
+      () =>
+        handle.store.snapshot(async (tx) => {
+          for await (const entry of tx.artifacts()) {
+            if (options.accept && !options.accept(entry.key)) continue
+            await pack.verify(entry.location)
+            if (++count % 256 === 0) options.progress?.(count)
+          }
+        }),
+    )
+    options.progress?.(count)
+    return count
+  }
+
+  export async function collectArtifactGarbage(options: { scanOrphans?: boolean } = {}) {
+    if (current().transaction) throw new StorageConflictError("Artifact collection requires a committed transaction")
+    const state = artifactPack(["storage"])
+    const store = current().store
+    const busy = "Artifact files are pinned by another maintenance operation"
+    try {
+      return await withFileLock(
+        {
+          directory: path.join(current().artifactDirectory, "storage", ".locks"),
+          key: "artifact-packs",
+          timeoutMs: 100,
+          timeoutMessage: busy,
+        },
+        () =>
+          state.gate.run(async () => {
+            let removed = 0
+            if (options.scanOrphans) {
+              const referenced = await store.snapshot(async (tx) => {
+                const result = new Set<string>()
+                for await (const pack of tx.artifactPacks()) result.add(pack)
+                return result
+              })
+              const orphans = await state.pack.orphaned(referenced)
+              await state.pack.prune(orphans)
+              removed += orphans.length
+            }
+            for (;;) {
+              const candidates = await store.snapshot((tx) => tx.artifactGarbage())
+              if (!candidates.length) return removed
+              const unused = candidates.filter((entry) => !entry.used).map((entry) => entry.pack)
+              await state.pack.prune(unused)
+              await store.transaction((tx) => tx.acknowledgeArtifactGarbage(candidates.map((entry) => entry.pack)))
+              removed += unused.length
+            }
+          }),
+      )
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-        throw new NotFoundError({ message: "Artifact does not exist" })
+      if (error instanceof Error && error.message === busy) return 0
       throw error
     }
   }

@@ -10,6 +10,7 @@ import { Lock } from "../util/lock"
 import { sha256Content } from "../util/crypto"
 import { Log } from "../util/log"
 import { fn } from "../util/fn"
+import { RolloutAdmissionError } from "./rollout/error"
 import { Agent } from "../agent/agent"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { SessionContextContributions } from "./context-contributions"
@@ -606,16 +607,22 @@ export namespace SessionInbox {
   }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
-    const { RolloutLifecycle } = await import("./rollout/lifecycle")
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
     const mode: ItemMode = input.noReply === true ? "steer" : "task"
-    if (mode === "task")
-      await RolloutLifecycle.configuration(await Session.get(input.sessionID), messageID, input.experiment, input.model)
-    else if (input.experiment) throw new Error("Experiment configuration requires a root task")
+    let taskSession: Info | undefined
+    if (mode === "task") {
+      taskSession = await readSession(input.sessionID)
+      if (input.experiment) {
+        // Admission stays fail-fast before the item is stored; configuration
+        // resolution itself happens at materialization, off the request path.
+        const { RolloutLifecycle } = await import("./rollout/lifecycle")
+        await RolloutLifecycle.assertQueuedExperiment(taskSession, input.experiment)
+      }
+    } else if (input.experiment) throw new Error("Experiment configuration requires a root task")
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
@@ -646,7 +653,21 @@ export namespace SessionInbox {
       input: queuedInput,
     }
     const stored = await writeItem(item)
-    await Session.recordActivity(input.sessionID).catch((error) => {
+    if (taskSession) {
+      // Open a lightweight run shell (no configuration or provenance) so
+      // status polls and cancellation observe a durable record immediately;
+      // heavy admission work attaches at materialization, off this path. The
+      // shell is best-effort — materialization opens the run lazily when the
+      // shell write failed.
+      const { RolloutLifecycle } = await import("./rollout/lifecycle")
+      const { RolloutLedger } = await import("./rollout/ledger")
+      await RolloutLedger.beginRun(RolloutLifecycle.owner(taskSession), messageID).catch((error) => {
+        log.warn("failed to open queued task run shell", { sessionID: input.sessionID, messageID, error })
+      })
+    }
+    // Activity bump is presentation state, not admission: keep it off the
+    // enqueue critical path so a queued task is durable and visible first.
+    void Session.recordActivity(input.sessionID).catch((error) => {
       log.warn("failed to record session activity after user inbox enqueue", { sessionID: input.sessionID, error })
     })
     return publicItem(stored)
@@ -1043,11 +1064,12 @@ export namespace SessionInbox {
     | { status: "empty" }
 
   /**
-   * Materialize the next runnable task. A payload that deterministically
-   * cannot become a message (attachment capture failures and similar
-   * InvalidUrlError-class input errors) is parked as failed instead of
-   * throwing: the item stays visible with a reason, the queue behind it
-   * proceeds, and retry can re-drive it after the payload is repaired.
+   * Materialize the next runnable task. Inputs that deterministically cannot
+   * become a runnable root (attachment capture failures and similar
+   * InvalidUrlError-class payload errors, plus RolloutAdmissionError-class
+   * configuration failures) are parked as failed instead of throwing: the
+   * item stays visible with a reason, the queue behind it proceeds, and
+   * retry can re-drive it after the underlying input is repaired.
    */
   export async function materializeNextTask(sessionID: string): Promise<TaskMaterializationResult> {
     const task = await peekTask(sessionID)
@@ -1055,31 +1077,51 @@ export namespace SessionInbox {
     try {
       const materialized = await materializeItem(task)
       if (!materialized) {
-        await parkTaskFailure(sessionID, task, "Inbox task payload could not be materialized")
+        if (!(await parkTaskFailure(sessionID, task, "Inbox task payload could not be materialized")))
+          return { status: "empty" }
         return { status: "failed", itemID: task.id, reason: "Inbox task payload could not be materialized" }
       }
     } catch (error) {
-      if (!(error instanceof Attachment.InvalidUrlError)) throw error
-      await parkTaskFailure(sessionID, task, error.message)
-      return { status: "failed", itemID: task.id, reason: error.message }
+      // A cancellation racing materialization removed the queued item and
+      // terminalized its run; report no runnable work instead of parking
+      // (parking would resurrect the cancelled item) or surfacing an error.
+      if (error instanceof DOMException && error.name === "AbortError") return { status: "empty" }
+      if (!(error instanceof Attachment.InvalidUrlError) && !RolloutAdmissionError.isInstance(error)) throw error
+      const reason = RolloutAdmissionError.isInstance(error)
+        ? error.data.message
+        : (error as Attachment.InvalidUrlError).message
+      if (!(await parkTaskFailure(sessionID, task, reason))) return { status: "empty" }
+      return { status: "failed", itemID: task.id, reason }
     }
     return { status: "materialized", itemID: task.id, messageID: task.messageID }
   }
 
-  async function parkTaskFailure(sessionID: string, task: StoredItem, reason: string): Promise<void> {
-    const failed: StoredItem = {
-      ...task,
-      status: "failed",
-      failReason: reason,
-      time: { ...task.time, updated: Date.now() },
-    }
-    await writeItem(failed, true)
+  async function parkTaskFailure(sessionID: string, task: StoredItem, reason: string): Promise<boolean> {
+    const parked = await Storage.transaction(async () => {
+      const current = await getStored(sessionID, task.id).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      })
+      if (!current) return false
+      await writeItem(
+        {
+          ...current,
+          status: "failed",
+          failReason: reason,
+          time: { ...current.time, updated: Date.now() },
+        },
+        true,
+      )
+      return true
+    })
+    if (!parked) return false
     log.warn("parked inbox task that cannot materialize", {
       sessionID,
       itemID: task.id,
       messageID: task.messageID,
       reason,
     })
+    return true
   }
 
   /** Clear a parked failure so the item becomes runnable again. */

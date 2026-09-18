@@ -1,4 +1,5 @@
 import { cmd } from "../cmd"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
@@ -6,7 +7,7 @@ import { parseStorageConfiguration } from "@ericsanchezok/synergy-harness/storag
 
 export const DataStorageCommand = cmd({
   command: "storage",
-  describe: "inspect, verify, recover, and move authoritative Agent storage",
+  describe: "inspect, verify, recover, restore backups, and move authoritative Agent storage",
   builder: (yargs) =>
     yargs
       .command(
@@ -46,12 +47,13 @@ export const DataStorageCommand = cmd({
       )
       .command(
         "verify",
-        "verify database integrity and record relationships without changing data",
+        "verify database integrity, record relationships, and artifact content without changing data",
         () => {},
         async () => {
           await using handle = await StorageMaintenance.open({ readonly: true })
           const report = await handle.store.verify()
-          console.log(JSON.stringify(report, null, 2))
+          const artifacts = await Storage.validateArtifacts(handle)
+          console.log(JSON.stringify({ ...report, artifacts }, null, 2))
           if (report.issues.length) process.exitCode = 1
         },
       )
@@ -69,6 +71,24 @@ export const DataStorageCommand = cmd({
             ),
           )
         },
+      )
+      .command(
+        "restore-backup <backup> <destination>",
+        "restore a verified version 2 legacy Home backup into a new Home directory",
+        (yargs) =>
+          yargs
+            .positional("backup", {
+              type: "string",
+              demandOption: true,
+              describe: "Sealed legacy Home backup directory containing manifest.json",
+            })
+            .positional("destination", {
+              type: "string",
+              demandOption: true,
+              describe: "New .synergy Home directory; it must not already exist",
+            }),
+        async (args) =>
+          console.log(JSON.stringify(await StorageMaintenance.restoreBackup(args.backup, args.destination), null, 2)),
       )
       .command(
         "migrate",

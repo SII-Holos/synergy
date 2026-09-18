@@ -260,4 +260,4 @@ Contributions, bug reports, and feature ideas are welcome. Read [CONTRIBUTING.md
 
 Synergy is open source under the [MIT License](LICENSE).
 
-Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Existing Home data upgrades through a resumable, backed-up migration. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).
+Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Binary evidence uses checksummed packs. Existing Home data upgrades through a resumable migration with an independently restorable backup. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).

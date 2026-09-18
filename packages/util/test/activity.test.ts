@@ -59,13 +59,22 @@ describe("isActivityGroupableTool", () => {
     })
   })
 
-  test("keeps built-in MCP search family tools outside semantic groups", () => {
-    expect(isActivityGroupableTool("mcp__anysearch__search", {})).toBe(false)
-    expect(isActivityGroupableTool("mcp__anysearch__batch_search", {})).toBe(false)
-    expect(isActivityGroupableTool("mcp__scholight__search_papers", {})).toBe(false)
-    expect(isActivityGroupableTool("mcp__scholight__extract_url", {})).toBe(false)
-    // Other MCP servers still fold like ordinary tools.
+  test("folds built-in MCP search family tools like ordinary tools", () => {
+    expect(isActivityGroupableTool("mcp__anysearch__search", {})).toBe(true)
+    expect(isActivityGroupableTool("mcp__anysearch__batch_search", {})).toBe(true)
+    expect(isActivityGroupableTool("mcp__scholight__search_papers", {})).toBe(true)
+    expect(isActivityGroupableTool("mcp__scholight__extract_url", {})).toBe(true)
+    // Every MCP family folds like ordinary tools now.
     expect(isActivityGroupableTool("mcp__other__search", {})).toBe(true)
+  })
+
+  test("classifies built-in MCP search tools as web research", () => {
+    expect(activityFamilyForTool("mcp__anysearch__search", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__anysearch__batch_search", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__anysearch__extract", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__anysearch__get_sub_domains", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__scholight__search_papers", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__scholight__extract_url", {})).toBe("research-web")
   })
 })
 

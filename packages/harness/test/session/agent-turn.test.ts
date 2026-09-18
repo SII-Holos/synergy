@@ -76,3 +76,26 @@ test("starts Context Usage estimation only after the Agent worker starts", async
     AgentTurn.configure()
   }
 })
+
+test("prewarm creates the worker pool eagerly and stays a no-op for the in-process adapter", async () => {
+  try {
+    await AgentTurn.stop()
+    AgentTurn.configure({ size: 1, minIdle: 0 })
+    AgentTurn.setInProcessStream(undefined)
+    expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
+
+    AgentTurn.prewarm()
+    expect(() => AgentTurn.configure()).toThrow("cannot be reconfigured")
+    expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
+
+    await AgentTurn.stop()
+    AgentTurn.configure({ size: 1, minIdle: 0 })
+    AgentTurn.setInProcessStream(runInProcessStream)
+    AgentTurn.prewarm()
+    expect(() => AgentTurn.configure()).not.toThrow()
+  } finally {
+    AgentTurn.setInProcessStream(runInProcessStream)
+    await AgentTurn.stop()
+    AgentTurn.configure()
+  }
+})

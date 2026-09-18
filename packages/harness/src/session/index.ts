@@ -1,4 +1,5 @@
 import type { StoreTransaction } from "../storage/transactional-store"
+import { StorageIntegrityError } from "../storage/errors"
 import { SessionStaging } from "./staging"
 import { RolloutAttachment } from "./rollout/attachment"
 import { RolloutContext } from "./rollout/context"
@@ -118,6 +119,7 @@ export namespace Session {
   }
 
   export async function rebuildStorageIndexes(tx: StoreTransaction) {
+    const retiredEndpoint = z.object({ kind: z.literal("holos"), agentId: z.string() })
     for (const root of [
       "session_index",
       "endpoint_session",
@@ -136,7 +138,10 @@ export namespace Session {
         const batch = await tx.query<Info>({ kind: "session", scopeID, after, limit: 128 })
         if (!batch.length) break
         for (const record of batch) {
-          const session = record.value
+          const retired = retiredEndpoint.safeParse(record.value.endpoint).success
+          if (retired && !record.value.time.archived)
+            throw new StorageIntegrityError("Retired Session endpoint must be archived before rebuilding indexes")
+          const session = retired ? { ...record.value, endpoint: undefined } : record.value
           const index = toIndex(session)
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")

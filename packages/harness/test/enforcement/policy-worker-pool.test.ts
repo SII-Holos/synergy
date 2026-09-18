@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
+import { PolicyWorker } from "../../src/enforcement/policy-worker"
 import type {
   PolicyWorkerProcess,
   SpawnPolicyWorkerProcessOptions,
@@ -546,6 +548,56 @@ describe("PolicyWorkerPool", () => {
       expect(spawned).toBe(2)
     } finally {
       await pool.stop()
+    }
+  })
+
+  test("records worker ready latency when a spawned worker becomes ready", async () => {
+    using _metrics = spyOn(ObservabilityMetrics, "record")
+    const pool = new PolicyWorkerPool(
+      { ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1, heartbeatTimeoutMs: 10_000 },
+      (options) => fakeProcess(options, "result", { killed: false }),
+    )
+    try {
+      pool.start()
+      await Bun.sleep(0)
+      const calls = (
+        _metrics as unknown as {
+          mock: { calls: Array<Array<{ name?: string; unit?: string }>> }
+        }
+      ).mock.calls
+      expect(calls.some((call) => call[0]?.name === "policy.worker.ready_latency" && call[0]?.unit === "ms")).toBe(true)
+    } finally {
+      await pool.stop()
+    }
+  })
+})
+
+describe("PolicyWorker prewarm", () => {
+  test("creates the pool once without awaiting readiness and locks later reconfiguration", async () => {
+    using _start = spyOn(PolicyWorkerPool.prototype, "start").mockImplementation(() => {})
+    await PolicyWorker.stop()
+    PolicyWorker.configure({ ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1 })
+    try {
+      PolicyWorker.prewarm()
+      PolicyWorker.prewarm()
+      expect(() => PolicyWorker.configure()).toThrow("cannot be reconfigured")
+      expect(PolicyWorker.stats().configured).toBe(1)
+    } finally {
+      await PolicyWorker.stop()
+      PolicyWorker.configure()
+    }
+  })
+
+  test("is a no-op while admission is closed", async () => {
+    await PolicyWorker.stop()
+    // stop() closes admission; configure() re-opens it, so close it explicitly.
+    PolicyWorker.configure({ ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1 })
+    PolicyWorker.closeAdmission()
+    try {
+      PolicyWorker.prewarm()
+      expect(() => PolicyWorker.configure()).not.toThrow()
+    } finally {
+      PolicyWorker.configure()
     }
   })
 })

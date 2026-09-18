@@ -1,5 +1,3 @@
-import fs from "node:fs/promises"
-import path from "node:path"
 import { describe, expect, spyOn, test } from "bun:test"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutRecordingError } from "../../src/session/rollout/error"
@@ -47,9 +45,14 @@ describe("rollout artifacts", () => {
     const second = await RolloutArtifact.write(target, source(), "application/octet-stream")
     expect(first.id).not.toBe(second.id)
     expect(first.sha256).toBe(second.sha256)
-    expect(
-      await fs.readdir(path.join(Storage.current().artifactDirectory, ...RolloutArtifact.root(target), "blobs")),
-    ).toHaveLength(1)
+    const blobs = await Storage.current().store.snapshot(async (tx) => {
+      const result: string[][] = []
+      const prefix = [...RolloutArtifact.root(target), "blobs"]
+      for await (const entry of tx.artifacts())
+        if (prefix.every((part, index) => entry.key[index] === part)) result.push(entry.key)
+      return result
+    })
+    expect(blobs).toHaveLength(1)
   })
 
   test("preserves content across producer chunk boundaries", async () => {

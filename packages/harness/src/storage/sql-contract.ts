@@ -1,10 +1,20 @@
 export type SqlValue = string | number | bigint | Uint8Array | null
 export type SqlRow = Record<string, SqlValue>
 
+export function sqlParameterBytes(values: SqlValue[]): number {
+  return values.reduce<number>(
+    (total, value) =>
+      total +
+      (typeof value === "string" ? Buffer.byteLength(value) : value instanceof Uint8Array ? value.byteLength : 8),
+    0,
+  )
+}
+
 export interface SqlQueryOptions {
   // Maintenance statements (integrity verification) legitimately run longer
   // than ordinary operations; engines may extend their deadline.
   maintenance?: boolean
+  onMaintenanceBudget?: (timeoutMs: number) => void
 }
 
 export interface SqlConnection {

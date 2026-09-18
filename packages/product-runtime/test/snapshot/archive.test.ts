@@ -8,33 +8,47 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { createDataArchive } from "../../src/cli/data/pack"
 
-test("full data pack makes legacy alternates portable", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const home = path.join(tmp.path, "home")
-  const scope = path.join(home, "data", "snapshot", "scope-old")
-  const shared = path.join(scope, ".shared.old")
-  const session = path.join(scope, "session-old")
-  await SnapshotStore.initializeBareRepository(shared)
-  await SnapshotStore.initializeBareRepository(session)
-  await Bun.write(path.join(tmp.path, "file.txt"), "legacy history")
-  await SnapshotStore.command(shared, ["-C", tmp.path, "--work-tree", tmp.path, "add", "file.txt"])
-  const tree = await SnapshotStore.command(shared, ["write-tree"])
-  await Bun.write(path.join(session, "objects", "info", "alternates"), path.join(shared, "objects") + "\n")
-  await Bun.write(path.join(home, "cache", "snapshot-index", "derived"), "rebuildable")
-  const archive = await createDataArchive(home, path.join(tmp.path, "backup.zip"), ["data", "state", "cache"], {
-    version: 1,
+for (const redirected of [false, true])
+  test(`full data pack makes ${redirected ? "consolidated pool" : "legacy"} alternates portable`, async () => {
+    await using tmp = await tmpdir({ git: true })
+    const home = path.join(tmp.path, "home")
+    const scope = path.join(home, "data", "snapshot", "scope-old")
+    const shared = path.join(scope, ".shared.old")
+    const session = path.join(scope, "session-old")
+    await SnapshotStore.initializeBareRepository(shared)
+    await SnapshotStore.initializeBareRepository(session)
+    await Bun.write(path.join(tmp.path, "file.txt"), "legacy history")
+    await SnapshotStore.command(shared, ["-C", tmp.path, "--work-tree", tmp.path, "add", "file.txt"])
+    const tree = await SnapshotStore.command(shared, ["write-tree"])
+    if (redirected) {
+      const canonical = path.join(home, "data", "snapshot-v2", "scope-old", "store.git")
+      await SnapshotStore.initializeBareRepository(canonical)
+      await fs.cp(path.join(shared, "objects"), path.join(canonical, "objects"), { recursive: true })
+      await SnapshotStore.command(canonical, ["update-ref", "refs/synergy/preserved/" + tree, tree])
+      await fs.rm(path.join(shared, "objects"), { recursive: true })
+      await fs.mkdir(path.join(shared, "objects", "info"), { recursive: true })
+      await fs.mkdir(path.join(shared, "objects", "pack"))
+      await Bun.write(
+        path.join(shared, "objects", "info", "alternates"),
+        path.relative(path.join(shared, "objects"), path.join(canonical, "objects")) + "\n",
+      )
+    }
+    await Bun.write(path.join(session, "objects", "info", "alternates"), path.join(shared, "objects") + "\n")
+    await Bun.write(path.join(home, "cache", "snapshot-index", "derived"), "rebuildable")
+    const archive = await createDataArchive(home, path.join(tmp.path, "backup.zip"), ["data", "state", "cache"], {
+      version: 1,
+    })
+    await fs.rm(home, { recursive: true })
+    const extracted = path.join(tmp.path, "extracted")
+    await fs.mkdir(extracted)
+    if (archive.endsWith(".zip")) await $`unzip -q ${archive} -d ${extracted}`.quiet()
+    else await $`tar -xzf ${archive} -C ${extracted}`.quiet()
+    expect(await Bun.file(path.join(extracted, "state", "daemon", "runtime-lock.json")).exists()).toBe(false)
+    expect(await Bun.file(path.join(extracted, "cache", "snapshot-index", "derived")).exists()).toBe(false)
+    const restored = path.join(extracted, "data", "snapshot", "scope-old", "session-old")
+    expect(await Bun.file(path.join(restored, "objects", "info", "alternates")).exists()).toBe(false)
+    expect(await SnapshotStore.command(restored, ["show", `${tree}:file.txt`])).toBe("legacy history")
   })
-  await fs.rm(home, { recursive: true })
-  const extracted = path.join(tmp.path, "extracted")
-  await fs.mkdir(extracted)
-  if (archive.endsWith(".zip")) await $`unzip -q ${archive} -d ${extracted}`.quiet()
-  else await $`tar -xzf ${archive} -C ${extracted}`.quiet()
-  expect(await Bun.file(path.join(extracted, "state", "daemon", "runtime-lock.json")).exists()).toBe(false)
-  expect(await Bun.file(path.join(extracted, "cache", "snapshot-index", "derived")).exists()).toBe(false)
-  const restored = path.join(extracted, "data", "snapshot", "scope-old", "session-old")
-  expect(await Bun.file(path.join(restored, "objects", "info", "alternates")).exists()).toBe(false)
-  expect(await SnapshotStore.command(restored, ["show", `${tree}:file.txt`])).toBe("legacy history")
-})
 
 test("data merge unions packed snapshot refs and objects without the original home", async () => {
   await using tmp = await tmpdir({ git: true })

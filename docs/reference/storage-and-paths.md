@@ -17,8 +17,7 @@ Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `S
 | `data/browser/uploads/`, `data/browser/downloads/` | Browser file staging and downloads                                                         |
 | `data/snapshot-v2/<scope>/store.git/`              | Shared Git snapshot objects and retained references                                        |
 | `data/snapshot/`                                   | Historical Git snapshot repositories until explicit migration/cleanup                      |
-| `data/sessions/<scope>/<session>/`                 | Session-owned binary evidence; metadata is in the Agent database                           |
-| `data/operations/<scope>/<operation>/`             | Binary evidence for sessionless operations                                                 |
+| `data/agent-artifacts/`                            | Packed binary evidence; ownership and byte locators are in the Agent database              |
 | `data/channel/workspaces/`                         | Channel-managed Project checkouts                                                          |
 | `data/embedding/models/`                           | Local embedding models; overridable with `embedding.local.cacheDir`                        |
 | `data/tool-output/`                                | Externalized tool output without age-based expiry                                          |
@@ -69,6 +68,8 @@ Global `config/synergy.d/130-storage.jsonc` selects storage. Omission selects SQ
 ```
 
 Use `synergy data storage status` to inspect the active dataset, `verify` to check integrity and relationships, `resume` to finish interrupted upgrades or switches, and `migrate --target <config-file>` to change backend, namespace or SQLite location. These commands acquire the appropriate read-only or exclusive maintenance Handle. They do not stop the running Runtime.
+
+`verify` also checks every referenced binary artifact's bounds and hash. `restore-backup <backup> <destination>` verifies a sealed version 2 legacy backup and publishes a separate, new Home directory; the destination is the Home directory itself, not its parent. It rejects existing destinations and does not open the current database. See [upgrade recovery](../migrations/transactional-agent-storage.md) for backup formats and downgrade limits.
 
 `data pack`, `data merge` and `data move` use checksummed logical records and separately copy physical artifacts. The portable record stream is `data/agent-records.ndjson`; the target creates a new local bootstrap identity when restoring a Home archive. Target storage configuration is retained instead of importing another machine's connection settings. Conflicting Sessions are skipped as whole aggregates; source evidence and reports remain in `data/storage/transfers/`.
 

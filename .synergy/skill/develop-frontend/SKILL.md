@@ -18,7 +18,7 @@ Observer targets delivered by asynchronous mount callbacks must be reactive elem
 
 Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
 
-1. Use stores for coherent keyed collections and signals for independent scalar state.
+1. Use stores for coherent keyed collections and signals for independent scalar state. Read project-overridable configuration from the current Scope through `useSync`; `useGlobalSync().data.config` contains global settings only. Test differing global and project values plus a Scope config refresh.
 2. Apply entity updates with targeted setters and `reconcile`; do not replace a whole stored object for a one-field event.
 3. Keep derived values one-way. Preserve composer resolution as explicit draft → session default → fallback; only explicit user choices persist upward.
 4. Use generated SDK methods for ordinary internal HTTP routes. Keep raw browser transports only for WebSocket/EventSource/WebRTC, external URLs, platform fetch injection, and browser file/blob/download flows that the SDK should not represent.

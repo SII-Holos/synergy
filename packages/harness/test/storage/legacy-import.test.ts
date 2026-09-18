@@ -26,6 +26,34 @@ async function json(root: string, key: string[], value: unknown) {
   return target
 }
 
+test("reports real inventory work before backup and advances each upgrade stage", async () => {
+  const { store, data, backup } = await fixture()
+  try {
+    for (let index = 0; index < 3; index++) await json(data, ["notes", "scope", String(index)], { index })
+    const progress: Array<{ stage: string; current: number; total: number; bytes: number }> = []
+    const importer = new LegacyJsonImporter({
+      dataRoot: data,
+      backupRoot: backup,
+      store,
+      progress: (value) => {
+        progress.push({ ...value })
+        if (value.stage === "scan") expect(Bun.file(path.join(backup, "manifest.json")).size).toBe(0)
+      },
+    })
+    await importer.run()
+    await importer.retire()
+    expect(progress[0]).toMatchObject({ stage: "scan", current: 0 })
+    expect(progress.filter((value) => value.stage === "scan").at(-1)?.current).toBe(3)
+    for (const stage of ["backup", "inventory", "owners", "import", "verify", "activate"]) {
+      const events = progress.filter((value) => value.stage === stage)
+      expect(events[0]?.current).toBe(0)
+      expect(events.at(-1)?.current).toBe(3)
+    }
+  } finally {
+    await store.close()
+  }
+})
+
 test("backs up and imports historical records without dropping unloaded fields or migration ledgers", async () => {
   const fixtureData = await fixture()
   const { store, data, backup } = fixtureData

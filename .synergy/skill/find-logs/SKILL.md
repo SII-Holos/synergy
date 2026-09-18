@@ -66,6 +66,8 @@ SYNERGY_HOME="$INSTANCE_HOME" synergy logs --tool-call <call-id> --since 30m --j
 
 Correlate backend PID and port, server start time, reproduction time window, service, session, call, and trace. Find the earliest causal divergence or error; downstream cancellations are usually consequences, not separate root causes.
 
+For a long-running local migration that fails a request deadline, correlate the failure with system sleep/wake events before changing query timeouts. On macOS, inspect the relevant time window in `pmset -g log`. An idle-sleep inhibitor does not guarantee execution through lid closure or forced sleep. Resume only after confirming the previous owner exited, reuse committed migration checkpoints, and repeat checks required by the new transaction; do not skip integrity verification or launch a second owner.
+
 ## Escalate to Runtime Reproduction
 
 Static code inspection establishes hypotheses. It is not sufficient evidence for bugs that depend on persisted state, ordering, concurrency, streaming, external responses, frontend/backend synchronization, or process lifecycle.

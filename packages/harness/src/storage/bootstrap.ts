@@ -4,11 +4,14 @@ import { createReadStream } from "node:fs"
 import path from "node:path"
 import { z } from "zod"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { Storage } from "./storage"
 import { AtomicFile } from "./atomic-file"
 import { authorityRecordRoots, StoragePortable } from "./portable"
 import { StorageConfiguration, readStorageConfiguration, resolveStoreOptions } from "./config"
 import { StorageIntegrityError } from "./errors"
-import { LegacyJsonImporter, legacySources, legacyRecordKey, type ImportProgress } from "./legacy-import"
+import { PackedLegacyImporter } from "./packed-import"
+import { StorageArtifactMigration } from "./artifact-migration"
+import { LegacyJsonImporter, legacyRecords, type ImportProgress } from "./legacy-import"
 import { TransactionalStore } from "./transactional-store"
 import type { StoreOptions } from "./sql-contract"
 
@@ -59,12 +62,15 @@ async function optionalJson(filename: string): Promise<unknown | undefined> {
   }
 }
 
-async function rejectLegacyWriters(dataRoot: string) {
-  for await (const entry of legacySources(dataRoot)) {
-    if (legacyRecordKey(entry.relative))
-      throw new StorageIntegrityError(
-        "Legacy JSON records appeared after database activation; preserve both datasets and resolve the old writer before starting",
-      )
+async function rejectLegacyWriters(dataRoot: string, progress?: (progress: ImportProgress) => void) {
+  let current = 0
+  progress?.({ stage: "check", current, total: 0, bytes: 0 })
+  for await (const _record of legacyRecords(dataRoot, () => {
+    progress?.({ stage: "check", current: ++current, total: 0, bytes: 0 })
+  })) {
+    throw new StorageIntegrityError(
+      "Legacy JSON records appeared after database activation; preserve both datasets and resolve the old writer before starting",
+    )
   }
 }
 
@@ -154,6 +160,7 @@ export namespace StorageBootstrap {
         throw new StorageIntegrityError("Storage target is not empty; choose a new namespace or database")
       await StoragePortable.importFile(store, archive, { operationID: intent.id })
       const report = await store.verify()
+      await Storage.validateArtifacts({ store, artifactDirectory: path.join(root, "data") })
       if (report.issues.length) throw new StorageIntegrityError("Transferred data failed relationship verification")
       const identity = await store.read<{ storeID: string; artifactStoreID: string }>(["storage_meta", "identity"])
       if (identity.storeID !== intent.manifest.storeID || identity.artifactStoreID !== intent.manifest.artifactStoreID)
@@ -179,6 +186,7 @@ export namespace StorageBootstrap {
     recover?: boolean
     progress?: (progress: ImportProgress) => void
   }) {
+    options.progress?.({ stage: "prepare", current: 0, total: 0, bytes: 0 })
     const root = path.resolve(options.root)
     if (await optionalJson(path.join(root, "data", "storage", "switch.json")))
       throw new StorageIntegrityError("An interrupted storage switch requires data storage resume")
@@ -230,7 +238,9 @@ export namespace StorageBootstrap {
           manifest.storeID = randomUUID()
           await store.write(identityKey, { storeID: manifest.storeID, artifactStoreID: manifest.artifactStoreID })
         }
-        const importer = new LegacyJsonImporter({
+        const [importState] = await store.readMany<{ version?: number }>([["storage_import", "info"]])
+        const Importer = importState && importState.version !== 2 ? LegacyJsonImporter : PackedLegacyImporter
+        const importer = new Importer({
           dataRoot: path.join(root, "data"),
           backupRoot: path.join(directory, "backups", manifest.backupID),
           store,
@@ -241,9 +251,10 @@ export namespace StorageBootstrap {
           const archive = path.join(root, "data", "agent-records.ndjson")
           if (await Bun.file(archive).exists())
             await StoragePortable.importFile(store, archive, {
+              progress: options.progress,
               operationID: `portable-${manifest.backupID}`,
               accept: (entry) =>
-                entry.type !== "record" ||
+                (entry.type !== "record" && entry.type !== "artifact") ||
                 (![
                   "storage_meta",
                   "storage_import",
@@ -258,13 +269,21 @@ export namespace StorageBootstrap {
           manifest.phase = "validating"
           await persist()
         }
-        if (manifest.phase === "active") await rejectLegacyWriters(path.join(root, "data"))
+        await StorageArtifactMigration.run({ dataRoot: path.join(root, "data"), store, progress: options.progress })
+        if (manifest.phase === "active") await rejectLegacyWriters(path.join(root, "data"), options.progress)
         const activate = async () => {
           if (manifest.phase === "active") return
+          options.progress?.({ stage: "check", current: 0, total: 0, bytes: 0 })
+          await Storage.validateArtifacts(
+            { store, artifactDirectory: path.join(root, "data") },
+            {
+              progress: (current) => options.progress?.({ stage: "check", current, total: 0, bytes: 0 }),
+            },
+          )
           manifest.phase = "activating"
           await persist()
           await importer.retire()
-          await rejectLegacyWriters(path.join(root, "data"))
+          await rejectLegacyWriters(path.join(root, "data"), options.progress)
           manifest.phase = "active"
           await persist()
         }
