@@ -1156,6 +1156,153 @@ function leadingInvocations(command: string): Array<{ name: string; args: string
   return invocations
 }
 
+/**
+ * Tools whose invocation opens a network connection on its own. Argument text
+ * that merely mentions one of these names is not a network operation, which is
+ * why this is a closed set over the resolved command name rather than a
+ * substring scan.
+ */
+const NETWORK_TOOLS = new Set([
+  "curl",
+  "wget",
+  "nc",
+  "ncat",
+  "netcat",
+  "socat",
+  "ssh",
+  "scp",
+  "sftp",
+  "telnet",
+  "ftp",
+  "dig",
+  "nslookup",
+  "aria2c",
+  "axel",
+  "mosh",
+  "ping",
+  "traceroute",
+  "whois",
+])
+
+/** Git subcommands that contact a remote. */
+const NETWORK_GIT_SUBCOMMANDS = new Set(["fetch", "pull", "push", "clone", "ls-remote", "submodule"])
+
+/** Package managers and the subcommands that reach a registry. */
+const NETWORK_PACKAGE_SUBCOMMANDS: Record<string, Set<string>> = {
+  npm: new Set(["install", "i", "ci", "add", "update", "publish", "exec", "x", "create"]),
+  npx: new Set(["*"]),
+  bun: new Set(["install", "i", "add", "update", "publish", "x", "create"]),
+  pnpm: new Set(["install", "i", "add", "update", "publish", "dlx", "create"]),
+  yarn: new Set(["install", "add", "up", "upgrade", "publish", "dlx", "create"]),
+  pip: new Set(["install", "download"]),
+  pip3: new Set(["install", "download"]),
+  gem: new Set(["install", "update", "fetch"]),
+  cargo: new Set(["install", "add", "update", "publish"]),
+  go: new Set(["get"]),
+  brew: new Set(["install", "upgrade", "update", "fetch"]),
+  apt: new Set(["install", "update", "upgrade"]),
+  "apt-get": new Set(["install", "update", "upgrade"]),
+  docker: new Set(["pull", "push", "login"]),
+  podman: new Set(["pull", "push", "login"]),
+  kubectl: new Set(["apply", "delete", "create", "exec", "port-forward"]),
+  gh: new Set(["*"]),
+}
+
+const NETWORK_OPENSSL_SUBCOMMANDS = new Set(["s_client", "s_server"])
+
+function invocationReachesNetwork(name: string, args: string[]): boolean {
+  if (NETWORK_TOOLS.has(name)) return true
+
+  // git <subcommand> / go mod download
+  if (name === "git") {
+    const sub = args.find((arg) => !arg.startsWith("-"))
+    return sub !== undefined && NETWORK_GIT_SUBCOMMANDS.has(sub.toLowerCase())
+  }
+  if (name === "rsync") {
+    // A remote operand carries a colon separator (`user@host:/path`).
+    return args.some((arg) => !arg.startsWith("-") && /^[^/\s][^:\s]*:/.test(arg))
+  }
+  if (name === "openssl") {
+    const sub = args.find((arg) => !arg.startsWith("-"))
+    return sub !== undefined && NETWORK_OPENSSL_SUBCOMMANDS.has(sub.toLowerCase())
+  }
+
+  const subcommands = NETWORK_PACKAGE_SUBCOMMANDS[name]
+  if (subcommands) {
+    if (subcommands.has("*")) return true
+    const sub = args.find((arg) => !arg.startsWith("-"))
+    return sub !== undefined && subcommands.has(sub.toLowerCase())
+  }
+
+  return false
+}
+
+/** Walk wrappers and command substitutions for a network-bearing invocation. */
+function networkInvocationIn(command: string, state: ClassificationState, depth = 0): boolean {
+  // Budget or depth exhaustion fails closed: an unanalyzable command reports
+  // the capability rather than silently passing as inert.
+  if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+
+  const compound = lexCompoundCommands(command)
+  const segments = compound.segments.length > 0 ? compound.segments : [command]
+  for (const segment of segments) {
+    const body = functionDefinitionBody(segment)
+    if (body !== undefined) {
+      if (body && networkInvocationIn(body, state, depth + 1)) return true
+      continue
+    }
+    let { name, args } = simpleCommandParts(controlCommandSegment(segment))
+    let executable = commandBasename(name ?? "")
+    if (!executable) continue
+
+    // Unwrap directory wrappers (`timeout 5 curl …`) before deciding.
+    while (DIRECTORY_WRAPPER_COMMANDS.has(executable) && depth <= DIRECTORY_CHANGE_MAX_DEPTH) {
+      const wrapped = wrapperCommandParts(executable, args)
+      const nextName = commandBasename(wrapped.name ?? "")
+      if (!nextName) break
+      executable = nextName
+      args = wrapped.args
+    }
+
+    if (invocationReachesNetwork(executable, args)) return true
+
+    // A shell or interpreter re-parse payload carries its own command text.
+    if (isShellPayloadCommand(executable)) {
+      const payload = shellPayload(args) ?? shellHerestringPayload(args)
+      if (payload && networkInvocationIn(payload, state, depth + 1)) return true
+      continue
+    }
+    if (executable === "eval" && args.length > 0) {
+      if (networkInvocationIn(args.join(" "), state, depth + 1)) return true
+      continue
+    }
+    if (executable === "trap") {
+      const payload = trapPayload(args)
+      if (payload && networkInvocationIn(payload, state, depth + 1)) return true
+      continue
+    }
+  }
+
+  const payloads = commandSubstitutionPayloads(command, state)
+  if (payloads === undefined) return true
+  if (payloads.some((payload) => networkInvocationIn(payload, state, depth + 1))) return true
+
+  return false
+}
+
+/**
+ * Whether a shell command performs a network operation. Bash builtin network
+ * redirects (`/dev/tcp`, `/dev/udp`) are matched on unquoted executable text
+ * because they only function as redirect targets; every other case is decided
+ * from the resolved command name and its subcommand, so documentation and
+ * commit-message text that happens to contain a URL or a tool name stays inert.
+ */
+function commandReachesNetwork(command: string): boolean {
+  const executableText = literalMaskedShellText(normalizeCommand(command))
+  if (/\/dev\/(?:tcp|udp)\//.test(executableText)) return true
+  return networkInvocationIn(command, newClassificationState())
+}
+
 const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\b(?:rg|ripgrep)\b.*--pre(?:-glob)?\b/, reason: "ripgrep with preprocessor execution" },
   { pattern: /\bgo\s+test\b.*-exec\b/, reason: "go test with custom executor" },
@@ -3663,6 +3810,7 @@ export namespace ShellSafety {
   }
 
   export const isHardline = checkHardline
+  export const reachesNetwork = commandReachesNetwork
   /** Returns true when the command is a bare git push (no refspec, no repo selector, no flags).
    *  Bare push uses push.default to determine the destination at runtime — typically it pushes
    *  the current branch to its tracked upstream. This is reclassified at the enforcement gate

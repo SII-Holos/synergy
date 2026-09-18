@@ -120,59 +120,6 @@ export interface GateOptions {
   synergyRoot?: string
 }
 
-const NETWORK_PATTERNS = [
-  "curl ",
-  "wget ",
-  "nc ",
-  "netcat",
-  "http://",
-  "https://",
-  // Bash builtin network (critical — bypasses all tool-based detection)
-  "/dev/tcp/",
-  "/dev/udp/",
-  // Advanced network tools
-  "socat ",
-  "openssl s_client",
-  // Secure file transfer (exfiltration)
-  "ssh ",
-  "scp ",
-  "rsync ",
-  // DNS exfiltration
-  "dig ",
-  "nslookup ",
-  "host ",
-  // Raw network
-  "telnet ",
-  "ftp ",
-  "sftp ",
-  // Multi-protocol downloaders
-  "aria2c ",
-  "axel ",
-  // Package managers (download + arbitrary script execution)
-  "pip install",
-  "pip3 install",
-  "gem install",
-  "cargo install",
-  // VCS network operations
-  "git fetch",
-  "git pull",
-  "git clone",
-  "git push",
-  "git ls-remote",
-  // JS/TS package managers
-  "npm install",
-  "npm ci ",
-  "bun install",
-  "bun add",
-  "pnpm install",
-  "pnpm add",
-  "yarn install",
-  "yarn add",
-  // Go module downloads
-  "go get ",
-  "go mod download",
-]
-
 const SAFE_PSEUDO_PATHS = new Set([
   "/dev/null",
   "/dev/zero",
@@ -767,11 +714,6 @@ function shellTokenize(segment: string): string[] | undefined {
   return tokens
 }
 
-function hasNetworkActivity(command: string): boolean {
-  const lower = command.toLowerCase()
-  return NETWORK_PATTERNS.some((p) => lower.includes(p))
-}
-
 function requestsSynergyLink(args: Record<string, any>): boolean {
   return [args.targetID, args.linkID].some((value) => typeof value === "string" && value.trim().length > 0)
 }
@@ -1149,7 +1091,7 @@ export namespace EnforcementGate {
         }
 
         // Check for network activity
-        if (hasNetworkActivity(command)) {
+        if (ShellSafety.reachesNetwork(command)) {
           caps.push({ class: "network_request", nonBypassable: true })
         }
 

