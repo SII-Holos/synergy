@@ -42,7 +42,7 @@ Each Feishu/Lark account can optionally set `projectDir` to bind its sessions to
 
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
-Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
+Channel sessions use the configured non-interactive control profile, which defaults to `autonomous`. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client. See [Control Profiles](../architecture/execution-boundaries.md#control-profiles).
 
 ### Feishu Boss Mode Routing
 
@@ -130,7 +130,7 @@ Project refresh discovers all visible non-archived remote Projects and provision
 
 Remote Project state is displayed separately as active, paused, stale, or archived. Remote pause does not interrupt already accepted local work. Remote archive stops new assignment delivery but preserves the managed Scope, files, Sessions, task state, and result history. Active or remotely paused managed Projects cannot be locally archived; stale or remote-archived Projects use the normal local archive workflow.
 
-Only a Clarus task assignment creates or wakes a Session. One external Task ID has one stable unattended Session in its managed Project Scope; another run of that Task reuses the Session, while a retry represented by a new Task ID creates a new Session and preserves lineage. Clarus Task Sessions use the `autonomous` control profile so remote work cannot stall on an approval dialog visible only elsewhere.
+Only a Clarus task assignment creates or wakes a Session. One external Task ID has one stable unattended Session in its managed Project Scope; another run of that Task reuses the Session, while a retry represented by a new Task ID creates a new Session and preserves lineage. Clarus Task Sessions use the configured non-interactive control profile, which defaults to `autonomous`, so remote work cannot stall on an approval dialog visible only elsewhere.
 
 Task deadlines use durable Agenda guidance in the same Task Session. One hidden system-authored reminder steers the agent exactly three minutes before the current deadline, or as soon as safely possible when less than three minutes remain. It is not a visible user prompt or a second Agenda Session, and no reminder is sent after the deadline has passed. An acknowledged or authoritative extension reschedules the same reminder for the new deadline, result acknowledgement cancels it, and the standard Session Abort action stops local execution.
 
