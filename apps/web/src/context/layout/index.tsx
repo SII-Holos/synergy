@@ -42,7 +42,7 @@ import {
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
-import { planMessagePageApply } from "../session-message-page"
+import { planPrefetchApply } from "./prefetch-apply"
 import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
 import { classifyScopeEvent } from "./event-routing"
@@ -1099,6 +1099,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const request = globalSync.captureResourceRequest(scopeKey, sessionID, "message")
       const revision = globalSync.beginContextProjection(scopeKey, sessionID)
+      // Prefetch runs the same per-message part-snapshot gate as the
+      // foreground loader: a response captured before a streaming mutation
+      // must not overwrite a live part bucket with its older snapshot.
+      const partSnapshotRequest = globalSync.capturePartSnapshotRequest(scopeKey, sessionID)
       return retry(() =>
         globalSdk.client.session.messagePage({
           ...scopeRequest(scopeKey),
@@ -1109,7 +1113,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         .then((response) => {
           if (prefetchToken.value !== token || !response.data) return
           globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
-            const plan = planMessagePageApply({ page: response.data! })
+            const plan = planPrefetchApply({
+              page: response.data!,
+              partSnapshotAction: (messageID) =>
+                globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
+            })
+            if (plan.status === "retry") return
             batch(() => {
               setChildStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
               setChildStore("messageWindow", sessionID, reconcile(plan.metadata))

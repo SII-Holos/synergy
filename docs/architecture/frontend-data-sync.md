@@ -273,7 +273,7 @@ Optimistic message insertion/removal, authoritative part checkpoints/removals fo
 
 Streaming `message.part.delta` frames do not invalidate resource freshness. They remain unsequenced, append-only projections whose next full checkpoint converges authoritative part state.
 
-Message-page requests also capture a local per-message part revision map. Applied delta, checkpoint, and removal events advance only the affected message revision. A mutation applied to an existing local bucket makes an otherwise accepted snapshot preserve that live bucket. A checkpoint or removal ignored because its parent message is outside the loaded window marks that message as requiring a newer snapshot; an in-flight page retries only when its returned effective window contains the affected message, so unrelated orphan events do not supersede the whole session page. Scope release and message-bucket eviction retire these local request tokens.
+Message-page requests also capture a local per-message part revision map. Applied delta, checkpoint, and removal events advance only the affected message revision. A mutation applied to an existing local bucket makes an otherwise accepted snapshot preserve that live bucket. A checkpoint or removal ignored because its parent message is outside the loaded window marks that message as requiring a newer snapshot; an in-flight page retries only when its returned effective window contains the affected message, so unrelated orphan events do not supersede the whole session page. When the window itself is loaded, such a drop additionally schedules one debounced, budget-bounded repair reload per session (2 s debounce, at most 3 attempts per 60 s window) through the shared session-window reload loader, so a terminal checkpoint dropped while its message raced the window converges without a manual refresh; drops for sessions with no loaded window stay cold-load-on-next-view. Scope release and message-bucket eviction retire these local request tokens and cancel pending repairs.
 
 ### Snapshot version guard
 
@@ -319,6 +319,8 @@ For each streaming part, the wire sends:
 - a full terminal update when streaming ends.
 
 A checkpoint and delta are mutually exclusive for one increment, preventing double append.
+
+Checkpoint application for text/reasoning parts is monotonic in the accumulated text: a checkpoint whose text is a strict prefix of the locally accumulated text is an older snapshot (delivered late by the hidden-page delta merge or the server's write-buffer flush), so its apply keeps the accumulated text and converges only the surrounding metadata. A shorter diverging text is a genuine server rewrite and applies verbatim, as do equal or longer checkpoints.
 
 Streaming frames remain unsequenced because they are convergent rather than journaled state. If a delta arrives before its part exists locally, the frontend ignores it; the next full checkpoint creates or corrects the authoritative part.
 
