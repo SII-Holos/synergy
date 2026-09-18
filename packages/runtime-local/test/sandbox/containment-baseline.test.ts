@@ -179,27 +179,31 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
         }
       }
 
-      // The host's `/tmp` is a different object on each platform. macOS leaves
-      // the shared directory external, so the write is refused. The Linux plan
-      // shadows `/tmp` with the workspace-scoped controlled temp root, so the
-      // command succeeds against that root instead — the containment property
-      // is the same (the host file is never created), but the observable
-      // "blocked" signal differs. Recording the difference is the point of
-      // this baseline; a later convergence must not read it as a Linux gap.
-      const sharedTemp =
-        process.platform === "linux"
-          ? { blocked: false, wrote: true, hostFileExists: false }
-          : { blocked: true, wrote: false, hostFileExists: false }
-      expect(recorded).toEqual({
-        "system /etc": { blocked: true, wrote: false, hostFileExists: false },
-        "user home": { blocked: true, wrote: false, hostFileExists: false },
-        "shared temp": sharedTemp,
-      })
-      // The home target is writable by this user outside the sandbox, so its
-      // block is attributable to the sandbox rather than to host ownership of
-      // the parent directory.
+      // The containment property is that no host file is created, and that
+      // holds on every backend. The observable *signal* differs by backend:
+      // macOS denies the write (allow-list Seatbelt profile, denial reported),
+      // while the Linux plan starts from `tmpfs /` so the write lands in the
+      // sandbox's private filesystem and the command reports success without
+      // ever reaching the host. Asserting the signal would make one platform's
+      // shape a requirement for the other; the invariant is asserted instead,
+      // and the signal is recorded so a backend whose containment regresses to
+      // "wrote to the host" cannot pass.
+      for (const [label, result] of Object.entries(recorded)) {
+        expect({ label, hostFileExists: result.hostFileExists }).toEqual({ label, hostFileExists: false })
+        expect({ label, wroteToHost: result.wrote && result.hostFileExists }).toEqual({
+          label,
+          wroteToHost: false,
+        })
+      }
+      if (process.platform === "darwin") {
+        expect(recorded["system /etc"]).toEqual({ blocked: true, wrote: false, hostFileExists: false })
+        expect(recorded["user home"]).toEqual({ blocked: true, wrote: false, hostFileExists: false })
+      }
+      // The home target is writable by this user outside the sandbox, so a
+      // `false` above is attributable to the sandbox rather than to host
+      // ownership of the parent directory.
       expect(hostWriteBaseline(targets["user home"]!)).toBe(true)
-      console.log(`[containment-baseline] external writes blocked: ${JSON.stringify(recorded)}`)
+      console.log(`[containment-baseline] external writes contained: ${JSON.stringify(recorded)}`)
     } finally {
       for (const target of Object.values(targets)) fs.rmSync(target, { force: true })
     }
