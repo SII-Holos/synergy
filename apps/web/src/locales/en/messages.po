@@ -15781,6 +15781,26 @@ msgid "settings.general.page.title"
 msgstr "General"
 
 #. js-lingui-explicit-id
+msgid "settings.general.preventSleep.active"
+msgstr "Keeping this computer awake"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.description"
+msgstr "Keep this computer awake while any Synergy agent is working. The display can still turn off, and closing the laptop lid can still suspend the computer."
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.failed"
+msgstr "Could not change the sleep setting"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.idle"
+msgstr "Waiting for work"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.title"
+msgstr "Prevent sleep while running"
+
+#. js-lingui-explicit-id
 msgid "settings.general.theme.description"
 msgstr "Select the active Synergy visual theme"
 
@@ -17535,6 +17555,10 @@ msgstr "Plugins"
 #. js-lingui-explicit-id
 msgid "settings.panel.loading.label"
 msgstr "Loading..."
+
+#. js-lingui-explicit-id
+msgid "settings.panel.preventSleep.saveFailed"
+msgstr "The sleep setting could not be saved"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterDescription"

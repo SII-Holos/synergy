@@ -15781,6 +15781,26 @@ msgid "settings.general.page.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.preventSleep.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.theme.description"
 msgstr ""
 
@@ -17534,6 +17554,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.panel.loading.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.preventSleep.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -145,12 +145,12 @@ For headless tasks, versioned experiment settings, durable execution evidence an
 
 ## Product Surfaces
 
-| Surface            | Purpose                                                                                                                               |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Web                | Primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.             |
-| Desktop            | Electron product with a managed packaged server, native Browser presentation, local folder selection, protocol handling, and updates. |
-| CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.          |
-| Server API and SDK | Shared contract used by first-party clients and integrations.                                                                         |
+| Surface            | Purpose                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web                | Primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.                                       |
+| Desktop            | Electron product with a managed packaged server, native Browser presentation, local folder selection, protocol handling, keep-awake while running, and updates. |
+| CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.                                    |
+| Server API and SDK | Shared contract used by first-party clients and integrations.                                                                                                   |
 
 ## Develop Synergy
 
