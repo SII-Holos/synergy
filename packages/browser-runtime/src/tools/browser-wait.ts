@@ -37,7 +37,7 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
         const pageState = result.page
         return {
           title: "Browser wait satisfied",
-          output: `Condition ${params.condition.type} was satisfied${result.elapsedMs !== undefined ? ` in ${result.elapsedMs}ms` : ` within ${timeoutMs}ms`}.`,
+          output: `Condition ${params.condition.type} was satisfied${result.elapsedMs !== undefined ? ` in ${result.elapsedMs / 1_000}s` : ` within ${params.timeoutSeconds}s`}.`,
           metadata: {
             pageId: page.id,
             condition: params.condition,

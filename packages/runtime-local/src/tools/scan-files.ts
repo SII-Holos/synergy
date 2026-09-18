@@ -63,9 +63,9 @@ function formatRipgrepFailure(error: unknown): string {
     .join("\n")
 }
 
-function formatSearchTimeout(timeoutMs: number): string {
+function formatSearchTimeout(timeoutSeconds: number): string {
   return [
-    `scan_files stopped after ${timeoutMs}ms before completing the search.`,
+    `scan_files stopped after ${timeoutSeconds}s before completing the search.`,
     "Narrow the path/include/globs, use a more specific pattern, or search a smaller directory first.",
   ].join("\n")
 }
@@ -155,7 +155,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       }
     } catch (error) {
       if (ctx.abort?.aborted) throw ctx.abort.reason ?? new DOMException("Aborted", "AbortError")
-      if (timeoutSignal.aborted) throw new Error(formatSearchTimeout(timeoutMs))
+      if (timeoutSignal.aborted) throw new Error(formatSearchTimeout(timeoutMs / 1_000))
       if (error instanceof ProcessOutput.LimitError) {
         truncatedReason = error.reason
       } else {

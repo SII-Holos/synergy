@@ -50,7 +50,7 @@ describe("tool.browser_wait", () => {
       context(),
     )
 
-    expect(result.output).toContain("Condition text was satisfied in 312ms")
+    expect(result.output).toContain("Condition text was satisfied in 0.312s")
     expect(result.metadata).toMatchObject({
       condition: { type: "text", values: ["Ready"], match: "any" },
       timeoutMs: 10_000,
@@ -73,6 +73,6 @@ describe("tool.browser_wait", () => {
       context(),
     )
 
-    expect(result.output).toContain("Condition load was satisfied within 10000ms")
+    expect(result.output).toContain("Condition load was satisfied within 10s")
   })
 })

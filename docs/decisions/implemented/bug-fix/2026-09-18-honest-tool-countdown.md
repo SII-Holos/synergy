@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-Four defects made the tool-card time display disagree with what the runtime actually does. They shared one cause: every layer held its own belief about what a window meant.
+Four defects made the tool-card time display disagree with what the runtime actually does. They shared one cause: every layer held its own belief about what a window meant. The structural half of the fix — one definition of the timeout observation, owned by `util` and imported by both sides — is recorded in [One shared tool-timeout contract](../architecture/2026-09-18-shared-tool-timeout-contract.md).
 
 **The bash metadata read argument names the model cannot send.** `packages/harness/src/tool/timeout.ts` read `args.backgroundAfterSeconds` and `args.timeoutSeconds`, but the model-facing bash schema is `.strict()` and exposes only `yieldSeconds`. The `backgroundAfterSeconds` mapping happened _after_ metadata was computed. So a call carrying `yieldSeconds: 300` produced `displayMs: 30_000`, while the non-schema name was the only thing that could change the value. Live session data confirmed the mismatch: input `yieldSeconds: 300`, stored `displayMs: 30_000`, actual runtime 253 seconds — the badge stalled at `0s timeout` while the command kept running for another 223 seconds.
 
@@ -49,3 +49,6 @@ Agent-facing time parameters on non-generated schemas were renamed to `timeoutSe
 - Bash lost a command-level termination control that no model could reach and that the remote path already discarded. The 24-hour hard ceiling and the abort path are unchanged, so no enforced limit was weakened.
 - `browser_wait`'s floor moved from 500 ms to 1 s as a consequence of stating the parameter in seconds — a deliberate resolution trade recorded in the tool description.
 - The prompts, the schema, the executor, and the metadata builder now state one contract instead of four.
+- Agent-facing failure and completion text now also reports seconds: `scan_files`, `glob`, and `list` say how long they waited, and `browser_wait` reports elapsed and cap time, in seconds. Passing a millisecond figure to the model only invited it to copy that unit back into a parameter that no longer accepts one.
+- Millisecond values that are locked contracts, not boundary copy, stay as they are: the browser protocol's `settleTimeoutMs` and the `Settled:` summary derived from it, the persisted agenda `timeout` field with its run-log durations, and the cortex task runtime limit. Changing those means changing a published or persisted contract, so `packages/harness/test/tool/tool-time-units.test.ts` encodes them as a closed exception list rather than loosening its assertion.
+- Two tests pin the behavior this record describes: `apps/web/test/components/session/question-prompt-model.test.ts` asserts `questionCountdown` anchors on the server request time (and returns nothing without it, so a remount cannot restart the window), and `packages/harness/test/tool/tool-time-units.test.ts` reads source, prompt, and tool-description text to assert the removed parameter is gone and no in-scope surface reports a sub-second unit.

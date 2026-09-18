@@ -4,13 +4,13 @@ Status: implemented
 
 ## Problem
 
-The tool-timeout observation — how long a tool call may run, which smaller operation window is currently in force, and what that window means — was produced by the runtime and rendered by the shared UI through two hand-maintained, unlinked definitions.
+The tool-timeout observation — how long a tool call may run, which smaller operation window is currently in force, and what that window means — was produced by the runtime and rendered by the shared UI through two hand-maintained, unlinked definitions. The four user-visible defects that exposed this, and their fixes, are recorded in [Honest countdowns](../bug-fix/2026-09-18-honest-tool-countdown.md).
 
 `packages/harness/src/tool/timeout.ts` declared `ToolTimeout.Metadata` with a ten-member `Source` union. `packages/ui/src/components/tool/timeout.ts` re-declared the same shape locally with every field optional and `source: string`, then read it through an unchecked cast. Nothing tied the two together: a change on the producer side could not break the consumer, and the consumer accepted source values the producer cannot emit.
 
 The duplication was structural, not careless. `packages/ui` may not import runtime-private modules, and its only workspace dependencies are `plugin`, `sdk`, and `util` — so there was no legal import path for the shared shape. Worse, the consumer used only `displayMs` and ignored `source`, `toolTimeoutMs`, and `operationTimeoutMs` entirely. Because `source` names what the window actually is, a window that hands a command to the background (`auto_background`) rendered as `Ns timeout` — the badge claimed an abort that does not happen. The same read path also collapsed the window to `displayMs`, so the operation window and the execution budget were indistinguishable to every renderer.
 
-Nothing in `docs/decisions/` had ever recorded this contract. It had accumulated through repeated local fixes rather than a decision, which is why the producer, the consumer, and the tool descriptions could each hold a different belief about the same field.
+Nothing in `docs/decisions/` had ever recorded this contract. It had accumulated through repeated local fixes rather than a decision, which is why the producer, the consumer, and the tool descriptions could each hold a different belief about the same field. The closest prior decision is [Tool execution context](2026-08-28-tool-execution-context.md), which owns how the resolver reaches MCP call timeouts and plugin gate data; this record covers what the resulting timeout observation means and where its shape lives.
 
 ## Decision
 

@@ -355,7 +355,7 @@ When using `bash`, adhere to these guidelines:
   - `log` — get full output (supports offset/limit for pagination)
   - `send-keys` — send key sequences (e.g., `["C-c"]` for Ctrl+C, `["Enter"]`)
   - `kill` — terminate the process
-- **Do NOT poll in a tight loop.** Use `process(action: "poll", block: true, timeoutSeconds: 60)` to wait for a process to finish. If it times out and you have other work, do that first and check back later.
+- **Do NOT poll in a tight loop.** Use `process` with `action: "poll"` and `block: true` to wait for a process to finish. If it times out and you have other work, do that first and check back later.
 
 ## Subagent Boundary
 
