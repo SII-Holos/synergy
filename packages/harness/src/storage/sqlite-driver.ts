@@ -8,6 +8,7 @@ import {
   StorageCommitUnknownError,
   StorageIntegrityError,
   StorageOwnershipError,
+  StorageUnavailableError,
 } from "./errors"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { StorageQueue } from "./queue"
@@ -22,24 +23,43 @@ import type {
   SqlValue,
 } from "./sql-contract"
 
+// A probe is answered from the worker's own event loop, so it only replies once
+// the ordinary statement occupying that loop returns; a healthy worker running a
+// long statement is therefore indistinguishable from a hung one until the
+// statement finishes. The probe budget mirrors the ordinary request deadline and
+// is retried a bounded number of times, because a false kill turns one overdue
+// request into a whole-process restart.
+const PROBE_TIMEOUT_MS = 30_000
+const PROBE_ATTEMPTS = 3
+
+type PendingRequest = {
+  resolve(rows: SqlRow[]): void
+  reject(error: unknown): void
+  bytes: number
+  probe: boolean
+  // Wall clock advances across a host suspend while this monotonic budget does
+  // not, so only the elapsed monotonic time may expire a request.
+  dispatchedAt: number
+  deadline: number
+  timeout?: ReturnType<typeof setTimeout>
+}
+
 export class SqliteDriver implements SqlDriver {
   readonly backend = "sqlite" as const
   private readonly worker: Bun.Subprocess
   private readonly writerQueue = new StorageQueue()
   private readonly readerQueue = new StorageQueue()
-  private readonly pending = new Map<
-    number,
-    {
-      resolve(rows: SqlRow[]): void
-      reject(error: unknown): void
-      bytes: number
-      timeout: ReturnType<typeof setTimeout>
-    }
-  >()
+  private readonly pending = new Map<number, PendingRequest>()
   private sequence = 0
   private queuedBytes = 0
   private closed = false
+  // Set when this driver tears the worker down itself, so an expected exit is
+  // not reported as a terminal storage failure.
+  private stopping = false
   private closing?: Promise<void>
+  private unavailableError?: Error
+  private readonly unavailableListeners = new Set<(error: Error) => void>()
+  private probing?: Promise<boolean>
 
   private constructor(private readonly ownership?: { release(): Promise<void> }) {
     const entry = fileURLToPath(new URL("./sqlite-worker.ts", import.meta.url))
@@ -52,18 +72,21 @@ export class SqliteDriver implements SqlDriver {
       stdout: "ignore",
       stderr: "inherit",
       ipc: (message: SqliteResponse) => {
-        const pending = this.pending.get(message.id)
-        if (!pending) return
-        clearTimeout(pending.timeout)
-        this.pending.delete(message.id)
-        this.queuedBytes -= pending.bytes
-        if (message.error) pending.reject(Object.assign(new Error(message.error.message), message.error))
-        else pending.resolve(message.rows ?? [])
+        if (!this.pending.has(message.id)) return
+        if (message.error)
+          this.settle(message.id, { error: Object.assign(new Error(message.error.message), message.error) })
+        else this.settle(message.id, { rows: message.rows ?? [] })
       },
       onExit: (_child, code) => {
+        // An exit this driver did not ask for is unrecoverable: the store cannot
+        // re-establish its worker, so the host must restart rather than serve.
+        if (!this.stopping) {
+          this.failTerminal(new StorageUnavailableError(`The SQLite worker exited with code ${code}`))
+          return
+        }
         this.closed = true
         for (const pending of this.pending.values()) {
-          clearTimeout(pending.timeout)
+          if (pending.timeout) clearTimeout(pending.timeout)
           pending.reject(new Error(`SQLite worker exited with code ${code}`))
         }
         this.pending.clear()
@@ -109,6 +132,7 @@ export class SqliteDriver implements SqlDriver {
       }
       return driver
     } catch (error) {
+      driver.stopping = true
       driver.worker.kill()
       await driver.worker.exited
       await ownership?.release()
@@ -116,10 +140,47 @@ export class SqliteDriver implements SqlDriver {
     }
   }
 
+  private settle(id: number, result: { rows: SqlRow[] } | { error: unknown }) {
+    const pending = this.pending.get(id)
+    if (!pending) return
+    if (pending.timeout) clearTimeout(pending.timeout)
+    this.pending.delete(id)
+    this.queuedBytes -= pending.bytes
+    if ("error" in result) pending.reject(result.error)
+    else pending.resolve(result.rows)
+  }
+
+  private failTerminal(error: Error) {
+    if (this.unavailableError) return
+    this.unavailableError = error
+    this.closed = true
+    this.stopping = true
+    this.worker.kill()
+    for (const pending of [...this.pending.values()]) {
+      if (pending.timeout) clearTimeout(pending.timeout)
+      pending.reject(error)
+    }
+    this.pending.clear()
+    this.queuedBytes = 0
+    for (const listener of [...this.unavailableListeners]) listener(error)
+  }
+
+  onUnavailable(listener: (error: Error) => void): () => void {
+    if (this.unavailableError) {
+      listener(this.unavailableError)
+      return () => {}
+    }
+    this.unavailableListeners.add(listener)
+    return () => {
+      this.unavailableListeners.delete(listener)
+    }
+  }
+
   private async request(
     request: Omit<SqliteRequest, "id">,
     onMaintenanceBudget?: (timeoutMs: number) => void,
   ): Promise<SqlRow[]> {
+    if (this.unavailableError) return Promise.reject(this.unavailableError)
     if (this.closed) return Promise.reject(new StorageClosedError())
     let deadline = 30_000
     if (request.maintenance) {
@@ -138,24 +199,90 @@ export class SqliteDriver implements SqlDriver {
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
     const promise = new Promise<SqlRow[]>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.closed = true
-        this.worker.kill()
-        reject(new StorageBusyError("SQLite worker exceeded its request deadline"))
-      }, deadline)
-      this.pending.set(id, { resolve, reject, bytes, timeout })
+      this.pending.set(id, { resolve, reject, bytes, probe: false, dispatchedAt: performance.now(), deadline })
     })
     this.queuedBytes += bytes
+    this.arm(id, this.pending.get(id)!, deadline)
     try {
       this.worker.send({ ...request, id })
     } catch (error) {
-      const pending = this.pending.get(id)!
-      clearTimeout(pending.timeout)
-      this.pending.delete(id)
-      this.queuedBytes -= bytes
-      pending.reject(error)
+      this.settle(id, { error })
     }
     return promise
+  }
+
+  private arm(id: number, pending: PendingRequest, delay: number) {
+    if (this.pending.get(id) !== pending) return
+    pending.timeout = setTimeout(() => this.review(id), delay)
+  }
+
+  // `setTimeout` fires on wall clock, which a host suspend consumes; the monotonic
+  // budget is what decides whether the worker actually expired. A fire that
+  // outran the budget was a suspend, so the request is re-armed and keeps waiting
+  // instead of killing a worker that never saw the deadline pass.
+  private review(id: number) {
+    const pending = this.pending.get(id)
+    if (!pending) return
+    const elapsed = performance.now() - pending.dispatchedAt
+    if (elapsed < pending.deadline) {
+      this.arm(id, pending, Math.max(1, pending.deadline - elapsed))
+      return
+    }
+    if (pending.probe) {
+      this.settle(id, { error: new StorageBusyError("SQLite worker did not answer a liveness probe") })
+      return
+    }
+    void this.evaluate(id)
+  }
+
+  private async evaluate(id: number) {
+    if (!this.pending.has(id)) return
+    if (!(await this.probeWorker())) {
+      this.failTerminal(
+        new StorageUnavailableError("The SQLite worker did not answer a liveness probe and cannot be recovered"),
+      )
+      return
+    }
+    // The worker answered, so only this request exceeded its budget.
+    this.settle(id, { error: new StorageBusyError("SQLite worker exceeded its request deadline") })
+  }
+
+  private probeWorker(): Promise<boolean> {
+    this.probing ??= (async () => {
+      try {
+        for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt++) {
+          if (await this.ping()) return true
+        }
+        return false
+      } finally {
+        this.probing = undefined
+      }
+    })()
+    return this.probing
+  }
+
+  private ping(): Promise<boolean> {
+    // A probe is pointless once this driver already gave up on the worker; the
+    // terminal failure was reported when it happened.
+    if (this.unavailableError || this.closed) return Promise.resolve(false)
+    const id = ++this.sequence
+    return new Promise<boolean>((resolve) => {
+      const pending: PendingRequest = {
+        resolve: () => resolve(true),
+        reject: () => resolve(false),
+        bytes: 0,
+        probe: true,
+        dispatchedAt: performance.now(),
+        deadline: PROBE_TIMEOUT_MS,
+      }
+      this.pending.set(id, pending)
+      this.arm(id, pending, PROBE_TIMEOUT_MS)
+      try {
+        this.worker.send({ action: "ping", id })
+      } catch (error) {
+        this.settle(id, { error })
+      }
+    })
   }
 
   query<Row extends SqlRow = SqlRow>(
@@ -216,6 +343,7 @@ export class SqliteDriver implements SqlDriver {
         await Promise.all([this.writerQueue.close(), this.readerQueue.close()])
         if (!this.closed) await this.request({ action: "close" })
       } finally {
+        this.stopping = true
         this.closed = true
         this.worker.kill()
         await this.worker.exited

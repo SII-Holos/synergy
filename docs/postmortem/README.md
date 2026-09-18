@@ -56,6 +56,8 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0016 | Interactive reads scanned historical state | implemented | 2026-09-18 |
 
+| 0017 | Host suspend pinned a session in recovering | implemented | 2026-09-19 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

@@ -28,6 +28,9 @@ export interface SqlDriver extends SqlConnection {
     options?: { readOnly?: boolean; operationID?: string },
   ): Promise<T>
   close(): Promise<void>
+  // Reports a store that failed terminally and cannot serve further work, so the
+  // host can escalate to its managed restart instead of serving a dead store.
+  onUnavailable?(listener: (error: Error) => void): () => void
 }
 
 export type StoreOptions = {
@@ -39,7 +42,7 @@ export type StoreOptions = {
 
 export type SqliteRequest = {
   id: number
-  action: "open" | "query" | "close"
+  action: "open" | "query" | "close" | "ping"
   filename?: string
   readonly?: boolean
   reader?: boolean

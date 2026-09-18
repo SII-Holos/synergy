@@ -7934,11 +7934,11 @@
         "description": "Abort an active session and stop any ongoing AI processing or command execution.",
         "responses": {
           "200": {
-            "description": "Aborted session",
+            "description": "Abort result",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean"
+                  "$ref": "#/components/schemas/SessionAbortResult"
                 }
               }
             }
@@ -38115,6 +38115,10 @@
         },
         "required": ["name", "hints"]
       },
+      "SessionRecoveringReason": {
+        "type": "string",
+        "enum": ["workflow", "incomplete-turn", "pending-reply"]
+      },
       "SessionStatus": {
         "anyOf": [
           {
@@ -38165,6 +38169,9 @@
               "type": {
                 "type": "string",
                 "const": "recovering"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/SessionRecoveringReason"
               },
               "description": {
                 "type": "string"
@@ -38662,6 +38669,12 @@
               "status": {
                 "type": "string",
                 "const": "recovering"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/SessionRecoveringReason"
+              },
+              "description": {
+                "type": "string"
               }
             },
             "required": ["status"]
@@ -43479,6 +43492,29 @@
           }
         },
         "required": ["name", "data"]
+      },
+      "SessionAbortResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "description": "Runtime signal result; not_found/idle mean no running turn was stopped",
+            "type": "string",
+            "enum": ["not_found", "idle", "signaled", "already_stopping", "not_owner"]
+          },
+          "repaired": {
+            "description": "An interrupted turn was terminalized",
+            "type": "boolean"
+          },
+          "abandoned": {
+            "description": "A driverless workflow was terminalized",
+            "type": "boolean"
+          },
+          "settled": {
+            "description": "The session settled to idle",
+            "type": "boolean"
+          }
+        },
+        "required": ["outcome", "repaired", "abandoned", "settled"]
       },
       "AttachmentSourceText": {
         "type": "object",

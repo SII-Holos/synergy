@@ -61,6 +61,28 @@ export function registerWorkflowSessions() {
         : undefined
       return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
     },
+    async recoveringDescription(session) {
+      if (session.blueprint?.loopID) {
+        const loop = await SessionBlueprintState.getLoop(session.scope.id, session.blueprint.loopID)
+        if (loop && SessionBlueprintState.isActiveStatus(loop.status))
+          return loop.status === "waiting" ? "BlueprintLoop paused — resume it to continue" : "BlueprintLoop active"
+      }
+      if (isActiveLightLoopWorkflow(session.workflow)) return "Light Loop active"
+      if (session.workflow?.kind === "lattice") return "Lattice run active"
+      return undefined
+    },
+    async abandonPhantom(session) {
+      // Scope: only BlueprintLoops. Light Loop and Lattice own their own
+      // restart reconciliation, and an active Light Loop is legitimately
+      // re-driven by the continuation kernel between turns.
+      const loopID = session.blueprint?.loopID
+      if (!loopID) return false
+      const loop = await SessionBlueprintState.getLoop(session.scope.id, loopID)
+      if (!loop || !SessionBlueprintState.isActiveStatus(loop.status)) return false
+      if (await WorkflowRecovery.hasResumableEvidence(loop)) return false
+      await WorkflowRecovery.abandonLoop(session.scope.id, loopID)
+      return true
+    },
     hasContinuation(session) {
       return (
         !!session.blueprint?.loopID ||

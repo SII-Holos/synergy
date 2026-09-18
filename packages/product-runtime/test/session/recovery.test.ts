@@ -113,7 +113,7 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
         expect((assistantMessage.info as MessageV2.Assistant).time.completed).toBeUndefined()
 
         const statuses = await SessionManager.listStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toEqual({ type: "recovering" })
+        expect(statuses[session.id]).toEqual({ type: "recovering", reason: "incomplete-turn" })
       },
     })
   })
@@ -132,7 +132,17 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
           sessionID: session.id,
           runMode: "current",
         })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        // A pending stop request is durable evidence that recovery will re-drive
+        // this loop, so it is preserved rather than adjudicated as orphaned.
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "running",
+          stopRequest: {
+            summary: "Resume this loop after restart",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID: "msg_restart_evidence",
+          },
+        })
         await NoteStore.update(ScopeContext.current.scope.id, note.id, {
           blueprint: { activeLoopID: null },
         })
@@ -148,7 +158,11 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
         expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
 
         const statuses = await SessionManager.listStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toEqual({ type: "recovering" })
+        expect(statuses[session.id]).toEqual({
+          type: "recovering",
+          reason: "workflow",
+          description: "BlueprintLoop active",
+        })
       },
     })
   })
@@ -206,7 +220,11 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
         })
 
         const status = await SessionWorking.resolve(session.id)
-        expect(status).toEqual({ status: "recovering" })
+        expect(status).toEqual({
+          status: "recovering",
+          reason: "workflow",
+          description: "Lattice run active",
+        })
         const runtime = SessionManager.getRuntime(session.id)
         expect(runtime?.owner).toBeUndefined()
         expect(runtime?.status).toEqual({ type: "idle" })
@@ -401,7 +419,11 @@ describe("SessionRecovery.recoverableStatuses", () => {
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
 
         const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toEqual({ type: "recovering", description: "BlueprintLoop interrupted" })
+        expect(statuses[session.id]).toEqual({
+          type: "recovering",
+          reason: "workflow",
+          description: "BlueprintLoop active",
+        })
       },
     })
   })
@@ -432,15 +454,31 @@ describe("SessionRecovery.recoverableStatuses", () => {
           sessionID: execSession.id,
           runMode: "current",
         })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "running",
+          stopRequest: {
+            summary: "Audit this loop after restart",
+            requestedAt: Date.now(),
+            requesterSessionID: execSession.id,
+            requesterMessageID: "msg_audit_evidence",
+          },
+        })
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "auditing",
           auditSessionID: auditSession.id,
         })
 
         const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
-        expect(statuses[execSession.id]).toEqual({ type: "recovering", description: "BlueprintLoop interrupted" })
-        expect(statuses[auditSession.id]).toEqual({ type: "recovering", description: "BlueprintLoop interrupted" })
+        expect(statuses[execSession.id]).toEqual({
+          type: "recovering",
+          reason: "workflow",
+          description: "BlueprintLoop active",
+        })
+        expect(statuses[auditSession.id]).toEqual({
+          type: "recovering",
+          reason: "workflow",
+          description: "BlueprintLoop active",
+        })
       },
     })
   })
@@ -462,7 +500,15 @@ describe("SessionRecovery BlueprintLoop audit binding", () => {
           sessionID: execSession.id,
           runMode: "current",
         })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "running",
+          stopRequest: {
+            summary: "Audit this loop after restart",
+            requestedAt: Date.now(),
+            requesterSessionID: execSession.id,
+            requesterMessageID: "msg_audit_evidence",
+          },
+        })
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "auditing",
           auditSessionID: auditSession.id,

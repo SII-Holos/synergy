@@ -8,6 +8,7 @@ import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import * as ChannelTypes from "@ericsanchezok/synergy-connections/channel/types"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { DaemonLogRotate } from "@ericsanchezok/synergy-cli/daemon/log-rotate"
@@ -330,7 +331,13 @@ function displayUrl(hostname: string, port: number) {
 function registerShutdown(handle: ProductRuntimeHandle.Handle) {
   let shuttingDown = false
   let stopWatchingParent = () => {}
-  const gracefulShutdown = async (signal: string) => {
+  // A store that failed terminally cannot be repaired in place, so the process
+  // must not keep serving HTTP over it. Escalate through the same graceful
+  // shutdown used for signals, exactly once, and exit non-zero so a supervisor
+  // (systemd Restart=on-failure, launchd KeepAlive, the Desktop manager) restarts.
+  let stopWatchingStorage = () => {}
+  let escalated = false
+  const gracefulShutdown = async (signal: string, exitCode = 0) => {
     if (shuttingDown) {
       Log.flush()
       process.exit(1)
@@ -338,6 +345,7 @@ function registerShutdown(handle: ProductRuntimeHandle.Handle) {
     shuttingDown = true
     handle.closeAdmission()
     stopWatchingParent()
+    stopWatchingStorage()
     DaemonLogRotate.stop()
     log.info("shutting down", { signal })
     const deadline = setTimeout(() => {
@@ -346,20 +354,26 @@ function registerShutdown(handle: ProductRuntimeHandle.Handle) {
       process.exit(1)
     }, handle.shutdownTimeoutMs)
     deadline.unref()
-    let exitCode = 0
+    let code = exitCode
     try {
       await handle.close()
     } catch (error) {
-      exitCode = 1
+      code = 1
       log.error("runtime cleanup failed", { error })
     } finally {
       clearTimeout(deadline)
       Log.flush()
     }
-    process.exit(exitCode)
+    process.exit(code)
   }
   process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"))
   process.on("SIGINT", () => void gracefulShutdown("SIGINT"))
+  stopWatchingStorage = Storage.onUnavailable((error) => {
+    if (escalated) return
+    escalated = true
+    log.error("authoritative storage is unavailable", { error })
+    void gracefulShutdown("storage-unavailable", 1)
+  })
   stopWatchingParent = watchManagedParent({
     expectedParentPid: process.env.SYNERGY_DESKTOP_PARENT_PID,
     onParentExit: () => void gracefulShutdown("desktop-parent-exit"),

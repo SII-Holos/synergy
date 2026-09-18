@@ -4765,6 +4765,8 @@ export type Command = {
   hints: Array<string>
 }
 
+export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -4781,6 +4783,7 @@ export type SessionStatus =
     }
   | {
       type: "recovering"
+      reason?: SessionRecoveringReason
       description?: string
     }
 
@@ -4932,6 +4935,8 @@ export type SessionWorkingInfo =
     }
   | {
       status: "recovering"
+      reason?: SessionRecoveringReason
+      description?: string
     }
 
 export type SessionWorkspace = {
@@ -6582,6 +6587,25 @@ export type SessionForkPointMissingError = {
     messageID: string
     message: string
   }
+}
+
+export type SessionAbortResult = {
+  /**
+   * Runtime signal result; not_found/idle mean no running turn was stopped
+   */
+  outcome: "not_found" | "idle" | "signaled" | "already_stopping" | "not_owner"
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * A driverless workflow was terminalized
+   */
+  abandoned: boolean
+  /**
+   * The session settled to idle
+   */
+  settled: boolean
 }
 
 export type AttachmentSourceText = {
@@ -14464,9 +14488,9 @@ export type SessionAbortError = SessionAbortErrors[keyof SessionAbortErrors]
 
 export type SessionAbortResponses = {
   /**
-   * Aborted session
+   * Abort result
    */
-  200: boolean
+  200: SessionAbortResult
 }
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]

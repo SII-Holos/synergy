@@ -836,6 +836,18 @@ export const statusBar = {
     id: "app.statusBar.runtime.recovering",
     message: "Session is recovering from an incomplete turn",
   },
+  recoveringWorkflow: {
+    id: "app.statusBar.runtime.recovering.workflow",
+    message: "A BlueprintLoop workflow is still holding this session",
+  },
+  recoveringIncompleteTurn: {
+    id: "app.statusBar.runtime.recovering.incompleteTurn",
+    message: "Session is recovering from an incomplete turn",
+  },
+  recoveringPendingReply: {
+    id: "app.statusBar.runtime.recovering.pendingReply",
+    message: "Session is waiting for an unanswered reply",
+  },
   contextOpenAria: {
     id: "app.statusBar.context.openAria",
     message: "Open Context, {tokens} input tokens, {usage}",

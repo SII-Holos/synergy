@@ -8549,6 +8549,18 @@ msgid "app.statusBar.runtime.recovering"
 msgstr "Session is recovering from an incomplete turn"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.incompleteTurn"
+msgstr "Session is recovering from an incomplete turn"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.pendingReply"
+msgstr "Session is waiting for an unanswered reply"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.workflow"
+msgstr "A BlueprintLoop workflow is still holding this session"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.runtime.recoveringState"
 msgstr "recovering"
 
@@ -11087,6 +11099,20 @@ msgstr "Stop the session before changing workflow modes."
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.stopping"
 msgstr "Stopping..."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.stopRun.control"
+msgstr "Stop the run and cancel its workflow"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.stopRun.failed"
+msgstr "Failed to stop the run"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.

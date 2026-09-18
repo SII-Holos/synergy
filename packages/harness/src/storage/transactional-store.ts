@@ -6,6 +6,7 @@ import {
   StorageConflictError,
   StorageIntegrityError,
   StorageOwnershipError,
+  StorageUnavailableError,
 } from "./errors"
 import { ArtifactLocation } from "./artifact-location"
 import { RecordCodec } from "./record-codec"
@@ -652,6 +653,7 @@ export class TransactionalStore {
   private readonly writes = new StorageQueue()
   private readonly owner = randomUUID()
   private closing?: Promise<void>
+  private unavailable?: Error
   private constructor(
     private readonly driver: SqlDriver,
     readonly options: StoreOptions,
@@ -659,11 +661,14 @@ export class TransactionalStore {
 
   static async open(options: StoreOptions) {
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(options.namespace)) throw new StorageIntegrityError("Invalid storage namespace")
-    const driver =
+    const driver: SqlDriver =
       options.backend === "sqlite"
         ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist)
         : await PostgresDriver.open(options.url, options.namespace, options.maxConnections, options.readonly)
     const store = new TransactionalStore(driver, options)
+    driver.onUnavailable?.((error) => {
+      store.unavailable = error
+    })
     try {
       await driver.transaction(
         async (connection) => {
@@ -702,7 +707,14 @@ export class TransactionalStore {
   }
 
   private check() {
+    if (this.unavailable) throw this.unavailable
     if (this.closing) throw new StorageClosedError()
+  }
+
+  /** Reports a store that failed terminally; the host must restart the Runtime
+   *  because this instance cannot serve further work. */
+  onUnavailable(listener: (error: Error) => void): () => void {
+    return this.driver.onUnavailable?.(listener) ?? (() => {})
   }
 
   async snapshot<T>(body: (snapshot: StoreTransaction) => Promise<T>): Promise<T> {
@@ -956,7 +968,15 @@ export class TransactionalStore {
           else await this.driver.transaction(release)
         }
       } catch (error) {
-        if (!(error instanceof StorageOwnershipError) && !(error instanceof StorageClosedError)) throw error
+        // A store that already failed terminally cannot write its idle row; the
+        // primary failure was reported when it happened, so closing must release
+        // the driver without replacing it with a secondary error.
+        if (
+          !(error instanceof StorageOwnershipError) &&
+          !(error instanceof StorageClosedError) &&
+          !(error instanceof StorageUnavailableError)
+        )
+          throw error
       } finally {
         await this.driver.close()
       }

@@ -975,7 +975,8 @@ function SessionPageContent() {
         next: working.next,
       }
     }
-    if (working?.status === "recovering") return { type: "recovering" }
+    if (working?.status === "recovering")
+      return { type: "recovering", reason: working.reason, description: working.description }
     return runtimeStatus ?? idle
   })
 

@@ -177,6 +177,8 @@ export const PI = {
   startingSession: { id: "prompt.startingSession", message: "Starting session" },
   stopping: { id: "prompt.stopping", message: "Stopping..." },
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
+  stopRunControl: { id: "prompt.stopRun.control", message: "Stop the run and cancel its workflow" },
+  stopRunFailed: { id: "prompt.stopRun.failed", message: "Failed to stop the run" },
   sendMessage: { id: "prompt.sendMessage", message: "Send message" },
   selectAgent: { id: "prompt.selectAgent", message: "Select agent" },
   externalAgentBlocked: {

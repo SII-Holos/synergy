@@ -17,9 +17,18 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { RolloutContinuationRecovery } from "@ericsanchezok/synergy-harness/session/rollout/continuation-recovery"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 export namespace WorkflowRecovery {
+  const log = Log.create({ service: "workflow.recovery" })
   const TERMINAL_LOOP_STATUSES = new Set<SessionBlueprintState.LoopStatus>(["completed", "failed", "cancelled"])
+
+  /** Stable prefix marking a loop terminalized by restart adjudication rather
+   * than by its own lifecycle, so operators can distinguish the two. */
+  const INTERRUPTED_PREFIX = "interrupted:"
 
   function isActiveLoop(loop: SessionBlueprintState.LoopInfo | undefined) {
     return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
@@ -27,6 +36,101 @@ export namespace WorkflowRecovery {
 
   function isTerminalLoop(loop: SessionBlueprintState.LoopInfo | undefined) {
     return !!loop && TERMINAL_LOOP_STATUSES.has(loop.status)
+  }
+
+  /**
+   * Whether an active loop has durable evidence that something will resume it.
+   * Exported so an explicit user stop can reuse the identical test: a loop kept
+   * alive by real evidence must never be abandoned by an abort.
+   */
+  export async function hasResumableEvidence(loop: SessionBlueprintState.LoopInfo): Promise<boolean> {
+    return hasDurableDriver({ loop, sessionID: loop.sessionID })
+  }
+
+  /** Whether the session itself carries queued work that will be driven. */
+  export async function sessionHasDurableDriver(sessionID: string): Promise<boolean> {
+    if (await SessionInbox.hasRunnableItem(sessionID).catch(() => false)) return true
+    return RolloutContinuationRecovery.pending(sessionID).catch(() => false)
+  }
+
+  /**
+   * A persisted active loop is only a real driver when something durable will
+   * resume it after a restart. A loop without such evidence is a phantom: it
+   * keeps the session pinned in `recovering` while nothing drives it, and no
+   * user-facing control can clear it because the derived status is recomputed
+   * from this very record.
+   */
+  async function hasDurableDriver(input: {
+    loop: SessionBlueprintState.LoopInfo
+    sessionID: string | undefined
+  }): Promise<boolean> {
+    const { loop } = input
+    // A user-paused loop waits for an explicit resume, not for a driver.
+    if (loop.status === "waiting") return true
+    // Stop-intent recovery re-drives the execution session before this loop
+    // would need a fresh driver (see resumePendingStopRequests).
+    if (loop.stopRequest) return true
+    // Lattice creates, starts, and reconciles its own loops through its own
+    // startup controller, which runs after session recovery.
+    if (loop.source === "lattice") return true
+    if (!input.sessionID) return false
+    if (await SessionInbox.hasRunnableItem(input.sessionID).catch(() => false)) return true
+    return RolloutContinuationRecovery.pending(input.sessionID).catch(() => false)
+  }
+
+  /** Stable prefix for a loop an operator or recovery ended before its own
+   * lifecycle finished, so the two are distinguishable in stored history. */
+  export const INTERRUPTED_LOOP_ERROR = `${INTERRUPTED_PREFIX} runtime restarted before this loop resumed`
+
+  /**
+   * End a loop on explicit user request. Cancellation is the honest terminal
+   * status here — unlike restart adjudication, nothing was interrupted in
+   * flight; the user asked for it to stop.
+   */
+  export async function abandonLoop(scopeID: string, loopID: string): Promise<void> {
+    await SessionBlueprintState.updateLoopStatus(scopeID, loopID, {
+      status: "cancelled",
+      error: "Stopped by user request",
+    })
+  }
+
+  /**
+   * Terminalize a loop that has no resumable evidence. Returns the terminal
+   * status applied, or undefined when the loop is preserved. `armed` has no
+   * in-flight work to fail and its only legal terminal transition is
+   * `cancelled`; a started loop is honestly `failed`.
+   */
+  async function adjudicateOrphanedLoop(input: {
+    scopeID: string
+    loop: SessionBlueprintState.LoopInfo
+    apply: boolean
+    report: SessionRecovery.RuntimeReconcileReport
+  }): Promise<SessionBlueprintState.LoopStatus | undefined> {
+    const { loop } = input
+    if (await hasResumableEvidence(loop)) return undefined
+
+    const status: SessionBlueprintState.LoopStatus = loop.status === "armed" ? "cancelled" : "failed"
+    if (!input.apply) {
+      reportChange(input.report, { scopeID: input.scopeID, loopID: loop.id, action: `orphaned_loop_would_${status}` })
+      return status
+    }
+    try {
+      await SessionBlueprintState.updateLoopStatus(input.scopeID, loop.id, {
+        status,
+        error: `${INTERRUPTED_PREFIX} runtime restarted before this loop resumed`,
+      })
+    } catch (error) {
+      // A concurrent writer already moved the loop (or removed it); that actor
+      // owns the outcome, and the next reconcile pass re-adjudicates the rest.
+      log.warn("orphaned BlueprintLoop adjudication lost the record", {
+        scopeID: input.scopeID,
+        loopID: loop.id,
+        error: String(error),
+      })
+      return undefined
+    }
+    reportChange(input.report, { scopeID: input.scopeID, loopID: loop.id, action: `orphaned_loop_${status}` })
+    return status
   }
 
   function isWorkflowRecoveryCandidate(session: Info) {
@@ -210,11 +314,24 @@ export namespace WorkflowRecovery {
     apply: boolean
     report: SessionRecovery.RuntimeReconcileReport
   }) {
-    const [sessions, loops] = await Promise.all([
+    const [sessions, listedLoops] = await Promise.all([
       sessionInfos(input.scopeID),
       SessionBlueprintState.listLoops(input.scopeID),
     ])
-    input.report.loopsScanned += loops.length
+    input.report.loopsScanned += listedLoops.length
+
+    // Adjudicate before restoring bindings: a loop with no resumable evidence
+    // must become terminal here, so that the binding and note-reference logic
+    // below sees its terminal state and clears the references pinning the
+    // session. Restoring first, then adjudicating, would rebuild exactly the
+    // references that must go away.
+    const loops = [...listedLoops]
+    for (let index = 0; index < loops.length; index++) {
+      const loop = loops[index]!
+      if (!isActiveLoop(loop)) continue
+      const terminal = await adjudicateOrphanedLoop({ ...input, loop })
+      if (terminal) loops[index] = { ...loop, status: terminal }
+    }
 
     const loopsByID = new Map(loops.map((loop) => [loop.id, loop]))
     const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
@@ -353,7 +470,7 @@ export namespace WorkflowRecovery {
       if (working) {
         result[session.id] = toStatus(working)
       } else if (activeLoopSessionIDs.has(session.id)) {
-        result[session.id] = { type: "recovering", description: "BlueprintLoop interrupted" }
+        result[session.id] = { type: "recovering", reason: "workflow", description: "BlueprintLoop active" }
       }
     }
     return result

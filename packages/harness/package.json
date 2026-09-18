@@ -199,6 +199,7 @@
     "./provider/connection": "./src/provider/connection.ts",
     "./provider/usage": "./src/provider/usage.ts",
     "./session/rollout/recovery": "./src/session/rollout/recovery.ts",
+    "./session/rollout/continuation-recovery": "./src/session/rollout/continuation-recovery.ts",
     "./execution/execution-config": "./src/execution/execution-config.ts",
     "./util/managed-parent": "./src/util/managed-parent.ts",
     "./util/lazy": "./src/util/lazy.ts",
