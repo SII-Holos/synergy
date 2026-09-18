@@ -159,7 +159,9 @@ describe("dev orchestrator planner", () => {
 })
 
 describe("dev orchestrator serial preflight", () => {
-  test("rejects a serial plan whose required port is already in use", async () => {
+  test("rejects a serial plan whose required port is already in use without running its commands", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-preflight-"))
+    const markerPath = path.join(directory, "ran.txt")
     const occupant = createServer()
     await new Promise<void>((resolve) => occupant.listen(0, "127.0.0.1", () => resolve()))
     const port = (occupant.address() as AddressInfo).port
@@ -176,14 +178,21 @@ describe("dev orchestrator serial preflight", () => {
           processes: [
             {
               label: "build",
-              command: [process.execPath, "-e", "process.exit(0)"],
-              cwd: process.cwd(),
+              command: [
+                process.execPath,
+                "-e",
+                `await Bun.write(${JSON.stringify(markerPath)}, "ran"); process.exit(0)`,
+              ],
+              cwd: directory,
             },
           ],
         }),
       ).rejects.toThrow(`server port ${port} is already in use`)
+
+      expect(await Bun.file(markerPath).exists()).toBe(false)
     } finally {
       await new Promise<void>((resolve) => occupant.close(() => resolve()))
+      await rm(directory, { recursive: true, force: true })
     }
   })
 })

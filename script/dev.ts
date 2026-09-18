@@ -403,9 +403,11 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   if (command === "desktop") {
     const managed = boolFlag(parsed.flags, "managed")
     if (managed) {
-      const rawServerPort = parsed.flags["server-port"]
+      const requestedServerPort = parsed.flags["server-port"]
       const managedServerPort =
-        typeof rawServerPort === "string" ? numberFlag(parsed.flags, "server-port", DEFAULT_SERVER_PORT) : undefined
+        typeof requestedServerPort === "string"
+          ? numberFlag(parsed.flags, "server-port", DEFAULT_SERVER_PORT)
+          : undefined
       const dependenciesInstalled = fs.existsSync(path.join(repoRoot, "node_modules"))
       const processes: DevProcessSpec[] = [
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),

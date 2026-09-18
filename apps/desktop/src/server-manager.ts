@@ -37,11 +37,9 @@ export interface DesktopServerManagerOptions {
   onStartupStatus?: (status: DesktopStartupStatus) => void
 }
 
-type ManagedServerLaunch =
-  | { ok: true; url: string }
-  | { ok: false; portConflict: boolean; detail: string; error: unknown }
+type ManagedServerLaunch = { ok: true } | { ok: false; portConflict: boolean; detail: string; error: unknown }
 
-export type ManagedServerLaunchFailure = Extract<ManagedServerLaunch, { ok: false }>
+type ManagedServerLaunchFailure = Extract<ManagedServerLaunch, { ok: false }>
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
@@ -158,7 +156,7 @@ export class DesktopServerManager {
     for (const port of candidates) {
       if (!(await isPortAvailable(port))) continue
       const launch = await this.launchManagedServer(port, logFile, shellEnvironment)
-      if (launch.ok) return await this.acceptManagedServer(port, launch.url, true)
+      if (launch.ok) return await this.acceptManagedServer(port, true)
       if (!launch.portConflict) this.rejectManagedServer(launch)
     }
 
@@ -166,18 +164,19 @@ export class DesktopServerManager {
     // never persisted so the next launch retries the stable chain first.
     const fallbackPort = await findAvailablePort()
     const fallback = await this.launchManagedServer(fallbackPort, logFile, shellEnvironment)
-    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, fallback.url, false)
+    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, false)
     this.rejectManagedServer(fallback)
   }
 
-  private async acceptManagedServer(port: number, url: string, persist: boolean): Promise<string> {
+  private async acceptManagedServer(port: number, persist: boolean): Promise<string> {
     if (persist) {
       await saveServerPort(this.options.userDataPath, this.options.channel, port).catch(() => undefined)
     }
     this.state = "running"
+    this.lastError = null
     this.port = port
-    this.url = url
-    return url
+    this.url = `http://127.0.0.1:${port}`
+    return this.url
   }
 
   private rejectManagedServer(launch: ManagedServerLaunchFailure): never {
@@ -214,9 +213,6 @@ export class DesktopServerManager {
       if (stderr.length >= MANAGED_SERVER_STDERR_LIMIT) return
       stderr += chunk.toString("utf8").slice(0, MANAGED_SERVER_STDERR_LIMIT - stderr.length)
     }
-    // `waitForHealth` rejects on the child's exit event, which can fire before piped stderr is
-    // delivered. Drain it before classifying the failure so the reason is not missed.
-    const stderrDrained = waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS)
     child.stdout?.on("data", onOutput)
     child.stderr?.on("data", onStderr)
     child.stdout?.pipe(logStream, { end: false })
@@ -231,12 +227,15 @@ export class DesktopServerManager {
 
     try {
       await waitForHealth(`${url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS, HEALTH_POLL_INTERVAL_MS, startup)
-      return { ok: true, url }
+      return { ok: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const logTail = await readLogTail(logFile)
       const detail = logTail ? `${message}\n\nServer log tail:\n${logTail}` : message
-      if (child.exitCode !== null || child.signalCode !== null) await stderrDrained
+      // `waitForHealth` can reject on the child's exit event before piped stderr is delivered.
+      if (child.exitCode !== null || child.signalCode !== null) {
+        await waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS)
+      }
       const portConflict = isPortBindFailure(stderr)
       await this.stop()
       return { ok: false, portConflict, detail, error }
@@ -397,7 +396,7 @@ function isAssignablePort(port: number | undefined): port is number {
 }
 
 function isPortBindFailure(stderr: string): boolean {
-  return stderr.includes("Failed to start server on port") || stderr.includes("EADDRINUSE")
+  return stderr.includes("Failed to start server on port")
 }
 
 function waitForStreamEnd(stream: NodeJS.ReadableStream | null, timeoutMs: number): Promise<void> {

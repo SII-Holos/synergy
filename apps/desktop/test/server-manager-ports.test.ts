@@ -36,6 +36,7 @@ interface FakeRuntime {
   start: () => Promise<string>
   attempts: () => Promise<number[]>
   stopAll: () => Promise<void>
+  lastError: () => string | null
   cleanup: () => Promise<void>
 }
 
@@ -88,6 +89,7 @@ async function createFakeRuntime(options: {
       const content = await fsp.readFile(attemptsFile, "utf8").catch(() => "")
       return content.split("\n").filter(Boolean).map(Number)
     },
+    lastError: () => managers.at(-1)?.status().lastError ?? null,
     stopAll: async () => {
       for (const manager of managers) await manager.stop()
     },
@@ -186,6 +188,21 @@ describe("desktop managed server sticky port", () => {
         expect(await runtime.start()).toBe("http://127.0.0.1:4097")
         expect(await runtime.attempts()).toEqual([4096, 4097])
         expect((await readState(runtime.userDataPath)) as object).toMatchObject({ port: 4097 })
+      } finally {
+        await runtime.stopAll()
+        await runtime.cleanup()
+      }
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  test.skipIf(!scanRangeFree)(
+    "clears the failed candidate's error once a later candidate serves",
+    async () => {
+      const runtime = await createFakeRuntime({ modes: { 4096: "conflict" } })
+      try {
+        expect(await runtime.start()).toBe("http://127.0.0.1:4097")
+        expect(runtime.lastError()).toBeNull()
       } finally {
         await runtime.stopAll()
         await runtime.cleanup()
