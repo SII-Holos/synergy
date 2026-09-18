@@ -185,6 +185,7 @@ export namespace Storage {
       const page = await query<T>({ ...input, after, limit: input.limit ?? 256 })
       if (!page.length) return
       yield* page
+      if (page.length < (input.limit ?? 256)) return
       after = page.at(-1)!.key
     }
   }

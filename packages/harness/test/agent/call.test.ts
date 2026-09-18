@@ -380,3 +380,34 @@ describe("AgentCall recovery budget", () => {
     expect(attempts).toBe(1)
   })
 })
+
+test("an independent derived call does not append to its terminal source rollout", async () => {
+  installAgent()
+  const { fixture } = await import("../support/rollout")
+  const { RolloutContext } = await import("../../src/session/rollout/context")
+  await fixture(async ({ rootID, call: source }) => {
+    await RolloutLedger.finishCall(source.owner, rootID, source.id, { status: "completed" })
+    const terminal = await RolloutLedger.finishRun(source.owner, rootID, "completed")
+    const stream = spyOn(LLM, "stream").mockImplementation(
+      async () =>
+        ({
+          textStream: (async function* () {
+            yield "derived"
+          })(),
+        }) as never,
+    )
+    try {
+      await expect(
+        RolloutContext.provide({ owner: source.owner, runID: rootID }, () =>
+          call({
+            ownership: "operation",
+            userMetadata: { sourceMessageID: rootID },
+          }),
+        ),
+      ).resolves.toMatchObject({ text: "derived" })
+      expect(await RolloutLedger.getRun(source.owner, rootID)).toEqual(terminal)
+    } finally {
+      stream.mockRestore()
+    }
+  })
+})

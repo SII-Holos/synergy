@@ -748,10 +748,11 @@ function SessionPageContent() {
   createEffect(() => {
     const sessionID = params.id
     const entry = visibleSessionTransitionEntry()
-    if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
+    if (!sessionID || !entry?.handoff) return
     const acceptedAt = entry.handoff.acceptedAt ?? Date.now()
     const decision = decideSessionTransitionHandoff({
       messageID: entry.handoff.messageID,
+      phase: entry.progress.phase,
       messages: messages(),
       // Explicit exemption: same undefined-loading semantics as above.
       inbox: sync.data.inbox[sessionID],

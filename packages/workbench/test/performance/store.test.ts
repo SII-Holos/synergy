@@ -472,3 +472,35 @@ process.on("exit", () => {
   ObservabilityStore.close()
   for (const home of homes) rmSync(home, { recursive: true, force: true })
 })
+
+test("large metric windows retain exact timeline buckets and dashboard request totals", async () => {
+  const now = Date.now()
+  const scopeID = "indexed-metric-window"
+  const db = ObservabilityStore.initializeForMigration()
+  db.query(
+    `WITH RECURSIVE samples(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM samples WHERE i < 50001)
+    INSERT INTO obs_metrics(metric_id,time,name,value,unit,source,module,scope_id)
+    SELECT 'large-'||i, ?, 'http.request.duration', 2, 'ms', 'backend', 'server', ? FROM samples`,
+  ).run(now - 1000, scopeID)
+  db.query(
+    `INSERT INTO obs_metrics(metric_id,time,name,value,unit,source,module,scope_id)
+    VALUES ('early', ?, 'http.request.duration', 100, 'ms', 'backend', 'server', ?)`,
+  ).run(now - 2000, scopeID)
+  const timeline = PerformanceTimeline.get({
+    from: new Date(now - 2500).toISOString(),
+    to: new Date(now).toISOString(),
+    bucketMs: 1000,
+    metric: "http.request.duration",
+    stat: "sum",
+    scopeID,
+  })
+  expect(timeline.quality?.partial).not.toBe(true)
+  expect(timeline.series[0].sampleCount).toBe(50002)
+  expect(timeline.series[0].points[0].value).toBe(100)
+  expect(timeline.series[0].points[1].value).toBe(100002)
+  const summary = await PerformanceDashboard.summary({ windowMs: 10000, scopeID })
+  expect(summary.quality?.partial).not.toBe(true)
+  expect(summary.backend.requestCount).toBe(50002)
+  expect(summary.backend.p95RequestMs).toBe(2)
+  expect(summary.top.slowRoutes[0].value).toBe(100)
+}, 30_000)

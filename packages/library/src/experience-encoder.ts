@@ -6,6 +6,7 @@ import { LibraryDB } from "./database"
 import { ExperienceRecall } from "./experience-recall"
 import { Intent } from "./intent"
 import { Script } from "./script"
+import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import { ENCODER_LLM_TIMEOUT_MS, ENCODER_MAX_OUTPUT_CHARS, INTENT_MAX_CHARS } from "./encoder-constants"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -629,15 +630,24 @@ export namespace ExperienceEncoder {
 
   async function runAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
     try {
+      const causal = RolloutContext.current()
+      const rootID = ctx.userMsg?.rootID ?? ctx.userMsg?.id
+      const ownsSource =
+        !!rootID &&
+        causal?.owner.kind === "session" &&
+        causal.owner.sessionID === ctx.sessionID &&
+        causal.runID === rootID
+      const sourceMessageID = ctx.sourceMessageID ?? ctx.userMsg?.id
       const result = await AgentCall.text({
         agent: agentName,
-        user: ctx.userMsg,
-        sessionId: ctx.userMsg ? ctx.sessionID : undefined,
-        userMetadata: ctx.userMsg
+        ownership: ownsSource ? undefined : "operation",
+        user: ownsSource ? { ...ctx.userMsg!, system: undefined, variant: undefined } : undefined,
+        sessionId: ownsSource ? ctx.sessionID : undefined,
+        userMetadata: ownsSource
           ? undefined
           : {
               sourceSessionID: ctx.sessionID,
-              ...(ctx.sourceMessageID ? { sourceMessageID: ctx.sourceMessageID } : {}),
+              ...(sourceMessageID ? { sourceMessageID } : {}),
             },
         fallbackModel: ctx.model,
         messages: [{ role: "user", content }],

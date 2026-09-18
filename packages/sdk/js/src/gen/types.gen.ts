@@ -10701,7 +10701,7 @@ export type GlobalStatsGetResponses = {
   /**
    * Stats snapshot
    */
-  200: StatsSnapshot
+  200: StatsSnapshot | null
 }
 
 export type GlobalStatsGetResponse = GlobalStatsGetResponses[keyof GlobalStatsGetResponses]

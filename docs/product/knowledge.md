@@ -167,3 +167,5 @@ For the full lifecycle, see [Workflows](workflows.md) and the [workflow runtime]
 - Notes are authored documents; they are not injected automatically merely because they exist.
 - Blueprints are executable Notes; BlueprintLoop is the runtime that executes and audits them.
 - Scope ownership is preserved even when global knowledge is visible from project contexts.
+
+Usage statistics show the last completed snapshot. Sync refreshes changed evidence with visible progress while Library navigation remains usable; the first visit without a snapshot starts that refresh automatically. Opening Library does not recompute all historical usage. The CLI stats command continues to request an incremental refresh, and explicit full recomputation remains available.

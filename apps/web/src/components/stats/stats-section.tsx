@@ -109,9 +109,9 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
           <div class="flex items-center justify-center py-12">
             <div class="flex max-w-sm flex-col items-center gap-2 text-center">
               <div class="text-12-medium text-text-base">
-                {loading ? i18n._(S.loadLoading.id) : i18n._(S.loadUnavailable.id)}
+                {loading() ? i18n._(S.loadLoading.id) : i18n._(S.loadUnavailable.id)}
               </div>
-              <Show when={error() && !loading}>
+              <Show when={error() && !loading()}>
                 <div class="text-11-regular text-text-weak">{error()}</div>
               </Show>
               <div class="flex items-center gap-2">
@@ -120,7 +120,7 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
                   class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-12-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-base"
                   onClick={refresh}
                 >
-                  {loading ? i18n._(S.loadButtonLoading.id) : i18n._(S.loadButtonRetry.id)}
+                  {loading() ? i18n._(S.loadButtonLoading.id) : i18n._(S.loadButtonRetry.id)}
                 </button>
               </div>
             </div>

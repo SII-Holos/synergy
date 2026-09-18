@@ -396,51 +396,28 @@ export namespace SessionInbox {
   }
 
   /**
-   * Startup discovery: enumerate existing sessions in a scope and return the
-   * ones that still hold at least one runnable (task-mode) inbox item.
-   * Malformed session or inbox reads are isolated and logged so one corrupt
-   * session never blocks recovery of the rest.
+   * Discover task-mode inbox records first, then exclude missing or archived
+   * owners without traversing empty historical inboxes.
    */
   export async function listRunnableSessions(scopeID?: string): Promise<string[]> {
-    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"]).catch(() => [])
-    const runnable = new Set<string>()
-    for (const scope of scopeRoots) {
-      const sid = Identifier.asScopeID(scope)
-      const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(sid)).catch(() => [])
-      for (const sessionID of sessionIDs) {
-        const key = Identifier.asSessionID(sessionID)
-        const itemIDs = await Storage.scan(StoragePath.sessionInboxRoot(sid, key)).catch((error) => {
-          log.warn("startup inbox discovery could not scan session inbox", { sessionID: key, scopeID: sid, error })
-          return []
-        })
-        if (itemIDs.length === 0) continue
-        const keys = itemIDs.map((itemID) => StoragePath.sessionInboxItem(sid, key, itemID))
-        const items = await Storage.readMany<StoredItem>(keys).catch((error) => {
-          log.warn("startup inbox discovery could not read session inbox items", {
-            sessionID: key,
-            scopeID: sid,
-            error,
-          })
-          return []
-        })
-        const info = await Storage.read<Info>(StoragePath.sessionInfo(sid, key)).catch((error) => {
-          log.warn("startup inbox discovery could not read session info", { sessionID: key, scopeID: sid, error })
-          return undefined
-        })
-        if (!info?.time || info.time.archived) continue
-
-        if (
-          items.some((item) => {
-            if (!item?.id) return false
-            const normalized = normalizeStored(item)
-            return normalized.mode === "task" && normalized.status !== "failed"
-          })
-        ) {
-          runnable.add(key)
-        }
-      }
+    const candidates = new Map<string, string>()
+    for await (const { key, value: item } of Storage.records<StoredItem>({ kind: "inbox", scopeID })) {
+      if (!item?.id) continue
+      const normalized = normalizeStored(item)
+      if (normalized.mode === "task" && normalized.status !== "failed") candidates.set(key[2], key[1])
     }
-    return [...runnable].sort()
+    const result: string[] = []
+    const entries = [...candidates]
+    for (let offset = 0; offset < entries.length; offset += 256) {
+      const batch = entries.slice(offset, offset + 256)
+      const infos = await Storage.readMany<Info>(
+        batch.map(([sessionID, scope]) =>
+          StoragePath.sessionInfo(Identifier.asScopeID(scope), Identifier.asSessionID(sessionID)),
+        ),
+      )
+      for (const info of infos) if (info?.time && !info.time.archived) result.push(info.id)
+    }
+    return result.sort()
   }
 
   export async function list(sessionID: string): Promise<Item[]> {

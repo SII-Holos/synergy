@@ -143,17 +143,26 @@ export function buildSessionSwitchMetrics(input: {
   const context = contextLabels(input)
   const total = finiteDuration(input.endTime - input.startTime)
   if (total === undefined) return []
-  const metrics: BrowserMetric[] = [
-    metricValue("frontend.session_switch.duration", total, "ms", {
-      ...context,
-      reason: input.reason,
-      trigger: input.trigger ?? null,
-    }),
-  ]
+  const metrics: BrowserMetric[] =
+    input.reason === "timeout"
+      ? []
+      : [
+          metricValue("frontend.session_switch.duration", total, "ms", {
+            ...context,
+            reason: input.reason,
+            trigger: input.trigger ?? null,
+          }),
+        ]
   for (const [phase, time] of Object.entries(input.marks).sort(([a], [b]) => a.localeCompare(b))) {
     const duration = finiteDuration(time - input.startTime)
     if (duration === undefined) continue
-    metrics.push(metricValue("frontend.session_switch.phase.duration", duration, "ms", { ...context, phase }))
+    metrics.push(
+      metricValue("frontend.session_switch.phase.duration", duration, "ms", {
+        ...context,
+        phase,
+        reason: input.reason,
+      }),
+    )
   }
   const overlap = finiteDuration(input.longTaskOverlapMs ?? 0)
   if (overlap && overlap > 0) {
