@@ -236,6 +236,12 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   response_card: "communication",
   "context7_resolve-library-id": "search",
   "context7_query-docs": "web",
+  mcp__anysearch__search: "web",
+  mcp__anysearch__batch_search: "web",
+  mcp__anysearch__extract: "web",
+  mcp__anysearch__get_sub_domains: "web",
+  mcp__scholight__search_papers: "web",
+  mcp__scholight__extract_url: "web",
 }
 
 export function semanticCategoryForKnownTool(toolName: string): SemanticCategory | undefined {
@@ -324,19 +330,9 @@ const COORDINATION_RECEIPT_TOOLS = new Set([
   "blueprint_loop_stop",
 ])
 
+// `render` output is the presented card itself, so it must stay outside
+// semantic activity groups.
 const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render"])
-
-// Built-in remote MCP search families stay visible as individual cards in
-// the activity timeline instead of being folded into grouped summary rows.
-// Their renderers are presentation boundaries with per-query structure the
-// user should be able to inspect after the turn (the same reason `render`
-// is a boundary above).
-const ACTIVITY_PRESENTATION_BOUNDARY_PREFIXES = ["mcp__anysearch__", "mcp__scholight__"]
-
-function isPresentationBoundaryTool(tool: string): boolean {
-  if (ACTIVITY_PRESENTATION_BOUNDARY_TOOLS.has(tool)) return true
-  return ACTIVITY_PRESENTATION_BOUNDARY_PREFIXES.some((prefix) => tool.startsWith(prefix))
-}
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -365,7 +361,7 @@ function firstString(...values: unknown[]): string | undefined {
 }
 
 export function isActivityGroupableTool(tool: string, metadata: Record<string, unknown> = {}): boolean {
-  if (isPresentationBoundaryTool(tool)) return false
+  if (ACTIVITY_PRESENTATION_BOUNDARY_TOOLS.has(tool)) return false
   const policy = toolDisplayPolicy(metadata)
   return !policy.toolCardHidden && !policy.mediaGeneration
 }

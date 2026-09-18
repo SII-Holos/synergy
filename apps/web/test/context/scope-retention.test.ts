@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createScopeRetention } from "../../src/context/scope-retention"
 
 describe("Scope retention", () => {
-  test("keeps shared Scope state until the last overlapping page leaves", () => {
+  test("keeps shared Scope state when the last overlapping page leaves", () => {
     const released: string[] = []
     const scopes = createScopeRetention((key) => released.push(key), 2)
     const leaveOld = scopes.retain("shared")
@@ -12,12 +12,12 @@ describe("Scope retention", () => {
     leaveOld()
     expect(released).toEqual([])
     leaveNew()
-    expect(released).toEqual(["shared"])
+    expect(released).toEqual([])
     const leaveReopened = scopes.retain("shared")
     leaveNew()
-    expect(released).toEqual(["shared"])
+    expect(released).toEqual([])
     leaveReopened()
-    expect(released).toEqual(["shared", "shared"])
+    expect(released).toEqual([])
   })
 
   test("bounds never-mounted background Scopes in least-recently-used order", () => {
@@ -31,9 +31,9 @@ describe("Scope retention", () => {
     scopes.touch("next")
     expect(released).toEqual(["recent"])
     leave()
-    expect(released).toEqual(["recent", "viewed"])
+    expect(released).toEqual(["recent", "old"])
     scopes.touch("last")
-    expect(released).toEqual(["recent", "viewed", "old"])
+    expect(released).toEqual(["recent", "old", "next"])
   })
 
   test("promotes a background Scope to a protected page lease", () => {
@@ -45,6 +45,16 @@ describe("Scope retention", () => {
     scopes.touch("another")
     expect(released).toEqual(["background"])
     leave()
-    expect(released).toEqual(["background", "selected"])
+    expect(released).toEqual(["background", "another"])
   })
+})
+
+test("revisiting a released Scope preserves it and evicts the least recently used Scope", () => {
+  const evicted: string[] = []
+  const scopes = createScopeRetention((key) => evicted.push(key), 2)
+  scopes.retain("first")()
+  scopes.retain("second")()
+  scopes.retain("first")()
+  scopes.retain("third")()
+  expect(evicted).toEqual(["second"])
 })

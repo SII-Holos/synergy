@@ -20,6 +20,8 @@ type LoaderOptions<TResult, TInput> = {
   apply: (sessionID: string, result: TResult, input: TInput | undefined) => SessionMessageApplyResult | void
   errorMessage: (error: unknown) => string
   onState?: (sessionID: string, state: SessionMessageLoadState) => void
+  /** Injected pause between superseded attempts; defaults to a real timer. */
+  wait?: (ms: number) => Promise<void>
 }
 
 type ActiveRequest = {
@@ -30,7 +32,10 @@ type ActiveRequest = {
 
 const idleState = (): SessionMessageLoadState => ({ phase: "idle", generation: 0, hasSnapshot: false })
 
-const MAX_SUPERSEDED_ATTEMPTS = 2
+const MAX_SUPERSEDED_ATTEMPTS = 4
+const SUPERSEDED_BACKOFF_MS = 100
+
+const defaultWait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 class SessionMessageSnapshotSupersededError extends Error {
   constructor() {
@@ -41,6 +46,10 @@ class SessionMessageSnapshotSupersededError extends Error {
 export function createSessionMessageLoader<TResult, TInput = void>(options: LoaderOptions<TResult, TInput>) {
   const states = new Map<string, SessionMessageLoadState>()
   const active = new Map<string, ActiveRequest>()
+  const wait = options.wait ?? defaultWait
+  // Doubling pause after each superseded attempt: event bursts that keep
+  // rejecting a page typically settle within a few hundred milliseconds.
+  const supersededBackoff = (failures: number) => SUPERSEDED_BACKOFF_MS * 2 ** (failures - 1)
 
   const publish = (sessionID: string, state: SessionMessageLoadState) => {
     states.set(sessionID, state)
@@ -65,10 +74,13 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
     })
 
     const promise = (async () => {
-      try {
-        let attempt = 0
-        while (attempt < MAX_SUPERSEDED_ATTEMPTS) {
-          attempt++
+      const runAttempts = async () => {
+        let failures = 0
+        while (failures < MAX_SUPERSEDED_ATTEMPTS) {
+          if (failures > 0) {
+            await wait(supersededBackoff(failures))
+            if (active.get(sessionID)?.controller !== controller) return
+          }
           const result = await options.request(sessionID, controller.signal, loadOptions?.input)
           if (active.get(sessionID)?.controller !== controller) return
           const applied = options.apply(sessionID, result, loadOptions?.input)
@@ -76,8 +88,29 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
             publish(sessionID, { phase: "ready", generation, hasSnapshot: true })
             return
           }
+          failures++
         }
         throw new SessionMessageSnapshotSupersededError()
+      }
+
+      try {
+        try {
+          await runAttempts()
+          return
+        } catch (error) {
+          // A first view with no previous snapshot would otherwise strand the
+          // user on a blank transcript behind the retry button; restart the
+          // whole attempt window once. Loads with a visible snapshot keep the
+          // error so live state is never flashed away.
+          if (error instanceof SessionMessageSnapshotSupersededError && !hasSnapshot) {
+            publish(sessionID, { phase: "loading", generation, hasSnapshot })
+            await wait(supersededBackoff(MAX_SUPERSEDED_ATTEMPTS))
+            if (active.get(sessionID)?.controller !== controller) return
+            await runAttempts()
+            return
+          }
+          throw error
+        }
       } catch (error) {
         if (active.get(sessionID)?.controller !== controller) return
         publish(sessionID, {

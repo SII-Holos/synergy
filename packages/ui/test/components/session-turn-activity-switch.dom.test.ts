@@ -88,10 +88,10 @@ beforeAll(async () => {
         messageID: assistantID,
         type: "tool",
         callID: "call-activity-switch",
-        tool: "fixture_read_file",
+        tool: "mcp__scholight__search_papers",
         state: {
           status: "completed",
-          input: { filePath: "/workspace/src/example.ts" },
+          input: { query: "checkpoint convergence" },
           output: "Read example.ts",
           title: "Read example.ts",
           metadata: {},
@@ -100,6 +100,8 @@ beforeAll(async () => {
       }
       const secondToolPart = {
         ...toolPart,
+        tool: "mcp__scholight__extract_url",
+        state: { ...toolPart.state, input: { url: "https://example.com/paper" } },
         id: "tool-activity-switch-second",
         messageID: secondAssistantID,
         callID: "call-activity-switch-second",
@@ -281,6 +283,10 @@ describe("SessionTurn activity display switching", () => {
     const activityRows = document.querySelectorAll('[data-kind="activity-group"] [data-slot="activity-step"]')
     expect(activityGroups).toHaveLength(2)
     expect(activityRows).toHaveLength(2)
+    expect(activityRows[0]?.textContent).toContain("Scholight")
+    expect(activityRows[0]?.textContent).toContain("checkpoint convergence")
+    expect(activityRows[1]?.textContent).toContain("Scholight Extract")
+    expect(activityRows[1]?.textContent).toContain("https://example.com/paper")
     expect(document.querySelector('[data-slot="activity-trace-header"]')).toBeNull()
     expect(document.querySelector('[data-slot="activity-trace-marker"]')).toBeNull()
     expect(document.querySelector('[data-slot="activity-trace-connector"]')).toBeNull()

@@ -208,6 +208,7 @@ async function createWindow() {
     mode,
     resourcesPath: process.resourcesPath,
     logDir: desktopLogDir(),
+    userDataPath: app.getPath("userData"),
     externalUrl: process.env.SYNERGY_DESKTOP_APP_URL,
     onStartupStatus: (status) => {
       void setStartupStatus(status)

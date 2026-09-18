@@ -866,7 +866,7 @@ export class Stats extends HeyApiClient {
   /**
    * Get stats snapshot
    *
-   * Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.
+   * Read the last computed stats snapshot without scanning history; null means no snapshot exists. Use the progress stream to refresh, or ?recompute=true to force a full recompute.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -885,7 +885,7 @@ export class Stats extends HeyApiClient {
   /**
    * Stream stats recompute progress
    *
-   * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
+   * Refresh changed statistics and stream progress updates until the final snapshot is ready. Concurrent refreshes share one computation.
    */
   public progress<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).sse.get<

@@ -103,6 +103,45 @@ describe("createEventQueue hidden delta coalescing", () => {
       delta: text,
     })
 
+  test.each([undefined, "a"] as Array<string | undefined>)(
+    "applies a hidden checkpoint before subsequent deltas (initial %s)",
+    (initial) => {
+      let text = initial
+      const harness = createHarness({
+        emit: (_directory, payload) => {
+          const event = payload as { type: string; properties: { part?: { text: string }; delta?: string } }
+          if (event.properties.part) text = event.properties.part.text
+          else if (text !== undefined) text += event.properties.delta ?? ""
+        },
+      })
+      harness.setHidden(true)
+      harness.queue.push(
+        "global",
+        recordedPayload("message.part.updated", {
+          part: { id: "part_1", messageID: "msg_1", type: "text", text: "ab" },
+          delta: "b",
+        }),
+      )
+      harness.queue.push("global", delta("part_1", "c"))
+      harness.runScheduled()
+      expect(text).toBe("abc")
+    },
+  )
+
+  test("a foreground checkpoint supersedes an unflushed hidden delta", () => {
+    const harness = createHarness()
+    harness.setHidden(true)
+    harness.queue.push("global", delta("part_1", "b"))
+    harness.setHidden(false)
+    const checkpoint = recordedPayload("message.part.updated", {
+      part: { id: "part_1", messageID: "msg_1", type: "text", text: "abc" },
+    })
+    harness.queue.push("global", checkpoint)
+    harness.queue.push("global", delta("part_1", "d"))
+    harness.runScheduled()
+    expect(harness.emitted.map((entry) => entry.payload)).toEqual([checkpoint, delta("part_1", "d")])
+  })
+
   test("merges three deltas for the same part into one synthesized delta on flush", () => {
     const harness = createHarness()
     harness.setHidden(true)
@@ -242,7 +281,7 @@ describe("createEventQueue capacity", () => {
     for (let i = 0; i < EVENT_QUEUE_CAP - 1; i++) {
       harness.queue.push("global", stateEvent("session.updated", `ses_${i}`))
     }
-    // queue.length + pendingDelta.size is now at the cap; the next push must
+    // The queued events, including the merged delta, are now at the cap; the next push must
     // flush before enqueueing. The triggering event itself lands in the next
     // batch, so run the scheduled flush to emit it too.
     harness.queue.push("global", stateEvent("session.updated", "ses_final"))

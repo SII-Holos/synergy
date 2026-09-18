@@ -20,14 +20,14 @@ export const StatsRoute = new Hono()
     describeRoute({
       summary: "Get stats snapshot",
       description:
-        "Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.",
+        "Read the last computed stats snapshot without scanning history; null means no snapshot exists. Use the progress stream to refresh, or ?recompute=true to force a full recompute.",
       operationId: "global.stats.get",
       responses: {
         200: {
           description: "Stats snapshot",
           content: {
             "application/json": {
-              schema: resolver(StatsSnapshot.meta({ ref: "StatsSnapshot" })),
+              schema: resolver(StatsSnapshot.meta({ ref: "StatsSnapshot" }).nullable()),
             },
           },
         },
@@ -49,7 +49,8 @@ export const StatsRoute = new Hono()
     "/progress",
     describeRoute({
       summary: "Stream stats recompute progress",
-      description: "Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.",
+      description:
+        "Refresh changed statistics and stream progress updates until the final snapshot is ready. Concurrent refreshes share one computation.",
       operationId: "global.stats.progress",
       responses: {
         200: {
@@ -74,7 +75,7 @@ export const StatsRoute = new Hono()
       c.header("Cache-Control", "no-cache, no-transform")
       return streamSSE(c, async (stream) => {
         try {
-          const snapshot = await Engine.recompute(async (event) => {
+          const snapshot = await Engine.update(async (event) => {
             await stream.writeSSE({
               data: JSON.stringify({
                 type: "progress",

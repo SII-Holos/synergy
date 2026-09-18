@@ -2126,6 +2126,31 @@ export const migrations: Migration[] = [
       progress?.(done, done)
     },
   },
+  {
+    id: "20260918-index-continuation-recovery",
+    description: "Move continuation recovery intents into indexed Session records",
+    async up(progress) {
+      const { RolloutContinuationRecovery } = await import("./rollout/continuation-recovery")
+      let done = 0
+      progress?.(0, 0)
+      for await (const { key } of Storage.records({ kind: "session" })) {
+        const owner = { kind: "session" as const, scopeID: key[1], sessionID: key[2] }
+        const legacy = [
+          ...StoragePath.sessionRolloutRoot(Identifier.asScopeID(key[1]), Identifier.asSessionID(key[2])),
+          "continuation-recovery",
+        ]
+        for (const runID of await Storage.scan(legacy)) {
+          await Storage.transaction(async () => {
+            await RolloutContinuationRecovery.request(owner, runID)
+            await Storage.remove([...legacy, runID])
+          })
+        }
+        done++
+        if (done % 128 === 0) progress?.(done, 0)
+      }
+      progress?.(done, done)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

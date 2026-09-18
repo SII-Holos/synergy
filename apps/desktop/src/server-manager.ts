@@ -1,14 +1,14 @@
 import type { ChildProcess } from "node:child_process"
-import { execFile, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import fsp from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
 import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
+import { loadServerPort, saveServerPort } from "./server-port-state.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
 import { DesktopServerStartup } from "./server-startup.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
@@ -31,10 +31,15 @@ export interface DesktopServerManagerOptions {
   mode: DesktopServerMode
   resourcesPath: string
   logDir: string
+  userDataPath: string
   externalUrl?: string
   shellEnvironment?: DesktopShellEnvironment
   onStartupStatus?: (status: DesktopStartupStatus) => void
 }
+
+type ManagedServerLaunch = { ok: true } | { ok: false; portConflict: boolean; detail: string; error: unknown }
+
+type ManagedServerLaunchFailure = Extract<ManagedServerLaunch, { ok: false }>
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
@@ -42,7 +47,11 @@ const SHUTDOWN_TIMEOUT_MS = DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS
 const HEALTH_TIMEOUT_MS = 30_000
 const HEALTH_POLL_INTERVAL_MS = 250
 const WINDOWS_TASKKILL_TIMEOUT_MS = 2_000
-const execFileAsync = promisify(execFile)
+const MANAGED_SERVER_PORT_SCAN_LENGTH = 4
+const DEFAULT_MANAGED_SERVER_PORT = 4096
+const MANAGED_SERVER_STDERR_LIMIT = 8_192
+const MANAGED_SERVER_STDERR_DRAIN_MS = 1_000
+const SYNERGY_DESKTOP_SERVER_PORT_ENV = "SYNERGY_DESKTOP_SERVER_PORT"
 
 export class DesktopServerManager {
   private child: ChildProcess | null = null
@@ -135,15 +144,55 @@ export class DesktopServerManager {
   private async startManaged(): Promise<string> {
     this.state = "starting"
     this.lastError = null
-    const requestedPort = process.platform === "win32" ? 0 : await findAvailablePort()
-    this.port = requestedPort === 0 ? null : requestedPort
-    this.url = requestedPort === 0 ? null : `http://127.0.0.1:${requestedPort}`
     await fsp.mkdir(this.options.logDir, { recursive: true })
-    this.logFile = path.join(this.options.logDir, "server.log")
+    const logFile = path.join(this.options.logDir, "server.log")
+    this.logFile = logFile
     const shellEnvironment = await this.shellEnvironmentPromise
+    const candidates = managedServerPortCandidates({
+      envPort: managedServerPortFromEnv(process.env),
+      stickyPort: await loadServerPort(this.options.userDataPath, this.options.channel),
+    })
 
-    const command = await this.resolveServerCommand(requestedPort)
-    const logStream = fs.createWriteStream(this.logFile, { flags: "a" })
+    for (const port of candidates) {
+      if (!(await isPortAvailable(port))) continue
+      const launch = await this.launchManagedServer(port, logFile, shellEnvironment)
+      if (launch.ok) return await this.acceptManagedServer(port, true)
+      if (!launch.portConflict) this.rejectManagedServer(launch)
+    }
+
+    // A random port keeps Desktop usable when every deterministic candidate is taken, but it is
+    // never persisted so the next launch retries the stable chain first.
+    const fallbackPort = await findAvailablePort()
+    const fallback = await this.launchManagedServer(fallbackPort, logFile, shellEnvironment)
+    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, false)
+    this.rejectManagedServer(fallback)
+  }
+
+  private async acceptManagedServer(port: number, persist: boolean): Promise<string> {
+    if (persist) {
+      await saveServerPort(this.options.userDataPath, this.options.channel, port).catch(() => undefined)
+    }
+    this.state = "running"
+    this.lastError = null
+    this.port = port
+    this.url = `http://127.0.0.1:${port}`
+    return this.url
+  }
+
+  private rejectManagedServer(launch: ManagedServerLaunchFailure): never {
+    this.state = "failed"
+    this.lastError = launch.detail
+    throw new Error(launch.detail, { cause: launch.error instanceof Error ? launch.error : undefined })
+  }
+
+  private async launchManagedServer(
+    port: number,
+    logFile: string,
+    shellEnvironment: DesktopShellEnvironmentDiagnostics | null,
+  ): Promise<ManagedServerLaunch> {
+    const url = `http://127.0.0.1:${port}`
+    const command = await this.resolveServerCommand(port)
+    const logStream = fs.createWriteStream(logFile, { flags: "a" })
     logStream.write(`\n[${new Date().toISOString()}] starting ${command.command} ${command.args.join(" ")}\n`)
 
     const child = spawn(command.command, command.args, {
@@ -159,7 +208,13 @@ export class DesktopServerManager {
     this.child = child
     const startup = new DesktopServerStartup({ onStatus: this.options.onStartupStatus })
     const onOutput = (chunk: Buffer) => startup.receive(chunk.toString("utf8"))
+    let stderr = ""
+    const onStderr = (chunk: Buffer) => {
+      if (stderr.length >= MANAGED_SERVER_STDERR_LIMIT) return
+      stderr += chunk.toString("utf8").slice(0, MANAGED_SERVER_STDERR_LIMIT - stderr.length)
+    }
     child.stdout?.on("data", onOutput)
+    child.stderr?.on("data", onStderr)
     child.stdout?.pipe(logStream, { end: false })
     child.stderr?.pipe(logStream, { end: false })
     attachManagedServerExitHandlers(child, logStream, (details) => {
@@ -171,25 +226,22 @@ export class DesktopServerManager {
     })
 
     try {
-      if (process.platform === "win32") {
-        const health = await waitForWindowsServerHealth(child, HEALTH_TIMEOUT_MS, startup)
-        this.port = health.port
-        this.url = health.url
-      } else {
-        await waitForHealth(`${this.url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS, HEALTH_POLL_INTERVAL_MS, startup)
-      }
-      this.state = "running"
-      return this.url!
+      await waitForHealth(`${url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS, HEALTH_POLL_INTERVAL_MS, startup)
+      return { ok: true }
     } catch (error) {
-      this.state = "failed"
       const message = error instanceof Error ? error.message : String(error)
-      const logTail = await readLogTail(this.logFile)
+      const logTail = await readLogTail(logFile)
       const detail = logTail ? `${message}\n\nServer log tail:\n${logTail}` : message
-      this.lastError = detail
+      // `waitForHealth` can reject on the child's exit event before piped stderr is delivered.
+      if (child.exitCode !== null || child.signalCode !== null) {
+        await waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS)
+      }
+      const portConflict = isPortBindFailure(stderr)
       await this.stop()
-      throw new Error(detail, { cause: error instanceof Error ? error : undefined })
+      return { ok: false, portConflict, detail, error }
     } finally {
       child.stdout?.off("data", onOutput)
+      child.stderr?.off("data", onStderr)
     }
   }
 
@@ -305,6 +357,69 @@ export async function findAvailablePort(): Promise<number> {
   })
 }
 
+export function managedServerPortFromEnv(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = env[SYNERGY_DESKTOP_SERVER_PORT_ENV]
+  if (!raw) return undefined
+  const port = Number(raw)
+  return isAssignablePort(port) ? port : undefined
+}
+
+export function managedServerPortCandidates(input: {
+  envPort?: number
+  stickyPort?: number
+  defaultPort?: number
+  scanLength?: number
+}): number[] {
+  const defaultPort = input.defaultPort ?? DEFAULT_MANAGED_SERVER_PORT
+  const scanLength = input.scanLength ?? MANAGED_SERVER_PORT_SCAN_LENGTH
+  const scan = Array.from({ length: scanLength }, (_, index) => defaultPort + index)
+  const seen = new Set<number>()
+  const candidates: number[] = []
+  for (const port of [input.envPort, input.stickyPort, ...scan]) {
+    if (!isAssignablePort(port) || seen.has(port)) continue
+    seen.add(port)
+    candidates.push(port)
+  }
+  return candidates
+}
+
+export async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once("error", () => resolve(false))
+    server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)))
+  })
+}
+
+function isAssignablePort(port: number | undefined): port is number {
+  return port !== undefined && Number.isInteger(port) && port >= 1024 && port <= 65_535
+}
+
+function isPortBindFailure(stderr: string): boolean {
+  return stderr.includes("Failed to start server on port")
+}
+
+function waitForStreamEnd(stream: NodeJS.ReadableStream | null, timeoutMs: number): Promise<void> {
+  if (!stream) return Promise.resolve()
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      stream.off("end", finish)
+      stream.off("close", finish)
+      stream.off("error", finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, timeoutMs)
+    timer.unref()
+    stream.once("end", finish)
+    stream.once("close", finish)
+    stream.once("error", finish)
+  })
+}
+
 export async function waitForHealth(
   url: string,
   child: ChildProcess,
@@ -358,104 +473,6 @@ export async function waitForHealth(
   } finally {
     childFailure.dispose()
   }
-}
-
-export async function waitForWindowsServerHealth(
-  child: ChildProcess,
-  timeoutMs = HEALTH_TIMEOUT_MS,
-  startup?: DesktopServerStartup,
-): Promise<{ url: string; port: number }> {
-  const deadline = Date.now() + timeoutMs
-  const remaining = () => startup?.remainingMs() ?? deadline - Date.now()
-  let lastError: unknown
-  const childFailure = watchChildFailure(child)
-  try {
-    while (child.exitCode === null && child.signalCode === null) {
-      const remainingMs = remaining()
-      if (remainingMs <= 0) break
-
-      let port: number | null
-      try {
-        port = await raceWithChildFailure(
-          child.pid ? findListeningPort(child.pid, Math.min(remainingMs, 1_000)) : Promise.resolve(null),
-          childFailure.promise,
-          () => lastError,
-        )
-      } catch (error) {
-        if (error instanceof ChildProcessHealthError) throw error
-        lastError = error
-        port = null
-      }
-      if (port !== null) {
-        const url = `http://127.0.0.1:${port}`
-        const requestController = new AbortController()
-        try {
-          const response = await raceWithChildFailure(
-            fetchWithTimeout(`${url}${HEALTH_PATH}`, Math.min(remaining(), 1000), requestController.signal),
-            childFailure.promise,
-            () => lastError,
-            () => requestController.abort(),
-          )
-          if (response.ok) return { url, port }
-          lastError = new Error(`health responded ${response.status}`)
-        } catch (error) {
-          if (error instanceof ChildProcessHealthError) throw error
-          lastError = error
-        }
-      }
-
-      const delayMs = Math.min(HEALTH_POLL_INTERVAL_MS, remaining())
-      if (delayMs > 0) {
-        await raceWithChildFailure(
-          new Promise((resolve) => setTimeout(resolve, delayMs)),
-          childFailure.promise,
-          () => lastError,
-        )
-      }
-    }
-    if (remaining() <= 0) {
-      throw new Error(
-        `${startup?.timeoutError().message ?? `Synergy server health check timed out after ${timeoutMs}ms`}${
-          lastError instanceof Error ? `: ${lastError.message}` : ""
-        }`,
-      )
-    }
-    throw new Error(
-      `Synergy server exited before health became ready (code=${child.exitCode ?? "null"} signal=${child.signalCode ?? "null"}): ${
-        lastError instanceof Error ? lastError.message : String(lastError)
-      }`,
-    )
-  } finally {
-    childFailure.dispose()
-  }
-}
-
-export async function findListeningPort(pid: number, timeoutMs = 1_000): Promise<number | null> {
-  if (process.platform !== "win32") return null
-  try {
-    const { stdout } = await execFileAsync("netstat.exe", ["-ano", "-p", "tcp"], {
-      windowsHide: true,
-      timeout: timeoutMs,
-      maxBuffer: 1024 * 1024,
-    })
-    return parseListeningPort(stdout, pid)
-  } catch {}
-  return null
-}
-
-export function parseListeningPort(stdout: string, pid: number): number | null {
-  for (const line of stdout.split(/\r?\n/)) {
-    const columns = line.trim().split(/\s+/)
-    if (columns.length < 5 || columns[0]?.toUpperCase() !== "TCP") continue
-    const stateIndex = columns.findIndex((column) => column.toUpperCase() === "LISTENING")
-    if (stateIndex < 2 || Number(columns[stateIndex + 1]) !== pid) continue
-
-    const localAddress = columns[1] ?? ""
-    const separator = localAddress.lastIndexOf(":")
-    const port = Number(localAddress.slice(separator + 1))
-    if (separator >= 0 && Number.isInteger(port) && port > 0 && port <= 65_535) return port
-  }
-  return null
 }
 
 async function fetchWithTimeout(url: string, timeoutMs: number, signal?: AbortSignal): Promise<Response> {

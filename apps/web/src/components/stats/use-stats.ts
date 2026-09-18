@@ -1,4 +1,4 @@
-import { createResource, createSignal } from "solid-js"
+import { createResource, createSignal, onCleanup } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
@@ -25,19 +25,28 @@ export function useStats() {
   const [syncing, setSyncing] = createSignal(false)
   const [progress, setProgress] = createSignal<StatsProgress | null>(null)
 
-  const [data, { refetch, mutate }] = createResource(async (): Promise<StatsSnapshot | null> => {
+  const controller = new AbortController()
+  let closeStream: (() => void) | undefined
+  onCleanup(() => {
+    controller.abort()
+    closeStream?.()
+  })
+
+  const [data, { mutate }] = createResource(async (): Promise<StatsSnapshot | null> => {
     try {
       setError(null)
-      const res = await sdk.client.global.stats.get()
+      const res = await sdk.client.global.stats.get(undefined, { signal: controller.signal })
+      if (!res.data && !controller.signal.aborted) void sync()
       return res.data ?? null
     } catch (err) {
+      if (controller.signal.aborted) return null
       const msg = err instanceof Error && err.message ? err.message : String(err)
       setError(msg || i18n._(S.loadFetchError.id))
       return null
     }
   })
 
-  const refresh = () => refetch()
+  const refresh = () => sync()
 
   async function sync() {
     if (syncing()) return
@@ -49,10 +58,13 @@ export function useStats() {
 
     await new Promise<void>((resolve) => {
       const finish = () => {
+        closeStream = undefined
         stream.close()
         setSyncing(false)
         resolve()
       }
+
+      closeStream = finish
 
       stream.onmessage = (event) => {
         let payload: StatsProgressEvent
@@ -93,7 +105,7 @@ export function useStats() {
   return {
     data,
     error,
-    loading: data.loading,
+    loading: () => data.loading,
     refresh,
     sync,
     syncing,

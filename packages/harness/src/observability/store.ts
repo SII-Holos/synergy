@@ -409,6 +409,17 @@ export namespace ObservabilityStore {
     flush()
     const conn = queryConnection()
     if (!conn) return [] as StoredMetric[]
+    const { filters, params } = metricFilters(opts)
+    params.push(opts.limit ?? 10_000)
+    const order = opts.newestFirst ? "time DESC, metric_id DESC" : "time ASC, metric_id ASC"
+    return allRows<StoredMetric>(
+      conn,
+      `SELECT * FROM obs_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`,
+      ...params,
+    )
+  }
+
+  function metricFilters(opts: Parameters<typeof queryMetrics>[0]) {
     const filters = ["time >= ?"]
     const params: Array<string | number> = [opts.since]
     if (opts.until !== undefined) {
@@ -447,12 +458,101 @@ export namespace ObservabilityStore {
       filters.push("(json_extract(labels_json, '$.providerID') = ? OR json_extract(labels_json, '$.provider') = ?)")
       params.push(opts.providerID, opts.providerID)
     }
-    params.push(opts.limit ?? 10_000)
-    const order = opts.newestFirst ? "time DESC, metric_id DESC" : "time ASC, metric_id ASC"
+    return { filters, params }
+  }
+
+  export function queryMetricBuckets(opts: Parameters<typeof queryMetrics>[0] & { bucketMs: number }) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return []
+    const { filters, params } = metricFilters(opts)
+    return allRows<{
+      bucket: number
+      count: number
+      sum: number
+      avg: number
+      max: number
+      latest: number
+      p50: number
+      p95: number
+      p99: number
+      errors: number
+    }>(
+      conn,
+      `WITH samples AS (
+      SELECT value, time, metric_id, labels_json, CAST((time - ?) / ? AS INTEGER) AS bucket
+      FROM obs_metrics WHERE ${filters.join(" AND ")}
+    ), ranked AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY value) AS rank,
+        ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY time DESC, metric_id DESC) AS recent,
+        COUNT(*) OVER (PARTITION BY bucket) AS count FROM samples
+    ) SELECT bucket, COUNT(*) AS count, SUM(value) AS sum, AVG(value) AS avg, MAX(value) AS max,
+      MAX(CASE WHEN recent = 1 THEN value END) AS latest,
+      MAX(CASE WHEN rank = CAST((count * 50 + 99) / 100 AS INTEGER) THEN value END) AS p50,
+      MAX(CASE WHEN rank = CAST((count * 95 + 99) / 100 AS INTEGER) THEN value END) AS p95,
+      MAX(CASE WHEN rank = CAST((count * 99 + 99) / 100 AS INTEGER) THEN value END) AS p99,
+      SUM(CASE WHEN CAST(json_extract(labels_json, '$.status') AS INTEGER) >= 500 THEN 1 ELSE 0 END) AS errors
+      FROM ranked GROUP BY bucket ORDER BY bucket`,
+      opts.since,
+      opts.bucketMs,
+      ...params,
+    )
+  }
+
+  export function queryMetricHighlights(opts: Parameters<typeof queryMetrics>[0]) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return [] as StoredMetric[]
+    const { filters, params } = metricFilters(opts)
     return allRows<StoredMetric>(
       conn,
-      `SELECT * FROM obs_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`,
+      `WITH ranked AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY value DESC, metric_id DESC) AS slow,
+        ROW_NUMBER() OVER (PARTITION BY name, CASE WHEN name = 'frontend.web_vital' THEN json_extract(labels_json, '$.name') END ORDER BY time DESC, metric_id DESC) AS recent
+      FROM obs_metrics WHERE ${filters.join(" AND ")}
+    ) SELECT * FROM ranked WHERE slow <= 5 OR recent <= 5 ORDER BY time DESC, metric_id DESC`,
       ...params,
+    )
+  }
+
+  export function queryMetricSums(opts: Parameters<typeof queryMetrics>[0]) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return [] as Array<Pick<StoredMetric, "name" | "tool" | "labels_json" | "value">>
+    const { filters, params } = metricFilters(opts)
+    return allRows<Pick<StoredMetric, "name" | "tool" | "labels_json" | "value">>(
+      conn,
+      `SELECT name, tool, labels_json, SUM(value) AS value
+      FROM obs_metrics WHERE ${filters.join(" AND ")} GROUP BY name, tool, labels_json`,
+      ...params,
+    )
+  }
+
+  export function queryMetricCounts(opts: Parameters<typeof queryMetrics>[0]) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return []
+    const { filters, params } = metricFilters(opts)
+    return allRows<{ name: string; module: string; count: number }>(
+      conn,
+      `SELECT name, module, COUNT(*) AS count FROM obs_metrics
+      WHERE ${filters.join(" AND ")} GROUP BY name, module`,
+      ...params,
+    )
+  }
+
+  export function countMetricSessions(opts: Parameters<typeof queryMetrics>[0]) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return 0
+    const { filters, params } = metricFilters(opts)
+    return (
+      getRow<{ count: number }>(
+        conn,
+        `SELECT COUNT(DISTINCT session_id) AS count FROM obs_metrics
+      WHERE ${filters.join(" AND ")}`,
+        ...params,
+      )?.count ?? 0
     )
   }
 

@@ -798,76 +798,32 @@ export namespace SessionManager {
   // --- Pending Reply ---
 
   export async function listPendingReply(scopeID?: string): Promise<string[]> {
-    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
-    const sessionIDs = new Set<string>()
-
-    for (const scopeID of scopeRoots) {
-      const ids = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
-      for (const sessionID of ids) {
-        const info = await Storage.read<Info>(
-          StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-        ).catch((error) => {
-          if (error instanceof Storage.NotFoundError) return undefined
-          throw error
-        })
-        if (!info || !info.time || info.time.archived || info.pendingReply !== true) continue
-        sessionIDs.add(info.id)
-      }
+    const sessionIDs: string[] = []
+    for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
+      if (!info?.time || info.time.archived || info.pendingReply !== true) continue
+      sessionIDs.push(info.id)
     }
-
-    return Array.from(sessionIDs)
+    return sessionIDs
   }
 
   export async function listInterruptedCortexDelegations(scopeID?: string): Promise<string[]> {
-    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
-    const sessionIDs = new Set<string>()
-
-    for (const scopeID of scopeRoots) {
-      const ids = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
-      for (const sessionID of ids) {
-        if (isRunning(sessionID)) continue
-        const info = await Storage.read<Info>(
-          StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-        ).catch((error) => {
-          if (error instanceof Storage.NotFoundError) return undefined
-          throw error
-        })
-        if (!info || !info.time || info.time.archived) continue
-        if (info.cortex?.status !== "queued" && info.cortex?.status !== "running") continue
-        sessionIDs.add(info.id)
-      }
+    const sessionIDs: string[] = []
+    for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
+      if (!info?.time || info.time.archived || isRunning(info.id)) continue
+      if (info.cortex?.status !== "queued" && info.cortex?.status !== "running") continue
+      sessionIDs.push(info.id)
     }
-
-    return Array.from(sessionIDs)
+    return sessionIDs
   }
 
   export async function listTerminalCortexDelegations(scopeID?: string): Promise<string[]> {
-    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
-    const sessionIDs = new Set<string>()
-
-    for (const scopeID of scopeRoots) {
-      const ids = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
-      for (const sessionID of ids) {
-        const info = await Storage.read<Info>(
-          StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-        ).catch((error) => {
-          if (error instanceof Storage.NotFoundError) return undefined
-          throw error
-        })
-        if (!info || !info.time || info.time.archived || !info.cortex) continue
-        if (
-          info.cortex.status !== "completed" &&
-          info.cortex.status !== "error" &&
-          info.cortex.status !== "cancelled" &&
-          info.cortex.status !== "interrupted"
-        ) {
-          continue
-        }
-        sessionIDs.add(info.id)
-      }
+    const sessionIDs: string[] = []
+    for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
+      if (!info?.time || info.time.archived || !info.cortex) continue
+      if (!["completed", "error", "cancelled", "interrupted"].includes(info.cortex.status)) continue
+      sessionIDs.push(info.id)
     }
-
-    return Array.from(sessionIDs)
+    return sessionIDs
   }
 
   // --- Internal ---
