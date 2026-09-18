@@ -10,6 +10,7 @@ const root = path.resolve(import.meta.dir, "..")
 // after the main batch to keep their processes alive.
 const playwrightIsolated = [
   "test/components/settings/panels/StoragePanel.test.ts",
+  "test/components/settings/panels/McpPanel.render.test.ts",
   "test/plugin/components.dom.test.ts",
   "test/plugin/overlays.dom.test.ts",
   "test/plugin/skin.dom.test.ts",
@@ -57,6 +58,7 @@ await runBatchedTests({
   isolatedTimeoutMs: 120000,
   browserOnly: [
     "test/components/settings/panels/StoragePanel.test.ts",
+    "test/components/settings/panels/McpPanel.render.test.ts",
     "test/plugin/shell-surface.test.ts",
     "test/plugin/shell-preference.test.ts",
     "test/components/note/document-editor-core.test.ts",
