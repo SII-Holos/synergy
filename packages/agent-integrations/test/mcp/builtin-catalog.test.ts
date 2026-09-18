@@ -142,7 +142,7 @@ describe("collectBuiltinMcpServers", () => {
 
 describe("builtinApiKeyHint", () => {
   test("masks all but the last four characters of a long key", () => {
-    expect(builtinApiKeyHint({ apiKey: "test-api-key-9876" })).toBe("••••9876")
+    expect(builtinApiKeyHint({ apiKey: "fake-key-9876" })).toBe("••••9876")
   })
 
   test("returns the bare mask for keys of eight characters or fewer", () => {
