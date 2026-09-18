@@ -8,10 +8,7 @@ import type {
   FileDiff,
   Message,
   Part,
-  PermissionRequest,
-  QuestionRequest,
   Session,
-  SessionStatus,
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"
@@ -36,9 +33,11 @@ import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/
 import { useLocale } from "@/context/locale"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { kanbanPage } from "@/locales/messages"
+import { useGlobalSync } from "@/context/global-sync"
+import { createSessionDataRuntime } from "@/context/session-data-view"
+import { isWorkingStatus } from "@/utils/session-status"
 import type { BoardPane } from "../model/pane-selection"
 import { KANBAN_REORDER_MIME } from "@/utils/session-drag"
-import { isWorkingStatus } from "@/utils/session-status"
 import { KanbanPaneComposer, type BoardWorkflowKind } from "./composer"
 import type { ControlProfileId } from "@/context/input"
 import "../kanban.css"
@@ -48,9 +47,6 @@ export type BoardPaneData = {
   messageWindow: Record<string, MessageWindowMetadata>
   part: Record<string, Part[]>
   session_diff: Record<string, FileDiff[]>
-  session_status: Record<string, SessionStatus>
-  permission?: Record<string, PermissionRequest[]>
-  question?: Record<string, QuestionRequest[]>
   cortex: CortexTask[]
   session: Session[]
   agent: Agent[]
@@ -88,13 +84,15 @@ export function KanbanPane(props: {
 }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
+  const globalSync = useGlobalSync()
+  const runtime = createSessionDataRuntime(globalSync)
   const [scrolledUp, setScrolledUp] = createSignal(false)
 
   const messages = createMemo(() => props.data.message[props.pane.sessionID] ?? [])
   const hasSnapshot = createMemo(() =>
     hasMessageWindowSnapshot(props.data.message[props.pane.sessionID], props.data.messageWindow[props.pane.sessionID]),
   )
-  const working = createMemo(() => isWorkingStatus(props.data.session_status[props.pane.sessionID]))
+  const working = createMemo(() => isWorkingStatus(globalSync.sessionStatus[props.pane.sessionID]))
   // Autoscroll follows only while the pane's follow toggle is enabled, so
   // "Paused" actually stops the stream from scrolling; the viewport's manual
   // scroll-to-bottom button still forces a jump.
@@ -106,10 +104,10 @@ export function KanbanPane(props: {
     props.pane.entry
       ? resolveSessionVisualState({
           entry: props.pane.entry,
-          status: props.data.session_status[props.pane.sessionID],
+          status: globalSync.sessionStatus[props.pane.sessionID],
           waiting:
-            (props.data.permission?.[props.pane.sessionID]?.length ?? 0) > 0 ||
-            (props.data.question?.[props.pane.sessionID]?.length ?? 0) > 0,
+            (globalSync.permissions[props.pane.sessionID]?.length ?? 0) > 0 ||
+            (globalSync.questions[props.pane.sessionID]?.length ?? 0) > 0,
           runningChildTasks:
             props.data.cortex?.some(
               (task) => task.parentSessionID === props.pane.sessionID && task.status === "running",
@@ -120,7 +118,7 @@ export function KanbanPane(props: {
   const headStatus = createMemo(() =>
     props.pane.entry
       ? paneHeadStatusFromVisual({
-          statusType: props.data.session_status[props.pane.sessionID]?.type,
+          statusType: globalSync.sessionStatus[props.pane.sessionID]?.type,
           tone: visual()?.tone,
           pulse: visual()?.pulse,
           completionUnread: visual()?.completionUnread,
@@ -288,6 +286,7 @@ export function KanbanPane(props: {
           >
             <DataProvider
               data={props.data}
+              runtime={runtime}
               directory={props.directory}
               serverUrl={props.serverUrl}
               onNavigateToSession={props.onOpen}
@@ -348,7 +347,7 @@ export function KanbanPane(props: {
           sessionID={props.pane.sessionID}
           agents={props.data.agent}
           session={liveSession()}
-          status={props.data.session_status[props.pane.sessionID]}
+          status={globalSync.sessionStatus[props.pane.sessionID]}
           onSend={props.onSend}
           onUpdateProfile={props.onUpdateProfile}
           onSetWorkflow={props.onSetWorkflow}

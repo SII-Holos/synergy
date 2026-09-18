@@ -137,9 +137,6 @@ type State = {
   config: Config
   path: ScopedPath
   session: Session[]
-  session_status: {
-    [sessionID: string]: SessionStatus
-  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
@@ -148,12 +145,6 @@ type State = {
   }
   dag: {
     [sessionID: string]: { id: string; content: string; status: string; deps: string[]; assign?: string }[]
-  }
-  permission: {
-    [sessionID: string]: PermissionRequest[]
-  }
-  question: {
-    [sessionID: string]: QuestionRequest[]
   }
   planBlueprintOffer: {
     [sessionID: string]: PlanBlueprintOfferState
@@ -540,12 +531,9 @@ function createGlobalSync() {
         agent: [],
         command: [],
         session: [],
-        session_status: {},
         session_diff: {},
         todo: {},
         dag: {},
-        permission: {},
-        question: {},
         planBlueprintOffer: {},
         inbox: {},
         mcp: {},
@@ -848,44 +836,6 @@ function createGlobalSync() {
       })
   }
 
-  function syncBySession<T extends { id?: string; sessionID?: string }>(
-    setStore: (path1: string, path2: string, value: any) => void,
-    storeKey: keyof Pick<State, "permission" | "question">,
-    currentKeys: Iterable<string>,
-    items: T[],
-  ) {
-    const grouped: Record<string, T[]> = {}
-    for (const item of items) {
-      if (!item?.id || !item.sessionID) continue
-      const existing = grouped[item.sessionID]
-      if (existing) {
-        existing.push(item)
-        continue
-      }
-      grouped[item.sessionID] = [item]
-    }
-
-    batch(() => {
-      for (const sessionID of currentKeys) {
-        if (grouped[sessionID]) continue
-        setStore(storeKey, sessionID, [])
-      }
-      for (const [sessionID, entries] of Object.entries(grouped)) {
-        setStore(
-          storeKey,
-          sessionID,
-          reconcile(
-            entries
-              .filter((e) => !!e?.id)
-              .slice()
-              .sort((a, b) => a.id!.localeCompare(b.id!)),
-            { key: "id" },
-          ),
-        )
-      }
-    })
-  }
-
   const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
   const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
@@ -982,18 +932,28 @@ function createGlobalSync() {
       if (data.path) setStore("path", reconcile(data.path))
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
       if (data.sessionStatus) {
-        setStore(
-          "session_status",
-          reconcile(tracker?.mergeStatus(version, data.sessionStatus, store.session_status) ?? data.sessionStatus),
+        // Seed the global index and converge it. A session that was already
+        // running before this client connected never receives a status event of
+        // its own, so without the seed the index renders it as idle until its
+        // next transition — and `recovering` would never appear at all, since
+        // no producer publishes it on the bus. The drop list carries the same
+        // convergence the per-Scope bucket had: a session this Scope still owns
+        // but the snapshot no longer reports as running was left stale by a
+        // missed `idle` or an archive, and must not survive a fail-open resync.
+        // The owned set is the response's own session page rather than the
+        // archived-filtered list, so an archived session's stale entry clears
+        // here too.
+        const { adopt, drop } = globalRuntimeTracker.adoptScopeStatusSnapshot(
+          version,
+          data.sessionStatus,
+          data.sessions?.data.map((session) => session.id) ?? [],
         )
-        // Seed the global index as well. A session that was already running
-        // before this client connected never receives a status event of its
-        // own, so without this the sidebar renders it as idle until its next
-        // transition — and `recovering` would never appear at all, since no
-        // producer publishes it on the bus.
-        const adopted = globalRuntimeTracker.adoptScopeStatusSnapshot(version, data.sessionStatus)
-        if (Object.keys(adopted).length)
-          setGlobalStore("sessionStatus", reconcile({ ...globalStore.sessionStatus, ...adopted }))
+        if (Object.keys(adopt).length || drop.length) {
+          const merged = { ...globalStore.sessionStatus }
+          for (const sessionID of drop) delete merged[sessionID]
+          Object.assign(merged, adopt)
+          setGlobalStore("sessionStatus", reconcile(merged))
+        }
       }
       if (sessions) {
         const mergedSessions = tracker?.mergeSessions(version, sessions, store.session)
@@ -1110,12 +1070,10 @@ function createGlobalSync() {
       }),
       sdk.permission.list().then((result) => {
         if (!current()) return
-        syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
         seedGlobalPermissions(result.data ?? [], result.response?.headers)
       }),
       sdk.question.list().then((result) => {
         if (!current()) return
-        syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
         seedGlobalQuestions(result.data ?? [], result.response?.headers)
       }),
       refreshVolatileAfterResync(scopeKey, store, setStore),
@@ -1139,12 +1097,10 @@ function createGlobalSync() {
         }),
         sdk.permission.list().then((result) => {
           if (!current()) return
-          syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
           seedGlobalPermissions(result.data ?? [], result.response?.headers)
         }),
         sdk.question.list().then((result) => {
           if (!current()) return
-          syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
           seedGlobalQuestions(result.data ?? [], result.response?.headers)
         }),
       ])
@@ -1543,8 +1499,6 @@ function createGlobalSync() {
       }
       case "session.status": {
         // Handles busy, retry, idle, and recovering statuses
-        setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
-        if (stamp) scopeWriteTracker(scopeKey).statusWrite(stamp, event.properties.sessionID)
         if (stamp) globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
         // The global index is shared by every Scope and holds only non-idle
         // sessions, so an idle status deletes the key instead of storing it.
@@ -1837,7 +1791,6 @@ function createGlobalSync() {
         break
       }
       case "permission.asked": {
-        const sessionID = event.properties.sessionID
         setGlobalStore(
           "permission",
           produce((draft) => {
@@ -1845,29 +1798,9 @@ function createGlobalSync() {
           }),
         )
         if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.id)
-        const permissions = store.permission[sessionID]
-        if (!permissions) {
-          setStore("permission", sessionID, [event.properties])
-          break
-        }
-
-        const result = Binary.search(permissions, event.properties.id, (p) => p.id)
-        if (result.found) {
-          setStore("permission", sessionID, result.index, reconcile(event.properties))
-          break
-        }
-
-        setStore(
-          "permission",
-          sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 0, event.properties)
-          }),
-        )
         break
       }
       case "permission.replied": {
-        const permissions = store.permission[event.properties.sessionID]
         setGlobalStore(
           "permission",
           produce((draft) => {
@@ -1875,16 +1808,6 @@ function createGlobalSync() {
           }),
         )
         if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.requestID)
-        if (!permissions) break
-        const result = Binary.search(permissions, event.properties.requestID, (p) => p.id)
-        if (!result.found) break
-        setStore(
-          "permission",
-          event.properties.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 1)
-          }),
-        )
         break
       }
       case "question.asked": {
@@ -1896,29 +1819,11 @@ function createGlobalSync() {
           }),
         )
         if (stamp) globalRuntimeTracker.questionWrite(stamp, request.id)
-        const requests = store.question[request.sessionID]
-        if (!requests) {
-          setStore("question", request.sessionID, [request])
-          break
-        }
-        const result = Binary.search(requests, request.id, (r) => r.id)
-        if (result.found) {
-          setStore("question", request.sessionID, result.index, reconcile(request))
-          break
-        }
-        setStore(
-          "question",
-          request.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 0, request)
-          }),
-        )
         break
       }
       case "question.replied":
       case "question.rejected":
       case "question.timed_out": {
-        const requests = store.question[event.properties.sessionID]
         setGlobalStore(
           "question",
           produce((draft) => {
@@ -1926,16 +1831,6 @@ function createGlobalSync() {
           }),
         )
         if (stamp) globalRuntimeTracker.questionWrite(stamp, event.properties.requestID)
-        if (!requests) break
-        const result = Binary.search(requests, event.properties.requestID, (r) => r.id)
-        if (!result.found) break
-        setStore(
-          "question",
-          event.properties.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 1)
-          }),
-        )
         break
       }
       case "lsp.updated": {
@@ -2255,6 +2150,8 @@ function createGlobalSync() {
     get globalRuntimeTracker() {
       return globalRuntimeTracker
     },
+    seedGlobalPermissions,
+    seedGlobalQuestions,
     loadGlobalAgenda,
     refreshConfig,
     refreshAllConfigs,

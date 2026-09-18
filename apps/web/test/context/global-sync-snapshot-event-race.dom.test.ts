@@ -11,7 +11,6 @@ type ScopeState = [
   {
     status: string
     session: Array<{ id: string }>
-    session_status: Record<string, { type?: string }>
     sessionTotal: number
     cortex: Array<{ id: string; sessionID?: string }>
   },
@@ -160,7 +159,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       const shared = api.retainScopeState("shared")
       h.emit("shared", 1, "session.status", { sessionID: "fixture-session", status: { type: "busy" } })
       h.emit("shared", 2, "session.updated", { info: { id: "live-added", time: {} } })
-      expect(shared.state[0].session_status["fixture-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["fixture-session"]).toEqual({ type: "busy" })
       expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
 
       h.complete(
@@ -177,7 +176,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       )
       await h.waitComplete(shared.state)
 
-      expect(shared.state[0].session_status["fixture-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["fixture-session"]).toEqual({ type: "busy" })
       expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
       expect(shared.state[0].session.some((session) => session.id === "from-snapshot")).toBe(true)
       // Reviewer scenario: the response stamp sits between an old stale
@@ -199,13 +198,19 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
           agent: [],
           config: {},
           sessionStatus: {},
-          sessions: { data: [{ id: "snap-only", time: {} }], total: 1 },
+          sessions: {
+            data: [
+              { id: "snap-only", time: {} },
+              { id: "missed-idle", time: {} },
+            ],
+            total: 2,
+          },
           cortex: [{ id: "task-live", sessionID: "b-session" }],
         },
         { epoch: "test-epoch", seq: 6 },
       )
       await h.waitComplete(stale.state)
-      expect(stale.state[0].session_status["missed-idle"]).toBeUndefined()
+      expect(api.sessionStatus["missed-idle"]).toBeUndefined()
       expect(stale.state[0].session.some((session) => session.id === "b-session")).toBe(true)
       expect(stale.state[0].session.some((session) => session.id === "snap-only")).toBe(true)
       expect(stale.state[0].cortex.some((task) => task.id === "task-live")).toBe(false)
@@ -243,7 +248,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       )
       const fresh = api.retainScopeState("fresh-scope")
       await h.waitComplete(fresh.state)
-      expect(fresh.state[0].session_status["other-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["other-session"]).toEqual({ type: "busy" })
       expect(fresh.state[0].session.some((session) => session.id === "snapshot-session")).toBe(true)
       fresh.release()
 
@@ -298,7 +303,26 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
         patterns: [],
         metadata: {},
       })
+
       expect(api.permissions["sorted"]?.map((request) => request.id)).toEqual(["perm-1", "perm-2"])
+
+      // Release the concurrency slot `index-scope` still holds. Its store is
+      // already evicted, so the late response applies nothing (every apply path
+      // re-checks that the live store is still the one that requested it) — it
+      // only lets the convergence Scope below start its bootstrap.
+      h.complete(
+        "index-scope",
+        {
+          scopeID: "scope-index",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: { data: [], total: 0 },
+        },
+        { epoch: "test-epoch", seq: 0 },
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
 
       // `recovering` reaches the client only through the snapshot route or a
       // session.updated `working` field, so the fallback fills a status the
@@ -315,6 +339,72 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
       h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: recovering } })
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
+      // Convergence across eviction. A Scope's bootstrap response used to be
+      // authoritative for its whole status bucket *including omissions*, so a
+      // status left stale by a missed idle could not survive a resync. A flat
+      // index cannot infer which omissions are deletions, so the bootstrap's
+      // own session list supplies the Scope-owned set: a session that Scope
+      // still lists, but which the snapshot no longer reports as running, is
+      // deleted — while a status written by an event after the response stamp
+      // is newer than the snapshot read and wins.
+      const converging = api.retainScopeState("converge-scope")
+      await h.waitForRequest("converge-scope")
+      h.complete(
+        "converge-scope",
+        {
+          scopeID: "scope-converge",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: { "stale-runner": { type: "busy" } },
+          sessions: {
+            data: [
+              { id: "stale-runner", time: {} },
+              { id: "fresh-runner", time: {} },
+            ],
+            total: 2,
+          },
+        },
+        { epoch: "test-epoch", seq: 10 },
+      )
+      await h.waitComplete(converging.state)
+      expect(api.sessionStatus["stale-runner"]).toEqual({ type: "busy" })
+
+      h.emit("converge-scope", 11, "session.status", { sessionID: "fresh-runner", status: { type: "busy" } })
+      expect(api.sessionStatus["fresh-runner"]).toEqual({ type: "busy" })
+
+      // Switching project: the last retention lease goes, the store is
+      // evicted, and only the global index still carries the runtime state.
+      converging.release()
+      expect(api.peekScopeState("converge-scope")).toBeUndefined()
+
+      const revived = api.retainScopeState("converge-scope")
+      await h.waitForRequest("converge-scope")
+      h.complete(
+        "converge-scope",
+        {
+          scopeID: "scope-converge",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: {
+            data: [
+              { id: "stale-runner", time: {} },
+              { id: "fresh-runner", time: {} },
+            ],
+            total: 2,
+          },
+        },
+        { epoch: "test-epoch", seq: 12 },
+      )
+      // Emitted between the response being stamped (seq 12) and its fields
+      // being applied, so it postdates the read: the snapshot must not clear it.
+      h.emit("converge-scope", 13, "session.status", { sessionID: "fresh-runner", status: { type: "busy" } })
+      await h.waitComplete(revived.state)
+      expect(api.sessionStatus["stale-runner"]).toBeUndefined()
+      expect(api.sessionStatus["fresh-runner"]).toEqual({ type: "busy" })
+      revived.release()
       shared.release()
     } finally {
       h.dispose()

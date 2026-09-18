@@ -106,12 +106,19 @@ beforeAll(async () => {
 
       const [store, setStore] = createStore({
         session: [],
-        session_status: { [sessionID]: { type: "busy" } },
         session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
         message: { [sessionID]: [rootMessage, doneAssistant, streamAssistant] },
         part: { [doneID]: [doneTextPart, doneToolPart], [streamID]: [streamTextPart] },
       })
+      // Session runtime state lives outside the Scope store; the view resolves
+      // it from this accessor bag.
+      const [runtimeState, setRuntimeState] = createStore({ status: { [sessionID]: { type: "busy" } } })
+      const NO_REQUESTS = []
+      const runtime = {
+        statusFor: (id) => runtimeState.status[id],
+        permissionsFor: () => NO_REQUESTS,
+        questionsFor: () => NO_REQUESTS,
+      }
 
       // Balanced activity projection resolves the external tool renderer for
       // every ordinary tool part — twice per projection pass (group-key scan
@@ -138,7 +145,7 @@ beforeAll(async () => {
               <ResourceOpenProvider value={resourceController}>
                 <MarkedProvider>
                   <DiffComponentProvider component={EmptyDiff}>
-                    <DataProvider data={store} directory="/workspace" serverUrl="http://localhost">
+                    <DataProvider data={store} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
                       <SessionTurn
                         sessionID={sessionID}
                         messageID={rootID}
@@ -159,7 +166,7 @@ beforeAll(async () => {
 
       globalThis.__projectionMemoizationHarness = {
         setStreamText: (text) => setStore("part", streamID, 0, "text", text),
-        setSessionStatus: (status) => setStore("session_status", sessionID, status),
+        setSessionStatus: (status) => setRuntimeState("status", sessionID, status),
         getToolLookups: () => toolLookups,
       }
     `,

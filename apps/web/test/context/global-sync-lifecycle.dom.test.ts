@@ -114,7 +114,6 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
         status: string
         config: { version?: string }
         session: unknown[]
-        session_status: Record<string, unknown>
         latestContextMessage: Record<string, unknown>
       },
       unknown,
@@ -126,6 +125,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       beginContextProjection(key: string, sessionID: string): number
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
+      sessionStatus: Record<string, { type?: string }>
       scope: { loadSessions(key: string): Promise<void> }
     }
     const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as {
@@ -191,7 +191,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       await oldList
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(current.state[0].session).toEqual([])
-      expect(current.state[0].session_status["obsolete-session"]).toBeUndefined()
+      expect(api.sessionStatus["obsolete-session"]).toBeUndefined()
       expect(h.replays.length).toBe(2)
       h.replays[1]!({ data: { status: "ok", epoch: "test-epoch", seq: 3, events: [] } })
       await new Promise((resolve) => setTimeout(resolve, 0))

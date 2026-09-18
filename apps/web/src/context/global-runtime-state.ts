@@ -20,6 +20,13 @@ import type { EventWriteStamp } from "./scope-snapshot-merge"
 
 export type SessionStatusIndex = Record<string, SessionStatus>
 
+export type ScopeStatusSnapshotAdoption = {
+  /** Keys the snapshot contributes to the index. */
+  adopt: SessionStatusIndex
+  /** Owned sessions the snapshot omits, whose stale entries must be deleted. */
+  drop: string[]
+}
+
 export function groupBySession<T extends { sessionID: string }>(items: readonly T[]): Record<string, T[]> {
   const grouped: Record<string, T[]> = {}
   for (const item of items) {
@@ -91,26 +98,40 @@ export class GlobalRuntimeWriteTracker {
   }
 
   /**
-   * Status keys a Scope bootstrap snapshot must contribute to the global index.
+   * Status keys a Scope bootstrap snapshot must contribute to the global index,
+   * plus the stale entries it must clear.
    *
    * The snapshot is the only source for sessions that were already running
    * before this client connected: no status event will follow for them, so
    * without this the index renders them as idle until their next transition.
    * A status event that landed after the response stamp is newer and wins.
    *
-   * Only keys the snapshot actually carries are returned. The index spans every
-   * Scope, so one Scope's response is not authoritative for the sessions it
-   * omits — their convergence belongs to the cross-Scope snapshot.
+   * The per-Scope bucket converged including deletions, so this does too: a
+   * session the Scope still owns but the snapshot no longer reports as running
+   * is one whose `idle` event (or archive) the client missed, and its stale
+   * entry must not survive a fail-open resync. Sessions outside the owned list
+   * belong to other Scopes and are untouched — a flat index cannot treat one
+   * Scope's response as authoritative for sessions it never claimed. The owned
+   * list is the bootstrap page, capped at the server page size, which matches
+   * the reach the per-Scope bucket had.
    */
-  adoptScopeStatusSnapshot(version: EventWriteStamp | undefined, snapshot: SessionStatusIndex): SessionStatusIndex {
+  adoptScopeStatusSnapshot(
+    version: EventWriteStamp | undefined,
+    snapshot: SessionStatusIndex,
+    scopeSessionIDs: Iterable<string>,
+  ): ScopeStatusSnapshotAdoption {
     const postStamp = this.postStampKeys(version, this.status)
-    if (!postStamp) return snapshot
-    const adopted: SessionStatusIndex = {}
+    const adopt: SessionStatusIndex = {}
     for (const [sessionID, status] of Object.entries(snapshot)) {
-      if (postStamp.has(sessionID)) continue
-      adopted[sessionID] = status
+      if (postStamp?.has(sessionID)) continue
+      adopt[sessionID] = status
     }
-    return adopted
+    const drop: string[] = []
+    for (const sessionID of scopeSessionIDs) {
+      if (snapshot[sessionID] !== undefined || postStamp?.has(sessionID)) continue
+      drop.push(sessionID)
+    }
+    return { adopt, drop }
   }
 
   /** Snapshot overlaid with post-stamp request upserts, in id order. */

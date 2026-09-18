@@ -1,33 +1,16 @@
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
-import type {
-  CortexTask,
-  DagNode,
-  Message,
-  Part,
-  PermissionRequest,
-  QuestionRequest,
-  Session,
-  SessionStatus,
-  FileDiff,
-  Todo,
-} from "@ericsanchezok/synergy-sdk"
+import type { CortexTask, DagNode, Message, Part, Session, FileDiff, Todo } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "./helper"
-import { createSessionDataView } from "./session-data-view"
+import { createSessionDataView, type SessionDataRuntime } from "./session-data-view"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
 export type Data = {
   session: Session[]
-  session_status: {
-    [sessionID: string]: SessionStatus
-  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
   session_diff_preload?: {
     [sessionID: string]: PreloadMultiFileDiffResult<any>[]
-  }
-  permission?: {
-    [sessionID: string]: PermissionRequest[]
   }
   message: {
     [sessionID: string]: Message[]
@@ -43,9 +26,6 @@ export type Data = {
   }
   dag?: {
     [sessionID: string]: DagNode[]
-  }
-  question?: {
-    [sessionID: string]: QuestionRequest[]
   }
   cortex?: CortexTask[]
 }
@@ -64,6 +44,13 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     data: Data
     directory: string
     serverUrl: string
+    /**
+     * Session runtime state (status, pending permissions, pending questions).
+     * It is keyed by session id and lives outside the Scope store, which is
+     * evicted as soon as the user switches project, so the host resolves it
+     * from its own global index instead of from `data`.
+     */
+    runtime?: SessionDataRuntime
     onPermissionRespond?: PermissionRespondFn
     onNavigateToSession?: NavigateToSessionFn
   }) => {
@@ -72,7 +59,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         return props.data
       },
       get view() {
-        return createSessionDataView(props.data)
+        return createSessionDataView(props.data, props.runtime)
       },
       get directory() {
         return props.directory

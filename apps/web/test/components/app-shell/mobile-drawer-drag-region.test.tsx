@@ -40,7 +40,6 @@ const stubModules: Record<string, string> = {
           loadMoreNav: async () => {},
           archiveSession: async () => null,
           projectSessions: () => [],
-          childStoreForScope: () => undefined,
           pinSession: () => {},
         },
         isDesktop: () => true,
@@ -76,7 +75,12 @@ const stubModules: Record<string, string> = {
   `,
   "stub-global-sync.ts": `
     export function useGlobalSync() {
-      return { data: { scope: [], paths: undefined } }
+      return {
+        data: { scope: [], paths: undefined },
+        sessionStatus: {},
+        permissions: {},
+        questions: {},
+      }
     }
   `,
   "stub-global-sdk.ts": `

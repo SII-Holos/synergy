@@ -40,17 +40,20 @@ const PART = {
 function fullData(): Data {
   return {
     session: [{ id: "s1" } as never],
-    session_status: { s1: { type: "idle" } },
     session_diff: { s1: [] },
     message: { s1: [MESSAGE] },
     part: { m1: [PART] },
-    permission: { s1: [] },
     inbox: { s1: [] },
     todo: { s1: [] },
     dag: { s1: [] },
-    question: { s1: [] },
     cortex: [],
   }
+}
+
+const runtime = {
+  statusFor: (sessionID: string) => (sessionID === "s1" ? ({ type: "idle" } as const) : undefined),
+  permissionsFor: () => [] as never[],
+  questionsFor: () => [] as never[],
 }
 
 describe("createSessionDataView", () => {
@@ -58,14 +61,26 @@ describe("createSessionDataView", () => {
     const view = createSessionDataView(fullData())
     expect(view.partsFor("m1")).toEqual([PART])
     expect(view.messagesFor("s1")).toEqual([MESSAGE])
-    expect(view.permissionsFor("s1")).toEqual([])
-    expect(view.statusFor("s1")).toEqual({ type: "idle" })
     expect(view.inboxFor("s1")).toEqual([])
     expect(view.todosFor("s1")).toEqual([])
     expect(view.dagNodesFor("s1")).toEqual([])
-    expect(view.questionsFor("s1")).toEqual([])
     expect(view.cortexTasks()).toEqual([])
     expect(view.sessionFor("s1")).toBeDefined()
+  })
+
+  test("resolves status and pending requests from the runtime, not the store", () => {
+    const view = createSessionDataView(fullData(), runtime)
+    expect(view.statusFor("s1")).toEqual({ type: "idle" })
+    expect(view.statusFor("missing")).toBeUndefined()
+    expect(view.permissionsFor("s1")).toEqual([])
+    expect(view.questionsFor("s1")).toEqual([])
+  })
+
+  test("without a runtime the runtime-shaped accessors stay empty", () => {
+    const view = createSessionDataView(fullData())
+    expect(view.statusFor("s1")).toBeUndefined()
+    expect(view.permissionsFor("s1")).toBe(EMPTY_PERMISSIONS)
+    expect(view.questionsFor("s1")).toBe(EMPTY_QUESTIONS)
   })
 
   test("returns shared empty arrays for missing buckets without throwing", () => {
@@ -86,7 +101,6 @@ describe("createSessionDataView", () => {
   test("returns shared empty arrays for missing optional buckets on a partial store", () => {
     const partial = {
       session: [],
-      session_status: {},
       session_diff: {},
       message: {},
       part: {},

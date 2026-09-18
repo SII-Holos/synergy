@@ -40,6 +40,23 @@ export const EMPTY_PART_TABLE: Record<string, Part[] | undefined> = Object.freez
 >
 
 /**
+ * Session runtime state supplied by the host application.
+ *
+ * Status and the pending permission/question requests are keyed by session id
+ * and owned by a store no Scope eviction touches, so the App resolves them
+ * from its global runtime index. The view takes them as a plain accessor bag
+ * rather than reading a Solid context: this module is imported by consumers
+ * that render without the App provider tree and must not depend on a specific
+ * App context. Every accessor must return the shared empty singleton for a
+ * missing key — render chains guard on reference identity.
+ */
+export interface SessionDataRuntime {
+  statusFor(sessionID: string): SessionStatus | undefined
+  permissionsFor(sessionID: string): PermissionRequest[]
+  questionsFor(sessionID: string): QuestionRequest[]
+}
+
+/**
  * Null-safe accessors over the shared session store.
  *
  * Session switches race the store's intermediate states: buckets for the next
@@ -69,18 +86,18 @@ export interface SessionDataView {
   sessionFor(sessionID: string): Session | undefined
 }
 
-export function createSessionDataView(data: Data | undefined): SessionDataView {
+export function createSessionDataView(data: Data | undefined, runtime?: SessionDataRuntime): SessionDataView {
   return {
     partsFor: (messageID) => data?.part?.[messageID] ?? EMPTY_PARTS,
     partTable: () => data?.part ?? EMPTY_PART_TABLE,
     messagesFor: (sessionID) => data?.message?.[sessionID] ?? EMPTY_MESSAGES,
-    permissionsFor: (sessionID) => data?.permission?.[sessionID] ?? EMPTY_PERMISSIONS,
-    statusFor: (sessionID) => data?.session_status?.[sessionID],
+    permissionsFor: (sessionID) => runtime?.permissionsFor(sessionID) ?? EMPTY_PERMISSIONS,
+    statusFor: (sessionID) => runtime?.statusFor(sessionID),
     inboxFor: (sessionID) => data?.inbox?.[sessionID] ?? EMPTY_INBOX,
     hasInboxBucket: (sessionID) => data?.inbox?.[sessionID] !== undefined,
     todosFor: (sessionID) => data?.todo?.[sessionID] ?? EMPTY_TODOS,
     dagNodesFor: (sessionID) => data?.dag?.[sessionID] ?? EMPTY_DAG,
-    questionsFor: (sessionID) => data?.question?.[sessionID] ?? EMPTY_QUESTIONS,
+    questionsFor: (sessionID) => runtime?.questionsFor(sessionID) ?? EMPTY_QUESTIONS,
     cortexTasks: () => data?.cortex ?? EMPTY_CORTEX,
     // Reads the store at call time like every other accessor: a view created
     // outside a reactive scope (or memoized against a non-reactive property)

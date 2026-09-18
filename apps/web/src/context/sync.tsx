@@ -5,7 +5,7 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Session } from "@ericsanchezok/synergy-sdk/client"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
@@ -386,15 +386,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return { phase: "idle", generation: 0, hasSnapshot: false }
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
+          // The permission route is cross-Scope, so its response is
+          // authoritative for the whole global index rather than for this
+          // session's bucket alone; `seedGlobalPermissions` keeps any request
+          // whose event write postdates the response stamp.
           const syncPermissions = () =>
             retry(() => sdk.client.permission.list())
-              .then((res) => {
-                const entries = (res.data ?? [])
-                  .filter((entry): entry is PermissionRequest => !!entry?.id && entry.sessionID === sessionID)
-                  .slice()
-                  .sort((a, b) => a.id.localeCompare(b.id))
-                setStore("permission", sessionID, reconcile(entries, { key: "id" }))
-              })
+              .then((res) => globalSync.seedGlobalPermissions(res.data ?? [], res.response?.headers))
               .catch(() => {})
           // Force session/message reloads after reconnect or backend restart.
           // Session metadata alone is not enough: tool parts publish as

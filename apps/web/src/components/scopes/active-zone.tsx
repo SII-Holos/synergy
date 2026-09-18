@@ -5,18 +5,13 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import { isWorkingStatus } from "@/utils/session-status"
-import type { Session, SessionStatus, PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
+import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { GlobalRuntimeIndex } from "@/context/session-data-view"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-
-type ChildStore = {
-  session_status: { [sessionID: string]: SessionStatus }
-  permission: { [sessionID: string]: PermissionRequest[] }
-  question: { [sessionID: string]: QuestionRequest[] }
-}
 
 interface ActiveZoneProps {
   sessions: Session[]
-  childStore: ChildStore
+  runtime: GlobalRuntimeIndex
   childStatus?: Record<string, { count: number; running: number }>
   notification: {
     session: { unseen: (sessionID: string) => { type: string }[] }
@@ -28,14 +23,12 @@ type ActiveReason = "working" | "permission" | "error" | "notification"
 
 export function getActiveReason(
   session: Session,
-  childStore: ChildStore,
+  runtime: GlobalRuntimeIndex,
   notification: ActiveZoneProps["notification"],
 ): ActiveReason | null {
-  const status = childStore.session_status[session.id]
-  if (isWorkingStatus(status)) return "working"
+  if (isWorkingStatus(runtime.sessionStatus[session.id])) return "working"
 
-  const permissions = childStore.permission[session.id] ?? []
-  if (permissions.length > 0) return "permission"
+  if ((runtime.permissions[session.id]?.length ?? 0) > 0) return "permission"
 
   const unseen = notification.session.unseen(session.id)
   if (unseen.some((n) => n.type === "error")) return "error"
@@ -56,7 +49,7 @@ export function ActiveZone(props: ActiveZoneProps) {
     const result: { session: Session; reason: ActiveReason }[] = []
 
     for (const session of props.sessions) {
-      const reason = getActiveReason(session, props.childStore, props.notification)
+      const reason = getActiveReason(session, props.runtime, props.notification)
       if (reason) {
         result.push({ session, reason })
       }
@@ -93,7 +86,7 @@ export function ActiveZone(props: ActiveZoneProps) {
               <ActiveCard
                 session={session}
                 reason={reason}
-                childStore={props.childStore}
+                runtime={props.runtime}
                 childStatus={props.childStatus?.[session.id]}
                 index={index}
                 onSelect={props.onSelectSession}
@@ -109,7 +102,7 @@ export function ActiveZone(props: ActiveZoneProps) {
 function ActiveCard(props: {
   session: Session
   reason: ActiveReason
-  childStore: ChildStore
+  runtime: GlobalRuntimeIndex
   childStatus?: { count: number; running: number }
   index: () => number
   onSelect: (session: Session) => void
@@ -117,7 +110,7 @@ function ActiveCard(props: {
   const { i18n, fmt } = useLocale()
   const statusText = createMemo(() => {
     if (props.reason === "working") {
-      const status = props.childStore.session_status[props.session.id]
+      const status = props.runtime.sessionStatus[props.session.id]
       if (status?.type === "retry") return status.message ?? i18n._(AP.scopesActiveZoneRetrying.id)
       if (status?.type === "busy") return status.description ?? i18n._(AP.scopesActiveZoneWorking.id)
       return i18n._(AP.scopesActiveZoneWorking.id)

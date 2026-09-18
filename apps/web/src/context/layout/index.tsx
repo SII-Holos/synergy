@@ -1071,11 +1071,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // Nav entries are populated via loadScopeNav / loadGlobalRecent / loadRootNavSection.
     // Session events trigger depth-preserving refreshes via refreshScopeNav / etc.
 
-    function childStoreForScope(scope: LocalScope | undefined) {
-      if (!scope) return undefined
-      return globalSync.peekScopeState(scope.worktree)?.[0]
-    }
-
     type PrefetchQueue = {
       inflight: Set<string>
       pending: string[]
@@ -1285,7 +1280,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         recentEntries: recentNavEntries,
         hasMoreRecent,
         loadMoreNav,
-        childStoreForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,

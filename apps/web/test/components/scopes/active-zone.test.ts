@@ -10,8 +10,7 @@ mock.module("@/locales/en/messages.po?lingui", () => ({ messages: {} }))
 
 const { getActiveReason } = await import("../../../src/components/scopes/active-zone")
 
-type ChildStore = Parameters<typeof getActiveReason>[1]
-
+type Runtime = Parameters<typeof getActiveReason>[1]
 function session(id = "ses_1"): Session {
   return {
     id,
@@ -26,11 +25,11 @@ function permission(sessionID: string): PermissionRequest {
   return { id: "per_1", sessionID, permission: "bash", patterns: ["ls"], metadata: {} }
 }
 
-function store(input: Partial<ChildStore> = {}): ChildStore {
+function runtime(input: Partial<Runtime> = {}): Runtime {
   return {
-    session_status: input.session_status ?? {},
-    permission: input.permission ?? {},
-    question: input.question ?? {},
+    sessionStatus: input.sessionStatus ?? {},
+    permissions: input.permissions ?? {},
+    questions: input.questions ?? {},
   }
 }
 
@@ -44,32 +43,32 @@ describe("getActiveReason", () => {
       { type: "recovering" },
     ]
     for (const status of statuses) {
-      expect(getActiveReason(session(), store({ session_status: { ses_1: status } }), notification)).toBe("working")
+      expect(getActiveReason(session(), runtime({ sessionStatus: { ses_1: status } }), notification)).toBe("working")
     }
   })
 
   test("reports nothing for idle and for a missing status", () => {
-    expect(getActiveReason(session(), store({ session_status: { ses_1: { type: "idle" } } }), notification)).toBeNull()
-    expect(getActiveReason(session(), store(), notification)).toBeNull()
+    expect(getActiveReason(session(), runtime({ sessionStatus: { ses_1: { type: "idle" } } }), notification)).toBeNull()
+    expect(getActiveReason(session(), runtime(), notification)).toBeNull()
   })
 
   test("reports a pending permission request", () => {
-    const childStore = store({ permission: { ses_1: [permission("ses_1")] } })
-    expect(getActiveReason(session(), childStore, notification)).toBe("permission")
+    const pending = runtime({ permissions: { ses_1: [permission("ses_1")] } })
+    expect(getActiveReason(session(), pending, notification)).toBe("permission")
   })
 
   test("reports working when a busy status and a pending permission coexist", () => {
-    const childStore = store({
-      session_status: { ses_1: { type: "busy" } },
-      permission: { ses_1: [permission("ses_1")] },
+    const pending = runtime({
+      sessionStatus: { ses_1: { type: "busy" } },
+      permissions: { ses_1: [permission("ses_1")] },
     })
-    expect(getActiveReason(session(), childStore, notification)).toBe("working")
+    expect(getActiveReason(session(), pending, notification)).toBe("working")
   })
 
   test("reports an error notice before other unseen activity", () => {
     const withError = { session: { unseen: () => [{ type: "error" }, { type: "info" }] } }
     const withNotice = { session: { unseen: () => [{ type: "info" }] } }
-    expect(getActiveReason(session(), store(), withError)).toBe("error")
-    expect(getActiveReason(session(), store(), withNotice)).toBe("notification")
+    expect(getActiveReason(session(), runtime(), withError)).toBe("error")
+    expect(getActiveReason(session(), runtime(), withNotice)).toBe("notification")
   })
 })

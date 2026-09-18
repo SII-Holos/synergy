@@ -415,6 +415,7 @@ function SessionListDrawerView(props: {
 }) {
   const layout = useLayout()
   const globalSDK = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const { _ } = useLingui()
@@ -424,7 +425,6 @@ function SessionListDrawerView(props: {
   const [pagedTotal, setPagedTotal] = createSignal(0)
 
   const allSessions = createMemo(() => layout.nav.projectSessions(props.scope))
-  const childStore = createMemo(() => layout.nav.childStoreForScope(props.scope))
   const totalPages = createMemo(() => Math.max(1, Math.ceil(pagedTotal() / SESSION_PAGE_SIZE)))
 
   const scopeName = createMemo(() => getScopeLabel(props.scope))
@@ -452,12 +452,8 @@ function SessionListDrawerView(props: {
   }
 
   function getSessionState(session: Session) {
-    const store = childStore()
-    if (!store)
-      return { isWorking: false, hasPermission: false, hasError: false, hasNotification: false, notificationCount: 0 }
-    const status = store.session_status[session.id]
-    const isWorking = isWorkingStatus(status)
-    const hasPermission = (store.permission[session.id] ?? []).length > 0
+    const isWorking = isWorkingStatus(globalSync.sessionStatus[session.id])
+    const hasPermission = (globalSync.permissions[session.id]?.length ?? 0) > 0
     const unseen = props.notification.session.unseen(session.id)
     const hasError = unseen.some((n) => n.type === "error")
     const hasNotification = unseen.length > 0
@@ -510,16 +506,12 @@ function SessionListDrawerView(props: {
         <span>{_(appShell.newSession)}</span>
       </button>
 
-      <Show when={childStore()}>
-        {(store) => (
-          <ActiveZone
-            sessions={allSessions()}
-            childStore={store()}
-            notification={props.notification}
-            onSelectSession={props.onSelectSession}
-          />
-        )}
-      </Show>
+      <ActiveZone
+        sessions={allSessions()}
+        runtime={globalSync}
+        notification={props.notification}
+        onSelectSession={props.onSelectSession}
+      />
 
       <div class="flex-1 min-h-0 overflow-y-auto">
         <For each={pagedSessions()}>
