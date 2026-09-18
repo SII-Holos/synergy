@@ -64,6 +64,12 @@ async function readToolPart(sessionID: string, messageID: string, partID: string
   return part
 }
 
+async function findToolPart(sessionID: string, messageID: string, partID: string) {
+  const parts = await MessageV2.parts({ sessionID, messageID })
+  const part = parts.find((candidate) => candidate.id === partID)
+  return part?.type === "tool" ? part : undefined
+}
+
 describe("orphaned tool part settlement on abort repair", () => {
   test("settles a running tool part left on an already-terminal assistant message", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -151,6 +157,61 @@ describe("orphaned tool part settlement on abort repair", () => {
         await SessionInvoke.repairAfterAbort(session.id)
 
         expect((await readToolPart(session.id, assistant.id, partID)).state.status).toBe("completed")
+      },
+    })
+  })
+
+  test("settles an orphaned part on a superseded message, not only the newest turn", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        // Turn one: the process died mid-call and the repair was lost.
+        const firstRoot = await writeRoot(session.id)
+        const firstAssistant = await writeAssistant(session.id, firstRoot.id, "error")
+        const orphaned = await writeRunningToolPart({
+          sessionID: session.id,
+          messageID: firstAssistant.id,
+          callID: "call_superseded",
+        })
+        // Turn two supersedes it, so a latest-message-only repair never revisits
+        // turn one.
+        const secondRoot = await writeRoot(session.id)
+        const secondAssistant = await writeAssistant(session.id, secondRoot.id, "error")
+
+        await SessionInvoke.repairAfterAbort(session.id)
+
+        // Both the superseded part and the newest turn's state are consistent.
+        expect((await readToolPart(session.id, firstAssistant.id, orphaned)).state.status).toBe("error")
+        expect(await findToolPart(session.id, secondAssistant.id, orphaned)).toBeUndefined()
+      },
+    })
+  })
+
+  test("leaves an unsettled part on a non-terminal message alone", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const root = await writeRoot(session.id)
+        // A live turn's part belongs to the processor, not to this repair: the
+        // session-wide sweep must not touch a message that can still complete.
+        const live = await writeAssistant(session.id, root.id)
+        const partID = await writeRunningToolPart({
+          sessionID: session.id,
+          messageID: live.id,
+          callID: "call_live_turn",
+        })
+        // Give the session a different terminal turn so repair has work to do.
+        const otherRoot = await writeRoot(session.id)
+        const terminal = await writeAssistant(session.id, otherRoot.id, "error")
+
+        await SessionInvoke.repairAfterAbort(session.id)
+
+        expect((await readToolPart(session.id, live.id, partID)).state.status).toBe("running")
+        expect(await findToolPart(session.id, terminal.id, partID)).toBeUndefined()
       },
     })
   })

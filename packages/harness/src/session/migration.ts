@@ -476,6 +476,8 @@ function collectLegacyToolDisplayPartCandidates() {
   return collectPartCandidates(needsToolDisplayMigration)
 }
 
+/** A tool state still awaiting settlement. Shares MessageV2's classification so
+ * this migration and restore-time repair cannot drift apart. */
 function isNonTerminalToolState(state: unknown): boolean {
   const status = asRecord(state)?.status
   return status === "pending" || status === "generating" || status === "running"
@@ -498,6 +500,9 @@ async function migrateOrphanedToolParts(progress: (current: number, total: numbe
     if (!isNonTerminalToolState(part.state)) continue
     candidates.push({ key: [...record.key], part })
   }
+  // Report the scanned total even when there is nothing to rewrite, so a
+  // progress reporter shows a completed pass rather than silence.
+  progress(0, candidates.length)
   if (candidates.length === 0) return
 
   let done = 0

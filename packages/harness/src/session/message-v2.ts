@@ -405,6 +405,13 @@ export namespace MessageV2 {
   export const INTERRUPTED_TOOL_ERROR =
     "Runtime ended before this tool completed — the call was not replayed and its side effects are unknown"
 
+  /** Whether a tool state still awaits a settlement write: `pending` and
+   * `generating` never began, `running` is mid-call. Shared by restore-time
+   * repair and the historical migration so both classify identically. */
+  export function isUnsettledToolState(state: ToolPart["state"]): boolean {
+    return state.status === "pending" || state.status === "generating" || state.status === "running"
+  }
+
   /**
    * Closed set of message origin types (issue #281 §4.2). Second-level
    * variation (e.g. blueprint loop_start vs loop_rejected) goes in `detail`,

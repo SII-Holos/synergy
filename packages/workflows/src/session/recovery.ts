@@ -17,6 +17,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
+import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutContinuationRecovery } from "@ericsanchezok/synergy-harness/session/rollout/continuation-recovery"
@@ -54,11 +55,11 @@ export namespace WorkflowRecovery {
   }
 
   /**
-   * A persisted active loop is only a real driver when something durable will
-   * resume it after a restart. A loop without such evidence is a phantom: it
-   * keeps the session pinned in `recovering` while nothing drives it, and no
-   * user-facing control can clear it because the derived status is recomputed
-   * from this very record.
+   * A persisted active loop is only a real driver when something will resume it
+   * after a restart. A loop without such evidence is a phantom: it keeps the
+   * session pinned in `recovering` while nothing drives it, and no user-facing
+   * control can clear it because the derived status is recomputed from this very
+   * record.
    */
   async function hasDurableDriver(input: {
     loop: SessionBlueprintState.LoopInfo
@@ -74,13 +75,17 @@ export namespace WorkflowRecovery {
     // startup controller, which runs after session recovery.
     if (loop.source === "lattice") return true
     if (!input.sessionID) return false
-    if (await SessionInbox.hasRunnableItem(input.sessionID).catch(() => false)) return true
-    return RolloutContinuationRecovery.pending(input.sessionID).catch(() => false)
+    // A live runtime is driving this loop right now. Recovery normally runs
+    // before anything is running, but a re-ensured scope can reconcile while
+    // sessions are live, and a loop under a running turn is by definition not
+    // orphaned however empty its durable queues look.
+    if (SessionManager.isRunning(input.sessionID)) return true
+    return sessionHasDurableDriver(input.sessionID)
   }
 
   /** Stable prefix for a loop an operator or recovery ended before its own
    * lifecycle finished, so the two are distinguishable in stored history. */
-  export const INTERRUPTED_LOOP_ERROR = `${INTERRUPTED_PREFIX} runtime restarted before this loop resumed`
+  const INTERRUPTED_LOOP_ERROR = `${INTERRUPTED_PREFIX} runtime restarted before this loop resumed`
 
   /**
    * End a loop on explicit user request. Cancellation is the honest terminal
@@ -117,7 +122,7 @@ export namespace WorkflowRecovery {
     try {
       await SessionBlueprintState.updateLoopStatus(input.scopeID, loop.id, {
         status,
-        error: `${INTERRUPTED_PREFIX} runtime restarted before this loop resumed`,
+        error: INTERRUPTED_LOOP_ERROR,
       })
     } catch (error) {
       // A concurrent writer already moved the loop (or removed it); that actor
@@ -341,26 +346,37 @@ export namespace WorkflowRecovery {
     }
 
     for (const loop of loops) {
-      if (isActiveLoop(loop)) {
-        await reconcileNoteActiveLoop({ ...input, loop })
-        await ensureSessionLoopBinding({
-          ...input,
-          sessionID: loop.sessionID,
-          loopID: loop.id,
-          loopRole: "execution",
-        })
-        if (loop.status === "auditing") {
+      // Contain a failure per loop: the statuses are already written, so one
+      // unrecoverable reference cleanup must not starve every later loop of its
+      // own cleanup on this pass and every pass after it.
+      try {
+        if (isActiveLoop(loop)) {
+          await reconcileNoteActiveLoop({ ...input, loop })
           await ensureSessionLoopBinding({
             ...input,
-            sessionID: loop.auditSessionID,
+            sessionID: loop.sessionID,
             loopID: loop.id,
-            loopRole: "audit",
+            loopRole: "execution",
           })
+          if (loop.status === "auditing") {
+            await ensureSessionLoopBinding({
+              ...input,
+              sessionID: loop.auditSessionID,
+              loopID: loop.id,
+              loopRole: "audit",
+            })
+          }
+        } else if (isTerminalLoop(loop)) {
+          await clearNoteActiveLoop({ ...input, loop })
+          await clearSessionLoopBinding({ ...input, sessionID: loop.sessionID, loopID: loop.id })
+          await clearSessionLoopBinding({ ...input, sessionID: loop.auditSessionID, loopID: loop.id })
         }
-      } else if (isTerminalLoop(loop)) {
-        await clearNoteActiveLoop({ ...input, loop })
-        await clearSessionLoopBinding({ ...input, sessionID: loop.sessionID, loopID: loop.id })
-        await clearSessionLoopBinding({ ...input, sessionID: loop.auditSessionID, loopID: loop.id })
+      } catch (error) {
+        log.warn("BlueprintLoop reference reconciliation failed", {
+          scopeID: input.scopeID,
+          loopID: loop.id,
+          error: String(error),
+        })
       }
       const execution = sessionsByID.get(loop.sessionID)
       if (execution) sessionCandidates.set(execution.id, execution)
@@ -470,7 +486,15 @@ export namespace WorkflowRecovery {
       if (working) {
         result[session.id] = toStatus(working)
       } else if (activeLoopSessionIDs.has(session.id)) {
-        result[session.id] = { type: "recovering", reason: "workflow", description: "BlueprintLoop active" }
+        // `resolve` returned nothing, so the loop is active but not bound. Ask
+        // the owning domain for the cause rather than restating it here: this is
+        // the only status a UI can read for such a session, and a paused loop
+        // must not be reported as merely "active".
+        result[session.id] = {
+          type: "recovering",
+          reason: "workflow",
+          description: await SessionExecutionContributions.recoveringDescription(session).catch(() => undefined),
+        }
       }
     }
     return result

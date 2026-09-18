@@ -1,7 +1,7 @@
 import z from "zod"
 import { SessionInvoke } from "./invoke"
 import { SessionCortexRuntime } from "./cortex-runtime"
-import type { SessionManager } from "./manager"
+import { SessionManager } from "./manager"
 type AbortHook = (sessionID: string) => void | Promise<void>
 
 export namespace SessionAbort {
@@ -37,17 +37,28 @@ export namespace SessionAbort {
   }
 
   export async function abort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): Promise<Result> {
+    // Sample liveness *before* the signal. The signal ends the turn, which
+    // releases the runtime, so a later sample cannot distinguish a loop that was
+    // healthily driving this turn from one orphaned by a dead runtime.
+    const turnWasRunning = SessionManager.isRunning(sessionID)
     const outcome = SessionInvoke.cancel(sessionID, options)
     await SessionCortexRuntime.cancelAllForParent(sessionID)
-    const state = await SessionInvoke.repairAbortState(sessionID)
+    const state = await SessionInvoke.repairAbortState(sessionID, { turnWasRunning })
     await Promise.all([...hooks].map((hook) => hook(sessionID)))
     return { outcome, repaired: state.repaired, abandoned: state.abandoned, settled: state.settled }
   }
 
   /** Whether this call had any real effect, as opposed to finding an idle
-   * session with nothing to stop. */
-  export function hadEffect(result: Result): boolean {
+   * session with nothing to stop. A Cortex child cancellation is a real effect
+   * even when the parent turn itself was idle. */
+  export function hadEffect(
+    result: Result,
+    options: { cortexCancelled?: boolean; signalsDelivered?: boolean } = {},
+  ): boolean {
     if (result.outcome === "signaled" || result.outcome === "already_stopping") return true
+    // Cancelling a detached loop job or a Cortex child is real work even though
+    // it is not reflected in the runtime signal outcome.
+    if (options.cortexCancelled || options.signalsDelivered) return true
     return result.repaired || result.abandoned || result.settled
   }
 }
