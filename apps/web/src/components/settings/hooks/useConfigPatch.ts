@@ -229,6 +229,13 @@ function buildSafetyPatch(cfg: Config, state: SettingsState, patch: Record<strin
     patch.controlProfile = safety.controlProfile
   }
 
+  if (
+    safety.nonInteractiveControlProfile !==
+    (cfg.nonInteractiveControlProfile ?? UI_DEFAULTS.nonInteractiveControlProfile)
+  ) {
+    patch.nonInteractiveControlProfile = safety.nonInteractiveControlProfile
+  }
+
   if (safety.permission !== resolvePermissionForUi(cfg.permission)) {
     patch.permission = safety.permission || undefined
   }

@@ -20,6 +20,7 @@ import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
 import { useInput, type ControlProfileId } from "@/context/input"
+import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
 import { useFile } from "@/context/file"
 import {
   DEFAULT_PROMPT,
@@ -184,6 +185,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const workflowDialog = useDialog()
   const globalSync = useGlobalSync()
+  const fullAccessAck = useFullAccessAcknowledgement()
   const sync = useSync()
   const view = useSessionDataView()
   const input = useInput()
@@ -1190,6 +1192,8 @@ export function createPromptInputController(props: PromptInputProps) {
 
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
     if (store.switchingProfile) return
+
+    if (!(await fullAccessAck.ensure(profile, selectedControlProfile()))) return
 
     if (!params.id) {
       input.setControlProfile(profile)

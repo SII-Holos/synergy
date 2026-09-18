@@ -6,6 +6,7 @@ import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { SafetyStore } from "../types"
+import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
 import { controlProfileDescription, controlProfileLabel, fallbackControlProfiles } from "./control-profile-copy"
 
 const sandboxChecking = { id: "settings.sandbox.checking", message: "Checking sandbox status..." }
@@ -76,6 +77,27 @@ const profilePageTitle = { id: "settings.controlProfile.page.title", message: "C
 const profilePageDesc = {
   id: "settings.controlProfile.page.desc",
   message: "Resolved access profile applied to sessions and agents.",
+}
+const nonInteractiveRowTitle = {
+  id: "settings.controlProfile.nonInteractive.title",
+  message: "Non-interactive sessions",
+}
+const nonInteractiveRowDesc = {
+  id: "settings.controlProfile.nonInteractive.desc",
+  message:
+    "Profile for sessions started by Channels and scheduled Agenda runs, which have nobody available to answer an approval prompt. Guarded is unavailable here because an unattended ask could never be answered. Changes apply to sessions created afterwards.",
+}
+const nonInteractiveAria = {
+  id: "settings.controlProfile.nonInteractive.aria",
+  message: "Non-interactive control profile",
+}
+const nonInteractiveAutonomousLabel = {
+  id: "settings.controlProfile.nonInteractive.autonomous",
+  message: "Autonomous",
+}
+const nonInteractiveFullAccessLabel = {
+  id: "settings.controlProfile.nonInteractive.fullAccess",
+  message: "Full Access",
 }
 
 export function PermissionsPanel(props: {
@@ -173,7 +195,16 @@ export function ControlProfilePanel(props: {
   onSafetyChange: (key: keyof SafetyStore, value: string) => void
 }) {
   const { _ } = useLingui()
+  const fullAccessAck = useFullAccessAcknowledgement()
   const profiles = () => (props.controlProfiles.length ? props.controlProfiles : fallbackControlProfiles)
+  const selectProfile = async (profile: string) => {
+    if (!(await fullAccessAck.ensure(profile, props.safety.controlProfile))) return
+    props.onSafetyChange("controlProfile", profile)
+  }
+  const selectNonInteractive = async (profile: string) => {
+    if (!(await fullAccessAck.ensure(profile, props.safety.nonInteractiveControlProfile))) return
+    props.onSafetyChange("nonInteractiveControlProfile", profile)
+  }
   return (
     <SettingsPage title={_(profilePageTitle)} description={_(profilePageDesc)}>
       <SettingsSection>
@@ -184,7 +215,7 @@ export function ControlProfilePanel(props: {
                 type="button"
                 class="ds-profile-card"
                 classList={{ "ds-profile-card-active": props.safety.controlProfile === profile.id }}
-                onClick={() => props.onSafetyChange("controlProfile", profile.id)}
+                onClick={() => void selectProfile(profile.id)}
               >
                 <span class="ds-profile-name">{controlProfileLabel(profile, _)}</span>
                 <span class="ds-profile-description">{controlProfileDescription(profile, _)}</span>
@@ -192,6 +223,21 @@ export function ControlProfilePanel(props: {
             )}
           </For>
         </div>
+        <SettingRow
+          title={_(nonInteractiveRowTitle)}
+          description={_(nonInteractiveRowDesc)}
+          trailing={
+            <SettingsStepScale
+              value={props.safety.nonInteractiveControlProfile}
+              ariaLabel={_(nonInteractiveAria)}
+              options={[
+                { value: "autonomous", label: _(nonInteractiveAutonomousLabel) },
+                { value: "full_access", label: _(nonInteractiveFullAccessLabel) },
+              ]}
+              onChange={(value) => void selectNonInteractive(value)}
+            />
+          }
+        />
       </SettingsSection>
     </SettingsPage>
   )
