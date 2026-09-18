@@ -7,6 +7,11 @@ export namespace SessionSchemaRegistry {
     shape: z.ZodRawShape
     isBackground?(input: Record<string, unknown>): boolean
     created?(input: Record<string, unknown>): Promise<void>
+    /** Session navigation identity this owner contributes to
+     * `SessionNavEntry` (for example the Blueprint loop binding). Runs
+     * synchronously inside session transactions, so it may only read the
+     * already-parsed session. */
+    navIdentity?(input: Record<string, unknown>): Record<string, unknown> | undefined
     normalizeImport?(input: Record<string, unknown>, mode: "transcript" | "archive"): void
   }
   const owners = new Map<string, Contribution>()
@@ -49,6 +54,12 @@ export namespace SessionSchemaRegistry {
   export function isBackground(input: object | undefined): boolean {
     if (!input) return false
     return [...owners.values()].some((owner) => owner.isBackground?.(input as Record<string, unknown>))
+  }
+
+  export function navIdentity(input: object): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+    for (const owner of owners.values()) Object.assign(result, owner.navIdentity?.(input as Record<string, unknown>))
+    return result
   }
 
   export async function created(input: object): Promise<void> {

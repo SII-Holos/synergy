@@ -13666,12 +13666,32 @@ msgid "session.state.home.unread"
 msgstr "全局会话；回复已生成"
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr "Light Loop 会话"
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr "Light Loop 会话；回复已生成"
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr "Light Loop 等待你处理"
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr "会话恢复中"
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr "正在运行的会话"
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
 msgstr "正在运行 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
+msgstr "正在运行 Light Loop"
 
 #. js-lingui-explicit-id
 msgid "session.state.waiting"

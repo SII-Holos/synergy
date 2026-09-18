@@ -43,8 +43,6 @@ const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
   messageWindow: {},
   part: {},
   session_diff: {},
-  session_status: {},
-  cortex: [],
   session: [],
   agent: [],
 }

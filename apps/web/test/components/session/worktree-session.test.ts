@@ -127,10 +127,19 @@ describe("workspace change disabled state", () => {
     expect(isSessionRunningForWorkspaceChange({ pending: true, status: { type: "idle" } })).toBe(true)
   })
 
-  test("disables for non-idle runtime statuses", () => {
-    for (const type of ["busy", "retry", "recovering"]) {
-      expect(isSessionRunningForWorkspaceChange({ status: { type } })).toBe(true)
+  test("disables for busy, retry, and recovering runtime statuses", () => {
+    for (const status of [
+      { type: "busy" },
+      { type: "retry", attempt: 1, message: "rate limited", next: 100 },
+      { type: "recovering" },
+    ] as const) {
+      expect(isSessionRunningForWorkspaceChange({ status })).toBe(true)
     }
+  })
+
+  test("allows a session whose status is unknown", () => {
+    expect(isSessionRunningForWorkspaceChange({ status: undefined })).toBe(false)
+    expect(isSessionRunningForWorkspaceChange({})).toBe(false)
   })
 
   test("disables for session working metadata", () => {
