@@ -71,7 +71,7 @@ export const StatsCommand = cmd({
     } else if (args.recompute) {
       snapshot = await Engine.recompute(onProgress)
     } else {
-      snapshot = await Engine.get(onProgress)
+      snapshot = await Engine.update(onProgress)
     }
 
     // Apply --days filter client-side on time series

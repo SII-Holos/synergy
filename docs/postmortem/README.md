@@ -52,6 +52,10 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0013 | Short native probes missed OpenCode runtime stalls under Rosetta | mitigated | 2026-09-14 |
 | 0014 | Benchmark recopied instructions into their existing bind mount | implemented | 2026-09-14 |
 
+| 0015 | Streaming checkpoint ordering and repair | implemented | 2026-09-18 |
+
+| 0016 | Interactive reads scanned historical state | implemented | 2026-09-18 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

@@ -15,8 +15,9 @@ Runtime environment:
 
 - `SYNERGY_DESKTOP_CHANNEL=dev|stable`
 - `SYNERGY_DESKTOP_SERVER_MODE=managed|external`
-- `SYNERGY_DESKTOP_APP_URL` only applies to dev/external mode
-- `SYNERGY_DESKTOP_LOG_DIR` overrides desktop/server logs
+  - `SYNERGY_DESKTOP_APP_URL` only applies to dev/external mode
+  - `SYNERGY_DESKTOP_SERVER_PORT` pins the managed server port; unset, Desktop reuses the port it remembers for the channel, then scans `4096`-`4099`
+  - `SYNERGY_DESKTOP_LOG_DIR` overrides desktop/server logs
 
 ## Local Commands
 

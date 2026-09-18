@@ -409,12 +409,14 @@ export namespace SessionHistory {
     cursor?: string
     limit?: number
   }): Promise<MessagePage> {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const scopeID = session.scope.id
     const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
     const loadedParts = new Map<string, MessageV2.Part[]>()
     const loadParts = async (messageID: string) => {
       const cached = loadedParts.get(messageID)
       if (cached) return cached
-      const parts = await MessageV2.parts({ sessionID: input.sessionID, messageID }).catch((error) => {
+      const parts = await MessageV2.parts({ scopeID, sessionID: input.sessionID, messageID }).catch((error) => {
         log.warn("skipping unreadable message parts", { sessionID: input.sessionID, messageID, error: String(error) })
         return [] as MessageV2.Part[]
       })

@@ -168,3 +168,27 @@ test("archived recovery stays dormant until the session is restored", async () =
     expect(await RolloutContinuationRecovery.list(call.owner.scopeID)).toEqual([session.id])
   })
 })
+
+test("continuation discovery is indexed and upgrades historical recovery intents idempotently", async () => {
+  const { Storage } = await import("../../src/storage/storage")
+  const { RolloutArtifact } = await import("../../src/session/rollout/artifact")
+  const { migrations } = await import("../../src/session/migration")
+  const migration = migrations.find((entry) => entry.id === "20260918-index-continuation-recovery")!
+  expect(migration).toBeDefined()
+  await fixture(async ({ session, rootID, call }) => {
+    await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed" })
+    await notify(session.id, rootID)
+    const legacy = [...RolloutArtifact.root(call.owner), "continuation-recovery", rootID]
+    await Storage.write(legacy, { runID: rootID })
+    await migration.up(() => {})
+    await migration.up(() => {})
+    expect((await Storage.readMany([legacy]))[0]).toBeUndefined()
+    const scans = spyOn(Storage, "scan")
+    try {
+      expect(await RolloutContinuationRecovery.list(call.owner.scopeID)).toEqual([session.id])
+      expect(scans.mock.calls.some(([key]) => key.length === 2 && key[0] === "sessions")).toBe(false)
+    } finally {
+      scans.mockRestore()
+    }
+  })
+})

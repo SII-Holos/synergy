@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { createServer, type AddressInfo } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { createDevPlan, runDevPlan, spawnDevProcess, terminateDevProcesses } from "../../../../script/dev"
@@ -98,6 +99,24 @@ describe("dev orchestrator planner", () => {
     expect(plan.processes[3]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
   })
 
+  test("pins the managed desktop server port when explicitly requested", () => {
+    const plan = createDevPlan(["desktop", "--managed", "--server-port", "4097"], options)
+
+    expect(plan.kind).toBe("run")
+    expect(plan.processes[3]?.env).toMatchObject({
+      SYNERGY_DESKTOP_SERVER_MODE: "managed",
+      SYNERGY_DESKTOP_SERVER_PORT: "4097",
+    })
+    expect(plan.requiredPorts).toEqual([{ label: "server", port: 4097, host: "127.0.0.1" }])
+  })
+
+  test("leaves the managed desktop port to Desktop when no port is requested", () => {
+    const plan = createDevPlan(["desktop", "--managed"], options)
+
+    expect(plan.processes[3]?.env).not.toHaveProperty("SYNERGY_DESKTOP_SERVER_PORT")
+    expect(plan.requiredPorts).toEqual([])
+  })
+
   test("plans managed desktop with app build even when app/dist already exists", async () => {
     const repoRoot = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-plan-"))
     try {
@@ -136,6 +155,45 @@ describe("dev orchestrator planner", () => {
 
     expect(plan.kind).toBe("run")
     expect(plan.processes[0]?.env).toEqual({ SYNERGY_APP_BUILD_KIND: "local" })
+  })
+})
+
+describe("dev orchestrator serial preflight", () => {
+  test("rejects a serial plan whose required port is already in use without running its commands", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-preflight-"))
+    const markerPath = path.join(directory, "ran.txt")
+    const occupant = createServer()
+    await new Promise<void>((resolve) => occupant.listen(0, "127.0.0.1", () => resolve()))
+    const port = (occupant.address() as AddressInfo).port
+    try {
+      await expect(
+        runDevPlan({
+          kind: "run",
+          mode: "serial",
+          command: "test",
+          help: "",
+          exitCode: 0,
+          requiredPorts: [{ label: "server", port, host: "127.0.0.1" }],
+          requiredServers: [],
+          processes: [
+            {
+              label: "build",
+              command: [
+                process.execPath,
+                "-e",
+                `await Bun.write(${JSON.stringify(markerPath)}, "ran"); process.exit(0)`,
+              ],
+              cwd: directory,
+            },
+          ],
+        }),
+      ).rejects.toThrow(`server port ${port} is already in use`)
+
+      expect(await Bun.file(markerPath).exists()).toBe(false)
+    } finally {
+      await new Promise<void>((resolve) => occupant.close(() => resolve()))
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })
 

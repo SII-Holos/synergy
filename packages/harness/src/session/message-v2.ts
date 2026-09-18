@@ -1507,16 +1507,15 @@ export namespace MessageV2 {
     scopeID: Identifier.ScopeID
     sessionID: Identifier.SessionID
   }): Promise<Info[]> {
-    const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(input.scopeID, input.sessionID))
-    const infos = await Storage.readMany<Info>(
-      messageIDs.map((messageID) =>
-        StoragePath.messageInfo(input.scopeID, input.sessionID, messageID as Identifier.MessageID),
-      ),
-    )
-    return infos
-      .filter((info): info is Info => info !== undefined)
-      .map(canonicalMessage)
-      .sort(compareStorageOrder)
+    const infos: Info[] = []
+    for await (const record of Storage.records<Info>({
+      kind: "message",
+      scopeID: input.scopeID,
+      sessionID: input.sessionID,
+    })) {
+      infos.push(canonicalMessage(record.value))
+    }
+    return infos.sort(compareStorageOrder)
   }
 
   export async function* readNewestInfos(input: { scopeID: Identifier.ScopeID; sessionID: Identifier.SessionID }) {
@@ -1593,9 +1592,10 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
-      const partIDs = await Storage.scan(StoragePath.messageParts(scopeID, sessionID, messageID))
-      const keys = partIDs.map((id) => StoragePath.messagePart(scopeID, sessionID, messageID, id as Identifier.PartID))
-      const results = await Storage.readMany<MessageV2.Part>(keys)
+      const results: MessageV2.Part[] = []
+      for await (const record of Storage.records<MessageV2.Part>({ kind: "part", scopeID, sessionID, messageID })) {
+        results.push(record.value)
+      }
       const parts = await Promise.all(
         results
           .filter((p): p is MessageV2.Part => p !== undefined)

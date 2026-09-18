@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, Show } from "solid-js"
+import { createMemo, createSignal, Show, Suspense, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -56,12 +56,18 @@ export function LibraryPanel() {
     debounceTimer = setTimeout(() => setDebouncedSearch(value.trim()), 300)
   }
 
+  onCleanup(() => clearTimeout(debounceTimer))
+
   const isSearching = () => !!debouncedSearch()
 
-  const [stats, { refetch: refetchStats }] = createResource(async () => {
-    const result = await sdk.client.library.stats()
-    return result.data as MemoryStats
-  })
+  const [stats, setStats] = createSignal<MemoryStats>()
+  const statsController = new AbortController()
+  onCleanup(() => statsController.abort())
+  const refetchStats = async () => {
+    const result = await sdk.client.library.stats(undefined, { signal: statsController.signal })
+    if (!statsController.signal.aborted && result.data) setStats(result.data)
+  }
+  void refetchStats().catch(() => undefined)
 
   const memoryCount = () => stats()?.memory.count ?? 0
   const experienceCount = () => stats()?.experience.count ?? 0
@@ -180,42 +186,48 @@ export function LibraryPanel() {
           </div>
         </Show>
         <AppPanel.Body padding={false} class="library-body">
-          <div class="library-stage">
-            <Show when={view() === "stats"}>
-              <div class="library-section-block">
-                <div class="library-section-heading">
-                  <span class="library-section-title">{_({ id: "app.library.stats.usage", message: "Usage" })}</span>
+          <Suspense>
+            <div class="library-stage">
+              <Show when={view() === "stats"}>
+                <div class="library-section-block">
+                  <div class="library-section-heading">
+                    <span class="library-section-title">{_({ id: "app.library.stats.usage", message: "Usage" })}</span>
+                  </div>
+                  <Suspense>
+                    <StatsSection registerSync={setWorkspaceStatsSync} />
+                  </Suspense>
                 </div>
-                <StatsSection registerSync={setWorkspaceStatsSync} />
-              </div>
-              <div class="library-section-block">
-                <StatsView registerSync={setLibraryStatsSync} storageLabel={storageLabel()} />
-              </div>
-            </Show>
-            <Show when={view() === "memory"}>
-              <MemoryView
-                sdk={sdk}
-                search={debouncedSearch()}
-                isSearching={isSearching()}
-                setSearchError={setSearchError}
-                refetchStats={refetchStats}
-              />
-            </Show>
-            <Show when={view() === "experience"}>
-              <ExperienceView
-                sdk={sdk}
-                search={debouncedSearch()}
-                isSearching={isSearching()}
-                setSearchError={setSearchError}
-                refetchStats={refetchStats}
-                currentScopeID={currentScopeID()}
-                currentSessionID={currentSessionID()}
-              />
-            </Show>
-            <Show when={view() === "skill"}>
-              <SkillView sdk={sdk} search={debouncedSearch()} directory={directory()} scopeID={currentScopeID()} />
-            </Show>
-          </div>
+                <div class="library-section-block">
+                  <Suspense>
+                    <StatsView registerSync={setLibraryStatsSync} storageLabel={storageLabel()} />
+                  </Suspense>
+                </div>
+              </Show>
+              <Show when={view() === "memory"}>
+                <MemoryView
+                  sdk={sdk}
+                  search={debouncedSearch()}
+                  isSearching={isSearching()}
+                  setSearchError={setSearchError}
+                  refetchStats={refetchStats}
+                />
+              </Show>
+              <Show when={view() === "experience"}>
+                <ExperienceView
+                  sdk={sdk}
+                  search={debouncedSearch()}
+                  isSearching={isSearching()}
+                  setSearchError={setSearchError}
+                  refetchStats={refetchStats}
+                  currentScopeID={currentScopeID()}
+                  currentSessionID={currentSessionID()}
+                />
+              </Show>
+              <Show when={view() === "skill"}>
+                <SkillView sdk={sdk} search={debouncedSearch()} directory={directory()} scopeID={currentScopeID()} />
+              </Show>
+            </div>
+          </Suspense>
         </AppPanel.Body>
       </AppPanel.Content>
     </AppPanel.Root>

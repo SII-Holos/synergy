@@ -219,8 +219,10 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       await h.waitForRequest("registry-probe")
       h.complete("registry-probe", { scopeID: "scope-probe", provider: { all: [] }, agent: [], config: {} })
       api.retainScopeState("registry-probe").release()
-      expect(seen.length).toBe(3)
-      expect(seen[2]).toBeUndefined()
+      expect(seen.length).toBe(2)
+      for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${i}`)
+      expect(seen.length).toBeGreaterThan(2)
+      expect(seen.at(-1)).toBeUndefined()
       stopWatch()
 
       // A snapshot with no newer events applied still populates the store.

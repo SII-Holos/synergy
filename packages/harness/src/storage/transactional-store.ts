@@ -383,6 +383,20 @@ export class StoreTransaction {
   }
 
   async query<T>(input: RecordQuery): Promise<StoredRecord<T>[]> {
+    const rows = await this.queryRows<RecordRow>(input, "key_text, body, revision")
+    return rows.map((row) => ({
+      key: JSON.parse(row.key_text) as string[],
+      value: RecordCodec.decode<T>(row.body!),
+      revision: BigInt(row.revision),
+    }))
+  }
+
+  async queryKeys(input: RecordQuery): Promise<string[][]> {
+    const rows = await this.queryRows<{ key_text: string }>(input, "key_text")
+    return rows.map((row) => JSON.parse(row.key_text) as string[])
+  }
+
+  private async queryRows<Row extends SqlRow>(input: RecordQuery, columns: string): Promise<Row[]> {
     this.check()
     const conditions = ["namespace = ?", "body IS NOT NULL"]
     const values: SqlValue[] = [this.namespace]
@@ -409,15 +423,10 @@ export class StoreTransaction {
       throw new StorageIntegrityError("Invalid storage page limit")
     values.push(limit)
     const direction = input.descending ? "DESC" : "ASC"
-    const rows = await this.connection.query<RecordRow>(
-      `SELECT key_text, body, revision FROM storage_records WHERE ${conditions.join(" AND ")} ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`,
+    return this.connection.query<Row>(
+      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")} ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`,
       values,
     )
-    return rows.map((row) => ({
-      key: JSON.parse(row.key_text) as string[],
-      value: RecordCodec.decode<T>(row.body!),
-      revision: BigInt(row.revision),
-    }))
   }
 
   async *records<T = unknown>(): AsyncGenerator<StoredRecord<T>> {

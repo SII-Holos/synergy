@@ -179,12 +179,17 @@ export namespace Storage {
     return snapshot((tx) => tx.query<T>(input))
   }
 
+  export function queryKeys(input: RecordQuery) {
+    return snapshot((tx) => tx.queryKeys(input))
+  }
+
   export async function* records<T>(input: Omit<RecordQuery, "after"> = {}) {
     let after: string[] | undefined
     for (;;) {
       const page = await query<T>({ ...input, after, limit: input.limit ?? 256 })
       if (!page.length) return
       yield* page
+      if (page.length < (input.limit ?? 256)) return
       after = page.at(-1)!.key
     }
   }

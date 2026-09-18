@@ -56,6 +56,10 @@ Managed Desktop resolves the current user's login shell once during Desktop star
 
 Managed Desktop always starts its private Synergy server with `--hostname 127.0.0.1`. Plugins with approved `runtime.endpoint.read` access may read that credential-free loopback origin; the Host Service serves loopback and wildcard binds over loopback and fails closed only when the listener excludes loopback.
 
+Managed Desktop keeps its private server on a stable loopback port instead of an ephemeral one. Each launch tries `SYNERGY_DESKTOP_SERVER_PORT`, the port remembered for the current Desktop channel under Electron `userData`, then `4096` to `4099`, and finally a random free port. Every candidate is probed before the server spawns, and a deterministic winner is remembered for the next launch. `bun dev desktop --managed --server-port <port>` pins that port and adds it to the run preflight.
+
+A managed server that exits before becoming healthy advances to the next candidate only when its port is taken. Every other startup failure, including another Synergy runtime that owns the same `SYNERGY_HOME`, fails immediately with the existing diagnostics.
+
 The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
 
 ## Developing Synergy with Synergy
