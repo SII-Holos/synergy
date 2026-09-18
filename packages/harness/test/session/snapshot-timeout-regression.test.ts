@@ -22,12 +22,13 @@
 //      future direct shell calls don't re-enter the hot path unbounded.
 // ---------------------------------------------------------------------------
 
-import { describe, expect, test, beforeAll } from "bun:test"
+import { describe, expect, spyOn, test, beforeAll } from "bun:test"
 import path from "path"
 import { Snapshot } from "../../src/session/snapshot"
 import { ScopeContext } from "../../src/scope/context"
 import { Global } from "../../src/global"
 import { tmpdir } from "../support/fixture"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { Identifier } from "../../src/id/id"
 
 function fakeSessionID(): string {
@@ -86,5 +87,41 @@ describe("Snapshot.track() — completes within reasonable time", () => {
         expect(patch.files.length, "patch should detect changed file").toBeGreaterThan(0)
       },
     })
+  })
+})
+
+describe("Snapshot timing metrics", () => {
+  test("track and patch report their duration at the public boundary", async () => {
+    await using tmp = await tmpdir({ git: true })
+    using metrics = spyOn(ObservabilityMetrics, "record")
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const sessionID = fakeSessionID()
+
+        await Bun.write(path.join(tmp.path, "a.txt"), "version 1")
+        const hash = await Snapshot.track(sessionID)
+        expect(hash).toBeTruthy()
+
+        await Bun.write(path.join(tmp.path, "a.txt"), "version 2")
+        await Snapshot.patch(hash!, sessionID)
+      },
+    })
+
+    const calls = (
+      metrics as unknown as {
+        mock: { calls: Array<Array<{ name?: string; value?: number; unit?: string }>> }
+      }
+    ).mock.calls.map((call) => call[0])
+    const track = calls.find((call) => call?.name === "snapshot.track.duration")
+    const patch = calls.find((call) => call?.name === "snapshot.patch.duration")
+
+    expect(track, "track() should report its duration").toBeDefined()
+    expect(track!.unit).toBe("ms")
+    expect(track!.value).toBeGreaterThanOrEqual(0)
+    expect(patch, "patch() should report its duration").toBeDefined()
+    expect(patch!.unit).toBe("ms")
+    expect(patch!.value).toBeGreaterThanOrEqual(0)
   })
 })

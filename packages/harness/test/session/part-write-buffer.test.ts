@@ -163,4 +163,81 @@ describe("PartWriteBuffer", () => {
     buf.flush("missing")
     expect(r.writes).toEqual([])
   })
+  test("rejects a new key once the 1024-entry cap is reached", () => {
+    const r = recorder()
+    const buf = new PartWriteBuffer<string>(r.write, 10_000)
+    for (let index = 0; index < 1024; index++) buf.defer(`p${index}`, `path/p${index}`, "v")
+    expect(() => buf.defer("overflow", "path/overflow", "v")).toThrow(
+      "Streaming persistence buffer is full; drain before accepting more output",
+    )
+    // An already buffered key is replaced in place and consumes no new slot.
+    expect(() => buf.defer("p0", "path/p0", "v2", "")).not.toThrow()
+  })
+
+  test("rejects appended growth that would exceed the 64 MiB deferred-byte budget", () => {
+    const r = recorder()
+    const buf = new PartWriteBuffer<{ text: string }>(r.write, 10_000)
+    const part = { text: "" }
+    const chunk = "x".repeat(8 * 1024 * 1024)
+    buf.defer("p", "path/p", part)
+    for (let index = 0; index < 7; index++) {
+      part.text += chunk
+      buf.defer("p", "path/p", part, chunk)
+    }
+    // The eighth chunk prices at 64 MiB + the initial measurement.
+    part.text += chunk
+    expect(() => buf.defer("p", "path/p", part, chunk)).toThrow(
+      "Streaming persistence buffer is full; drain before accepting more output",
+    )
+  })
+
+  test("incremental defers persist the final accumulated state, not the caller's later mutation", async () => {
+    const r = recorder()
+    const buf = new PartWriteBuffer<{ type: "text"; text: string }>(r.write, 10_000)
+    const part = { type: "text" as const, text: "" }
+    part.text += "hello"
+    buf.defer("p", "path/p", part, "hello")
+    part.text += " world"
+    buf.defer("p", "path/p", part, " world")
+    await buf.flush("p")
+    expect(r.writes).toEqual([{ path: "path/p", value: { type: "text", text: "hello world" } }])
+    part.text = "mutated after the flush"
+    expect(r.writes).toEqual([{ path: "path/p", value: { type: "text", text: "hello world" } }])
+    expect(() => buf.assertDrained("p")).not.toThrow()
+  })
+
+  test("a mutation while the write is in flight cannot change what was persisted", async () => {
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const persisted: Array<{ text: string }> = []
+    const buf = new PartWriteBuffer<{ text: string }>(async (_path, value) => {
+      await blocked
+      persisted.push(value)
+    }, 10_000)
+    const part = { text: "streamed" }
+    buf.defer("p", "path/p", part, "streamed")
+    const pending = buf.flush("p")
+    part.text = "mutated during the write"
+    release()
+    await pending
+    expect(persisted).toEqual([{ text: "streamed" }])
+  })
+
+  test("flush rejects when the exact snapshot exceeds the buffer budget the caller under-reported", async () => {
+    const writes: unknown[] = []
+    const buf = new PartWriteBuffer<{ text: string; extra?: string }>((_path, value) => {
+      writes.push(value)
+    }, 10_000)
+    const part: { text: string; extra?: string } = { text: "x".repeat(34 * 1024 * 1024) }
+    buf.defer("p", "path/p", part)
+    part.text += "z"
+    buf.defer("p", "path/p", part, "z")
+    // Growth the appended-text accounting cannot see: the buffered estimate
+    // stays inside the budget while the exact snapshot does not.
+    part.extra = "y".repeat(31 * 1024 * 1024)
+    await expect(buf.flush("p")).rejects.toThrow("Streaming persistence buffer is full")
+    expect(writes).toEqual([])
+  })
 })

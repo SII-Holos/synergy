@@ -17,6 +17,8 @@ import type {
   SqlConnection,
   SqlDriver,
   SqlQueryOptions,
+  SqliteMaintenanceRequest,
+  SqliteMaintenanceResult,
   SqliteRequest,
   SqliteResponse,
   SqlRow,
@@ -33,7 +35,7 @@ const PROBE_TIMEOUT_MS = 30_000
 const PROBE_ATTEMPTS = 3
 
 type PendingRequest = {
-  resolve(rows: SqlRow[]): void
+  resolve(result: { rows: SqlRow[]; maintain?: SqliteMaintenanceResult }): void
   reject(error: unknown): void
   bytes: number
   probe: boolean
@@ -75,7 +77,7 @@ export class SqliteDriver implements SqlDriver {
         if (!this.pending.has(message.id)) return
         if (message.error)
           this.settle(message.id, { error: Object.assign(new Error(message.error.message), message.error) })
-        else this.settle(message.id, { rows: message.rows ?? [] })
+        else this.settle(message.id, { rows: message.rows ?? [], maintain: message.maintain })
       },
       onExit: (_child, code) => {
         // An exit this driver did not ask for is unrecoverable: the store cannot
@@ -140,14 +142,14 @@ export class SqliteDriver implements SqlDriver {
     }
   }
 
-  private settle(id: number, result: { rows: SqlRow[] } | { error: unknown }) {
+  private settle(id: number, result: { rows: SqlRow[]; maintain?: SqliteMaintenanceResult } | { error: unknown }) {
     const pending = this.pending.get(id)
     if (!pending) return
     if (pending.timeout) clearTimeout(pending.timeout)
     this.pending.delete(id)
     this.queuedBytes -= pending.bytes
     if ("error" in result) pending.reject(result.error)
-    else pending.resolve(result.rows)
+    else pending.resolve({ rows: result.rows, maintain: result.maintain })
   }
 
   private failTerminal(error: Error) {
@@ -179,18 +181,27 @@ export class SqliteDriver implements SqlDriver {
   private async request(
     request: Omit<SqliteRequest, "id">,
     onMaintenanceBudget?: (timeoutMs: number) => void,
-  ): Promise<SqlRow[]> {
+  ): Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }> {
     if (this.unavailableError) return Promise.reject(this.unavailableError)
     if (this.closed) return Promise.reject(new StorageClosedError())
     let deadline = 30_000
-    if (request.maintenance) {
-      const [pages] = await this.request({ action: "query", reader: request.reader, statement: "PRAGMA page_count" })
-      const [size] = await this.request({ action: "query", reader: request.reader, statement: "PRAGMA page_size" })
-      const bytes = Number(pages.page_count) * Number(size.page_size)
+    if (request.maintenance || request.action === "maintain") {
+      // Offline maintenance may rewrite every page; the finite deadline scales
+      // with the current snapshot size, including uncheckpointed WAL growth.
+      const { rows: pages } = await this.request({
+        action: "query",
+        reader: request.reader,
+        statement: "PRAGMA page_count",
+      })
+      const { rows: size } = await this.request({
+        action: "query",
+        reader: request.reader,
+        statement: "PRAGMA page_size",
+      })
+      const bytes = Number(pages[0]?.page_count ?? 0) * Number(size[0]?.page_size ?? 0)
       if (!Number.isSafeInteger(bytes) || bytes < 0)
         throw new StorageIntegrityError("SQLite maintenance size is invalid")
       // Full integrity checks revisit every index entry (https://sqlite.org/pragma.html#pragma_integrity_check).
-      // Size the finite budget from the current snapshot, including uncheckpointed WAL growth.
       deadline = Math.min(2_147_483_647, 600_000 + Math.ceil(bytes / 1024 ** 2) * 1000)
       onMaintenanceBudget?.(deadline)
     }
@@ -198,7 +209,7 @@ export class SqliteDriver implements SqlDriver {
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
-    const promise = new Promise<SqlRow[]>((resolve, reject) => {
+    const promise = new Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }>((resolve, reject) => {
       this.pending.set(id, { resolve, reject, bytes, probe: false, dispatchedAt: performance.now(), deadline })
     })
     this.queuedBytes += bytes
@@ -285,17 +296,26 @@ export class SqliteDriver implements SqlDriver {
     })
   }
 
-  query<Row extends SqlRow = SqlRow>(
+  async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
+    const result = await this.writerQueue.run(() =>
+      this.request({ action: "maintain", maintain: request, maintenance: true }),
+    )
+    if (!result.maintain) throw new StorageIntegrityError("SQLite maintenance returned no result")
+    return result.maintain
+  }
+
+  async query<Row extends SqlRow = SqlRow>(
     statement: string,
     values: SqlValue[] = [],
     options?: SqlQueryOptions,
   ): Promise<Row[]> {
-    return this.readerQueue.run(() =>
+    const result = await this.readerQueue.run(() =>
       this.request(
         { action: "query", reader: true, statement, values, maintenance: options?.maintenance },
         options?.onMaintenanceBudget,
       ),
-    ) as Promise<Row[]>
+    )
+    return result.rows as Row[]
   }
 
   transaction<T>(
@@ -304,21 +324,23 @@ export class SqliteDriver implements SqlDriver {
   ): Promise<T> {
     const queue = options.readOnly ? this.readerQueue : this.writerQueue
     return queue.run(async () => {
-      const query = <Row extends SqlRow = SqlRow>(
+      const query = async <Row extends SqlRow = SqlRow>(
         statement: string,
         values: SqlValue[] = [],
         queryOptions?: SqlQueryOptions,
       ) =>
-        this.request(
-          {
-            action: "query",
-            reader: options.readOnly,
-            statement,
-            values,
-            maintenance: queryOptions?.maintenance,
-          },
-          queryOptions?.onMaintenanceBudget,
-        ) as Promise<Row[]>
+        (
+          await this.request(
+            {
+              action: "query",
+              reader: options.readOnly,
+              statement,
+              values,
+              maintenance: queryOptions?.maintenance,
+            },
+            queryOptions?.onMaintenanceBudget,
+          )
+        ).rows as Row[]
       await query(options.readOnly ? "BEGIN" : "BEGIN IMMEDIATE")
       let committing = false
       try {

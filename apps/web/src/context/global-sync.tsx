@@ -107,6 +107,7 @@ import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import {
   browserPerformanceEnabled,
+  browserTokenDurationSampleRate,
   recordTokenApply,
   startBrowserPerformanceMetrics,
   stopBrowserPerformanceMetrics,
@@ -1184,6 +1185,21 @@ function createGlobalSync() {
     setGlobalStore("permission", reconcile(groupBySession(merged)))
   }
 
+  // The per-session permission fetch filters server-side, so its response is
+  // authoritative for one session's slice of the global index rather than for
+  // the whole bucket. Post-stamp replies still win: a request that landed
+  // while the fetch was in flight is not resurrected as still pending.
+  function seedSessionPermissions(
+    sessionID: string,
+    requests: readonly PermissionRequest[],
+    headers: Pick<Headers, "get"> | undefined,
+  ) {
+    const current = globalStore.permission[sessionID] ?? []
+    const scoped = requests.filter((item) => item.sessionID === sessionID)
+    const merged = globalRuntimeTracker.mergeRequests(readSyncVersion(headers), "permission", scoped, current) ?? scoped
+    setGlobalStore("permission", sessionID, reconcile(merged.toSorted((a, b) => a.id.localeCompare(b.id))))
+  }
+
   function seedGlobalQuestions(requests: readonly QuestionRequest[], headers: Pick<Headers, "get"> | undefined) {
     const merged =
       globalRuntimeTracker.mergeRequests(
@@ -1210,7 +1226,11 @@ function createGlobalSync() {
   // reload on next view. Board panes get no special protection: they enter the
   // normal load path when the board is mounted (touching their bucket) and
   // refill from the loader after eviction.
-  const MESSAGE_BUCKET_CAP = 15
+  //
+  // The cap holds 30 recently viewed sessions (including the active one)
+  // resident, so moving around a working set of sessions keeps their timelines
+  // in the store instead of re-fetching a page on every switch.
+  const MESSAGE_BUCKET_CAP = 30
   const messageLru: string[] = []
   let activeBucketKey: string | undefined
   const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
@@ -2100,7 +2120,11 @@ function createGlobalSync() {
   createEffect(() => {
     if (!globalStore.ready) return
     if (browserPerformanceEnabled(globalStore.config)) {
-      startBrowserPerformanceMetrics({ url: globalSDK.url, client: globalSDK.client })
+      startBrowserPerformanceMetrics({
+        url: globalSDK.url,
+        client: globalSDK.client,
+        tokenDurationSampleRate: browserTokenDurationSampleRate(globalStore.config),
+      })
     } else {
       stopBrowserPerformanceMetrics()
     }
@@ -2220,6 +2244,7 @@ function createGlobalSync() {
       return globalRuntimeTracker
     },
     seedGlobalPermissions,
+    seedSessionPermissions,
     seedGlobalQuestions,
     reconcileCortexFromSession,
     loadGlobalAgenda,

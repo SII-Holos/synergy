@@ -335,7 +335,7 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
   const originalGetModel = Provider.getModel
   const originalGetAgent = Agent.get
   const originalConfigCurrent = Config.current
-  const originalDefinitions = ToolResolver.definitions
+  const originalAvailability = ToolResolver.availability
   const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
   const originalBuildPlan = PromptBudgeter.buildPlan
   const originalDecide = PromptBudgeter.decide
@@ -354,7 +354,11 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
     )
     ;(Agent.get as any) = mock(async () => primaryAgent())
     ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
-    ;(ToolResolver.definitions as any) = mock(async () => [])
+    ;(ToolResolver.availability as any) = mock(async () => ({
+      visible: [],
+      diagnostics: new Map(),
+      autoExpandable: new Set(),
+    }))
     ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
       definitions: [],
       executionTools: {},
@@ -470,7 +474,7 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
     ;(Provider.getModel as any) = originalGetModel
     ;(Agent.get as any) = originalGetAgent
     ;(Config.current as any) = originalConfigCurrent
-    ;(ToolResolver.definitions as any) = originalDefinitions
+    ;(ToolResolver.availability as any) = originalAvailability
     ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
     ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
     ;(PromptBudgeter.decide as any) = originalDecide
@@ -497,7 +501,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     const originalGetAgent = Agent.get
     const originalGetAvailableModel = Agent.getAvailableModel
     const originalConfigCurrent = Config.current
-    const originalDefinitions = ToolResolver.definitions
+    const originalAvailability = ToolResolver.availability
     const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
@@ -517,7 +521,11 @@ describe.serial("SessionInvoke preflight compaction", () => {
         modelID: "test-model",
       }))
       ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
-      ;(ToolResolver.definitions as any) = mock(async () => [])
+      ;(ToolResolver.availability as any) = mock(async () => ({
+        visible: [],
+        diagnostics: new Map(),
+        autoExpandable: new Set(),
+      }))
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
         definitions: [],
         executionTools: {},
@@ -623,7 +631,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Agent.get as any) = originalGetAgent
       ;(Agent.getAvailableModel as any) = originalGetAvailableModel
       ;(Config.current as any) = originalConfigCurrent
-      ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.availability as any) = originalAvailability
       ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide
@@ -640,7 +648,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     const originalGetModel = Provider.getModel
     const originalGetAgent = Agent.get
     const originalConfigCurrent = Config.current
-    const originalDefinitions = ToolResolver.definitions
+    const originalAvailability = ToolResolver.availability
     const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
@@ -657,7 +665,11 @@ describe.serial("SessionInvoke preflight compaction", () => {
         const config = await fastLoopTestConfig(originalConfigCurrent)
         return { ...config, compaction: { ...config.compaction, auto: false } }
       })
-      ;(ToolResolver.definitions as any) = mock(async () => [])
+      ;(ToolResolver.availability as any) = mock(async () => ({
+        visible: [],
+        diagnostics: new Map(),
+        autoExpandable: new Set(),
+      }))
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
         definitions: [],
         executionTools: {},
@@ -734,7 +746,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Provider.getModel as any) = originalGetModel
       ;(Agent.get as any) = originalGetAgent
       ;(Config.current as any) = originalConfigCurrent
-      ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.availability as any) = originalAvailability
       ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide
@@ -750,7 +762,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     const originalGetModel = Provider.getModel
     const originalGetAgent = Agent.get
     const originalConfigCurrent = Config.current
-    const originalDefinitions = ToolResolver.definitions
+    const originalAvailability = ToolResolver.availability
     const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
@@ -766,9 +778,9 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Provider.getModel as any) = mock(async () => testModel())
       ;(Agent.get as any) = mock(async () => primaryAgent())
       ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
-      ;(ToolResolver.definitions as any) = mock(async (input: Parameters<typeof ToolResolver.definitions>[0]) => {
+      ;(ToolResolver.availability as any) = mock(async (input: Parameters<typeof ToolResolver.availability>[0]) => {
         definitionToolStates.push(input.session?.toolState)
-        return []
+        return { visible: [], diagnostics: new Map(), autoExpandable: new Set() }
       })
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
         definitions: [],
@@ -849,7 +861,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Provider.getModel as any) = originalGetModel
       ;(Agent.get as any) = originalGetAgent
       ;(Config.current as any) = originalConfigCurrent
-      ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.availability as any) = originalAvailability
       ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide
@@ -865,7 +877,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     const originalGetModel = Provider.getModel
     const originalGetAgent = Agent.get
     const originalConfigCurrent = Config.current
-    const originalDefinitions = ToolResolver.definitions
+    const originalAvailability = ToolResolver.availability
     const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
@@ -882,7 +894,11 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Provider.getModel as any) = mock(async () => testModel())
       ;(Agent.get as any) = mock(async () => primaryAgent())
       ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
-      ;(ToolResolver.definitions as any) = mock(async () => [])
+      ;(ToolResolver.availability as any) = mock(async () => ({
+        visible: [],
+        diagnostics: new Map(),
+        autoExpandable: new Set(),
+      }))
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
         definitions: [],
         executionTools: {},
@@ -1068,7 +1084,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Provider.getModel as any) = originalGetModel
       ;(Agent.get as any) = originalGetAgent
       ;(Config.current as any) = originalConfigCurrent
-      ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.availability as any) = originalAvailability
       ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide

@@ -797,7 +797,7 @@ export namespace SessionInvoke {
               const isTopSession = !session.parentID
 
               const turnPreparation = await Promise.all([
-                ToolResolver.definitions({
+                ToolResolver.availability({
                   agent,
                   model,
                   sessionID,
@@ -821,13 +821,14 @@ export namespace SessionInvoke {
               if (!turnPreparation) break
 
               let [
-                toolDefinitions,
+                toolAvailability,
                 [envParts, customParts],
                 cortexExecutionContext,
                 cortexReminder,
                 advisoryParts,
                 memoryResult,
               ] = turnPreparation
+              let toolDefinitions = toolAvailability.visible
 
               for (const def of toolDefinitions) {
                 if (def.display) toolDisplayByName.set(def.id, def.display)
@@ -1056,16 +1057,19 @@ export namespace SessionInvoke {
               }
 
               const toolResolveTimer = log.time("toolResolver.resolve")
-              let resolvedTools = await ToolResolver.resolveWithAvailability({
-                agent,
-                model,
-                sessionID,
-                processor,
-                session,
-                userTools: R.tools,
-                ephemeralTools: ephemeralToolsByMessage.get(R.id),
-                includeMCP: true,
-              }).catch(async (error) => {
+              let resolvedTools = await ToolResolver.resolveWithAvailability(
+                {
+                  agent,
+                  model,
+                  sessionID,
+                  processor,
+                  session,
+                  userTools: R.tools,
+                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  includeMCP: true,
+                },
+                toolAvailability,
+              ).catch(async (error) => {
                 await completeAssistantWithError({ sessionID, processor, model, error })
                 return undefined
               })
@@ -1226,6 +1230,7 @@ export namespace SessionInvoke {
                 contextUsageProvenance,
                 maxOutputTokens: promptDecision.maxOutputTokens,
                 memoryTurn,
+                lane: session.parentID ? "background" : "interactive",
               }
               try {
                 const currentStreamInput = streamInput

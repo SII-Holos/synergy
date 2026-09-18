@@ -38,6 +38,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = scope.state
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
+
+    // The initial latest page only needs to fill the rendered turn bound
+    // (MAX_RENDERED_TURNS in pages/session.tsx), not the whole transcript;
+    // history prepends keep the larger page so "Load earlier" refills the cap.
+    const INITIAL_LATEST_PAGE_LIMIT = 100
     const inflight = new Map<string, TrackedSessionSync>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightInbox = new Map<string, Promise<void>>()
@@ -206,7 +211,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       })
 
     const loadLatestMessages = (sessionID: string, options?: { force?: boolean; reconnectVersion?: number }) =>
-      loadMessagePage(sessionID, { mode: "latest", limit: chunk }, options)
+      loadMessagePage(
+        sessionID,
+        { mode: "latest", limit: hasMessageSnapshot(sessionID) ? chunk : INITIAL_LATEST_PAGE_LIMIT },
+        options,
+      )
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -368,13 +377,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return { phase: "idle", generation: 0, hasSnapshot: false }
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
-          // The permission route is cross-Scope, so its response is
-          // authoritative for the whole global index rather than for this
-          // session's bucket alone; `seedGlobalPermissions` keeps any request
-          // whose event write postdates the response stamp.
+          // The permission route is cross-Scope; the sessionID filter keeps
+          // the payload bounded while the response still seeds the global
+          // index. `seedSessionPermissions` replaces this session's slice and
+          // keeps any request whose event write postdates the response stamp.
           const syncPermissions = () =>
-            retry(() => sdk.client.permission.list())
-              .then((res) => globalSync.seedGlobalPermissions(res.data ?? [], res.response?.headers))
+            retry(() => sdk.client.permission.list({ sessionID }))
+              .then((res) => globalSync.seedSessionPermissions(sessionID, res.data ?? [], res.response?.headers))
               .catch(() => {})
           // Force session/message reloads after reconnect or backend restart.
           // Session metadata alone is not enough: tool parts publish as

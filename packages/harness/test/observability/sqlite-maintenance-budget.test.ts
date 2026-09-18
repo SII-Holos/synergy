@@ -3,9 +3,9 @@ import { Database } from "bun:sqlite"
 import { mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
-import { ObservabilitySqliteMaintenance } from "../../src/observability/sqlite-maintenance"
+import { SqliteMaintenance } from "../../src/storage/sqlite-maintenance"
 
-describe("ObservabilitySqliteMaintenance budget", () => {
+describe("SqliteMaintenance budget", () => {
   const homes: string[] = []
   let dir: string
   let dbPath: string
@@ -50,7 +50,7 @@ describe("ObservabilitySqliteMaintenance budget", () => {
           insert.run(`m${i}`, i, "test.budget", 1, `{"pad":"${"x".repeat(200)}"}`)
         }
       })()
-      if (ObservabilitySqliteMaintenance.physicalFootprint(dbPath) > maxBytes) return
+      if (SqliteMaintenance.physicalFootprint(dbPath) > maxBytes) return
     }
     throw new Error("fill loop did not exceed cap")
   }
@@ -58,9 +58,9 @@ describe("ObservabilitySqliteMaintenance budget", () => {
   test("returns deferred when the budget elapses before the cap is reached", () => {
     const maxBytes = 128 * 1024
     fillToExceed(maxBytes)
-    expect(ObservabilitySqliteMaintenance.physicalFootprint(dbPath)).toBeGreaterThan(maxBytes)
+    expect(SqliteMaintenance.physicalFootprint(dbPath)).toBeGreaterThan(maxBytes)
 
-    const result = ObservabilitySqliteMaintenance.enforce({
+    const result = SqliteMaintenance.enforce({
       db,
       path: dbPath,
       maxBytes,
@@ -78,7 +78,7 @@ describe("ObservabilitySqliteMaintenance budget", () => {
     let deferred = true
     let pass = 0
     while (deferred && pass < 10) {
-      const result = ObservabilitySqliteMaintenance.enforce({
+      const result = SqliteMaintenance.enforce({
         db,
         path: dbPath,
         maxBytes,
@@ -88,11 +88,11 @@ describe("ObservabilitySqliteMaintenance budget", () => {
       deferred = result.deferred ?? false
       pass++
     }
-    expect(ObservabilitySqliteMaintenance.physicalFootprint(dbPath)).toBeLessThanOrEqual(maxBytes)
+    expect(SqliteMaintenance.physicalFootprint(dbPath)).toBeLessThanOrEqual(maxBytes)
   })
 
   test("reports zero exceeded bytes immediately when already under cap", () => {
-    const result = ObservabilitySqliteMaintenance.enforce({
+    const result = SqliteMaintenance.enforce({
       db,
       path: dbPath,
       maxBytes: 1024 * 1024,

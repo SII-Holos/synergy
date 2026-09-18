@@ -1563,7 +1563,10 @@ export namespace Session {
     )
     const transactional = Storage.inTransaction()
     if (delta !== undefined && !transactional) {
-      partWriteBuffer().defer(part.id, path, part)
+      // The delta is exactly what the streaming producer appended to the part's
+      // text, so the buffer can price this update without re-serializing the
+      // whole accumulated part on every token.
+      partWriteBuffer().defer(part.id, path, part, delta)
     } else {
       const write = (key: string[], value: MessageV2.Part) =>
         Storage.transaction(async (tx) => {

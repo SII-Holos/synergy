@@ -9548,8 +9548,28 @@ msgstr ""
 msgid "confirm.uninstallPlugin.title"
 msgstr ""
 
-#. ── Countdown ───────────────────────────────────────────────────────
-msgid "countdown.timeout-label"
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.backgrounded"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.past-limit"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.remaining"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.timed-out"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-background"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-timeout"
 msgstr ""
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
@@ -18163,11 +18183,15 @@ msgid "settings.runtime.agents.agent.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
+msgid "settings.runtime.agents.agentWorkers.derived"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
 msgstr ""
 
 #. js-lingui-explicit-id

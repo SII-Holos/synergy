@@ -1,5 +1,6 @@
 import { initializeSqliteEngine } from "./sqlite-engine"
 import { Database } from "bun:sqlite"
+import { SqliteMaintenance } from "./sqlite-maintenance"
 import { watchManagedParent } from "../util/managed-parent"
 import type { SqliteRequest, SqliteResponse } from "./sql-contract"
 
@@ -10,6 +11,7 @@ if (process.platform !== "win32") process.umask(0o077)
 
 let writer: Database | undefined
 let reader: Database | undefined
+let filename: string | undefined
 
 if (!process.send) throw new Error("SQLite worker requires a parent IPC channel")
 
@@ -26,12 +28,18 @@ process.on("message", (request: SqliteRequest) => {
       writer.run("PRAGMA busy_timeout = 5000")
       writer.run("PRAGMA foreign_keys = ON")
       if (!request.readonly) {
+        // SQLite records the auto-vacuum mode in the database header while the
+        // file is still empty, so a new database must declare it before the WAL
+        // journal creates that header. An existing non-empty database keeps its
+        // current mode here and only converts through a VACUUM.
+        writer.run("PRAGMA auto_vacuum = INCREMENTAL")
         writer.run("PRAGMA journal_mode = WAL")
         writer.run("PRAGMA synchronous = FULL")
       }
       reader = new Database(request.filename!, { readonly: true, strict: true, safeIntegers: true })
       reader.run("PRAGMA busy_timeout = 5000")
       reader.run("PRAGMA query_only = ON")
+      filename = request.filename
     } else if (request.action === "ping") {
       // Liveness probes answer from the event loop without touching SQLite, so
       // they succeed whenever this worker is able to serve any request at all.
@@ -41,6 +49,21 @@ process.on("message", (request: SqliteRequest) => {
       writer?.close()
       reader = undefined
       writer = undefined
+      filename = undefined
+    } else if (request.action === "maintain") {
+      if (!writer || !filename) throw new Error("SQLite connection is not open")
+      const operation = request.maintain!.operation
+      if (operation === "enable-incremental-vacuum") {
+        response.maintain = {
+          changed: SqliteMaintenance.enableIncrementalVacuum(writer),
+          autoVacuum: SqliteMaintenance.autoVacuumMode(writer),
+          releasedPages: 0,
+          freelistPages: 0,
+        }
+      } else {
+        const result = SqliteMaintenance.reclaim(writer, filename, { maxPages: request.maintain!.maxPages })
+        response.maintain = { changed: result.releasedPages > 0, ...result }
+      }
     } else {
       const connection = request.reader ? reader : writer
       if (!connection) throw new Error("SQLite connection is not open")
@@ -59,6 +82,9 @@ process.on("message", (request: SqliteRequest) => {
 })
 
 process.on("disconnect", () => process.exit(0))
-watchManagedParent({ expectedParentPid: process.env.SYNERGY_STORAGE_PARENT_PID, onParentExit: () => process.exit(0) })
+watchManagedParent({
+  expectedParentPid: process.env.SYNERGY_STORAGE_PARENT_PID,
+  onParentExit: () => process.exit(0),
+})
 
 initializeSqliteEngine()
