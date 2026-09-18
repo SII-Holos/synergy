@@ -8,6 +8,7 @@ import {
   type FileDiff,
   type Todo,
   type SessionStatus,
+  type SessionWorkingInfo,
   type ProviderListResponse,
   type ProviderAuthResponse,
   type Command,
@@ -31,6 +32,12 @@ import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planSessionVolatileResync } from "./session-volatile-resync"
 import { parseEventWriteStamp, ScopeWriteTracker } from "./scope-snapshot-merge"
+import {
+  flattenBuckets,
+  GlobalRuntimeWriteTracker,
+  groupBySession,
+  type SessionStatusIndex,
+} from "./global-runtime-state"
 import { removeMaterializedInboxItems } from "../components/session/session-inbox-utils"
 import {
   parseSyncVersion,
@@ -132,9 +139,6 @@ type State = {
   config: Config
   path: ScopedPath
   session: Session[]
-  session_status: {
-    [sessionID: string]: SessionStatus
-  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
@@ -143,12 +147,6 @@ type State = {
   }
   dag: {
     [sessionID: string]: { id: string; content: string; status: string; deps: string[]; assign?: string }[]
-  }
-  permission: {
-    [sessionID: string]: PermissionRequest[]
-  }
-  question: {
-    [sessionID: string]: QuestionRequest[]
   }
   planBlueprintOffer: {
     [sessionID: string]: PlanBlueprintOfferState
@@ -160,7 +158,6 @@ type State = {
     [name: string]: McpStatus
   }
   lsp: LspStatus[]
-  cortex: CortexTask[]
   agenda: AgendaItem[]
   vcs: VcsInfo | undefined
   sessionTotal: number
@@ -241,6 +238,47 @@ export function refreshPlanBlueprintOfferFromLoadedParts(
   updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "captured", offer })
 }
 
+function upsertPendingRequest<T extends { id: string; sessionID: string }>(
+  index: Record<string, T[] | undefined>,
+  request: T,
+) {
+  const requests = index[request.sessionID]
+  if (!requests) {
+    index[request.sessionID] = [request]
+    return
+  }
+  const result = Binary.search(requests, request.id, (item) => item.id)
+  if (result.found) requests[result.index] = request
+  else requests.splice(result.index, 0, request)
+}
+
+function removePendingRequest<T extends { id: string }>(
+  index: Record<string, T[] | undefined>,
+  sessionID: string,
+  requestID: string,
+) {
+  const requests = index[sessionID]
+  if (!requests) return
+  const result = Binary.search(requests, requestID, (item) => item.id)
+  if (!result.found) return
+  requests.splice(result.index, 1)
+  if (!requests.length) delete index[sessionID]
+}
+
+// `recovering` is derived from persisted session state and never published on
+// the status event bus, so the `working` field of a session.updated payload is
+// its only event-side source.
+function sessionStatusFromWorking(working: SessionWorkingInfo): SessionStatus {
+  switch (working.status) {
+    case "busy":
+      return { type: "busy", description: working.description }
+    case "retry":
+      return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
+    case "recovering":
+      return { type: "recovering" }
+  }
+}
+
 function createGlobalSync() {
   const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
@@ -253,6 +291,10 @@ function createGlobalSync() {
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
+    cortex: CortexTask[]
+    sessionStatus: SessionStatusIndex
+    permission: Record<string, PermissionRequest[]>
+    question: Record<string, QuestionRequest[]>
   }>({
     ready: false,
     paths: { home: "", root: "", data: "", config: "", state: "", cache: "", log: "" },
@@ -272,6 +314,10 @@ function createGlobalSync() {
     },
     provider_auth: {},
     agenda: [],
+    cortex: [],
+    sessionStatus: {},
+    permission: {},
+    question: {},
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
@@ -488,17 +534,13 @@ function createGlobalSync() {
         agent: [],
         command: [],
         session: [],
-        session_status: {},
         session_diff: {},
         todo: {},
         dag: {},
-        permission: {},
-        question: {},
         planBlueprintOffer: {},
         inbox: {},
         mcp: {},
         lsp: [],
-        cortex: [],
         agenda: [],
         vcs: undefined,
         sessionTotal: 0,
@@ -573,9 +615,6 @@ function createGlobalSync() {
     if (activeBucketKey?.startsWith(`${scopeKey}\n`)) activeBucketKey = undefined
     for (const timer of inboxRefreshTimers.get(scopeKey)?.values() ?? []) clearTimeout(timer)
     inboxRefreshTimers.delete(scopeKey)
-    const cortexTimer = cortexRefreshTimers.get(scopeKey)
-    if (cortexTimer !== undefined) clearTimeout(cortexTimer)
-    cortexRefreshTimers.delete(scopeKey)
     scopeReconnectRecovery.release(scopeKey)
     setScopeReconnectVersions(
       produce((draft) => {
@@ -612,6 +651,20 @@ function createGlobalSync() {
       })
       .catch((err) => {
         console.error("Failed to load global agenda", err)
+      })
+  }
+
+  // The cross-Scope status snapshot. This is the only source for a session that
+  // was already running before this client connected in a project it has not
+  // leased — no status event of its own arrives until it transitions — and it
+  // is the only path by which `recovering` reaches a client at all, because no
+  // producer publishes it on the event bus.
+  async function loadGlobalSessionStatus() {
+    return globalSDK.client.session
+      .statuses()
+      .then((x) => seedGlobalStatus(x.data ?? {}, x.response?.headers))
+      .catch((err) => {
+        console.error("Failed to load global session status", err)
       })
   }
 
@@ -800,46 +853,7 @@ function createGlobalSync() {
       })
   }
 
-  function syncBySession<T extends { id?: string; sessionID?: string }>(
-    setStore: (path1: string, path2: string, value: any) => void,
-    storeKey: keyof Pick<State, "permission" | "question">,
-    currentKeys: Iterable<string>,
-    items: T[],
-  ) {
-    const grouped: Record<string, T[]> = {}
-    for (const item of items) {
-      if (!item?.id || !item.sessionID) continue
-      const existing = grouped[item.sessionID]
-      if (existing) {
-        existing.push(item)
-        continue
-      }
-      grouped[item.sessionID] = [item]
-    }
-
-    batch(() => {
-      for (const sessionID of currentKeys) {
-        if (grouped[sessionID]) continue
-        setStore(storeKey, sessionID, [])
-      }
-      for (const [sessionID, entries] of Object.entries(grouped)) {
-        setStore(
-          storeKey,
-          sessionID,
-          reconcile(
-            entries
-              .filter((e) => !!e?.id)
-              .slice()
-              .sort((a, b) => a.id!.localeCompare(b.id!)),
-            { key: "id" },
-          ),
-        )
-      }
-    })
-  }
-
   const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
-  const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
 
   function refreshInbox(scopeKey: string, sessionID: string) {
@@ -869,40 +883,36 @@ function createGlobalSync() {
     )
   }
 
-  function refreshCortex(scopeKey: string) {
-    const existing = cortexRefreshTimers.get(scopeKey)
-    if (existing) clearTimeout(existing)
-    cortexRefreshTimers.set(
-      scopeKey,
-      setTimeout(() => {
-        cortexRefreshTimers.delete(scopeKey)
-        const state = children[scopeKey]
-        if (!state) return
-        const [, setStore] = state
-        const sdk = createScopedClient(scopeKey)
-        sdk.cortex
-          .list({})
-          .then((result) => setStore("cortex", reconcile(result.data ?? [])))
-          .catch(() => {})
-      }, 250),
-    )
+  // `cortex.list()` without a session filter returns the process-global visible
+  // set, so the refetch is global too and one timer suffices: a per-Scope timer
+  // would fetch the same list once per Scope.
+  let cortexRefreshTimer: ReturnType<typeof setTimeout> | undefined
+  function refreshCortex() {
+    if (cortexRefreshTimer !== undefined) clearTimeout(cortexRefreshTimer)
+    cortexRefreshTimer = setTimeout(() => {
+      cortexRefreshTimer = undefined
+      globalSDK.client.cortex
+        .list()
+        .then((result) => setGlobalStore("cortex", reconcile(result.data ?? [], { key: "id" })))
+        .catch(() => {})
+    }, 250)
   }
 
-  function reconcileCortexFromSession(store: State, setStore: SetStoreFunction<State>, info: Session) {
+  function reconcileCortexFromSession(info: Session) {
     const cortex = info.cortex
     if (!cortex || !terminalCortexStatuses.has(cortex.status)) return undefined
-    const idx = store.cortex.findIndex((task) => task.sessionID === info.id)
+    const idx = globalStore.cortex.findIndex((task) => task.sessionID === info.id)
     if (idx === -1) return undefined
-    const taskID = store.cortex[idx].id
-    setStore(
+    const taskID = globalStore.cortex[idx].id
+    setGlobalStore(
       "cortex",
       idx,
       reconcile({
-        ...store.cortex[idx],
+        ...globalStore.cortex[idx],
         status: cortex.status,
-        completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
-        output: cortex.output ?? store.cortex[idx].output,
-        error: cortex.error ?? store.cortex[idx].error,
+        completedAt: cortex.completedAt ?? globalStore.cortex[idx].completedAt,
+        output: cortex.output ?? globalStore.cortex[idx].output,
+        error: cortex.error ?? globalStore.cortex[idx].error,
       }),
     )
     return taskID
@@ -933,11 +943,30 @@ function createGlobalSync() {
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
-      if (data.sessionStatus)
-        setStore(
-          "session_status",
-          reconcile(tracker?.mergeStatus(version, data.sessionStatus, store.session_status) ?? data.sessionStatus),
+      if (data.sessionStatus) {
+        // Seed the global index and converge it. A session that was already
+        // running before this client connected never receives a status event of
+        // its own, so without the seed the index renders it as idle until its
+        // next transition — and `recovering` would never appear at all, since
+        // no producer publishes it on the bus. The drop list carries the same
+        // convergence the per-Scope bucket had: a session this Scope still owns
+        // but the snapshot no longer reports as running was left stale by a
+        // missed `idle` or an archive, and must not survive a fail-open resync.
+        // The owned set is the response's own session page rather than the
+        // archived-filtered list, so an archived session's stale entry clears
+        // here too.
+        const { adopt, drop } = globalRuntimeTracker.adoptScopeStatusSnapshot(
+          version,
+          data.sessionStatus,
+          data.sessions?.data.map((session) => session.id) ?? [],
         )
+        if (Object.keys(adopt).length || drop.length) {
+          const merged = { ...globalStore.sessionStatus }
+          for (const sessionID of drop) delete merged[sessionID]
+          Object.assign(merged, adopt)
+          setGlobalStore("sessionStatus", reconcile(merged))
+        }
+      }
       if (sessions) {
         const mergedSessions = tracker?.mergeSessions(version, sessions, store.session)
         setStore("session", reconcile(mergedSessions ?? sessions, { key: "id" }))
@@ -947,11 +976,13 @@ function createGlobalSync() {
         )
       }
       if (data.mcp) setStore("mcp", reconcile(data.mcp))
-      if (data.cortex)
-        setStore(
-          "cortex",
-          reconcile(tracker?.mergeCortex(version, data.cortex, store.cortex) ?? data.cortex, { key: "id" }),
-        )
+      // `Cortex.listVisible()` is process-global, so the bootstrap response
+      // carries the whole visible task set and is authoritative for the global
+      // index rather than for this Scope's tasks.
+      if (data.cortex) {
+        const mergedCortex = globalRuntimeTracker.mergeCortex(version, data.cortex, globalStore.cortex)
+        setGlobalStore("cortex", reconcile(mergedCortex ?? data.cortex, { key: "id" }))
+      }
       if (data.agenda) {
         setStore(
           "agenda",
@@ -1052,10 +1083,12 @@ function createGlobalSync() {
         applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
       }),
       sdk.permission.list().then((result) => {
-        if (current()) syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+        if (!current()) return
+        seedGlobalPermissions(result.data ?? [], result.response?.headers)
       }),
       sdk.question.list().then((result) => {
-        if (current()) syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+        if (!current()) return
+        seedGlobalQuestions(result.data ?? [], result.response?.headers)
       }),
       refreshVolatileAfterResync(scopeKey, store, setStore),
     ])
@@ -1077,10 +1110,12 @@ function createGlobalSync() {
           if (store.status !== "complete") setStore("status", "partial")
         }),
         sdk.permission.list().then((result) => {
-          if (current()) syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+          if (!current()) return
+          seedGlobalPermissions(result.data ?? [], result.response?.headers)
         }),
         sdk.question.list().then((result) => {
-          if (current()) syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+          if (!current()) return
+          seedGlobalQuestions(result.data ?? [], result.response?.headers)
         }),
       ])
       if (!current()) return false
@@ -1109,6 +1144,60 @@ function createGlobalSync() {
       writeTrackers.set(scopeKey, tracker)
     }
     return tracker
+  }
+
+  // Post-stamp event-write tracking for the session runtime index. The keys are
+  // globally unique session ids, so one tracker covers every Scope.
+  let globalRuntimeTracker = new GlobalRuntimeWriteTracker()
+
+  // A reconnect can land in a new runtime epoch, where index entries from the
+  // previous epoch can no longer be verified and no event will clear them. The
+  // index carries no Scope, so the reset can only be global; reconnect recovery
+  // is the one point that observes every Scope at once.
+  function resetGlobalRuntimeIndex() {
+    batch(() => {
+      setGlobalStore("sessionStatus", reconcile({}))
+      setGlobalStore("permission", reconcile({}))
+      setGlobalStore("question", reconcile({}))
+      setGlobalStore("cortex", reconcile([]))
+    })
+    globalRuntimeTracker = new GlobalRuntimeWriteTracker()
+  }
+
+  // The permission and question routes are already cross-Scope, so their
+  // response is authoritative for the whole index rather than for one Scope.
+  // A request whose event write postdates the response stamp is newer and is
+  // kept, so a reply that landed while the fetch was in flight is not
+  // resurrected as still pending.
+  function seedGlobalPermissions(requests: readonly PermissionRequest[], headers: Pick<Headers, "get"> | undefined) {
+    const merged =
+      globalRuntimeTracker.mergeRequests(
+        readSyncVersion(headers),
+        "permission",
+        requests,
+        flattenBuckets(globalStore.permission),
+      ) ?? requests
+    setGlobalStore("permission", reconcile(groupBySession(merged)))
+  }
+
+  function seedGlobalQuestions(requests: readonly QuestionRequest[], headers: Pick<Headers, "get"> | undefined) {
+    const merged =
+      globalRuntimeTracker.mergeRequests(
+        readSyncVersion(headers),
+        "question",
+        requests,
+        flattenBuckets(globalStore.question),
+      ) ?? requests
+    setGlobalStore("question", reconcile(groupBySession(merged)))
+  }
+
+  // The cross-Scope status route is authoritative for the whole index, so a
+  // response without a comparable stamp replaces it wholesale — including the
+  // sessions it omits, which is how a status left stale by a missed `idle`
+  // converges without waiting for that session to be viewed.
+  function seedGlobalStatus(statuses: SessionStatusIndex, headers: Pick<Headers, "get"> | undefined) {
+    const merged = globalRuntimeTracker.mergeStatus(readSyncVersion(headers), statuses, globalStore.sessionStatus)
+    setGlobalStore("sessionStatus", reconcile(merged ?? statuses))
   }
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
@@ -1293,6 +1382,9 @@ function createGlobalSync() {
   function applyEvent(scopeKey: string, event: any) {
     const stamp = parseEventWriteStamp(event)
     if (event?.type === "global.disposed") {
+      // Every scope runtime was disposed, so every epoch changed; bootstrap
+      // does not re-establish the index, so drop it before refetching.
+      resetGlobalRuntimeIndex()
       bootstrap()
       return
     }
@@ -1402,12 +1494,17 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info as Session
-        const touchedCortex = reconcileCortexFromSession(store, setStore, info)
+        const touchedCortex = reconcileCortexFromSession(info)
         if (stamp) {
-          const tracker = scopeWriteTracker(scopeKey)
-          tracker.sessionWrite(stamp, info.id, !info.time.archived)
-          if (touchedCortex) tracker.cortexWrite(stamp, touchedCortex)
+          scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
+          if (touchedCortex) globalRuntimeTracker.cortexWrite(stamp, touchedCortex)
         }
+        // `recovering` reaches the client only through snapshots and this
+        // derived field, so fill a status the index holds no event for. A real
+        // status event always wins, mirroring SessionManager.listStatuses.
+        const working = info.working
+        if (working && globalStore.sessionStatus[info.id] === undefined)
+          setGlobalStore("sessionStatus", info.id, reconcile(sessionStatusFromWorking(working)))
         const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
           if (index !== -1) {
@@ -1459,20 +1556,27 @@ function createGlobalSync() {
       }
       case "session.status": {
         // Handles busy, retry, idle, and recovering statuses
-        setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
-        if (stamp) scopeWriteTracker(scopeKey).statusWrite(stamp, event.properties.sessionID)
+        if (stamp) globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
+        // The global index is shared by every Scope and holds only non-idle
+        // sessions, so an idle status deletes the key instead of storing it.
         if (event.properties.status.type === "idle") {
+          setGlobalStore(
+            "sessionStatus",
+            produce((draft) => {
+              delete draft[event.properties.sessionID]
+            }),
+          )
           if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
           if (
-            store.cortex.some(
+            globalStore.cortex.some(
               (task) =>
                 task.sessionID === event.properties.sessionID &&
                 (task.status === "running" || task.status === "queued"),
             )
           ) {
-            refreshCortex(scopeKey)
+            refreshCortex()
           }
-        }
+        } else setGlobalStore("sessionStatus", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
       case "session.inbox.updated": {
@@ -1762,77 +1866,46 @@ function createGlobalSync() {
         break
       }
       case "permission.asked": {
-        const sessionID = event.properties.sessionID
-        const permissions = store.permission[sessionID]
-        if (!permissions) {
-          setStore("permission", sessionID, [event.properties])
-          break
-        }
-
-        const result = Binary.search(permissions, event.properties.id, (p) => p.id)
-        if (result.found) {
-          setStore("permission", sessionID, result.index, reconcile(event.properties))
-          break
-        }
-
-        setStore(
+        setGlobalStore(
           "permission",
-          sessionID,
           produce((draft) => {
-            draft.splice(result.index, 0, event.properties)
+            upsertPendingRequest(draft, event.properties)
           }),
         )
+        if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.id)
         break
       }
       case "permission.replied": {
-        const permissions = store.permission[event.properties.sessionID]
-        if (!permissions) break
-        const result = Binary.search(permissions, event.properties.requestID, (p) => p.id)
-        if (!result.found) break
-        setStore(
+        setGlobalStore(
           "permission",
-          event.properties.sessionID,
           produce((draft) => {
-            draft.splice(result.index, 1)
+            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
           }),
         )
+        if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.requestID)
         break
       }
       case "question.asked": {
         const request = event.properties
-        const requests = store.question[request.sessionID]
-        if (!requests) {
-          setStore("question", request.sessionID, [request])
-          break
-        }
-        const result = Binary.search(requests, request.id, (r) => r.id)
-        if (result.found) {
-          setStore("question", request.sessionID, result.index, reconcile(request))
-          break
-        }
-        setStore(
+        setGlobalStore(
           "question",
-          request.sessionID,
           produce((draft) => {
-            draft.splice(result.index, 0, request)
+            upsertPendingRequest(draft, request)
           }),
         )
+        if (stamp) globalRuntimeTracker.questionWrite(stamp, request.id)
         break
       }
       case "question.replied":
       case "question.rejected":
       case "question.timed_out": {
-        const requests = store.question[event.properties.sessionID]
-        if (!requests) break
-        const result = Binary.search(requests, event.properties.requestID, (r) => r.id)
-        if (!result.found) break
-        setStore(
+        setGlobalStore(
           "question",
-          event.properties.sessionID,
           produce((draft) => {
-            draft.splice(result.index, 1)
+            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
           }),
         )
+        if (stamp) globalRuntimeTracker.questionWrite(stamp, event.properties.requestID)
         break
       }
       case "lsp.updated": {
@@ -1840,39 +1913,27 @@ function createGlobalSync() {
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
         break
       }
-      case "cortex.task.created": {
-        const task = event.properties.task
-        setStore(
-          "cortex",
-          produce((draft) => {
-            const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx === -1) {
-              draft.push(task)
-            } else {
-              draft[idx] = task
-            }
-          }),
-        )
-        if (stamp) scopeWriteTracker(scopeKey).cortexWrite(stamp, task.id)
-        break
-      }
+      // Cortex events carry the whole visible task set (or one whole task), and
+      // `Cortex.listVisible()` is process-global, so they write the global index
+      // directly. A per-Scope copy would have to be rebuilt per Scope and would
+      // still be evicted.
+      case "cortex.task.created":
       case "cortex.task.completed": {
         const task = event.properties.task
-        setStore(
+        setGlobalStore(
           "cortex",
           produce((draft) => {
             const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx !== -1) {
-              draft[idx] = task
-            }
+            if (idx === -1) draft.push(task)
+            else draft[idx] = task
           }),
         )
-        if (stamp) scopeWriteTracker(scopeKey).cortexWrite(stamp, task.id)
+        if (stamp) globalRuntimeTracker.cortexWrite(stamp, task.id)
         break
       }
       case "cortex.tasks.updated": {
-        setStore("cortex", reconcile(event.properties.tasks))
-        if (stamp) scopeWriteTracker(scopeKey).cortexReplace(stamp)
+        setGlobalStore("cortex", reconcile(event.properties.tasks, { key: "id" }))
+        if (stamp) globalRuntimeTracker.cortexReplace(stamp)
         break
       }
       case "agenda.item.created":
@@ -1943,9 +2004,8 @@ function createGlobalSync() {
     for (const timers of inboxRefreshTimers.values()) {
       for (const timer of timers.values()) clearTimeout(timer)
     }
-    for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
+    if (cortexRefreshTimer !== undefined) clearTimeout(cortexRefreshTimer)
     inboxRefreshTimers.clear()
-    cortexRefreshTimers.clear()
     sessionWindowReload.dispose()
     recoveryRetryScheduler.dispose()
     partRepairScheduler.dispose()
@@ -2005,6 +2065,11 @@ function createGlobalSync() {
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
+    resetGlobalRuntimeIndex()
+    // The reset dropped every index entry, and a per-Scope response is only
+    // authoritative for the Scope it belongs to, so the cross-Scope snapshot is
+    // what restores the sessions this client has not leased.
+    void loadGlobalSessionStatus()
     const generation = reconnectVersion() + 1
     setReconnectVersion(generation)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
@@ -2089,6 +2154,7 @@ function createGlobalSync() {
     }
     setGlobalStore("ready", true)
     loadGlobalAgenda()
+    loadGlobalSessionStatus()
     return true
   }
 
@@ -2134,6 +2200,24 @@ function createGlobalSync() {
     get agenda() {
       return globalStore.agenda
     },
+    get cortex() {
+      return globalStore.cortex
+    },
+    get sessionStatus() {
+      return globalStore.sessionStatus
+    },
+    get permissions() {
+      return globalStore.permission
+    },
+    get questions() {
+      return globalStore.question
+    },
+    get globalRuntimeTracker() {
+      return globalRuntimeTracker
+    },
+    seedGlobalPermissions,
+    seedGlobalQuestions,
+    reconcileCortexFromSession,
     loadGlobalAgenda,
     refreshConfig,
     refreshAllConfigs,

@@ -153,5 +153,41 @@ describe("status bar runtime state", () => {
     expect(state.copyText).toBe("Session is recovering from an incomplete turn")
     expect(state.icon).toBe(getSemanticIcon("session.retry"))
     expect(state.tone).toBe("danger")
+    expect(state.pulse).toBe(true)
+  })
+
+  test("renders a missing status as idle without a pulse", () => {
+    const i18n = mockI18n()
+    const state = resolveRuntimeIconState(undefined, false, i18n)
+
+    expect(runtimeLabel(undefined, false, i18n)).toBe("idle")
+    expect(state).toMatchObject({
+      icon: getSemanticIcon("session.idle"),
+      label: "idle",
+      tooltip: "Runtime: idle",
+      tone: "base",
+      pulse: false,
+    })
+    expect(state.copyText).toBeUndefined()
+  })
+
+  test("keeps waiting above every runtime status", () => {
+    const i18n = mockI18n()
+    const statuses: Array<SessionStatus | undefined> = [
+      undefined,
+      { type: "idle" },
+      { type: "busy", description: "running tool" },
+      { type: "retry", attempt: 2, message: "Provider unavailable", next: 1_000 },
+      { type: "recovering", description: "Recovering incomplete turn" },
+    ]
+
+    for (const status of statuses) {
+      const state = resolveRuntimeIconState(status, true, i18n)
+      expect(state.icon).toBe(getSemanticIcon("session.waiting"))
+      expect(state.tone).toBe("danger")
+      expect(state.pulse).toBe(true)
+      expect(state.tooltip).toBe("Runtime: waiting")
+      expect(state.copyText).toBeUndefined()
+    }
   })
 })

@@ -2125,6 +2125,14 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260918-session-nav-identity",
+    description:
+      "Rebuild session nav indexes to backfill session identity (Blueprint phase, workspace type, workflow activity)",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
   RolloutMigration.migration,
   RolloutContinuationMigration.migration,
 

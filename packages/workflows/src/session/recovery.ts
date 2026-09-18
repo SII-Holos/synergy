@@ -17,7 +17,6 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
-import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutContinuationRecovery } from "@ericsanchezok/synergy-harness/session/rollout/continuation-recovery"
@@ -253,7 +252,7 @@ export namespace WorkflowRecovery {
 
     if (input.apply) {
       await Session.update(input.sessionID, (draft) => {
-        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
       })
     }
     reportChange(input.report, {
@@ -278,7 +277,7 @@ export namespace WorkflowRecovery {
 
     if (input.apply) {
       await Session.update(input.session.id, (draft) => {
-        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
       })
     }
     reportChange(input.report, {
@@ -455,12 +454,21 @@ export namespace WorkflowRecovery {
     return requested
   }
 
+  /** Readable cause for a session held by an active BlueprintLoop. Single
+   * source for both the bound-session contribution and the status fallback, so
+   * a paused loop cannot be reported as merely active through one of them. */
+  export function describeActiveLoop(loop: SessionBlueprintState.LoopInfo): string {
+    return loop.status === "waiting" ? "BlueprintLoop paused — resume it to continue" : "BlueprintLoop active"
+  }
+
   export async function recoverableStatuses(scopeID: string): Promise<Record<string, StatusInfo>> {
     const { resolve, toStatus } = await import("@ericsanchezok/synergy-harness/session/working")
     const [sessions, loops] = await Promise.all([sessionInfos(scopeID), SessionBlueprintState.listLoops(scopeID)])
     const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
     const candidates = new Map<string, Info>()
-    const activeLoopSessionIDs = new Set<string>()
+    // The loop that makes each session recovering, so the fallback below can
+    // describe the real cause even when the session record carries no binding.
+    const activeLoopBySessionID = new Map<string, SessionBlueprintState.LoopInfo>()
     for (const session of sessions) {
       if (isSessionRecoveryCandidate(session)) candidates.set(session.id, session)
     }
@@ -469,13 +477,13 @@ export namespace WorkflowRecovery {
       const execution = sessionsByID.get(loop.sessionID)
       if (execution) {
         candidates.set(execution.id, execution)
-        activeLoopSessionIDs.add(execution.id)
+        activeLoopBySessionID.set(execution.id, loop)
       }
       if (loop.auditSessionID) {
         const audit = sessionsByID.get(loop.auditSessionID)
         if (audit) {
           candidates.set(audit.id, audit)
-          activeLoopSessionIDs.add(audit.id)
+          activeLoopBySessionID.set(audit.id, loop)
         }
       }
     }
@@ -485,16 +493,10 @@ export namespace WorkflowRecovery {
       const working = await resolve(session.id).catch(() => undefined)
       if (working) {
         result[session.id] = toStatus(working)
-      } else if (activeLoopSessionIDs.has(session.id)) {
-        // `resolve` returned nothing, so the loop is active but not bound. Ask
-        // the owning domain for the cause rather than restating it here: this is
-        // the only status a UI can read for such a session, and a paused loop
-        // must not be reported as merely "active".
-        result[session.id] = {
-          type: "recovering",
-          reason: "workflow",
-          description: await SessionExecutionContributions.recoveringDescription(session).catch(() => undefined),
-        }
+      } else {
+        const loop = activeLoopBySessionID.get(session.id)
+        if (!loop) continue
+        result[session.id] = { type: "recovering", reason: "workflow", description: describeActiveLoop(loop) }
       }
     }
     return result

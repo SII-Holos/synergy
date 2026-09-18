@@ -103,7 +103,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
 import { LightLoopSubmitControl } from "./light-loop-submit-control"
-import { isActiveLightLoopWorkflow } from "./light-loop-control"
+import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
 import { createAbortRequestController } from "./abort-request"
@@ -222,6 +222,12 @@ export function createPromptInputController(props: PromptInputProps) {
   const sendShortcut = createMemo(() => input.sendShortcut())
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
+  const backendLightLoopActive = createMemo(() =>
+    resolveLightLoopActivity({
+      workflow: activeWorkflow(),
+      entry: params.id ? layout.nav.navEntryForSession(sdk.scopeKey, params.id) : undefined,
+    }),
+  )
   const status = createMemo(() => view().statusFor(params.id ?? "") ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlan, setPendingPlan] = createSignal(false)
@@ -232,18 +238,17 @@ export function createPromptInputController(props: PromptInputProps) {
   const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
   const [pendingBoss, setPendingBoss] = createSignal(false)
   const storedLightLoop = createMemo(() =>
-    params.id ? isActiveLightLoopWorkflow(activeWorkflow()) || pendingLightLoop() : pendingLightLoop(),
+    params.id ? backendLightLoopActive() || pendingLightLoop() : pendingLightLoop(),
   )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
   const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
-    return params.id && isActiveLightLoopWorkflow(workflow) ? workflow.instructions : undefined
+    return backendLightLoopActive() && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
-  const persistedLightLoopActive = createMemo(() => isActiveLightLoopWorkflow(activeWorkflow()))
   const lightLoopReviewPending = createMemo(() => {
     const workflow = activeWorkflow()
-    return isActiveLightLoopWorkflow(workflow) && !!workflow.stopRequest
+    return backendLightLoopActive() && workflow?.kind === "lightloop" && !!workflow.stopRequest
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
@@ -835,8 +840,7 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const setLightLoop = async (active: boolean) => {
-    const activeBackendLightLoop = isActiveLightLoopWorkflow(activeWorkflow())
-    if (!params.id || !activeBackendLightLoop) {
+    if (!params.id || !backendLightLoopActive()) {
       setPendingLightLoop(active)
       if (active) {
         setPendingPlan(false)
@@ -943,7 +947,7 @@ export function createPromptInputController(props: PromptInputProps) {
     workflowDialog.show(() => (
       <EditLightLoopDialog
         instructions={workflow.instructions}
-        active={persistedLightLoopActive}
+        active={backendLightLoopActive}
         working={working}
         reviewPending={lightLoopReviewPending}
         onSave={updateLightLoopInstructions}

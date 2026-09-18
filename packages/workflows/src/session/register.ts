@@ -21,6 +21,8 @@ export function registerWorkflowSessions() {
       id: kind,
       managesLock: true,
       conflicts: ["plan", "lightloop", "lattice", "boss"],
+      activeForPresentation:
+        kind === "lightloop" ? (session) => isActiveLightLoopWorkflow(session.workflow) : undefined,
       async enable({ sessionID, args }) {
         if (kind === "plan") return WorkflowSessionService.enablePlan(sessionID)
         if (kind === "boss") return WorkflowSessionService.enableBoss(sessionID)
@@ -64,8 +66,7 @@ export function registerWorkflowSessions() {
     async recoveringDescription(session) {
       if (session.blueprint?.loopID) {
         const loop = await SessionBlueprintState.getLoop(session.scope.id, session.blueprint.loopID)
-        if (loop && SessionBlueprintState.isActiveStatus(loop.status))
-          return loop.status === "waiting" ? "BlueprintLoop paused — resume it to continue" : "BlueprintLoop active"
+        if (loop && SessionBlueprintState.isActiveStatus(loop.status)) return WorkflowRecovery.describeActiveLoop(loop)
       }
       if (isActiveLightLoopWorkflow(session.workflow)) return "Light Loop active"
       if (session.workflow?.kind === "lattice") return "Lattice run active"
