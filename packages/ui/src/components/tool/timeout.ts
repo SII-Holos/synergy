@@ -1,4 +1,4 @@
-import type { ToolTimeoutMetadata } from "@ericsanchezok/synergy-util/tool-timeout"
+import type { ToolMetadata } from "../tool-registry-lazy"
 
 export type CountdownKind = "auto_background" | "timeout" | "remaining"
 
@@ -14,10 +14,10 @@ export interface ToolCountdown {
 }
 
 export function toolCountdown(
-  metadata: Record<string, any> | undefined,
+  metadata: ToolMetadata | undefined,
   time: ToolTime | undefined,
 ): ToolCountdown | undefined {
-  const timeout = metadata?.toolTimeout as ToolTimeoutMetadata | undefined
+  const timeout = metadata?.toolTimeout
   const displayMs = timeout?.displayMs
   if (typeof displayMs !== "number" || !Number.isFinite(displayMs) || displayMs <= 0) return undefined
   const startedAt = time?.start
