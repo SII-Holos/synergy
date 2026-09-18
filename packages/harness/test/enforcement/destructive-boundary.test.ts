@@ -345,3 +345,73 @@ describe("destructive boundary — network detection is token-aware", () => {
     expect(envelope.capabilities.some((c: any) => c.class === "network_request")).toBe(false)
   })
 })
+
+describe("destructive boundary — privilege escalation follows the payload", () => {
+  const { EnforcementGate } = require("../../src/enforcement/gate")
+
+  // Escalation is decided by what the wrapper *runs*, not by the wrapper name.
+  // A wrapper whose payload re-executes as another user (or as root) leaves the
+  // sandbox model, so it is destructive; the same wrapper around an inert
+  // payload is an ordinary local command. The shapes below mirror the negative
+  // list the classifier already carried, which asserted that `su -c 'echo
+  // sudo'`, `runuser -u root -- echo sudo`, and `pkexec echo sudo` are not
+  // escalation merely because the word appears in argument text.
+  const escalating = [
+    "sudo true",
+    "sudo -n true",
+    "sudo -S true",
+    "sudo -n ls",
+    "sudoedit /etc/hosts",
+    "doas true",
+    "su -c 'sudo make install'",
+    "runuser -u root -- sudo make install",
+    "pkexec sudo make install",
+    "sg wheel -c 'sudo make install'",
+    "nsenter -t 1 -m sudo make install",
+    "docker exec c sudo make install",
+    "podman run image sudo make install",
+    "docker run --entrypoint sudo c make install",
+  ]
+
+  const inert = [
+    "su -c 'echo sudo'",
+    "runuser -u root -- echo sudo",
+    "pkexec echo sudo",
+    "sg wheel -c 'echo sudo'",
+    "nsenter -t 1 -m ls",
+    "docker exec c ls",
+    "podman run image ls",
+    'echo "use sudo carefully"',
+  ]
+
+  test("a wrapper around an escalating payload is refused under autonomous", async () => {
+    for (const command of escalating) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+      const envelope = gate.evaluate("bash", { command })
+      expect({ command, decision: envelope.decision }).toEqual({ command, decision: "deny" })
+      expect({
+        command,
+        matched: envelope.refusal?.matchedPermission,
+      }).toEqual({ command, matched: "shell_destructive" })
+    }
+  })
+
+  test("a wrapper around an inert payload is not escalation", async () => {
+    for (const command of inert) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+      const envelope = gate.evaluate("bash", { command })
+      expect({
+        command,
+        destructive: envelope.capabilities.some((c: any) => c.class === "shell_destructive"),
+      }).toEqual({ command, destructive: false })
+    }
+  })
+})
