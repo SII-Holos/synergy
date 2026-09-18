@@ -145,7 +145,7 @@ export namespace WorkflowRecovery {
 
     if (input.apply) {
       await Session.update(input.sessionID, (draft) => {
-        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
       })
     }
     reportChange(input.report, {
@@ -170,7 +170,7 @@ export namespace WorkflowRecovery {
 
     if (input.apply) {
       await Session.update(input.session.id, (draft) => {
-        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
       })
     }
     reportChange(input.report, {

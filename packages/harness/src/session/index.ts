@@ -373,6 +373,7 @@ export namespace Session {
       archived: !!session.time.archived,
       archivedAt: session.time.archived || undefined,
       parentID: session.parentID,
+      ...SessionNav.deriveSessionIdentity(session),
       endpointKind: channelEndpoint ? "channel" : undefined,
       chatId: channelEndpoint?.chatId,
       chatName: channelEndpoint?.chatName,
