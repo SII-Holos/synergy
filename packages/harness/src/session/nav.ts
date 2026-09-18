@@ -8,6 +8,7 @@ import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { Info as SessionInfo } from "./types"
 import { SessionManagedProjects } from "./managed-projects"
+import { SessionCompat } from "./compat-import"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
 export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
@@ -274,9 +275,8 @@ export namespace SessionNav {
       const existing = await Storage.read<ScopeNavIndex>(
         StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)),
       ).catch(() => undefined)
-      if (existing) return existing
-
-      return readNavIndexUnlocked(scopeID)
+      const index = existing ?? (await readNavIndexUnlocked(scopeID))
+      return (await SessionCompat.mergeNavIndex(scopeID, index)) as ScopeNavIndex
     })
   }
 

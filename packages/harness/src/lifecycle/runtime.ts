@@ -3,6 +3,7 @@ import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
 import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
+import { SessionCompat } from "../session/compat-import"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -179,6 +180,7 @@ export namespace RuntimeHandle {
       await StorageRecovery.recoverOwners()
       await StorageRecovery.load()
       await StorageRecovery.reconcileNotifications()
+      if (storage?.manifest.compatBoundary) SessionCompat.startBackgroundMigrator()
       options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})

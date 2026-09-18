@@ -12,6 +12,7 @@ import { StorageIntegrityError } from "./errors"
 import { PackedLegacyImporter } from "./packed-import"
 import { StorageArtifactMigration } from "./artifact-migration"
 import { LegacyJsonImporter, legacyRecords, type ImportProgress } from "./legacy-import"
+import { StorageCompat } from "./compat"
 import { TransactionalStore } from "./transactional-store"
 import type { StoreOptions } from "./sql-contract"
 
@@ -24,6 +25,7 @@ const Manifest = z
     artifactStoreID: z.uuid(),
     storeID: z.uuid().optional(),
     backupID: z.uuid(),
+    compatBoundary: z.string().optional(),
     phase: z.enum(["importing", "validating", "activating", "active"]),
   })
   .strict()
@@ -116,6 +118,10 @@ export namespace StorageBootstrap {
     const manifest = Manifest.parse(await optionalJson(path.join(directory, "manifest.json")))
     if (manifest.phase !== "active" || manifest.namespace !== input.store.options.namespace)
       throw new StorageIntegrityError("Storage must be active before migrating its target")
+    if (manifest.compatBoundary && (await StorageCompat.pendingLocators(input.store)).length)
+      throw new StorageIntegrityError(
+        "Deferred legacy sessions are still converging; let the background import finish before migrating storage",
+      )
     const configuration = StorageConfiguration.parse(input.configuration)
     const namespace = configuration.namespace ?? manifest.namespace
     const options = resolveStoreOptions(input.root, configuration, namespace)
@@ -209,6 +215,10 @@ export namespace StorageBootstrap {
             artifactStoreID: randomUUID(),
             backupID: randomUUID(),
             phase: "importing",
+            // The deferral decision is fixed when the manifest is created so a
+            // crash and resume cannot flip between retiring and keeping the
+            // session tree mid-migration.
+            ...(process.env.SYNERGY_STORAGE_COMPAT_DEFER === "1" ? { compatBoundary: StorageCompat.boundary } : {}),
           }
       if (manifest.target !== target || manifest.backend !== storeOptions.backend)
         throw new StorageIntegrityError(
@@ -239,14 +249,18 @@ export namespace StorageBootstrap {
           await store.write(identityKey, { storeID: manifest.storeID, artifactStoreID: manifest.artifactStoreID })
         }
         const [importState] = await store.readMany<{ version?: number }>([["storage_import", "info"]])
-        const Importer = importState && importState.version !== 2 ? LegacyJsonImporter : PackedLegacyImporter
-        const importer = new Importer({
+        const importerOptions = {
           dataRoot: path.join(root, "data"),
           backupRoot: path.join(directory, "backups", manifest.backupID),
           store,
           progress: options.progress,
-        })
+        }
+        const importer =
+          importState && importState.version !== 2
+            ? new LegacyJsonImporter(importerOptions)
+            : new PackedLegacyImporter({ ...importerOptions, deferSessions: manifest.compatBoundary !== undefined })
         if (manifest.phase === "importing") {
+          if (manifest.compatBoundary) await StorageCompat.seedLocators(store, path.join(root, "data"))
           await importer.run()
           const archive = path.join(root, "data", "agent-records.ndjson")
           if (await Bun.file(archive).exists())
@@ -261,6 +275,7 @@ export namespace StorageBootstrap {
                   "storage_import_files",
                   "storage_staging",
                   "storage_transfer",
+                  "compat_import",
                 ].includes(entry.key[0]) &&
                   // A convenience archive may originate from another home;
                   // grants and trust decisions must not arrive with it.
@@ -270,7 +285,10 @@ export namespace StorageBootstrap {
           await persist()
         }
         await StorageArtifactMigration.run({ dataRoot: path.join(root, "data"), store, progress: options.progress })
-        if (manifest.phase === "active") await rejectLegacyWriters(path.join(root, "data"), options.progress)
+        if (manifest.phase === "active") {
+          if (manifest.compatBoundary) await StorageCompat.rejectForeignWriters(path.join(root, "data"), store)
+          else await rejectLegacyWriters(path.join(root, "data"), options.progress)
+        }
         const activate = async () => {
           if (manifest.phase === "active") return
           options.progress?.({ stage: "check", current: 0, total: 0, bytes: 0 })
@@ -283,7 +301,8 @@ export namespace StorageBootstrap {
           manifest.phase = "activating"
           await persist()
           await importer.retire()
-          await rejectLegacyWriters(path.join(root, "data"), options.progress)
+          if (manifest.compatBoundary) await StorageCompat.rejectForeignWriters(path.join(root, "data"), store)
+          else await rejectLegacyWriters(path.join(root, "data"), options.progress)
           manifest.phase = "active"
           await persist()
         }

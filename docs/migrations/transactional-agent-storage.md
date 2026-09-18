@@ -26,6 +26,16 @@ There is no SQL-to-legacy live writer. For a sealed version 2 Home backup, run `
 
 For version 1, reconstruct `data/` from the backup, restore `data/@home/config/` to the Home's `config/`, and restore `data/@home/plugin.lock` to the Home root. Validate all inventory hashes before starting the old release. The version 2 restore command deliberately rejects version 1 and artifact-only backups.
 
+## Deferred session import
+
+Homes activated with a storage manifest that carries `compatBoundary` keep the session aggregate tree `data/sessions/**` in legacy JSON after activation: the sealed backup still contains it, but the importer skips its records and Rollout binaries and retirement leaves the files in place. Every other record keeps the invariant that activation leaves no legacy JSON behind.
+
+A deferred session imports as one unit the first time the Runtime touches it (open, message read or write, endpoint delivery). The importer checkpoints each file's hash in committed batches, so an interrupted import resumes without duplicating records or artifact bytes. A record with invalid JSON quarantines exactly that session — it surfaces as a blocked-session error when that session is touched, and other sessions are unaffected. After import, the session's historical migrations re-run through per-aggregate replays and the current-shape session indexes are written, so the session appears in listings without a global rebuild.
+
+Until a session imports, listings project it from its `info.json`. Convergence is automatic: the Runtime imports pending sessions oldest-first during idle time with a per-tick budget. Create `data/storage/compat-pause` to hold the background import between ticks; remove it to resume. `synergy data storage status` reports how many aggregates are still pending.
+
+While aggregates remain pending, storage target migration is refused. The sealed backup's session contents go stale as sessions are imported and modified, so within the compat window an official downgrade restores sessions as of the backup, not as of the downgrade moment. Remove the pause file and let the import finish before transferring or downgrading the Home.
+
 ## Transfer
 
 Use `data pack` for a portable logical backup, and `data merge` or `data move` to restore or combine data. Agent records, revisions and operation receipts move independently of the engine; Git objects and artifacts move with their references. Grants, consent and trust records (plugin approvals, permissions, registry) are refused from another home's archive during `data merge` and only travel with `data move`. A target Session ID wins as a whole aggregate. The retained source snapshot and transfer report let an operator recover skipped content even after `move --remove-original`.

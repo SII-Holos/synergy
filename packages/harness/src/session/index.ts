@@ -29,6 +29,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
+import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import type { ProfileId } from "../control-profile/types"
@@ -250,10 +251,11 @@ export namespace Session {
   export type WorkspaceSelection = z.infer<typeof WorkspaceSelection>
 
   export async function readPageIndex(scopeID: string): Promise<PageIndex> {
-    return Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch((error) => {
+    const index = await Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch((error) => {
       if (error instanceof Storage.NotFoundError) return { entries: [] }
       throw error
     })
+    return SessionCompat.mergePageIndex(scopeID, index)
   }
 
   export async function writePageIndex(scopeID: string, index: PageIndex) {
@@ -280,7 +282,7 @@ export namespace Session {
     })
   }
 
-  function toPageIndexEntry(session: Info): PageIndex["entries"][number] {
+  export function toPageIndexEntry(session: Info): PageIndex["entries"][number] {
     return {
       id: session.id,
       updated: session.time.updated,
@@ -291,7 +293,7 @@ export namespace Session {
     }
   }
 
-  function toChildIndexEntry(session: Info): ChildIndexEntry {
+  export function toChildIndexEntry(session: Info): ChildIndexEntry {
     return {
       id: session.id,
       title: session.title,
@@ -306,12 +308,13 @@ export namespace Session {
   }
 
   export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
-    return Storage.read<ChildIndex>(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID))).catch(
-      (error) => {
-        if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
-        throw error
-      },
-    )
+    const index = await Storage.read<ChildIndex>(
+      StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)),
+    ).catch((error): ChildIndex => {
+      if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
+      throw error
+    })
+    return SessionCompat.mergeChildIndex(scopeID, parentID, index) as Promise<ChildIndex>
   }
 
   export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
@@ -346,7 +349,7 @@ export namespace Session {
     await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
   }
 
-  function toNavEntry(session: Info): SessionNavEntry {
+  export function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
     const scopeType = scope.type === "home" ? "home" : "project"
     const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
@@ -1082,6 +1085,18 @@ export namespace Session {
     total: number
   }
 
+  async function readListInfos(scopeID: string, ids: string[]) {
+    const sid = asScopeID(scopeID)
+    const keys = ids.map((id) => StoragePath.sessionInfo(sid, asSessionID(id)))
+    const sessions = await Storage.readMany<Info>(keys)
+    for (const [index, id] of ids.entries()) {
+      if (sessions[index]) continue
+      const info = await SessionCompat.pendingInfo(scopeID, id)
+      if (info) sessions[index] = info
+    }
+    return sessions
+  }
+
   export async function list(options?: {
     offset?: number
     limit?: number
@@ -1103,8 +1118,10 @@ export namespace Session {
     // When searching, we must read all matching session infos first because
     // title-based search cannot be applied on the page index alone.
     if (options?.search) {
-      const keys = entries.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
-      const sessions = await Storage.readMany<Info>(keys)
+      const sessions = await readListInfos(
+        scopeID,
+        entries.map((e) => e.id),
+      )
       const term = options.search.toLowerCase()
       const matched = sessions.filter((s): s is Info => s != null && !!s.scope && s.title.toLowerCase().includes(term))
       const total = matched.length
@@ -1121,8 +1138,10 @@ export namespace Session {
 
     if (slice.length === 0) return { data: [], total }
 
-    const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await readListInfos(
+      scopeID,
+      slice.map((e) => e.id),
+    )
     const data = await Promise.all(
       sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withClientInfo(s)),
     )

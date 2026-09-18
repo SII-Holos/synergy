@@ -54,4 +54,7 @@ export namespace RolloutContinuationMigration {
       }
     },
   }
+  export function replayRolloutUnansweredContinuation(input: { scopeID: string; sessionID: string }): Promise<void> {
+    return session({ kind: "session", scopeID: input.scopeID, sessionID: input.sessionID }).then(() => undefined)
+  }
 }
