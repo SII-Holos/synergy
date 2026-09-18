@@ -19,12 +19,14 @@ export const HIDDEN_FLUSH_MS = 1000
 type Queued = { directory: string; payload: unknown }
 
 type PendingDelta = {
-  directory: string
-  sessionID: string
-  messageID: string
-  partID: string
-  kind: string
-  delta: string
+  index: number
+  properties: {
+    sessionID: string
+    messageID: string
+    partID: string
+    kind: string
+    delta: string
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,30 +84,11 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
     const events = queue
     queue = []
     coalesced.clear()
-    if (events.length === 0 && pendingDelta.size === 0) return
+    pendingDelta.clear()
+    if (events.length === 0) return
 
     last = now()
     batch(() => {
-      // Merged deltas are emitted before queued state events regardless of
-      // arrival order: deltas are unsequenced and the ≤1 s server checkpoint
-      // (`message.part.updated`) is the authoritative snapshot — a checkpoint
-      // for the same part clears its pending delta on push (below), so the
-      // synthetic delta never double-applies. Emitting them first keeps the
-      // streaming renderer fed before state churn, which is harmless because
-      // sequenced state events are applied in the same batch.
-      for (const entry of pendingDelta.values()) {
-        emit(entry.directory, {
-          type: "message.part.delta",
-          properties: {
-            sessionID: entry.sessionID,
-            messageID: entry.messageID,
-            partID: entry.partID,
-            kind: entry.kind,
-            delta: entry.delta,
-          },
-        })
-      }
-      pendingDelta.clear()
       for (const event of events) {
         if (!event) continue
         emit(event.directory, event.payload)
@@ -122,10 +105,10 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
 
   const push = (directory: string, payload: unknown) => {
     if (disposed) return
-    if (queue.length + pendingDelta.size >= EVENT_QUEUE_CAP) flush()
+    if (queue.length >= EVENT_QUEUE_CAP) flush()
 
-    if (isHidden() && isRecord(payload)) {
-      if (payload.type === "message.part.delta") {
+    if (isRecord(payload)) {
+      if (isHidden() && payload.type === "message.part.delta") {
         const properties = payload.properties
         if (!isRecord(properties)) return
         const { messageID, partID, kind, delta } = properties
@@ -133,17 +116,19 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
         const key = deltaKey(directory, messageID, partID)
         const existing = pendingDelta.get(key)
         if (existing) {
-          existing.delta += typeof delta === "string" ? delta : ""
-          if (typeof kind === "string") existing.kind = kind
+          existing.properties.delta += typeof delta === "string" ? delta : ""
+          if (typeof kind === "string") existing.properties.kind = kind
         } else {
-          pendingDelta.set(key, {
-            directory,
+          const merged = {
             sessionID: typeof properties.sessionID === "string" ? properties.sessionID : "",
             messageID,
             partID,
             kind: typeof kind === "string" ? kind : "",
             delta: typeof delta === "string" ? delta : "",
-          })
+          }
+          // Keep the merged delta after the checkpoint that introduced its prefix.
+          pendingDelta.set(key, { index: queue.length, properties: merged })
+          queue.push({ directory, payload: { type: "message.part.delta", properties: merged } })
         }
         scheduleFlush()
         return
@@ -153,7 +138,10 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
         if (isRecord(properties) && isRecord(properties.part)) {
           const part = properties.part
           if (typeof part.messageID === "string" && typeof part.id === "string") {
-            pendingDelta.delete(deltaKey(directory, part.messageID, part.id))
+            const key = deltaKey(directory, part.messageID, part.id)
+            const pending = pendingDelta.get(key)
+            if (pending) queue[pending.index] = undefined
+            pendingDelta.delete(key)
           }
         }
       }

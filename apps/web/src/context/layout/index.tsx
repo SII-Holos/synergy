@@ -1112,13 +1112,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
         .then((response) => {
           if (prefetchToken.value !== token || !response.data) return
+          const plan = planPrefetchApply({
+            page: response.data,
+            partSnapshotAction: (messageID) =>
+              globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
+          })
+          if (plan.status === "retry") return
           globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
-            const plan = planPrefetchApply({
-              page: response.data!,
-              partSnapshotAction: (messageID) =>
-                globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
-            })
-            if (plan.status === "retry") return
             batch(() => {
               setChildStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
               setChildStore("messageWindow", sessionID, reconcile(plan.metadata))

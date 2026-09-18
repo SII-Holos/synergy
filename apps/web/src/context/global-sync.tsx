@@ -549,6 +549,9 @@ function createGlobalSync() {
   function releaseScopeState(scopeKey: string) {
     contextProjectionRevision.releaseScope(scopeKey)
     if (children[scopeKey]) {
+      for (const sessionID of Object.keys(children[scopeKey][0].message)) {
+        sessionWindowReload.release(bucketKey(scopeKey, sessionID))
+      }
       delete children[scopeKey]
       setScopeRegistryVersion((version) => version + 1)
     }
@@ -1134,6 +1137,7 @@ function createGlobalSync() {
       const sessionID = key.slice(sep + 1)
       partSnapshotFreshness.releaseSession(scopeKey, sessionID)
       partRepairScheduler.clear(scopeKey, sessionID)
+      sessionWindowReload.release(key)
       const state = children[scopeKey]
       if (!state) continue
       const [store, setStore] = state
@@ -1200,6 +1204,7 @@ function createGlobalSync() {
       const currentMessages = store.message[input.sessionID]
       if (!currentMessages) return "applied"
       const metadata = store.messageWindow[input.sessionID]
+      if (!input.inboxRequest && metadata?.mode !== "latest") return "applied"
       const plan = planMessagePageApply({
         page: result.response.data,
         current: {
@@ -1228,7 +1233,7 @@ function createGlobalSync() {
             setStore(
               produce((draft) => {
                 for (const messageID of plan.droppedIds) delete draft.part[messageID]
-                delete draft.session_diff[input.sessionID]
+                if (input.inboxRequest) delete draft.session_diff[input.sessionID]
                 if (
                   input.inboxRequest &&
                   isResourceRequestCurrent(input.scopeKey, input.sessionID, "inbox", input.inboxRequest)
@@ -1266,10 +1271,11 @@ function createGlobalSync() {
   // per-message part snapshots, supersede retries), so a repair cannot
   // clobber newer streaming state.
   function reloadSessionWindow(scopeKey: string, sessionID: string, options?: { refreshInbox?: boolean }) {
+    if (!options?.refreshInbox && children[scopeKey]?.[0].messageWindow[sessionID]?.mode !== "latest") return
     const inboxRequest = options?.refreshInbox ? captureResourceRequest(scopeKey, sessionID, "inbox") : undefined
     void sessionWindowReload
       .load(bucketKey(scopeKey, sessionID), {
-        force: true,
+        force: options?.refreshInbox === true,
         hasSnapshot: true,
         input: { scopeKey, sessionID, inboxRequest },
       })
@@ -1647,7 +1653,7 @@ function createGlobalSync() {
           // stays on the session. When the window itself is loaded (the
           // message merely is not in it — e.g. an inbox materialization
           // racing the window), schedule one debounced repair reload.
-          if (hasMessageWindowSnapshot(messages, metadata)) {
+          if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
             partRepairScheduler.request(scopeKey, part.sessionID)
           }
           break
@@ -1681,11 +1687,12 @@ function createGlobalSync() {
             })
           }
           if (result.found) {
-            // A checkpoint whose text is a strict prefix of the accumulated
-            // text is an older snapshot (hidden-page delta merge or server
-            // write-buffer flush delivered after newer deltas); keep the
-            // accumulated text so a rendered streaming segment cannot shrink.
-            setStore("part", part.messageID, result.index, reconcile(mergeTextCheckpoint(parts[result.index], part)))
+            setStore(
+              "part",
+              part.messageID,
+              result.index,
+              reconcile(mergeTextCheckpoint(parts[result.index], part, typeof event.properties.delta === "string")),
+            )
           } else {
             setStore(
               "part",
@@ -1730,7 +1737,9 @@ function createGlobalSync() {
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === messageID)
         partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: !messageLoaded })
         if (!messageLoaded) {
-          if (hasMessageWindowSnapshot(messages, metadata)) partRepairScheduler.request(scopeKey, sessionID)
+          if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
+            partRepairScheduler.request(scopeKey, sessionID)
+          }
           break
         }
         invalidateResource(scopeKey, sessionID, "message")
@@ -1901,6 +1910,7 @@ function createGlobalSync() {
         const acceptedInbox = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
         const acceptedMessages = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "message" }, version)
         if (!acceptedInbox || !acceptedMessages) break
+        partRepairScheduler.clear(scopeKey, sessionID)
         reloadSessionWindow(scopeKey, sessionID, { refreshInbox: true })
         break
       }
