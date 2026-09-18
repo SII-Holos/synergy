@@ -9,7 +9,6 @@ const RECENT_ICON_TONE_CLASS: Partial<Record<SessionVisualState["tone"], string>
   active: "text-icon-base",
   retry: "text-icon-critical-base",
   waiting: "text-icon-critical-base",
-  worktree: "text-icon-success-base",
   blueprint: "text-icon-info-base",
   "blueprint-running": "text-icon-success-base",
   "blueprint-waiting": "text-icon-warning-base",
