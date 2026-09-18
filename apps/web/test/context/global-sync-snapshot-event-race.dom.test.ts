@@ -54,10 +54,11 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     let listener
     export const emit = (key, seq, type, properties) => listener({name:key,details:{type,epoch:"test-epoch",seq,properties}})
     const ok = data => Promise.resolve({data})
+    const stamped = data => Promise.resolve({data, response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
         scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve,done:false})) },
-        permission: {list:()=>ok([])}, question: {list:()=>ok([])},
+        permission: {list:()=>stamped([])}, question: {list:()=>stamped([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
       }
@@ -151,6 +152,20 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     try {
       await h.started
       const api = h.api()
+
+      // Releasing the last lease demotes a Scope into the inactive LRU rather
+      // than evicting it, so eviction is forced by overfilling that LRU: the
+      // registry keeps at most eight inactive Scopes, and creating a new one
+      // evicts the oldest. The sweep keys must not reuse an existing background
+      // key, because re-touching one only moves its LRU position instead of
+      // growing the set. The precondition is asserted rather than assumed, so
+      // this stays correct however many Scopes earlier steps left inactive.
+      let sweep = 0
+      const evictScope = async (key: string) => {
+        for (let i = 0; i < 64 && api.peekScopeState(key); i++) api.ensureScopeState(`background.sweep.${sweep++}`)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(api.peekScopeState(key)).toBeUndefined()
+      }
 
       // A busy status event and a session insert apply while the scope's
       // bootstrap response is still in flight. The response was stamped
@@ -256,9 +271,9 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
 
       // Session runtime state lives in the always-present global store keyed by
       // session id, not in the per-Scope store: the sidebar renders sessions
-      // from every Scope, and a Scope store is evicted the moment its last
-      // retention lease is released. Evicting "index-scope" below is exactly
-      // the switch-project path that used to blank these values.
+      // from every Scope, while a Scope store is evicted once enough Scopes are
+      // inactive. Evicting "index-scope" below is exactly the switch-project
+      // path that used to blank these values.
       const indexed = api.retainScopeState("index-scope")
       h.emit("index-scope", 1, "session.status", { sessionID: "watched", status: { type: "busy" } })
       expect(api.sessionStatus["watched"]).toEqual({ type: "busy" })
@@ -274,7 +289,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.questions["watched"]?.map((request) => request.id)).toEqual(["question-1"])
 
       indexed.release()
-      expect(api.peekScopeState("index-scope")).toBeUndefined()
+      await evictScope("index-scope")
       expect(api.sessionStatus["watched"]).toEqual({ type: "busy" })
       expect(api.permissions["watched"]?.map((request) => request.id)).toEqual(["perm-1"])
       expect(api.questions["watched"]?.map((request) => request.id)).toEqual(["question-1"])
@@ -375,10 +390,10 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       h.emit("converge-scope", 11, "session.status", { sessionID: "fresh-runner", status: { type: "busy" } })
       expect(api.sessionStatus["fresh-runner"]).toEqual({ type: "busy" })
 
-      // Switching project: the last retention lease goes, the store is
-      // evicted, and only the global index still carries the runtime state.
+      // Switching project: the last lease goes, the Scope is evicted, and only
+      // the global index still carries the runtime state.
       converging.release()
-      expect(api.peekScopeState("converge-scope")).toBeUndefined()
+      await evictScope("converge-scope")
 
       const revived = api.retainScopeState("converge-scope")
       await h.waitForRequest("converge-scope")
