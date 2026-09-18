@@ -9437,6 +9437,22 @@ msgid "confirm.disconnectProvider.title"
 msgstr "断开提供商连接？"
 
 #. js-lingui-explicit-id
+msgid "confirm.fullAccess.cancel"
+msgstr "保持当前模式"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.confirm"
+msgstr "启用完全访问权限"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.desc"
+msgstr "完全访问权限会对其生效的会话移除 Synergy 的权限检查和工作区沙箱。智能体运行的任何命令、读写的任何文件，都不会事先征求你的同意。请仅用于你能够承受损失、或运行在可随时丢弃的环境中的工作。"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.title"
+msgstr "启用完全访问权限？"
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr "留在工作树"
 
@@ -15359,6 +15375,26 @@ msgstr "自动允许读取、安全编辑和网络查询；执行命令、写入
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.guarded.label"
 msgstr "受控"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.aria"
+msgstr "非交互会话的权限模式"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.autonomous"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.desc"
+msgstr "用于渠道和定时日程启动的会话，这类会话没有人可以回答权限确认。此处不提供“守护”模式，因为无人值守的确认请求将永远无法得到回应。更改仅对之后新建的会话生效。"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.fullAccess"
+msgstr "完全访问权限"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.title"
+msgstr "非交互会话"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.page.desc"

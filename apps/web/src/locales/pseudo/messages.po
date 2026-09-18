@@ -9437,6 +9437,22 @@ msgid "confirm.disconnectProvider.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.fullAccess.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr ""
 
@@ -15358,6 +15374,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.guarded.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.autonomous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.fullAccess"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.title"
 msgstr ""
 
 #. js-lingui-explicit-id
