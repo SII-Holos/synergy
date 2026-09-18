@@ -18,15 +18,13 @@ Session state includes, when applicable:
 
 Session storage and transcript imports use `Session.PersistedInfo`, which validates the base session fields while preserving optional domain metadata, including unknown workflow kinds and nested fields. `SessionSchemaRegistry` lets owners contribute the public API shape, creation behavior and import cleanup before runtime startup seals registration. Workflows owns the Blueprint, Agenda, SuperPlan and workflow schemas; its full composition preserves the existing API union. Unloaded owners do not validate or clear their persisted fields, and persistence tolerance does not add arbitrary fields to the generated SDK contract.
 
-Runtime mutation of an existing session is serialized per Scope and session. The mutation writes canonical session info once through `Storage.update()`, then projects the resulting state into the session, page, child, navigation, and endpoint indexes before the next mutation for that session can begin. Activity updates, completion acknowledgements, last-exchange updates, and removal participate in the same boundary, so a projection cannot rewrite canonical metadata from an older snapshot.
+Session mutations use one `Storage.transaction()` for canonical session info and the session, page, child, navigation and endpoint indexes. Nested `Storage.update()` and index writes join that transaction. Activity updates, completion acknowledgements and last-exchange updates therefore commit their state and projections together.
 
-Page and navigation indexes are shared by every session in a Scope, while a child index is shared by siblings under one parent. Their read-modify-write operations use separate domain locks so mutations for different sessions remain concurrent without overwriting one another's entries. Session update events are started in mutation order after canonical state and projections are durable; local subscriber work is not awaited inside the critical section, so an event handler may safely request a later mutation of the same session.
+Page and navigation indexes are shared by sessions in a Scope, while child indexes are shared by siblings under one parent. Their read-modify-write operations participate in the same SQL business transaction. Completion notice operations also use a per-session queue outside that transaction to preserve operation order without waiting on another SQL writer from inside the current transaction.
 
-Completion notice record and acknowledgement operations also use a per-session operation queue outside the canonical mutation lock. This keeps completion events ordered with their durable unread-count changes without recursively acquiring the session mutation boundary.
+Event publication inside a transaction records a durable pending notification with the state change. Dispatch and cache effects run after commit. The storage and recovery behavior is defined in [Agent storage](agent-storage.md).
 
-Permanent removal dismantles a session and its descendants under their mutation locks, then releases every lock before publishing child-first `session.deleted` events. `Session.remove()` awaits those publications so subscriber completion or publication failure cannot escape as detached asynchronous work.
-
-These locks coordinate the single runtime process that owns a local Scope. Storage atomic writes remain the durability boundary, but the JSON indexes are derived state rather than a cross-process transaction; startup migrations and rebuild paths recover them from canonical session records when required.
+Permanent removal drains pending part writes, then removes the session and its descendants, updates their indexes, registers snapshot cleanup and records child-first deletion notifications in one transaction. Runtime caches are cleared after commit, followed by workspace detachment and snapshot cleanup. Startup migrations and transfer recovery rebuild derived indexes from canonical session records; archived retired endpoint metadata remains in those records without recreating retired routing projections.
 
 ## Completion Notice and the `session.completion` Event
 
@@ -60,7 +58,7 @@ Session metadata is not the message transcript. Each has its own storage and eve
 
 ### Global identity and endpoint lookup
 
-`sessionID` is globally stable. `Session.get(sessionID)` resolves `data/session_index/<sessionID>` to the owning Scope and then reads `data/sessions/<scopeID>/<sessionID>/info`; callers do not form a composite `(scopeID, sessionID)` identity.
+`sessionID` is globally stable. `Session.get(sessionID)` resolves the logical key `["session_index", sessionID]` to the owning Scope and then reads `["sessions", scopeID, sessionID, "info"]` through the storage Handle; callers do not form a composite `(scopeID, sessionID)` identity.
 
 Channel endpoint lookup is a secondary global index from endpoint key to candidate `sessionID` values. The endpoint facade requires the provider's resolved Scope and verifies that the active Session belongs to it. A mismatch fails without moving, reusing, or creating a second Session in another Scope. Endpoint creation and archive share one hashed lock, so one endpoint has at most one active Session while retaining archived history.
 

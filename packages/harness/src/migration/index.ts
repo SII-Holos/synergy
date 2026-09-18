@@ -13,6 +13,7 @@ import "../config/migration"
 import "../scope/migration"
 import "../session/migration"
 import "../observability/migration"
+import "../storage/migration"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"

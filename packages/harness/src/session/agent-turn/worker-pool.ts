@@ -145,6 +145,7 @@ interface PoolWorker {
   releasedRequests: ReleasedRequest[]
   lastEventSequence: number
   lastHeartbeatAt: number
+  spawnedAt: number
 }
 
 interface ReleasedRequest {
@@ -551,6 +552,7 @@ export class AgentWorkerPool {
         releasedRequests: [],
         lastEventSequence: 0,
         lastHeartbeatAt: Date.now(),
+        spawnedAt: Date.now(),
       }
       this.workers.set(id, worker)
       return true
@@ -572,6 +574,14 @@ export class AgentWorkerPool {
       worker.lastHeartbeatAt = Date.now()
       worker.idleSince = Date.now()
       this.recordWorkerMemory(worker, message.memory, "ready")
+      ObservabilityMetrics.record({
+        name: "agent.worker.ready_latency",
+        value: this.supervisor.now() - worker.spawnedAt,
+        unit: "ms",
+        module: "session",
+        processId: worker.id,
+        pid: message.pid,
+      })
       this.resetStartupFailures()
       this.startupCircuitError = undefined
       this.ensureWorkers()
@@ -1268,7 +1278,7 @@ export class AgentWorkerPool {
 
 export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
   size: Math.max(1, Math.min(4, availableParallelism() - 1)),
-  minIdle: 0,
+  minIdle: 1,
   idleTimeoutMs: 60_000,
   maxQueued: 256,
   maxQueuedBytes: 256 * 1024 * 1024,

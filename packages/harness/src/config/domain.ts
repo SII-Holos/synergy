@@ -32,7 +32,7 @@ export namespace ConfigDomain {
       id: "general",
       filename: "00-general.jsonc",
       label: "General",
-      ownedKeys: ["$schema", "logLevel", "snapshot", "username"],
+      ownedKeys: ["$schema", "logLevel", "snapshot", "username", "attachment"],
       mergePolicy: "merge",
       reloadTargets: ["config"],
       uiSection: "general",

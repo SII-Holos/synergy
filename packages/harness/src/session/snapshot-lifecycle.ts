@@ -142,6 +142,7 @@ export namespace SnapshotLifecycle {
         await fs.rm(SnapshotStore.legacyRepository(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(SnapshotStore.cache(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(canonical, { recursive: true, force: true })
+      await Storage.collectArtifactGarbage()
       await Storage.remove(StoragePath.snapshotMigration(scopeID, sessionID))
       await Storage.remove(key)
     })

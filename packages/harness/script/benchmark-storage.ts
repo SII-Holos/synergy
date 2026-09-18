@@ -61,3 +61,46 @@ try {
 } finally {
   await fs.rm(root, { recursive: true, force: true })
 }
+
+// Key traversal is measured separately from commit throughput: its cost is dominated by how the
+// store probes the record table, not by transaction or fsync cost. The probe deliberately runs
+// against a namespace holding many unrelated live records, which is the shape that exposes a
+// namespace-wide liveness scan.
+const traversalRecords = Number(process.env.SYNERGY_BENCH_TRAVERSAL_RECORDS ?? 20_000)
+const traversalRoot = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-storage-traversal-"))
+try {
+  const namespace = `traversal_${crypto.randomUUID()}`
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace,
+    filename: path.join(traversalRoot, "agent.sqlite"),
+  })
+  try {
+    await store.transaction(async (tx) => {
+      for (let index = 0; index < traversalRecords; index++)
+        await tx.write(["bulk", String(index).padStart(8, "0")], { index })
+      await tx.write(["probe", "deep", "leaf"], { value: 1 })
+    })
+    const scanStarted = performance.now()
+    const children = await store.scan(["probe"])
+    const scanMs = performance.now() - scanStarted
+    const listStarted = performance.now()
+    const keys = await store.list(["probe"])
+    const listMs = performance.now() - listStarted
+    if (children.length !== 1 || keys.length !== 1) throw new Error("Traversal benchmark verification failed")
+    console.log(
+      JSON.stringify({
+        harness: "storage-traversal",
+        backend: "sqlite",
+        namespaceRecords: traversalRecords + 1,
+        probeSubtreeRecords: 1,
+        scanMs: +scanMs.toFixed(2),
+        listMs: +listMs.toFixed(2),
+      }),
+    )
+  } finally {
+    await store.close()
+  }
+} finally {
+  await fs.rm(traversalRoot, { recursive: true, force: true })
+}

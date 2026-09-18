@@ -27,6 +27,7 @@ const STATUS_POLL_INTERVAL = 320
 type Network = import("@ericsanchezok/synergy-harness/lifecycle").RuntimeNetwork
 
 export interface RuntimeOptions {
+  storageReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["storageReporter"]
   migrationReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["reporter"]
   migrationOutput?: Parameters<typeof ProductRuntimeHandle.open>[0]["migrationOutput"]
   recoveryReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["recoveryReporter"]
@@ -48,6 +49,7 @@ export async function run(options: RuntimeOptions) {
       options.migrationReporter ?? (reporter ? { summary: (summary) => reporter.migration(summary) } : undefined),
     migrationOutput: options.migrationOutput,
     recoveryReporter: options.recoveryReporter,
+    storageReporter: options.storageReporter,
   })
   const server = handle.server
   reporter?.migration(handle.migration)

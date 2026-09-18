@@ -1,9 +1,45 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
+import { SqliteDriver } from "../../src/storage/sqlite-driver"
 
 const entry = new URL("../../src/storage/transactional-store.ts", import.meta.url).href
+
+test("closing a store with an already closed driver preserves the original failure", async () => {
+  const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "storage-closed-"))
+  const filename = path.join(root, "agent.sqlite")
+  const open = SqliteDriver.open
+  let driver: SqliteDriver | undefined
+  using observed = spyOn(SqliteDriver, "open").mockImplementation(async (...args) => {
+    driver = await open(...args)
+    return driver
+  })
+  const store = await TransactionalStore.open({ backend: "sqlite", filename, namespace: "closed" })
+  try {
+    await store.write(["record"], { preserved: true })
+    await driver!.close()
+    const original = new Error("original operation failure")
+    await expect(
+      (async () => {
+        try {
+          throw original
+        } finally {
+          await store.close()
+        }
+      })(),
+    ).rejects.toBe(original)
+    const recovered = await TransactionalStore.open({ backend: "sqlite", filename, namespace: "closed", recover: true })
+    try {
+      expect(await recovered.read<{ preserved: boolean }>(["record"])).toEqual({ preserved: true })
+    } finally {
+      await recovered.close()
+    }
+  } finally {
+    await store.close().catch(() => {})
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
 
 for (const stage of ["inside", "committed"] as const) {
   test(`process loss ${stage} a transaction preserves its atomic boundary`, async () => {

@@ -2130,6 +2130,24 @@ export type ServerConfig = {
   cors?: Array<string>
 }
 
+/**
+ * Prompt attachment upload limits (count and byte sizes)
+ */
+export type AttachmentConfig = {
+  /**
+   * Maximum number of prompt attachments per batch (default: 20)
+   */
+  maxFiles?: number
+  /**
+   * Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)
+   */
+  maxFileBytes?: number
+  /**
+   * Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)
+   */
+  maxTotalBytes?: number
+}
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -4215,6 +4233,7 @@ export type Config = {
         maxConnections?: number
       }
   server?: ServerConfig
+  attachment?: AttachmentConfig
   /**
    * Command configuration
    */
@@ -4301,7 +4320,7 @@ export type Config = {
      */
     agentWorkers?: number
     /**
-     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
     agentWorkerMinIdle?: number
     /**
@@ -5978,7 +5997,7 @@ export type ExperimentRuntime = {
      */
     agentWorkers?: number
     /**
-     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
     agentWorkerMinIdle?: number
     /**

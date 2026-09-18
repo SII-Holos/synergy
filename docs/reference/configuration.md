@@ -36,6 +36,7 @@ File: `00-general.jsonc` · Merge: merge
 | `logLevel` | Log.Level.optional (optional) | Log level |
 | `snapshot` | boolean (optional) |  |
 | `username` | string (optional) | Custom username to display in conversations instead of system username |
+| `attachment` | AttachmentConfig.optional (optional) | Prompt attachment upload limits (count and byte sizes) |
 | `embedding` | EmbeddingConfig |  |
 | `rerank` | RerankConfig |  |
 | `theme` | string (optional) | Theme name to use for the interface |

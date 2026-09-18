@@ -1,3 +1,4 @@
+import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import type { Argv } from "yargs"
@@ -9,8 +10,9 @@ import { SnapshotLease } from "@ericsanchezok/synergy-harness/session/snapshot-l
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 
 interface Input {
-  action: "inspect" | "check" | "migrate" | "compact" | "clean"
+  action: "inspect" | "check" | "migrate" | "compact" | "clean" | "pack-legacy"
   scope?: string
+  session?: string
   apply?: boolean
   prune?: boolean
 }
@@ -19,6 +21,26 @@ export async function executeSnapshots(input: Input) {
   let lock: Awaited<ReturnType<typeof ServerProcessLock.acquire>> | undefined
   let maintenance: Awaited<ReturnType<typeof StorageMaintenance.open>> | undefined
   try {
+    if (input.session && !input.scope) throw new Error("A session filter requires --scope")
+    if (input.action === "pack-legacy") {
+      if (input.prune) throw new Error("Legacy packing preserves all objects and does not accept pruning")
+      if (input.apply) lock = await ServerProcessLock.acquire()
+      return await SnapshotMaintenance.packLegacy(Global.Path.data, {
+        scopeID: input.scope,
+        sessionID: input.session,
+        apply: input.apply,
+        progress: (current, result) => {
+          process.stderr.write(
+            JSON.stringify({
+              operation: "pack-legacy",
+              current,
+              freedBytes: result.freedBytes,
+              failed: Boolean(result.error),
+            }) + "\n",
+          )
+        },
+      })
+    }
     if (!Storage.available()) maintenance = await StorageMaintenance.open({ readonly: !input.apply })
     else if (input.apply) lock = await ServerProcessLock.acquire()
     if (input.action === "inspect") return { ok: true, results: await SnapshotMaintenance.inspect(input.scope) }
@@ -36,7 +58,7 @@ export async function executeSnapshots(input: Input) {
       }
       return { ok, results }
     }
-    if (input.apply) await SnapshotMaintenance.registerLegacy(undefined, input.scope)
+    if (input.apply) await SnapshotMaintenance.registerLegacy(undefined, input.scope, input.session)
     const scopes = input.scope ? [SnapshotStore.component(input.scope)] : await SnapshotMaintenance.scopes()
     const results = []
     let ok = true
@@ -47,8 +69,21 @@ export async function executeSnapshots(input: Input) {
         ok &&= result.ok
         results.push(result)
       } else if (input.action === "migrate") {
-        const result = await SnapshotMaintenance.migrate(scopeID, { apply: input.apply })
-        ok &&= !result.results.some((entry) => entry.status === "failed")
+        const result = await SnapshotMaintenance.migrate(scopeID, {
+          apply: input.apply,
+          sessionID: input.session,
+          progress: (current, result) => {
+            process.stderr.write(
+              JSON.stringify({
+                operation: "migrate",
+                current,
+                status: result.status,
+                objectsAdded: result.objectsAdded,
+              }) + "\n",
+            )
+          },
+        })
+        ok &&= !result.results.some((entry) => entry.status === "failed") && result.pool?.status !== "blocked"
         results.push(result)
       } else results.push(await SnapshotMaintenance.compact(scopeID, { apply: input.apply, prune: input.prune }))
     }
@@ -87,13 +122,33 @@ function mutation(yargs: Argv) {
   })
 }
 
+function sessionMutation(yargs: Argv) {
+  return mutation(yargs).option("session", {
+    type: "string",
+    describe: "limit maintenance to one session repository (requires --scope)",
+  })
+}
+
 function handler(action: Input["action"]) {
-  return async (args: { scope?: string; json?: boolean; apply?: boolean; prune?: boolean }) => {
-    const result = await executeSnapshots({ action, scope: args.scope, apply: args.apply, prune: args.prune })
+  return async (args: { scope?: string; session?: string; json?: boolean; apply?: boolean; prune?: boolean }) => {
+    const result = await executeSnapshots({
+      action,
+      scope: args.scope,
+      session: args.session,
+      apply: args.apply,
+      prune: args.prune,
+    })
     process.stdout.write(JSON.stringify(result, null, args.json ? undefined : 2) + "\n")
     if (!result.ok) process.exitCode = 1
   }
 }
+
+const PackLegacyCommand = cmd({
+  command: "pack-legacy",
+  describe: "pack all local legacy snapshot objects without deleting history or requiring a storage upgrade",
+  builder: sessionMutation,
+  handler: handler("pack-legacy"),
+})
 
 const InspectCommand = cmd({
   command: "inspect",
@@ -110,7 +165,7 @@ const CheckCommand = cmd({
 const MigrateCommand = cmd({
   command: "migrate",
   describe: "migrate legacy snapshots into shared storage (dry-run unless --apply)",
-  builder: mutation,
+  builder: sessionMutation,
   handler: handler("migrate"),
 })
 function compact(yargs: Argv) {
@@ -138,6 +193,7 @@ export const DataSnapshotsCommand = cmd({
   describe: "inspect and maintain file snapshot storage",
   builder: (yargs) =>
     yargs
+      .command(PackLegacyCommand)
       .command(InspectCommand)
       .command(CheckCommand)
       .command(MigrateCommand)

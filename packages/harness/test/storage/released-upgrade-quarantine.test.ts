@@ -1,3 +1,4 @@
+import { PackedBackup } from "../../src/storage/packed-backup"
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -70,7 +71,9 @@ test.each([
       expect(await handle.store.read(["session_index", healthyID])).toMatchObject({ scopeID: "home" })
       expect(await handle.store.read(healthyKey)).toMatchObject({ futureOwner: { retained: true } })
       const state = await handle.store.read<{ backup: string }>(["storage_import", "info"])
-      expect(await Bun.file(path.join(state.backup, "data", ...broken.key) + ".json").json()).toEqual(broken.value)
+      const restored = path.join(tmp.path, "restored-data")
+      await new PackedBackup({ dataRoot: path.join(root, "data"), backupRoot: state.backup }).restore(restored)
+      expect(await Bun.file(path.join(restored, ...broken.key) + ".json").json()).toEqual(broken.value)
       await Storage.provide(handle, async () => {
         await StorageRecovery.load()
         expect(() => StorageRecovery.assertRunnable(broken.key[2])).toThrow("quarantined")

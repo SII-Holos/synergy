@@ -10,6 +10,7 @@ export class DesktopServerStartup {
   private discarded = false
   private progress: RuntimeStartupProgress | undefined
   private recoveryCompleted = false
+  private storageStep = 0
   private deadline: number
   private readonly now: () => number
   private readonly healthTimeoutMs: number
@@ -56,7 +57,15 @@ export class DesktopServerStartup {
     if (!parsed.success || this.recoveryCompleted) return
     const next = parsed.data
     const previous = this.progress
-    if (next.phase === "migration" && previous && previous.phase !== "migration") return
+    if (next.phase === "storage") {
+      if (previous?.phase === "recovery" || next.step < this.storageStep) return
+      if (next.step === this.storageStep) {
+        if (previous?.phase !== "storage" || next.stage !== previous.stage) return
+        if (next.current <= previous.current && next.bytes <= previous.bytes) return
+      }
+      this.storageStep = next.step
+    }
+    if (next.phase === "migration" && previous && previous.phase !== "migration" && previous.phase !== "storage") return
     if (next.phase === "starting" && previous?.phase === "starting") return
     if (next.phase === "recovery" && previous?.phase === "recovery" && next.current <= previous.current) return
     if (next.phase === "migration" && previous?.phase === "migration") {
@@ -66,7 +75,10 @@ export class DesktopServerStartup {
     }
     this.progress = next
     if (next.phase === "starting" && previous?.phase === "recovery") this.recoveryCompleted = true
-    this.deadline = this.now() + (next.phase === "starting" ? this.healthTimeoutMs : this.migrationIdleMs)
+    const complete = next.phase === "starting" || (next.phase === "storage" && next.stage === "complete")
+    const timeout =
+      next.phase === "storage" && next.stage === "validate-engine" ? next.timeoutMs! : this.migrationIdleMs
+    this.deadline = this.now() + (complete ? this.healthTimeoutMs : timeout)
     this.options.onStatus?.(this.status())
   }
 
@@ -76,6 +88,29 @@ export class DesktopServerStartup {
 
   status(): DesktopStartupStatus {
     const progress = this.progress
+    if (progress?.phase === "storage" && progress.stage !== "complete") {
+      if (progress.stage === "validate-engine")
+        return { title: "Updating saved data", detail: "Checking database integrity." }
+      const labels = {
+        prepare: "Preparing storage",
+        scan: "Scanning saved files",
+        backup: "Backing up saved files",
+        inventory: "Recording the backup inventory",
+        owners: "Checking saved sessions",
+        import: "Importing saved records",
+        verify: "Verifying the import",
+        "archive-verify": "Verifying the saved archive",
+        "archive-import": "Importing the saved archive",
+        validate: "Verifying saved records",
+        activate: "Activating saved records",
+        check: "Checking storage ownership",
+      }
+      return {
+        title: "Updating saved data",
+        detail: labels[progress.stage] + ". " + progress.current + " items checked.",
+        progress: progress.total > 0 ? { current: progress.current, total: progress.total } : undefined,
+      }
+    }
     if (progress?.phase === "recovery")
       return {
         title: "Restoring saved work",
@@ -95,6 +130,12 @@ export class DesktopServerStartup {
 
   timeoutError(): Error {
     const progress = this.progress
+    if (progress?.phase === "storage" && progress.stage === "validate-engine")
+      return new Error(`Synergy database integrity check exceeded its ${progress.timeoutMs}ms budget`)
+    if (progress?.phase === "storage" && progress.stage !== "complete")
+      return new Error(
+        `Synergy storage update made no progress for ${this.migrationIdleMs}ms (stage ${progress.stage}, ${progress.current} items checked)`,
+      )
     if (progress?.phase === "recovery")
       return new Error(
         `Synergy recovery made no progress for ${this.migrationIdleMs}ms (${progress.current} items checked)`,

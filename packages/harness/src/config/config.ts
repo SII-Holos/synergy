@@ -321,6 +321,13 @@ export namespace Config {
       if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
       if (result.compaction.codexRemote === undefined) result.compaction.codexRemote = false
     }
+    if (result.attachment === undefined) {
+      result.attachment = { maxFiles: 20, maxFileBytes: 200 * 1024 * 1024, maxTotalBytes: 2 * 1024 * 1024 * 1024 }
+    } else {
+      if (result.attachment.maxFiles === undefined) result.attachment.maxFiles = 20
+      if (result.attachment.maxFileBytes === undefined) result.attachment.maxFileBytes = 200 * 1024 * 1024
+      if (result.attachment.maxTotalBytes === undefined) result.attachment.maxTotalBytes = 2 * 1024 * 1024 * 1024
+    }
 
     if (!result.username) result.username = os.userInfo().username
 

@@ -398,6 +398,33 @@ export const CategoryConfig = z
   })
 export type CategoryConfig = z.infer<typeof CategoryConfig>
 
+export const AttachmentConfig = z
+  .object({
+    maxFiles: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum number of prompt attachments per batch (default: 20)"),
+    maxFileBytes: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)"),
+    maxTotalBytes: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)"),
+  })
+  .strict()
+  .meta({
+    ref: "AttachmentConfig",
+  })
+export type AttachmentConfig = z.infer<typeof AttachmentConfig>
+
 export const Provider = ModelsDev.Provider.partial()
   .extend({
     profile: z
@@ -472,6 +499,7 @@ const CoreInfo = z
       "Global authoritative storage; backend changes require an explicit storage migration",
     ),
     server: Server.optional().describe("Server configuration for synergy serve and web commands"),
+    attachment: AttachmentConfig.optional().describe("Prompt attachment upload limits (count and byte sizes)"),
     command: z.record(z.string(), Command).optional().describe("Command configuration"),
     timeout: z
       .object({
@@ -565,7 +593,9 @@ const CoreInfo = z
           .nonnegative()
           .max(64)
           .optional()
-          .describe("Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)"),
+          .describe(
+            "Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)",
+          ),
         agentWorkerIdleTimeoutMs: z
           .number()
           .int()

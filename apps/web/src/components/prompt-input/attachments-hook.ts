@@ -8,7 +8,13 @@ import { usePrompt } from "@/context/prompt"
 import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
 import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import { useLocale } from "@/context/locale"
-import { formatAttachmentBatchToast, formatOversizedAttachmentToast, partitionPromptAttachmentFiles } from "./files"
+import { useSync } from "@/context/sync"
+import {
+  DEFAULT_ATTACHMENT_LIMITS,
+  formatAttachmentBatchToast,
+  formatOversizedAttachmentToast,
+  partitionPromptAttachmentFiles,
+} from "./files"
 import { createPromptPartID, inlineLength } from "./content"
 import { getCursorPosition } from "./editor-dom"
 import type { PendingAttachmentTracker } from "./pending-attachments"
@@ -46,7 +52,17 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const params = useParams()
   const dialog = useDialog()
   const { i18n } = useLocale()
+  const sync = useSync()
   const pendingUploads = input.pendingUploads
+
+  const attachmentLimits = () => {
+    const limits = sync.data.config.attachment
+    return {
+      maxFiles: limits?.maxFiles ?? DEFAULT_ATTACHMENT_LIMITS.maxFiles,
+      maxFileBytes: limits?.maxFileBytes ?? DEFAULT_ATTACHMENT_LIMITS.maxFileBytes,
+      maxTotalBytes: limits?.maxTotalBytes ?? DEFAULT_ATTACHMENT_LIMITS.maxTotalBytes,
+    }
+  }
 
   const cursor = () => {
     const editor = input.editor()
@@ -87,13 +103,14 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const addAttachments = async (files: Iterable<File>) => {
     const all = Array.from(files)
     const existing = composerAttachmentScope()
-    const batchToast = formatAttachmentBatchToast(all, existing, i18n)
+    const limits = attachmentLimits()
+    const batchToast = formatAttachmentBatchToast(all, existing, i18n, limits)
     if (batchToast) {
       showToast(batchToast)
       return
     }
-    const { accepted, rejected } = partitionPromptAttachmentFiles(all)
-    const toast = formatOversizedAttachmentToast(rejected, accepted.length, i18n)
+    const { accepted, rejected } = partitionPromptAttachmentFiles(all, limits)
+    const toast = formatOversizedAttachmentToast(rejected, accepted.length, i18n, limits)
     if (toast) showToast(toast)
     const draft = prompt.capture()
     try {

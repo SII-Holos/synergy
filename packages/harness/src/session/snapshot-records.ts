@@ -19,7 +19,7 @@ export namespace SnapshotRecords {
         : ["snapshot", "step-start", "step-finish"].includes(String(value.type))
           ? value.snapshot
           : undefined
-    if (hash === undefined) return []
+    if (hash === undefined || (hash === "" && ["step-start", "step-finish"].includes(String(value.type)))) return []
     if (typeof hash !== "string" || !SnapshotStore.OID.test(hash))
       throw new SnapshotStore.StorageError("Invalid historical snapshot reference")
     return [hash]

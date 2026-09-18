@@ -1,8 +1,25 @@
 import type { I18n, MessageDescriptor } from "@lingui/core"
 
+/** Fallback prompt-attachment limits. Their values mirror the authoritative
+ *  `attachment` config defaults in `packages/harness/src/config/config.ts`;
+ *  `usePromptAttachments` always passes the configured limits into the
+ *  functions below, so these constants only serve direct unit-test
+ *  invocations and stay the single source for default-derived assertions. */
 export const MAX_ATTACHMENT_FILES = 20
-export const MAX_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024
-export const MAX_ATTACHMENT_TOTAL_BYTES = 50 * 1024 * 1024
+export const MAX_ATTACHMENT_FILE_BYTES = 200 * 1024 * 1024
+export const MAX_ATTACHMENT_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+
+export interface PromptAttachmentLimits {
+  maxFiles: number
+  maxFileBytes: number
+  maxTotalBytes: number
+}
+
+export const DEFAULT_ATTACHMENT_LIMITS: PromptAttachmentLimits = {
+  maxFiles: MAX_ATTACHMENT_FILES,
+  maxFileBytes: MAX_ATTACHMENT_FILE_BYTES,
+  maxTotalBytes: MAX_ATTACHMENT_TOTAL_BYTES,
+}
 
 /**
  * Any file type can be attached. Format policy is decided server-side
@@ -33,17 +50,20 @@ export const FILE_LIMIT_MESSAGES = {
 
 export type AttachmentLimitScope = { count: number; bytes: number }
 
-export function isPromptAttachmentOversized(file: File): boolean {
-  return file.size > MAX_ATTACHMENT_FILE_BYTES
+export function isPromptAttachmentOversized(
+  file: File,
+  limits: PromptAttachmentLimits = DEFAULT_ATTACHMENT_LIMITS,
+): boolean {
+  return file.size > limits.maxFileBytes
 }
 /** Split newly selected files into accepted/rejected by the per-file size
  *  limit only. Batch count/total limits (including capacity already consumed
  *  by composer attachments) are owned by `formatAttachmentBatchToast`. */
-export function partitionPromptAttachmentFiles(files: Iterable<File>) {
+export function partitionPromptAttachmentFiles(files: Iterable<File>, limits?: PromptAttachmentLimits) {
   const accepted: File[] = []
   const rejected: File[] = []
   for (const file of files) {
-    if (isPromptAttachmentOversized(file)) {
+    if (isPromptAttachmentOversized(file, limits)) {
       rejected.push(file)
     } else {
       accepted.push(file)
@@ -56,16 +76,17 @@ export function formatAttachmentBatchToast(
   files: File[],
   existing: AttachmentLimitScope = { count: 0, bytes: 0 },
   i18n?: I18n,
+  limits: PromptAttachmentLimits = DEFAULT_ATTACHMENT_LIMITS,
 ): { type: "warning"; title: string; description: string } | undefined {
-  if (files.length + existing.count > MAX_ATTACHMENT_FILES) {
+  if (files.length + existing.count > limits.maxFiles) {
     return warningToast(i18n, FILE_LIMIT_MESSAGES.tooManyFilesTitle, FILE_LIMIT_MESSAGES.tooManyFilesDescription, {
-      count: MAX_ATTACHMENT_FILES,
+      count: limits.maxFiles,
     })
   }
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0) + existing.bytes
-  if (totalBytes > MAX_ATTACHMENT_TOTAL_BYTES) {
+  if (totalBytes > limits.maxTotalBytes) {
     return warningToast(i18n, FILE_LIMIT_MESSAGES.tooLargeTotalTitle, FILE_LIMIT_MESSAGES.tooLargeTotalDescription, {
-      total: MAX_ATTACHMENT_TOTAL_BYTES / (1024 * 1024),
+      total: limits.maxTotalBytes / (1024 * 1024),
     })
   }
   return undefined
@@ -99,6 +120,7 @@ export function formatOversizedAttachmentToast(
   rejected: File[],
   acceptedCount: number,
   i18n?: I18n,
+  limits: PromptAttachmentLimits = DEFAULT_ATTACHMENT_LIMITS,
 ): { type: "warning"; title: string; description: string } | undefined {
   if (rejected.length === 0) return undefined
   const titleDescriptor =
@@ -109,7 +131,7 @@ export function formatOversizedAttachmentToast(
         : FILE_LIMIT_MESSAGES.noFilesAttachedTitle
   const values = {
     names: formatRejectedFileNames(rejected),
-    limit: MAX_ATTACHMENT_FILE_BYTES / (1024 * 1024),
+    limit: limits.maxFileBytes / (1024 * 1024),
   }
   return {
     type: "warning" as const,

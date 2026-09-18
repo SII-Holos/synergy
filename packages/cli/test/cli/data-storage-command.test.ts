@@ -8,6 +8,37 @@ import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstr
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { DataStorageCommand } from "../../src/cli/cmd/data/storage"
+import { executeSnapshots } from "../../src/cli/cmd/data/snapshots"
+import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-store"
+
+test("legacy snapshot packing works before SQL initialization without importing records", async () => {
+  const repo = path.join(Global.Path.data, "snapshot", "scope", "session")
+  await SnapshotStore.initializeBareRepository(repo)
+  const file = path.join(home, "retained.txt")
+  await Bun.write(file, "retained")
+  const oid = await SnapshotStore.command(repo, ["hash-object", "-w", file])
+  const legacy = path.join(Global.Path.data, "notes", "home", "retained.json")
+  await Bun.write(legacy, JSON.stringify({ text: "unmigrated" }))
+  expect((await executeSnapshots({ action: "pack-legacy", scope: "scope", session: "session" })).ok).toBe(true)
+  expect(await StorageBootstrap.status(Global.Path.root)).toBeUndefined()
+  {
+    const lock = await ServerProcessLock.acquire()
+    try {
+      expect(await executeSnapshots({ action: "pack-legacy", scope: "scope", apply: true })).toMatchObject({
+        error: { code: "busy" },
+      })
+    } finally {
+      await lock.release()
+    }
+  }
+  expect((await executeSnapshots({ action: "pack-legacy", scope: "scope", session: "session", apply: true })).ok).toBe(
+    true,
+  )
+  expect(await SnapshotStore.command(repo, ["cat-file", "-p", oid])).toBe("retained")
+  expect(await StorageBootstrap.status(Global.Path.root)).toBeUndefined()
+  expect(await Bun.file(legacy).json()).toEqual({ text: "unmigrated" })
+  expect(await ServerProcessLock.read()).toBeUndefined()
+})
 
 const originalHome = process.env.SYNERGY_HOME
 const originalLog = console.log
@@ -117,4 +148,37 @@ test("maintenance rejects an installed Runtime and malformed targets without cha
   expect(await StorageBootstrap.status(Global.Path.root)).toEqual(manifest)
   expect(Storage.available()).toBe(false)
   expect(await ServerProcessLock.read()).toBeUndefined()
+})
+
+test("restore-backup publishes a verified separate home and refuses an existing destination", async () => {
+  const legacy = path.join(Global.Path.data, "notes", "home", "restored.json")
+  await Bun.write(legacy, JSON.stringify({ text: "original" }))
+  const prepared = await StorageBootstrap.prepare({ root: Global.Path.root })
+  const state = await prepared.store.read<{ backup: string }>(["storage_import", "info"])
+  await prepared.activate()
+  await prepared.store.close()
+  const target = path.join(home, "restored-home")
+  await invoke(["storage", "restore-backup", state.backup, target])
+  expect(report()).toMatchObject({ status: "restored", files: 1 })
+  expect(await Bun.file(path.join(target, "data", "notes", "home", "restored.json")).json()).toEqual({
+    text: "original",
+  })
+  await expect(invoke(["storage", "restore-backup", state.backup, target])).rejects.toThrow("exists")
+  expect(Storage.available()).toBe(false)
+})
+
+test("restore-backup never publishes a destination when the final inventory digest is corrupt", async () => {
+  await Bun.write(path.join(Global.Path.data, "notes", "saved.json"), JSON.stringify({ saved: true }))
+  const prepared = await StorageBootstrap.prepare({ root: Global.Path.root })
+  const state = await prepared.store.read<{ backup: string }>(["storage_import", "info"])
+  await prepared.activate()
+  await prepared.store.close()
+  const filename = path.join(state.backup, "manifest.json")
+  const manifest = await Bun.file(filename).json()
+  await Bun.write(filename, JSON.stringify({ ...manifest, inventorySHA256: "0".repeat(64) }))
+  const target = path.join(home, "invalid-home")
+  await expect(invoke(["storage", "restore-backup", state.backup, target])).rejects.toThrow("integrity")
+  expect(await fs.readdir(home)).not.toContain("invalid-home")
+  expect((await fs.readdir(home)).some((name) => name.startsWith(".synergy-restore-"))).toBe(false)
+  expect(Storage.available()).toBe(false)
 })

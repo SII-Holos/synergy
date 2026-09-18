@@ -12,7 +12,10 @@ import {
 } from "../../../src/components/prompt-input/files"
 
 function file(name: string, type = "", size = 0) {
-  return new File([new Uint8Array(size)], name, { type })
+  const result = new File([], name, { type })
+  // Limit checks only inspect metadata; fixture bodies need not allocate several GiB.
+  Object.defineProperty(result, "size", { value: size })
+  return result
 }
 
 function oversizedFile(name: string, type = "") {

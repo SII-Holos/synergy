@@ -8,7 +8,7 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 describe("MigrationRegistry", () => {
   test("registers all domains", () => {
     const domainCount = MigrationRegistry.list().size
-    expect(domainCount).toBe(13)
+    expect(domainCount).toBe(14)
   })
 
   test("has expected domain names", () => {
@@ -26,6 +26,7 @@ describe("MigrationRegistry", () => {
       "plugin_catalog",
       "scope",
       "session",
+      "storage",
       "workflows-session",
     ])
   })
