@@ -45,14 +45,18 @@ Incoming events are batched on an approximately 16 ms cadence while visible. Rep
 
 The sync layer has:
 
-- one global store for paths, project list, providers, provider auth, and global Agenda data;
+- one global store for paths, project list, providers, provider auth, global Agenda data, and the session runtime indexes;
 - one lazily created store per home/project Scope;
 - message arrays keyed by session ID (window, not full transcript);
 - `messageWindow` metadata keyed by session ID (cursor, hasMore, total, mode, pendingLatest, tailMissingLatest);
 - `latestContextMessage` keyed by session ID, holding the latest eligible assistant snapshot independently of the visible message window;
 - part arrays keyed by message ID;
-- per-session buckets for status, diffs, todo, DAG, inbox, permissions, questions, and Plan Blueprint offers;
+- per-session buckets for diffs, todo, DAG, inbox, and Plan Blueprint offers;
 - per-Scope collections for sessions, agents, commands, config, MCP, LSP, VCS, Cortex, and Agenda.
+
+**Session runtime indexes are global.** Session status and the pending permission and question requests live in the global store keyed by session ID rather than in a per-Scope store, because surfaces that render many sessions at once (sidebar rows, the mobile drawer, the Kanban board, the status bar) read them across every Scope while a Scope store is released as soon as its last retention lease ends. The index holds only non-idle statuses: an `idle` event deletes the key. `GET /global/session/status` (`global.session.status`) is the cross-Scope snapshot, and it merges each Scope's recoverable statuses — the only way `recovering` reaches a client at all, because no producer publishes it on the event bus. The global indexes follow the same post-stamp discipline as the Scope buckets through one `GlobalRuntimeWriteTracker`: only keys with an event write after the response stamp override the snapshot, and a `session.updated` carrying `info.working` fills a status the index has no entry for, while a real status event always wins.
+
+**Session identity is projected, not stored.** A row's identity — Blueprint binding and phase, workspace type, workflow kind and activity, parent, category — travels on the navigation entry (`SessionNavEntry`), which is paginated, persisted, and refreshed by `session.updated`. That projection is what keeps a row's glyph intact while its Scope store is gone.
 
 **Diff data sources.** Two separate diff stores exist:
 
@@ -384,7 +388,7 @@ Loaded message and part buckets are memory-bounded independently of session meta
 - eviction removes that session's message array, all parts owned by those messages, the session's `messageWindow` metadata, and its latest Context projection;
 - revisiting an evicted session reloads it through normal message page sync.
 
-Session lists, status, inbox, todo, and other non-message state are not evicted by this policy.
+Session lists, inbox, todo, and other non-message state are not evicted by this policy. Session runtime state is not subject to it either: status and the pending permission/question requests live in the global indexes, so message-bucket eviction never touches them.
 
 ## Composer Intent
 
@@ -412,7 +416,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery. Live gaps replay from the retained pre-gap watermark and do not apply the triggering event before recovery.
 - SyncProvider holds a Scope lease and registers message-loader disposal before returning. The last lease releases the Scope; overlapping transition owners and visible Kanban panes share it. Departing board panes cancel their requests before releasing their Scope lease. At most eight unleased background Scopes remain in LRU order. Bootstrap, resync, replay, and session-list responses apply only to their original live store instance. Scope release clears queued bootstrap work, replay tracking, refresh timers, message-LRU membership, and all begun context projections. Timer and projection cleanup use exact Scope identity. See the [transition lifecycle decision](../decisions/implemented/bug-fix/2026-09-07-transition-lifecycle-retention.md).
-- Scope bootstrap is one aggregated generated-SDK snapshot plus independent permission/question requests; reconnect invalidates volatile freshness for all retained sessions, clears inactive volatile buckets, and batch-refreshes only the viewed session. A snapshot response applies with per-key post-stamp overlay: only keys whose last sequenced event write postdates the response stamp keep their event value (tracked with archive tombstones and whole-bucket Cortex replacements; epoch changes reset tracking), while every other key converges to the snapshot including its deletions. The per-Scope store registry is reactive so consumers that observed no store re-run on creation and eviction.
+- Scope bootstrap is one aggregated generated-SDK snapshot plus independent permission/question requests that apply to the global indexes; reconnect invalidates volatile freshness for all retained sessions, clears inactive volatile buckets, and batch-refreshes only the viewed session. A snapshot response applies with per-key post-stamp overlay: only keys whose last sequenced event write postdates the response stamp keep their event value (tracked with archive tombstones and whole-bucket Cortex replacements; epoch changes reset tracking), while every other key converges to the snapshot including its deletions. The per-Scope store registry is reactive so consumers that observed no store re-run on creation and eviction.
 - Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
 - Every event passes the Scope epoch pre-filter; DAG, Todo, Inbox, and Message additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Optimistic message writes and authoritative part mutations for messages present in the loaded window invalidate concurrent Message requests; streaming deltas do not. Unversioned snapshots are accepted only when no intervening same-resource write occurred.
 - Store updates reconcile existing leaves and identities.
