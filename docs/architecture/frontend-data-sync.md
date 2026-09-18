@@ -444,6 +444,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
   instead of rescanning the message window, so a new message invalidates only the projection memo rather than every rendered turn.
 - `BrowserViewEffects` keeps its handled-callID set bounded to the timeline
   window, releasing callIDs that were trimmed or switched away.
+- Model readiness is derived from the global provider snapshot, not from the startup health probe. `resolveModelReadiness` reads only `connected`, `runtimeAvailability`, and `authHealth`, and an app-wide readiness surface renders inside the synchronized shell so it observes a populated snapshot before it can render. The `GET /global/health` probe — including `modelReady` and its bounded provider wait — is a startup and diagnostic signal for the CLI and daemon consumers, never a UI readiness source, and no readiness consumer may cache it.
 
 ## Tool content retention
 

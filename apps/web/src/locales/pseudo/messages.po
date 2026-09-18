@@ -7376,7 +7376,27 @@ msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelNotConfigured"
+msgid "app.shell.modelUnavailable.action.connect"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.action.review"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.needsAttention"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.notConfigured"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.restricted"
 msgstr ""
 
 #. js-lingui-explicit-id
