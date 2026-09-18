@@ -775,6 +775,10 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/composables/use-full-access-acknowledgement.ts",
+          "reason": "Solid context wrapper over the confirm dialog, SDK client, and global sync; its decision logic is the separately covered needsFullAccessAcknowledgement predicate"
+        },
+        {
           "glob": "src/composables/use-navigate-to-session.ts",
           "reason": "not exercised by the unit suite; requires full runtime or external service"
         },
