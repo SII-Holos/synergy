@@ -33,7 +33,12 @@ const stubModules: Record<string, string> = {
           show: () => setRightOpened(true),
           toggle: () => setRightOpened((value) => !value),
         },
-        scopes: { list: () => [], open: async () => {} },
+        scopes: {
+          list: () => [
+            { id: "scp_fixture", worktree: "/tmp/fixture-project", name: "Fixture Project", expanded: false },
+          ],
+          open: async () => {},
+        },
         nav: {
           recentEntries: () => [],
           hasMoreRecent: () => false,
@@ -74,12 +79,20 @@ const stubModules: Record<string, string> = {
     }
   `,
   "stub-global-sync.ts": `
+    export const FIXTURE_SESSION_STATUS = {
+      ses_busy: { type: "busy" },
+      ses_retry: { type: "retry", attempt: 1, message: "rate limited", next: 1000 },
+      ses_recovering: { type: "recovering" },
+      ses_idle: { type: "idle" },
+    }
+
     export function useGlobalSync() {
       return {
         data: { scope: [], paths: undefined },
-        sessionStatus: {},
+        sessionStatus: FIXTURE_SESSION_STATUS,
         permissions: {},
         questions: {},
+        cortex: [],
       }
     }
   `,
@@ -122,17 +135,34 @@ const stubModules: Record<string, string> = {
     }
   `,
   "stub-sdk.ts": `
+    import { FIXTURE_SESSION_STATUS } from "./stub-global-sync.ts"
+
+    // ses_missing is listed without a runtime status entry: the row sees an
+    // unknown status, which must not read as work in progress.
+    const sessionIDs = [...Object.keys(FIXTURE_SESSION_STATUS), "ses_missing"]
+
     export function createSynergyClient() {
-      return { session: { list: async () => ({ data: { data: [], total: 0 } }) } }
+      return {
+        session: {
+          list: async () => ({
+            data: {
+              data: sessionIDs.map((id, index) => ({ id, title: id, time: { created: index + 1, updated: index + 1 } })),
+              total: sessionIDs.length,
+            },
+          }),
+        },
+      }
     }
   `,
-  "stub-scope-components.ts": `
+  "stub-scope-components.tsx": `
     export function ActiveZone() {
       return null
     }
-    export function SessionRow() {
-      return null
+
+    export function SessionRow(props: { session: { id: string }; isWorking: boolean }) {
+      return <div data-session-row={props.session.id} data-working={String(props.isWorking)} />
     }
+
     export function PaginationBar() {
       return null
     }
@@ -210,15 +240,15 @@ beforeAll(async () => {
         { find: "@/components/dialog/confirm-dialog", replacement: path.join(fixtureDirectory, "stub-confirm.ts") },
         {
           find: "@/components/scopes/active-zone",
-          replacement: path.join(fixtureDirectory, "stub-scope-components.ts"),
+          replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
         },
         {
           find: "@/components/scopes/session-row",
-          replacement: path.join(fixtureDirectory, "stub-scope-components.ts"),
+          replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
         },
         {
           find: "@/components/scopes/pagination-bar",
-          replacement: path.join(fixtureDirectory, "stub-scope-components.ts"),
+          replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
         },
         { find: "@ericsanchezok/synergy-ui/theme", replacement: path.join(fixtureDirectory, "stub-theme.ts") },
         {
@@ -318,6 +348,28 @@ describe("mobile drawer titlebar drag suspension", () => {
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 1)
       await page.locator('[data-action="close"]').click()
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
+    })
+  })
+})
+
+describe("mobile drawer session status", () => {
+  test("reads recovering and retry as working and a missing status as idle", async () => {
+    await withFixture(async (page) => {
+      await page.getByRole("button", { name: "Fixture Project", exact: true }).click()
+      await page.waitForFunction(() => document.querySelectorAll("[data-session-row]").length === 5)
+
+      const working = (sessionID: string) =>
+        page.locator(`[data-session-row="${sessionID}"]`).getAttribute("data-working")
+
+      for (const [sessionID, expected] of [
+        ["ses_busy", "true"],
+        ["ses_retry", "true"],
+        ["ses_recovering", "true"],
+        ["ses_idle", "false"],
+        ["ses_missing", "false"],
+      ] as const) {
+        expect(await working(sessionID), `${sessionID} working flag`).toBe(expected)
+      }
     })
   })
 })
