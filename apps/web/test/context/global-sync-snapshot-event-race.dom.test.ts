@@ -65,7 +65,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     }
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>stamped({})},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>

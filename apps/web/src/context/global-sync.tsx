@@ -657,6 +657,20 @@ function createGlobalSync() {
       })
   }
 
+  // The cross-Scope status snapshot. This is the only source for a session that
+  // was already running before this client connected in a project it has not
+  // leased — no status event of its own arrives until it transitions — and it
+  // is the only path by which `recovering` reaches a client at all, because no
+  // producer publishes it on the event bus.
+  async function loadGlobalSessionStatus() {
+    return globalSDK.client.session
+      .statuses()
+      .then((x) => seedGlobalStatus(x.data ?? {}, x.response?.headers))
+      .catch((err) => {
+        console.error("Failed to load global session status", err)
+      })
+  }
+
   async function loadGlobalConfig() {
     return globalSDK.client.config.global().then((x) => {
       setGlobalStore("config", reconcile(x.data ?? {}))
@@ -1180,6 +1194,15 @@ function createGlobalSync() {
         flattenBuckets(globalStore.question),
       ) ?? requests
     setGlobalStore("question", reconcile(groupBySession(merged)))
+  }
+
+  // The cross-Scope status route is authoritative for the whole index, so a
+  // response without a comparable stamp replaces it wholesale — including the
+  // sessions it omits, which is how a status left stale by a missed `idle`
+  // converges without waiting for that session to be viewed.
+  function seedGlobalStatus(statuses: SessionStatusIndex, headers: Pick<Headers, "get"> | undefined) {
+    const merged = globalRuntimeTracker.mergeStatus(readSyncVersion(headers), statuses, globalStore.sessionStatus)
+    setGlobalStore("sessionStatus", reconcile(merged ?? statuses))
   }
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
@@ -2062,6 +2085,10 @@ function createGlobalSync() {
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
     resetGlobalRuntimeIndex()
+    // The reset dropped every index entry, and a per-Scope response is only
+    // authoritative for the Scope it belongs to, so the cross-Scope snapshot is
+    // what restores the sessions this client has not leased.
+    void loadGlobalSessionStatus()
     const generation = reconnectVersion() + 1
     setReconnectVersion(generation)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
@@ -2146,6 +2173,7 @@ function createGlobalSync() {
     }
     setGlobalStore("ready", true)
     loadGlobalAgenda()
+    loadGlobalSessionStatus()
     return true
   }
 

@@ -24,6 +24,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     let listener
     export const emit = (key,seq)=>listener({name:key,details:{type:"session.status",epoch:"test-epoch",seq,properties:{sessionID:"fixture-session",status:{type:"idle"}}}})
     const ok = data => Promise.resolve({data})
+    export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-recovering":{type:"recovering"}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
         scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve})) },
@@ -34,7 +35,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     }
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>
@@ -148,6 +149,21 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     try {
       await h.started
       const api = h.api()
+      // The cross-Scope snapshot is the only source for a session that was
+      // already running before this client connected, in a project it has not
+      // leased — no status event of its own ever arrives — and the only path by
+      // which `recovering` reaches a client at all. Bootstrap must fetch it
+      // instead of waiting for a lease.
+      const waitForIndex = async (sessionID: string) => {
+        const deadline = Date.now() + 5000
+        while (api.sessionStatus[sessionID] === undefined) {
+          if (Date.now() > deadline) throw new Error(`cross-Scope status for ${sessionID} was never seeded`)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        }
+      }
+      await waitForIndex("remote-runner")
+      expect(api.sessionStatus["remote-runner"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["remote-recovering"]).toEqual({ type: "recovering" })
       let eviction = 0
       const evictInactive = async () => {
         for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${eviction++}`)
