@@ -178,16 +178,27 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
           hostFileExists: result.hostFileExists,
         }
       }
+
+      // The host's `/tmp` is a different object on each platform. macOS leaves
+      // the shared directory external, so the write is refused. The Linux plan
+      // shadows `/tmp` with the workspace-scoped controlled temp root, so the
+      // command succeeds against that root instead — the containment property
+      // is the same (the host file is never created), but the observable
+      // "blocked" signal differs. Recording the difference is the point of
+      // this baseline; a later convergence must not read it as a Linux gap.
+      const sharedTemp =
+        process.platform === "linux"
+          ? { blocked: false, wrote: true, hostFileExists: false }
+          : { blocked: true, wrote: false, hostFileExists: false }
       expect(recorded).toEqual({
         "system /etc": { blocked: true, wrote: false, hostFileExists: false },
         "user home": { blocked: true, wrote: false, hostFileExists: false },
-        "shared temp": { blocked: true, wrote: false, hostFileExists: false },
+        "shared temp": sharedTemp,
       })
-      // The home and shared-temp targets are writable by this user outside the
-      // sandbox, so those two blocks are attributable to the sandbox rather
-      // than to host ownership of the parent directory.
+      // The home target is writable by this user outside the sandbox, so its
+      // block is attributable to the sandbox rather than to host ownership of
+      // the parent directory.
       expect(hostWriteBaseline(targets["user home"]!)).toBe(true)
-      expect(hostWriteBaseline(targets["shared temp"]!)).toBe(true)
       console.log(`[containment-baseline] external writes blocked: ${JSON.stringify(recorded)}`)
     } finally {
       for (const target of Object.values(targets)) fs.rmSync(target, { force: true })
