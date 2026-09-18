@@ -1,11 +1,71 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 import { transformAsync } from "@babel/core"
 import { createComponent } from "solid-js"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
-import { messages as enMessages } from "../../../../src/locales/en/messages.mjs"
-import { messages as zhMessages } from "../../../../src/locales/zh-CN/messages.mjs"
+import { decodePoString } from "../../../../script/po-string"
+
+// The compiled `messages.mjs` catalogs are generated and gitignored, so reading
+// them here would break on a clean checkout. Parse the tracked `.po` sources
+// instead: any message this suite asserts on is present in git.
+function decodeQuoted(raw: string): string {
+  const trimmed = raw.trim()
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return decodePoString(trimmed.slice(1, -1))
+  }
+  return trimmed
+}
+
+function loadCatalog(locale: string): Record<string, string> {
+  const file = path.resolve(import.meta.dir, `../../../../src/locales/${locale}/messages.po`)
+  const messages: Record<string, string> = {}
+  let id: string | undefined
+  let value: string | undefined
+
+  const flush = () => {
+    if (id !== undefined && value !== undefined && id !== "") messages[id] = value
+    id = undefined
+    value = undefined
+  }
+
+  for (const raw of readFileSync(file, "utf8").split("\n")) {
+    const line = raw.trim()
+    if (line === "" || line.startsWith("#")) continue
+    if (line.startsWith("msgid ")) {
+      flush()
+      id = decodeQuoted(line.slice("msgid ".length))
+      continue
+    }
+    if (line.startsWith("msgstr ")) {
+      value = decodeQuoted(line.slice("msgstr ".length))
+      continue
+    }
+    // Plural forms are not asserted here; drop the entry rather than let a
+    // plural form masquerade as its singular id.
+    if (line.startsWith("msgid_plural") || line.startsWith("msgstr[")) {
+      id = undefined
+      value = undefined
+      continue
+    }
+    if (line.startsWith('"')) {
+      if (value !== undefined) value += decodeQuoted(line)
+      else if (id !== undefined) id += decodeQuoted(line)
+    }
+  }
+  flush()
+  return messages
+}
+
+// Real catalog copy, so the assertions are about the text a user reads rather
+// than about descriptor ids. Switching the active locale between tests
+// exercises the same runtime the app uses.
+const i18n = setupI18n()
+i18n.load("en", loadCatalog("en"))
+i18n.load("zh-CN", loadCatalog("zh-CN"))
+i18n.activate("en")
 
 // The panel's TSX must be compiled with Solid's DOM runtime; Bun's own test
 // transform emits React.createElement. Same loader trick as StoragePanel.test.ts,
@@ -28,14 +88,6 @@ await plugin({
     build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }))
   },
 })
-
-// Real compiled catalogs, so the assertions are about the copy a user reads
-// rather than about descriptor ids. Switching the active locale between tests
-// exercises the same runtime the app uses.
-const i18n = setupI18n()
-i18n.load("en", enMessages)
-i18n.load("zh-CN", zhMessages)
-i18n.activate("en")
 
 mock.module("@lingui/solid", () => ({
   useLingui: () => ({ _: i18n._.bind(i18n), i18n }),
