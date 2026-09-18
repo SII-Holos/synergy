@@ -2,13 +2,18 @@ import { Identifier } from "../../id/id"
 import { Storage } from "../../storage/storage"
 import { StoragePath } from "../../storage/path"
 import { Log } from "../../util/log"
-import { RolloutArtifact } from "./artifact"
 import { RolloutLedger } from "./ledger"
 import type { RolloutSchema } from "./schema"
 
 export namespace RolloutContinuationRecovery {
   const log = Log.create({ service: "session.rollout.continuation-recovery" })
-  const root = (owner: RolloutSchema.Owner) => [...RolloutArtifact.root(owner), "continuation-recovery"]
+  const root = (owner: RolloutSchema.Owner) => {
+    if (owner.kind !== "session") throw new Error("Only sessions can resume a continuation")
+    return [
+      ...StoragePath.sessionRoot(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
+      "continuation-recovery",
+    ]
+  }
 
   export async function request(owner: RolloutSchema.Owner, runID: string) {
     await Storage.write([...root(owner), runID], { runID })
@@ -44,17 +49,14 @@ export namespace RolloutContinuationRecovery {
   }
 
   export async function list(scopeID?: string): Promise<string[]> {
+    const candidates = new Set<string>()
+    for await (const { key } of Storage.records({ kind: "continuation-recovery", scopeID })) candidates.add(key[2])
     const result: string[] = []
-    const scopes = scopeID ? [scopeID] : await Storage.scan(["sessions"])
-    for (const scope of scopes) {
-      for (const sessionID of await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scope)))) {
-        try {
-          const owner = { kind: "session", scopeID: scope, sessionID } as const
-          if (!(await Storage.scan(root(owner))).length) continue
-          if (await pending(sessionID)) result.push(sessionID)
-        } catch (error) {
-          log.warn("continuation recovery discovery failed", { sessionID, error })
-        }
+    for (const sessionID of candidates) {
+      try {
+        if (await pending(sessionID)) result.push(sessionID)
+      } catch (error) {
+        log.warn("continuation recovery discovery failed", { sessionID, error })
       }
     }
     return result.sort()

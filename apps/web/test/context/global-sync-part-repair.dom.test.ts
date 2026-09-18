@@ -55,7 +55,7 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     }
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>
@@ -261,6 +261,8 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
       expect(h.pages).toHaveLength(6)
       dropped()
       retained.release()
+      expect(h.pages[5]!.signal.aborted).toBe(false)
+      for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${i}`)
       h.flushRepairs()
       await tick()
       expect(h.pages).toHaveLength(6)

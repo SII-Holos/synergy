@@ -2,6 +2,18 @@ export function createScopeRetention(evict: (scopeKey: string) => void, inactive
   const leases = new Map<string, number>()
   const inactive = new Set<string>()
 
+  function touch(scopeKey: string) {
+    if (leases.has(scopeKey)) return
+    inactive.delete(scopeKey)
+    inactive.add(scopeKey)
+    while (inactive.size > inactiveLimit) {
+      const oldest = inactive.values().next().value
+      if (oldest === undefined) break
+      inactive.delete(oldest)
+      evict(oldest)
+    }
+  }
+
   return {
     retain(scopeKey: string) {
       inactive.delete(scopeKey)
@@ -16,19 +28,9 @@ export function createScopeRetention(evict: (scopeKey: string) => void, inactive
           return
         }
         leases.delete(scopeKey)
-        evict(scopeKey)
+        touch(scopeKey)
       }
     },
-    touch(scopeKey: string) {
-      if (leases.has(scopeKey)) return
-      inactive.delete(scopeKey)
-      inactive.add(scopeKey)
-      while (inactive.size > inactiveLimit) {
-        const oldest = inactive.values().next().value
-        if (oldest === undefined) break
-        inactive.delete(oldest)
-        evict(oldest)
-      }
-    },
+    touch,
   }
 }

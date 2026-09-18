@@ -1,4 +1,3 @@
-import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { PerformanceCatalog } from "./catalog"
 import { ObservabilityConfig } from "@ericsanchezok/synergy-harness/observability/config"
@@ -6,8 +5,6 @@ import { PerformanceError } from "./error"
 import { PerformanceSchema } from "./schema"
 
 export namespace PerformanceTimeline {
-  const ROW_LIMIT_PER_SERIES = 50_000
-
   export function get(query: PerformanceSchema.TimelineQuery): PerformanceSchema.Timeline {
     const now = Date.now()
     const to = parseTime(query.to, now)
@@ -26,34 +23,28 @@ export namespace PerformanceTimeline {
 
     const metrics = normalizeMetrics(query.metric)
     const buckets = bucketStarts(from, to, bucketMs)
-    let anyTruncated = false
     const series = metrics.map((name) => {
       const info = PerformanceCatalog.get(name)
       if (!info) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400)
       const stat = query.stat ?? info.defaultStat
-      const rows = ObservabilityStore.queryMetricSeries({
+      const rows = ObservabilityStore.queryMetricBuckets({
         since: from,
         until: to,
-        name,
+        names: [name],
         module: query.module,
         scopeID: query.scopeID,
         sessionID: query.sessionID,
         tool: query.tool,
         providerID: query.providerID,
-        limit: ROW_LIMIT_PER_SERIES + 1,
+        bucketMs,
       })
-      const truncated = rows.length > ROW_LIMIT_PER_SERIES
-      anyTruncated ||= truncated
-      // newestFirst:true returns DESC order, so the first N are the newest rows
-      const usableRows = truncated ? rows.slice(0, ROW_LIMIT_PER_SERIES) : rows
-      const bucketed = bucketRows(usableRows, [name], from, bucketMs, buckets.length)
-      const bucketsForMetric = bucketed.get(name) ?? new Map<number, Bucket>()
+      const bucketed = new Map(rows.map((row) => [row.bucket, row]))
       const points = buckets.map((time, index) => {
-        const bucket = bucketsForMetric.get(index)
+        const bucket = bucketed.get(index)
         return {
           time,
-          value: bucket ? aggregate(bucket, stat, bucketMs) : null,
-          sampleCount: bucket?.values.length ?? 0,
+          value: bucket ? (stat === "rate" ? bucket.sum / Math.max(1, bucketMs / 1000) : bucket[stat]) : null,
+          sampleCount: bucket?.count ?? 0,
         }
       })
       const sampleCount = points.reduce((total, point) => total + (point.sampleCount ?? 0), 0)
@@ -66,13 +57,6 @@ export namespace PerformanceTimeline {
         sampleCount,
         module: info.module,
         source: info.source,
-        quality: truncated
-          ? {
-              truncated: true,
-              partial: true,
-              unavailableReason: `Series ${name} exceeded ${ROW_LIMIT_PER_SERIES} rows for this range.`,
-            }
-          : undefined,
         points,
       })
     })
@@ -81,13 +65,6 @@ export namespace PerformanceTimeline {
       from,
       to,
       bucketMs,
-      quality: anyTruncated
-        ? {
-            truncated: true,
-            partial: true,
-            unavailableReason: "One or more requested series exceeded the per-series row limit.",
-          }
-        : undefined,
       series,
     })
   }
@@ -115,56 +92,6 @@ export namespace PerformanceTimeline {
     const buckets: number[] = []
     for (let bucket = from; bucket <= to; bucket += bucketMs) buckets.push(bucket)
     return buckets
-  }
-
-  interface Bucket {
-    values: number[]
-    latestTime: number
-    latestValue: number
-  }
-
-  function bucketRows(
-    rows: ObservabilityStore.StoredMetric[],
-    metrics: string[],
-    from: number,
-    bucketMs: number,
-    bucketCount: number,
-  ) {
-    const requested = new Set(metrics)
-    const bucketed = new Map<string, Map<number, Bucket>>()
-    for (const row of rows) {
-      const name = PerformanceCatalog.resolveName(row.name)
-      if (!requested.has(name)) continue
-      const bucketIndex = Math.floor((row.time - from) / bucketMs)
-      if (bucketIndex < 0 || bucketIndex >= bucketCount) continue
-      let metricBuckets = bucketed.get(name)
-      if (!metricBuckets) {
-        metricBuckets = new Map()
-        bucketed.set(name, metricBuckets)
-      }
-      let bucket = metricBuckets.get(bucketIndex)
-      if (!bucket) {
-        bucket = { values: [], latestTime: row.time, latestValue: row.value }
-        metricBuckets.set(bucketIndex, bucket)
-      }
-      bucket.values.push(row.value)
-      if (row.time >= bucket.latestTime) {
-        bucket.latestTime = row.time
-        bucket.latestValue = row.value
-      }
-    }
-    return bucketed
-  }
-
-  function aggregate(bucket: Bucket, stat: PerformanceCatalog.Stat, bucketMs: number) {
-    if (stat === "latest") return bucket.latestValue
-    if (stat === "sum") return bucket.values.reduce((sum, value) => sum + value, 0)
-    if (stat === "rate") return bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucketMs / 1000)
-    if (stat === "max") return Math.max(...bucket.values)
-    if (stat === "p50") return ObservabilityMetrics.percentile(bucket.values, 50) ?? null
-    if (stat === "p95") return ObservabilityMetrics.percentile(bucket.values, 95) ?? null
-    if (stat === "p99") return ObservabilityMetrics.percentile(bucket.values, 99) ?? null
-    return bucket.values.reduce((sum, value) => sum + value, 0) / bucket.values.length
   }
 
   export const allowedMetricNames = PerformanceCatalog.allMetricNames()

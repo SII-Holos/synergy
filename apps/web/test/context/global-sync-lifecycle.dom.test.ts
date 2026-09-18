@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url"
 import { build } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
-test("Scope leases protect overlapping pages and reject released bootstrap results", async () => {
+test("Scope leases protect overlapping pages and reject evicted bootstrap results", async () => {
   const directory = await mkdtemp(path.join(import.meta.dir, ".scope-lifecycle-"))
   const entry = path.join(directory, "main.tsx")
   const stub = path.join(directory, "services.tsx")
@@ -24,6 +24,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     let listener
     export const emit = (key,seq)=>listener({name:key,details:{type:"session.status",epoch:"test-epoch",seq,properties:{sessionID:"fixture-session",status:{type:"idle"}}}})
     const ok = data => Promise.resolve({data})
+    export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-recovering":{type:"recovering"}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
         scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve})) },
@@ -34,7 +35,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     }
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>
@@ -114,7 +115,6 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
         status: string
         config: { version?: string }
         session: unknown[]
-        session_status: Record<string, unknown>
         latestContextMessage: Record<string, unknown>
       },
       unknown,
@@ -126,6 +126,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       beginContextProjection(key: string, sessionID: string): number
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
+      sessionStatus: Record<string, { type?: string }>
       scope: { loadSessions(key: string): Promise<void> }
     }
     const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as {
@@ -148,12 +149,38 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     try {
       await h.started
       const api = h.api()
+      // The cross-Scope snapshot is the only source for a session that was
+      // already running before this client connected, in a project it has not
+      // leased — no status event of its own ever arrives — and the only path by
+      // which `recovering` reaches a client at all. Bootstrap must fetch it
+      // instead of waiting for a lease.
+      const waitForIndex = async (sessionID: string) => {
+        const deadline = Date.now() + 5000
+        while (api.sessionStatus[sessionID] === undefined) {
+          if (Date.now() > deadline) throw new Error(`cross-Scope status for ${sessionID} was never seeded`)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        }
+      }
+      await waitForIndex("remote-runner")
+      expect(api.sessionStatus["remote-runner"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["remote-recovering"]).toEqual({ type: "recovering" })
+      let eviction = 0
+      const evictInactive = async () => {
+        for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${eviction++}`)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
       const old = api.retainScopeState("shared")
       const next = api.retainScopeState("shared")
       expect(next.state).toBe(old.state)
       old.release()
       expect(api.peekScopeState("shared")).toBe(next.state)
       next.release()
+      expect(api.peekScopeState("shared")).toBe(old.state)
+      const warm = api.retainScopeState("shared")
+      expect(warm.state).toBe(old.state)
+      expect(h.requests).toHaveLength(1)
+      warm.release()
+      await evictInactive()
       expect(api.peekScopeState("shared")).toBeUndefined()
       const reopened = api.retainScopeState("shared")
       expect(reopened.state).not.toBe(old.state)
@@ -173,6 +200,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       expect(h.replays.length).toBe(1)
       const oldList = api.scope.loadSessions("shared")
       reopened.release()
+      await evictInactive()
       const current = api.retainScopeState("shared")
       h.complete(2, "current")
       await h.waitComplete(current.state)
@@ -191,7 +219,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       await oldList
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(current.state[0].session).toEqual([])
-      expect(current.state[0].session_status["obsolete-session"]).toBeUndefined()
+      expect(api.sessionStatus["obsolete-session"]).toBeUndefined()
       expect(h.replays.length).toBe(2)
       h.replays[1]!({ data: { status: "ok", epoch: "test-epoch", seq: 3, events: [] } })
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -201,6 +229,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       expect(api.peekScopeState("shared")).toBe(current.state)
       const pendingRevision = api.beginContextProjection("shared", "never-loaded")
       current.release()
+      await evictInactive()
       expect(api.peekScopeState("shared")).toBeUndefined()
       const latest = api.retainScopeState("shared")
       api.setLatestContextMessage("shared", "never-loaded", null, pendingRevision)
@@ -213,6 +242,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       h.emit("/repo", 1)
       h.emit("/repo:variant", 1)
       first.release()
+      await evictInactive()
       let timeout: ReturnType<typeof setTimeout> | undefined
       try {
         await Promise.race([

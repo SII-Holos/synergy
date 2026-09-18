@@ -2055,6 +2055,14 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260918-session-nav-identity",
+    description:
+      "Rebuild session nav indexes to backfill session identity (Blueprint phase, workspace type, workflow activity)",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
   RolloutMigration.migration,
   RolloutContinuationMigration.migration,
 
@@ -2114,6 +2122,31 @@ export const migrations: Migration[] = [
           })
         done++
         if (done % 128 === 0) progress?.(0, 0)
+      }
+      progress?.(done, done)
+    },
+  },
+  {
+    id: "20260918-index-continuation-recovery",
+    description: "Move continuation recovery intents into indexed Session records",
+    async up(progress) {
+      const { RolloutContinuationRecovery } = await import("./rollout/continuation-recovery")
+      let done = 0
+      progress?.(0, 0)
+      for await (const { key } of Storage.records({ kind: "session" })) {
+        const owner = { kind: "session" as const, scopeID: key[1], sessionID: key[2] }
+        const legacy = [
+          ...StoragePath.sessionRolloutRoot(Identifier.asScopeID(key[1]), Identifier.asSessionID(key[2])),
+          "continuation-recovery",
+        ]
+        for (const runID of await Storage.scan(legacy)) {
+          await Storage.transaction(async () => {
+            await RolloutContinuationRecovery.request(owner, runID)
+            await Storage.remove([...legacy, runID])
+          })
+        }
+        done++
+        if (done % 128 === 0) progress?.(done, 0)
       }
       progress?.(done, done)
     },

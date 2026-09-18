@@ -47,12 +47,11 @@ export namespace WorkflowRecovery {
   }
 
   async function sessionInfos(scopeID: string): Promise<Info[]> {
-    const sid = Identifier.asScopeID(scopeID)
-    const ids = await Storage.scan(StoragePath.sessionsRoot(sid)).catch(() => [])
-    if (ids.length === 0) return []
-    const keys = ids.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
-    const results = await Storage.readMany<Info>(keys)
-    return results.filter((item): item is Info => !!item && !!item.scope)
+    const result: Info[] = []
+    for await (const record of Storage.records<Info>({ kind: "session", scopeID })) {
+      if (record.value?.scope) result.push(record.value)
+    }
+    return result
   }
 
   function reportChange(
@@ -145,7 +144,7 @@ export namespace WorkflowRecovery {
 
     if (input.apply) {
       await Session.update(input.sessionID, (draft) => {
-        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
       })
     }
     reportChange(input.report, {
@@ -170,7 +169,7 @@ export namespace WorkflowRecovery {
 
     if (input.apply) {
       await Session.update(input.session.id, (draft) => {
-        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
       })
     }
     reportChange(input.report, {

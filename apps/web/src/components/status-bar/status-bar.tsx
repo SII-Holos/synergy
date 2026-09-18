@@ -18,6 +18,7 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useLocale } from "@/context/locale"
 import { getScopeLabel } from "@/utils/scope"
+import { isWorkingStatus } from "@/utils/session-status"
 import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
@@ -602,7 +603,7 @@ export function StatusBar() {
     const waiting = view().permissionsFor(sessionID).length > 0 || view().questionsFor(sessionID).length > 0
     const state = resolveSubsessionStatus({
       waiting,
-      running: status?.type === "busy" || status?.type === "retry" || status?.type === "recovering",
+      running: isWorkingStatus(status),
     })
     if (state === "waiting")
       return { label: i18n._(copy.waiting), icon: getSemanticIcon("session.waiting"), tone: "danger" as const }

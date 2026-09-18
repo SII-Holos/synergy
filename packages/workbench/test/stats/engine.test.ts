@@ -9,7 +9,7 @@ test("refreshes a cached digest after an auxiliary attempt without a session tim
     const before = await StatsStorage.getDigest(session.id)
     expect(before?.accounting?.apiEstimate.unknown).toBe(1)
     await complete(call)
-    await Engine.get()
+    await Engine.update()
     const after = await StatsStorage.getDigest(session.id)
     expect(after?.updated).toBe(before?.updated)
     expect(after?.accounting?.attempts).toBe(1)
@@ -48,5 +48,31 @@ test("independent operations contribute cost and model usage without creating se
       await Storage.removeTree(RolloutArtifact.root(owner))
       await Engine.update()
     }
+  })
+})
+
+test("reading a snapshot does not refresh historical evidence", async () => {
+  await fixture(async ({ call }) => {
+    const before = await Engine.update()
+    await complete(call)
+    expect(await Engine.get()).toEqual(before)
+    const after = await Engine.update()
+    expect(after.tokenCost.cost).toBeGreaterThan(before.tokenCost.cost)
+  })
+})
+
+test("concurrent refresh callers share a single completed snapshot", async () => {
+  await fixture(async () => {
+    const [first, second] = await Promise.all([Engine.update(), Engine.update()])
+    expect(second).toBe(first)
+  })
+})
+
+test("a disconnected progress observer does not fail a shared refresh", async () => {
+  await fixture(async () => {
+    const snapshot = await Engine.update(() => {
+      throw new Error("observer disconnected")
+    })
+    expect(await Engine.get()).toEqual(snapshot)
   })
 })

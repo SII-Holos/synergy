@@ -107,10 +107,16 @@ export namespace RolloutJournal {
     Revision.parse(through)
     Revision.parse(after)
     if (after > through || through > (await head(owner)).committed) throw new Error("Invalid rollout journal boundary")
-    for (let seq = after + 1; seq <= through; seq++) {
-      const event = Event.parse(await Storage.read(eventKey(owner, seq)))
-      if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
-      yield event
+    for (let start = after + 1; start <= through; start += 128) {
+      const keys = Array.from({ length: Math.min(128, through - start + 1) }, (_, i) => eventKey(owner, start + i))
+      const values = await Storage.readMany(keys)
+      for (let i = 0; i < keys.length; i++) {
+        if (values[i] === undefined)
+          throw new Storage.NotFoundError({ message: "Missing committed rollout journal event" })
+        const event = Event.parse(values[i])
+        if (event.seq !== start + i) throw new Error("Rollout journal sequence mismatch")
+        yield event
+      }
     }
   }
 }

@@ -94,6 +94,13 @@ export interface NavEntry {
   pinned: number
   archived: boolean
   parentID?: string
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+    phase?: "running" | "waiting" | "auditing"
+  }
+  workspaceType?: string
+  workflow?: { kind: string; active: boolean }
   endpointKind?: "channel"
   chatId?: string
   chatName?: string
@@ -1064,11 +1071,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // Nav entries are populated via loadScopeNav / loadGlobalRecent / loadRootNavSection.
     // Session events trigger depth-preserving refreshes via refreshScopeNav / etc.
 
-    function childStoreForScope(scope: LocalScope | undefined) {
-      if (!scope) return undefined
-      return globalSync.peekScopeState(scope.worktree)?.[0]
-    }
-
     type PrefetchQueue = {
       inflight: Set<string>
       pending: string[]
@@ -1287,7 +1289,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         recentEntries: recentNavEntries,
         hasMoreRecent,
         loadMoreNav,
-        childStoreForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,
@@ -1297,6 +1298,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         unreadCompletionCount,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
+        navEntryForSession,
         scopeIndexLoaded,
       },
       scopes: {

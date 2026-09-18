@@ -358,3 +358,5 @@ Abort never publishes lifecycle idle by itself. The owner remains in `stopping` 
 - Terminal failures are persisted and propagated; they are never silently converted into successful task completion.
 
 Completion context contributions finish before the owning execution is settled. Their promises include nested encoding, retry and reward work; failures do not allow other registered contributions to escape drainage. Library owns these algorithms while Harness owns the await boundary and shared rollout accounting.
+
+Derived calls that retry or evaluate a historical task after its rollout is terminal use `AgentCall.text({ ownership: "operation" })`, retaining source Session and Message identity in metadata and propagating cancellation. That explicit ownership prevents ambient rollout inheritance. Encoding for the currently owned root continues to use its causal rollout; source envelopes omit root-only system and variant overrides.

@@ -87,3 +87,50 @@ test("a historical missing reserved event remains an explicit gap", async () => 
   expect(events[0]).toMatchObject({ seq: 1, kind: "gap" })
   expect(events[1]).toMatchObject({ seq: 2, kind: "record", value: { status: "failed" } })
 })
+
+test("large committed histories replay in bounded reads without changing their revision or order", async () => {
+  const target = owner()
+  const root = [...RolloutArtifact.root(target), "journal"]
+  await Storage.transaction(async () => {
+    await Storage.write([...root, "head"], { allocated: 260, committed: 260 })
+    for (let seq = 1; seq <= 260; seq++) {
+      await Storage.write([...root, "events", String(seq).padStart(12, "0")], {
+        version: 1,
+        seq,
+        time: seq,
+        kind: "gap",
+      })
+    }
+  })
+  using read = spyOn(Storage, "read")
+  using readMany = spyOn(Storage, "readMany")
+  const events = []
+  for await (const event of RolloutJournal.events(target, 258, 2)) events.push(event)
+  expect(events.map((event) => event.seq)).toEqual(Array.from({ length: 256 }, (_, i) => i + 3))
+  expect(read.mock.calls.length + readMany.mock.calls.length).toBeLessThan(10)
+  expect(readMany.mock.calls.every(([keys]) => keys.length <= 128)).toBe(true)
+})
+
+test.each(["missing", "mismatched"])("replay rejects a %s committed event after the first batch", async (failure) => {
+  const target = owner()
+  const root = [...RolloutArtifact.root(target), "journal"]
+  await Storage.transaction(async () => {
+    await Storage.write([...root, "head"], { allocated: 130, committed: 130 })
+    for (let seq = 1; seq <= 130; seq++) {
+      if (seq === 130 && failure === "missing") continue
+      await Storage.write([...root, "events", String(seq).padStart(12, "0")], {
+        version: 1,
+        seq: seq === 130 ? 131 : seq,
+        time: seq,
+        kind: "gap",
+      })
+    }
+  })
+  const seen: number[] = []
+  const replay = async () => {
+    for await (const event of RolloutJournal.events(target, 130)) seen.push(event.seq)
+  }
+  if (failure === "missing") await expect(replay()).rejects.toBeInstanceOf(Storage.NotFoundError)
+  else await expect(replay()).rejects.toThrow("Rollout journal sequence mismatch")
+  expect(seen).toHaveLength(129)
+})

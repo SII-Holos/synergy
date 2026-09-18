@@ -105,6 +105,8 @@ test("filtered cursor pages seek into their index in both directions", async () 
       const first = await tx.query({ kind: "first", limit: 30, descending })
       plans.length = 0
       const second = await tx.query({ kind: "first", limit: 30, descending, after: first.at(-1)!.key })
+      const keys = await tx.queryKeys({ kind: "first", limit: 30, descending, after: first.at(-1)!.key })
+      expect(keys).toEqual(second.map((record) => record.key))
       expect(second).toHaveLength(30)
       expect(new Set([...first, ...second].map((row) => JSON.stringify(row.key))).size).toBe(60)
       expect(plans.join("\n")).toMatch(/order_key.*[<>]/)

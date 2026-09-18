@@ -220,6 +220,8 @@ import type {
   GlobalPathsGetResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
+  GlobalSessionStatusesErrors,
+  GlobalSessionStatusesResponses,
   GlobalStatsGetErrors,
   GlobalStatsGetResponses,
   GlobalStatsProgressErrors,
@@ -864,7 +866,7 @@ export class Stats extends HeyApiClient {
   /**
    * Get stats snapshot
    *
-   * Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.
+   * Read the last computed stats snapshot without scanning history; null means no snapshot exists. Use the progress stream to refresh, or ?recompute=true to force a full recompute.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -883,7 +885,7 @@ export class Stats extends HeyApiClient {
   /**
    * Stream stats recompute progress
    *
-   * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
+   * Refresh changed statistics and stream progress updates until the final snapshot is ready. Concurrent refreshes share one computation.
    */
   public progress<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).sse.get<
@@ -1957,6 +1959,19 @@ export class Session extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Global session status
+   *
+   * Retrieve the runtime status of every non-idle session across all scopes, including recovered workflow sessions that no status event publishes.
+   */
+  public statuses<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GlobalSessionStatusesResponses,
+      GlobalSessionStatusesErrors,
+      ThrowOnError
+    >({ url: "/global/session/status", ...options })
   }
 
   /**

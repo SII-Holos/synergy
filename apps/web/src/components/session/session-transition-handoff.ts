@@ -62,8 +62,10 @@ export function decideSessionTransitionHandoff(input: {
   inbox: ReadonlyArray<Pick<HandoffInboxItem, "messageID">> | undefined
   elapsedMs: number
   refreshAttempted: boolean
+  phase?: SessionTransitionProgress["phase"]
 }): "waiting" | "refresh" | "stalled" | "ready" {
   if (isSessionTransitionHandoffReady(input.messageID, input.messages)) return "ready"
+  if (input.phase && input.phase !== "loading") return "waiting"
   if (input.elapsedMs >= SESSION_TRANSITION_HANDOFF_TIMEOUT_MS) return "stalled"
   if (
     input.inbox !== undefined &&
