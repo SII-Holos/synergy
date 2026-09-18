@@ -902,9 +902,9 @@ describe("EnforcementGate Synergy Link classification", () => {
 })
 
 // ------------------------------------------------------------------
-// 2b. isDestructive boundary correctness
+// 2b. destructive boundary correctness
 // ------------------------------------------------------------------
-describe("isDestructive boundary correctness", () => {
+describe("destructive boundary correctness", () => {
   // True positives — should be shell_destructive
   test("rm -rf node_modules is shell, not destructive (workspace subtree)", async () => {
     const gate = await EnforcementGate.create({
@@ -2402,9 +2402,9 @@ describe("EnforcementGate trustedRoots", () => {
 })
 
 // ------------------------------------------------------------------
-// 9. DESTRUCTIVE_PATTERNS — expanded P0 coverage
+// 9. destructive classification — expanded coverage
 // ------------------------------------------------------------------
-describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
+describe("EnforcementGate destructive classification — expanded", () => {
   test("rm -r dir inside the workspace is shell (sandbox owns containment)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -2476,10 +2476,9 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     expect(remoteWrite).toBeDefined()
   })
 
-  test("git branch -D feature — FIXED: taxonomy now catches force-delete", async () => {
-    // Previously a KNOWN GAP: DESTRUCTIVE_PATTERNS had "git branch -D" but
-    // isDestructive lowered the command so "-D" didn't match. Now the git
-    // taxonomy in classifyBashRisk catches it.
+  test("git branch -D feature is caught by the git taxonomy", async () => {
+    // Force-deleting a branch is a remote-irreversible operation, so the git
+    // taxonomy classifies it rather than a text scan.
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -2569,7 +2568,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     expect(destructive).toBeDefined()
   })
 
-  test("mkfs /dev/sda1 is shell_hardline (caught before isDestructive)", async () => {
+  test("mkfs /dev/sda1 is shell_hardline", async () => {
     // mkfs is caught by ShellSafety.classifyBashRisk → shell_hardline
     // (early return in gate), so shell_destructive is never reached.
     const gate = await EnforcementGate.create({
@@ -2582,7 +2581,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     expect(hardline.nonBypassable).toBe(true)
   })
 
-  test("fdisk /dev/sda is shell_hardline (caught before isDestructive)", async () => {
+  test("fdisk /dev/sda is shell_hardline", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -2788,9 +2787,9 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
 })
 
 // ------------------------------------------------------------------
-// 10. NETWORK_PATTERNS — expanded P0 coverage
+// 10. network classification — expanded coverage
 // ------------------------------------------------------------------
-describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
+describe("EnforcementGate network classification — expanded", () => {
   test("/dev/tcp/ triggers network_request", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
