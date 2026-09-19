@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { PackedBackup } from "./packed-backup"
 import { SessionStaging } from "../session/staging"
+import { SessionCompat } from "../session/compat-import"
 import { Global } from "../global"
 import { ensureMigrations } from "../migration"
 import { ServerProcessLock } from "../util/server-process-lock"
@@ -94,6 +95,7 @@ export namespace StorageMaintenance {
       await SessionStaging.recover()
       const pending = prepared
       const activate = async () => {
+        await SessionCompat.prepareRecovery()
         if (pending.manifest.phase !== "active") await StorageRecovery.validate()
         await pending.activate()
         await StorageRecovery.recoverOwners()

@@ -29,6 +29,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
+import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import type { ProfileId } from "../control-profile/types"
@@ -118,8 +119,24 @@ export namespace Session {
     }
   }
 
-  export async function rebuildStorageIndexes(tx: StoreTransaction) {
+  export function indexEndpoint(endpoint: unknown, archived?: number): SessionEndpoint.Info | undefined {
     const retiredEndpoint = z.object({ kind: z.literal("holos"), agentId: z.string() })
+    if (retiredEndpoint.safeParse(endpoint).success) {
+      if (!archived)
+        throw new StorageIntegrityError("Retired Session endpoint must be archived before rebuilding indexes")
+      return undefined
+    }
+    if (endpoint === undefined) return
+    const historical = z
+      .object({ kind: z.literal("channel"), channel: z.record(z.string(), z.unknown()) })
+      .parse(endpoint)
+    return SessionEndpoint.Info.parse({
+      ...historical,
+      channel: Object.fromEntries(Object.entries(historical.channel).filter(([, value]) => value !== null)),
+    })
+  }
+
+  export async function rebuildStorageIndexes(tx: StoreTransaction) {
     for (const root of [
       "session_index",
       "endpoint_session",
@@ -138,10 +155,10 @@ export namespace Session {
         const batch = await tx.query<Info>({ kind: "session", scopeID, after, limit: 128 })
         if (!batch.length) break
         for (const record of batch) {
-          const retired = retiredEndpoint.safeParse(record.value.endpoint).success
-          if (retired && !record.value.time.archived)
-            throw new StorageIntegrityError("Retired Session endpoint must be archived before rebuilding indexes")
-          const session = retired ? { ...record.value, endpoint: undefined } : record.value
+          const session = {
+            ...record.value,
+            endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
+          }
           const index = toIndex(session)
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
@@ -249,11 +266,16 @@ export namespace Session {
     .meta({ ref: "SessionWorkspaceSelection" })
   export type WorkspaceSelection = z.infer<typeof WorkspaceSelection>
 
-  export async function readPageIndex(scopeID: string): Promise<PageIndex> {
-    return Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch((error) => {
+  async function readStoredPageIndex(scopeID: string): Promise<PageIndex> {
+    const index = await Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch((error) => {
       if (error instanceof Storage.NotFoundError) return { entries: [] }
       throw error
     })
+    return index
+  }
+
+  export async function readPageIndex(scopeID: string): Promise<PageIndex> {
+    return SessionCompat.mergePageIndex(scopeID, await readStoredPageIndex(scopeID))
   }
 
   export async function writePageIndex(scopeID: string, index: PageIndex) {
@@ -262,7 +284,7 @@ export namespace Session {
 
   export async function upsertPageIndexEntry(scopeID: string, entry: PageIndex["entries"][number]) {
     return Storage.transaction(async () => {
-      const index = await readPageIndex(scopeID)
+      const index = await readStoredPageIndex(scopeID)
       const existing = index.entries.findIndex((e) => e.id === entry.id)
       if (existing >= 0) index.entries.splice(existing, 1)
       const insertAt = index.entries.findIndex((e) => e.updated <= entry.updated)
@@ -274,13 +296,13 @@ export namespace Session {
 
   export async function removePageIndexEntry(scopeID: string, sessionID: string) {
     return Storage.transaction(async () => {
-      const index = await readPageIndex(scopeID)
+      const index = await readStoredPageIndex(scopeID)
       index.entries = index.entries.filter((e) => e.id !== sessionID)
       await writePageIndex(scopeID, index)
     })
   }
 
-  function toPageIndexEntry(session: Info): PageIndex["entries"][number] {
+  export function toPageIndexEntry(session: Info): PageIndex["entries"][number] {
     return {
       id: session.id,
       updated: session.time.updated,
@@ -291,7 +313,7 @@ export namespace Session {
     }
   }
 
-  function toChildIndexEntry(session: Info): ChildIndexEntry {
+  export function toChildIndexEntry(session: Info): ChildIndexEntry {
     return {
       id: session.id,
       title: session.title,
@@ -305,13 +327,18 @@ export namespace Session {
     entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
   }
 
+  async function readStoredChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
+    const index = await Storage.read<ChildIndex>(
+      StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)),
+    ).catch((error): ChildIndex => {
+      if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
+      throw error
+    })
+    return index
+  }
+
   export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
-    return Storage.read<ChildIndex>(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID))).catch(
-      (error) => {
-        if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
-        throw error
-      },
-    )
+    return SessionCompat.mergeChildIndex(scopeID, parentID, await readStoredChildIndex(scopeID, parentID))
   }
 
   export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
@@ -324,7 +351,7 @@ export namespace Session {
 
   export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
     return Storage.transaction(async () => {
-      const index = await readChildIndex(scopeID, parentID)
+      const index = await readStoredChildIndex(scopeID, parentID)
       const existing = index.entries.findIndex((e) => e.id === entry.id)
       if (existing >= 0) index.entries.splice(existing, 1)
       index.entries.push(entry)
@@ -334,7 +361,7 @@ export namespace Session {
 
   export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
     return Storage.transaction(async () => {
-      const index = await readChildIndex(scopeID, parentID)
+      const index = await readStoredChildIndex(scopeID, parentID)
       const nextEntries = index.entries.filter((e) => e.id !== sessionID)
       if (nextEntries.length === index.entries.length) return
       index.entries = nextEntries
@@ -346,7 +373,7 @@ export namespace Session {
     await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
   }
 
-  function toNavEntry(session: Info): SessionNavEntry {
+  export function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
     const scopeType = scope.type === "home" ? "home" : "project"
     const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
@@ -1105,6 +1132,18 @@ export namespace Session {
     total: number
   }
 
+  async function readListInfos(scopeID: string, ids: string[]) {
+    const sid = asScopeID(scopeID)
+    const keys = ids.map((id) => StoragePath.sessionInfo(sid, asSessionID(id)))
+    const sessions = await Storage.readMany<Info>(keys)
+    for (const [index, id] of ids.entries()) {
+      if (sessions[index]) continue
+      const info = await SessionCompat.pendingInfo(scopeID, id)
+      if (info) sessions[index] = info
+    }
+    return sessions
+  }
+
   export async function list(options?: {
     offset?: number
     limit?: number
@@ -1126,8 +1165,10 @@ export namespace Session {
     // When searching, we must read all matching session infos first because
     // title-based search cannot be applied on the page index alone.
     if (options?.search) {
-      const keys = entries.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
-      const sessions = await Storage.readMany<Info>(keys)
+      const sessions = await readListInfos(
+        scopeID,
+        entries.map((e) => e.id),
+      )
       const term = options.search.toLowerCase()
       const matched = sessions.filter((s): s is Info => s != null && !!s.scope && s.title.toLowerCase().includes(term))
       const total = matched.length
@@ -1144,8 +1185,10 @@ export namespace Session {
 
     if (slice.length === 0) return { data: [], total }
 
-    const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await readListInfos(
+      scopeID,
+      slice.map((e) => e.id),
+    )
     const data = await Promise.all(
       sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withClientInfo(s)),
     )

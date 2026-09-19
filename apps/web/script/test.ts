@@ -16,6 +16,7 @@ const playwrightIsolated = [
   "test/components/prompt-input/editor.dom.test.ts",
   "test/components/app-shell/mobile-drawer-drag-region.test.tsx",
   "test/components/app-shell/mobile-drawer-root.test.tsx",
+  "test/components/app-shell/model-unavailable-banner.test.tsx",
   "test/components/dialog/model-selector-layout.test.ts",
   "test/components/file-workbench/scrollbar-dark.test.ts",
   "test/components/file-workbench/selection.test.ts",

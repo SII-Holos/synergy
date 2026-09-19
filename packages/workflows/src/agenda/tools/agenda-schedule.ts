@@ -1,4 +1,4 @@
-import { GithubWatchPolicy } from "../github-watch-policy"
+import { GithubWatchPreflight } from "./github-watch-preflight"
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -54,20 +54,10 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     const triggers = [params.trigger as AgendaTypes.Trigger]
 
     if (params.trigger.type === "github") {
-      // A GitHub trigger can never fire while polling is disabled; reject up
-      // front instead of persisting a permanently silent item.
-      const watch = await GithubWatchPolicy.read()
-      if (watch?.enabled === false) {
-        return {
-          title: "agenda_schedule rejected",
-          output: [
-            `GitHub triggers are disabled (github.watch.enabled=false in config).`,
-            ``,
-            `Ask the user to enable them in Settings → GitHub → "Allow GitHub agenda triggers", or set github.watch.enabled=true in 115-github.jsonc.`,
-          ].join("\n"),
-          metadata: { blocked: true, reason: "github_watch_disabled" } as Record<string, any>,
-        }
-      }
+      // A GitHub trigger without a credential never fires; reject at creation
+      // with concrete connection steps instead of persisting a silent item.
+      const rejected = await GithubWatchPreflight.check("agenda_schedule")
+      if (rejected) return rejected
     }
     const conflicts = await AgendaDedup.findConflicts(
       ScopeContext.current.scope.id,

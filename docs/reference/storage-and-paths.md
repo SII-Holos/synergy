@@ -52,6 +52,8 @@ Library, credentials, project files, browser profiles and observability remain s
 
 Domain extensions keep their data and migration history when unloaded. Scope/session IDs and external account IDs are record data, not an implicit filesystem authority. Read [Agent storage](../architecture/agent-storage.md) for transaction, concurrency, notification and file-commit contracts.
 
+The opt-in `SYNERGY_STORAGE_COMPAT_DEFER=1` bootstrap boundary uses `compat_import` SQL records for Session locators, file hashes and migration staging. An already-current archived cohort can retain original files under `data/sessions/` until touch or background import. New domain migrations stage the cohort first; non-archived Sessions import before recovery. `data/storage/compat-pause` pauses the Runtime ticker. Pending or quarantined aggregates block pack, merge, move and target migration. See [deferred import operations](../migrations/transactional-agent-storage.md#deferred-session-import).
+
 ## Configuration and commands
 
 Global `config/synergy.d/130-storage.jsonc` selects storage. Omission selects SQLite. PostgreSQL configuration uses an environment-variable name rather than an inline password:

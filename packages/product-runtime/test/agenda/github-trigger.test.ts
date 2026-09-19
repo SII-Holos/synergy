@@ -436,3 +436,49 @@ test("baseline eviction is LRU — actively observed resources are not evicted a
     AgendaGithubTrigger.collectChanges(entry(), [{ resource: "pr" as const, number: 1, state: "closed" }]),
   ).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// credential vanished after creation (auto-pause)
+// ---------------------------------------------------------------------------
+
+test("a credential that stays missing across polls pauses the item", async () => {
+  const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
+  const { tmpdir } = await import("@ericsanchezok/synergy-harness/test/support/fixture")
+  const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
+  const saved = [process.env.GH_TOKEN, process.env.GITHUB_TOKEN]
+  delete process.env.GH_TOKEN
+  delete process.env.GITHUB_TOKEN
+  try {
+    await using tmp = await tmpdir({ config: { github: { watch: { enabled: true } } } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const item = await AgendaStore.create({
+          title: "Watch while credential missing",
+          prompt: "check",
+          triggers: [githubTrigger()],
+          autoDone: true,
+          createdBy: "agent",
+        })
+        AgendaGithubTrigger.register(item.id, item.origin.scope.id, item.triggers)
+        const entry = AgendaGithubTrigger.entriesFor(item.id)[0]
+        expect(entry).toBeDefined()
+        // The first polls stay silent — the credential may come back without
+        // user-visible churn.
+        for (let i = 0; i < 4; i++) await AgendaGithubTrigger.poll(entry)
+        expect((await AgendaStore.get(item.origin.scope.id, item.id)).status).toBe("active")
+        expect(AgendaGithubTrigger.active().items).toBe(1)
+        // Fifth consecutive credential-less poll pauses the item and drops
+        // the entry, releasing any continuation the watch held.
+        await AgendaGithubTrigger.poll(entry)
+        expect((await AgendaStore.get(item.origin.scope.id, item.id)).status).toBe("paused")
+        expect(AgendaGithubTrigger.active().items).toBe(0)
+      },
+    })
+  } finally {
+    if (saved[0] !== undefined) process.env.GH_TOKEN = saved[0]
+    else delete process.env.GH_TOKEN
+    if (saved[1] !== undefined) process.env.GITHUB_TOKEN = saved[1]
+    else delete process.env.GITHUB_TOKEN
+  }
+})

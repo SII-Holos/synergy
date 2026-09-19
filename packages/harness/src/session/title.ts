@@ -72,12 +72,12 @@ export async function ensureTitle(input: {
   if (input.session.parentID) return
   if (!isDefaultTitle(input.session.title)) return
 
-  const promptVisibleUsers = input.history.filter((m) => m.info.role === "user" && !Turn.isSyntheticUser(m))
-  if (promptVisibleUsers.length !== 1) return
-
-  const firstRealUser = promptVisibleUsers[0]
+  // Title from the first prompt-visible user message regardless of how much
+  // history followed it, so later turns and forked sessions can recover a
+  // missed or failed title run (#1417).
+  const firstRealUser = input.history.find((m) => m.info.role === "user" && !Turn.isSyntheticUser(m))
+  if (!firstRealUser) return
   const firstRealUserIdx = input.history.findIndex((m) => m.info.id === firstRealUser.info.id)
-  if (firstRealUserIdx === -1) return
 
   // Gather all prompt-visible context up to and including the first real user message.
   const contextMessages = input.history.slice(0, firstRealUserIdx + 1).filter(MessageV2.isPromptVisible)
@@ -92,7 +92,7 @@ export async function ensureTitle(input: {
     fallbackModel,
     signal: input.abort,
     timeoutMs: 120_000,
-    retries: 2,
+    retries: 3,
     maxOutputChars: 200,
     messages: [
       {

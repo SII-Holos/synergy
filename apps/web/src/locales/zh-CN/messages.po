@@ -7376,8 +7376,28 @@ msgstr "synergy config"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelNotConfigured"
-msgstr "尚未配置 AI 模型——请在终端中运行 {cmd} 完成设置"
+msgid "app.shell.modelUnavailable.action.connect"
+msgstr "连接提供商"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.action.review"
+msgstr "查看提供商"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.needsAttention"
+msgstr "已连接的提供商需要处理后，其模型才能使用。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.notConfigured"
+msgstr "尚未连接任何 AI 提供商。连接一个即可选择模型，也可以在终端中运行 {cmd}。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.restricted"
+msgstr "没有可选择的模型。请确认已连接的提供商已启用并提供模型。"
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
