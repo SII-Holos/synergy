@@ -5659,6 +5659,45 @@ export type ConfigDomainImportApplyInput = {
   force?: boolean
 }
 
+export type SecretPolicy = {
+  tools?: Array<string>
+  maxResolvesPerSession?: number
+}
+
+export type SecretEntry = {
+  id: string
+  fingerprint: {
+    sha256: string
+    length: number
+  }
+  source: unknown
+  policy?: SecretPolicy
+  createdAt: number
+  updatedAt: number
+  lastResolvedAt?: number
+  resolvedCount: number
+}
+
+export type SecretCreateInput = {
+  value: string
+  policy?: SecretPolicy
+}
+
+export type SecretPolicyInput = {
+  policy: SecretPolicy
+}
+
+export type SecretRotateInput = {
+  value: string
+}
+
+export type SecretResolveAuditEntry = {
+  at: number
+  sessionID?: string
+  tool?: string
+  outcome: "resolved" | "denied_policy" | "denied_limit" | "removed"
+}
+
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
 export type ControlProfileSummary = {
@@ -13265,6 +13304,204 @@ export type ConfigProvidersResponses = {
 }
 
 export type ConfigProvidersResponse = ConfigProvidersResponses[keyof ConfigProvidersResponses]
+
+export type SecretsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets"
+}
+
+export type SecretsListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsListError = SecretsListErrors[keyof SecretsListErrors]
+
+export type SecretsListResponses = {
+  /**
+   * Secret entries without values
+   */
+  200: Array<SecretEntry>
+}
+
+export type SecretsListResponse = SecretsListResponses[keyof SecretsListResponses]
+
+export type SecretsCreateData = {
+  body?: SecretCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets"
+}
+
+export type SecretsCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsCreateError = SecretsCreateErrors[keyof SecretsCreateErrors]
+
+export type SecretsCreateResponses = {
+  /**
+   * The registered entry without its value
+   */
+  200: SecretEntry
+}
+
+export type SecretsCreateResponse = SecretsCreateResponses[keyof SecretsCreateResponses]
+
+export type SecretsRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}"
+}
+
+export type SecretsRemoveErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsRemoveError = SecretsRemoveErrors[keyof SecretsRemoveErrors]
+
+export type SecretsRemoveResponses = {
+  /**
+   * Whether an entry was removed
+   */
+  200: {
+    removed: boolean
+  }
+}
+
+export type SecretsRemoveResponse = SecretsRemoveResponses[keyof SecretsRemoveResponses]
+
+export type SecretsUpdatePolicyData = {
+  body?: SecretPolicyInput
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}"
+}
+
+export type SecretsUpdatePolicyErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsUpdatePolicyError = SecretsUpdatePolicyErrors[keyof SecretsUpdatePolicyErrors]
+
+export type SecretsUpdatePolicyResponses = {
+  /**
+   * The updated entry without its value
+   */
+  200: SecretEntry
+}
+
+export type SecretsUpdatePolicyResponse = SecretsUpdatePolicyResponses[keyof SecretsUpdatePolicyResponses]
+
+export type SecretsRotateData = {
+  body?: SecretRotateInput
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}/rotate"
+}
+
+export type SecretsRotateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsRotateError = SecretsRotateErrors[keyof SecretsRotateErrors]
+
+export type SecretsRotateResponses = {
+  /**
+   * The rotated entry without its value
+   */
+  200: SecretEntry
+}
+
+export type SecretsRotateResponse = SecretsRotateResponses[keyof SecretsRotateResponses]
+
+export type SecretsHistoryData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}/history"
+}
+
+export type SecretsHistoryErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsHistoryError = SecretsHistoryErrors[keyof SecretsHistoryErrors]
+
+export type SecretsHistoryResponses = {
+  /**
+   * Resolve audit entries
+   */
+  200: Array<SecretResolveAuditEntry>
+}
+
+export type SecretsHistoryResponse = SecretsHistoryResponses[keyof SecretsHistoryResponses]
 
 export type RuntimeReloadData = {
   body?: {
