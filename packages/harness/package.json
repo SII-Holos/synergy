@@ -198,6 +198,7 @@
     "./provider/profile": "./src/provider/profile.ts",
     "./provider/auth-health": "./src/provider/auth-health.ts",
     "./provider/connection": "./src/provider/connection.ts",
+    "./provider/endpoint-diagnostics": "./src/provider/endpoint-diagnostics.ts",
     "./provider/usage": "./src/provider/usage.ts",
     "./session/rollout/recovery": "./src/session/rollout/recovery.ts",
     "./session/rollout/continuation-recovery": "./src/session/rollout/continuation-recovery.ts",

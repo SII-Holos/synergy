@@ -22,13 +22,22 @@ export namespace WindowsProcessJob {
   // prefix costs a few trivial existence checks.
   //
   // cmd has no sub-second sleep primitive, so its poll is a bounded `for /l`
-  // loop over `ping` (~5-15ms per attempt, ~2s worst case); if the gate never
-  // appears the post-loop check exits non-zero before the user command runs.
-  // A single `%i` is correct for a /c command line (batch files would need
-  // `%%i`), and the command itself is never moved into a batch file, so cmd
-  // parsing semantics — including single-percent loop variables — are intact.
+  // loop over `ping` (~5-15ms per attempt, ~2s worst case). Two cmd parser
+  // constraints shape this prefix: an unparenthesized `for ... do` body owns
+  // the whole remaining `&` chain (a bare in-loop `exit /b 1` fired on the
+  // first poll iteration and skipped the user command), so the loop and the
+  // fail-closed check each get their own `( ... )` chain element; and cmd
+  // children must be spawned with `windowsVerbatimArguments` (see
+  // `verbatimCommandLine`) because libuv's default `\"` escaping follows
+  // CommandLineToArgvW rules that cmd.exe ignores — one flipped quote corrupts
+  // every `if exist` operand, made the gate check permanently true, and made
+  // every command exit 1 before running. If the gate never appears, the
+  // post-loop check exits non-zero before the user command runs. A single
+  // `%i` is correct for a /c command line (batch files would need `%%i`),
+  // and the command itself is never moved into a batch file, so cmd parsing
+  // semantics — including single-percent loop variables — are intact.
   const CMD_GATE_PREFIX =
-    '@for /l %i in (1,1,200) do @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" ping -n 1 -w 1 127.0.0.1 >nul & @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" exit /b 1 & @del /q "%SYNERGY_WINDOWS_JOB_GATE%" >nul 2>&1'
+    '(@for /l %i in (1,1,200) do @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" ping -n 1 -w 1 127.0.0.1 >nul) & (if not exist "%SYNERGY_WINDOWS_JOB_GATE%" (echo Synergy Windows job gate was not created in time 1>&2 & exit /b 1)) & @del /q "%SYNERGY_WINDOWS_JOB_GATE%" >nul 2>&1'
   const POWERSHELL_GATE_PREFIX =
     "$g=$env:SYNERGY_WINDOWS_JOB_GATE; $i=0; while((-not (Test-Path -LiteralPath $g)) -and ($i -lt 200)){ $i++; Start-Sleep -Milliseconds 5 }; if(-not (Test-Path -LiteralPath $g)){ exit 1 }; Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue; Remove-Item Env:SYNERGY_WINDOWS_JOB_GATE -ErrorAction SilentlyContinue"
   const BASH_GATE_PREFIX =
@@ -47,6 +56,13 @@ export namespace WindowsProcessJob {
     command: string
     args: string[]
     env: Record<string, string>
+    /**
+     * True when the target shell parses its command line with cmd.exe rules
+     * instead of CommandLineToArgvW, so callers must spawn it with
+     * `windowsVerbatimArguments` — libuv's default `\"` escaping corrupts
+     * cmd's quote state.
+     */
+    verbatimCommandLine: boolean
     activate(child: ChildProcess): Promise<Owner>
     cleanup(): void
   }
@@ -94,6 +110,7 @@ export namespace WindowsProcessJob {
       command: input.command,
       args: [...input.args.slice(0, -1), `${prefix}${separator}${commandLine}`],
       env: { ...input.env, SYNERGY_WINDOWS_JOB_GATE: gatePath },
+      verbatimCommandLine: isCmd,
       activate(child) {
         return activate({
           child,

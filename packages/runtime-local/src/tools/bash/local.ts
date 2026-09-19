@@ -540,6 +540,7 @@ export const LocalBashBackend = {
             cwd,
             env: windowsProcessJob.env,
             stdio: ["pipe", "pipe", "pipe"],
+            windowsVerbatimArguments: windowsProcessJob.verbatimCommandLine,
           })
         } else if (process.platform === "win32") {
           child = spawn(executionCommand, {

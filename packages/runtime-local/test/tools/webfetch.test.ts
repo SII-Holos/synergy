@@ -173,3 +173,57 @@ test("bounds attempts and includes body reading and backoff in the total deadlin
     tool.execute({ url: url("/slow-body"), format: "text", timeoutSeconds: 0.05 }, context().ctx),
   ).rejects.toThrow("Request timed out")
 })
+
+// The shared classifier reports an unmapped certificate verification failure as indeterminate rather
+// than a proven transport failure; webfetch accepts it but keeps its own attempt and deadline budget.
+test("retries an unmapped certificate verification failure within its existing budget", async () => {
+  const original = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+    calls.push(target)
+    if (calls.length === 1) throw new Error("unknown certificate verification error")
+    return new Response("Recovered secure page", { headers: { "content-type": "text/plain" } })
+  }) as unknown as typeof fetch
+  try {
+    const result = await tool.execute({ url: url("/tls-recover"), format: "text" }, context().ctx)
+    expect(calls).toHaveLength(2)
+    expect(result.output).toContain("Recovered secure page")
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test("does not retry a mapped certificate failure", async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = (async () => {
+    calls++
+    throw Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" })
+  }) as unknown as typeof fetch
+  try {
+    await expect(tool.execute({ url: url("/tls-expired"), format: "text" }, context().ctx)).rejects.toThrow(
+      "certificate has expired",
+    )
+    expect(calls).toBe(1)
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test("exhausts the opaque certificate retry budget and honors the total deadline", async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = (async () => {
+    calls++
+    throw new Error("unknown certificate verification error")
+  }) as unknown as typeof fetch
+  try {
+    await expect(tool.execute({ url: url("/tls-always"), format: "text" }, context().ctx)).rejects.toThrow(
+      "unknown certificate verification error",
+    )
+    expect(calls).toBe(3)
+  } finally {
+    globalThis.fetch = original
+  }
+})

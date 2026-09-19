@@ -27,7 +27,7 @@ import { Log } from "../util/log"
 import { SessionBounds } from "./bounds"
 import { ContextUsageSchema } from "./context-usage-schema"
 
-function networkErrorMetadata(error: Error) {
+function networkErrorMetadata(error: Error, endpointHost?: string) {
   const metadata: Record<string, string> = {
     message: error.message,
   }
@@ -36,6 +36,9 @@ function networkErrorMetadata(error: Error) {
   if (code) metadata.code = code
   const syscall = classification?.syscall
   if (typeof syscall === "string") metadata.syscall = syscall
+  if (classification?.kind) metadata.networkKind = classification.kind
+  if (classification?.category) metadata.category = classification.category
+  if (endpointHost) metadata.endpointHost = endpointHost
   return metadata
 }
 export namespace MessageV2 {
@@ -1706,7 +1709,7 @@ export namespace MessageV2 {
     return assistant.parentID === parentID && assistant.summary === true && !!assistant.finish
   }
 
-  export function fromError(e: unknown, ctx: { providerID: string; modelID?: string }) {
+  export function fromError(e: unknown, ctx: { providerID: string; modelID?: string; endpointHost?: string }) {
     const network = classifyNetworkError(e)
     switch (true) {
       case RolloutRecordingError.isInstance(e):
@@ -1815,7 +1818,7 @@ export namespace MessageV2 {
             isRetryable: providerRetryable(e) ?? false,
             responseHeaders: e.responseHeaders,
             responseBody: e.responseBody,
-            metadata: network ? networkErrorMetadata(e) : undefined,
+            metadata: network ? networkErrorMetadata(e, ctx.endpointHost) : undefined,
           },
           { cause: e },
         ).toObject()
@@ -1835,7 +1838,7 @@ export namespace MessageV2 {
             responseBody: structured.responseBody,
             metadata: {
               ...(typeof structured.code === "string" ? { code: structured.code } : {}),
-              ...networkErrorMetadata(structured),
+              ...networkErrorMetadata(structured, ctx.endpointHost),
             },
           },
           { cause: e },

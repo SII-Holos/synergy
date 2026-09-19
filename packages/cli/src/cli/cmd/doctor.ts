@@ -4,6 +4,8 @@ import { getSandboxReadiness } from "@ericsanchezok/synergy-runtime-local/sandbo
 import fs from "fs/promises"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { DesktopInstallation } from "@ericsanchezok/synergy-harness/global/desktop-installation"
+import { getProviderEndpointChecks } from "@ericsanchezok/synergy-harness/provider/endpoint-diagnostics"
+import type { SandboxReadinessCheck } from "@ericsanchezok/synergy-harness/sandbox/types"
 
 export const DoctorCommand = cmd({
   command: "doctor",
@@ -22,11 +24,7 @@ export const DoctorCommand = cmd({
       const readiness = await getSandboxReadiness()
       console.log(`\nSandbox checks:`)
       for (const check of readiness.checks) {
-        const icon = check.status === "pass" ? "✅" : check.status === "warn" ? "⚠️" : "❌"
-        console.log(`  ${icon} ${check.label}: ${check.detail}`)
-        if (check.recovery) {
-          console.log(`     → Recovery: ${check.recovery.action}`)
-        }
+        printCheck(check)
       }
 
       console.log(`\nOverall: ${readiness.ready ? "✅ Ready" : "❌ Issues found"}`)
@@ -42,12 +40,30 @@ export const DoctorCommand = cmd({
       console.log(`\n  Failed to run sandbox readiness checks: ${(error as Error).message ?? String(error)}`)
     }
 
+    // Provider endpoint checks
+    try {
+      console.log(`\nProvider endpoint checks:`)
+      for (const check of await getProviderEndpointChecks()) {
+        printCheck(check)
+      }
+    } catch (error) {
+      console.log(`\n  Failed to run provider endpoint checks: ${(error as Error).message ?? String(error)}`)
+    }
+
     // Environment
     console.log(`\nEnvironment:`)
     console.log(`  HOME: ${process.env.HOME ?? "not set"}`)
     console.log(`  SHELL: ${process.env.SHELL ?? "not set"}`)
   },
 })
+
+function printCheck(check: SandboxReadinessCheck) {
+  const icon = check.status === "pass" ? "✅" : check.status === "warn" ? "⚠️" : "❌"
+  console.log(`  ${icon} ${check.label}: ${check.detail}`)
+  if (check.recovery) {
+    console.log(`     → Recovery: ${check.recovery.action}`)
+  }
+}
 
 async function printInstallationChecks() {
   const inspection = await Installation.inspect()
