@@ -612,7 +612,6 @@ export const LocalBashBackend = {
       }
     }
 
-
     if (denialSession && child.pid) {
       denialSession.adoptPid(child.pid)
     }
