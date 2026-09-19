@@ -58,7 +58,7 @@ Registered values are held in a 0600 file-store beside the provider auth store (
 
 Masking runs at three ingress owners:
 
-1. User-message materialization masks text parts before durable persistence, so the session record never holds pasted plaintext.
+1. User-message materialization masks text parts before durable persistence, so the session record holds tokens for detected or registered values.
 2. Tool-result settlement masks the settled result immediately after execution and BEFORE rollout capture, in both the builtin and MCP paths — plugin after-hooks, rollout artifacts, and durable tool parts see tokens only.
 3. `LLM.stream` masks the per-turn projection and late-system strings as a safety net covering every projection call site, including compaction, title, and summary calls.
 
@@ -66,7 +66,7 @@ Resolution runs inside the Control Plane execution window only. In both settleme
 
 Plaintext never crosses the HTTP surface: `/secrets` returns metadata only, and value reveal is a local CLI operation (`synergy secrets reveal`). This mirrors the config-export posture that keeps plaintext exports CLI-only because loopback-wide CORS would let any local page read them. The Settings panel manages the full lifecycle — register, rotate, per-key policy, resolve history, revoking remove — without displaying values.
 
-The mechanism honestly does not bound executor-side exfiltration: after resolution, a pipeline that reads a file into a network command can still carry the plaintext out. Per-key policy (tool allowlist, per-session resolve cap) and the resolve audit trail bound but cannot prevent that; the resolve history is visible per key in the panel. Heuristic capture auto-registers secret-shaped values from any source non-blockingly — safe because masking is value-preserving, so a false positive resolves to itself and only costs vault noise, which the panel prunes.
+The mechanism honestly does not bound executor-side exfiltration: after resolution, a pipeline that reads a file into a network command can still carry the plaintext out. Per-key policy (tool allowlist, per-session resolve cap) and the resolve audit trail bound but cannot prevent that; the resolve history is visible per key in the panel. Heuristic capture uses the versioned regex detector from the [secret-detection package](../../packages/secret-detection/README.md). The Harness detector source permits explicit replacement during runtime composition. It validates original-text spans and requires a complete result within five seconds; failed detection or registration stops capture. Unknown formats can pass through, and benign example keys can be masked. Exact matching of registered values remains independent of detection results. Capture batches missing values and reuses one Vault snapshot, matching longer values first. Detector-only and isolated capture benchmarks report quality and timing separately; see the [detector decision](../decisions/implemented/architecture/2026-09-20-replaceable-secret-detection.md).
 
 ## Capability Model
 

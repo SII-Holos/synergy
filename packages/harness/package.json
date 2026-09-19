@@ -135,8 +135,8 @@
     "./scope/startup": "./src/scope/startup.ts",
     "./scope/state": "./src/scope/state.ts",
     "./scope/types": "./src/scope/types.ts",
+    "./secrets/detector-source": "./src/secrets/detector-source.ts",
     "./secrets/mask": "./src/secrets/mask.ts",
-    "./secrets/patterns": "./src/secrets/patterns.ts",
     "./secrets/resolve": "./src/secrets/resolve.ts",
     "./secrets/vault": "./src/secrets/vault.ts",
     "./session": "./src/session/index.ts",
@@ -329,11 +329,13 @@
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/harness",
     "test:ci": "bun ../testing/script/test-ci.ts",
-    "test:coverage": "bun ../testing/script/coverage-run.ts"
+    "test:coverage": "bun ../testing/script/coverage-run.ts",
+    "benchmark:secrets": "bun script/secrets-benchmark.ts"
   },
   "dependencies": {
     "@ai-sdk/provider": "2.0.3",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
+    "@ericsanchezok/synergy-secret-detection": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@zip.js/zip.js": "2.8.26",
     "ai": "catalog:",

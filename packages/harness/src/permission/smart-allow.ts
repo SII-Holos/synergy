@@ -4,7 +4,7 @@ import { record, RolloutRecordingError } from "../session/rollout/error"
 import { AgentCall } from "../agent/call"
 import type { Capability } from "../enforcement/gate"
 import { Log } from "../util/log"
-import { SecretPatterns } from "../secrets/patterns"
+import { SecretPatterns } from "@ericsanchezok/synergy-secret-detection/patterns"
 
 export namespace SmartAllow {
   const log = Log.create({ service: "permission.smart-allow" })

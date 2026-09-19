@@ -2079,6 +2079,15 @@
           "reason": "barrel re-export"
         }
       ]
+    },
+    "packages/secret-detection": {
+      "command": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage test/",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 85,
+        "functions": 85
+      },
+      "exempt": []
     }
   }
 }

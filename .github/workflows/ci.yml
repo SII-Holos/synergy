@@ -231,7 +231,7 @@ jobs:
       matrix:
         include:
           - shard: app-light
-            packages: "@ericsanchezok/synergy-app,@ericsanchezok/synergy-testing,@ericsanchezok/synergy-link-protocol,@ericsanchezok/synergy-computer,@ericsanchezok/synergy-computer-runtime"
+            packages: "@ericsanchezok/synergy-app,@ericsanchezok/synergy-secret-detection,@ericsanchezok/synergy-testing,@ericsanchezok/synergy-link-protocol,@ericsanchezok/synergy-computer,@ericsanchezok/synergy-computer-runtime"
           - shard: runtime
             packages: "@ericsanchezok/synergy-product-runtime,@ericsanchezok/synergy-runtime-local,@ericsanchezok/synergy-server"
           - shard: server-tools
@@ -695,7 +695,7 @@ jobs:
           - group: product-platform
             packages: packages/product-runtime,packages/workbench,packages/agent-integrations,packages/library,packages/note,packages/computer-runtime,packages/computer,packages/synergy-link-protocol
           - group: web-plugin
-            packages: apps/web,packages/plugin,packages/plugin-kit,packages/sdk/js,packages/util
+            packages: apps/web,packages/plugin,packages/plugin-kit,packages/sdk/js,packages/util,packages/secret-detection
           - group: core-server
             packages: packages/harness,packages/connections,packages/cli,packages/server,packages/plugin-host
           - group: runtime-media

@@ -176,30 +176,43 @@ export namespace SecretVault {
     policy?: Policy
   }
 
-  /** Idempotent by derived id: re-registering a known value updates nothing. */
+  function registerInStore(store: Store, value: string, source: Source, input?: RegisterInput): InternalEntry {
+    const id = deriveId(value)
+    const existing = store.entries[id]
+    if (existing && existing.fingerprint.sha256 === fingerprintOf(value).sha256) return existing
+    const now = Date.now()
+    const entry: InternalEntry = {
+      id,
+      value,
+      fingerprint: fingerprintOf(value),
+      source,
+      ...(input?.policy ? { policy: input.policy } : {}),
+      createdAt: now,
+      updatedAt: now,
+      resolvedCount: 0,
+      history: [],
+    }
+    store.entries[id] = entry
+    log.info("secret registered", { id, kind: source.kind })
+    return entry
+  }
+
   export async function register(value: string, source: Source, input?: RegisterInput): Promise<InternalEntry> {
     if (!value) throw new Error("cannot register an empty secret")
-    const id = deriveId(value)
-    return mutate((store) => {
-      const existing = store.entries[id]
-      if (existing && existing.fingerprint.sha256 === fingerprintOf(value).sha256) {
-        return existing
-      }
-      const now = Date.now()
-      const entry: InternalEntry = {
-        id,
-        value,
-        fingerprint: fingerprintOf(value),
-        source,
-        ...(input?.policy ? { policy: input.policy } : {}),
-        createdAt: now,
-        updatedAt: now,
-        resolvedCount: 0,
-        history: [],
-      }
-      store.entries[id] = entry
-      log.info("secret registered", { id, kind: source.kind })
-      return entry
+    return mutate((store) => registerInStore(store, value, source, input))
+  }
+
+  /** One snapshot for known values; one locked batch for new values. */
+  export async function registerMany(values: string[], source: Source): Promise<MaskIndexItem[]> {
+    const unique = [...new Set(values)]
+    if (unique.some((value) => !value)) throw new Error("cannot register an empty secret")
+    const store = await readStore()
+    if (unique.every((value) => store.entries[deriveId(value)]?.fingerprint.sha256 === fingerprintOf(value).sha256)) {
+      return indexOf(store)
+    }
+    return mutate((current) => {
+      for (const value of unique) registerInStore(current, value, source)
+      return indexOf(current)
     })
   }
 
@@ -339,7 +352,13 @@ export namespace SecretVault {
    */
   export async function maskIndex(): Promise<MaskIndexItem[]> {
     const store = await readStore()
-    return Object.values(store.entries).map((entry) => ({ id: entry.id, value: entry.value }))
+    return indexOf(store)
+  }
+
+  function indexOf(store: Store): MaskIndexItem[] {
+    return Object.values(store.entries)
+      .map((entry) => ({ id: entry.id, value: entry.value }))
+      .sort((a, b) => b.value.length - a.value.length || a.id.localeCompare(b.id))
   }
 
   /** Cheap emptiness check for callers that skip work when the vault is unused. */

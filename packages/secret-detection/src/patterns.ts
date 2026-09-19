@@ -47,22 +47,4 @@ export namespace SecretPatterns {
     }
     return { text: result, matches }
   }
-
-  export interface Detection {
-    value: string
-    index: number
-  }
-
-  /** Detect standalone token-shaped values without rewriting the text. */
-  export function detect(text: string): Detection[] {
-    const found: Detection[] = []
-    for (const pattern of standalone) {
-      pattern.lastIndex = 0
-      for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
-        found.push({ value: match[0], index: match.index })
-      }
-      pattern.lastIndex = 0
-    }
-    return found
-  }
 }

@@ -1,4 +1,4 @@
-import { SecretPatterns } from "../secrets/patterns"
+import { SecretPatterns } from "@ericsanchezok/synergy-secret-detection/patterns"
 import { ObservabilityConfig } from "./config"
 import { ObservabilitySchema } from "./schema"
 

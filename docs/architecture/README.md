@@ -99,6 +99,7 @@ Workspace membership and dependency versions come from the root and package `pac
 | `packages/synergy-link`                                                   | Independently distributed Link host and CLI                                                                                                |
 | `packages/plugin`, `packages/plugin-kit`                                  | Plugin author API, theme contracts and development tools                                                                                   |
 | `packages/sdk/js`, `packages/ui`, `packages/util`                         | HTTP SDK, shared UI and product-independent utilities                                                                                      |
+| `packages/secret-detection`                                               | Runtime-independent secret detection contracts, regex baseline and offline evaluation                                                      |
 | `packages/testing`                                                        | Development-only isolation and test orchestration                                                                                          |
 | `apps/web`, `apps/desktop`                                                | Web UI; Desktop UI, Electron and native Browser/Computer hosting                                                                           |
 

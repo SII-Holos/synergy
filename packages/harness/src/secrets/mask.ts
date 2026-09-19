@@ -1,8 +1,6 @@
-import { Log } from "../util/log"
-import { SecretPatterns } from "./patterns"
+import { SecretDetection } from "@ericsanchezok/synergy-secret-detection"
+import { SecretDetectorSource } from "./detector-source"
 import { SecretVault } from "./vault"
-
-const log = Log.create({ service: "secrets.mask" })
 
 export namespace SecretMask {
   const MASKABLE_KEYS = new Set(["text", "content", "output", "value", "reasoning", "error"])
@@ -34,24 +32,22 @@ export namespace SecretMask {
     return replaceAll(text, index)
   }
 
-  /**
-   * Register secret-shaped values found in free text (non-blocking: a failed
-   * registration logs and continues), then mask every registered value.
-   * Over-registration is harmless because the mask is value-preserving.
-   */
-  export async function captureAndApply(text: string, source: SecretVault.Source): Promise<string> {
+  export async function captureAndApply(
+    text: string,
+    source: SecretVault.Source,
+    signal?: AbortSignal,
+  ): Promise<string> {
     if (!text) return text
-    for (const detection of SecretPatterns.detect(text)) {
-      try {
-        if (await SecretVault.has(SecretVault.idOf(detection.value))) continue
-        await SecretVault.register(detection.value, source)
-      } catch (error) {
-        log.warn("heuristic secret registration failed", {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-    return apply(text)
+    const result = await SecretDetection.detect(
+      SecretDetectorSource.get(),
+      { text, source: source.kind === "heuristic" ? source.context : "credential_file", signal },
+      { timeoutMs: 5000 },
+    )
+    if (!result.complete) throw new SecretDetection.Error("incomplete")
+    const values = result.findings.map((finding) => text.slice(finding.start, finding.end))
+    if (values.some((value) => value.length < 8)) throw new SecretDetection.Error("invalid_result")
+    const index = await SecretVault.registerMany(values, source)
+    return replaceAll(text, index)
   }
 
   /**
@@ -114,10 +110,13 @@ export namespace SecretMask {
    * plaintext-free. Tool output is also the heuristic capture surface: an
    * unregistered credential echoed by a command registers here first.
    */
-  export async function transformResult(result: Record<string, any>): Promise<Record<string, any>> {
+  export async function transformResult(
+    result: Record<string, any>,
+    signal?: AbortSignal,
+  ): Promise<Record<string, any>> {
     if (!result || typeof result !== "object") return result
     if (typeof result.output === "string" && result.output) {
-      result.output = await captureAndApply(result.output, { kind: "heuristic", context: "tool_output" })
+      result.output = await captureAndApply(result.output, { kind: "heuristic", context: "tool_output" }, signal)
     }
     if (typeof result.title === "string" && result.title) {
       result.title = await apply(result.title)
@@ -126,10 +125,14 @@ export namespace SecretMask {
     if (Array.isArray(content)) {
       for (const item of content) {
         if (item && typeof item === "object" && typeof (item as any).text === "string") {
-          ;(item as any).text = await captureAndApply((item as any).text, {
-            kind: "heuristic",
-            context: "tool_output",
-          })
+          ;(item as any).text = await captureAndApply(
+            (item as any).text,
+            {
+              kind: "heuristic",
+              context: "tool_output",
+            },
+            signal,
+          )
         }
       }
     }

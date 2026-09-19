@@ -1574,7 +1574,7 @@ export namespace ToolResolver {
                 })
                 if (secrets.secretEnv) (toolCtx.extra ??= {}).secretEnv = secrets.secretEnv
                 const executed = await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
-                const result = (await SecretMask.transformResult(executed)) as typeof executed
+                const result = (await SecretMask.transformResult(executed, combinedAbort)) as typeof executed
                 Tool.validateAttachmentResult(item.id, result)
                 await RolloutTool.capture(result)
                 await toolTrace.phase("tool.execute.end", "tool execute end", {
@@ -1817,7 +1817,7 @@ export namespace ToolResolver {
                     () => execute(mcpSecrets.args as Record<string, any>, { ...opts, abortSignal: combinedAbort }),
                     combinedAbort,
                   )
-                  await SecretMask.transformResult(rawResult as Record<string, any>)
+                  await SecretMask.transformResult(rawResult as Record<string, any>, combinedAbort)
                   await RolloutTool.capture(rawResult)
                   let result = ToolMcpSource.get()!.normalizeResult(rawResult)
                   await toolTrace.phase("tool.execute.end", "tool execute end", {
