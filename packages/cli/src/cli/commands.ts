@@ -70,6 +70,12 @@ export function coreCommands(
       load: async () => (await import("./cmd/config")).ConfigCommand as unknown as CommandModule,
     },
     {
+      command: "secrets",
+      storage: "maintenance",
+      describe: "manage the secret vault",
+      load: async () => (await import("./cmd/secrets")).SecretsCommand as unknown as CommandModule,
+    },
+    {
       command: "doctor",
       storage: "maintenance",
       describe: "diagnose synergy sandbox and environment",

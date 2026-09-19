@@ -105,6 +105,7 @@ export const SemanticIconToken = {
   "settings.commands": "terminal",
   "settings.permissions": "shield-check",
   "settings.sandbox": "lock-keyhole",
+  "settings.secrets": "key-round",
   "settings.controlProfile": "scale",
   "settings.questions": "help-circle",
   "settings.compaction": "list-collapse",

@@ -14909,6 +14909,18 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "sandbox | isolation | fallback"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.secrets.description"
+msgstr "Registered secrets masked from model context, resolved at execution."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.secrets.label"
+msgstr "Secrets"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.secrets.searchTerms"
+msgstr "secret | vault | api key | token | mask | credential"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.skills.description"
 msgstr "Skill discovery compatibility with other agent tools."
 
@@ -18619,6 +18631,154 @@ msgstr "Saved {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "Unsaved"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.cancel"
+msgstr "Keep"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.confirm"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.edit"
+msgstr "Edit"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.history"
+msgstr "History"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.rotate"
+msgstr "Rotate"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.save"
+msgstr "Save policy"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.empty"
+msgstr "No resolves recorded."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.title"
+msgstr "Recent resolves"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.list.empty"
+msgstr "No secrets registered yet."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.list.title"
+msgstr "Registered secrets"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.page.description"
+msgstr "Registered secrets are masked everywhere the model can see and resolved only when a tool executes. Values are never sent to the browser; reveal them with the CLI."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.page.title"
+msgstr "Secrets"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.button"
+msgstr "Register"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.description"
+msgstr "Paste a value to mask it across every session. Re-registering a known value is a no-op."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.title"
+msgstr "Register a secret"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.removeConfirm.desc"
+msgstr "Historical mask tokens in past conversations stop resolving and render as revoked. Re-registering the same value restores them."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.removeConfirm.title"
+msgstr "Remove this secret?"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.revealHint"
+msgstr "To view a value, run: synergy secrets reveal <id>"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.rotate.hint"
+msgstr "The new value gets a new id; policy and history carry over."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.rotate.title"
+msgstr "Rotate value"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.cap"
+msgstr "Per-session resolve cap"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.capPlaceholder"
+msgstr "empty means unlimited"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.resolves"
+msgstr "Resolves"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.source"
+msgstr "Source"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.emptyValue"
+msgstr "Enter a non-empty value."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.failed"
+msgstr "Action failed"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.policy"
+msgstr "Policy saved"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.registered"
+msgstr "Secret registered"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.registeredDesc"
+msgstr "The value is now masked everywhere."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.removed"
+msgstr "Secret removed"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.removedDesc"
+msgstr "Historical mask tokens no longer resolve."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.rotated"
+msgstr "Secret rotated"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.tools.label"
+msgstr "Tool allowlist (optional)"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.tools.placeholder"
+msgstr "e.g. bash, mcp — empty means every tool"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.value.label"
+msgstr "Secret value"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.agents.desc"
