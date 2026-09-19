@@ -23,6 +23,7 @@ description: Add, modify, or review Synergy capability classification, control p
 7. Keep the active workspace as the default write/execute boundary. Preserve original-checkout and sibling-worktree protection, trusted-root containment, protected metadata, and credential-path rules.
 8. Treat sandboxing as post-authorization containment. Preserve filesystem roots, network mode, approved external roots, shell-bypass semantics, and the configured `deny`/`warn`/`allow` fallback.
 9. Keep permission policy and the `SandboxHost` contract in `packages/harness`; OS backends, PTYs, filesystem watchers and helper sources belong to `packages/runtime-local`. Register the host and native startup contribution in local composition, including agent-worker bootstrap. Missing host registration must fail closed. Change platform helpers and TypeScript policy together. Do not claim parity without the relevant macOS Seatbelt, Linux helper/Bubblewrap, Windows helper, or WSL evidence.
+10. Keep collaboration modes as prompt guidance. A workflow stance such as Plan contributes prompt text and its own artifact contract; it must not be implemented as a tool allowlist, and enforced limits belong to the profile, permission, and sandbox axes, which never read workflow state. Reserve tool gating for role and ownership boundaries that are semantic rather than policy — a review session that owns its terminal tool, a parent workflow tool that its own execution step must not bypass — and for deferred exposure.
 
 ## Implement and Verify
 

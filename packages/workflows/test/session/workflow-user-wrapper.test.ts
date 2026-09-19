@@ -181,7 +181,7 @@ describe("WorkflowUserWrapper projection", () => {
 
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy-max in the coding Plan workflow")
-    expect(text).toContain("Do not implement code. Do not edit files.")
+    expect(text).toContain("Do not carry out the requested change.")
     expect(text).toContain("one material engineering route")
     expect(text).toContain("canonical owner")
     expect(text).toContain("single clarification checkpoint")
