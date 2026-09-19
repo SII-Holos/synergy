@@ -48,6 +48,8 @@ import { SessionToolContext } from "./tool-context"
 import type { ToolCatalog } from "./tool-catalog"
 import { ToolExecutor } from "./tool-executor"
 import type { ToolExecutorKind } from "./tool-scheduler"
+import { SecretMask } from "../secrets/mask"
+import { SecretResolve } from "../secrets/resolve"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -1562,9 +1564,19 @@ export namespace ToolResolver {
                 )
                 await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
                 await toolTrace.phase("tool.execute.start", "tool execute start")
-                const result = await settleExecutionOnAbort(() => item.execute(args, toolCtx), combinedAbort)
-                await RolloutTool.capture(result)
+                // Secret boundary: tokens resolve into an execution-only args
+                // copy (the durable args stay tokenized), the bash secret
+                // environment rides toolCtx.extra, and the settled result is
+                // masked before rollout capture, plugins, and persistence.
+                const secrets = await SecretResolve.transformArgs(args, {
+                  sessionID: ctx.sessionID,
+                  tool: item.id,
+                })
+                if (secrets.secretEnv) (toolCtx.extra ??= {}).secretEnv = secrets.secretEnv
+                const executed = await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
+                const result = (await SecretMask.transformResult(executed)) as typeof executed
                 Tool.validateAttachmentResult(item.id, result)
+                await RolloutTool.capture(result)
                 await toolTrace.phase("tool.execute.end", "tool execute end", {
                   outputChars: result.output.length,
                   attachmentCount: result.attachments?.length ?? 0,
@@ -1794,10 +1806,18 @@ export namespace ToolResolver {
                   await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
 
                   await toolTrace.phase("tool.execute.start", "tool execute start")
+                  // Secret boundary, same ordering as the builtin path:
+                  // resolve into an execution-only args copy and mask the raw
+                  // result before rollout capture so artifacts stay tokenized.
+                  const mcpSecrets = await SecretResolve.transformArgs(args as Record<string, any>, {
+                    sessionID: ctx.sessionID,
+                    tool: key,
+                  })
                   const rawResult = await settleExecutionOnAbort(
-                    () => execute(args, { ...opts, abortSignal: combinedAbort }),
+                    () => execute(mcpSecrets.args as Record<string, any>, { ...opts, abortSignal: combinedAbort }),
                     combinedAbort,
                   )
+                  await SecretMask.transformResult(rawResult as Record<string, any>)
                   await RolloutTool.capture(rawResult)
                   let result = ToolMcpSource.get()!.normalizeResult(rawResult)
                   await toolTrace.phase("tool.execute.end", "tool execute end", {

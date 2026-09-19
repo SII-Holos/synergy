@@ -28,6 +28,11 @@ import { ToolScheduler } from "../session/tool-scheduler"
 import { Observability, ObservabilityResources, ObservabilityStore } from "../observability/index"
 import { configureRuntimeEndpoint } from "../util/runtime-endpoint"
 import { configureExecution, resolveExecutionConfiguration } from "../execution/execution-config"
+import { Log } from "../util/log"
+import { Bus } from "../bus"
+import { SecretVault } from "../secrets/vault"
+
+const log = Log.create({ service: "runtime" })
 
 export interface RuntimeNetwork {
   hostname: string
@@ -186,6 +191,21 @@ export namespace RuntimeHandle {
       const config = resolveExecutionConfiguration(requested, options.mode)
       Experiment.configureRuntime(config, options.experiment?.runtime)
       ScopeStartup.configure(options.mode)
+      // Secret vault sync: register secret-shaped config values on startup
+      // and on every config reload; registration is idempotent by id.
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => SecretVault.syncFromConfig(config) }).catch((error) =>
+        log?.warn?.("secret vault config sync failed", { error: String(error) }),
+      )
+      Bus.subscribe(Config.Event.Updated, (event) => {
+        void ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            const current = await Config.current()
+            await SecretVault.syncFromConfig(current as Record<string, unknown>)
+          },
+        }).catch(() => undefined)
+        void event
+      })
       SessionManager.openAdmission()
       await RolloutRecovery.all((current) => options.recoveryReporter?.progress(current))
       options.recoveryReporter?.completed()
