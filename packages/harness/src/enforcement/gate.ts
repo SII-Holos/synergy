@@ -63,11 +63,29 @@ export interface AuditRecord {
   timestamp: number
 }
 
+/**
+ * Execution-time containment verdict for a call an OS sandbox may wrap.
+ *
+ * Authorization follows containment: the verdict is produced by the same host
+ * preparation the execution uses, so the decision cannot assume containment it
+ * will not get. `shell` is the only capability an OS sandbox can satisfy —
+ * filesystem reach — because every other shell capability (destruction,
+ * privilege escalation, remote mutation) is inexpressible to it.
+ */
+export interface SandboxContainment {
+  /** True when the sandbox will actually wrap the command. */
+  contained: boolean
+  /** Why the sandbox cannot contain the call, when the host reported one. */
+  skipReason?: string
+}
+
 export interface Envelope {
   decision: "allow" | "ask" | "deny"
   profileId: string
   opaque: boolean
   capabilities: Capability[]
+  /** Execution-time containment verdict this decision was made against. */
+  containment?: SandboxContainment
   /** Populated when decision is "deny" — explains why and whether retrying would help */
   refusal?: {
     reason: string
@@ -838,17 +856,30 @@ export namespace EnforcementGate {
       args: Record<string, any>,
       classification: ClassifyResult,
       policyFailure?: string,
+      containment?: SandboxContainment,
     ): Envelope {
       const perfStart = performance.now()
       let amendment: ExecPolicyAmendment | undefined
 
       const { capabilities } = classification
 
+      // Authorization follows containment. A call an OS sandbox will wrap has
+      // its one sandbox-owned capability — `shell`, filesystem reach — satisfied
+      // by the kernel, so it drops out of the decision. Every other shell
+      // capability (destruction, privilege escalation, remote mutation) is
+      // inexpressible to the sandbox and stays decided here.
+      const contained = containment?.contained === true
+      const decidedCapabilities = contained ? capabilities.filter((cap) => cap.class !== "shell") : capabilities
+      // A call that required the sandbox and did not get it is an authorization
+      // fact, not an after-the-fact warning: under a `deny` fallback the profile
+      // refuses instead of running the command outside the workspace silently.
+      const sandboxUnavailable = containment !== undefined && !contained
+
       let decision: "allow" | "ask" | "deny" = "allow"
       const rules = resolved.ruleset
 
       let deniedCapClass: string | undefined
-      for (const cap of capabilities) {
+      for (const cap of decidedCapabilities) {
         const rule = matchRule(cap, rules, resolved.approval.highRisk)
 
         if (rule.action === "deny") {
@@ -861,6 +892,17 @@ export namespace EnforcementGate {
           decision = "ask"
           continue // Keep checking — a later deny overrides
         }
+      }
+
+      // A profile whose fallback is `deny` promises not to run shell commands
+      // outside its sandbox. When the sandbox cannot contain this call, that
+      // promise is an authorization fact: refuse here instead of letting the
+      // execution layer fail afterwards, or worse, run unsandboxed.
+      const sandboxDenied = sandboxUnavailable && resolved.sandbox.fallback === "deny" && profileId !== "full_access"
+      if (sandboxDenied) {
+        decision = "deny"
+        deniedCapClass = "shell"
+        amendment = undefined
       }
 
       const opaque = capabilities.some((c) => c.opaque === true)
@@ -921,6 +963,14 @@ export namespace EnforcementGate {
           matchedPermission: deniedCapClass ?? "computer_interact",
           guidance: "Enable Full Access for this task before using Computer Use.",
         }
+      } else if (sandboxDenied) {
+        refusal = {
+          reason: `The OS sandbox cannot contain this command (${containment?.skipReason ?? "sandbox unavailable"}), and profile "${profileId}" does not run shell commands outside its sandbox.`,
+          permanent: true,
+          matchedPermission: "shell",
+          guidance:
+            "Install or repair the platform sandbox helper, or run the command under a profile that permits unsandboxed execution.",
+        }
       } else if (decision === "deny") {
         const isAutonomous = profileId === "autonomous"
         const diagnosticReasons = capabilities
@@ -973,6 +1023,7 @@ export namespace EnforcementGate {
         profileId,
         opaque,
         capabilities,
+        containment,
         refusal,
         amendment,
       }
@@ -999,6 +1050,7 @@ export namespace EnforcementGate {
       toolName: string,
       args: Record<string, any>,
       signal?: AbortSignal,
+      containment?: SandboxContainment,
     ): Promise<Envelope> {
       let classification: ClassifyResult
       try {
@@ -1029,9 +1081,9 @@ export namespace EnforcementGate {
           module: "enforcement",
           labels: { tool: toolName, failure: name },
         })
-        return evaluateClassified(toolName, args, classification, name)
+        return evaluateClassified(toolName, args, classification, name, containment)
       }
-      return evaluateClassified(toolName, args, classification)
+      return evaluateClassified(toolName, args, classification, undefined, containment)
     }
 
     return {

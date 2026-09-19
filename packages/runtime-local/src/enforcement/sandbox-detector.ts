@@ -30,14 +30,30 @@ interface DetectionPattern {
   pattern: RegExp
   label: string
   platform: "macos" | "linux" | "windows" | "any"
-  access: "read" | "write" | "network" | "execute"
   confidence: "high" | "medium" | "low"
+  /**
+   * Undefined when the evidence names a path without naming the access:
+   * a shell reports the same "Operation not permitted" text for a denied
+   * read and a denied write, so guessing here would invent an access type.
+   */
+  access?: "read" | "write" | "network" | "execute"
   /** Regex capture group index for path extraction */
   pathGroup?: number
   /** Regex capture group index for network target */
   networkGroup?: number
 }
 
+/**
+ * Paths whose denial is never the operation the caller cares about.
+ *
+ * Seatbelt denies `file-write-data /dev/tty` for every sandboxed child, so
+ * treating it as a block would make every command look denied.
+ */
+const BENIGN_DENIAL_PATHS = new Set(["/dev/tty", "/dev/null", "/dev/stdout", "/dev/stderr"])
+
+export function isBenignDenialPath(path: string | undefined): boolean {
+  return path !== undefined && BENIGN_DENIAL_PATHS.has(path)
+}
 const PATTERNS: DetectionPattern[] = [
   // macOS Seatbelt sandbox-exec denial
   {
@@ -64,11 +80,50 @@ const PATTERNS: DetectionPattern[] = [
     confidence: "high",
   },
   {
-    pattern: /Operation not permitted/i,
-    label: "macos_eperm",
+    // A sandboxed child sees EPERM/EACCES from the syscall and the shell prints
+    // it. This is the only denial evidence that exists while the child is alive,
+    // so it is what the built-in bash path can act on. The text is identical for
+    // a denied read and a denied write, so no access is claimed here; the kernel
+    // audit records below are what name the access.
+    pattern: /(?:^|\n)[^\s:]+: ([^\n]+?): Operation not permitted/,
+    label: "seatbelt_shell_eperm",
+    platform: "macos",
+    confidence: "medium",
+    pathGroup: 1,
+  },
+  {
+    pattern: /(?:^|\n)[^\s:]+: ([^\n]+?): Permission denied/,
+    label: "seatbelt_shell_eacces",
+    platform: "macos",
+    confidence: "medium",
+    pathGroup: 1,
+  },
+  {
+    // Kernel sandbox audit record, captured through the `process == "kernel"`
+    // predicate. This names the access, which the shell message cannot.
+    pattern: /Sandbox: \S+\(\d+\) deny\(\d+\) file-write-\S+ ([^\n]+)/,
+    label: "seatbelt_audit_file_write",
+    platform: "macos",
+    access: "write",
+    confidence: "high",
+    pathGroup: 1,
+  },
+  {
+    pattern: /Sandbox: \S+\(\d+\) deny\(\d+\) file-read-\S+ ([^\n]+)/,
+    label: "seatbelt_audit_file_read",
     platform: "macos",
     access: "read",
-    confidence: "low",
+    confidence: "high",
+    pathGroup: 1,
+  },
+  {
+    pattern: /Sandbox: \S+\(\d+\) deny\(\d+\) network-\S+ ([^\n]+)/,
+    label: "seatbelt_audit_network",
+    platform: "macos",
+    access: "network",
+    confidence: "high",
+    pathGroup: 1,
+    networkGroup: 1,
   },
 
   // Linux seccomp / bwrap denials
@@ -142,17 +197,19 @@ const PATTERNS: DetectionPattern[] = [
 ]
 
 export namespace SandboxDetector {
-  export function scan(output: string): SandboxDetectionResult[] {
+  export function scan(output: string, options: { includeBenign?: boolean } = {}): SandboxDetectionResult[] {
     const results: SandboxDetectionResult[] = []
 
     for (const pat of PATTERNS) {
       const match = pat.pattern.exec(output)
       if (match) {
+        const path = pat.pathGroup !== undefined ? (match[pat.pathGroup] ?? undefined) : undefined
+        if (!options.includeBenign && isBenignDenialPath(path)) continue
         results.push({
           matched: true,
           platform: pat.platform === "any" ? undefined : pat.platform,
           access: pat.access,
-          path: pat.pathGroup !== undefined ? (match[pat.pathGroup] ?? undefined) : undefined,
+          path,
           networkTarget: pat.networkGroup !== undefined ? (match[pat.networkGroup] ?? undefined) : undefined,
           raw: match[0],
           confidence: pat.confidence,

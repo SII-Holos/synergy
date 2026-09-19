@@ -70,6 +70,18 @@ export namespace SandboxBackend {
   export const platformInfo = getPlatformInfo
   export const generateSeatbeltProfile = MacBackend.generateSeatbeltProfile
   export const cleanupTemp = MacBackend.cleanupTemp
+  /**
+   * Release the temporary resources a prepared wrapper owns.
+   *
+   * Authorization now follows containment, so a wrapper can be prepared for a
+   * call that is then refused. This is the same release the execution path
+   * performs in its `finally` block, exposed so the preparer can undo a
+   * preparation it did not execute. Backends stage their compiled profile in
+   * `tempPath`; a wrapper with no staged file has nothing to release.
+   */
+  export function cleanupWrapper(wrapper: SandboxExecutionWrapper): void {
+    if (wrapper.tempPath) cleanupTemp(wrapper.tempPath)
+  }
 
   /**
    * Check whether a given os.platform() string is supported.
@@ -362,8 +374,10 @@ export namespace SandboxBackend {
     const stderr = Buffer.concat(stderrChunks).toString("utf-8")
 
     // ── Stop macOS denial logger ─────────────────────────────────
+    // Audit records trail the child by a short interval, so give them a
+    // bounded window before the stream is closed.
     if (denialSession) {
-      denialSession.stop()
+      await denialSession.flush()
     }
 
     // ── Sandbox denial detection ──────────────────────────────────

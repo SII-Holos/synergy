@@ -277,7 +277,11 @@ export const LocalBashBackend = {
       throw new Error(detachedDaemonBlockMessage(detachedRisk))
     }
 
-    if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
+    // The resolver already authorized this call. Asking again here would make
+    // authorization depend on the tool rather than on containment, and would
+    // double-prompt every contained command.
+    const authorizationResolved = (ctx.extra as any)?.shellAuthorizationResolved === true
+    if (patterns.size > 0 && !authorizationResolved) {
       await trace("bash.permission.ask", {
         patternCount: patterns.size,
       })
@@ -909,6 +913,22 @@ export const LocalBashBackend = {
       }
     }
 
+    // A sandbox denial is an execution-time boundary, not an ordinary non-zero
+    // exit. Surfacing it as `SandboxBlocked` is what gives the model the denied
+    // path and the recovery step, and what lets `guarded` approve that exact
+    // path and retry. Without this the child's raw "Operation not permitted"
+    // reached the model with no path and no route into the approval flow.
+    if (sandboxWrapper && !sandboxWrapper.skipReason) {
+      await denialSession?.flush()
+      const denial = deriveSandboxDenial({
+        output,
+        auditRecords: denialSession?.output ?? [],
+        command: params.command,
+        sandboxMode: sandboxWrapper.command === "sandbox-exec" ? "workspace_write" : undefined,
+      })
+      if (denial) throw denial
+    }
+
     return withAttachments({
       title: params.description,
       metadata: {
@@ -920,4 +940,43 @@ export const LocalBashBackend = {
       output: warnOutput(output),
     })
   },
+}
+
+/**
+ * Turn a sandbox denial observed in a finished child's output into an
+ * actionable `SandboxBlocked` error, or return undefined when nothing was
+ * denied.
+ *
+ * Seatbelt reports the denial in the child's own output — `<path>: Operation
+ * not permitted` for a write, `<path>: Permission denied` for a read, from
+ * `cat`/`head`/`mkdir` and the shell's own redirect. That text names the path
+ * but not the access, so the kernel audit records (when the platform provides
+ * them) are preferred: they carry `deny(1) file-write-create <path>`, which
+ * names both. Only macOS produces either shape today; Linux has no equivalent
+ * audit stream, so this returns undefined there rather than guessing from a
+ * non-zero exit.
+ */
+export function deriveSandboxDenial(input: {
+  output: string
+  auditRecords: string[]
+  command: string
+  sandboxMode?: "read_only" | "workspace_write"
+}): EnforcementError.SandboxBlocked | undefined {
+  if (process.platform !== "darwin") return undefined
+  const evidence = [input.output, ...input.auditRecords].join("\n")
+  const matches = SandboxDetector.scan(evidence)
+  if (matches.length === 0) return undefined
+  const info = SandboxBackend.platformInfo()
+  const profile = { command: input.command, backend: info.backend, profileMode: input.sandboxMode }
+  const explanation = SandboxDetector.buildBlockExplanation(matches, profile)
+  const message = explanation
+    ? SandboxDetector.formatBlockExplanation(matches, profile)
+    : SandboxDetector.explain(matches)
+  return new EnforcementError.SandboxBlocked(
+    message,
+    null,
+    matches[0]?.label ?? null,
+    evidence,
+    explanation ?? undefined,
+  )
 }
