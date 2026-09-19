@@ -200,7 +200,7 @@ describe("Browser tool renderers", () => {
 
   test("summarizes wait conditions and timeout without object stringification", () => {
     render("browser_wait", {
-      input: { condition: { type: "text", values: ["保存成功"], match: "all" }, timeoutMs: 10_000 },
+      input: { condition: { type: "text", values: ["保存成功"], match: "all" }, timeoutSeconds: 10 },
       metadata: {
         condition: { type: "text", values: ["保存成功"], match: "all" },
         timeoutMs: 10_000,

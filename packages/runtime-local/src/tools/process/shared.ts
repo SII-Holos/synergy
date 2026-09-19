@@ -9,7 +9,7 @@ export interface ProcessParams {
   offset?: number
   limit?: number
   block?: boolean
-  timeout?: number
+  timeoutSeconds?: number
   targetID?: string
   linkID?: string
 }

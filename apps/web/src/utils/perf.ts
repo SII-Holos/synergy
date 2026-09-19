@@ -26,14 +26,7 @@ const navs = new Map<string, Nav>()
 const pending = new Map<string, string>()
 const active = new Map<string, string>()
 
-const required = [
-  "session:params",
-  "session:data-ready",
-  "session:first-turn-mounted",
-  "storage:prompt-ready",
-  "storage:terminal-ready",
-  "storage:file-view-ready",
-]
+const required = ["session:params", "session:data-ready"]
 
 function flush(id: string, reason: "complete" | "timeout") {
   const nav = navs.get(id)

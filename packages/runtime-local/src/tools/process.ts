@@ -18,13 +18,13 @@ const parameters = z
     offset: z.number().optional().describe("Line offset for log retrieval"),
     limit: z.number().optional().describe("Number of lines to retrieve for log"),
     block: z.boolean().optional().describe("Wait for process to exit before returning (for poll action)"),
-    timeout: z
+    timeoutSeconds: z
       .number()
       .optional()
       .describe(
         `Max seconds to wait when block is true (default: ${
           ToolTimeout.DEFAULTS.processPollWaitMs / 1_000
-        }). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline.`,
+        } seconds). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline.`,
       ),
     linkID: z
       .string()

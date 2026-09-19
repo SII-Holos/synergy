@@ -11,7 +11,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
-import { questionOptionShortcutIndex } from "./question-prompt-model"
+import { questionCountdown, questionOptionShortcutIndex } from "./question-prompt-model"
 import "./question-prompt.css"
 
 export interface QuestionPromptProps {
@@ -28,7 +28,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
 
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
-  const countdownSeconds = () => props.request.timeout as number | undefined
+  const countdown = createMemo(() => questionCountdown(props.request))
 
   const [store, setStore] = createStore({
     tab: 0,
@@ -165,8 +165,8 @@ export function QuestionPrompt(props: QuestionPromptProps) {
             <span class="question-prompt-collapsed-title">{currentStepLabel()}</span>
           </span>
           <span class="question-prompt-collapsed-meta">
-            <Show when={countdownSeconds() != null}>
-              <Countdown seconds={countdownSeconds()!} active={true} />
+            <Show when={countdown()}>
+              <Countdown seconds={countdown()!.seconds} startedAt={countdown()!.startedAt} active={true} />
             </Show>
             <span>{_(S.questionOpen)}</span>
           </span>
@@ -194,11 +194,11 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                   {Math.min(store.tab + 1, questions().length)} / {questions().length}
                 </span>
               </Show>
-              <Show when={countdownSeconds() != null}>
+              <Show when={countdown()}>
                 <span class="question-prompt-meta-separator" aria-hidden="true">
                   ·
                 </span>
-                <Countdown seconds={countdownSeconds()!} active={true} />
+                <Countdown seconds={countdown()!.seconds} startedAt={countdown()!.startedAt} active={true} />
               </Show>
             </div>
             <div class="question-prompt-meta-actions">

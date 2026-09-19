@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite"
 import fsSync from "fs"
 import { ObservabilityConfig } from "./config"
 import { ObservabilitySchema } from "./schema"
-import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
+import { SqliteMaintenance } from "../storage/sqlite-maintenance"
 import { ObservabilityDbSchema } from "./db-schema"
 import { ObservabilityPaths } from "./paths"
 import { ObservabilityDbWrites } from "./db-writes"
@@ -870,7 +870,7 @@ export namespace ObservabilityStore {
 
   export function enableIncrementalVacuumForMigration() {
     const conn = initializeForMigration()
-    ObservabilitySqliteMaintenance.enableIncrementalVacuum(conn)
+    SqliteMaintenance.enableIncrementalVacuum(conn)
   }
 
   function createConnection() {
@@ -930,7 +930,7 @@ export namespace ObservabilityStore {
 
   function enforceMaxSize(conn: Database, maxBytes: number) {
     try {
-      const result = ObservabilitySqliteMaintenance.enforce({
+      const result = SqliteMaintenance.enforce({
         db: conn,
         path: pathName(),
         maxBytes,
