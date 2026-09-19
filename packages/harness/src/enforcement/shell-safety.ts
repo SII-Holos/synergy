@@ -1213,10 +1213,20 @@ const NETWORK_OPENSSL_SUBCOMMANDS = new Set(["s_client", "s_server"])
 function invocationReachesNetwork(name: string, args: string[]): boolean {
   if (NETWORK_TOOLS.has(name)) return true
 
-  // git <subcommand> / go mod download
-  if (name === "git") {
-    const sub = args.find((arg) => !arg.startsWith("-"))
-    return sub !== undefined && NETWORK_GIT_SUBCOMMANDS.has(sub.toLowerCase())
+  if (name === "git" || name === "go") {
+    const valued =
+      name === "git"
+        ? new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"])
+        : new Set(["-C"])
+    let index = 0
+    while (args[index]?.startsWith("-")) {
+      const flag = args[index++]!
+      if (flag === "--") break
+      if (valued.has(flag)) index++
+    }
+    const sub = args[index]
+    if (name === "git") return sub !== undefined && NETWORK_GIT_SUBCOMMANDS.has(sub)
+    return sub === "get" || (sub === "mod" && ["download", "tidy", "vendor"].includes(args[index + 1] ?? ""))
   }
   if (name === "rsync") {
     // A remote operand carries a colon separator (`user@host:/path`).
@@ -1251,13 +1261,35 @@ function networkInvocationIn(command: string, state: ClassificationState, depth 
       if (body && networkInvocationIn(body, state, depth + 1)) return true
       continue
     }
-    let { name, args } = simpleCommandParts(controlCommandSegment(segment))
+    const commandSegment = controlCommandSegment(segment)
+    const words = shellWords(commandSegment)
+    let first = 0
+    while (words[first]?.includes("=") && !words[first]?.startsWith("-")) first++
+    if (words[first] === "command") {
+      let flag = first + 1
+      let lookup = false
+      while (words[flag]?.startsWith("-") && words[flag] !== "--") {
+        if (/^-[pPvV]*[vV][pPvV]*$/.test(words[flag]!)) lookup = true
+        flag++
+      }
+      if (lookup) continue
+    }
+    let { name, args } = simpleCommandParts(commandSegment)
     let executable = commandBasename(name ?? "")
     if (!executable) continue
 
     // Unwrap directory wrappers (`timeout 5 curl …`) before deciding.
-    while (DIRECTORY_WRAPPER_COMMANDS.has(executable) && depth <= DIRECTORY_CHANGE_MAX_DEPTH) {
-      const wrapped = wrapperCommandParts(executable, args)
+    let wrappers = 0
+    while (DIRECTORY_WRAPPER_COMMANDS.has(executable) || executable === "env") {
+      if (++wrappers > DIRECTORY_CHANGE_MAX_DEPTH || classificationExhausted(state)) return true
+      const wrapped = (() => {
+        if (executable !== "env") return wrapperCommandParts(executable, args)
+        const words = [executable, ...args]
+        const expanded = expandEnvSplitString(words, 0)
+        const tokens = expanded ?? words
+        const index = expanded ? 0 : skipEnvWrapper(tokens, 0).idx
+        return { name: tokens[index], args: tokens.slice(index + 1) }
+      })()
       const nextName = commandBasename(wrapped.name ?? "")
       if (!nextName) break
       executable = nextName

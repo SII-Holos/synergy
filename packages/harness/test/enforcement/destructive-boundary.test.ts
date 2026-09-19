@@ -245,6 +245,14 @@ describe("destructive boundary — network detection is token-aware", () => {
     "gem install rails",
     "cargo install ripgrep",
     "go get example.com/mod",
+    "go mod download",
+    "go mod tidy",
+    "go -C modules/client mod download",
+    "git -C project fetch origin",
+    "git -c protocol.version=2 fetch origin",
+    "env HTTPS_PROXY=http://proxy.example curl https://example.com",
+    'env -S "curl https://example.com"',
+    "command curl https://example.com",
     "ssh user@host",
     "scp file host:/tmp",
     "sftp host",
@@ -275,6 +283,10 @@ describe("destructive boundary — network detection is token-aware", () => {
     "rsync -avz dir/ /tmp/backup/",
     "openssl version",
     "npm run build",
+    "go mod edit -module=example.com/client",
+    "env FLAG=curl echo curl",
+    "command -v curl",
+    "command -V wget",
   ]
 
   const { EnforcementGate } = require("../../src/enforcement/gate")
