@@ -105,7 +105,7 @@ Users can work interactively from Web or Desktop, or submit a one-off task with 
 
 ### Plan and Blueprint execution
 
-Plan is a read-only planning workflow for producing or refining a decision-complete Blueprint. The agent may inspect code, documents, sessions, memory, and external sources; ask the user about blocking decisions; and use research or design subagents. It cannot implement the requested outcome, modify project files, deploy, or perform external identity actions while Plan is active.
+Plan guides the agent to produce or refine a decision-complete Blueprint. Investigation may include commands, tests, builds, and scratch files to establish feasibility. The prompt reserves implementation, commits, pushes, deployment, and external identity actions for the execution session. Plan adds no tool permission boundary: the selected control profile and ordinary permission rules govern all tool calls.
 
 A Blueprint is the durable handoff from planning to execution. Starting a user-owned BlueprintLoop exits Plan or Light Loop while the session is idle, binds the Blueprint to the session, and runs it until the execution agent requests review. An independent audit agent then approves the result or returns structured remaining work so execution can continue. Planning and execution therefore share one authored contract without collapsing into the same workflow phase.
 

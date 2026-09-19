@@ -13,6 +13,7 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 - Native Browser uses `WebContentsView` and the shared Browser command/page contract. Remote Browser-host mode uses the shared WebRTC/data-channel path; neither creates alternate tabs or screenshot-stream presentation.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
+- Desktop owns the operating-system keep-awake assertion while Synergy is working. `src/power-save.ts` holds the only `powerSaveBlocker` assertion and the endpoint watcher; whether work is running is decided by the server's `/global/activity`, never by the renderer. The renderer may only ask the shell to re-check. Release the assertion on every quit path and keep the setting opt-in.
 - Browser Host packages only its bundled Electron entry and independent manifest from `build/browser-host-app`. Exclude node_modules explicitly because the Bun dependency collector can fall back to the Desktop manifest even when the staged manifest has no dependencies. The Browser Host afterPack hook rejects any extra ASAR entry or unpacked payload; keep this exact closure separate from the Desktop Computer driver and full runtime.
 
 ## Verify
@@ -24,3 +25,5 @@ For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test 
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
 
 For native Computer changes, read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts` and verify exact-window background actions in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.
+
+For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an isolated Desktop that the assertion appears while a task runs, survives closing the window, and leaves nothing behind after quitting (macOS: `pmset -g assertions`).

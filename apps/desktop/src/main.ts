@@ -8,6 +8,8 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  powerMonitor,
+  powerSaveBlocker,
   shell,
   systemPreferences,
   Tray,
@@ -77,6 +79,19 @@ import {
   saveDesktopZoom,
 } from "./zoom-state.js"
 import {
+  ACTIVITY_FAILURE_GRACE_MS,
+  ACTIVITY_POLL_MS,
+  RELEASE_DEBOUNCE_MS,
+  createDesktopActivityWatcher,
+  createDesktopPowerGuard,
+  loadDesktopPower,
+  parseDesktopPowerUpdate,
+  saveDesktopPower,
+  type DesktopActivityWatcher,
+  type DesktopPowerGuard,
+  type DesktopPowerSnapshot,
+} from "./power-save.js"
+import {
   desktopDevDockIconPath,
   desktopIconPath,
   desktopEmitsWindowStateEvents,
@@ -119,6 +134,10 @@ let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null
 let emitDesktopWindowState: (() => void) | null = null
 let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
 let zoomWriteQueue: Promise<void> = Promise.resolve()
+let keepAwakeWhileRunning = false
+let desktopPowerGuard: DesktopPowerGuard | null = null
+let desktopActivityWatcher: DesktopActivityWatcher | null = null
+let desktopPowerWriteQueue: Promise<void> = Promise.resolve()
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -382,6 +401,88 @@ function updateDesktopZoomFactor(zoomFactor: number): void {
 function setDesktopZoomFactor(input: unknown): number {
   updateDesktopZoomFactor(parseDesktopZoomFactor(input))
   return currentDesktopZoomFactor
+}
+
+function desktopPowerSnapshot(): DesktopPowerSnapshot {
+  return { keepAwakeWhileRunning, active: desktopPowerGuard?.active() ?? false }
+}
+
+function broadcastDesktopPower(): void {
+  mainRendererDelivery?.sendLatest("desktop-power", "desktop-power:event", {
+    type: "power",
+    snapshot: desktopPowerSnapshot(),
+  })
+}
+
+function setDesktopPowerActive(active: boolean): void {
+  desktopPowerGuard?.apply(keepAwakeWhileRunning && active)
+  broadcastDesktopPower()
+}
+
+function resolveDesktopPowerBaseUrl(): string | null {
+  if (!serverManager) return null
+  const status = serverManager.status()
+  if (status.mode === "external") return status.url
+  return status.state === "running" ? status.url : null
+}
+
+async function fetchDesktopActivity(url: string, signal: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, { signal, cache: "no-store" })
+  if (!response.ok) throw new Error(`activity responded ${response.status}`)
+  return await response.json()
+}
+
+async function initializeDesktopPower(): Promise<void> {
+  keepAwakeWhileRunning = (await loadDesktopPower(app.getPath("userData"))).keepAwakeWhileRunning
+  desktopPowerGuard = createDesktopPowerGuard(powerSaveBlocker)
+  desktopActivityWatcher = createDesktopActivityWatcher({
+    intervalMs: ACTIVITY_POLL_MS,
+    failureGraceMs: ACTIVITY_FAILURE_GRACE_MS,
+    releaseDebounceMs: RELEASE_DEBOUNCE_MS,
+    resolveBaseUrl: resolveDesktopPowerBaseUrl,
+    fetchActivity: fetchDesktopActivity,
+    onDesiredChange: (desired) => setDesktopPowerActive(desired),
+    onError: (error) => {
+      runtimeLog("activityProbeFailed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    },
+  })
+  if (keepAwakeWhileRunning) desktopActivityWatcher.start()
+  powerMonitor.on("resume", () => desktopActivityWatcher?.recheck())
+}
+
+function scheduleDesktopPowerPersist(): void {
+  const keep = keepAwakeWhileRunning
+  desktopPowerWriteQueue = desktopPowerWriteQueue
+    .catch(() => undefined)
+    .then(() => saveDesktopPower(app.getPath("userData"), { version: 1, keepAwakeWhileRunning: keep }))
+    .catch((error) => {
+      runtimeLog("powerPersistFailed", { error: error instanceof Error ? error.message : String(error) })
+    })
+}
+
+async function setDesktopPower(input: unknown): Promise<DesktopPowerSnapshot> {
+  if (isQuitting) throw new Error("Desktop is shutting down")
+  const update = parseDesktopPowerUpdate(input)
+  keepAwakeWhileRunning = update.keepAwakeWhileRunning
+  scheduleDesktopPowerPersist()
+  if (keepAwakeWhileRunning) {
+    desktopActivityWatcher?.start()
+    desktopActivityWatcher?.recheck()
+  } else {
+    desktopActivityWatcher?.stop()
+    setDesktopPowerActive(false)
+  }
+  broadcastDesktopPower()
+  return desktopPowerSnapshot()
+}
+
+function releaseDesktopPower(): void {
+  desktopActivityWatcher?.stop()
+  desktopActivityWatcher = null
+  desktopPowerGuard?.release()
+  desktopPowerGuard = null
 }
 
 function getDesktopThemeSnapshot(): DesktopThemeSnapshot {
@@ -683,6 +784,12 @@ function registerIpcHandlers() {
       setCount: setDesktopUnreadCount,
     })
   })
+  ipcMain.handle("desktop.power.get", () => desktopPowerSnapshot())
+  ipcMain.handle("desktop.power.set", (_event, input: unknown) => setDesktopPower(input))
+  ipcMain.handle("desktop.power.activityChanged", (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return
+    desktopActivityWatcher?.recheck()
+  })
   ipcMain.handle("desktop.shell.openExternal", async (_event, input: unknown) => {
     const url = parseExternalUrl(input)
     await shell.openExternal(url)
@@ -923,10 +1030,16 @@ updateQuitApp.on("before-quit-for-update", () => {
   isUpdateQuit = true
   isQuitting = true
   setDesktopUnreadCount(0)
+  releaseDesktopPower()
+})
+
+app.on("will-quit", () => {
+  releaseDesktopPower()
 })
 
 app.on("before-quit", (event) => {
   setDesktopUnreadCount(0)
+  releaseDesktopPower()
   if (isUpdateQuit) return
   if (isQuitting) return
   event.preventDefault()
@@ -937,6 +1050,7 @@ app.on("before-quit", (event) => {
       stopLocalComputerBroker(),
       serverManager?.stop() ?? Promise.resolve(),
       zoomWriteQueue,
+      desktopPowerWriteQueue,
     ])
     results.push(...(await Promise.allSettled([nativePagePool?.destroy() ?? Promise.resolve()])))
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -956,6 +1070,7 @@ async function start() {
   await app.whenReady()
   await initializeDesktopTheme()
   await initializeDesktopZoom()
+  await initializeDesktopPower()
   initializeDesktopUnreadAssets()
   installDesktopThemeNativeListener()
   runtimeLog("appReady", { mode: process.env.SYNERGY_DESKTOP_MODE ?? "desktop" })

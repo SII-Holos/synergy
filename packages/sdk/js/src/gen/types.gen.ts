@@ -1707,6 +1707,12 @@ export type AgendaItem = {
   }
 }
 
+export type GlobalActivity = {
+  active: boolean
+  sessions: number
+  backgroundJobs: number
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -12103,6 +12109,31 @@ export type GlobalAgendaListResponses = {
 }
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
+
+export type GlobalActivityData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/activity"
+}
+
+export type GlobalActivityErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalActivityError = GlobalActivityErrors[keyof GlobalActivityErrors]
+
+export type GlobalActivityResponses = {
+  /**
+   * Global activity snapshot
+   */
+  200: GlobalActivity
+}
+
+export type GlobalActivityResponse = GlobalActivityResponses[keyof GlobalActivityResponses]
 
 export type GlobalSessionSearchData = {
   body?: never

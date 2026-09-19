@@ -1,14 +1,8 @@
-export type ToolDiagnosticCode =
-  | "plan_mode_blocked"
-  | "tool_unavailable"
-  | "permission_denied"
-  | "unknown_tool"
-  | "invalid_arguments"
+export type ToolDiagnosticCode = "tool_unavailable" | "permission_denied" | "unknown_tool" | "invalid_arguments"
 
 export interface ToolDiagnostic {
   code: ToolDiagnosticCode
   toolName: string
-  mode?: "plan"
   message: string
   metadata?: Record<string, unknown>
 }

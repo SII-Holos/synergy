@@ -208,7 +208,7 @@ Local child-process completion has a separate output-drain boundary. The parent 
 
 ## Session and Workflow Restrictions
 
-Authorization is also constrained by the current session role. Plan is read-only with respect to project execution. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.
+Authorization is also constrained by the current session role. Plan supplies Blueprint-oriented prompt guidance without restricting tools; the selected control profile remains the authorization boundary. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.
 
 These restrictions are evaluated before the tool implementation. A permissive control profile does not make a tool visible to an agent or remove workflow-specific tool restrictions.
 

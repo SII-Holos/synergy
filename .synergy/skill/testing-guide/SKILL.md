@@ -42,6 +42,8 @@ Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the fi
 
 Cancellation tests must cover the interval after execution ownership releases but before asynchronous ledger reconciliation finishes, preserving interrupted call evidence and the terminal cancellation result.
 
+Capture process-global loop observations by their owning Session ID and assert the target Session's requests. A single last-call variable can be overwritten by unrelated background work; exercise an independent Session and drain the owned Cortex task before restoring loop mocks.
+
 Electron fixtures should launch the resolved Electron executable rather than the npm CLI wrapper so timeout signals reach the owned application. Include cold startup and teardown in the test budget, and retain phase diagnostics on failure.
 
 Browser acceptance tests that combine history navigation with connection recovery must validate the final canonical message state when recovery removes a pending navigation control. Keep errors for controls that remain present, require the latest message to be rendered, and retain reconnect and bounded-window assertions under delayed responses.

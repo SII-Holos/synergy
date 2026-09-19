@@ -21,7 +21,7 @@ import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
 import { SessionTransitionProvider } from "@/context/session-transition"
-import { DesktopThemeSync } from "@/components/app-shell"
+import { DesktopThemeSync, DesktopPowerSync } from "@/components/app-shell"
 
 import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
@@ -221,6 +221,7 @@ function ConnectedApp() {
                         <PluginRouteScope>
                           {(scopeKey) => (
                             <GlobalSyncProvider>
+                              <DesktopPowerSync />
                               <LayoutProvider>
                                 <WorkbenchPanelsProvider>
                                   <PluginHostProvider scopeKey={scopeKey}>

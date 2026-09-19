@@ -206,7 +206,7 @@ describe("ToolResolver auto-expand eligibility", () => {
     })
   })
 
-  test("Plan-mode-blocked tools are never auto-expandable", async () => {
+  test("Plan does not suppress auto-expansion for deferred tools", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -225,8 +225,19 @@ describe("ToolResolver auto-expand eligibility", () => {
           processor: runtimeProcessor(),
           includeMCP: false,
         })
-        expect(resolved.autoExpandable.has(id)).toBe(false)
+        expect(resolved.autoExpandable.has(id)).toBe(true)
         expect(resolved.definitions.some((def) => def.id === id)).toBe(false)
+        expect(
+          (
+            await ToolResolver.availability({
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session: planSession,
+              includeMCP: false,
+            })
+          ).diagnostics.get(id)?.message,
+        ).toContain("Use search_tools or expand_tools")
       },
     })
   })
