@@ -61,6 +61,62 @@ export namespace InstructionFiles {
       .catch(() => false)
   }
 
+  interface CachedFile {
+    fingerprint: string
+    part: string | undefined
+  }
+
+  interface CachedLoad {
+    files: Map<string, CachedFile>
+  }
+
+  // One memo per loaded configuration: Config.state() is keyed by scope and
+  // returns the same value until a reload replaces it, so that value is the
+  // configuration revision. The turn path assembles the system prompt on every
+  // model round, so later rounds reuse the parts read for the first. The
+  // workspace directory separates the workspaces of one scope, and every part is
+  // revalidated against its stat fingerprint before reuse: instruction files are
+  // workspace content, so editing one (which does not reload the configuration)
+  // must still be observed instead of serving stale text for the whole turn.
+  // Remote instruction URLs stay outside the memo because they expose no
+  // equivalent revalidation.
+  const loads = new WeakMap<object, Map<string, CachedLoad>>()
+  let fileReads = 0
+  let fileReuses = 0
+
+  export function stats() {
+    return { fileReads, fileReuses }
+  }
+
+  export function resetStatsForTest() {
+    fileReads = 0
+    fileReuses = 0
+  }
+
+  function loadCache(revision: object): CachedLoad {
+    let byWorkspace = loads.get(revision)
+    if (!byWorkspace) {
+      byWorkspace = new Map()
+      loads.set(revision, byWorkspace)
+    }
+    const key = ScopeContext.current.directory
+    let entry = byWorkspace.get(key)
+    if (!entry) {
+      entry = { files: new Map() }
+      byWorkspace.set(key, entry)
+    }
+    return entry
+  }
+
+  // Identity of a file's bytes for reuse decisions: inode, size, and the
+  // sub-millisecond mtime/ctime pair. A replaced file changes inode; an
+  // equal-size rewrite advances the timestamps.
+  async function fileFingerprint(filepath: string) {
+    const stat = await fs.stat(filepath).catch(() => undefined)
+    if (!stat?.isFile()) return undefined
+    return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`
+  }
+
   async function readInstructionFilePart(filepath: string, maxBytes?: number) {
     if (maxBytes !== undefined && maxBytes <= 0) return undefined
 
@@ -71,6 +127,23 @@ export namespace InstructionFiles {
     const text = new TextDecoder().decode(limited)
     if (!text.trim()) return undefined
     return `Instructions from: ${filepath}\n${text}`
+  }
+
+  async function cachedInstructionFilePart(cache: CachedLoad, filepath: string, maxBytes?: number) {
+    if (maxBytes !== undefined && maxBytes <= 0) return undefined
+
+    const fingerprint = await fileFingerprint(filepath)
+    const key = `${maxBytes ?? "all"}\0${filepath}`
+    const cached = fingerprint === undefined ? undefined : cache.files.get(key)
+    if (cached && cached.fingerprint === fingerprint) {
+      fileReuses++
+      return cached.part
+    }
+
+    fileReads++
+    const part = await readInstructionFilePart(filepath, maxBytes)
+    if (fingerprint !== undefined) cache.files.set(key, { fingerprint, part })
+    return part
   }
 
   async function discoverProjectPaths(config: Config.Info) {
@@ -110,7 +183,11 @@ export namespace InstructionFiles {
     return undefined
   }
 
-  async function loadExplicitInstructions(instructions: string[] | undefined, excludedPaths: Set<string>) {
+  async function loadExplicitInstructions(
+    instructions: string[] | undefined,
+    excludedPaths: Set<string>,
+    cache: CachedLoad,
+  ) {
     if (!instructions) return []
 
     const paths = new Set<string>()
@@ -144,7 +221,7 @@ export namespace InstructionFiles {
       })
     }
 
-    const foundFiles = Array.from(paths).map((filepath) => readInstructionFilePart(filepath))
+    const foundFiles = Array.from(paths).map((filepath) => cachedInstructionFilePart(cache, filepath))
     const foundUrls = urls.map((url) =>
       fetch(url, { signal: AbortSignal.timeout(5000) })
         .then((res) => (res.ok ? res.text() : ""))
@@ -182,16 +259,17 @@ export namespace InstructionFiles {
   }
 
   export async function load() {
-    const config = await Config.current()
+    const [revision, config] = await Promise.all([Config.state(), Config.current()])
+    const cache = loadCache(revision)
     const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
     const projectPaths = maxBytes <= 0 ? [] : await discoverProjectPaths(config)
     const globalPath = maxBytes <= 0 ? undefined : await discoverGlobalPath()
     const automaticPaths = globalPath ? [globalPath, ...projectPaths] : projectPaths
 
     const automaticParts = await Promise.all(
-      automaticPaths.map((filepath) => readInstructionFilePart(filepath, maxBytes)),
+      automaticPaths.map((filepath) => cachedInstructionFilePart(cache, filepath, maxBytes)),
     )
-    const explicitParts = await loadExplicitInstructions(config.instructions, new Set(automaticPaths))
+    const explicitParts = await loadExplicitInstructions(config.instructions, new Set(automaticPaths), cache)
     return dedupeParts([...automaticParts.filter((part): part is string => !!part), ...explicitParts])
   }
 }

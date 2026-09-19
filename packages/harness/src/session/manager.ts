@@ -704,6 +704,16 @@ export namespace SessionManager {
     return Array.from(runtimes.values()).filter(occupied)
   }
 
+  /**
+   * Sessions that currently hold a registered runtime: open in this process,
+   * either running or idle between turns. Retention treats every one as live,
+   * because an idle runtime is still resumable and its newest evidence must
+   * survive until the runtime is swept.
+   */
+  export function liveSessionIDs(): string[] {
+    return [...runtimes.keys()]
+  }
+
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {
     const result: Record<string, StatusInfo> = {}
     for (const runtime of runtimes.values()) {
@@ -718,10 +728,14 @@ export namespace SessionManager {
       }
       result[runtime.sessionID] = runtime.status
     }
-    if (scopeID) {
-      const { SessionRecovery } = await import("./recovery")
-      const recovered = await SessionRecovery.recoverableStatuses(scopeID).catch((error) => {
-        log.warn("failed to resolve recoverable session statuses", { scopeID, error })
+    const { SessionNav } = await import("./nav")
+    const { SessionRecovery } = await import("./recovery")
+    const scopeIDs = scopeID ? [scopeID] : await SessionNav.getAllScopeIDs()
+    // Sequential like the other cross-scope scans: each scope reads session records from the same
+    // store, so parallel scans only contend.
+    for (const id of scopeIDs) {
+      const recovered = await SessionRecovery.recoverableStatuses(id).catch((error) => {
+        log.warn("failed to resolve recoverable session statuses", { scopeID: id, error })
         return {}
       })
       for (const [sessionID, status] of Object.entries(recovered)) {

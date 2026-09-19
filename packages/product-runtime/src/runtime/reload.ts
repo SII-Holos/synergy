@@ -18,6 +18,11 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import type { Skill } from "@ericsanchezok/synergy-runtime-local/skill/skill"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
+import {
+  recordAgentPoolSize,
+  resolveAgentWorkerCapacity,
+} from "@ericsanchezok/synergy-harness/execution/execution-config"
+import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 
 export namespace RuntimeReload {
   export const Target = RuntimeSchema.ReloadTarget
@@ -342,17 +347,11 @@ export namespace RuntimeReload {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
           Experiment.updateRuntime({ cortex: { maxConcurrentTasks: CortexConcurrency.desiredGlobalLimit() } })
         }
-        if (
-          resolvedScope === "global" &&
-          changedFields.includes("execution") &&
-          oldConfig.execution?.agentWorkers !== result.config.execution?.agentWorkers
-        ) {
-          AgentTurn.resize(result.config.execution?.agentWorkers)
-          Experiment.updateRuntime({
-            execution: {
-              agentWorkers: result.config.execution?.agentWorkers ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.size,
-            },
-          })
+        if (resolvedScope === "global" && changedFields.includes("execution")) {
+          const capacity = resolveAgentWorkerCapacity(result.config, ScopeStartup.resident() ? "server" : "oneshot")
+          AgentTurn.resize(capacity.size)
+          recordAgentPoolSize(capacity)
+          Experiment.updateRuntime({ execution: { agentWorkers: capacity.size } })
           ctx.liveApplied.add("execution.agentWorkers")
         }
         if (resolvedScope === "global" && changedFields.includes("embedding")) {

@@ -75,7 +75,7 @@ export const ListTool = Tool.define("list", {
 
     if (timedOut) {
       throw new Error(
-        `list stopped after ${TIMEOUT_MS}ms before completing the listing.\n` +
+        `list stopped after ${TIMEOUT_MS / 1_000}s before completing the listing.\n` +
           `The directory may be too large. Specify a more specific path or add ignore patterns.`,
       )
     }

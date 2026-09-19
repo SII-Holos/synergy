@@ -17,9 +17,9 @@ function toPayload(params: ProcessParams): SynergyLinkProcess.ExecutePayload {
       if (!params.processId) throw new Error("processId is required for poll")
       if (params.block) {
         const timeout =
-          params.timeout === undefined
+          params.timeoutSeconds === undefined
             ? REMOTE_MAX_BLOCKING_POLL_SECONDS
-            : Math.min(params.timeout, REMOTE_MAX_BLOCKING_POLL_SECONDS)
+            : Math.min(params.timeoutSeconds, REMOTE_MAX_BLOCKING_POLL_SECONDS)
         return { action: "poll", processId: params.processId, block: true, timeout }
       }
       return { action: "poll", processId: params.processId, block: false }

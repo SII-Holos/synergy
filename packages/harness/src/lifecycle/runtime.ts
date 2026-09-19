@@ -4,6 +4,7 @@ import { Storage } from "../storage/storage"
 import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
 import { SessionCompat } from "../session/compat-import"
+import { StorageRetention } from "../storage/retention"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -96,6 +97,7 @@ export namespace RuntimeHandle {
             errors.push(error)
           }
         }
+        await cleanup(() => StorageRetention.stop())
         await cleanup(() => services.reload?.stop())
         closeAdmission()
         if (residentStarted) await cleanup(() => services.resident?.stop())
@@ -196,6 +198,13 @@ export namespace RuntimeHandle {
       ObservabilityConfig.refresh(config)
       ObservabilityStore.open()
       ObservabilityResources.start()
+      StorageRetention.schedule({
+        current: () => ({
+          retentionMs: ObservabilityConfig.current().storage.retentionMs,
+          maxBytes: ObservabilityConfig.current().storage.maxSqliteBytes,
+        }),
+        liveSessionIDs: () => SessionManager.liveSessionIDs(),
+      })
       if (options.mode === "server") {
         // First-message latency: warm the execution pools and tokenizer while
         // transport and resident services initialize, so the first turn or
