@@ -180,14 +180,22 @@ export const ObservabilityConfig = z
               .int()
               .positive()
               .optional()
-              .describe("Maximum total authoritative storage bytes (default: 250MB)"),
+              .describe("Maximum bytes for the local observability database (default: 250MB)"),
+            retentionBytes: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.",
+              ),
             retentionMs: z
               .number()
               .int()
               .min(0)
               .optional()
               .describe(
-                "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
+                "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.",
               ),
             walCheckpointIntervalMs: z.number().int().positive().optional(),
           })

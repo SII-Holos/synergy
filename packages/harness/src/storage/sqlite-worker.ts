@@ -35,6 +35,11 @@ process.on("message", (request: SqliteRequest) => {
         writer.run("PRAGMA auto_vacuum = INCREMENTAL")
         writer.run("PRAGMA journal_mode = WAL")
         writer.run("PRAGMA synchronous = FULL")
+        // The WAL is recycled by the automatic PASSIVE checkpoint; this bounds
+        // how much disk it may occupy before that checkpoint shortens the file,
+        // which is what the scheduled reclaim used to force with a blocking
+        // TRUNCATE checkpoint.
+        writer.run("PRAGMA journal_size_limit = 67108864")
       }
       reader = new Database(request.filename!, { readonly: true, strict: true, safeIntegers: true })
       reader.run("PRAGMA busy_timeout = 5000")

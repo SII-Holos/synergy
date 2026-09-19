@@ -59,6 +59,8 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0017 | Unmapped certificate failure terminated a long child task | implemented | 2026-09-19 |
 | 0018 | Host suspend pinned a session in recovering | implemented | 2026-09-19 |
 
+| 0019 | Retention maintenance stalled the live writer | implemented | 2026-09-19 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

@@ -149,22 +149,23 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
   // derived from every read-deny home — the OS home plus the Synergy
   // runtime home when it differs — so custom SYNERGY_HOME installs keep
   // their provider/MCP/account/plugin stores protected, and explicit
-  // non-default dataDenyRoots merge in. A deny equal to or inside the
-  // workspace or a writable root is dropped (a project's own files must
-  // stay readable), but a deny CONTAINING them is kept: the compiled
-  // writable-root allow is deeper than the ancestor subpath deny and wins
-  // under most-specific-match, so a workspace nested in a credential
-  // directory works while its credential siblings stay unreadable.
-  const readDenyScope = [input.workspace, ...writableRoots].map((root) => normalizeSlashes(root))
+  // non-default dataDenyRoots merge in.
+  //
+  // Only a deny EQUAL to the workspace is dropped: a Scope directory rooted
+  // exactly at a credential path cannot deny itself without making the
+  // project's own files unreadable. A deny inside the workspace or a writable
+  // root is kept — pruning those is what silently re-exposed credentials
+  // whenever a workspace was rooted at the OS home or a trusted root
+  // contained a credential directory. Making each kept deny effective is the
+  // backend's job, via rule or mount order; a backend must never be handed a
+  // set that has already given up.
+  const workspaceDeny = normalizeSlashes(input.workspace)
   const defaultHomeDeny = normalizeSlashes(homedir)
   const explicitDataDenyRoots = (input.dataDenyRoots ?? []).filter((p) => normalizeSlashes(p) !== defaultHomeDeny)
   const readDenyPaths = uniqueRoots([
     ...readDenyHomeDirs().flatMap((home) => READ_DENY_PATHS(home)),
     ...explicitDataDenyRoots,
-  ]).filter((p) => {
-    const normalized = normalizeSlashes(p)
-    return !readDenyScope.some((root) => root === normalized || normalized.startsWith(root + "/"))
-  })
+  ]).filter((p) => normalizeSlashes(p) !== workspaceDeny)
   const fileSystem: SynergyFileSystemSandboxPolicy = {
     readableRoots,
     writableRoots,

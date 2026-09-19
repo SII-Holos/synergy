@@ -387,6 +387,31 @@ describe("mergeNavListByID", () => {
     expect(merged.items.map((item) => item.id)).toEqual(["b", "c"])
     expect(merged.total).toBe(2)
   })
+
+  test("clears identity fields the authoritative page omits", () => {
+    const previous: NavEntry = {
+      ...entry({ id: "session" }),
+      blueprint: { loopID: "bll_1", loopRole: "execution", phase: "running" },
+      workspaceType: "git_worktree",
+      workflow: { kind: "lightloop", active: true },
+    }
+    const next = entry({ id: "session", lastActivityAt: 20 })
+
+    const merged = mergeNavListByID(list([previous]), list([next]))
+
+    expect(merged.items[0].blueprint).toBeUndefined()
+    expect(merged.items[0].workspaceType).toBeUndefined()
+    expect(merged.items[0].workflow).toBeUndefined()
+  })
+
+  test("keeps an identity field the authoritative page still carries", () => {
+    const previous: NavEntry = { ...entry({ id: "session" }), blueprint: { loopID: "bll_1" } }
+    const next: NavEntry = { ...entry({ id: "session" }), blueprint: { loopID: "bll_2", phase: "auditing" } }
+
+    const merged = mergeNavListByID(list([previous]), list([next]))
+
+    expect(merged.items[0].blueprint).toEqual({ loopID: "bll_2", phase: "auditing" })
+  })
 })
 
 describe("navUpdateFromSession", () => {
@@ -431,6 +456,21 @@ describe("navUpdateFromSession", () => {
 
   test("marks archived when time.archived is set", () => {
     expect(navUpdateFromSession({ id: "s1", time: { archived: 999 } }).archived).toBe(true)
+  })
+
+  test("omits identity keys when the event carries no nav projection", () => {
+    const u = navUpdateFromSession({ id: "s1", time: { updated: 5 } })
+
+    expect("blueprint" in u).toBe(false)
+    expect("workspaceType" in u).toBe(false)
+    expect("workflow" in u).toBe(false)
+  })
+
+  test("carries identity keys, including a cleared one, when a nav projection is provided", () => {
+    const u = navUpdateFromSession({ id: "s1", time: { updated: 5 } }, entry({ id: "s1" }))
+
+    expect("blueprint" in u).toBe(true)
+    expect(u.blueprint).toBeUndefined()
   })
 })
 
@@ -493,6 +533,33 @@ describe("applySessionToNavList", () => {
     expect(updated.completionNotice.unread).toBe(true)
     expect(updated.completionNotice.unreadCount).toBe(2)
     expect(updated.lastActivityAt).toBe(50)
+  })
+
+  test("clears identity the projected update no longer carries", () => {
+    const seeded: NavEntry = {
+      ...entry({ id: "a" }),
+      blueprint: { loopID: "bll_1", loopRole: "execution", phase: "running" },
+      workspaceType: "git_worktree",
+      workflow: { kind: "lightloop", active: true },
+    }
+    const r = applySessionToNavList(
+      list([seeded]),
+      navUpdateFromSession({ id: "a", time: { updated: 5 } }, entry({ id: "a", lastActivityAt: 5 })),
+    )
+
+    expect(r.list.items[0].blueprint).toBeUndefined()
+    expect(r.list.items[0].workspaceType).toBeUndefined()
+    expect(r.list.items[0].workflow).toBeUndefined()
+  })
+
+  test("preserves identity when the event carries no nav projection", () => {
+    const seeded: NavEntry = {
+      ...entry({ id: "a" }),
+      blueprint: { loopID: "bll_1", loopRole: "execution", phase: "running" },
+    }
+    const r = applySessionToNavList(list([seeded]), navUpdateFromSession({ id: "a", time: { updated: 5 } }))
+
+    expect(r.list.items[0].blueprint).toEqual({ loopID: "bll_1", loopRole: "execution", phase: "running" })
   })
 })
 

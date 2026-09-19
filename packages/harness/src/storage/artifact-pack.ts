@@ -12,7 +12,7 @@ function digest(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex")
 }
 export class ArtifactPack {
-  private readonly queue = new StorageQueue()
+  private readonly queue = new StorageQueue("artifact.pack")
   private readonly active = new Map<string, { name: string; bytes: number }>()
   private ready = false
   constructor(private readonly root: string) {}
