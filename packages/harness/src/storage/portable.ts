@@ -8,6 +8,7 @@ import type { StoreTransaction, TransactionalStore } from "./transactional-store
 import { StorageIntegrityError } from "./errors"
 import type { StorageStartupProgress } from "@ericsanchezok/synergy-util/runtime-startup"
 import { observeStorageProgress } from "./progress"
+import { StorageCompat } from "./compat"
 
 export const StorageEntry = z.discriminatedUnion("type", [
   z
@@ -66,6 +67,7 @@ const MAX_LINE_BYTES = 32 * 1024 * 1024
 
 export namespace StoragePortable {
   export async function exportFile(store: TransactionalStore, filename: string) {
+    await StorageCompat.assertConverged(store)
     await fs.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 })
     const temporary = `${filename}.tmp-${randomUUID()}`
     const file = await fs.open(temporary, "wx", 0o600)
@@ -75,6 +77,7 @@ export namespace StoragePortable {
       await file.writeFile(JSON.stringify({ format: "synergy-agent-data", version: 2 }) + "\n")
       await store.snapshot(async (tx) => {
         for await (const entry of tx.exportEntries()) {
+          if ((entry.type === "record" || entry.type === "artifact") && entry.key[0] === "compat_import") continue
           const line = JSON.stringify(entry) + "\n"
           if (Buffer.byteLength(line) > MAX_LINE_BYTES)
             throw new StorageIntegrityError("Portable record exceeds the supported byte limit")

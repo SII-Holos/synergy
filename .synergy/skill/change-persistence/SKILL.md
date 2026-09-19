@@ -48,6 +48,8 @@ Register optional session fields, creation/import hooks and indexes through the 
 
 Recovery indexes must stay absent or untrusted until a complete recovery pass establishes their baseline. Exercise migration-time writes before that first pass with unrelated historical owners; a new write must not create a partial index that hides older work. Re-arm a clean-shutdown index only after execution drains and transport shutdown succeed.
 
+Deferred imports must join the complete registered migration graph before a migration can mark its input cohort complete. Prefer staging unresolved records before the central runner over a parallel replay registry. Keep pending projections out of index writers, import recovery-eligible owners before startup recovery, block portable transfer while any owner remains unresolved, and drain Handle-owned background import work before shutdown. Test these boundaries with current-schema archived cohorts and actual historical writer fixtures.
+
 ## File Snapshot Storage
 
 When changing snapshot Git commands, verify them with an actual supported older Git executable as well as the current version. Run the snapshot suites with that executable first on `PATH`; keep test homes isolated. Initialization must select and verify SHA-1 before publishing repository metadata, preserve existing objects, and retain exit code and stderr on failure. Avoid introducing a version-specific CLI option when the same operation has a compatible form.

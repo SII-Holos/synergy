@@ -13,6 +13,7 @@
     "./scope/context": "./src/scope/context.ts",
     "./storage/sqlite-worker": "./src/storage/sqlite-worker.ts",
     "./storage/bootstrap": "./src/storage/bootstrap.ts",
+    "./storage/compat": "./src/storage/compat.ts",
     "./storage/transactional-store": "./src/storage/transactional-store.ts",
     "./storage/path": "./src/storage/path.ts",
     "./config/config": "./src/config/config.ts",

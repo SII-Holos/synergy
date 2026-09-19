@@ -111,6 +111,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/app-shell/model-unavailable-banner.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
           "glob": "src/components/attachment-workbench/content.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },

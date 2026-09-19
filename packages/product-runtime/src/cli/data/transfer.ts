@@ -7,6 +7,7 @@ import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstr
 import { authorityRecordRoots, StoragePortable } from "@ericsanchezok/synergy-harness/storage/portable"
 import { legacyRecordKey } from "@ericsanchezok/synergy-harness/storage/legacy-import"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
 import {
@@ -22,7 +23,14 @@ const derived = new Set([
   "session_child_index",
   "session_nav_v2",
 ])
-const local = new Set(["storage_meta", "storage_import", "storage_import_files", "storage_staging", "storage_transfer"])
+const local = new Set([
+  "storage_meta",
+  "storage_import",
+  "storage_import_files",
+  "storage_staging",
+  "storage_transfer",
+  "compat_import",
+])
 
 export namespace DataTransfer {
   export async function lockHomes(roots: string[]) {
@@ -91,7 +99,9 @@ export namespace DataTransfer {
     if (!source) throw new Error("Source storage has not been initialized")
     let target: StorageBootstrap.Prepared | undefined
     try {
+      await StorageCompat.assertConverged(source.store)
       target = await StorageBootstrap.prepare({ root: targetRoot })
+      await StorageCompat.assertConverged(target.store)
       const skipped = new Set<string>()
       for (const scopeID of await target.store.scan(["sessions"]))
         for (const id of await target.store.scan(["sessions", scopeID])) skipped.add(id)
