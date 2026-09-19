@@ -93,6 +93,7 @@ describe("ensureTitle", () => {
 
         expect(captured?.agent).toBe("title")
         expect(captured?.retries).toBe(3)
+        expect(captured?.timeoutMs).toBe(120_000)
         expect(captured?.maxOutputChars).toBe(200)
         expect(captured?.sessionId).toBe(session.id)
         expect(captured?.user?.id).toBe(user.id)
@@ -218,6 +219,8 @@ describe("ensureTitle", () => {
         expect(captured?.user?.id).toBe(user.id)
         const updated = await Session.get(session.id)
         expect(updated?.title).toBe("Late generated title")
+        expect(JSON.stringify(captured?.messages)).toContain("Hello")
+        expect(JSON.stringify(captured?.messages)).not.toContain("Second user message")
       },
     })
   })
