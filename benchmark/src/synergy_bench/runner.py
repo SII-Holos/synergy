@@ -185,6 +185,7 @@ def _initialize(path: Path) -> Path:
                     "http://benchmark.invalid/v1",
                     "/logs/agent/home",
                     merge_system_messages=variant.merge_system_messages,
+                    strip_reasoning=variant.strip_reasoning,
                 )
                 settings.update(generated["config"])
             settings = {"controlProfile": "full_access", **settings}
@@ -578,6 +579,7 @@ def trial_configuration(
             "/logs/agent/home",
             bun_jit=variant.get("bun_jit"),
             merge_system_messages=variant.get("merge_system_messages"),
+            strip_reasoning=variant.get("strip_reasoning"),
         )
         if variant["harness"] == "synergy":
             settings = read_json(inputs / "config.json")

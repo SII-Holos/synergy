@@ -540,6 +540,7 @@ export namespace LLM {
                     viewImageAvailable: input.activeToolIDs?.includes("view_image") === true,
                     profileID: prepared.provider.profileID,
                     mergeSystemMessages: prepared.provider.options?.mergeSystemMessages === true,
+                    stripReasoning: prepared.provider.options?.stripReasoning === true,
                   })
                 }
                 return args.params

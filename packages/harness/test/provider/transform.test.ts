@@ -452,6 +452,85 @@ describe("ProviderTransform.message - mergeSystemMessages option", () => {
   })
 })
 
+describe("ProviderTransform.message - stripReasoning option", () => {
+  const strictModel = {
+    id: "sii-qwen/Qwen3.8-27B",
+    providerID: "sii-qwen",
+    api: {
+      id: "Qwen3.8-27B",
+      url: "https://sii.example/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Qwen3.8 27B",
+    capabilities: { toolcall: true },
+    options: {},
+    headers: {},
+  } as any
+
+  const reasoningTurns = [
+    { role: "system", content: "agent prompt" },
+    { role: "user", content: "do the thing" },
+    {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "long deliberation one" },
+        { type: "text", text: "running the tool" },
+        { type: "tool-call", toolCallId: "call_1", toolName: "bash", input: { command: "ls" } },
+      ],
+    },
+    { role: "tool", content: "output", toolCallId: "call_1" },
+    {
+      role: "assistant",
+      content: [{ type: "reasoning", text: "long deliberation two" }],
+    },
+    { role: "user", content: "continue" },
+  ] as any[]
+
+  test("keeps reasoning parts by default", () => {
+    const result = ProviderTransform.message(reasoningTurns, strictModel)
+    const reasoning = result.flatMap((msg) =>
+      Array.isArray(msg.content) ? msg.content.filter((part: any) => part.type === "reasoning") : [],
+    )
+    expect(reasoning).toHaveLength(2)
+  })
+
+  test("strips reasoning parts from replayed assistant history when enabled", () => {
+    const result = ProviderTransform.message(reasoningTurns, strictModel, { stripReasoning: true })
+    for (const msg of result) {
+      if (!Array.isArray(msg.content)) continue
+      for (const part of msg.content) {
+        expect(part.type).not.toBe("reasoning")
+      }
+    }
+    const first = result[2]
+    if (!Array.isArray(first.content)) throw new Error("Expected multipart message content")
+    expect(first.content.map((part: any) => part.type)).toEqual(["text", "tool-call"])
+    expect((first.content[0] as any).text).toBe("running the tool")
+  })
+
+  test("collapses a reasoning-only assistant turn to empty string content", () => {
+    const result = ProviderTransform.message(reasoningTurns, strictModel, { stripReasoning: true })
+    const reasoningOnly = result[4]
+    expect(reasoningOnly.role).toBe("assistant")
+    expect(reasoningOnly.content).toBe("")
+  })
+
+  test("leaves the interleaved reasoning_content replay empty instead of echoing deliberation", () => {
+    const interleavedModel = {
+      ...strictModel,
+      capabilities: {
+        toolcall: true,
+        interleaved: { field: "reasoning_content" },
+      },
+    }
+    const result = ProviderTransform.message(reasoningTurns, interleavedModel, { stripReasoning: true })
+    const withToolCall = result[2]
+    expect(withToolCall.providerOptions?.openaiCompatible?.reasoning_content).toBe("")
+    const reasoningOnly = result[4]
+    expect(reasoningOnly.providerOptions?.openaiCompatible?.reasoning_content).toBeUndefined()
+  })
+})
+
 describe("ProviderTransform.maxOutputTokens", () => {
   test("returns output cap when modelLimit exceeds cap", () => {
     const modelLimit = 500000

@@ -130,6 +130,25 @@ def test_synergy_merge_system_messages_is_a_named_harness_condition():
         HarnessProfile(kind="synergy", merge_system_messages="true")
 
 
+def test_synergy_strip_reasoning_is_a_named_harness_condition():
+    from synergy_bench.config import HarnessProfile
+
+    value = matrix_config()
+    value["harnesses"] = {
+        "baseline": {"kind": "synergy"},
+        "stripped": {"kind": "synergy", "strip_reasoning": True},
+    }
+    config = ExperimentConfig.model_validate(value)
+    for model in value["models"]:
+        assert config.variants[f"baseline__{model}"].strip_reasoning is None
+        assert config.variants[f"stripped__{model}"].strip_reasoning is True
+    assert ExperimentConfig.model_validate(config.model_dump()) == config
+    with pytest.raises(ValueError, match="strip_reasoning.*synergy"):
+        HarnessProfile(kind="pi", strip_reasoning=True)
+    with pytest.raises(ValueError):
+        HarnessProfile(kind="synergy", strip_reasoning="true")
+
+
 def test_profile_rejects_unmapped_or_transport_overriding_parameters():
     import pytest
 

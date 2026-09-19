@@ -31,6 +31,7 @@ def harness_configuration(
     *,
     bun_jit: bool | None = None,
     merge_system_messages: bool | None = None,
+    strip_reasoning: bool | None = None,
 ) -> dict[str, Any]:
     files: dict[str, str] = {}
     env: dict[str, str] = {
@@ -48,6 +49,9 @@ def harness_configuration(
     if merge_system_messages is not None:
         if kind != "synergy" or type(merge_system_messages) is not bool:
             raise ValueError("merge_system_messages requires an explicit boolean for synergy")
+    if strip_reasoning is not None:
+        if kind != "synergy" or type(strip_reasoning) is not bool:
+            raise ValueError("strip_reasoning requires an explicit boolean for synergy")
     protocol = "responses" if kind == "codex" else model.protocol
     api = "openai-completions" if protocol == "chat-completions" else "openai-responses"
     name = model.model
@@ -88,6 +92,8 @@ def harness_configuration(
         if kind == "synergy":
             if merge_system_messages is not None:
                 options["mergeSystemMessages"] = merge_system_messages
+            if strip_reasoning is not None:
+                options["stripReasoning"] = strip_reasoning
             config["controlProfile"] = "full_access"
             for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
                 config[f"{role}_model"] = f"benchmark/{name}"
