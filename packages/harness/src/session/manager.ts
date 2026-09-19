@@ -714,6 +714,23 @@ export namespace SessionManager {
     return [...runtimes.keys()]
   }
 
+  /**
+   * Number of registered runtimes whose status is not idle. An in-memory,
+   * allocation-and-IO-free read over this process's runtimes only: no storage
+   * access and no cross-scope recovery scan, unlike listStatuses(), whose
+   * no-scope path reads every scope's recoverable sessions from disk. A session
+   * still queued for recovery after a restart is not counted until it actually
+   * begins executing. Intended for cheap polling (e.g. the Desktop keep-awake
+   * predicate) that must not scale with scope or session counts.
+   */
+  export function activeRuntimeCount(): number {
+    let count = 0
+    for (const runtime of runtimes.values()) {
+      if (runtime.status.type !== "idle") count++
+    }
+    return count
+  }
+
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {
     const result: Record<string, StatusInfo> = {}
     for (const runtime of runtimes.values()) {
