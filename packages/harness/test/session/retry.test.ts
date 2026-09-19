@@ -5,6 +5,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { APICallError } from "ai"
 import { ProviderAuthRecovery } from "../../src/provider/auth-recovery"
 import { ProviderModelUnavailableError } from "../../src/provider/model-unavailable-error"
+import { StorageBusyError } from "../../src/storage/errors"
 
 function apiError(headers?: Record<string, string>): MessageV2.APIError {
   return new MessageV2.APIError({
@@ -428,4 +429,15 @@ test("does not persist a credentialed endpoint path in error metadata", () => {
   expect(metadata.endpointHost).toBe(endpointHost)
   expect(serialized).not.toContain("/v2/sk-")
   expect(Object.values(metadata).every((value) => !value.includes("sk-"))).toBe(true)
+})
+
+// A rejected request is not corrupted evidence: the queue drains and the same
+// turn succeeds, so storage pressure must stay inside the retry budget rather
+// than terminalizing the session.
+test("retries a turn rejected by authoritative storage pressure", () => {
+  for (const message of ["Authoritative storage admission deadline exceeded", "Authoritative storage queue is full"]) {
+    const parsed = MessageV2.fromError(new StorageBusyError(message), { providerID: "test" })
+    expect(parsed.name).toBe("UnknownError")
+    expect(SessionRetry.retryable(parsed)?.message).toBe("Authoritative storage is busy; retrying")
+  }
 })

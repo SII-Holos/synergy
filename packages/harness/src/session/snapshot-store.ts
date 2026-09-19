@@ -257,10 +257,11 @@ export namespace SnapshotStore {
       return owned
     }
     const prefix = `refs/synergy/snapshots/${component(sessionID)}/`
-    const text = await command(repo, ["for-each-ref", "--format=%(objectname)", prefix])
+    const requested = new Set(valid)
+    const text = await command(repo, ["for-each-ref", "--format=%(refname) %(objectname)", prefix])
     for (const line of text.split("\n")) {
-      const hash = line.trim()
-      if (OID.test(hash)) owned.add(hash)
+      const [ref, hash] = line.trim().split(" ")
+      if (requested.has(hash) && ref === reference(sessionID, hash)) owned.add(hash)
     }
     return owned
   }

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
@@ -23,6 +23,8 @@ describe("session fork artifact copy", () => {
             time: { created: 0 },
           })
           const outputs: string[] = []
+          let active = 0
+          let peak = 0
           for (let index = 0; index < 12; index++) {
             const output = `tool-${index}-${"x".repeat(200_000)}`
             outputs.push(output)
@@ -41,7 +43,7 @@ describe("session fork artifact copy", () => {
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
               finish: "stop",
             })
-            await Session.updatePart({
+            const toolPart = await Session.updatePart({
               id: Identifier.ascending("part"),
               sessionID: source.id,
               messageID: assistant.id,
@@ -57,8 +59,21 @@ describe("session fork artifact copy", () => {
                 time: { start: 0, end: 1 },
               },
             })
+            if (toolPart.type !== "tool") throw new Error("Expected a tool part")
+            await Session.updatePart({ ...toolPart, id: Identifier.ascending("part"), callID: `copy-${index}` })
           }
-          const fork = await Session.fork({ sessionID: source.id })
+          const copy = RolloutArtifact.copy
+          const copying = spyOn(RolloutArtifact, "copy").mockImplementation(async (...args) => {
+            active++
+            peak = Math.max(peak, active)
+            try {
+              await new Promise((resolve) => setImmediate(resolve))
+              return await copy(...args)
+            } finally {
+              active--
+            }
+          })
+          const fork = await Session.fork({ sessionID: source.id }).finally(() => copying.mockRestore())
           try {
             const messages = await Session.messages({ sessionID: fork.id })
             const tools = messages.flatMap((message) => message.parts)
@@ -89,7 +104,10 @@ describe("session fork artifact copy", () => {
               scopeID: scope.id,
               sessionID: fork.id,
             })
-            expect(forkArtifacts.length).toBe(outputs.length)
+            expect(forkArtifacts.length).toBe(outputs.length * 2)
+            expect(peak).toBeGreaterThan(1)
+            expect(peak).toBeLessThanOrEqual(8)
+            expect(active).toBe(0)
             const sourceIds = new Set(sourceArtifacts.map((ref) => ref.id))
             for (const ref of forkArtifacts) expect(sourceIds.has(ref.id)).toBe(false)
           } finally {

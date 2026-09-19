@@ -109,6 +109,26 @@ test("retention leaves everything alone while the database is inside its byte bu
   await evidenceSurvives(store, "scope", "ses_under_budget")
 })
 
+// A budget below what the retention window can reach is a configuration
+// problem, not a pruning problem: deleting more cannot converge on it, so a
+// pass must report the condition instead of repeating destructive work forever.
+test("an unreachable budget reports infeasible instead of pruning", async () => {
+  await using tmp = await fixture()
+  const { store } = tmp
+  await writeEvidence(store, "scope", "ses_recent")
+
+  const report = await Storage.provide({ store, artifactDirectory: path.dirname(tmp.filename) }, () =>
+    StorageRetention.run({ retentionMs: RETENTION, maxBytes: 1, liveSessionIDs: [] }),
+  )
+
+  expect(report.infeasible).toBe(true)
+  expect(report.capped).toBe(true)
+  expect(report.pruned).toEqual([])
+  expect(report.deletedRecords).toBe(0)
+  // The window's protection still wins over the byte budget.
+  await evidenceSurvives(store, "scope", "ses_recent")
+})
+
 test("pruning an expired owner reclaims records and node paths without touching live owners", async () => {
   await using tmp = await fixture()
   const { store } = tmp

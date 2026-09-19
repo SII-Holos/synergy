@@ -135,6 +135,7 @@ Performance settings extend the existing runtime observability domain in `120-ru
         "sqliteEnabled": true,
         "jsonlMirrorEnabled": false,
         "maxSqliteBytes": 262144000,
+        "retentionBytes": 42949672960,
         "walCheckpointIntervalMs": 60000,
       },
     },

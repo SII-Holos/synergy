@@ -79,3 +79,23 @@ test("adopt creates a ref for every retained snapshot", async () => {
     },
   })
 })
+
+test("ownsMany requires the requested hash's exact reference", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const scope = await tmp.scope()
+  await ScopeContext.provide({
+    scope,
+    fn: async () => {
+      const session = await Session.create({ scope })
+      await Bun.write(path.join(tmp.path, "file.txt"), "first")
+      const first = (await Snapshot.track(session.id))!
+      await Bun.write(path.join(tmp.path, "file.txt"), "second")
+      const second = (await Snapshot.track(session.id))!
+      const repo = SnapshotStore.repository(scope.id)
+      await SnapshotStore.command(repo, ["update-ref", SnapshotStore.reference(session.id, first), second])
+      await SnapshotStore.command(repo, ["update-ref", "-d", SnapshotStore.reference(session.id, second)])
+      expect(await SnapshotStore.owns(scope.id, session.id, second)).toBe(false)
+      expect(await SnapshotStore.ownsMany(scope.id, session.id, [first, second])).toEqual(new Set())
+    },
+  })
+})

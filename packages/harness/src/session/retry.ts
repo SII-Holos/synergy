@@ -5,6 +5,12 @@ import { retryAfterMs, retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { classifyNetworkError } from "@ericsanchezok/synergy-util/network-error"
 import { providerRetryable } from "../provider/retry"
 
+// Authoritative storage pressure rejects the request without corrupting it:
+// the queue drains and the same turn succeeds. The persisted error is a
+// serialized UnknownError whose message carries the original name, so the
+// prefix is what identifies the condition here.
+const STORAGE_BUSY_PREFIX = /^(?:Error: )?StorageBusyError(?::|$)/
+
 export type RetryDecision = { message: string; maxAttempts: number }
 
 export namespace SessionRetry {
@@ -39,6 +45,8 @@ export namespace SessionRetry {
     const rawMessage = typeof error?.data?.message === "string" ? error.data.message : ""
     if (error.name === "UnknownError" && /^(?:Error: )?Agent worker exited(?: \(|$)/.test(rawMessage))
       return { message: "Agent worker restarted", maxAttempts: RETRY_MAX_ATTEMPTS }
+    if (error.name === "UnknownError" && STORAGE_BUSY_PREFIX.test(rawMessage))
+      return { message: "Authoritative storage is busy; retrying", maxAttempts: RETRY_MAX_ATTEMPTS }
 
     if (MessageV2.APIError.isInstance(error)) {
       if (!error.data.isRetryable) return undefined

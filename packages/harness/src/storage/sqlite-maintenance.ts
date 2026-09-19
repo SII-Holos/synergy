@@ -84,6 +84,12 @@ export namespace SqliteMaintenance {
    * Returns free pages to the filesystem without rewriting the database. Both a
    * page count and a time budget bound one pass so a scheduled run interleaves
    * with ordinary requests instead of monopolizing the writer.
+   *
+   * The checkpoints are PASSIVE: that mode never waits for readers and never
+   * invokes a busy handler, so a scheduled reclaim cannot stall the live
+   * requests sharing this worker. TRUNCATE would wait for every reader to
+   * finish, which is exactly what a live database must not do; WAL disk is
+   * bounded by `journal_size_limit` instead.
    */
   export function reclaim(
     db: Database,
@@ -92,7 +98,7 @@ export namespace SqliteMaintenance {
   ): ReclaimResult {
     const deadline = performance.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS)
     const maxPages = input.maxPages ?? DEFAULT_MAX_PAGES
-    db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    db.exec("PRAGMA wal_checkpoint(PASSIVE)")
     let releasedPages = 0
     while (releasedPages < maxPages && performance.now() <= deadline) {
       const before = pragmaNumber(db, "freelist_count")
@@ -102,7 +108,7 @@ export namespace SqliteMaintenance {
       if (after >= before) break
       releasedPages += before - after
     }
-    db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    db.exec("PRAGMA wal_checkpoint(PASSIVE)")
     return { releasedPages, freelistPages: pragmaNumber(db, "freelist_count"), autoVacuum: autoVacuumMode(db) }
   }
 

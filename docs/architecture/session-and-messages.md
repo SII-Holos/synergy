@@ -190,6 +190,8 @@ Full transcript reads run it over the complete ordered raw message list before p
 
 The LLM loop uses a compaction-aware read boundary instead of materializing the full transcript. It restores chronological message-info order, applies rollback events, locates the latest committed compaction boundary, loads parts only for the boundary root, retained summaries, and active suffix, then derives semantics over that root-anchored working set. Generic `Session.messages()` remains the complete transcript path for UI, export, rollback, fork, and other history consumers.
 
+Part hydration is bounded on every read path. Full-history model loading resolves its selected set first, then hydrates parts through the same declared concurrency window pagination uses, so hydration cost is independent of how many messages a session holds. This matters because the authoritative storage queue rejects rather than waits once its depth is reached, and it is shared process-wide: an unbounded fan-out on one large session would otherwise fail that session's own turns and starve every other session's reads.
+
 Downstream loop, compaction, history, and frontend code read canonical fields. They must not recreate the retired metadata heuristics.
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.

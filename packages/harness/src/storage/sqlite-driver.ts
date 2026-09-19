@@ -49,8 +49,8 @@ type PendingRequest = {
 export class SqliteDriver implements SqlDriver {
   readonly backend = "sqlite" as const
   private readonly worker: Bun.Subprocess
-  private readonly writerQueue = new StorageQueue()
-  private readonly readerQueue = new StorageQueue()
+  private readonly writerQueue = new StorageQueue("sqlite.writer")
+  private readonly readerQueue = new StorageQueue("sqlite.reader")
   private readonly pending = new Map<number, PendingRequest>()
   private sequence = 0
   private queuedBytes = 0
