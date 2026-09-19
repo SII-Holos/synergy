@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { checkRecord } from "../../script/decision-check"
+import { checkArchiveSeal, checkRecord } from "../../script/decision-check"
 
 const roots: string[] = []
 
@@ -160,5 +161,32 @@ None.
     await writeFile(file, body)
     const errors = checkRecord(file, path.join(root, "docs", "decisions"), root)
     expect(errors).toEqual([])
+  })
+})
+
+describe("decision archive seal", () => {
+  test("matches forward-slash manifest keys on every platform", async () => {
+    const root = await fixture()
+    const file = recordPath(root, "archived", "bug-fix")
+    await mkdir(path.dirname(file), { recursive: true })
+    const body = "# Decision Record: Example topic\n\nStatus: implemented\n\n## Problem\n\nx\n"
+    await writeFile(file, body)
+    const key = "archived/bug-fix/2026-08-14-topic-title.md"
+    const hash = createHash("sha256").update(body).digest("hex")
+    await writeFile(
+      path.join(root, "docs", "decisions", "archived", "manifest.json"),
+      JSON.stringify({ files: { [key]: hash } }),
+    )
+    expect(await checkArchiveSeal(root, root)).toEqual([])
+  })
+
+  test("still reports unsealed records and unmatched manifest entries", async () => {
+    const root = await fixture()
+    const file = recordPath(root, "archived", "bug-fix")
+    await mkdir(path.dirname(file), { recursive: true })
+    await writeFile(file, "# Decision Record: Example topic\n\nStatus: implemented\n\n## Problem\n\nx\n")
+    await writeFile(path.join(root, "docs", "decisions", "archived", "manifest.json"), JSON.stringify({ files: {} }))
+    const errors = await checkArchiveSeal(root, root)
+    expect(errors.some((error) => error.includes("archived record is not sealed"))).toBe(true)
   })
 })
