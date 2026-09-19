@@ -4,9 +4,25 @@
 export const AP = {
   // ── app.tsx ─────────────────────────────────────────────────────────
   appLoading: { id: "app.shell.loading", message: "Loading…" },
-  appModelNotConfigured: {
-    id: "app.shell.modelNotConfigured",
-    message: "AI model not configured — run {cmd} in your terminal to set one up",
+  appModelUnavailableNotConfigured: {
+    id: "app.shell.modelUnavailable.notConfigured",
+    message: "No AI provider is connected. Connect one to choose a model, or run {cmd} in your terminal.",
+  },
+  appModelUnavailableNeedsAttention: {
+    id: "app.shell.modelUnavailable.needsAttention",
+    message: "A connected provider needs attention before its models can run.",
+  },
+  appModelUnavailableRestricted: {
+    id: "app.shell.modelUnavailable.restricted",
+    message: "No model is available to select. Check that a connected provider is enabled and offers models.",
+  },
+  appModelUnavailableConnect: {
+    id: "app.shell.modelUnavailable.action.connect",
+    message: "Connect a provider",
+  },
+  appModelUnavailableReview: {
+    id: "app.shell.modelUnavailable.action.review",
+    message: "Review providers",
   },
   appModelConfigCmd: { id: "app.shell.modelConfigCmd", message: "synergy config" },
 
