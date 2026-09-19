@@ -1,6 +1,6 @@
+import { Provider } from "../../src/provider/provider"
 import { afterEach, expect, mock, spyOn, test } from "bun:test"
 import { z } from "zod"
-import type { Provider } from "../../src/provider/provider"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -294,4 +294,28 @@ test("keeps the full budget for a classified transport failure", async () => {
   const result = await run("exhausted")
   expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
   expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+})
+
+// Provider-level baseURL is the standard proxy configuration (postmortem 0017):
+// the persisted endpoint host must come from the merged connection identity,
+// not the model catalog URL.
+test("derives endpointHost from provider-level baseURL when the provider is proxied", async () => {
+  const getProvider = spyOn(Provider, "getProvider").mockResolvedValue({
+    options: { baseURL: "https://gateway.example.test" },
+  } as never)
+  try {
+    const result = await run("tls")
+    expect(result.message.info).toMatchObject({
+      finish: "error",
+      error: {
+        data: {
+          metadata: {
+            endpointHost: "gateway.example.test",
+          },
+        },
+      },
+    })
+  } finally {
+    getProvider.mockRestore()
+  }
 })

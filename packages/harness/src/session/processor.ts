@@ -13,7 +13,7 @@ import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { providerEndpointHost } from "../provider/retry-coordinator"
-import type { Provider } from "../provider/provider"
+import { Provider } from "../provider/provider"
 import { LLM } from "./llm"
 import { Config } from "../config/config"
 import { TimeoutConfig } from "../util/timeout-config"
@@ -1803,10 +1803,15 @@ export namespace SessionProcessor {
               log.error("process", {
                 error: e,
               })
+              // Derive the endpoint host from the same connection identity
+              // source as providerRetryKey: provider-level options (e.g. a
+              // proxy baseURL) must merge over the model record, or a proxied
+              // provider reports the catalog URL instead of the real host.
+              const providerRecord = await Provider.getProvider(input.model.providerID).catch(() => undefined)
               const error = MessageV2.fromError(e, {
                 providerID: input.model.providerID,
                 modelID: input.model.id,
-                endpointHost: providerEndpointHost(input.model),
+                endpointHost: providerEndpointHost(input.model, providerRecord),
               })
               const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error)
               if (retry !== undefined && attempt < retry.maxAttempts) {
