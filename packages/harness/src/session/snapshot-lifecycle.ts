@@ -43,15 +43,20 @@ export namespace SnapshotLifecycle {
           : SnapshotStore.repository(input.scopeID)
       const retained: string[] = []
       const missing: string[] = []
-      for (const hash of hashes) {
+      for (const hash of hashes)
         if (!SnapshotStore.OID.test(hash)) throw new SnapshotStore.StorageError("Invalid imported snapshot root")
-        let exists = await SnapshotStore.owns(input.scopeID, input.sourceSessionID, hash)
-        if (!exists && input.allowMissing) {
+      const owned = await SnapshotStore.ownsMany(input.scopeID, input.sourceSessionID, hashes)
+      for (const hash of hashes) {
+        if (owned.has(hash)) {
+          retained.push(hash)
+          continue
+        }
+        let exists = false
+        if (input.allowMissing)
           exists = await SnapshotStore.command(source, ["cat-file", "-t", hash]).then(
             (type) => type === "tree",
             () => false,
           )
-        }
         if (exists) retained.push(hash)
         else missing.push(hash)
       }
@@ -67,12 +72,7 @@ export namespace SnapshotLifecycle {
         await catalog.protect(input.targetSessionID, retained)
         await catalog.releaseKeep(imported.keep)
       } else {
-        for (const hash of retained)
-          await SnapshotStore.command(target.repository, [
-            "update-ref",
-            SnapshotStore.reference(input.targetSessionID, hash),
-            hash,
-          ])
+        await SnapshotStore.retainMany(input.scopeID, input.targetSessionID, retained)
       }
       return { missing }
     })
