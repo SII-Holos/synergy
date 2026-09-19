@@ -6,7 +6,7 @@ import { Identifier } from "../../src/id/id"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { StorageCompat } from "../../src/storage/compat"
-import { SessionCompat, registerSessionReplays } from "../../src/session/compat-import"
+import { SessionCompat } from "../../src/session/compat-import"
 
 const scopeID = Identifier.asScopeID("home")
 const VALID = "ses_test000000000000000valid"
@@ -49,17 +49,14 @@ async function compatFixture() {
   await StorageCompat.seedLocators(Storage.current().store, Global.Path.data)
 }
 
-test("a deferred aggregate imports on touch, replays migrations, and leaves no JSON", async () => {
+test("a deferred aggregate imports on touch, and leaves no JSON", async () => {
   await compatFixture()
-  const replayed: string[] = []
-  registerSessionReplays([{ id: "test-observer", run: async () => void replayed.push("ran") }])
 
   const before = await StorageCompat.pendingLocators(Storage.current().store)
   expect(before.map((locator) => locator.sessionID).sort()).toEqual([CORRUPT, VALID].sort())
 
   const locator = await SessionCompat.requireImported(VALID)
   expect(locator.status).toBe("imported")
-  expect(replayed).toEqual(["ran"])
 
   expect(await Storage.read(StoragePath.sessionInfo(scopeID, sid))).toMatchObject({ title: "legacy session" })
   expect(await Storage.read(StoragePath.sessionIndex(sid))).toMatchObject({ scopeID: "home" })

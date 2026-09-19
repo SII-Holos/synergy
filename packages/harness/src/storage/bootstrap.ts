@@ -118,10 +118,7 @@ export namespace StorageBootstrap {
     const manifest = Manifest.parse(await optionalJson(path.join(directory, "manifest.json")))
     if (manifest.phase !== "active" || manifest.namespace !== input.store.options.namespace)
       throw new StorageIntegrityError("Storage must be active before migrating its target")
-    if (manifest.compatBoundary && (await StorageCompat.pendingLocators(input.store)).length)
-      throw new StorageIntegrityError(
-        "Deferred legacy sessions are still converging; let the background import finish before migrating storage",
-      )
+    await StorageCompat.assertConverged(input.store)
     const configuration = StorageConfiguration.parse(input.configuration)
     const namespace = configuration.namespace ?? manifest.namespace
     const options = resolveStoreOptions(input.root, configuration, namespace)

@@ -119,8 +119,24 @@ export namespace Session {
     }
   }
 
-  export async function rebuildStorageIndexes(tx: StoreTransaction) {
+  export function indexEndpoint(endpoint: unknown, archived?: number): SessionEndpoint.Info | undefined {
     const retiredEndpoint = z.object({ kind: z.literal("holos"), agentId: z.string() })
+    if (retiredEndpoint.safeParse(endpoint).success) {
+      if (!archived)
+        throw new StorageIntegrityError("Retired Session endpoint must be archived before rebuilding indexes")
+      return undefined
+    }
+    if (endpoint === undefined) return
+    const historical = z
+      .object({ kind: z.literal("channel"), channel: z.record(z.string(), z.unknown()) })
+      .parse(endpoint)
+    return SessionEndpoint.Info.parse({
+      ...historical,
+      channel: Object.fromEntries(Object.entries(historical.channel).filter(([, value]) => value !== null)),
+    })
+  }
+
+  export async function rebuildStorageIndexes(tx: StoreTransaction) {
     for (const root of [
       "session_index",
       "endpoint_session",
@@ -139,10 +155,10 @@ export namespace Session {
         const batch = await tx.query<Info>({ kind: "session", scopeID, after, limit: 128 })
         if (!batch.length) break
         for (const record of batch) {
-          const retired = retiredEndpoint.safeParse(record.value.endpoint).success
-          if (retired && !record.value.time.archived)
-            throw new StorageIntegrityError("Retired Session endpoint must be archived before rebuilding indexes")
-          const session = retired ? { ...record.value, endpoint: undefined } : record.value
+          const session = {
+            ...record.value,
+            endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
+          }
           const index = toIndex(session)
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
@@ -250,12 +266,16 @@ export namespace Session {
     .meta({ ref: "SessionWorkspaceSelection" })
   export type WorkspaceSelection = z.infer<typeof WorkspaceSelection>
 
-  export async function readPageIndex(scopeID: string): Promise<PageIndex> {
+  async function readStoredPageIndex(scopeID: string): Promise<PageIndex> {
     const index = await Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch((error) => {
       if (error instanceof Storage.NotFoundError) return { entries: [] }
       throw error
     })
-    return SessionCompat.mergePageIndex(scopeID, index)
+    return index
+  }
+
+  export async function readPageIndex(scopeID: string): Promise<PageIndex> {
+    return SessionCompat.mergePageIndex(scopeID, await readStoredPageIndex(scopeID))
   }
 
   export async function writePageIndex(scopeID: string, index: PageIndex) {
@@ -264,7 +284,7 @@ export namespace Session {
 
   export async function upsertPageIndexEntry(scopeID: string, entry: PageIndex["entries"][number]) {
     return Storage.transaction(async () => {
-      const index = await readPageIndex(scopeID)
+      const index = await readStoredPageIndex(scopeID)
       const existing = index.entries.findIndex((e) => e.id === entry.id)
       if (existing >= 0) index.entries.splice(existing, 1)
       const insertAt = index.entries.findIndex((e) => e.updated <= entry.updated)
@@ -276,7 +296,7 @@ export namespace Session {
 
   export async function removePageIndexEntry(scopeID: string, sessionID: string) {
     return Storage.transaction(async () => {
-      const index = await readPageIndex(scopeID)
+      const index = await readStoredPageIndex(scopeID)
       index.entries = index.entries.filter((e) => e.id !== sessionID)
       await writePageIndex(scopeID, index)
     })
@@ -307,14 +327,18 @@ export namespace Session {
     entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
   }
 
-  export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
+  async function readStoredChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
     const index = await Storage.read<ChildIndex>(
       StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)),
     ).catch((error): ChildIndex => {
       if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
       throw error
     })
-    return SessionCompat.mergeChildIndex(scopeID, parentID, index) as Promise<ChildIndex>
+    return index
+  }
+
+  export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
+    return SessionCompat.mergeChildIndex(scopeID, parentID, await readStoredChildIndex(scopeID, parentID))
   }
 
   export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
@@ -327,7 +351,7 @@ export namespace Session {
 
   export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
     return Storage.transaction(async () => {
-      const index = await readChildIndex(scopeID, parentID)
+      const index = await readStoredChildIndex(scopeID, parentID)
       const existing = index.entries.findIndex((e) => e.id === entry.id)
       if (existing >= 0) index.entries.splice(existing, 1)
       index.entries.push(entry)
@@ -337,7 +361,7 @@ export namespace Session {
 
   export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
     return Storage.transaction(async () => {
-      const index = await readChildIndex(scopeID, parentID)
+      const index = await readStoredChildIndex(scopeID, parentID)
       const nextEntries = index.entries.filter((e) => e.id !== sessionID)
       if (nextEntries.length === index.entries.length) return
       index.entries = nextEntries

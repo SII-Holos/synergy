@@ -5,6 +5,7 @@ import { MigrationRegistry } from "./registry"
 import { orderMigrations } from "./order"
 import { progressBar, stageWrite, disableWrap, enableWrap, PROGRESS_INTERVAL } from "./format"
 import { Installation } from "../global/installation"
+import { SessionCompat } from "../session/compat-import"
 import { setActiveMigrationContext } from "./context"
 // Side-effect imports: register harness-core domain migrations in
 // MigrationRegistry. Product-domain migrations register through the L4
@@ -133,6 +134,8 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
   const output = options?.output ?? "interactive"
   const domains = collectByDomain({ targetDomain: options?.targetDomain })
   if (domains.size === 0) return emptySummary()
+  if (!dryRun && Object.values(await getMigrationStatus(options?.targetDomain)).some((status) => status.pending.length))
+    await SessionCompat.stageForMigrations()
 
   // Set up context for migrations that want it (arity-based detection)
   const ctx: MigrationContext = {
@@ -142,7 +145,9 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
   }
   setActiveMigrationContext(ctx)
   try {
-    return await runMigrationsInternal(domains, { dryRun, ctx, output, reporter: options?.reporter })
+    const summary = await runMigrationsInternal(domains, { dryRun, ctx, output, reporter: options?.reporter })
+    if (!dryRun) await SessionCompat.migrationsCompleted()
+    return summary
   } finally {
     setActiveMigrationContext(undefined)
   }

@@ -25,6 +25,8 @@ export namespace StorageCompat {
     status: "pending" | "partial" | "imported" | "quarantined"
     /** Data-relative path of the record that triggered a quarantine. */
     source?: string
+    staged?: boolean
+    retiring?: boolean
   }
 
   export function deferRelative(relative: string) {
@@ -64,12 +66,21 @@ export namespace StorageCompat {
       .sort((a, b) => a.sessionID.localeCompare(b.sessionID))
   }
 
+  export async function assertConverged(store: TransactionalStore) {
+    const locators = await store.readMany<Locator>(await store.list(locatorRoot))
+    if (locators.some((entry) => entry && entry.status !== "imported"))
+      throw new StorageIntegrityError(
+        "Deferred legacy sessions must finish importing or be repaired before transferring storage",
+      )
+  }
+
   /**
    * Seeds one locator per session aggregate directory before activation
    * retires anything. Stat-only on purpose: hashing every pending rollout blob
    * here would re-create the startup cost the deferral exists to remove.
    */
   export async function seedLocators(store: TransactionalStore, dataRoot: string) {
+    await store.write(["compat_import", "info"], { boundary })
     const sessionsRoot = path.join(dataRoot, deferredRoot)
     const scopes = await fs.readdir(sessionsRoot).catch((error) => {
       if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error
@@ -88,24 +99,14 @@ export namespace StorageCompat {
     }
     for (const scopeID of scopes) {
       const scopeDir = path.join(sessionsRoot, scopeID)
-      if (
-        !(await fs
-          .stat(scopeDir)
-          .then((entry) => entry.isDirectory())
-          .catch(() => false))
-      )
-        continue
+      if (!(await fs.stat(scopeDir).then((entry) => entry.isDirectory()))) continue
       for (const sessionID of await fs.readdir(scopeDir)) {
         if (sessionID === ".locks" || sessionID.startsWith(".tmp-")) continue
         const sessionDir = path.join(scopeDir, sessionID)
-        if (
-          !(await fs
-            .stat(sessionDir)
-            .then((entry) => entry.isDirectory())
-            .catch(() => false))
-        )
-          continue
+        if (!(await fs.stat(sessionDir).then((entry) => entry.isDirectory()))) continue
         const existing = await readLocator(store, sessionID)
+        if (existing && existing.scopeID !== scopeID)
+          throw new StorageIntegrityError("Deferred Session identity belongs to more than one Scope")
         if (existing) continue
         batch.push({ sessionID, scopeID, status: "pending" })
         if (batch.length >= 256) await flush()
@@ -122,6 +123,11 @@ export namespace StorageCompat {
    * deferred tree, means a legacy writer is alive.
    */
   export async function rejectForeignWriters(dataRoot: string, store: TransactionalStore) {
+    const locators = new Map(
+      (await store.readMany<Locator>(await store.list(locatorRoot))).flatMap((entry) =>
+        entry ? [[entry.sessionID, entry] as const] : [],
+      ),
+    )
     for await (const relative of legacyRecords(dataRoot)) {
       if (!deferRelative(relative)) {
         throw new StorageIntegrityError(
@@ -130,8 +136,8 @@ export namespace StorageCompat {
       }
       const owner = sessionOwner(relative)
       if (!owner) continue
-      const locator = await readLocator(store, owner.sessionID)
-      if (!locator || locator.status === "imported")
+      const locator = locators.get(owner.sessionID)
+      if (!locator || locator.scopeID !== owner.scopeID || locator.status === "imported")
         throw new StorageIntegrityError(
           `Imported session ${owner.sessionID} has legacy JSON again (${relative}); a legacy writer is still active`,
         )

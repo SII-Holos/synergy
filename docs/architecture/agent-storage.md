@@ -60,6 +60,8 @@ Portable data contains records, revisions, command receipts and pending events w
 
 A target switch first saves a verified portable archive and a durable switch intent. Import is idempotent, verification precedes activation, and the intent blocks normal startup until both configuration and dataset identity agree. `data storage resume` completes an interrupted switch. Storage configuration cannot be hot-reloaded. Downgrade uses the immutable pre-upgrade backup in a separate Home; there is no reverse writer or live JSON mirror.
 
+The opt-in deferred import boundary retains cold archived Session aggregates temporarily. Any pending owner migration first stages the entire unresolved cohort into SQL; the central migration runner remains the only migration authority. Non-archived Sessions import before startup recovery. Pending listing projections never enter canonical index writes. Source retirement verifies every recognized file, while storage transfer rejects pending and quarantined aggregates. The Runtime owns and drains the background importer with its Handle. See the [deferred import decision](../decisions/implemented/architecture/2026-09-19-deferred-session-import.md).
+
 See [storage and paths](../reference/storage-and-paths.md) for locations and [transactional storage migration](../migrations/transactional-agent-storage.md) for operational recovery.
 
 ## Reproducible validation

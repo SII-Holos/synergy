@@ -243,7 +243,7 @@ export namespace SessionManager {
       if (SessionEndpoint.toKey(info.endpoint) !== endpointKey) continue
       return info.id
     }
-    return undefined
+    return SessionCompat.pendingEndpoint(endpoint, scopeID)
   }
 
   export async function getSession(input: string | SessionEndpoint.Info, scopeID?: string): Promise<Info | undefined> {

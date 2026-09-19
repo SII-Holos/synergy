@@ -174,8 +174,4 @@ export namespace RolloutMigration {
       await Storage.removeTree(StoragePath.statsRoot())
     },
   }
-
-  export function replaySessionRolloutEvidence(input: { scopeID: string; sessionID: string }): Promise<void> {
-    return session({ kind: "session", scopeID: input.scopeID, sessionID: input.sessionID }).then(() => undefined)
-  }
 }

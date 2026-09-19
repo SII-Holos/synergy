@@ -76,6 +76,7 @@ export namespace RuntimeHandle {
     let uninstallStorage: (() => void) | undefined
     let server: RuntimeServer | undefined
     let residentStarted = false
+    let stopCompat: (() => Promise<void>) | undefined
     let closing: Promise<void> | undefined
 
     function closeAdmission() {
@@ -98,6 +99,7 @@ export namespace RuntimeHandle {
           }
         }
         await cleanup(() => StorageRetention.stop())
+        await cleanup(() => stopCompat?.())
         await cleanup(() => services.reload?.stop())
         closeAdmission()
         if (residentStarted) await cleanup(() => services.resident?.stop())
@@ -170,6 +172,7 @@ export namespace RuntimeHandle {
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
+      await SessionCompat.prepareRecovery()
       if (storage && storage.manifest.phase !== "active")
         await StorageRecovery.validate((current, timeoutMs) =>
           options.storageReporter?.(
@@ -182,7 +185,7 @@ export namespace RuntimeHandle {
       await StorageRecovery.recoverOwners()
       await StorageRecovery.load()
       await StorageRecovery.reconcileNotifications()
-      if (storage?.manifest.compatBoundary) SessionCompat.startBackgroundMigrator()
+      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
       options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})

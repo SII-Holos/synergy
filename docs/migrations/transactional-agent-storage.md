@@ -28,13 +28,15 @@ For version 1, reconstruct `data/` from the backup, restore `data/@home/config/`
 
 ## Deferred session import
 
-Homes activated with a storage manifest that carries `compatBoundary` keep the session aggregate tree `data/sessions/**` in legacy JSON after activation: the sealed backup still contains it, but the importer skips its records and Rollout binaries and retirement leaves the files in place. Every other record keeps the invariant that activation leaves no legacy JSON behind.
+Set `SYNERGY_STORAGE_COMPAT_DEFER=1` before the first SQL bootstrap to opt into the named manifest boundary. The complete backup is still sealed before activation. The packed importer initially leaves Session aggregates on disk and records their ownership in SQL.
 
-A deferred session imports as one unit the first time the Runtime touches it (open, message read or write, endpoint delivery). The importer checkpoints each file's hash in committed batches, so an interrupted import resumes without duplicating records or artifact bytes. A record with invalid JSON quarantines exactly that session — it surfaces as a blocked-session error when that session is touched, and other sessions are unaffected. After import, the session's historical migrations re-run through per-aggregate replays and the current-shape session indexes are written, so the session appears in listings without a global rebuild.
+Deferral is conservative: any pending domain migration first stages every unresolved aggregate into SQL and then uses the central migration runner. A migration failure preserves originals and blocks touch imports. Startup imports non-archived Sessions before recovery. Only an already-current archived cohort can remain deferred after activation; a future upgrade with pending migrations stages that cohort first.
 
-Until a session imports, listings project it from its `info.json`. Convergence is automatic: the Runtime imports pending sessions oldest-first during idle time with a per-tick budget. Create `data/storage/compat-pause` to hold the background import between ticks; remove it to resume. `synergy data storage status` reports how many aggregates are still pending.
+Touch and endpoint delivery import an aggregate before querying its indexes. Record batches are bounded, binary files are copied without whole-file buffering, and all recognized source hashes and target artifacts are verified before retirement. Unknown auxiliary files are preserved. Missing or malformed Session data is quarantined; storage and I/O errors remain retryable. Pending listing projections never enter persisted indexes.
 
-While aggregates remain pending, storage target migration is refused. The sealed backup's session contents go stale as sessions are imported and modified, so within the compat window an official downgrade restores sessions as of the backup, not as of the downgrade moment. Remove the pause file and let the import finish before transferring or downgrading the Home.
+The Runtime imports a bounded number of pending aggregates per tick. Create `data/storage/compat-pause` to hold background import between ticks; remove it to resume. Shutdown stops and drains the ticker. This mode does not promise a particular startup speedup, and ordinary storage status output does not yet include convergence counts.
+
+Pack, merge, move and storage-target migration reject pending or quarantined aggregates. Let background import converge and repair quarantined evidence before transferring the Home. The sealed backup contains pre-upgrade state; it does not capture changes made after SQL activation. An official downgrade therefore restores the backup into a separate Home.
 
 ## Transfer
 
