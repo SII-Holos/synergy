@@ -25,6 +25,7 @@ const HOME_SCOPE_ID = "home"
 
 export const migrations: Migration[] = [
   {
+    scope: "scope",
     id: "20260430-scope-add-type-directory",
     description: "Add type and directory fields to scope records that predate these schema fields",
     async up(progress) {
@@ -45,6 +46,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "scope",
     id: "20260424-scope-reclaim-orphans",
     description: "Consolidate orphan scope data (no active project, no worktree) into a reclaimed scope",
     async up(progress) {
@@ -186,6 +188,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "scope",
     id: "20260624-scope-global-to-home",
     description: "Rename legacy global scope data to the home scope",
     async up(progress) {
@@ -253,6 +256,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "scope",
     id: "20260827-scope-archive-ephemeral-test-artifacts",
     description: "Archive scopes whose worktree is an ephemeral test artifact (synergy-test-*/synergy-orchestrated-*)",
     async up(progress) {

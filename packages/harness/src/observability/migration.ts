@@ -713,6 +713,7 @@ export namespace ObservabilityMigration {
 
 const migrations: Migration[] = [
   {
+    scope: "global",
     id: ObservabilityMigration.id,
     description: "Create indexed observability store and migrate legacy perf telemetry",
     domain: "observability",
@@ -722,6 +723,7 @@ const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: ObservabilityMigration.redactionBackfillId,
     description: "Redact existing canonical observability telemetry",
     domain: "observability",
@@ -732,6 +734,7 @@ const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: ObservabilityMigration.incrementalVacuumId,
     description: "Enable incremental vacuum for bounded observability storage",
     domain: "observability",
@@ -742,6 +745,7 @@ const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: ObservabilityMigration.schemaMetadataId,
     description: "Synchronize observability schema metadata",
     domain: "observability",
@@ -752,6 +756,7 @@ const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: ObservabilityMigration.resourceCgroupId,
     description: "Add cgroup and service memory resource fields",
     domain: "observability",
@@ -762,6 +767,7 @@ const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: ObservabilityMigration.metricSlimId,
     description: "Drop low-value metric columns and indexes to bound storage growth",
     domain: "observability",

@@ -22,6 +22,45 @@ export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSumma
 const log = Log.create({ service: "migration" })
 
 const states = new WeakMap<object, { running?: Promise<MigrationSummary>; summary?: MigrationSummary }>()
+const cohortRoot = ["compat_import", "cohorts"]
+type Cohort = { domain: string; id: string; residentComplete: boolean }
+
+export async function migrateDeferredSession(owner: { scopeID: string; sessionID: string }) {
+  const cohorts = await Storage.readMany<Cohort>(await Storage.list(cohortRoot))
+  const domains = collectByDomain()
+  for (const cohort of cohorts) {
+    if (!cohort) continue
+    if (
+      !cohort.residentComplete ||
+      !domains.get(cohort.domain)?.some((migration) => migration.id === cohort.id && migration.upSession)
+    )
+      throw new Error(
+        `Deferred migration ${cohort.domain}/${cohort.id} requires its registered owner to finish startup`,
+      )
+  }
+  for (const domain of [...domains.keys()].sort()) {
+    for (const migration of orderMigrations(domains.get(domain)!)) {
+      if (!cohorts.some((entry) => entry?.domain === domain && entry.id === migration.id)) continue
+      if (!migration.upSession) throw new Error(`Migration ${domain}/${migration.id} cannot upgrade one Session`)
+      const key = ["compat_import", "migrations", owner.sessionID, domain, migration.id]
+      if ((await Storage.readMany([key]))[0]) continue
+      await migration.upSession(owner, () => {})
+      await Storage.write(key, { completed: Date.now() })
+    }
+  }
+}
+
+export async function completeDeferredMigrations() {
+  const counts = await SessionCompat.stats()
+  if (counts.pending || counts.partial || counts.quarantined) return
+  await Storage.transaction(async () => {
+    for (const cohort of await Storage.readMany<Cohort>(await Storage.list(cohortRoot))) {
+      if (!cohort?.residentComplete) continue
+      await mergeDomainLog(cohort.domain, { [cohort.id]: Date.now() })
+      await Storage.remove([...cohortRoot, cohort.domain, cohort.id])
+    }
+  })
+}
 
 function collectByDomain(options?: { targetDomain?: string }): Map<string, Migration[]> {
   const result = new Map<string, Migration[]>()
@@ -134,11 +173,32 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
   const output = options?.output ?? "interactive"
   const domains = collectByDomain({ targetDomain: options?.targetDomain })
   if (domains.size === 0) return emptySummary()
+  let deferSessions = false
   if (!dryRun) {
-    const pending = Object.entries(await getMigrationStatus(options?.targetDomain))
+    const status = await getMigrationStatus(options?.targetDomain)
+    const pending = Object.entries(status)
       .filter(([, status]) => status.pending.length)
       .map(([domain]) => domain)
-    if (pending.length) await SessionCompat.stageForMigrations(pending)
+    const barriers = [...domains].some(([domain, migrations]) =>
+      migrations.some(
+        (migration) =>
+          status[domain]?.pending.some((item) => item.id === migration.id) &&
+          migration.scope !== "global" &&
+          !((migration.scope === "session" || migration.scope === "derived") && migration.upSession),
+      ),
+    )
+    deferSessions = !barriers && (await SessionCompat.isActive())
+    if (pending.length && barriers) {
+      const migration: Migration = {
+        id: "storage-session-staging",
+        description: "Prepare historical Sessions for shared migrations",
+        async up() {},
+      }
+      options?.reporter?.started?.({ domain: "storage", migration })
+      await SessionCompat.stageForMigrations(pending, (current, total) =>
+        options?.reporter?.progress?.({ domain: "storage", migration, current, total, dryRun: false }),
+      )
+    }
   }
 
   // Set up context for migrations that want it (arity-based detection)
@@ -149,7 +209,13 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
   }
   setActiveMigrationContext(ctx)
   try {
-    const summary = await runMigrationsInternal(domains, { dryRun, ctx, output, reporter: options?.reporter })
+    const summary = await runMigrationsInternal(domains, {
+      dryRun,
+      ctx,
+      output,
+      reporter: options?.reporter,
+      deferSessions,
+    })
     if (!dryRun) await SessionCompat.migrationsCompleted([...domains.keys()])
     return summary
   } finally {
@@ -164,6 +230,7 @@ async function runMigrationsInternal(
     ctx: MigrationContext
     output: NonNullable<RunOptions["output"]>
     reporter?: RunOptions["reporter"]
+    deferSessions: boolean
   },
 ): Promise<MigrationSummary> {
   const { dryRun, ctx, output, reporter } = options
@@ -200,6 +267,21 @@ async function runMigrationsInternal(
         }
 
         try {
+          const cohortKey = [...cohortRoot, domain, migration.id]
+          const deferred =
+            options.deferSessions &&
+            migration.upSession &&
+            (migration.scope === "session" || migration.scope === "derived")
+          const counts = deferred ? await SessionCompat.stats() : undefined
+          const hasCohort = counts && counts.pending + counts.partial + counts.quarantined > 0
+          if (hasCohort) {
+            const [saved] = await Storage.readMany<Cohort>([cohortKey])
+            if (saved?.residentComplete) {
+              summary.deferred = (summary.deferred ?? 0) + 1
+              continue
+            }
+            await Storage.write(cohortKey, { domain, id: migration.id, residentComplete: false })
+          }
           reporter?.started?.({ domain, migration })
           if (output === "interactive") {
             stageWrite(`  ${progressBar(0)} Starting [${domain}] ${migration.description}`, true)
@@ -236,12 +318,20 @@ async function runMigrationsInternal(
           }
 
           if (output === "interactive") {
-            stageWrite(`  ${progressBar(1)} [${domain}] ${migration.description} ✓\n`, true)
+            stageWrite(
+              `  ${progressBar(1)} [${domain}] ${migration.description} ${hasCohort ? "(historical Sessions pending)" : "✓"}\n`,
+              true,
+            )
           }
-          logData[migration.id] = Date.now()
-          await saveLogForDomain(domain, logData)
-          summary.completed++
-          log.info("completed", { id: migration.id, domain })
+          if (hasCohort) await Storage.write(cohortKey, { domain, id: migration.id, residentComplete: true })
+          else {
+            logData[migration.id] = Date.now()
+            await saveLogForDomain(domain, logData)
+            await Storage.remove(cohortKey)
+          }
+          if (hasCohort) summary.deferred = (summary.deferred ?? 0) + 1
+          else summary.completed++
+          log.info(hasCohort ? "historical cohort pending" : "completed", { id: migration.id, domain })
         } catch (err) {
           summary.failed++
           if (output === "interactive") {
