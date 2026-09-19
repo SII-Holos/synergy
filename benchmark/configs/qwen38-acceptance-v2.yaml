@@ -1,5 +1,5 @@
 version: 2
-suite: ../suites/local-24.json
+suite: ../suites/local-24-iter.json
 output: ../../.artifacts/benchmark/qwen38-acceptance-v2
 cache: ../../.artifacts/benchmark/cache
 platform: linux/amd64
@@ -11,7 +11,6 @@ task_repeats:
   terminal-bench-2.1/polyglot-c-py: 3
 selection:
   tasks:
-    - terminal-bench-2.1/build-cython-ext
     - terminal-bench-2.1/large-scale-text-editing
     - terminal-bench-2.1/openssl-selfsigned-cert
     - terminal-bench-2.1/polyglot-c-py
