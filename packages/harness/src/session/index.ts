@@ -24,6 +24,7 @@ import { MessageV2 } from "./message-v2"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { fn } from "../util/fn"
+import { workMap } from "../util/queue"
 import { Snapshot } from "./snapshot"
 import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
@@ -106,6 +107,8 @@ export namespace Session {
 
   const log = Log.create({ service: "session" })
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
+
+  const FORK_PREPARE_CONCURRENCY = 8
 
   export function toIndex(session: Info) {
     const scope = session.scope as Scope
@@ -683,58 +686,63 @@ export namespace Session {
           workspace: source.workspace?.path ?? ScopeContext.current.directory,
           hashes: selected.flatMap((msg) => msg.parts.flatMap(SnapshotRecords.partRoots)),
         })
-        const prepared: MessageV2.WithParts[] = []
+        // Tool output copies dominate fork latency and are independent per
+        // part, so the prepare phase runs with bounded concurrency. IDs are
+        // pre-assigned serially first: part IDs must keep their original
+        // relative order and the parent map must be complete before any
+        // worker reads it.
         const messageMap = new Map<string, string>()
+        const partMap = new Map<string, string>()
         for (const msg of selected) {
-          const id = Identifier.ascending("message")
-          messageMap.set(msg.info.id, id)
-          const cloned: MessageV2.Info = {
-            ...msg.info,
-            ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
-            sessionID,
-            id,
-            ...("parentID" in msg.info && typeof msg.info.parentID === "string"
-              ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
-              : {}),
-          }
-          const parts: MessageV2.Part[] = []
-
-          for (const part of msg.parts) {
+          messageMap.set(msg.info.id, Identifier.ascending("message"))
+          for (const part of msg.parts) partMap.set(part.id, Identifier.ascending("part"))
+        }
+        const prepared = await workMap(
+          FORK_PREPARE_CONCURRENCY,
+          selected,
+          async (msg): Promise<MessageV2.WithParts> => {
+            const cloned: MessageV2.Info = {
+              ...msg.info,
+              ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
+              sessionID,
+              id: messageMap.get(msg.info.id)!,
+              ...("parentID" in msg.info && typeof msg.info.parentID === "string"
+                ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
+                : {}),
+            }
             const from = { kind: "session" as const, scopeID: source.scope.id, sessionID: source.id }
             const to = { ...from, sessionID }
-            const state = part.type === "tool" && part.state.status === "completed" ? { ...part.state } : undefined
-            if (state?.outputArtifact) state.outputArtifact = await RolloutArtifact.copy(from, to, state.outputArtifact)
-            if (state?.attachments) {
-              const attachments = []
-              for (const attachment of state.attachments)
-                attachments.push({
+            const parts = await workMap(FORK_PREPARE_CONCURRENCY, msg.parts, async (part) => {
+              const state = part.type === "tool" && part.state.status === "completed" ? { ...part.state } : undefined
+              if (state?.outputArtifact)
+                state.outputArtifact = await RolloutArtifact.copy(from, to, state.outputArtifact)
+              if (state?.attachments) {
+                state.attachments = await workMap(FORK_PREPARE_CONCURRENCY, state.attachments, async (attachment) => ({
                   ...attachment,
                   ...(attachment.artifact
                     ? { artifact: await RolloutArtifact.copy(from, to, attachment.artifact) }
                     : {}),
-                })
-              state.attachments = attachments
-            }
-            const artifact =
-              part.type === "attachment" && part.artifact
-                ? await RolloutArtifact.copy(from, to, part.artifact)
-                : undefined
-            parts.push(
-              await preparePart(
+                }))
+              }
+              const artifact =
+                part.type === "attachment" && part.artifact
+                  ? await RolloutArtifact.copy(from, to, part.artifact)
+                  : undefined
+              return preparePart(
                 {
                   ...part,
                   ...(artifact ? { artifact } : {}),
                   ...(state ? { state } : {}),
-                  id: Identifier.ascending("part"),
+                  id: partMap.get(part.id)!,
                   messageID: cloned.id,
                   sessionID,
                 },
                 source.scope.id,
-              ),
-            )
-          }
-          prepared.push({ info: cloned, parts })
-        }
+              )
+            })
+            return { info: cloned, parts }
+          },
+        )
         session = await Storage.transaction(async () => {
           const created = await create(createInput)
           for (const message of prepared) {
