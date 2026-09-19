@@ -105,6 +105,8 @@ gh issue comment <number> --body-file /synergy/note/<note-id>
 
 Do not interpolate Note contents into a shell command or pass them to an option that executes the file as code.
 
+A required check can also fail for reasons that belong to the runner rather than the change: the local artifact build needs `docker`, and a hosted job can fail before it compiles anything. Distinguish the two before treating a red gate as evidence about the code, but do not merge past it either — re-run until green. A check that cannot be made green is a blocker to report to the user, not a condition to waive.
+
 The `autonomous` profile permits ordinary topic-branch and pull-request publication from either the primary checkout or a worktree. Protected-branch pushes and broader remote mutations remain `shell_remote_write` and are denied. This capability boundary does not replace the user's authorization to publish.
 
 ## GitHub CLI Permission Matrix
