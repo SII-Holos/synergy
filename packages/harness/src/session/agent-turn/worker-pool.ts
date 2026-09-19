@@ -8,7 +8,7 @@ import type { ContextUsage } from "../context-usage"
 import { AgentTurnProtocol } from "./protocol"
 import type { RolloutSchema } from "../rollout/schema"
 import type { RolloutTransportSchema } from "../rollout/transport-schema"
-import { RolloutRecordingError } from "../rollout/error"
+import { RolloutRecordingError, isTransientStorageError } from "../rollout/error"
 import { spawnAgentWorkerProcess, type AgentWorkerProcess, type SpawnAgentWorkerProcessOptions } from "./process-host"
 
 export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
@@ -676,9 +676,10 @@ export class AgentWorkerPool {
           if (!task.archive) throw new RolloutRecordingError({ message: "Agent turn has no rollout archive owner" })
           await task.archive(message.event)
         } catch (error) {
-          failure = RolloutRecordingError.isInstance(error)
-            ? error
-            : new RolloutRecordingError({ message: "Unable to persist worker rollout evidence" }, { cause: error })
+          failure =
+            RolloutRecordingError.isInstance(error) || isTransientStorageError(error)
+              ? error
+              : new RolloutRecordingError({ message: "Unable to persist worker rollout evidence" }, { cause: error })
           task.recordingFailure = failure
         } finally {
           task.archiving = false
