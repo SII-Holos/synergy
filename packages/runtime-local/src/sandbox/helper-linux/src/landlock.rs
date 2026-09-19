@@ -52,14 +52,25 @@ impl LandlockPlan {
 /// Check whether the given profile is compatible with a Landlock fallback.
 ///
 /// Synergy mirrors Codex's conservative fallback boundary: Landlock can only
-/// represent policies with full-read semantics. Restricted-read profiles must use
-/// bwrap because Landlock alone cannot synthesize a fresh filesystem view.
+/// represent policies with full-read semantics. Restricted-read profiles must
+/// use bwrap because Landlock alone cannot synthesize a fresh filesystem view.
+///
+/// Eligibility also requires an EMPTY read-deny set. `build_landlock_plan`
+/// emits read and write rules only — a Landlock ruleset cannot deny a subpath —
+/// so accepting a profile that carries `data_deny_roots` or `unreadable_globs`
+/// would silently serve the exact content those denies exist to hide. Every
+/// Linux profile now carries a credential deny list, so a full-read check
+/// alone would have answered "eligible" for all of them and turned the
+/// restricted-read policy into a full-read one.
 pub fn can_use_landlock_fallback(profile: &PermissionProfile) -> bool {
-    profile
+    let has_full_read = profile
         .file_system
         .readable_roots
         .iter()
-        .any(|root| root == "/")
+        .any(|root| root == "/");
+    let has_read_denies = !profile.file_system.data_deny_roots.is_empty()
+        || !profile.file_system.unreadable_globs.is_empty();
+    has_full_read && !has_read_denies
 }
 
 /// Build a Landlock ruleset plan from the permission profile.
@@ -369,6 +380,47 @@ mod tests {
     fn landlock_fallback_rejected_with_restricted_read() {
         let profile = make_profile(vec!["/usr", "/lib", "/etc"], vec!["/ws"]);
         assert!(!can_use_landlock_fallback(&profile));
+    }
+
+    #[test]
+    fn landlock_fallback_rejected_with_read_denies() {
+        // A full-read profile now carries a credential deny list, which
+        // Landlock cannot express: build_landlock_plan emits read rules and no
+        // deny rules, so accepting the profile would downgrade restricted
+        // reads to full reads with every credential exposed. The Linux
+        // backend sets data_deny_roots on every profile, so this is the normal
+        // case, not a corner.
+        let mut profile = make_profile(vec!["/"], vec!["/ws"]);
+        profile.file_system.data_deny_roots = vec!["/home/user/.ssh".to_string()];
+        assert!(!can_use_landlock_fallback(&profile));
+        assert_eq!(
+            build_landlock_plan(&profile).unwrap().mode,
+            LandlockMode::Disabled
+        );
+    }
+
+    #[test]
+    fn landlock_fallback_rejected_with_unreadable_globs() {
+        // unreadable_globs is the other read-deny mechanism; it is equally
+        // unrepresentable in a ruleset that carries only read and write rules.
+        let mut profile = make_profile(vec!["/"], vec!["/ws"]);
+        profile.file_system.unreadable_globs = vec!["**/.env".to_string()];
+        assert!(!can_use_landlock_fallback(&profile));
+        assert_eq!(
+            build_landlock_plan(&profile).unwrap().mode,
+            LandlockMode::Disabled
+        );
+    }
+
+    #[test]
+    fn landlock_plan_never_carries_read_rules_for_a_denied_profile() {
+        // Fail closed on the artifact, not just the flag: a disabled plan must
+        // not leave read rules behind that a future caller could apply.
+        let mut profile = make_profile(vec!["/"], vec!["/ws"]);
+        profile.file_system.data_deny_roots = vec!["/home/user/.aws".to_string()];
+        let plan = build_landlock_plan(&profile).unwrap();
+        assert_eq!(plan.mode, LandlockMode::Disabled);
+        assert!(plan.rules.is_empty());
     }
 
     #[test]

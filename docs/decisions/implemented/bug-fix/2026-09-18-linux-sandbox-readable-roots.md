@@ -24,6 +24,15 @@ On Linux, the helper-backed sandbox compiled its permission profile from a share
 
 **Fall back to `--ro-bind / /` when enumerated roots are missing.** Rejected: restricted mode must never expose the full host root; that inverts the sandbox's read posture and violates the "never ro-bind the whole root" invariant.
 
+> **Superseded in part.** The "never `--ro-bind` the whole root" invariant this
+> record defends was reversed one day later by
+> [Full-disk read on Linux matching the accepted macOS deny-list model](../simplification/2026-09-19-linux-sandbox-full-read-model.md):
+> Linux now declares `/` as its single readable root so the helper binds the
+> host root read-only, and keeps credentials unreadable through a deny list
+> instead. The enumerated read-root model described above no longer ships. The
+> staging, `/lib`/`/lib64`, and two-stage re-exec decisions in this record
+> remain current.
+
 ## Consequences
 
 Linux `autonomous` Bash now works on a stock Ubuntu 24.04 host once the operator allows bwrap's user namespace (an environment fix outside this repository — an AppArmor profile granting `/usr/bin/bwrap` `userns`), and on any host without macOS-specific paths. macOS behavior is unchanged: Seatbelt ignores nonexistent subpaths and consumes an unchanged profile. Added test coverage lives in `packages/runtime-local/test/sandbox/linux-readable-roots.test.ts`, including a real end-to-end execution that skips honestly where the host has no helper or blocks user namespaces. Remaining known gap: sandbox readiness still probes only `bwrap --version` and sysctls, so an environment that blocks namespace creation passes readiness while execution fails; a functional bwrap probe and exec-time failure classification into `SandboxBlocked` diagnostics are future work.

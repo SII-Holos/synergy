@@ -117,6 +117,7 @@ export namespace SandboxBackend {
           extraReadRoots: opts.extraReadRoots,
           extraWritableRoots: opts.extraWritableRoots,
           protectedPaths: opts.protectedPaths,
+          dataDenyRoots: opts.dataDenyRoots,
           networkMode: opts.networkMode,
           forcePlatform: opts.forcePlatform,
           backend: opts.backend,
@@ -141,8 +142,8 @@ export namespace SandboxBackend {
    * Prepare a Linux bwrap (bubblewrap) sandbox wrapper.
    *
    * Key design:
-   * - NEVER --ro-bind / /  (full root filesystem exposure)
-   * - --ro-bind for platform and runtime read roots
+   * - Reads follow the deny-list model: the helper declares "/" readable so
+   *   the plan starts from `--ro-bind / /`, and credential paths are covered.
    * - Bind active workspace with --bind (read-write) or --ro-bind (read-only)
    * - Final args: bwrap <mounts> -- <command> <args...>
    */
