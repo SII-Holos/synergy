@@ -92,8 +92,7 @@ describe("ensureTitle", () => {
         await runEnsureTitle(session.id)
 
         expect(captured?.agent).toBe("title")
-        expect(captured?.retries).toBe(2)
-        expect(captured?.timeoutMs).toBe(120_000)
+        expect(captured?.retries).toBe(3)
         expect(captured?.maxOutputChars).toBe(200)
         expect(captured?.sessionId).toBe(session.id)
         expect(captured?.user?.id).toBe(user.id)
@@ -186,7 +185,7 @@ describe("ensureTitle", () => {
     })
   })
 
-  test("does not call the model when the session has multiple real users", async () => {
+  test("titles from the first real user message when the session has multiple real users", async () => {
     installMocks()
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -208,17 +207,59 @@ describe("ensureTitle", () => {
           type: "text",
           text: "Second user message",
         })
-        void second
-        void user
-        let called = false
-        ;(AgentCall.text as any) = mock(async () => {
-          called = true
-          return { text: "ignored", model: { providerID: "test", id: "test" } }
+        let captured: AgentCall.TextInput | undefined
+        ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
+          captured = input
+          return { text: "Late generated title", model: { providerID: "test", id: "test" } }
         })
 
         await runEnsureTitle(session.id)
 
-        expect(called).toBe(false)
+        expect(captured?.user?.id).toBe(user.id)
+        const updated = await Session.get(session.id)
+        expect(updated?.title).toBe("Late generated title")
+      },
+    })
+  })
+
+  test("recovers the title on a later turn after a failed attempt", async () => {
+    installMocks()
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session } = await createSessionWithUser(createDefaultTitle())
+        let fail = true
+        ;(AgentCall.text as any) = mock(async () => {
+          if (fail) throw new AgentCall.Error("timeout", "title agent timed out")
+          return { text: "Recovered title", model: { providerID: "test", id: "test" } }
+        })
+
+        await runEnsureTitle(session.id)
+        expect((await Session.get(session.id))?.title).toBe(session.title)
+
+        // A second user message arrives; the next loop re-collects ensure-title
+        // and the session is no longer permanently disqualified.
+        const second = (await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+        })) as MessageV2.User
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: second.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Second user message",
+        })
+        fail = false
+        await runEnsureTitle(session.id)
+
+        const updated = await Session.get(session.id)
+        expect(updated?.title).toBe("Recovered title")
       },
     })
   })

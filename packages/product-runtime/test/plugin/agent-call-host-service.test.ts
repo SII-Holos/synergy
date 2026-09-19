@@ -96,7 +96,7 @@ describe("plugin agent.call Host Service", () => {
           timeoutMs: 1000,
           maxInputChars: 20,
           maxOutputChars: 30,
-          retries: 1,
+          retries: 2,
         })
         await expect(invoke("owned", { modelRole: "creative" })).rejects.toMatchObject({
           code: "PLUGIN_AGENT_MODEL_ROLE_DENIED",
