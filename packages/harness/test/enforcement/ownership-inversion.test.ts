@@ -119,8 +119,9 @@ describe("ownership inversion — bash contributes no file capability", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 3. The five historical false-positive decision records: each recorded command
-//    must be allowed under autonomous with no file capability emitted.
+// 3. The historical false-positive decision records, plus the case that
+//    motivated this inversion: each recorded command must be allowed under
+//    autonomous with no file capability emitted.
 //
 //    docs/decisions/implemented/bug-fix/2026-08-20-copy-operand-role-classification.md
 //    docs/decisions/implemented/bug-fix/2026-09-03-null-device-sink-write-redirect-classification.md
@@ -150,6 +151,15 @@ const RELEASED_FALSE_POSITIVES: Array<{ record: string; command: string }> = [
   {
     record: "2026-09-10-unified-read-only-shell-catalog",
     command: 'ls /Users/test/other-project/ && echo --- && ls /Users/test/projects/ | grep -i -E "meme|lingo"',
+  },
+  {
+    // The false positive this work started from. A `grep -v "/test/"` pattern
+    // was classified as a write to `/test/`, and under `autonomous` the long
+    // form denied with `file_external_read`. Reproduced as the real pipeline
+    // it appeared in, so the filter argument is exercised inside a compound
+    // command rather than in isolation.
+    record: "2026-09-19-shell-capability-ownership-inversion",
+    command: 'rg -n "worktree prune" --type ts -g \'!node_modules\' packages apps script | grep -v "/test/" | head -30',
   },
 ]
 
