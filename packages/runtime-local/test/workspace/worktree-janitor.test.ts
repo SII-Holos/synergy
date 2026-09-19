@@ -37,6 +37,11 @@ async function setLastUsedAt(repoRoot: string, id: string, lastUsedAt: number) {
   await Bun.write(file, JSON.stringify({ ...parsed, lastUsedAt }, null, 2))
 }
 
+async function branchExists(cwd: string, branch: string) {
+  const result = await $`git rev-parse --verify --quiet refs/heads/${branch}`.quiet().nothrow().cwd(cwd)
+  return result.exitCode === 0
+}
+
 // git prints the resolved path, which can differ from the created path through
 // a symlinked temp root, so key the map by basename.
 function lockReasons(porcelain: string): Map<string, string> {
@@ -379,5 +384,79 @@ describe("worktree sweep eligibility", () => {
   test("reclaims a clean, unlocked, idle worktree", () => {
     expect(Worktree.decide(managedInfo(), sweepEvidence())).toEqual({ eligible: true })
     expect(Worktree.decide(managedInfo(), sweepEvidence({ lock: "synergy" }))).toEqual({ eligible: true })
+  })
+})
+
+describe("worktree branch cleanup", () => {
+  test("deletes the branch when its content landed through a squash merge", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await Worktree.create({ name: "branch-landed", bind: false, baseRef: "current" })
+        await Bun.write(path.join(created.path, "landed.txt"), "landed content\n")
+        await $`git add .`.quiet().cwd(created.path)
+        await $`git commit -qm "landed work"`.quiet().cwd(created.path)
+
+        // Squash it: the trees match, but the branch tip is not an ancestor of
+        // the target, so reachability checks cannot see that it landed.
+        await $`git merge --squash ${created.branch!}`.quiet().cwd(scope.worktree)
+        await $`git commit -qm "squash landed work"`.quiet().cwd(scope.worktree)
+
+        await Worktree.remove({ target: created.id, force: true })
+
+        expect(await branchExists(scope.worktree, created.branch!)).toBe(false)
+      },
+    })
+  })
+
+  test("deletes the branch when a squash landed and the target advanced since", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await Worktree.create({ name: "branch-squash-advanced", bind: false, baseRef: "current" })
+        await Bun.write(path.join(created.path, "squashed.txt"), "squashed content\n")
+        await $`git add .`.quiet().cwd(created.path)
+        await $`git commit -qm "work to squash"`.quiet().cwd(created.path)
+
+        await $`git merge --squash ${created.branch!}`.quiet().cwd(scope.worktree)
+        await $`git commit -qm "squash landed work"`.quiet().cwd(scope.worktree)
+        // A later commit breaks tree equality, so only the aggregate patch-id
+        // proof is left to recognise the branch as landed.
+        await Bun.write(path.join(scope.worktree, "later.txt"), "later work\n")
+        await $`git add .`.quiet().cwd(scope.worktree)
+        await $`git commit -qm "later target work"`.quiet().cwd(scope.worktree)
+
+        await Worktree.remove({ target: created.id, force: true })
+
+        expect(await branchExists(scope.worktree, created.branch!)).toBe(false)
+      },
+    })
+  })
+
+  test("keeps the branch when its commits never landed anywhere", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await Worktree.create({ name: "branch-unlanded", bind: false, baseRef: "current" })
+        await Bun.write(path.join(created.path, "unique.txt"), "work that exists only here\n")
+        await $`git add .`.quiet().cwd(created.path)
+        await $`git commit -qm "unlanded work"`.quiet().cwd(created.path)
+
+        await Worktree.remove({ target: created.id, force: true })
+
+        // The branch ref is the only surviving copy of this commit, so deleting
+        // it would lose the work. Nothing is proven landed => keep it.
+        expect(await branchExists(scope.worktree, created.branch!)).toBe(true)
+      },
+    })
   })
 })
