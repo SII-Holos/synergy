@@ -333,6 +333,7 @@ export namespace Config {
 
     merge(LegacyExecutionConfig.environment(), "legacy_environment")
 
+    normalizeRoleNulls(result)
     ConfigExtensions.normalize(result)
     const config = Info.parse(result)
     mark(config, "default", "", true)
@@ -343,6 +344,31 @@ export namespace Config {
       sources,
     }
   }
+  // Role models and role_variant values accept explicit null as a stored
+  // "cleared" marker: the settings round trip needs it to survive deep merge
+  // across config layers. Strip the markers here so readers always see unset.
+  function normalizeRoleNulls(config: Info) {
+    const roleFields = [
+      "model",
+      "nano_model",
+      "mini_model",
+      "mid_model",
+      "thinking_model",
+      "long_context_model",
+      "creative_model",
+      "vision_model",
+    ] as const
+    for (const field of roleFields) {
+      if (config[field] === null) delete config[field]
+    }
+    if (config.role_variant) {
+      for (const [role, variant] of Object.entries(config.role_variant)) {
+        if (variant === null) delete config.role_variant[role]
+      }
+      if (Object.keys(config.role_variant).length === 0) delete config.role_variant
+    }
+  }
+
   /**
    * Fetch and parse one well-known remote config, caching the result.
    * Returns null when the remote config is unavailable or invalid so the

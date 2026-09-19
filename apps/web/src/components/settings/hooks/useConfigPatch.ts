@@ -90,18 +90,33 @@ function buildEmbeddingPatch(cfg: Config, state: SettingsState, patch: Record<st
 
 function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   for (const role of MODEL_ROLES) {
-    const origVal = (cfg[role.key as keyof Config] as string | undefined) ?? ""
+    const origVal = (cfg[role.key as keyof Config] as string | null | undefined) ?? ""
     const newVal = state.models[role.key]
-    if (newVal !== origVal) patch[role.key] = newVal || undefined
+    if (newVal !== origVal) {
+      // Clearing a role sends explicit null: the models domain merges deep
+      // and the SDK JSON serializer drops undefined, so an omitted key would
+      // keep the stored value forever. The schema persists null as the
+      // cleared marker (same convention as boss.identityText).
+      patch[role.key] = newVal || null
+    }
   }
-  const origVariant = cfg.role_variant
+  const origVariant = cfg.role_variant ?? {}
   const variants = state.roleVariant
-  const cleanedVariant: Record<string, string> = {}
-  for (const [role, variant] of Object.entries(variants)) {
-    if (variant) cleanedVariant[role] = variant
+  const nextVariant: Record<string, string | null> = {}
+  const storedVariant: Record<string, string> = {}
+  for (const [role, variant] of Object.entries(origVariant)) {
+    if (variant) storedVariant[role] = variant
   }
-  if (JSON.stringify(cleanedVariant) !== JSON.stringify(origVariant ?? {})) {
-    patch.role_variant = Object.keys(cleanedVariant).length ? cleanedVariant : undefined
+  for (const [role, variant] of Object.entries(variants)) {
+    if (variant) nextVariant[role] = variant
+    else if (storedVariant[role]) nextVariant[role] = null
+  }
+  if (Object.keys(nextVariant).length > 0 && JSON.stringify(nextVariant) !== JSON.stringify(storedVariant)) {
+    // Per-role nulls clear that role while mergeDeep preserves sibling
+    // entries the draft did not touch; omitting the field would resurrect
+    // every stored variant after the save round trip. Compared against the
+    // stored values (null markers excluded) so a saved clear never re-dirties.
+    patch.role_variant = nextVariant
   }
 
   const cleanedQuickSwitcher = state.models.quick_switcher.filter(

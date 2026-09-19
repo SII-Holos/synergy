@@ -800,55 +800,63 @@ const CoreInfo = z
       ),
     model: z
       .string()
-      .describe("Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5")
+      .nullable()
+      .describe("Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role")
       .optional(),
     nano_model: z
       .string()
+      .nullable()
       .describe(
-        "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
+        "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model",
       )
       .optional(),
     mini_model: z
       .string()
+      .nullable()
       .describe(
-        "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
+        "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model",
       )
       .optional(),
     mid_model: z
       .string()
+      .nullable()
       .describe(
-        "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
+        "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model",
       )
       .optional(),
     thinking_model: z
       .string()
+      .nullable()
       .describe(
-        "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
+        "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
       )
       .optional(),
     long_context_model: z
       .string()
+      .nullable()
       .describe(
-        "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
+        "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
       )
       .optional(),
     creative_model: z
       .string()
+      .nullable()
       .describe(
-        "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
+        "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
       )
       .optional(),
     vision_model: z
       .string()
+      .nullable()
       .describe(
-        "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
+        "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model",
       )
       .optional(),
     role_variant: z
-      .record(z.string(), z.string())
+      .record(z.string(), z.string().nullable())
       .optional()
       .describe(
-        "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+        "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant",
       ),
     default_agent: z
       .string()

@@ -37410,45 +37410,108 @@
             }
           },
           "model": {
-            "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
-            "type": "string"
+            "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "nano_model": {
-            "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
-            "type": "string"
+            "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mini_model": {
-            "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
-            "type": "string"
+            "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mid_model": {
-            "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
-            "type": "string"
+            "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "thinking_model": {
-            "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
+            "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "long_context_model": {
-            "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
+            "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "creative_model": {
-            "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
+            "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "vision_model": {
-            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
-            "type": "string"
+            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "role_variant": {
-            "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+            "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant",
             "type": "object",
             "propertyNames": {
               "type": "string"
             },
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "default_agent": {
@@ -41213,45 +41276,108 @@
             "additionalProperties": false
           },
           "model": {
-            "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
-            "type": "string"
+            "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "nano_model": {
-            "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
-            "type": "string"
+            "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mini_model": {
-            "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
-            "type": "string"
+            "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mid_model": {
-            "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
-            "type": "string"
+            "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "thinking_model": {
-            "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
+            "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "long_context_model": {
-            "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
+            "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "creative_model": {
-            "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
+            "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "vision_model": {
-            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
-            "type": "string"
+            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "role_variant": {
-            "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+            "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant",
             "type": "object",
             "propertyNames": {
               "type": "string"
             },
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "toolExposure": {

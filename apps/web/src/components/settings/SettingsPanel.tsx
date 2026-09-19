@@ -905,9 +905,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         roleVariant={settings.roleVariant}
         popoverLayer={settingsPopoverLayer()}
         onModelChange={(key, value) => setSettings("models", key, value)}
-        onVariantChange={(roleId, variant) =>
-          setSettings("roleVariant", roleId, variant || (undefined as unknown as string))
-        }
+        onVariantChange={(roleId, variant) => setSettings("roleVariant", roleId, variant || "")}
         onQuickSwitcherChange={(preferences) => setSettings("models", "quick_switcher", preferences)}
         onConnectProvider={() => setActiveTab("providers")}
       />

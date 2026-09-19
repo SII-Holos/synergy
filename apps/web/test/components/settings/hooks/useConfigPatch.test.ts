@@ -150,8 +150,37 @@ describe("settings config patch", () => {
       }),
     ).toEqual({
       model: "openai/gpt-5.5",
-      mini_model: undefined,
+      mini_model: null,
     })
+  })
+
+  test("clearing a role variant emits a per-role null and preserves siblings", () => {
+    const state = defaultSettingsState("enter")
+    state.roleVariant = { default: "", title: "low" }
+
+    const patch = buildPatch({
+      cfg: { role_variant: { default: "high", title: "low" } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.role_variant).toEqual({ default: null, title: "low" })
+  })
+
+  test("seeded role variant draft does not re-send stored variants", () => {
+    // After a clear save the normalized config omits the cleared key; a
+    // seeded draft must produce no variant patch, or the panel would stay
+    // permanently dirty across saves.
+    const state = defaultSettingsState("enter")
+    state.roleVariant = { title: "low" }
+
+    const patch = buildPatch({
+      cfg: { role_variant: { title: "low" } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("role_variant")
   })
 
   test("persists quick switcher model preferences through the models domain", () => {

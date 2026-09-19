@@ -62,7 +62,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   params.setSettings("agents", {
     defaultAgent: cfg.default_agent ?? UI_DEFAULTS.defaultAgent,
   })
-  params.setSettings("roleVariant", cfg.role_variant ?? {})
+  const roleVariantDraft: Record<string, string> = {}
+  for (const [role, variant] of Object.entries(cfg.role_variant ?? {})) {
+    // Stored nulls are cleared-role markers; the draft only tracks concrete variants.
+    if (variant) roleVariantDraft[role] = variant
+  }
+  params.setSettings("roleVariant", roleVariantDraft)
 
   params.setSettings("providers", {
     enabledProviders: formatList(cfg.enabled_providers),

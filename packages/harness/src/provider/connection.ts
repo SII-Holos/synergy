@@ -173,7 +173,7 @@ export namespace ProviderConnection {
     }
   }
 
-  function usesProvider(model: string | undefined, providerID: string) {
+  function usesProvider(model: string | null | undefined, providerID: string) {
     return model?.startsWith(`${providerID}/`) === true
   }
 

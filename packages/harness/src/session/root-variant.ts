@@ -7,10 +7,10 @@ export namespace SessionRootVariant {
   export function resolveName(input: {
     explicit?: string
     agentDefault?: string
-    roleDefault?: string
+    roleDefault?: string | null
   }): string | undefined {
     return [input.explicit, input.agentDefault, input.roleDefault].find(
-      (value) => value !== undefined && value.length > 0,
+      (value): value is string => typeof value === "string" && value.length > 0,
     )
   }
 

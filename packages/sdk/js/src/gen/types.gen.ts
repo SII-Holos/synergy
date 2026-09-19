@@ -4439,42 +4439,42 @@ export type Config = {
    */
   enabled_providers?: Array<string>
   /**
-   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
    */
-  model?: string
+  model?: string | null
   /**
-   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.
+   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model
    */
-  nano_model?: string
+  nano_model?: string | null
   /**
-   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.
+   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model
    */
-  mini_model?: string
+  mini_model?: string | null
   /**
-   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.
+   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model
    */
-  mid_model?: string
+  mid_model?: string | null
   /**
-   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.
+   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  thinking_model?: string
+  thinking_model?: string | null
   /**
-   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.
+   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  long_context_model?: string
+  long_context_model?: string | null
   /**
-   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.
+   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  creative_model?: string
+  creative_model?: string | null
   /**
-   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.
+   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model
    */
-  vision_model?: string
+  vision_model?: string | null
   /**
-   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant
    */
   role_variant?: {
-    [key: string]: string
+    [key: string]: string | null
   }
   /**
    * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
@@ -5883,42 +5883,42 @@ export type ExperimentOverrides = {
     coauthorReminder?: boolean
   }
   /**
-   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
    */
-  model?: string
+  model?: string | null
   /**
-   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.
+   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model
    */
-  nano_model?: string
+  nano_model?: string | null
   /**
-   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.
+   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model
    */
-  mini_model?: string
+  mini_model?: string | null
   /**
-   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.
+   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model
    */
-  mid_model?: string
+  mid_model?: string | null
   /**
-   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.
+   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  thinking_model?: string
+  thinking_model?: string | null
   /**
-   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.
+   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  long_context_model?: string
+  long_context_model?: string | null
   /**
-   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.
+   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  creative_model?: string
+  creative_model?: string | null
   /**
-   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.
+   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model
    */
-  vision_model?: string
+  vision_model?: string | null
   /**
-   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant
    */
   role_variant?: {
-    [key: string]: string
+    [key: string]: string | null
   }
   toolExposure?: {
     /**

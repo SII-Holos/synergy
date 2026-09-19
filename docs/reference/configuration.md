@@ -54,15 +54,15 @@ File: `10-models.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `model` | string (optional) | Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5 |
-| `nano_model` | string (optional) | Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. |
-| `mini_model` | string (optional) | Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. |
-| `mid_model` | string (optional) | Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. |
-| `thinking_model` | string (optional) | Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. |
-| `long_context_model` | string (optional) | Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. |
-| `creative_model` | string (optional) | Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. |
-| `vision_model` | string (optional) | Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. |
-| `role_variant` | string (optional) | Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. |
+| `model` | string (optional) | Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role |
+| `nano_model` | string (optional) | Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model |
+| `mini_model` | string (optional) | Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model |
+| `mid_model` | string (optional) | Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model |
+| `thinking_model` | string (optional) | Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model |
+| `long_context_model` | string (optional) | Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model |
+| `creative_model` | string (optional) | Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model |
+| `vision_model` | string (optional) | Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model |
+| `role_variant` | string (optional) | Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant |
 | `quick_switcher` | QuickSwitcher.optional (optional) | Quick switcher model visibility preferences |
 
 ## Providers
