@@ -553,7 +553,7 @@ export namespace Agent {
         model,
         fallbackModel,
         timeoutMs: 30_000,
-        retries: 1,
+        retries: 2,
         maxOutputChars: 4_000,
         messages: [
           {

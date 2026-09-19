@@ -95,6 +95,10 @@ export const ObservabilityConfig = z
       .boolean()
       .optional()
       .describe("Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)"),
+    logMirror: z
+      .boolean()
+      .optional()
+      .describe("Mirror debug/info records that opt in with `mirror: true` into indexed observability events"),
     retentionDays: z
       .number()
       .int()
@@ -171,7 +175,20 @@ export const ObservabilityConfig = z
               .boolean()
               .optional()
               .describe("Enable optional JSONL mirror files for debugging exports"),
-            maxSqliteBytes: z.number().int().positive().optional(),
+            maxSqliteBytes: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe("Maximum total authoritative storage bytes (default: 250MB)"),
+            retentionMs: z
+              .number()
+              .int()
+              .min(0)
+              .optional()
+              .describe(
+                "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
+              ),
             walCheckpointIntervalMs: z.number().int().positive().optional(),
           })
           .strict()
@@ -585,8 +602,11 @@ const CoreInfo = z
           .int()
           .positive()
           .max(64)
+          .nullable()
           .optional()
-          .describe("Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)"),
+          .describe(
+            "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+          ),
         agentWorkerMinIdle: z
           .number()
           .int()

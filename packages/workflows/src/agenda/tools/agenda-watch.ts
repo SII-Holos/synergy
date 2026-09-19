@@ -1,4 +1,4 @@
-import { GithubWatchPolicy } from "../github-watch-policy"
+import { GithubWatchPreflight } from "./github-watch-preflight"
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -96,20 +96,11 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
 
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     if (params.onGithub) {
-      // A GitHub watch can never fire while polling is disabled; reject up
-      // front instead of leaving a silent, indefinite continuation blocker.
-      const watch = await GithubWatchPolicy.read()
-      if (watch?.enabled === false) {
-        return {
-          title: "agenda_watch rejected",
-          output: [
-            `GitHub watch is disabled (github.watch.enabled=false in config).`,
-            ``,
-            `Ask the user to enable it in Settings → GitHub → "Allow GitHub agenda triggers", or set github.watch.enabled=true in 115-github.jsonc.`,
-          ].join("\n"),
-          metadata: { blocked: true, reason: "github_watch_disabled" } as Record<string, any>,
-        }
-      }
+      // A GitHub watch without a credential never fires and, as a
+      // continuation blocker, would hold this session forever with no
+      // feedback. Reject at creation with concrete connection steps.
+      const rejected = await GithubWatchPreflight.check("agenda_watch")
+      if (rejected) return rejected
     }
     const trigger: AgendaTypes.Trigger = params.onSessionEnd
       ? {

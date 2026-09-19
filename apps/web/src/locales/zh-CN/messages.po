@@ -7376,8 +7376,28 @@ msgstr "synergy config"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelNotConfigured"
-msgstr "尚未配置 AI 模型——请在终端中运行 {cmd} 完成设置"
+msgid "app.shell.modelUnavailable.action.connect"
+msgstr "连接提供商"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.action.review"
+msgstr "查看提供商"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.needsAttention"
+msgstr "已连接的提供商需要处理后，其模型才能使用。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.notConfigured"
+msgstr "尚未连接任何 AI 提供商。连接一个即可选择模型，也可以在终端中运行 {cmd}。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.restricted"
+msgstr "没有可选择的模型。请确认已连接的提供商已启用并提供模型。"
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
@@ -9536,9 +9556,29 @@ msgstr "卸载 {name}？它将从此 Synergy 安装中移除。"
 msgid "confirm.uninstallPlugin.title"
 msgstr "卸载插件？"
 
-#. ── Countdown ───────────────────────────────────────────────────────
-msgid "countdown.timeout-label"
-msgstr "{remaining} 秒超时"
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.backgrounded"
+msgstr "已转后台"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.past-limit"
+msgstr "已超出限制"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.remaining"
+msgstr "剩余 {remaining} 秒"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.timed-out"
+msgstr "已超时"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-background"
+msgstr "{remaining} 秒后转后台"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-timeout"
+msgstr "{remaining} 秒后超时"
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
 msgid "dag.chrome.blocked"
@@ -13650,12 +13690,32 @@ msgid "session.state.home.unread"
 msgstr "全局会话；回复已生成"
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr "Light Loop 会话"
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr "Light Loop 会话；回复已生成"
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr "Light Loop 等待你处理"
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr "会话恢复中"
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr "正在运行的会话"
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
 msgstr "正在运行 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
+msgstr "正在运行 Light Loop"
 
 #. js-lingui-explicit-id
 msgid "session.state.waiting"
@@ -18117,12 +18177,16 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
-msgstr "自动"
+msgid "settings.runtime.agents.agentWorkers.derived"
+msgstr "自动 · 由机器推导：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
 msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
+msgstr "已配置：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.placeholder"

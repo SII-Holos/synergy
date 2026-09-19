@@ -45,12 +45,12 @@ describe("tool.browser_wait", () => {
     const result = await tool.execute(
       {
         condition: { type: "text", values: ["Ready"], match: "any" },
-        timeoutMs: 10_000,
+        timeoutSeconds: 10,
       },
       context(),
     )
 
-    expect(result.output).toContain("Condition text was satisfied in 312ms")
+    expect(result.output).toContain("Condition text was satisfied in 0.312s")
     expect(result.metadata).toMatchObject({
       condition: { type: "text", values: ["Ready"], match: "any" },
       timeoutMs: 10_000,
@@ -68,11 +68,11 @@ describe("tool.browser_wait", () => {
     const result = await tool.execute(
       {
         condition: { type: "load", state: "load" },
-        timeoutMs: 10_000,
+        timeoutSeconds: 10,
       },
       context(),
     )
 
-    expect(result.output).toContain("Condition load was satisfied within 10000ms")
+    expect(result.output).toContain("Condition load was satisfied within 10s")
   })
 })

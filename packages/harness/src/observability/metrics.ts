@@ -135,23 +135,18 @@ export namespace ObservabilityMetrics {
     for (const item of items) insert({ ...item.input, value: item.value })
   }
 
+  // Aggregated counters measure volume, not identity. Per-turn and per-request
+  // identity (session, message, call, correlation, request, process, and
+  // span/trace ids) shards this family into one row per concurrent turn, which
+  // is what defeated the row reduction; those fields still ride along on the
+  // aggregate row. Scope and tool stay because queries filter and rank by them.
   function aggregateKey(input: ResolvedMetricInput) {
     return [
       input.name,
       input.unit,
       input.module,
       input.source,
-      input.correlationId,
-      input.traceId,
-      input.spanId,
-      input.parentSpanId,
       input.scopeID,
-      input.sessionID,
-      input.messageID,
-      input.callID,
-      input.rid,
-      input.processId,
-      input.pid,
       input.tool,
       input.sampleRate,
       input.labels ? JSON.stringify(input.labels) : "",

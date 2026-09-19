@@ -22,14 +22,15 @@ describe("ToolTimeout", () => {
     })
     expect(metadata("list").operationTimeoutMs).toBe(15_000)
     expect(metadata("scan_files").operationTimeoutMs).toBe(10_000)
-    expect(metadata("scan_files", { timeoutMs: 2_500 }).operationTimeoutMs).toBe(2_500)
+    expect(metadata("scan_files", { timeoutSeconds: 3 }).operationTimeoutMs).toBe(3_000)
+    expect(metadata("scan_files", { timeoutMs: 2_500 }).operationTimeoutMs).toBe(10_000)
     expect(metadata("ast_grep").operationTimeoutMs).toBe(60_000)
     expect(metadata("parse_code").operationTimeoutMs).toBe(60_000)
   })
 
   test("uses effective clamped timeout for webfetch", () => {
     expect(metadata("webfetch").operationTimeoutMs).toBe(30_000)
-    expect(metadata("webfetch", { timeout: 300 })).toMatchObject({
+    expect(metadata("webfetch", { timeoutSeconds: 300 })).toMatchObject({
       operationTimeoutMs: 120_000,
       displayMs: 120_000,
       source: "fetch",
@@ -49,33 +50,39 @@ describe("ToolTimeout", () => {
     })
   })
 
-  test("uses bash auto-background metadata by default and supports timeoutSeconds", () => {
+  test("uses bash auto-background metadata from the model-facing yieldSeconds argument", () => {
     expect(metadata("bash")).toMatchObject({
       operationTimeoutMs: 30_000,
       displayMs: 30_000,
       source: "auto_background",
     })
-    expect(metadata("bash", { backgroundAfterSeconds: 5 })).toMatchObject({
+    expect(metadata("bash", { yieldSeconds: 5 })).toMatchObject({
       operationTimeoutMs: 5_000,
       displayMs: 5_000,
       source: "auto_background",
     })
-    expect(metadata("bash", { timeoutSeconds: 7 })).toMatchObject({
-      operationTimeoutMs: 7_000,
-      displayMs: 7_000,
-      source: "wait",
+    expect(metadata("bash", { yieldSeconds: 300 })).toMatchObject({
+      operationTimeoutMs: 300_000,
+      displayMs: 300_000,
+      source: "auto_background",
     })
+  })
+
+  test("ignores bash timing argument names the model cannot send", () => {
+    expect(metadata("bash", { backgroundAfterSeconds: 5 }).operationTimeoutMs).toBe(30_000)
+    expect(metadata("bash", { timeoutSeconds: 7 }).operationTimeoutMs).toBe(30_000)
     expect(metadata("bash", { backgroundAfterSeconds: 5, timeoutSeconds: 7 })).toMatchObject({
-      operationTimeoutMs: 5_000,
-      displayMs: 5_000,
+      operationTimeoutMs: 30_000,
+      displayMs: 30_000,
       source: "auto_background",
     })
   })
 
   test("uses operation timeout for browser, connect, and MCP waits", () => {
     expect(metadata("browser_wait").operationTimeoutMs).toBe(10_000)
-    expect(metadata("browser_wait", { timeout: 45_000 }).operationTimeoutMs).toBe(45_000)
-    expect(metadata("browser_wait", { timeoutMs: 45_000 }).operationTimeoutMs).toBe(45_000)
+    expect(metadata("browser_wait", { timeoutSeconds: 45 }).operationTimeoutMs).toBe(45_000)
+    expect(metadata("browser_wait", { timeout: 45 }).operationTimeoutMs).toBe(10_000)
+    expect(metadata("browser_wait", { timeoutMs: 45_000 }).operationTimeoutMs).toBe(10_000)
     expect(metadata("browser_action").operationTimeoutMs).toBe(30_000)
     expect(metadata("browser_action", { settleTimeoutMs: 15_000 }).operationTimeoutMs).toBe(15_000)
     expect(metadata("browser_action", { action: { settleTimeoutMs: 12_000 } }).operationTimeoutMs).toBe(12_000)

@@ -1,6 +1,15 @@
 import { StorageBusyError } from "../storage/errors"
 type Entry<T, P> = { path: P; value: T; bytes: number }
 
+/**
+ * Serialized growth of appending `chunk` to a JSON string field: the escaped
+ * body is what the enclosing string gained, minus the two quotes
+ * `JSON.stringify` wraps around the chunk itself.
+ */
+function measureAppendedBytes(chunk: string): number {
+  return Buffer.byteLength(JSON.stringify(chunk)) - 2
+}
+
 export class PartWriteBuffer<T, P = string> {
   private bytes = 0
   private readonly latest = new Map<string, Entry<T, P>>()
@@ -13,14 +22,27 @@ export class PartWriteBuffer<T, P = string> {
     private readonly intervalMs = 500,
   ) {}
 
-  defer(key: string, path: P, value: T): void {
+  /**
+   * Buffers the latest state of a streaming value. `appended` is the text the
+   * caller appended to `value` since the previous defer for this key, which is
+   * what lets repeated deltas cost O(delta): the buffer holds a reference to
+   * the caller's object instead of re-serializing and cloning the accumulated
+   * value per delta. Omit `appended`, or hand over a different object for the
+   * same key, and the value is measured once instead. Flushing snapshots
+   * whatever the buffered value holds at that moment.
+   */
+  defer(key: string, path: P, value: T, appended?: string): void {
     const failure = this.failures.get(key)
     if (failure) throw failure.error
-    const bytes = Buffer.byteLength(JSON.stringify(value))
-    const previous = this.latest.get(key)?.bytes ?? 0
-    if ((!this.latest.has(key) && this.latest.size >= 1024) || this.bytes - previous + bytes > 64 * 1024 * 1024)
+    const buffered = this.latest.get(key)
+    const previous = buffered?.bytes ?? 0
+    const bytes =
+      appended !== undefined && buffered?.value === value
+        ? previous + measureAppendedBytes(appended)
+        : Buffer.byteLength(JSON.stringify(value))
+    if ((!buffered && this.latest.size >= 1024) || this.bytes - previous + bytes > 64 * 1024 * 1024)
       throw new StorageBusyError("Streaming persistence buffer is full; drain before accepting more output")
-    this.latest.set(key, { path, value: structuredClone(value), bytes })
+    this.latest.set(key, { path, value, bytes })
     this.bytes += bytes - previous
     if (!this.timers.has(key))
       this.timers.set(
@@ -34,11 +56,21 @@ export class PartWriteBuffer<T, P = string> {
   flush(key: string): Promise<void> {
     const entry = this.latest.get(key)
     this.cancel(key)
-    if (entry) return this.execute(key, entry)
+    if (entry) return this.execute(key, entry.path, entry.value)
     return this.running.get(key)?.promise ?? Promise.resolve()
   }
 
-  private execute(key: string, entry: Entry<T, P>, write = this.write): Promise<void> {
+  private execute(key: string, path: P, value: T, write = this.write): Promise<void> {
+    let snapshot: T
+    try {
+      snapshot = structuredClone(value)
+    } catch (error) {
+      return Promise.reject(error)
+    }
+    // The caller keeps mutating the streaming object while a write is in
+    // flight; the snapshot is what makes the persisted state the flush-time
+    // state and keeps later mutations out of the write.
+    const entry: Entry<T, P> = { path, value: snapshot, bytes: Buffer.byteLength(JSON.stringify(snapshot)) }
     if (this.bytes + entry.bytes > 64 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Streaming persistence buffer is full"))
     this.bytes += entry.bytes
@@ -72,11 +104,7 @@ export class PartWriteBuffer<T, P = string> {
 
   async writeNow(key: string, path: P, value: T, write = this.write): Promise<void> {
     this.cancel(key)
-    await this.execute(
-      key,
-      { path, value: structuredClone(value), bytes: Buffer.byteLength(JSON.stringify(value)) },
-      write,
-    )
+    await this.execute(key, path, value, write)
   }
 
   flushAll(): Promise<void> {
@@ -98,7 +126,7 @@ export class PartWriteBuffer<T, P = string> {
     // entry flush that entry instead, and its success clears the failure.
     const retries = [...this.failures.entries()]
       .filter(([key, { entry }]) => predicate(entry.value, entry.path) && !keys.has(key))
-      .map(([key, { entry }]) => this.execute(key, entry))
+      .map(([key, { entry }]) => this.execute(key, entry.path, entry.value))
     const results = await Promise.allSettled([...keys].map((key) => this.flush(key)).concat(retries))
     const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (errors.length === 1) throw errors[0]
