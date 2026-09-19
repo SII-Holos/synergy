@@ -1,8 +1,8 @@
 import { GithubWatchPreflight } from "./github-watch-preflight"
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { Agenda, AgendaTypes } from ".."
+import { Agenda, AgendaStore, AgendaTypes } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./agenda-update.txt"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
@@ -42,9 +42,12 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    if (params.triggers?.some((t) => t.type === "github")) {
-      // A GitHub trigger without a credential never fires; reject at update
-      // with concrete connection steps instead of persisting a silent item.
+    const triggers =
+      params.triggers ??
+      (params.status === "active"
+        ? (await AgendaStore.findInScope(ScopeContext.current.scope.id, params.id)).item.triggers
+        : undefined)
+    if (triggers?.some((t) => t.type === "github")) {
       const rejected = await GithubWatchPreflight.check("agenda_update")
       if (rejected) return rejected
     }

@@ -4,6 +4,7 @@ import { AgendaStore } from "./store"
 import { AgendaTypes } from "./types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { GitHubProvider } from "@ericsanchezok/synergy-harness/provider/github"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 /**
  * GitHub agenda trigger — polls the GitHub REST API on a per-trigger interval
@@ -237,17 +238,24 @@ export namespace AgendaGithubTrigger {
    * session stays stopped forever.
    */
   async function pauseEntry(entry: Entry, reason: string): Promise<void> {
-    unregister(entry.itemID)
     try {
-      const before = await AgendaStore.get(entry.scopeID, entry.itemID)
-      const item = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
-      await AgendaSessionWakeup.resumeIfReleased({ before, after: item })
+      const transition = await Storage.transaction(async () => {
+        if (!entries.get(entry.itemID)?.includes(entry)) return
+        const before = await AgendaStore.get(entry.scopeID, entry.itemID)
+        if (before.status !== "active" || !entries.get(entry.itemID)?.includes(entry)) return
+        const after = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
+        return { before, after }
+      })
+      if (!transition) return
+      if (entries.get(entry.itemID)?.includes(entry)) unregister(entry.itemID)
+      await AgendaSessionWakeup.resumeIfReleased(transition)
     } catch (err) {
       log.error("failed to pause github trigger", {
         itemID: entry.itemID,
         reason,
         error: err instanceof Error ? err : new Error(String(err)),
       })
+      return
     }
     log.warn(`github trigger paused: ${reason}`, {
       itemID: entry.itemID,
