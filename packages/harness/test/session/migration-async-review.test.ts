@@ -6,6 +6,7 @@ import { runMigrations, getMigrationStatus } from "../../src/migration"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { SessionCompat } from "../../src/session/compat-import"
 import { SessionManager } from "../../src/session/manager"
+import { RolloutRecovery } from "../../src/session/rollout/recovery"
 import { RolloutMigration } from "../../src/session/rollout/migration"
 import { StorageCompat } from "../../src/storage/compat"
 import { Storage } from "../../src/storage/storage"
@@ -277,4 +278,59 @@ test("a spent scheduling deadline still lets one owner progress after catalog di
     expect(await SessionCompat.importBatch(2, { deadline: Date.now() - 1 })).toBe(1)
     expect((await SessionCompat.stats()).pending).toBe(1)
   })
+})
+
+test("a missing sealed message cannot publish a truncated deferred owner", async () => {
+  await using f = await fixture()
+  const messageID = Identifier.ascending("message")
+  const relative = `sessions/home/${f.id}/messages/${messageID}/info.json`
+  await Bun.write(
+    path.join(f.data, relative),
+    JSON.stringify({
+      id: messageID,
+      sessionID: f.id,
+      role: "user",
+      agent: "test",
+      model: { providerID: "test", modelID: "test" },
+      time: { created: 1000 },
+    }),
+  )
+  const backup = new SegmentedBackup(f.data, "missing-sealed-message")
+  await backup.freeze()
+  await backup.global().create()
+  await StorageCompat.seedLocators(f.store, backup.sourceRoot, backup.backupID)
+  await backup.sealSession({ scopeID: "home", sessionID: f.id })
+  await fs.rm(path.join(backup.sourceRoot, relative))
+  await f.run(async () => {
+    await expect(SessionCompat.requireImported(f.id)).rejects.toThrow("sealed backup")
+    expect((await SessionCompat.stats()).imported).toBe(0)
+    expect((await Storage.readMany([StoragePath.sessionIndex(f.id)]))[0]).toBeUndefined()
+  })
+})
+
+test("derived migrations publish indexes only after owner recovery", async () => {
+  await using f = await fixture()
+  await StorageCompat.seedLocators(f.store, f.data)
+  await f.store.write(["compat_import", "cohorts", "session", "20260730-session-nav-channel-provider-fields"], {
+    domain: "session",
+    id: "20260730-session-nav-channel-provider-fields",
+    residentComplete: true,
+  })
+  const recover = RolloutRecovery.owner
+  let recovered = false
+  const observe = spyOn(RolloutRecovery, "owner").mockImplementation(async (...args) => {
+    expect((await Storage.readMany([StoragePath.sessionIndex(f.id)]))[0]).toBeUndefined()
+    const result = await recover(...args)
+    recovered = true
+    return result
+  })
+  try {
+    await f.run(async () => {
+      await SessionCompat.requireImported(f.id)
+      expect(recovered).toBe(true)
+      expect((await Storage.readMany([StoragePath.sessionIndex(f.id)]))[0]).toBeDefined()
+    })
+  } finally {
+    observe.mockRestore()
+  }
 })

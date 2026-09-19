@@ -9,6 +9,7 @@ import {
 } from "../../src/session/agent-turn/worker-pool"
 import type { AgentWorkerProcess, SpawnAgentWorkerProcessOptions } from "../../src/session/agent-turn/process-host"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
+import { StorageBusyError } from "../../src/storage/errors"
 
 interface FakeWorker {
   options: SpawnAgentWorkerProcessOptions
@@ -223,6 +224,43 @@ describe("AgentWorkerPool", () => {
       worker.sent.some((message) => message.type === "archive-ack" && message.error?.name === "RolloutRecordingError"),
     ).toBe(true)
     expect(worker.sent.some((message) => message.type === "cancel")).toBe(true)
+    await pool.stop()
+  })
+
+  test("keeps transient storage pressure distinct from a failed recording", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() =>
+      pool.run({
+        ...input(new AbortController().signal),
+        archive: async () => {
+          throw new StorageBusyError("Authoritative storage admission deadline exceeded")
+        },
+      }),
+    )
+    const worker = fake.workers[0]
+    worker.ready()
+    const run = startTurn(worker)
+    worker.receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    worker.receive({
+      type: "archive",
+      requestId: run.requestId,
+      sequence: 1,
+      event: {
+        type: "attempt-start",
+        attemptID: crypto.randomUUID(),
+        url: "https://example.test",
+        method: "POST",
+        mediaType: "application/json",
+      },
+    })
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toMatchObject({
+      name: "StorageBusyError",
+    })
+    expect(
+      worker.sent.some((message) => message.type === "archive-ack" && message.error?.name === "StorageBusyError"),
+    ).toBe(true)
     await pool.stop()
   })
 

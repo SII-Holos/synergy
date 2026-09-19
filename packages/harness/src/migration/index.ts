@@ -25,7 +25,10 @@ const states = new WeakMap<object, { running?: Promise<MigrationSummary>; summar
 const cohortRoot = ["compat_import", "cohorts"]
 type Cohort = { domain: string; id: string; residentComplete: boolean }
 
-export async function migrateDeferredSession(owner: { scopeID: string; sessionID: string }) {
+export async function migrateDeferredSession(
+  owner: { scopeID: string; sessionID: string },
+  phase: "canonical" | "derived",
+) {
   const cohorts = await Storage.readMany<Cohort>(await Storage.list(cohortRoot))
   const domains = collectByDomain()
   for (const cohort of cohorts) {
@@ -40,6 +43,7 @@ export async function migrateDeferredSession(owner: { scopeID: string; sessionID
   }
   for (const domain of [...domains.keys()].sort()) {
     for (const migration of orderMigrations(domains.get(domain)!)) {
+      if ((migration.scope === "derived") !== (phase === "derived")) continue
       if (!cohorts.some((entry) => entry?.domain === domain && entry.id === migration.id)) continue
       if (!migration.upSession) throw new Error(`Migration ${domain}/${migration.id} cannot upgrade one Session`)
       const key = ["compat_import", "migrations", owner.sessionID, domain, migration.id]
@@ -187,8 +191,9 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
           !((migration.scope === "session" || migration.scope === "derived") && migration.upSession),
       ),
     )
-    deferSessions = !barriers && (await SessionCompat.isActive())
-    if (pending.length && barriers) {
+    const active = await SessionCompat.isActive()
+    deferSessions = !barriers && active
+    if (pending.length && barriers && active) {
       const migration: Migration = {
         id: "storage-session-staging",
         description: "Prepare historical Sessions for shared migrations",

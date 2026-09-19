@@ -1024,6 +1024,7 @@ export type PerfConfig = {
     sqliteEnabled: boolean
     jsonlMirrorEnabled: boolean
     maxSqliteBytes: number
+    retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
   }
@@ -1061,6 +1062,7 @@ export type PerformanceConfigPatch = {
     sqliteEnabled: boolean
     jsonlMirrorEnabled: boolean
     maxSqliteBytes: number
+    retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
   }
@@ -2694,11 +2696,15 @@ export type ObservabilityConfig = {
        */
       jsonlMirrorEnabled?: boolean
       /**
-       * Maximum total authoritative storage bytes (default: 250MB)
+       * Maximum bytes for the local observability database (default: 250MB)
        */
       maxSqliteBytes?: number
       /**
-       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.
+       * Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.
+       */
+      retentionBytes?: number
+      /**
+       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.
        */
       retentionMs?: number
       walCheckpointIntervalMs?: number

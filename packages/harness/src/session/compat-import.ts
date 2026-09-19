@@ -347,7 +347,7 @@ export namespace SessionCompat {
     const staged = await withFileLock(lock, () => importAggregateLocked(locator, true, backup, backedUp))
     if (stageOnly || staged.status === "quarantined" || staged.status === "imported") return staged
     const { migrateDeferredSession } = await import("../migration")
-    await migrateDeferredSession(staged)
+    await migrateDeferredSession(staged, "canonical")
     const { RolloutRecovery } = await import("./rollout/recovery")
     await RolloutRecovery.owner({ kind: "session", scopeID: staged.scopeID, sessionID: staged.sessionID })
     return withFileLock(lock, () => importAggregateLocked(staged, false, backup, backedUp))
@@ -384,6 +384,14 @@ export namespace SessionCompat {
         throw new StorageIntegrityError("Deferred checkpoint differs from its sealed backup")
       if (hashes[i]) checkpoints.set(relative, hashes[i]!)
     })
+    if (backedUp) {
+      const available = new Set(files.map((file) => prefix + file.relative))
+      for (const relative of backedUp.keys()) {
+        if (!(legacyRecordKey(relative) || legacyBinaryKey(relative))) continue
+        if (!available.has(relative) && !(locator.retiring && checkpoints.has(relative)))
+          throw new StorageIntegrityError("Frozen Session source is missing a record from its sealed backup")
+      }
+    }
     if (!locator.retiring && !files.some((file) => file.relative === "info.json"))
       return quarantine(locator, prefix + "info.json", "Missing legacy Session metadata")
     if (files.some((file) => file.linkTarget !== undefined))
@@ -491,7 +499,11 @@ export namespace SessionCompat {
       return staged
     }
     try {
-      await writeSessionIndexes(locator)
+      await projectInfo(
+        await Storage.read(
+          StoragePath.sessionInfo(Identifier.asScopeID(locator.scopeID), Identifier.asSessionID(locator.sessionID)),
+        ),
+      )
     } catch (error) {
       if (!(error instanceof z.ZodError)) throw error
       return quarantine(locator, prefix + "info.json", "Session metadata does not match the current schema")
@@ -518,10 +530,18 @@ export namespace SessionCompat {
       activity: locator.activity,
       status: "imported",
     }
-    await Storage.transaction(async (tx) => {
-      await StorageCompat.setLocator(tx, imported)
-      await tx.removeTree(["compat_import", "files", locator.sessionID])
-    })
+    try {
+      await Storage.transaction(async (tx) => {
+        const { migrateDeferredSession } = await import("../migration")
+        await migrateDeferredSession(locator, "derived")
+        await writeSessionIndexes(locator)
+        await StorageCompat.setLocator(tx, imported)
+        await tx.removeTree(["compat_import", "files", locator.sessionID])
+      })
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error
+      return quarantine(locator, prefix + "info.json", "Session metadata does not match the current schema")
+    }
     const { completeDeferredMigrations } = await import("../migration")
     await completeDeferredMigrations()
     return imported
