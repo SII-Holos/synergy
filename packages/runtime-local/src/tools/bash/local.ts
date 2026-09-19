@@ -424,7 +424,10 @@ export const LocalBashBackend = {
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
-      denialSession?.stop()
+      // The denial logger is deliberately not stopped here. Kernel audit
+      // records trail the child by a short interval, and this cleanup runs at
+      // child close — stopping the stream now would discard the very record
+      // that names the denied path. The session bounds its own lifetime.
       windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
@@ -448,6 +451,14 @@ export const LocalBashBackend = {
     } catch (error) {
       cleanupExecutionArtifacts()
       throw error
+    }
+
+    // macOS Seatbelt reports a denial to the system log rather than to the
+    // child's stderr, and a fast command's denial is emitted microseconds after
+    // spawn — so the audit stream must already be live before the child runs.
+    // Bind it to the pid once the child exists.
+    if (sandboxWrapper && !sandboxWrapper.skipReason && process.platform === "darwin") {
+      denialSession = startDenialLogger()
     }
 
     // ── ProcessRegistry setup (shared across both paths) ──────────
@@ -601,12 +612,9 @@ export const LocalBashBackend = {
       }
     }
 
-    // macOS Seatbelt reports a denial to the system log rather than to the
-    // child's stderr, so capture the child's audit stream for the duration of
-    // the run. Without it a denied write is only visible as a generic non-zero
-    // exit with no path to report.
-    if (sandboxWrapper && !sandboxWrapper.skipReason && child.pid && process.platform === "darwin") {
-      denialSession = startDenialLogger(child.pid)
+
+    if (denialSession && child.pid) {
+      denialSession.adoptPid(child.pid)
     }
 
     let aborted = false
@@ -918,7 +926,13 @@ export const LocalBashBackend = {
     // path and the recovery step, and what lets `guarded` approve that exact
     // path and retry. Without this the child's raw "Operation not permitted"
     // reached the model with no path and no route into the approval flow.
-    if (sandboxWrapper && !sandboxWrapper.skipReason) {
+    //
+    // The non-zero test is part of that contract rather than a convenience: a
+    // command that survives a refused redirection and goes on to finish still
+    // reports its own exit status, and the plugin path has always surfaced a
+    // denial only when the child failed. Without the test a partially denied
+    // command that completed would be reported to the model as blocked.
+    if (sandboxWrapper && !sandboxWrapper.skipReason && child.exitCode !== 0) {
       await denialSession?.flush()
       const denial = deriveSandboxDenial({
         output,
