@@ -14,7 +14,7 @@ Neither half of the repair was wrong on its own. Terminalizing the message was c
 
 ## Decision
 
-`settleOrphanedToolParts` settles every non-terminal tool part on the target assistant message to `error`, using the wording in `MessageV2.INTERRUPTED_TOOL_ERROR`. It runs from both branches of the repair — the branch that terminalizes a non-terminal message and the already-terminal branch that previously returned early.
+`settleOrphanedToolParts` settles every non-terminal tool part in the session whose owning assistant message is already terminal to `error`, using the wording in `MessageV2.INTERRUPTED_TOOL_ERROR`. It runs from both branches of the repair — the branch that terminalizes a non-terminal message and the already-terminal branch that previously returned early. The sweep covers the whole session rather than only the newest reply: a repair lost after the message is superseded by a later turn would otherwise never be revisited, and the part would render as a permanent spinner forever.
 
 The error text is shared verbatim between the runtime repair and the historical migration, so a live interruption and a migrated legacy record describe the same condition in exactly the same words, and both deliberately state that the call was not replayed and its side effects are unknown rather than absent.
 

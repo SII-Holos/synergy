@@ -1490,16 +1490,6 @@ export namespace SessionInvoke {
   // --- Helpers ---
 
   /**
-   * Settle every non-terminal tool part on one assistant message.
-   *
-   * A part is only ever left in `running`/`pending`/`generating` by a process
-   * that died mid-call. The existing in-process path
-   * (SessionProcessor.resolveUnsettledParts) already terminalizes such parts as
-   * `error`, so this reuses that state rather than inventing a new one. Without
-   * this the part stays `running` forever while the message is already terminal,
-   * which contradicts the rollout ledger and renders a permanent spinner.
-   */
-  /**
    * Settle every unsettled tool part in the session whose owning assistant
    * message is already terminal.
    *
