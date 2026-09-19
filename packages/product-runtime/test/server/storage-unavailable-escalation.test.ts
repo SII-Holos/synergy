@@ -14,13 +14,15 @@ import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 // readiness through a marker file first, so a startup failure cannot be mistaken
 // for a successful escalation.
 //
-// Every deadline inside the child is shorter than the parent's, so the parent is
-// always the last one to expire and therefore always describes what happened: a
-// slow boot reads as a slow boot, and a missing escalation reads as a timeout
-// rather than as whatever exit code a competing catch block happened to produce.
-const PARENT_TIMEOUT_MS = 240_000
+// The child deliberately has no deadline of its own. It parks on a promise that
+// never settles, so the only two ways it can stop are the escalation's own
+// `process.exit(1)` and the parent's timeout. That keeps the observation
+// structural rather than temporal: no inner timer can end the child early and
+// produce a spurious verdict, which is what made earlier versions of this test
+// report harness timing — an exit code from a competing handler, or a hold that
+// outlived the escalation it was waiting for — under a loaded shard.
 const STARTUP_DEADLINE_MS = 120_000
-const HOLD_AFTER_KILL_MS = 90_000
+const PARENT_TIMEOUT_MS = 240_000
 
 test(
   "a terminally failed store escalates once into a non-zero runtime exit",
@@ -33,7 +35,6 @@ test(
     const isolated = await createIsolatedTestEnv()
     const root = await mkdtemp(path.join(os.tmpdir(), "storage-escalation-runtime-"))
     const readyMarker = path.join(root, "ready")
-    const survivedMarker = path.join(root, "survived")
     const script = String.raw`
       const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
       Log.init({ print: false })
@@ -47,11 +48,11 @@ test(
         printChannelStatus: false,
         network: { hostname: "127.0.0.1", port: 0 },
       }).catch((error) => {
-        // Killing the store is the condition under test, and this rejection is
-        // the same event that drives the escalation — but the escalation still
-        // owes its graceful shutdown, so exiting here would publish this catch's
-        // code instead of the escalation's. Only a rejection before the runtime
-        // ever served is a startup failure.
+        // run() is long-lived. Killing the store is the condition under test, and
+        // this rejection is the same event that drives the escalation, which
+        // still owes its graceful shutdown — so publishing this catch's code here
+        // would report the wrong exit status. Only a rejection before the runtime
+        // ever served is a real startup failure.
         if (started) return
         console.error("runtime startup failed", error)
         process.exit(2)
@@ -71,11 +72,10 @@ test(
       }
       await Bun.write(process.env.SYNERGY_ESCALATION_READY, "")
       Storage.current().store.driver.worker.kill()
-      // Escalation is one-shot and asynchronous. If it never arrives, the
-      // runtime keeps serving over a dead store: this marker records that, and
-      // the child then stays alive so the parent's deadline is what reports it.
-      await Bun.sleep(${HOLD_AFTER_KILL_MS})
-      await Bun.write(process.env.SYNERGY_ESCALATION_SURVIVED, "")
+      // Park forever. Escalation is asynchronous and owns the only exit that is
+      // allowed to happen; if it never arrives the parent's timeout reports the
+      // missing escalation instead of this statement manufacturing an outcome.
+      await new Promise(() => {})
     `
 
     const child = Bun.spawn([process.execPath, "-e", script], {
@@ -87,7 +87,6 @@ test(
         SYNERGY_TEST_HOME: isolated.env.SYNERGY_TEST_HOME,
         SYNERGY_TEST_ROOT: isolated.env.SYNERGY_TEST_ROOT,
         SYNERGY_ESCALATION_READY: readyMarker,
-        SYNERGY_ESCALATION_SURVIVED: survivedMarker,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -110,11 +109,12 @@ test(
       const stderr = await stderrText
       await stdoutText
 
+      // Readiness first: it separates "never reached the listener" from "reached
+      // it and did not escalate", which are different defects.
       expect(
         await readFile(readyMarker, "utf8").catch(() => undefined),
         `runtime never became healthy: ${stderr}`,
       ).toBe("")
-      expect(await readFile(survivedMarker, "utf8").catch(() => undefined)).toBeUndefined()
       expect(exitCode, `runtime kept running over a dead store: ${stderr}`).toBe(1)
     } finally {
       child.kill()
