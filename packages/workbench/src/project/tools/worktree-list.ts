@@ -60,6 +60,9 @@ function getCleanupRecommendation(wt: Worktree.Info, active: Worktree.Info | nul
   if (wt.isMain) return "keep"
   if (!wt.managed) return "external_do_not_manage"
   if (wt.stale) return "safe_to_remove"
+  // A lock Synergy did not write is never reclaimed, so surface it as a reason
+  // rather than letting the worktree look merely idle.
+  if (wt.locked !== undefined && !wt.locked.startsWith("synergy:v1:")) return "locked_outside_synergy"
   if (wt.dirty) return "inspect_dirty"
   return "keep"
 }
