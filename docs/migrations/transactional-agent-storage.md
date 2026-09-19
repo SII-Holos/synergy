@@ -12,6 +12,8 @@ Before copying, bootstrap budgets the uncompressed backup plus path metadata and
 
 Repeated `resume` uses recorded checkpoints and the same sealed backup. It rejects changed source files, missing backup bytes and identity mismatches. A record with invalid historical JSON is preserved in the backup and assigned a persistent recovery issue. Affected Sessions cannot execute until their evidence is repaired and their block is resolved. Do not delete a recovery marker merely to bypass a failed upgrade.
 
+Activation retires originals only after re-checking every byte count and complete content digest against the sealed inventory. Backup verification is also complete; a mismatch fails activation and leaves the affected original in place. Resumed retirement tolerates originals already removed after successful verification.
+
 ## Verify and troubleshoot
 
 `data storage status` reports the active backend, namespace, database/artifact identity, recovery records and outstanding notifications. `data storage verify` reads database integrity, record relationships and all referenced artifact bytes without modifying authority and returns a failing exit code for reported issues. Storage I/O, authorization, ownership and malformed engine/configuration errors remain fatal rather than becoming empty data.
