@@ -328,7 +328,6 @@ export namespace ToolResolver {
     }
   }
 
-
   function rememberApprovedExternalRoots(ctx: Tool.Context, patterns: string[]) {
     const roots = patterns.filter((pattern) => pattern.startsWith("/"))
     if (roots.length === 0) return
