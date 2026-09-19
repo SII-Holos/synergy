@@ -2855,6 +2855,41 @@
         ]
       }
     },
+    "/global/activity": {
+      "get": {
+        "operationId": "global.activity",
+        "summary": "Get global activity",
+        "description": "Report whether any session or background job is currently working, across every scope. Non-idle session statuses (busy, retry, recovering) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
+        "responses": {
+          "200": {
+            "description": "Global activity snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalActivity"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/session": {
       "get": {
         "operationId": "global.session.search",
@@ -8026,11 +8061,11 @@
         "description": "Abort an active session and stop any ongoing AI processing or command execution.",
         "responses": {
           "200": {
-            "description": "Aborted session",
+            "description": "Abort result",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean"
+                  "$ref": "#/components/schemas/SessionAbortResult"
                 }
               }
             }
@@ -32147,6 +32182,29 @@
         },
         "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
+      "GlobalActivity": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backgroundJobs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["active", "sessions", "backgroundJobs"]
+      },
+      "SessionRecoveringReason": {
+        "type": "string",
+        "enum": ["workflow", "incomplete-turn", "pending-reply"]
+      },
       "SessionStatus": {
         "anyOf": [
           {
@@ -32197,6 +32255,9 @@
               "type": {
                 "type": "string",
                 "const": "recovering"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/SessionRecoveringReason"
               },
               "description": {
                 "type": "string"
@@ -34618,9 +34679,9 @@
                     "maximum": 9007199254740991
                   },
                   "retentionMs": {
-                    "description": "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days); retention stays off until this is set",
+                    "description": "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
                     "type": "integer",
-                    "exclusiveMinimum": 0,
+                    "minimum": 0,
                     "maximum": 9007199254740991
                   },
                   "walCheckpointIntervalMs": {
@@ -37740,6 +37801,15 @@
           "controlProfile": {
             "$ref": "#/components/schemas/ControlProfileId"
           },
+          "nonInteractiveControlProfile": {
+            "description": "Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.",
+            "type": "string",
+            "enum": ["autonomous", "full_access"]
+          },
+          "fullAccessAcknowledged": {
+            "description": "Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.",
+            "type": "boolean"
+          },
           "instructions": {
             "description": "Additional instruction files or patterns to include",
             "type": "array",
@@ -38829,6 +38899,12 @@
               "status": {
                 "type": "string",
                 "const": "recovering"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/SessionRecoveringReason"
+              },
+              "description": {
+                "type": "string"
               }
             },
             "required": ["status"]
@@ -43687,6 +43763,29 @@
           }
         },
         "required": ["name", "data"]
+      },
+      "SessionAbortResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "description": "Runtime signal result; not_found/idle mean no running turn was stopped",
+            "type": "string",
+            "enum": ["not_found", "idle", "signaled", "already_stopping", "not_owner"]
+          },
+          "repaired": {
+            "description": "An interrupted turn was terminalized",
+            "type": "boolean"
+          },
+          "abandoned": {
+            "description": "A driverless workflow was terminalized",
+            "type": "boolean"
+          },
+          "settled": {
+            "description": "The session settled to idle",
+            "type": "boolean"
+          }
+        },
+        "required": ["outcome", "repaired", "abandoned", "settled"]
       },
       "AttachmentSourceText": {
         "type": "object",

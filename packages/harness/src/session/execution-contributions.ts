@@ -7,6 +7,13 @@ export namespace SessionExecutionContributions {
     ownsPendingReply?(session: Info): boolean
     advisory?(sessionID: string, scopeID: string, signal: AbortSignal): Promise<string[]>
     isActive?(session: Info): Promise<boolean> | boolean
+    /** Readable cause for a workflow-driven `recovering` status. The first
+     * contribution that returns a description wins, so an owning domain can
+     * report *why* the session is recovering instead of a generic state. */
+    recoveringDescription?(session: Info): Promise<string | undefined> | string | undefined
+    /** Terminalize a workflow that still claims activity without any durable
+     * driver (see `abandonPhantom`). Returns true only when it cleared state. */
+    abandonPhantom?(session: Info): Promise<boolean>
     hasContinuation?(session: Info): boolean
     assertWorkflowAllowed?(session: Info, kind: string): Promise<void>
     system?(
@@ -33,6 +40,23 @@ export namespace SessionExecutionContributions {
   export async function isActive(session: Info) {
     for (const entry of contributions.values()) if (await entry.isActive?.(session)) return true
     return false
+  }
+  export async function recoveringDescription(session: Info) {
+    for (const entry of contributions.values()) {
+      const description = await entry.recoveringDescription?.(session)
+      if (description) return description
+    }
+    return undefined
+  }
+  /** Terminalize every workflow that still claims activity without a durable
+   * driver. Only meaningful once the caller has established that no live
+   * runtime owns the session. */
+  export async function abandonPhantom(session: Info) {
+    let abandoned = false
+    for (const entry of contributions.values()) {
+      if (await entry.abandonPhantom?.(session)) abandoned = true
+    }
+    return abandoned
   }
   export function hasContinuation(session: Info) {
     return [...contributions.values()].some((entry) => entry.hasContinuation?.(session) === true)

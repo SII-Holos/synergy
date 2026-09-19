@@ -36,6 +36,15 @@ export class StorageBusyError extends Error {
   override readonly name = "StorageBusyError"
 }
 
+// A store that failed terminally and cannot serve further work. The host must
+// restart the Runtime; retrying against this instance cannot succeed.
+export class StorageUnavailableError extends Error {
+  override readonly name = "StorageUnavailableError"
+  constructor(message = "The authoritative store is unavailable and requires a Runtime restart") {
+    super(message)
+  }
+}
+
 export function databaseErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return
   if ("errno" in error && typeof error.errno === "string" && /^[A-Z0-9]{5}$/.test(error.errno)) return error.errno

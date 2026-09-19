@@ -13,7 +13,9 @@ import { Attachment } from "../../attachment"
 import { RolloutArtifact } from "./artifact"
 import { RolloutAttachment } from "./attachment"
 import type { RolloutSchema } from "./schema"
+import { work } from "../../util/queue"
 
+const MIGRATION_CONCURRENCY = 8
 export namespace RolloutMigration {
   // Archived session metadata is historical evidence; validate only the settlement fields this migration owns.
   const SettlementRecord = z
@@ -167,10 +169,12 @@ export namespace RolloutMigration {
       for (const scopeID of await Storage.scan(["sessions"]))
         for (const sessionID of await Storage.scan(["sessions", scopeID]))
           owners.push({ kind: "session", scopeID, sessionID })
-      for (let index = 0; index < owners.length; index++) {
-        await session(owners[index])
-        progress(index + 1, owners.length)
-      }
+      let completed = 0
+      await work(MIGRATION_CONCURRENCY, owners, async (owner) => {
+        await session(owner)
+        completed++
+        progress(completed, owners.length)
+      })
       await Storage.removeTree(StoragePath.statsRoot())
     },
   }

@@ -12,6 +12,8 @@ Before copying, bootstrap budgets the uncompressed backup plus path metadata and
 
 Repeated `resume` uses recorded checkpoints and the same sealed backup. It rejects changed source files, missing backup bytes and identity mismatches. A record with invalid historical JSON is preserved in the backup and assigned a persistent recovery issue. Affected Sessions cannot execute until their evidence is repaired and their block is resolved. Do not delete a recovery marker merely to bypass a failed upgrade.
 
+Activation retires originals only after re-checking every byte count and complete content digest against the sealed inventory. Backup verification is also complete; a mismatch fails activation and leaves the affected original in place. Resumed retirement tolerates originals already removed after successful verification.
+
 ## Verify and troubleshoot
 
 `data storage status` reports the active backend, namespace, database/artifact identity, recovery records and outstanding notifications. `data storage verify` reads database integrity, record relationships and all referenced artifact bytes without modifying authority and returns a failing exit code for reported issues. Storage I/O, authorization, ownership and malformed engine/configuration errors remain fatal rather than becoming empty data.
@@ -25,6 +27,18 @@ An interrupted target switch retains `data/storage/switch.json` and its checksum
 There is no SQL-to-legacy live writer. For a sealed version 2 Home backup, run `synergy data storage restore-backup <backup> <new-home-directory>`. Restoration validates every chunk and the final inventory in a staging directory before publication; the destination must not exist. It recreates data, configuration and plugin metadata without opening SQL. Use an appropriate old release only against this separate Home. Post-upgrade changes are not part of the historical backup.
 
 For version 1, reconstruct `data/` from the backup, restore `data/@home/config/` to the Home's `config/`, and restore `data/@home/plugin.lock` to the Home root. Validate all inventory hashes before starting the old release. The version 2 restore command deliberately rejects version 1 and artifact-only backups.
+
+## Deferred session import
+
+Set `SYNERGY_STORAGE_COMPAT_DEFER=1` before the first SQL bootstrap to opt into the named manifest boundary. The complete backup is still sealed before activation. The packed importer initially leaves Session aggregates on disk and records their ownership in SQL.
+
+Deferral is conservative: any pending domain migration first stages every unresolved aggregate into SQL and then uses the central migration runner. A migration failure preserves originals and blocks touch imports. Startup imports non-archived Sessions before recovery. Only an already-current archived cohort can remain deferred after activation; a future upgrade with pending migrations stages that cohort first.
+
+Touch and endpoint delivery import an aggregate before querying its indexes. Record batches are bounded, binary files are copied without whole-file buffering, and all recognized source hashes and target artifacts are verified before retirement. Unknown auxiliary files are preserved. Missing or malformed Session data is quarantined; storage and I/O errors remain retryable. Pending listing projections never enter persisted indexes.
+
+The Runtime imports a bounded number of pending aggregates per tick. Create `data/storage/compat-pause` to hold background import between ticks; remove it to resume. Shutdown stops and drains the ticker. This mode does not promise a particular startup speedup, and ordinary storage status output does not yet include convergence counts.
+
+Pack, merge, move and storage-target migration reject pending or quarantined aggregates. Let background import converge and repair quarantined evidence before transferring the Home. The sealed backup contains pre-upgrade state; it does not capture changes made after SQL activation. An official downgrade therefore restores the backup into a separate Home.
 
 ## Transfer
 

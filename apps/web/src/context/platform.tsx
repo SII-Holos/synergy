@@ -139,6 +139,19 @@ export type DesktopZoomBridge = {
   set(zoomFactor: number): Promise<number>
 }
 
+export type DesktopPowerSnapshot = {
+  keepAwakeWhileRunning: boolean
+  active: boolean
+}
+
+export type DesktopPowerBridge = {
+  get(): Promise<DesktopPowerSnapshot>
+  set(update: { keepAwakeWhileRunning: boolean }): Promise<DesktopPowerSnapshot>
+  /** Ask the shell to re-check server activity now instead of waiting for its poll. */
+  activityChanged(): Promise<void>
+  onEvent?(listener: (event: { type: "power"; snapshot: DesktopPowerSnapshot }) => void): () => void
+}
+
 export type ClipboardBridge = {
   writeText(text: string): Promise<boolean>
 }
@@ -200,6 +213,9 @@ export type Platform = {
 
   /** Desktop window zoom bridge, provided by the desktop shell. */
   desktopZoom?: DesktopZoomBridge
+
+  /** Desktop keep-awake bridge, provided by the desktop shell. */
+  desktopPower?: DesktopPowerBridge
 
   /** Clipboard bridge, provided by the desktop shell when browser clipboard permissions are not enough. */
   clipboard?: ClipboardBridge

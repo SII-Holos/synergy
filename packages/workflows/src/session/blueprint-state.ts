@@ -35,6 +35,7 @@ export namespace SessionBlueprintState {
 
   export interface LoopPatch {
     status: LoopStatus
+    error?: string
     auditSessionID?: string | null
     auditTaskID?: string | null
     stopRequest?: LoopStopRequest | null

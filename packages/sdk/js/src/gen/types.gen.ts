@@ -1707,6 +1707,14 @@ export type AgendaItem = {
   }
 }
 
+export type GlobalActivity = {
+  active: boolean
+  sessions: number
+  backgroundJobs: number
+}
+
+export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -1723,6 +1731,7 @@ export type SessionStatus =
     }
   | {
       type: "recovering"
+      reason?: SessionRecoveringReason
       description?: string
     }
 
@@ -2671,7 +2680,7 @@ export type ObservabilityConfig = {
        */
       maxSqliteBytes?: number
       /**
-       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days); retention stays off until this is set
+       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.
        */
       retentionMs?: number
       walCheckpointIntervalMs?: number
@@ -4551,6 +4560,14 @@ export type Config = {
   observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
   /**
+   * Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.
+   */
+  nonInteractiveControlProfile?: "autonomous" | "full_access"
+  /**
+   * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
+   */
+  fullAccessAcknowledged?: boolean
+  /**
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
@@ -4955,6 +4972,8 @@ export type SessionWorkingInfo =
     }
   | {
       status: "recovering"
+      reason?: SessionRecoveringReason
+      description?: string
     }
 
 export type SessionWorkspace = {
@@ -6621,6 +6640,25 @@ export type SessionForkPointMissingError = {
     messageID: string
     message: string
   }
+}
+
+export type SessionAbortResult = {
+  /**
+   * Runtime signal result; not_found/idle mean no running turn was stopped
+   */
+  outcome: "not_found" | "idle" | "signaled" | "already_stopping" | "not_owner"
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * A driverless workflow was terminalized
+   */
+  abandoned: boolean
+  /**
+   * The session settled to idle
+   */
+  settled: boolean
 }
 
 export type AttachmentSourceText = {
@@ -12096,6 +12134,31 @@ export type GlobalAgendaListResponses = {
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
 
+export type GlobalActivityData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/activity"
+}
+
+export type GlobalActivityErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalActivityError = GlobalActivityErrors[keyof GlobalActivityErrors]
+
+export type GlobalActivityResponses = {
+  /**
+   * Global activity snapshot
+   */
+  200: GlobalActivity
+}
+
+export type GlobalActivityResponse = GlobalActivityResponses[keyof GlobalActivityResponses]
+
 export type GlobalSessionSearchData = {
   body?: never
   path?: never
@@ -14558,9 +14621,9 @@ export type SessionAbortError = SessionAbortErrors[keyof SessionAbortErrors]
 
 export type SessionAbortResponses = {
   /**
-   * Aborted session
+   * Abort result
    */
-  200: boolean
+  200: SessionAbortResult
 }
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]

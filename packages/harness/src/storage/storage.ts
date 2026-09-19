@@ -65,6 +65,15 @@ export namespace Storage {
     return Boolean(context.getStore() ?? installed)
   }
 
+  /** Reports a terminally failed store; the host must restart the Runtime
+   *  because the installed Handle cannot serve further work. Safe to call
+   *  before any Handle is installed. */
+  export function onUnavailable(listener: (error: Error) => void): () => void {
+    const handle = context.getStore() ?? installed
+    if (!handle) return () => {}
+    return handle.store.onUnavailable(listener)
+  }
+
   export function provide<T>(handle: Handle, body: () => T): T {
     return context.run(handle, body)
   }

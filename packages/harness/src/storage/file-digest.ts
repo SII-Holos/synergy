@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { createReadStream } from "node:fs"
+import fs from "node:fs/promises"
 import { StorageIntegrityError } from "./errors"
 
 export async function fileDigest(filename: string, expectedSize: number): Promise<string> {
@@ -23,4 +24,23 @@ export async function fileDigest(filename: string, expectedSize: number): Promis
   }
   if (size !== expectedSize) throw new StorageIntegrityError("File size changed during integrity verification")
   return digest.digest("hex")
+}
+
+export async function verifyRetirement(
+  filename: string,
+  expectedHash: string,
+  expectedSize: number,
+  reason: string,
+  options: { tolerateMissing?: boolean } = {},
+): Promise<void> {
+  let size: number
+  try {
+    size = (await fs.stat(filename)).size
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error
+    if (options.tolerateMissing) return
+    throw new StorageIntegrityError(reason)
+  }
+  if (size !== expectedSize) throw new StorageIntegrityError(reason)
+  if ((await fileDigest(filename, expectedSize)) !== expectedHash) throw new StorageIntegrityError(reason)
 }

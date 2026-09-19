@@ -141,14 +141,14 @@ export namespace SessionInvoke {
   export function cancel(
     sessionID: string,
     options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number },
-  ) {
+  ): SessionManager.AbortOutcome {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
     LoopJob.cancelDetached(sessionID)
-    SessionManager.signalAbort(sessionID, options)
+    return SessionManager.signalAbort(sessionID, options)
   }
 
   /**
@@ -158,14 +158,90 @@ export namespace SessionInvoke {
    * @returns Whether an incomplete assistant message was repaired.
    */
   export async function repairAfterAbort(sessionID: string): Promise<boolean> {
+    return (await repairAbortState(sessionID)).repaired
+  }
+
+  export interface AbortRepairState {
+    /** An interrupted turn was terminalized and had non-terminal tool parts
+     * settled, or its stale pendingReply was cleared. */
+    repaired: boolean
+    /** A workflow claiming activity without a durable driver was terminalized. */
+    abandoned: boolean
+    /** Idle was published because this call actually cleared the last work. */
+    settled: boolean
+  }
+
+  export interface AbortRepairOptions {
+    /**
+     * True when the preceding stop signal interrupted a live turn.
+     *
+     * A loop being driven at signal time is not a phantom. Between turns a
+     * healthy BlueprintLoop has no *durable* driver — the continuation kernel
+     * re-drives it in-process when the turn settles — so it is indistinguishable
+     * in storage from a loop orphaned by a dead runtime. Sampling liveness after
+     * the signal is therefore not enough: the release that ends the interrupted
+     * turn clears the owner inside that window, and abandoning on that basis
+     * would silently turn "stop this turn" into "terminate the workflow".
+     * Requiring the session to have been unoccupied *before* the signal keeps
+     * the escape hatch for genuinely driverless loops without racing a healthy
+     * one. An explicit cancel remains the way to end a loop deliberately.
+     */
+    turnWasRunning?: boolean
+  }
+
+  /**
+   * Repair everything a stopped turn can leave behind, and report what changed
+   * so a caller can tell a real stop from a no-op on an already-idle session.
+   */
+  export async function repairAbortState(
+    sessionID: string,
+    options: AbortRepairOptions = {},
+  ): Promise<AbortRepairState> {
     const repaired = await repairIncompleteAssistant(sessionID).catch((err) => {
       log.error("assistant repair after abort failed", { sessionID, error: err })
       return false
     })
-    if (!repaired || SessionManager.isRunning(sessionID)) return repaired
-    if (await SessionWorking.resolve(sessionID)) return repaired
-    await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
-    return repaired
+    if (SessionManager.isRunning(sessionID)) return { repaired, abandoned: false, settled: false }
+    if (options.turnWasRunning) return { repaired, abandoned: false, settled: false }
+
+    // No live loop owns this session, and none was being driven when the stop
+    // was requested. A workflow that still reports activity while nothing
+    // durable will resume it is a phantom: it would pin the session in
+    // `recovering` with no way for the user to clear it. Abandon it so the
+    // derived status can settle. A loop held by real evidence (a stop intent, a
+    // queued drive, a Lattice-owned run, a user pause) is untouched.
+    const abandoned = await abandonPhantomWorkflows(sessionID).catch((err) => {
+      log.error("phantom workflow abandonment failed", { sessionID, error: err })
+      return false
+    })
+
+    // A repeat abort must not republish idle, so only settle status when this
+    // call actually changed durable state.
+    const changed = repaired || abandoned
+    if (!changed) return { repaired, abandoned, settled: false }
+    const settled = await settleIdle(sessionID)
+    return { repaired, abandoned, settled }
+  }
+
+  async function settleIdle(sessionID: string): Promise<boolean> {
+    try {
+      if (await SessionWorking.resolve(sessionID)) return false
+      await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
+      return true
+    } catch (err) {
+      // The turn is already terminalized and any phantom workflow is already
+      // abandoned, so the observable repair succeeded. Reporting a failure here
+      // would invite a retry against state that no longer matches the caller's
+      // assumptions.
+      log.warn("abort idle publication failed", { sessionID, error: err })
+      return false
+    }
+  }
+
+  async function abandonPhantomWorkflows(sessionID: string): Promise<boolean> {
+    const session = await SessionManager.getSession(sessionID)
+    if (!session || session.time.archived) return false
+    return SessionExecutionContributions.abandonPhantom(session)
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -1414,6 +1490,52 @@ export namespace SessionInvoke {
   // --- Helpers ---
 
   /**
+   * Settle every unsettled tool part in the session whose owning assistant
+   * message is already terminal.
+   *
+   * A part is only ever left in `running`/`pending`/`generating` by a process
+   * that died mid-call, and session turns are serialized, so an unsettled part
+   * on a terminal message can never be settled by anything else. The existing
+   * in-process path (SessionProcessor.resolveUnsettledParts) already
+   * terminalizes such parts as `error`, so this reuses that state rather than
+   * inventing a new one.
+   *
+   * The sweep covers the whole session rather than only the newest reply: if a
+   * repair is lost after the message is superseded by a later turn, a
+   * latest-message-only repair never revisits it and the part would render as a
+   * permanent spinner forever.
+   */
+  async function settleOrphanedToolParts(input: { sessionID: string }): Promise<number> {
+    const messages = await SessionHistory.modelMessages({ sessionID: input.sessionID }).catch(() => [])
+    let settled = 0
+    for (const message of messages) {
+      if (message.info.role !== "assistant") continue
+      const assistant = message.info as MessageV2.Assistant
+      if (!SessionProgress.isTerminalAssistant(assistant)) continue
+      for (const part of message.parts) {
+        if (part.type !== "tool") continue
+        if (!MessageV2.isUnsettledToolState(part.state)) continue
+        const state = part.state
+        await Session.updatePart({
+          ...part,
+          state: {
+            status: "error",
+            input: state.input,
+            error: MessageV2.INTERRUPTED_TOOL_ERROR,
+            ...(state.metadata ? { metadata: state.metadata } : {}),
+            time: {
+              start: state.status === "running" ? state.time.start : assistant.time.created,
+              end: Date.now(),
+            },
+          },
+        })
+        settled++
+      }
+    }
+    return settled
+  }
+
+  /**
    * Terminalize the latest reply-required root after an interrupted turn.
    * The repair is root-anchored and serialized per session so startup, Abort,
    * and pre-wake callers can safely share the same idempotent operation.
@@ -1454,7 +1576,11 @@ export namespace SessionInvoke {
     if (!latestRoot && !latestAssistant) return false
 
     if (latestAssistant && SessionProgress.isTerminalAssistant(latestAssistant)) {
-      if (!session.pendingReply) return false
+      // The message is already terminal, but a process that died mid-turn can
+      // still have left its tool parts non-terminal. Settle them here rather
+      // than returning early, or they stay `running` forever.
+      const settled = await settleOrphanedToolParts({ sessionID })
+      if (!session.pendingReply) return settled > 0
       await Session.update(sessionID, (draft) => {
         draft.pendingReply = undefined
       })
@@ -1480,6 +1606,7 @@ export namespace SessionInvoke {
                 message: "Session aborted during turn — assistant response was not completed",
               }).toObject(),
       })
+      await settleOrphanedToolParts({ sessionID })
     } else if (latestRoot) {
       log.info("creating aborted assistant for pending root", {
         sessionID,

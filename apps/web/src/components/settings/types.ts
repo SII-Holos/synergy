@@ -67,6 +67,7 @@ export const UI_DEFAULTS = {
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
   controlProfile: "guarded" as string,
+  nonInteractiveControlProfile: "autonomous" as string,
   invokeTimeout: "21600" as string,
   providerTtfbTimeout: "3600" as string,
   providerIdleTimeout: "900" as string,
@@ -393,6 +394,7 @@ export type ProvidersStore = {
 
 export type SafetyStore = {
   controlProfile: string
+  nonInteractiveControlProfile: string
   permission: string
   smartAllow: string
   sandboxEnabled: string
@@ -509,6 +511,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,
+      nonInteractiveControlProfile: UI_DEFAULTS.nonInteractiveControlProfile,
       permission: UI_DEFAULTS.permission,
       smartAllow: "false",
       sandboxEnabled: UI_DEFAULTS.sandboxEnabled,

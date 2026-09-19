@@ -37,7 +37,7 @@ Multiple triggers can belong to one item. Deduplication compares their structura
 
 ## Execution Sessions
 
-Agenda work is unattended. Unless explicitly overridden, its session uses the `autonomous` control profile, so execution never waits for an approval prompt.
+Agenda work is unattended. Unless explicitly overridden, its session uses the configured non-interactive control profile, which defaults to `autonomous`, so execution never waits for an approval prompt. See [Control Profiles](../architecture/execution-boundaries.md#control-profiles).
 
 Session mode is inferred from the trigger:
 
@@ -64,7 +64,7 @@ Failures are retained in run history and increment the consecutive-error count. 
 
 ## Built-in Autonomous Maintenance
 
-On first startup, Agenda creates the home-scoped `anima-daily` item. It runs the hidden `anima` agent at 03:00 in `Asia/Shanghai` using a fresh ephemeral session, suppresses delivery, and does not wake another session. The agent can reflect on recent work and maintain knowledge or Agenda state through the tools available to its autonomous profile.
+On first startup, Agenda creates the home-scoped `anima-daily` item. It runs the hidden `anima` agent at 03:00 in `Asia/Shanghai` using a fresh ephemeral session, suppresses delivery, and does not wake another session. The agent can reflect on recent work and maintain knowledge or Agenda state through the tools available to its non-interactive profile.
 
 `library.autonomy` controls these background routines and defaults on. When it is off, the seed is created paused and active Anima items are paused. Explicitly turning autonomy on at runtime reactivates paused Anima items; an ordinary startup with autonomy already on does not override a user's manual pause. Anima is a host-owned routine, not a primary agent exposed in the session selector.
 

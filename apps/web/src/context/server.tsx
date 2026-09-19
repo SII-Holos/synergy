@@ -94,7 +94,6 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const isReady = createMemo(() => ready() && !!active())
 
     const [healthy, setHealthy] = createSignal<boolean | undefined>(undefined)
-    const [modelReady, setModelReady] = createSignal<boolean | undefined>(undefined)
     const [refreshToken, setRefreshToken] = createSignal(0)
 
     const check = (url: string) => {
@@ -105,8 +104,8 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       })
       return sdk.global
         .health()
-        .then((x) => ({ healthy: x.data?.healthy === true, modelReady: x.data?.modelReady }))
-        .catch(() => ({ healthy: false, modelReady: undefined }))
+        .then((x) => ({ healthy: x.data?.healthy === true }))
+        .catch(() => ({ healthy: false }))
     }
 
     createEffect(() => {
@@ -115,13 +114,11 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       if (!url) return
 
       setHealthy(undefined)
-      setModelReady(undefined)
 
       let current = true
       check(url).then((result) => {
         if (!current) return
         setHealthy(result.healthy)
-        setModelReady(result.modelReady)
       })
       onCleanup(() => {
         current = false
@@ -135,7 +132,6 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     return {
       ready: isReady,
       healthy,
-      modelReady,
       isLocal,
       get url() {
         return active()

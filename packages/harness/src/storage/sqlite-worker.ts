@@ -40,6 +40,10 @@ process.on("message", (request: SqliteRequest) => {
       reader.run("PRAGMA busy_timeout = 5000")
       reader.run("PRAGMA query_only = ON")
       filename = request.filename
+    } else if (request.action === "ping") {
+      // Liveness probes answer from the event loop without touching SQLite, so
+      // they succeed whenever this worker is able to serve any request at all.
+      response.rows = []
     } else if (request.action === "close") {
       reader?.close()
       writer?.close()

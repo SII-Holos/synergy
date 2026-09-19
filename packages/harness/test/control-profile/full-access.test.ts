@@ -121,3 +121,37 @@ test("full_access allows non-bypassable protected and hardline permissions", asy
     },
   })
 })
+
+test("full_access allows the opaque protected_op capability that classification failure synthesizes", async () => {
+  // The gate synthesizes exactly this capability when the Policy worker is
+  // unavailable. Under full_access it must authorize it like any other
+  // non-bypassable capability, so an infrastructure fault cannot refuse work.
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const profile = await fullAccessProfile()
+      const decision = ApprovalPolicy.decidePermission(profile, "protected_op", {
+        nonBypassable: true,
+        opaque: true,
+        capability: "protected_op",
+      })
+      expect(decision.action).toBe("allow")
+    },
+  })
+})
+
+test("guarded and autonomous still ask or deny the same opaque capability", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const guarded = await buildProfile("guarded", { workspace, workspaceType: "main" })
+      const autonomous = await buildProfile("autonomous", { workspace, workspaceType: "main" })
+      const metadata = { nonBypassable: true, opaque: true, capability: "protected_op" }
+
+      expect(ApprovalPolicy.decidePermission(guarded, "protected_op", metadata).action).toBe("ask")
+      expect(ApprovalPolicy.decidePermission(autonomous, "protected_op", metadata).action).toBe("deny")
+    },
+  })
+})

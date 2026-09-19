@@ -7,19 +7,20 @@ export const P = {
   modeGuardedDesc: {
     id: "session.permission.mode.guarded.description",
     message:
-      "Auto-approve reads, safe edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions.",
+      "Asks you before risky work: shell, external writes, identity, platform, or extension actions. Reads, safe edits, and network lookups proceed automatically.",
   },
   modeAutonomous: { id: "session.permission.mode.autonomous", message: "Autonomous" },
   modeAutonomousShort: { id: "session.permission.mode.autonomous.short", message: "Auto" },
   modeAutonomousDesc: {
     id: "session.permission.mode.autonomous.description",
-    message: "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
+    message:
+      "Never asks. Medium-risk work is allowed and high-risk work is denied instead of prompting, so a run cannot stall waiting for you.",
   },
   modeFullAccess: { id: "session.permission.mode.fullAccess", message: "Full Access" },
   modeFullAccessShort: { id: "session.permission.mode.fullAccess.short", message: "Full" },
   modeFullAccessDesc: {
     id: "session.permission.mode.fullAccess.description",
-    message: "Allow all tool requests without approval prompts or workspace sandboxing.",
+    message: "Never asks and allows everything, with no permission checks and no workspace sandboxing.",
   },
 }
 

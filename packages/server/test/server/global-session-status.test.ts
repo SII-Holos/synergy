@@ -77,7 +77,9 @@ describe("GET /global/session/status", () => {
           const body = (await res.json()) as Record<string, unknown>
 
           expect(body[busyID]).toEqual({ type: "busy", description: "working" })
-          expect(body[recoveringID]).toEqual({ type: "recovering" })
+          // The cause travels with the status so a client can explain why the
+          // session is recovering instead of showing one opaque state.
+          expect(body[recoveringID]).toEqual({ type: "recovering", reason: "incomplete-turn" })
           expect(res.headers.get("x-synergy-seq")).toMatch(/^\d+$/)
         },
       })

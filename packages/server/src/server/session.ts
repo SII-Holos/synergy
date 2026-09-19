@@ -614,10 +614,10 @@ export const SessionRoute = new Hono()
       operationId: "session.abort",
       responses: {
         200: {
-          description: "Aborted session",
+          description: "Abort result",
           content: {
             "application/json": {
-              schema: resolver(z.boolean()),
+              schema: resolver(SessionAbort.Result),
             },
           },
         },
@@ -631,8 +631,8 @@ export const SessionRoute = new Hono()
       }),
     ),
     async (c) => {
-      await SessionAbort.abort(c.req.valid("param").sessionID, { recoverQueuedTasks: true })
-      return c.json(true)
+      const result = await SessionAbort.abort(c.req.valid("param").sessionID, { recoverQueuedTasks: true })
+      return c.json(result)
     },
   )
 

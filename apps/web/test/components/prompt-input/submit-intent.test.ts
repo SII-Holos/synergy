@@ -5,6 +5,7 @@ import {
   shouldAllowPromptSubmit,
   shouldBlockSubmitForUploadingAttachments,
   shouldRunComposerBeforeSubmit,
+  showsStopControl,
 } from "../../../src/components/prompt-input/submit-intent"
 
 describe("prompt submit intent", () => {
@@ -52,6 +53,25 @@ describe("uploading attachment submit gate", () => {
   test("keeps stop-session available and idle uploads sendable", () => {
     expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "abort" as const })).toBe(false)
     expect(shouldBlockSubmitForUploadingAttachments({ uploading: false, intent: "message" as const })).toBe(false)
+  })
+})
+
+describe("stop control visibility", () => {
+  test("keeps the dedicated stop control available while working with a draft", () => {
+    expect(showsStopControl({ text: "half-written prompt", working: true })).toBe(true)
+  })
+
+  test("hides the dedicated stop control while idle or without text", () => {
+    expect(showsStopControl({ text: "half-written prompt", working: false })).toBe(false)
+    expect(showsStopControl({ text: "", working: true })).toBe(false)
+    expect(showsStopControl({ text: "   ", working: true })).toBe(false)
+  })
+
+  test("never removes sending at the same time as stopping", () => {
+    const input = { text: "half-written prompt", working: true, hasBlueprintSlot: false }
+    expect(showsStopControl(input)).toBe(true)
+    expect(resolvePromptSubmitIntent(input)).toBe("message")
+    expect(canSubmitPrompt(input)).toBe(true)
   })
 })
 

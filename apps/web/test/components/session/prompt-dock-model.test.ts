@@ -18,7 +18,6 @@ const baseMeta: SessionMeta = {
   isCortexSubagent: false,
   parentID: null,
   cortex: undefined,
-  isUnattended: false,
   isAgenda: false,
   isReadOnly: false,
   canSelectModel: true,

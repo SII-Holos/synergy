@@ -105,7 +105,7 @@ Users can work interactively from Web or Desktop, or submit a one-off task with 
 
 ### Plan and Blueprint execution
 
-Plan is a read-only planning workflow for producing or refining a decision-complete Blueprint. The agent may inspect code, documents, sessions, memory, and external sources; ask the user about blocking decisions; and use research or design subagents. It cannot implement the requested outcome, modify project files, deploy, or perform external identity actions while Plan is active.
+Plan guides the agent to produce or refine a decision-complete Blueprint. Investigation may include commands, tests, builds, and scratch files to establish feasibility. The prompt reserves implementation, commits, pushes, deployment, and external identity actions for the execution session. Plan adds no tool permission boundary: the selected control profile and ordinary permission rules govern all tool calls.
 
 A Blueprint is the durable handoff from planning to execution. Starting a user-owned BlueprintLoop exits Plan or Light Loop while the session is idle, binds the Blueprint to the session, and runs it until the execution agent requests review. An independent audit agent then approves the result or returns structured remaining work so execution can continue. Planning and execution therefore share one authored contract without collapsing into the same workflow phase.
 
@@ -131,7 +131,7 @@ Agenda stores persistent work items that run from time, file, or webhook trigger
 
 Recurring work can reuse a persistent session so context accumulates over time. One-shot work can use an ephemeral session and archive it after the result is delivered. Agenda prevents overlapping runs of the same item and pauses repeatedly failing items instead of retrying forever without intervention.
 
-Unattended Agenda work uses autonomous control boundaries by default: it must finish within policy or fail with a clear denial rather than waiting for a user permission prompt.
+Unattended Agenda work uses non-interactive control boundaries by default: it must finish within policy or fail with a clear denial rather than waiting for a user permission prompt.
 
 ## Connected Capabilities
 
@@ -194,13 +194,15 @@ Synergy separates what an agent can discover from what it can execute.
 
 The standard profiles express three product modes:
 
-| Profile       | Intended behavior                                                                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Interactive work. Synergy can ask the user when a decision requires approval.                                                                              |
-| `autonomous`  | Unattended work. Synergy must automatically allow or deny and never wait for a user prompt.                                                                |
-| `full_access` | Author-at-own-risk execution. Capability checks are allowed silently, while ordinary validation, operating-system, test, and network failures still apply. |
+| Profile       | Intended behavior                                                                                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Interactive work. Synergy can ask the user when a decision requires approval.                                                                                                                                           |
+| `autonomous`  | Unattended work. Synergy must automatically allow or deny and never wait for a user prompt.                                                                                                                             |
+| `full_access` | Author-at-own-risk execution. Nothing is refused and nothing is asked, including protected operations and classification failures, while ordinary validation, operating-system, test, and network failures still apply. |
 
-Users can switch an active session to `full_access` without stopping execution. The frontend keeps the permission-mode selector available while the session is running. Selecting Full Access persists the profile immediately and resolves eligible pending permission asks for the session and its inheriting descendant sessions with one-time approval; the agent cannot self-escalate through the `session_control` tool, which remains idle-only. See [Live Profile Transitions](../architecture/execution-boundaries.md#live-profile-transitions) for the complete semantics.
+Users can switch an active session to `full_access` without stopping execution. The frontend keeps the permission-mode selector available while the session is running. Enabling Full Access from the UI is preceded once by a confirmation describing what the mode removes. Selecting Full Access persists the profile immediately and resolves eligible pending permission asks for the session and its inheriting descendant sessions with one-time approval; the agent cannot self-escalate through the `session_control` tool, which remains idle-only. See [Live Profile Transitions](../architecture/execution-boundaries.md#live-profile-transitions) for the complete semantics.
+
+Sessions started by Channels or scheduled Agenda runs have nobody available to answer a prompt, so they resolve to the configurable non-interactive profile, which defaults to `autonomous` and can be set to `full_access`. See [Control Profiles](../architecture/execution-boundaries.md#control-profiles).
 
 ## Standalone and Connected Use
 

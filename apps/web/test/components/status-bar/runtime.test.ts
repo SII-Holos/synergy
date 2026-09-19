@@ -91,6 +91,71 @@ describe("status bar runtime state", () => {
     expect(state.copyText).toBe("Recovering incomplete turn")
   })
 
+  test("reports the workflow cause when a BlueprintLoop holds the session", () => {
+    const i18n = mockI18n()
+    const status: SessionStatus = { type: "recovering", reason: "workflow" }
+
+    const state = resolveRuntimeIconState(status, false, i18n)
+
+    expect(runtimeLabel(status, false, i18n)).toBe("A BlueprintLoop workflow is still holding this session")
+    expect(state.tooltip).toBe("A BlueprintLoop workflow is still holding this session")
+    expect(state.copyText).toBe("A BlueprintLoop workflow is still holding this session")
+    expect(state.tooltip.toLowerCase()).not.toContain("incomplete turn")
+    expect(state.tone).toBe("danger")
+    expect(state.pulse).toBe(true)
+  })
+
+  test("reports the incomplete-turn cause when no workflow holds the session", () => {
+    const i18n = mockI18n()
+    const status: SessionStatus = { type: "recovering", reason: "incomplete-turn" }
+
+    const state = resolveRuntimeIconState(status, false, i18n)
+
+    expect(runtimeLabel(status, false, i18n)).toBe("Session is recovering from an incomplete turn")
+    expect(state.tooltip).toBe("Session is recovering from an incomplete turn")
+    expect(state.copyText).toBe("Session is recovering from an incomplete turn")
+  })
+
+  test("reports the pending-reply cause when a reply is unanswered", () => {
+    const i18n = mockI18n()
+    const status: SessionStatus = { type: "recovering", reason: "pending-reply" }
+
+    const state = resolveRuntimeIconState(status, false, i18n)
+
+    expect(runtimeLabel(status, false, i18n)).toBe("Session is waiting for an unanswered reply")
+    expect(state.tooltip).toBe("Session is waiting for an unanswered reply")
+    expect(state.copyText).toBe("Session is waiting for an unanswered reply")
+  })
+
+  test("prefers the precise description over the localized cause", () => {
+    const i18n = mockI18n()
+    const status: SessionStatus = {
+      type: "recovering",
+      reason: "workflow",
+      description: "BlueprintLoop paused; resume to continue",
+    }
+
+    const state = resolveRuntimeIconState(status, false, i18n)
+
+    expect(runtimeLabel(status, false, i18n)).toBe("BlueprintLoop paused; resume to continue")
+    expect(state.tooltip).toBe("BlueprintLoop paused; resume to continue")
+    expect(state.copyText).toBe("BlueprintLoop paused; resume to continue")
+  })
+
+  test("falls back without crashing when neither reason nor description is present", () => {
+    const i18n = mockI18n()
+    const status: SessionStatus = { type: "recovering" }
+
+    const state = resolveRuntimeIconState(status, false, i18n)
+
+    expect(runtimeLabel(status, false, i18n)).toBe("recovering")
+    expect(state.tooltip).toBe("Session is recovering from an incomplete turn")
+    expect(state.copyText).toBe("Session is recovering from an incomplete turn")
+    expect(state.icon).toBe(getSemanticIcon("session.retry"))
+    expect(state.tone).toBe("danger")
+    expect(state.pulse).toBe(true)
+  })
+
   test("renders a missing status as idle without a pulse", () => {
     const i18n = mockI18n()
     const state = resolveRuntimeIconState(undefined, false, i18n)

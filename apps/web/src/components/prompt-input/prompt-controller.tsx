@@ -20,6 +20,7 @@ import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
 import { useInput, type ControlProfileId } from "@/context/input"
+import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
 import { useFile } from "@/context/file"
 import {
   DEFAULT_PROMPT,
@@ -81,6 +82,7 @@ import {
   resolvePromptSubmitIntent,
   shouldAllowPromptSubmit,
   shouldBlockSubmitForUploadingAttachments,
+  showsStopControl,
 } from "@/components/prompt-input/submit-intent"
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
@@ -184,6 +186,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const workflowDialog = useDialog()
   const globalSync = useGlobalSync()
+  const fullAccessAck = useFullAccessAcknowledgement()
   const sync = useSync()
   const view = useSessionDataView()
   const input = useInput()
@@ -381,16 +384,6 @@ export function createPromptInputController(props: PromptInputProps) {
     await sdk.client.session.abort({ sessionID })
   }
 
-  const abortController = createAbortRequestController({
-    request: async () => {
-      await abortSession()
-    },
-    setPending: setAbortStopping,
-  })
-  const abort = () => {
-    abortController.run().catch(() => {})
-  }
-
   const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
     if (!sessionID) return
     sync.set(
@@ -406,6 +399,77 @@ export function createPromptInputController(props: PromptInputProps) {
   const clearVisibleSessionLoop = (sessionID: string | undefined, loopID: string) => {
     clearBoundLoop(sessionID, loopID)
     mutateSessionLoop(null)
+  }
+
+  /** The BlueprintLoop actually bound to this session, or undefined when there
+   *  is none or it already reached a terminal state — cancelling a finished loop
+   *  is not what "stop" means, and the store rejects that transition. */
+  const boundLoopID = createMemo(() => {
+    const loopID = params.id ? info()?.blueprint?.loopID : undefined
+    if (!loopID) return undefined
+    const loop = sessionLoop()
+    return loop?.id === loopID && isTerminalBlueprintLoopStatus(loop.status) ? undefined : loopID
+  })
+
+  /** One implementation of "stop the current turn and release the workflow
+   *  holding this session". The slot long-press, Esc/Ctrl+G, and the composer's
+   *  stop control all route through here so none of them can interrupt a turn
+   *  while leaving a BlueprintLoop bound to a session it no longer drives.
+   *  The failure is returned rather than thrown so callers keep the partial
+   *  progress (turn stopped, loop still bound) their toasts report. */
+  const stopRun = async (input: {
+    sessionID: string | undefined
+    loopID?: string
+  }): Promise<{ sessionWasWorking: boolean; stoppedSession: boolean; error?: unknown }> => {
+    const sessionWasWorking = working()
+    let stoppedSession = false
+    try {
+      if (sessionWasWorking) {
+        await abortSession(input.sessionID)
+        stoppedSession = true
+      }
+      if (input.loopID) {
+        await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(input.loopID))
+        clearVisibleSessionLoop(input.sessionID, input.loopID)
+      }
+      return { sessionWasWorking, stoppedSession }
+    } catch (error) {
+      return { sessionWasWorking, stoppedSession, error }
+    }
+  }
+
+  /** Turn-only stop. This is the historical contract for Esc, Ctrl+G, the
+   *  plugin's stop(), and the empty-composer primary button, and it must stay
+   *  turn-only: cancelling a workflow is a separate, explicit action. A
+   *  *driverless* loop is released by the backend abort route, which does so
+   *  only when no live runtime owns the session; cancelling here would silently
+   *  turn "stop this turn" into "terminate the workflow" for healthy loops. */
+  const abortController = createAbortRequestController({
+    request: () => abortSession(params.id),
+    setPending: setAbortStopping,
+  })
+  const abort = () => {
+    abortController.run().catch(() => {})
+  }
+
+  /** Explicit full stop behind the stop control, whose label promises the
+   *  workflow is cancelled as well — the deliberate "cancel" action the slot
+   *  long-press has always been. */
+  const stopRunController = createAbortRequestController({
+    request: async () => {
+      const result = await stopRun({ sessionID: params.id, loopID: boundLoopID() })
+      if (!result.error) return
+      showToast({
+        type: "error",
+        title: i18n._(PI.stopRunFailed),
+        description: blueprintRequestErrorMessage(result.error),
+      })
+      throw result.error
+    },
+    setPending: setAbortStopping,
+  })
+  const stopRunAndCancel = () => {
+    stopRunController.run().catch(() => {})
   }
 
   const applySessionLoopEvent = (loop: BlueprintLoopInfo) => {
@@ -472,13 +536,10 @@ export function createPromptInputController(props: PromptInputProps) {
             })
             return
           }
-          stopRunningSession = working()
-          if (stopRunningSession) {
-            await abortSession(sessionID)
-            stoppedSession = true
-          }
-          await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(loopID))
-          clearVisibleSessionLoop(sessionID, loopID)
+          const stop = await stopRun({ sessionID, loopID })
+          stopRunningSession = stop.sessionWasWorking
+          stoppedSession = stop.stoppedSession
+          if (stop.error) throw stop.error
         }
         if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
         showToast({
@@ -551,6 +612,9 @@ export function createPromptInputController(props: PromptInputProps) {
     })
   })
   const submitStopsSession = createMemo(() => working() && !promptText().trim())
+  const showsDedicatedStop = createMemo(() =>
+    showsStopControl({ text: promptText(), working: working() && !props.readOnly }),
+  )
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
   createEffect(
@@ -1194,6 +1258,8 @@ export function createPromptInputController(props: PromptInputProps) {
 
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
     if (store.switchingProfile) return
+
+    if (!(await fullAccessAck.ensure(profile, selectedControlProfile()))) return
 
     if (!params.id) {
       input.setControlProfile(profile)
@@ -2117,6 +2183,22 @@ export function createPromptInputController(props: PromptInputProps) {
                     class="text-icon-warning-base animate-pulse"
                   />
                 </div>
+              </Tooltip>
+            </Show>
+            <Show when={showsDedicatedStop()}>
+              <Tooltip
+                placement="top"
+                value={<span>{abortStopping() ? i18n._(PI.stopping) : i18n._(PI.stopRunControl)}</span>}
+              >
+                <IconButton
+                  type="button"
+                  aria-label={abortStopping() ? i18n._(PI.stopping) : i18n._(PI.stopRunControl)}
+                  disabled={abortStopping()}
+                  icon={getSemanticIcon("action.stop")}
+                  variant="secondary"
+                  class="size-[34px] rounded-full!"
+                  onClick={stopRunAndCancel}
+                />
               </Tooltip>
             </Show>
             <Switch>

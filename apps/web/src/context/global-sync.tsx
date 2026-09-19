@@ -276,7 +276,11 @@ function sessionStatusFromWorking(working: SessionWorkingInfo): SessionStatus {
     case "retry":
       return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
     case "recovering":
-      return { type: "recovering" }
+      return {
+        type: "recovering",
+        ...(working.reason ? { reason: working.reason } : {}),
+        ...(working.description ? { description: working.description } : {}),
+      }
   }
 }
 

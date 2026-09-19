@@ -143,6 +143,8 @@ File: `80-permissions.jsonc` · Merge: merge
 | `permission` | Permission.optional (optional) |  |
 | `tools` | record (optional) |  |
 | `controlProfile` | ControlProfileId.optional (optional) | Default control profile applied to all agents |
+| `nonInteractiveControlProfile` | "autonomous" \| "full_access" (optional) | Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with. |
+| `fullAccessAcknowledged` | boolean (optional) | Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary. |
 | `sandbox` | SandboxConfig.optional (optional) | Sandbox configuration for workspace boundary enforcement |
 | `smartAllow` | boolean (optional) | Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow |
 
