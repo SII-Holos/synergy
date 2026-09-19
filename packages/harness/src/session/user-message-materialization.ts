@@ -2,6 +2,7 @@ import { Storage } from "../storage/storage"
 import { SessionPluginHooks } from "./plugin-hooks"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
+import { SecretMask } from "../secrets/mask"
 
 const log = Log.create({ service: "session.user-message-materialization" })
 
@@ -40,7 +41,12 @@ export namespace SessionUserMessageMaterialization {
   ): Promise<{ info: Info; parts: MessageV2.Part[] }> {
     const { Session } = await import(".")
     const prepared: MessageV2.Part[] = []
-    for (const part of message.parts) prepared.push(await Session.preparePart(part))
+    for (const part of message.parts) {
+      const normalized = await Session.preparePart(part)
+      // Ingress masking: a pasted secret persists as its stable token so the
+      // durable record never holds the plaintext.
+      prepared.push(await SecretMask.maskPart(normalized))
+    }
     return Storage.transaction(async () => {
       const existing = await MessageV2.get({ sessionID: message.info.sessionID, messageID: message.info.id }).catch(
         (error) => {

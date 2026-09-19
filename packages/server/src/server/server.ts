@@ -44,6 +44,7 @@ import { PermissionRoute } from "./permission"
 import { WorkspaceFilesRoute } from "./workspace-files"
 import { File as SynergyFile } from "@ericsanchezok/synergy-runtime-local/file"
 import { ConfigRoute } from "./config-route"
+import { SecretsRoute } from "./secrets-route"
 import { AssetRoute } from "./asset"
 import { SkillRoute } from "./skill-route"
 import { RuntimeRoute } from "./runtime-route"
@@ -900,6 +901,7 @@ export namespace Server {
       .route("/scope", createScopeBootstrapRoute(contributions.bootstrap))
       .route("/pty", PtyRoute)
       .route("/config", ConfigRoute)
+      .route("/secrets", SecretsRoute)
       .route("/runtime", RuntimeRoute)
       .route("", ControlProfileRoute)
       .route("", SandboxReadinessRoute)

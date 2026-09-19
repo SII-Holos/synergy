@@ -66,6 +66,9 @@ export namespace Global {
     get authProvider() {
       return path.join(root(), "data", "auth", "provider-auth.json")
     },
+    get secretVault() {
+      return path.join(root(), "data", "auth", "secret-vault.json")
+    },
     get authHolosAccounts() {
       return path.join(root(), "data", "auth", "holos-accounts.json")
     },

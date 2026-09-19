@@ -8,7 +8,7 @@ import { z } from "zod"
 import { AtomicFile } from "./atomic-file"
 import { StorageIntegrityError } from "./errors"
 import { fileDigest } from "./file-digest"
-import { legacyBinaryKey, legacySources, sourcePath } from "./legacy-source"
+import { legacyBinaryKey, legacyFiles, legacySources, sourcePath } from "./legacy-source"
 
 const MAX_GROUP_BYTES = 4 * 1024 * 1024
 const MAX_GROUP_FILES = 1024
@@ -37,7 +37,10 @@ const Group = z
 const Manifest = z
   .object({
     version: z.literal(2),
-    selection: z.enum(["home", "artifacts"]),
+    selection: z.union([
+      z.enum(["home", "artifacts"]),
+      z.object({ scopeID: z.string(), sessionID: z.string() }).strict(),
+    ]),
     source: z.string().regex(/^[a-f0-9]{64}$/),
     groups: z.number().int().nonnegative(),
     files: z.number().int().nonnegative(),
@@ -92,7 +95,7 @@ export class PackedBackup {
     private readonly options: {
       dataRoot: string
       backupRoot: string
-      selection?: "home" | "artifacts"
+      selection?: PackedBackupManifest["selection"]
       capacity?: (bytes: number) => Promise<void>
       progress?: (value: { files: number; bytes: number; storedBytes: number }) => void
     },
@@ -109,7 +112,7 @@ export class PackedBackup {
     return value === undefined ? undefined : Manifest.parse(value)
   }
 
-  private async readGroup(sequence: number) {
+  private async readGroup(sequence: number, select?: (relative: string) => boolean) {
     const text = await fs.readFile(this.descriptor(sequence), "utf8")
     const group = Group.parse(JSON.parse(text))
     const filename = this.chunk(sequence)
@@ -173,16 +176,17 @@ export class PackedBackup {
         if (offset + storedBytes > packed.length || entry.size > MAX_GROUP_BYTES)
           throw new StorageIntegrityError("Packed backup entry content is truncated")
         const stored = packed.subarray(offset, offset + storedBytes)
-        let data: Buffer
+        let data: Buffer | undefined
         try {
-          data = codec === "gzip" ? gunzipSync(stored, { maxOutputLength: Math.max(1, entry.size) }) : stored
+          if (!select || select(entry.relative))
+            data = codec === "gzip" ? gunzipSync(stored, { maxOutputLength: Math.max(1, entry.size) }) : stored
         } catch {
           throw new StorageIntegrityError("Packed backup compression integrity check failed")
         }
         if (
-          (entry.linkTarget === undefined && data.length !== entry.size) ||
+          (data !== undefined && entry.linkTarget === undefined && data.length !== entry.size) ||
           (entry.linkTarget !== undefined && storedBytes !== 0) ||
-          hash(entry.linkTarget ?? data) !== entry.hash
+          (data !== undefined && hash(entry.linkTarget ?? data) !== entry.hash)
         )
           throw new StorageIntegrityError("Packed backup entry integrity check failed")
         entries.push({
@@ -195,7 +199,7 @@ export class PackedBackup {
             sha256: group.sha256,
             codec,
             storedBytes,
-            decodedBytes: data.length,
+            decodedBytes: entry.size,
             blockOffset: offset,
             offset: 0,
           },
@@ -210,7 +214,7 @@ export class PackedBackup {
     return { group, text, entries }
   }
 
-  async *entries(): AsyncGenerator<PackedBackupEntry> {
+  async *entries(select?: (relative: string) => boolean): AsyncGenerator<PackedBackupEntry> {
     const manifest = await this.manifest()
     if (!manifest) throw new StorageIntegrityError("Packed backup is not sealed")
     const inventory = createHash("sha256")
@@ -218,7 +222,7 @@ export class PackedBackup {
       bytes = 0,
       storedBytes = 0
     for (let sequence = 0; sequence < manifest.groups; sequence++) {
-      const result = await this.readGroup(sequence)
+      const result = await this.readGroup(sequence, select)
       inventory.update(result.text)
       files += result.group.files
       bytes += result.group.bytes
@@ -235,6 +239,13 @@ export class PackedBackup {
   }
 
   private async *sources() {
+    const selection = this.options.selection
+    if (typeof selection === "object") {
+      const prefix = `sessions/${selection.scopeID}/${selection.sessionID}`
+      const directory = sourcePath(this.options.dataRoot, prefix)
+      for await (const entry of legacyFiles(directory)) yield { ...entry, relative: `${prefix}/${entry.relative}` }
+      return
+    }
     for await (const entry of legacySources(this.options.dataRoot))
       if (this.options.selection !== "artifacts" || legacyBinaryKey(entry.relative)) yield entry
   }
@@ -246,7 +257,7 @@ export class PackedBackup {
     await fs.mkdir(path.join(backupRoot, "chunks"), { recursive: true, mode: 0o700 })
     await fs.mkdir(path.join(backupRoot, "groups"), { recursive: true, mode: 0o700 })
     const sealed = await this.manifest()
-    if (sealed && (sealed.source !== source || sealed.selection !== selection))
+    if (sealed && (sealed.source !== source || JSON.stringify(sealed.selection) !== JSON.stringify(selection)))
       throw new StorageIntegrityError("Packed backup source identity changed")
     const identity = path.join(backupRoot, "source.json")
     const previousIdentity = await optionalJSON(identity)

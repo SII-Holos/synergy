@@ -30,6 +30,11 @@ import { ToolScheduler } from "../session/tool-scheduler"
 import { Observability, ObservabilityResources, ObservabilityStore } from "../observability/index"
 import { configureRuntimeEndpoint } from "../util/runtime-endpoint"
 import { configureExecution, resolveExecutionConfiguration } from "../execution/execution-config"
+import { Log } from "../util/log"
+import { Bus } from "../bus"
+import { SecretVault } from "../secrets/vault"
+
+const log = Log.create({ service: "runtime" })
 
 export interface RuntimeNetwork {
   hostname: string
@@ -139,6 +144,7 @@ export namespace RuntimeHandle {
           await server?.stop(true)
           configureRuntimeEndpoint(undefined)
         })
+        await cleanup(() => SessionCompat.drain())
         await cleanup(async () => {
           // Re-arm only after execution and transport have both stopped;
           // any cleanup failure keeps owners listed for startup recovery.
@@ -172,7 +178,9 @@ export namespace RuntimeHandle {
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
-      await SessionCompat.prepareRecovery()
+      await SessionCompat.prepareRecovery((current, total) =>
+        options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
+      )
       if (storage && storage.manifest.phase !== "active")
         await StorageRecovery.validate((current, timeoutMs) =>
           options.storageReporter?.(
@@ -185,7 +193,6 @@ export namespace RuntimeHandle {
       await StorageRecovery.recoverOwners()
       await StorageRecovery.load()
       await StorageRecovery.reconcileNotifications()
-      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
       options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
@@ -193,6 +200,21 @@ export namespace RuntimeHandle {
       const config = resolveExecutionConfiguration(requested, options.mode)
       Experiment.configureRuntime(config, options.experiment?.runtime)
       ScopeStartup.configure(options.mode)
+      // Secret vault sync: register secret-shaped config values on startup
+      // and on every config reload; registration is idempotent by id.
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => SecretVault.syncFromConfig(config) }).catch((error) =>
+        log?.warn?.("secret vault config sync failed", { error: String(error) }),
+      )
+      Bus.subscribe(Config.Event.Updated, (event) => {
+        void ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            const current = await Config.current()
+            await SecretVault.syncFromConfig(current as Record<string, unknown>)
+          },
+        }).catch(() => undefined)
+        void event
+      })
       SessionManager.openAdmission()
       await RolloutRecovery.all((current) => options.recoveryReporter?.progress(current))
       options.recoveryReporter?.completed()
@@ -245,6 +267,7 @@ export namespace RuntimeHandle {
         residentStarted = true
         await services.resident.start(config)
       }
+      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
       return { server, migration, config, shutdownTimeoutMs, closeAdmission, close, [Symbol.asyncDispose]: close }
     } catch (error) {
       try {

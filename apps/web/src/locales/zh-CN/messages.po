@@ -8820,6 +8820,14 @@ msgstr "隐藏"
 msgid "app.topBar.sideWorkspace.open"
 msgstr "打开"
 
+#. js-lingui-explicit-id
+msgid "app.upgrade.attention"
+msgstr "有 {count} 个历史会话需要修复"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.progress"
+msgstr "正在准备历史记录：{done}/{total}"
+
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.add.bottomPanel"
 msgstr "添加底部面板"
@@ -15011,6 +15019,18 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "沙箱 | 隔离 | 降级"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.secrets.description"
+msgstr "已注册的密钥从模型上下文打码，在执行时解析。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.secrets.label"
+msgstr "密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.secrets.searchTerms"
+msgstr "密钥 | 密钥库 | api 密钥 | 令牌 | 掩码 | 凭据"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.skills.description"
 msgstr "选择从哪些其他智能体工具发现技能。"
 
@@ -18765,6 +18785,154 @@ msgstr "已保存 {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.cancel"
+msgstr "保留"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.close"
+msgstr "关闭"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.confirm"
+msgstr "移除"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.edit"
+msgstr "编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.history"
+msgstr "历史"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.remove"
+msgstr "移除"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.rotate"
+msgstr "轮换"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.save"
+msgstr "保存策略"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.empty"
+msgstr "暂无解析记录。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.title"
+msgstr "最近解析"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.list.empty"
+msgstr "尚未注册任何密钥。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.list.title"
+msgstr "已注册的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.page.description"
+msgstr "已注册的密钥在模型可见的所有位置都被打码，仅在工具执行时解析为真实值。密钥值不会发送到浏览器；查看请使用 CLI。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.page.title"
+msgstr "密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.button"
+msgstr "注册"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.description"
+msgstr "粘贴一个值即可在所有会话中打码。重复注册已知值不会产生任何变化。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.title"
+msgstr "注册密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.removeConfirm.desc"
+msgstr "历史会话中的掩码引用将不再解析并显示为已撤销。重新注册相同的值可以恢复它们。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.removeConfirm.title"
+msgstr "移除此密钥？"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.revealHint"
+msgstr "查看密钥值请运行：synergy secrets reveal <id>"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.rotate.hint"
+msgstr "新值会得到新的 id；策略与历史记录会保留。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.rotate.title"
+msgstr "轮换值"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.cap"
+msgstr "单会话解析上限"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.capPlaceholder"
+msgstr "留空表示不限"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.resolves"
+msgstr "解析次数"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.source"
+msgstr "来源"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.emptyValue"
+msgstr "请输入非空值。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.failed"
+msgstr "操作失败"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.policy"
+msgstr "策略已保存"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.registered"
+msgstr "密钥已注册"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.registeredDesc"
+msgstr "该值现已在所有位置被打码。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.removed"
+msgstr "密钥已移除"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.removedDesc"
+msgstr "历史掩码引用将不再解析。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.rotated"
+msgstr "密钥已轮换"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.tools.label"
+msgstr "工具白名单（可选）"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.tools.placeholder"
+msgstr "例如 bash, mcp — 留空表示所有工具"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.value.label"
+msgstr "密钥值"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.agents.desc"

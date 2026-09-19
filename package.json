@@ -79,6 +79,7 @@
       "packages/plugin-kit",
       "packages/sdk/js",
       "packages/ui",
+      "packages/secret-detection",
       "packages/util",
       "apps/web",
       "apps/desktop",

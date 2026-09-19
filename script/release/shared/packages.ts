@@ -14,6 +14,7 @@ interface ReleasePackage {
 export const RELEASE_CATALOG = {
   sdk: { directory: "packages/sdk/js", registry: "@ericsanchezok/synergy-sdk", versioned: true },
   util: { directory: "packages/util", registry: "@ericsanchezok/synergy-util", versioned: true },
+  secretDetection: { directory: "packages/secret-detection", registry: null, versioned: true },
   linkProtocol: {
     directory: "packages/synergy-link-protocol",
     registry: "@ericsanchezok/synergy-link-protocol",

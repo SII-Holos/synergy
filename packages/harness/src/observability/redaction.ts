@@ -1,3 +1,4 @@
+import { SecretPatterns } from "@ericsanchezok/synergy-secret-detection/patterns"
 import { ObservabilityConfig } from "./config"
 import { ObservabilitySchema } from "./schema"
 
@@ -8,18 +9,6 @@ export namespace ObservabilityRedaction {
   const DEFAULT_MAX_STRING_LENGTH = 4096
   const COMMAND_KEYS = new Set(["command", "cmd"])
   const COMMAND_ARG_KEYS = new Set(["args", "argv", "arguments"])
-  const STANDALONE_SECRET_PATTERNS = [
-    /\bsk-[A-Za-z0-9._-]{8,}\b/g,
-    /\bghp_[A-Za-z0-9_]{8,}\b/g,
-    /\bgithub_pat_[A-Za-z0-9_]{8,}\b/g,
-    /\bxox[baprs]-[A-Za-z0-9-]{8,}\b/g,
-    /\bhf_[A-Za-z0-9_]{8,}\b/g,
-    /\bglpat-[A-Za-z0-9-]{8,}\b/g,
-    /\bpk_live_[A-Za-z0-9_]{8,}\b/g,
-    /\brk_live_[A-Za-z0-9_]{8,}\b/g,
-    /\btok_[A-Za-z0-9._-]{8,}\b/g,
-    /\bkey_[A-Za-z0-9._-]{8,}\b/g,
-  ]
 
   export interface Result<T> {
     value: T
@@ -60,12 +49,10 @@ export namespace ObservabilityRedaction {
 
   export function text(input: string, maxLength = ObservabilityConfig.current().maxAttributeStringLength) {
     let clean = input
-      .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[redacted]")
-      .replace(/(Basic\s+)[A-Za-z0-9+/=]+/gi, "$1[redacted]")
-      .replace(/(Digest\s+)[A-Za-z0-9+/=]+/gi, "$1[redacted]")
-      .replace(/(?<=(token|secret|password|authorization|api[_-]?key|cookie)[:=])\s*[^\s"'&]+/gi, "[redacted]")
-      .replace(/([?&](?:token|secret|password|authorization|api[_-]?key|cookie)=)[^&#\s"']+/gi, "$1[redacted]")
-    for (const pattern of STANDALONE_SECRET_PATTERNS) clean = clean.replace(pattern, "[redacted]")
+    for (const [pattern, replacement] of SecretPatterns.authSchemes) clean = clean.replace(pattern, replacement)
+    clean = clean.replace(SecretPatterns.keyValue, "[redacted]")
+    clean = clean.replace(SecretPatterns.queryParam, "$1[redacted]")
+    clean = SecretPatterns.replaceStandalone(clean, "[redacted]").text
     return clean.length > maxLength
       ? `${clean.slice(0, maxLength)}...(truncated ${clean.length - maxLength} chars)`
       : clean

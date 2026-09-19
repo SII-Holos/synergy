@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { PackedBackup } from "./packed-backup"
+import { SegmentedBackup } from "./segmented-backup"
 import { SessionStaging } from "../session/staging"
 import { SessionCompat } from "../session/compat-import"
 import { Global } from "../global"
@@ -27,10 +28,17 @@ export namespace StorageMaintenance {
     try {
       temporary = await fs.mkdtemp(path.join(parent, ".synergy-restore-"))
       const backup = new PackedBackup({ dataRoot: path.join(temporary, "data"), backupRoot: path.resolve(backupRoot) })
-      const manifest = await backup.manifest()
-      if (!manifest || manifest.selection !== "home")
-        throw new StorageIntegrityError("Restore requires a sealed version 2 legacy Home backup")
-      await backup.restore(path.join(temporary, "data"))
+      let manifest: { files: number; bytes: number }
+      if (await Bun.file(path.join(backupRoot, "segmented.json")).exists()) {
+        const segmented = await SegmentedBackup.open(backupRoot)
+        manifest = await segmented.restore(path.join(temporary, "data"))
+      } else {
+        const sealed = await backup.manifest()
+        if (!sealed || sealed.selection !== "home")
+          throw new StorageIntegrityError("Restore requires a sealed Home backup or a recoverable segmented backup")
+        await backup.restore(path.join(temporary, "data"))
+        manifest = sealed
+      }
       if (process.platform !== "win32") {
         const directory = await fs.open(temporary, "r")
         try {

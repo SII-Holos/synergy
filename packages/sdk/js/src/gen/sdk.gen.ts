@@ -577,6 +577,21 @@ import type {
   ScopeRuntimeDisposeResponses,
   ScopeUpdateErrors,
   ScopeUpdateResponses,
+  SecretCreateInput,
+  SecretPolicyInput,
+  SecretRotateInput,
+  SecretsCreateErrors,
+  SecretsCreateResponses,
+  SecretsHistoryErrors,
+  SecretsHistoryResponses,
+  SecretsListErrors,
+  SecretsListResponses,
+  SecretsRemoveErrors,
+  SecretsRemoveResponses,
+  SecretsRotateErrors,
+  SecretsRotateResponses,
+  SecretsUpdatePolicyErrors,
+  SecretsUpdatePolicyResponses,
   ServerUpdateStartInput,
   SessionAbortErrors,
   SessionAbortResponses,
@@ -683,6 +698,10 @@ import type {
   StorageSnapshotMigrateResponses,
   StorageSnapshotUsageErrors,
   StorageSnapshotUsageResponses,
+  StorageUpgradeCatalogErrors,
+  StorageUpgradeCatalogResponses,
+  StorageUpgradeStatusErrors,
+  StorageUpgradeStatusResponses,
   SynergyLinkTargetCreateErrors,
   SynergyLinkTargetCreateInput,
   SynergyLinkTargetCreateResponses,
@@ -4440,6 +4459,53 @@ export class Snapshot extends HeyApiClient {
 }
 
 export class Storage extends HeyApiClient {
+  /**
+   * Get historical data upgrade progress
+   *
+   * The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.
+   */
+  public upgradeStatus<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageUpgradeStatusResponses,
+      StorageUpgradeStatusErrors,
+      ThrowOnError
+    >({ url: "/global/storage/upgrade", ...options })
+  }
+
+  /**
+   * List unresolved historical Sessions
+   */
+  public upgradeCatalog<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scopeID?: string
+      after?: [string, string, string, string]
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "after" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      StorageUpgradeCatalogResponses,
+      StorageUpgradeCatalogErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/sessions",
+      ...options,
+      ...params,
+    })
+  }
+
   snapshot = new Snapshot({ client: this.client })
 }
 
@@ -6891,6 +6957,221 @@ export class Config extends HeyApiClient {
   domain = new Domain({ client: this.client })
 
   import = new Import({ client: this.client })
+}
+
+export class Secrets extends HeyApiClient {
+  /**
+   * List secret vault entries
+   *
+   * List registered secret vault entries. Values are never returned.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SecretsListResponses, SecretsListErrors, ThrowOnError>({
+      url: "/secrets",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Register a secret
+   *
+   * Register a value in the secret vault. Idempotent for an already-registered value.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      secretCreateInput?: SecretCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "secretCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SecretsCreateResponses, SecretsCreateErrors, ThrowOnError>({
+      url: "/secrets",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a secret
+   *
+   * Remove one vault entry. Historical mask tokens stop resolving and render as revoked; re-registering the same value restores them.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<SecretsRemoveResponses, SecretsRemoveErrors, ThrowOnError>({
+      url: "/secrets/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update a secret's policy
+   *
+   * Replace the per-key resolution policy of one vault entry.
+   */
+  public updatePolicy<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      secretPolicyInput?: SecretPolicyInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "secretPolicyInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      SecretsUpdatePolicyResponses,
+      SecretsUpdatePolicyErrors,
+      ThrowOnError
+    >({
+      url: "/secrets/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Rotate a secret's value
+   *
+   * Replace the value of one vault entry; policy and resolve history carry over.
+   */
+  public rotate<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      secretRotateInput?: SecretRotateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "secretRotateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SecretsRotateResponses, SecretsRotateErrors, ThrowOnError>({
+      url: "/secrets/{id}/rotate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read a secret's resolve history
+   *
+   * Read the bounded resolve audit trail of one vault entry.
+   */
+  public history<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SecretsHistoryResponses, SecretsHistoryErrors, ThrowOnError>({
+      url: "/secrets/{id}/history",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class ControlProfile extends HeyApiClient {
@@ -12675,6 +12956,8 @@ export class SynergyClient extends HeyApiClient {
   pty = new Pty({ client: this.client })
 
   config = new Config({ client: this.client })
+
+  secrets = new Secrets({ client: this.client })
 
   runtime = new Runtime({ client: this.client })
 

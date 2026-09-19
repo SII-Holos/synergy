@@ -74,13 +74,13 @@ export const DataStorageCommand = cmd({
       )
       .command(
         "restore-backup <backup> <destination>",
-        "restore a verified version 2 legacy Home backup into a new Home directory",
+        "restore a verified packed or segmented legacy Home backup into a new Home directory",
         (yargs) =>
           yargs
             .positional("backup", {
               type: "string",
               demandOption: true,
-              describe: "Sealed legacy Home backup directory containing manifest.json",
+              describe: "Backup directory; unfinished segmented backups also require their original frozen source",
             })
             .positional("destination", {
               type: "string",

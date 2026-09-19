@@ -50,6 +50,24 @@ The enforcement gate owns the security decision. A tool implementation can still
 
 Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy. Deferred MCP server groups are discoverable through the "Connected MCP groups" directory in the `expand_tools` description whenever the MCP defer threshold is active; the directory lists connected servers and their tool names so an agent can expand `mcp:<server>` directly. A direct model call to a deferred-but-authorized tool is auto-expanded and executed in the same turn (the runtime equivalent of calling `expand_tools` for that tool); auto-expansion changes visibility only, never grants authorization, and is disabled when `expand_tools` itself is denied.
 
+## Secret Masking
+
+The secret vault is a data-flow mechanism orthogonal to the control profiles: the gate answers "may this operation run", the vault answers "what value does this operation receive". The same masking applies under `guarded`, `autonomous`, and `full_access`, because its threat model is the model context, not the permission decision.
+
+Registered values are held in a 0600 file-store beside the provider auth store (`Global.Path.secretVault`) with atomic writes, cross-process file locks, and corrupt-store quarantine. Entry ids derive deterministically from the value's SHA-256, so the same secret always masks to the same `⟦sec:<id>⟧` token — across processes, store recreations, and re-registrations.
+
+Masking runs at three ingress owners:
+
+1. User-message materialization masks text parts before durable persistence, so the session record holds tokens for detected or registered values.
+2. Tool-result settlement masks the settled result immediately after execution and BEFORE rollout capture, in both the builtin and MCP paths — plugin after-hooks, rollout artifacts, and durable tool parts see tokens only.
+3. `LLM.stream` masks the per-turn projection and late-system strings as a safety net covering every projection call site, including compaction, title, and summary calls.
+
+Resolution runs inside the Control Plane execution window only. In both settlement paths the pinned order is: plugin `tool.execute.before` (tokens only) → `SecretResolve.transformArgs` (execution-only args copy) → execute → `SecretMask.transformResult` → `RolloutTool.capture`. Local bash receives values through `SYNERGY_SEC_*` environment injection so plaintext never appears in argv; a token embedded in a longer word, and any token on remote bash, degrades to literal substitution — the documented residual exposure. Policy denial substitutes a visible `⟦sec:<id>:DENIED⟧` marker and the run proceeds; a removed entry leaves the token literal, matching what the model saw.
+
+Plaintext never crosses the HTTP surface: `/secrets` returns metadata only, and value reveal is a local CLI operation (`synergy secrets reveal`). This mirrors the config-export posture that keeps plaintext exports CLI-only because loopback-wide CORS would let any local page read them. The Settings panel manages the full lifecycle — register, rotate, per-key policy, resolve history, revoking remove — without displaying values.
+
+The mechanism honestly does not bound executor-side exfiltration: after resolution, a pipeline that reads a file into a network command can still carry the plaintext out. Per-key policy (tool allowlist, per-session resolve cap) and the resolve audit trail bound but cannot prevent that; the resolve history is visible per key in the panel. Heuristic capture uses the versioned regex detector from the [secret-detection package](../../packages/secret-detection/README.md). The Harness detector source permits explicit replacement during runtime composition. It validates original-text spans and requires a complete result within five seconds; failed detection or registration stops capture. Unknown formats can pass through, and benign example keys can be masked. Exact matching of registered values remains independent of detection results. Capture batches missing values and reuses one Vault snapshot, matching longer values first. Detector-only and isolated capture benchmarks report quality and timing separately; see the [detector decision](../decisions/implemented/architecture/2026-09-20-replaceable-secret-detection.md).
+
 ## Capability Model
 
 Classification describes what an operation can do, independently of which tool requested it. Capabilities cover file access, shell behavior, network access, browser control, session state, secrets, identity and messaging actions, plugin/platform operations, and other protected boundaries.
@@ -239,3 +257,5 @@ These restrictions are evaluated before the tool implementation. A permissive co
 ## Native Computer eligibility
 
 `computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
+
+Bash secret substitution keeps a standalone, unquoted local token in a quoted environment expansion so whitespace and metacharacters remain one argument. Quoted, embedded, heredoc and remote substitutions accept only shell-inert credential characters; other values fail explicitly instead of introducing shell syntax. Vault rotation rejects values already registered under another entry, preserving its policy and audit history. Secret API conflicts return 409; storage failures remain server errors rather than false 404 responses.

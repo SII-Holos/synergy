@@ -353,6 +353,12 @@ export const LocalBashBackend = {
       }
     }
 
+    // Secret boundary: resolved mask tokens arrive as SYNERGY_SEC_* environment
+    // variables from the resolver; the command references them via
+    // ${SYNERGY_SEC_*} so plaintext never appears in argv or process listings.
+    const secretEnv = (ctx.extra as { secretEnv?: Record<string, string> } | undefined)?.secretEnv
+    if (secretEnv) Object.assign(sandboxEnv, secretEnv)
+
     // Autonomous (and any gate-sandboxed) execution: point TMPDIR/TMP/TEMP at
     // the workspace-controlled temporary root so tools that honor TMPDIR write
     // inside the workspace boundary instead of the host's shared temporary

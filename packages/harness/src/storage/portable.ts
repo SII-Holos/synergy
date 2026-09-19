@@ -77,7 +77,11 @@ export namespace StoragePortable {
       await file.writeFile(JSON.stringify({ format: "synergy-agent-data", version: 2 }) + "\n")
       await store.snapshot(async (tx) => {
         for await (const entry of tx.exportEntries()) {
-          if ((entry.type === "record" || entry.type === "artifact") && entry.key[0] === "compat_import") continue
+          if (
+            (entry.type === "record" || entry.type === "artifact") &&
+            ["compat_import", "compat_catalog"].includes(entry.key[0])
+          )
+            continue
           const line = JSON.stringify(entry) + "\n"
           if (Buffer.byteLength(line) > MAX_LINE_BYTES)
             throw new StorageIntegrityError("Portable record exceeds the supported byte limit")

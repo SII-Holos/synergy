@@ -6,6 +6,11 @@ export interface Migration {
   dependsOn?: string[]
   version?: string
   domain?: string
+  scope?: "global" | "scope" | "session" | "derived"
+  upSession?(
+    owner: { scopeID: string; sessionID: string },
+    progress: (current: number, total: number) => void,
+  ): Promise<void>
 }
 
 export interface RunOptions {
@@ -27,6 +32,7 @@ export interface MigrationSummary {
   totalDomains: number
   upToDateDomains: number
   completed: number
+  deferred?: number
   dryRun: number
   failed: number
 }
