@@ -75,7 +75,7 @@ describe("destructive boundary — host-level targets stay refused", () => {
 
   test("privilege escalation detection stays syntactically precise", () => {
     // Argument text that merely mentions sudo is not escalation.
-    expect(ShellSafety.classifyBashRisk('echo "use sudo carefully"')).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('echo "use sudo carefully"')).toBe("shell")
     expect(ShellSafety.hasSudoInvocation("echo sudo make install")).toBe(false)
     expect(ShellSafety.classifyBashRisk("sudo_command=make make install")).toBe("shell")
   })
@@ -128,7 +128,7 @@ describe("destructive boundary — ordinary development operations stay allowed"
   test("git clean without ignored-file removal is allowed", () => {
     expect(ShellSafety.classifyBashRisk("git clean -f")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("git clean -fd")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git clean -n")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("git clean -n")).toBe("shell")
   })
 
   test("read-only and help forms of host-level tools stay executable", () => {

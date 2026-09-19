@@ -144,7 +144,8 @@ const RELEASED_FALSE_POSITIVES: Array<{ record: string; command: string }> = [
   },
   {
     record: "2026-09-05-autonomous-bash-exec-precision",
-    command: "cd packages/harness/src && files=$(find . -type f -name '*.ts' -exec cat {} + 2>/dev/null | wc -l); echo $files",
+    command:
+      "cd packages/harness/src && files=$(find . -type f -name '*.ts' -exec cat {} + 2>/dev/null | wc -l); echo $files",
   },
   {
     record: "2026-09-10-unified-read-only-shell-catalog",

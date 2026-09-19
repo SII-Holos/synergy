@@ -42,12 +42,6 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     description: "Can operate observed native application windows using background input in Full Access mode.",
     nonBypassable: true,
   },
-  shell_read: {
-    category: "runtime",
-    severity: "low",
-    title: "Run read-only shell commands",
-    description: "Can run shell commands classified as read-only.",
-  },
   shell: {
     category: "runtime",
     severity: "medium",
@@ -85,14 +79,16 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     category: "runtime",
     severity: "high",
     title: "Run destructive shell commands",
-    description: "Can run commands that may delete, overwrite, or rewrite important local state.",
+    description:
+      "Can run commands that the OS sandbox cannot express: host-level or system-location destruction, irreversible local history loss, and privilege escalation.",
     nonBypassable: true,
   },
   shell_hardline: {
     category: "runtime",
     severity: "high",
     title: "Run forbidden shell commands",
-    description: "Matches shell commands that Synergy treats as a hard safety boundary.",
+    description:
+      "Matches the machine-wide commands Synergy refuses under every profile: filesystem-root and home destruction, filesystem-format and power tools, fork bombs, and raw-device writes.",
     nonBypassable: true,
   },
   file_write: {
@@ -333,7 +329,6 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
 export const SYNERGY_PROFILE_CAPABILITIES = [
   "file_read",
   "file_write",
-  "shell_read",
   "shell",
   "shell_branch_mutation",
   "shell_remote_execute",

@@ -11,8 +11,10 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { truncateMetadataOutput } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import { SandboxBackend } from "../../sandbox/backend"
+import { EnforcementError } from "@ericsanchezok/synergy-harness/enforcement/errors"
+import { SandboxDetector } from "../../enforcement/sandbox-detector"
+import { startDenialLogger, type DenialLoggerSession } from "../../sandbox/macos-diagnostics"
 import { controlledTempRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
-import { ShellSafety } from "@ericsanchezok/synergy-harness/enforcement/shell-safety"
 import { AttachmentDiscovery } from "../attachment-discovery"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import type { BashParams } from "@ericsanchezok/synergy-harness/tool/bash-contract"
@@ -278,14 +280,11 @@ export const LocalBashBackend = {
     if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await trace("bash.permission.ask", {
         patternCount: patterns.size,
-        capability: ShellSafety.capability(params.command),
       })
       await ctx.ask({
         permission: "bash",
         patterns: Array.from(patterns),
-        metadata: {
-          capability: ShellSafety.capability(params.command),
-        },
+        metadata: {},
       })
       await trace("bash.permission.resolved", {
         patternCount: patterns.size,
@@ -410,6 +409,10 @@ export const LocalBashBackend = {
     executionCommand = withLinuxChildOomPreference(executionCommand)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
+    // macOS sandboxd audit stream for this child. Seatbelt reports denials to
+    // the system log rather than to the child's stderr, so this is the only
+    // source of the denied path that the structured explanation needs.
+    let denialSession: DenialLoggerSession | null = null
     let windowsProcessJob: WindowsProcessJob.Prepared | undefined
     let windowsProcessOwner: WindowsProcessJob.Owner | undefined
     let ownsUnixProcessGroup = false
@@ -417,6 +420,7 @@ export const LocalBashBackend = {
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
+      denialSession?.stop()
       windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
@@ -591,6 +595,14 @@ export const LocalBashBackend = {
       } finally {
         child.off("error", onSpawnError)
       }
+    }
+
+    // macOS Seatbelt reports a denial to the system log rather than to the
+    // child's stderr, so capture the child's audit stream for the duration of
+    // the run. Without it a denied write is only visible as a generic non-zero
+    // exit with no path to report.
+    if (sandboxWrapper && !sandboxWrapper.skipReason && child.pid && process.platform === "darwin") {
+      denialSession = startDenialLogger(child.pid)
     }
 
     let aborted = false

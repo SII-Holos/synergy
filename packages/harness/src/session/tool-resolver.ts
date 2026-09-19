@@ -254,8 +254,7 @@ export namespace ToolResolver {
 
   function permissionForGateCapability(toolName: string, className: string): string {
     if (className === "file_external_read" || className === "file_external_write") return "external_directory"
-    if (className === "shell_read" || className === "shell_remote_publish" || className === "shell_remote_write")
-      return "bash"
+    if (className === "shell_remote_publish" || className === "shell_remote_write") return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request") return toolName === "webfetch" ? toolName : "network_request"
     return className
@@ -289,7 +288,6 @@ export namespace ToolResolver {
     if (
       permission === "bash" ||
       capability === "shell" ||
-      capability === "shell_read" ||
       capability === "shell_remote_publish" ||
       capability === "shell_remote_write" ||
       capability === "shell_destructive"
