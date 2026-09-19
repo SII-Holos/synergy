@@ -277,10 +277,7 @@ export class LegacyJsonImporter {
 
   async retire(): Promise<void> {
     const { store, dataRoot, backupRoot, progress } = this.options
-    const [state] = await store.readMany<ImportState>([stateKey])
-    const total = state?.files ?? 0
     let current = 0
-    let authority = 0
     progress?.({ stage: "activate", current, total: 0, bytes: 0 })
     let after: string[] | undefined
     for (;;) {
@@ -298,19 +295,12 @@ export class LegacyJsonImporter {
           path.join(backupRoot, "data", entry.relative),
           entry.hash,
           entry.size,
-          { total, index: authority },
           "Cannot retire a legacy record whose backup is invalid",
         )
         const source = sourcePath(dataRoot, entry.relative)
-        await verifyRetirement(
-          source,
-          entry.hash,
-          entry.size,
-          { total, index: authority },
-          "A legacy writer changed data during activation",
-          { tolerateMissing: true },
-        )
-        authority++
+        await verifyRetirement(source, entry.hash, entry.size, "A legacy writer changed data during activation", {
+          tolerateMissing: true,
+        })
         try {
           await fs.unlink(source)
         } catch (error) {

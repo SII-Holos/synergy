@@ -328,14 +328,9 @@ export class PackedLegacyImporter {
       if (legacyRecordKey(entry.relative) || legacyBinaryKey(entry.relative)) {
         const filename = sourcePath(dataRoot, entry.relative)
         try {
-          await verifyRetirement(
-            filename,
-            entry.hash,
-            entry.size,
-            { total: state.files, index: position - 1 },
-            "A legacy writer changed data during activation",
-            { tolerateMissing: true },
-          )
+          await verifyRetirement(filename, entry.hash, entry.size, "A legacy writer changed data during activation", {
+            tolerateMissing: true,
+          })
           await fs.unlink(filename)
         } catch (error) {
           if (error instanceof StorageIntegrityError)

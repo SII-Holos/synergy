@@ -12,7 +12,7 @@ Before copying, bootstrap budgets the uncompressed backup plus path metadata and
 
 Repeated `resume` uses recorded checkpoints and the same sealed backup. It rejects changed source files, missing backup bytes and identity mismatches. A record with invalid historical JSON is preserved in the backup and assigned a persistent recovery issue. Affected Sessions cannot execute until their evidence is repaired and their block is resolved. Do not delete a recovery marker merely to bypass a failed upgrade.
 
-Activation retires originals only after re-checking them against the sealed inventory. Byte counts are verified everywhere; content digests cover every file in Homes of up to 4,096 authority records and a deterministic 1-in-16 sample of positions in larger Homes, because the exclusive Home lock already excludes the registered legacy writer during activation. A mismatch fails activation and leaves the evidence in place.
+Activation retires originals only after re-checking every byte count and complete content digest against the sealed inventory. Backup verification is also complete; a mismatch fails activation and leaves the affected original in place. Resumed retirement tolerates originals already removed after successful verification.
 
 ## Verify and troubleshoot
 
