@@ -38,6 +38,8 @@ The Blueprint quality contract is untouched and now pinned by test: the eight re
 
 ## Consequences
 
+The product overview and execution-boundary reference describe Plan as prompt guidance. They do not promise a read-only permission boundary.
+
 A Plan session can edit repository files, because `guarded` allows `file_write` without approval. This is the accepted price of removing a policy from a collaboration mode: the same capability was already reachable through `bash`, which changes files without producing a reviewable diff, so the change moves the action onto an auditable path rather than opening a new one. It also means Plan must not be described as a read-only boundary anywhere; the architecture document and the prompt now say the opposite.
 
 Under `full_access`, outbound tools (`email_send`, `channel_push`, `session_send`) become reachable from Plan. Under `guarded` these capabilities are high risk and go to approval, so an interactive user still sees the decision; `full_access` is permission-silent by design and carries no compensating gate. The compensating control is the prompt contract plus the user's profile choice, which is the same trade every other workflow makes.
