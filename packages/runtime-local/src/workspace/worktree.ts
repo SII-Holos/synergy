@@ -54,6 +54,7 @@ export namespace Worktree {
       lastUsedAt: z.number().optional(),
       setupFailed: z.boolean().optional(),
       setupError: z.string().optional(),
+      locked: z.string().optional(),
     })
     .meta({ ref: "Worktree" })
   export type Info = z.infer<typeof Info>
@@ -214,17 +215,25 @@ export namespace Worktree {
     branch?: string
     detached?: boolean
     bare?: boolean
+    /** Git's `locked` line value, verbatim: "" when locked without a reason. */
+    locked?: string
+    /** Git translates the `prunable` reason, so only the line's presence is recorded. */
+    prunable?: boolean
   }
 
   export interface LockResult {
     acquired: boolean
     /** true when git reported that the worktree was already locked before this call. */
     existing: boolean
+    /** true when the lock already on disk carries this repository's own marker. */
+    markerOwner?: boolean
   }
 
   interface LockState {
     count: number
     synergyAcquired: boolean
+    /** A lock already on disk that this repository provably wrote, so it stays reclaimable. */
+    markerOwner: boolean
   }
 
   interface UseState {
@@ -279,13 +288,17 @@ export namespace Worktree {
     }
   }
 
-  function beginRemoval(info: Info) {
+  function beginRemoval(info: Info, excludeSessionID?: string) {
     const current = useState(info.path)
     if (current.state.removing) {
       throw new CreateFailedError({ message: `Worktree ${info.name} is already being removed.` })
     }
-    if (current.state.active.size > 0) {
-      const sessionID = Array.from(current.state.active.values()).find((value) => value !== undefined)
+    // A removal issued from the caller's own turn must not be blocked by the
+    // use token that turn itself holds, while every other user still must.
+    // Anonymous uses carry no session, so they always remain blockers.
+    const others = Array.from(current.state.active.values()).filter((value) => value !== excludeSessionID)
+    if (others.length > 0) {
+      const sessionID = others.find((value) => value !== undefined)
       if (sessionID) {
         throw new SessionBusyError({
           sessionID,
@@ -471,6 +484,12 @@ export namespace Worktree {
       if (key === "branch") current.branch = value.replace(/^refs\/heads\//, "")
       if (key === "detached") current.detached = true
       if (key === "bare") current.bare = true
+      // Porcelain keys are never translated, but the `prunable` reason is, so
+      // only the lock's own marker is stored verbatim and prunability is
+      // recorded as presence. Stderr must not be parsed for either: git
+      // localizes it, and a zh_CN runtime would miss an English-only match.
+      if (key === "locked") current.locked = value
+      if (key === "prunable") current.prunable = true
     }
     flush()
     return result
@@ -514,6 +533,7 @@ export namespace Worktree {
       lastUsedAt: registry?.lastUsedAt,
       setupFailed: registry?.setupFailed,
       setupError: registry?.setupError,
+      locked: entry.locked,
     })
   }
 
@@ -889,10 +909,14 @@ export namespace Worktree {
     }
   }
 
-  async function leaveBoundSessions(info: Info, extraSessionID?: string) {
+  async function leaveBoundSessions(info: Info, extraSessionID?: string, options?: { excludeRunning?: string }) {
     const bindings = new Set(info.bindings ?? [])
     if (extraSessionID) bindings.add(extraSessionID)
+    // The caller's own turn is running by definition. It is still unbound in
+    // the loop below, but it must not count as a competing session here, or a
+    // removal issued from that turn rejects itself.
     for (const sessionID of bindings) {
+      if (sessionID === options?.excludeRunning) continue
       if (await isSessionRunning(sessionID)) {
         throw new SessionBusyError({
           sessionID,
@@ -910,23 +934,31 @@ export namespace Worktree {
     }
   }
 
-  export async function remove(input: RemoveInput & { sessionID?: string }) {
+  export async function remove(input: RemoveInput & { sessionID?: string }, options?: { insideCallerTurn?: boolean }) {
     const sessionID = input.sessionID
+    // Internal fact, never a wire field: only the caller that owns the running
+    // turn may exclude itself from the guards below.
+    const excludeSessionID = options?.insideCallerTurn ? sessionID : undefined
     const parsed = RemoveInput.parse(input)
     const initial = await find(parsed.target)
     if (initial.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
-    const finishRemoval = beginRemoval(initial)
+    const finishRemoval = beginRemoval(initial, excludeSessionID)
     try {
       const info = await find(parsed.target)
       if (info.stale) {
-        await leaveBoundSessions(info, sessionID)
+        await leaveBoundSessions(info, sessionID, { excludeRunning: excludeSessionID })
         if (info.managed) await removeRegistry(info.id)
         return info
       }
       if (!parsed.force && (await isDirty(info.path))) {
         throw new DirtyError({ message: `Worktree ${info.name} has uncommitted changes. Re-run with force to remove.` })
       }
-      await leaveBoundSessions(info, sessionID)
+      await leaveBoundSessions(info, sessionID, { excludeRunning: excludeSessionID })
+      // The turn that issued this removal holds a git-level lock until its own
+      // finally block runs, which is after this call returns. Release it here
+      // or git refuses to remove the tree ("cannot remove a locked working
+      // tree") and no force level below `-f -f` would help.
+      await releaseLockForRemoval(info.path)
       const removed = parsed.force
         ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
         : await $`git worktree remove ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
@@ -949,28 +981,54 @@ export namespace Worktree {
     return true
   }
 
-  export async function lock(directory: string): Promise<LockResult> {
+  const LOCK_MARKER_PREFIX = "synergy:v1:"
+
+  function lockMarker(sessionID?: string) {
+    return `${LOCK_MARKER_PREFIX}session=${sessionID ?? "unknown"}`
+  }
+
+  function ownsLockMarker(reason: string | undefined) {
+    return typeof reason === "string" && reason.startsWith(LOCK_MARKER_PREFIX)
+  }
+
+  async function readLockReason(directory: string, repoRoot: string): Promise<string | undefined> {
+    const text = await $`git worktree list --porcelain`.quiet().nothrow().cwd(repoRoot).text()
+    if (!text) return undefined
+    const resolved = path.resolve(directory)
+    return parsePorcelain(text).find((item) => path.resolve(item.path) === resolved)?.locked
+  }
+
+  export async function lock(directory: string, sessionID?: string): Promise<LockResult> {
     const resolved = path.resolve(directory)
     let state = activeLocks.get(resolved)
     if (!state) {
-      state = { count: 0, synergyAcquired: false }
+      state = { count: 0, synergyAcquired: false, markerOwner: false }
       activeLocks.set(resolved, state)
     }
     state.count += 1
-    if (state.count > 1) return { acquired: false, existing: false }
+    if (state.count > 1) return { acquired: false, existing: false, markerOwner: state.markerOwner }
     const { repoRoot } = ensureGitScope()
-    const result = await $`git worktree lock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    const result = await $`git worktree lock --reason ${lockMarker(sessionID)} ${resolved}`
+      .quiet()
+      .nothrow()
+      .cwd(repoRoot)
     if (result.exitCode !== 0) {
-      const msg = errorText(result)
-      if (/already locked/i.test(msg)) {
-        activeLocks.delete(resolved)
-        return { acquired: false, existing: true }
+      // "Already locked" is decided from porcelain, never from stderr: git
+      // localizes that message, so a text match only holds under an English
+      // locale and a non-English runtime threw instead of reporting the lock.
+      const existingReason = await readLockReason(resolved, repoRoot)
+      if (existingReason !== undefined) {
+        // Keep the state so a concurrent holder's count survives, and record
+        // whether this repository provably wrote the lock that is on disk.
+        state.markerOwner = ownsLockMarker(existingReason)
+        return { acquired: false, existing: true, markerOwner: state.markerOwner }
       }
       activeLocks.delete(resolved)
-      throw new LockFailedError({ message: msg || `Failed to lock worktree: ${resolved}` })
+      throw new LockFailedError({ message: errorText(result) || `Failed to lock worktree: ${resolved}` })
     }
     state.synergyAcquired = true
-    return { acquired: true, existing: false }
+    state.markerOwner = true
+    return { acquired: true, existing: false, markerOwner: true }
   }
 
   export async function unlock(directory: string) {
@@ -982,12 +1040,39 @@ export namespace Worktree {
       return
     }
     activeLocks.delete(resolved)
-    if (!state.synergyAcquired) return
+    // A lock this repository did not write is never cleared, so a user's own
+    // `git worktree lock` survives a session that merely ran in the worktree.
+    if (!state.synergyAcquired && !state.markerOwner) return
     const { repoRoot } = ensureGitScope()
     const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) {
       throw new LockFailedError({ message: errorText(result) || `Failed to unlock worktree: ${resolved}` })
     }
+  }
+
+  /**
+   * Clear the lock that blocks removing a worktree. Only a lock carrying this
+   * repository's own marker is released: an unmarked lock is indistinguishable
+   * from one a user wrote by hand, so it is reported instead of guessed at.
+   */
+  export async function releaseLockForRemoval(directory: string): Promise<boolean> {
+    const resolved = path.resolve(directory)
+    const { repoRoot } = ensureGitScope()
+    const existingReason = await readLockReason(resolved, repoRoot)
+    if (existingReason === undefined) return true
+    if (!ownsLockMarker(existingReason)) return false
+    const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    if (result.exitCode !== 0) return false
+    // Both flags must clear. The turn's own finally still calls unlock(), and
+    // leaving the marker recorded would make it run `git worktree unlock` on a
+    // path that is no longer a working tree, throwing out of that finally and
+    // failing an otherwise successful turn.
+    const state = activeLocks.get(resolved)
+    if (state) {
+      state.synergyAcquired = false
+      state.markerOwner = false
+    }
+    return true
   }
 
   export async function detachSession(sessionID: string) {
