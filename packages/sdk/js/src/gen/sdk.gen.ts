@@ -200,6 +200,8 @@ import type {
   ExperimentFile,
   FormatterStatusErrors,
   FormatterStatusResponses,
+  GlobalActivityErrors,
+  GlobalActivityResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeErrors,
@@ -3821,6 +3823,18 @@ export class Global extends HeyApiClient {
   public dispose<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<GlobalDisposeResponses, GlobalDisposeErrors, ThrowOnError>({
       url: "/global/dispose",
+      ...options,
+    })
+  }
+
+  /**
+   * Get global activity
+   *
+   * Report whether any session or background job is currently working, across every scope. Non-idle session statuses (busy, retry, recovering) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
+   */
+  public activity<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalActivityResponses, GlobalActivityErrors, ThrowOnError>({
+      url: "/global/activity",
       ...options,
     })
   }

@@ -2855,6 +2855,41 @@
         ]
       }
     },
+    "/global/activity": {
+      "get": {
+        "operationId": "global.activity",
+        "summary": "Get global activity",
+        "description": "Report whether any session or background job is currently working, across every scope. Non-idle session statuses (busy, retry, recovering) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
+        "responses": {
+          "200": {
+            "description": "Global activity snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalActivity"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/session": {
       "get": {
         "operationId": "global.session.search",
@@ -32150,6 +32185,25 @@
         },
         "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
+      "GlobalActivity": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backgroundJobs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["active", "sessions", "backgroundJobs"]
+      },
       "SessionStatus": {
         "anyOf": [
           {
@@ -37742,6 +37796,15 @@
           },
           "controlProfile": {
             "$ref": "#/components/schemas/ControlProfileId"
+          },
+          "nonInteractiveControlProfile": {
+            "description": "Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.",
+            "type": "string",
+            "enum": ["autonomous", "full_access"]
+          },
+          "fullAccessAcknowledged": {
+            "description": "Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.",
+            "type": "boolean"
           },
           "instructions": {
             "description": "Additional instruction files or patterns to include",

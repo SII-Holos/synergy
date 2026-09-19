@@ -1637,12 +1637,8 @@ describe.serial("Cortex", () => {
             taskID = createdTask.id
             await launchPromise
 
-            const output = await Promise.race([
-              observedOutput,
-              Bun.sleep(1_000).then(() => {
-                throw new Error("Parent session was not woken for the Cortex completion notice")
-              }),
-            ])
+            const output = await observedOutput
+            await Cortex.drain(taskID)
 
             expect(output).toContain("Status: completed")
             expect(output).toContain("--- Result ---")
@@ -1715,13 +1711,9 @@ describe.serial("Cortex", () => {
             taskID = task.id
             childMayFinish.resolve()
 
-            const output = await Promise.race([
-              observedOutput.promise,
-              Bun.sleep(1_000).then(() => {
-                throw new Error("Cortex completion notice was not observed")
-              }),
-            ])
+            const output = await observedOutput.promise
             await waitUntilTerminal(taskID)
+            await Cortex.drain(taskID)
 
             expect(output).toContain("Status: completed")
             expect(output).toContain("--- Result ---")

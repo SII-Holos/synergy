@@ -900,6 +900,18 @@ const CoreInfo = z
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
     observability: ObservabilityConfig.optional().describe("Local logs, indexed telemetry, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
+    nonInteractiveControlProfile: z
+      .enum(["autonomous", "full_access"])
+      .optional()
+      .describe(
+        "Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.",
+      ),
+    fullAccessAcknowledged: z
+      .boolean()
+      .optional()
+      .describe(
+        "Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.",
+      ),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     project_doc_fallback_filenames: z
       .array(z.string())

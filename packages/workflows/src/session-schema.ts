@@ -125,7 +125,6 @@ declare module "@ericsanchezok/synergy-harness/session/types" {
 const contribution: SessionSchemaRegistry.Contribution = {
   shape: SessionFields,
   isBackground: (input) => Boolean(input.agenda),
-  defaultControlProfile: (input) => (input.agenda ? "autonomous" : undefined),
   navIdentity(input) {
     const blueprint = SessionFields.blueprint.safeParse(input.blueprint)
     if (!blueprint.success || !blueprint.data) return undefined

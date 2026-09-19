@@ -9457,6 +9457,22 @@ msgid "confirm.disconnectProvider.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.fullAccess.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr ""
 
@@ -15421,6 +15437,26 @@ msgid "settings.controlProfile.guarded.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.autonomous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.fullAccess"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.controlProfile.page.desc"
 msgstr ""
 
@@ -15838,6 +15874,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17590,6 +17646,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.panel.loading.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.preventSleep.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id

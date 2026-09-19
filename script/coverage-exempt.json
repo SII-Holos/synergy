@@ -83,6 +83,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/app-shell/desktop-power-sync.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
           "glob": "src/components/app-shell/desktop-theme-sync.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -777,6 +781,10 @@
         {
           "glob": "src/components/workspace/workbench-surface.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/composables/use-full-access-acknowledgement.ts",
+          "reason": "Solid context wrapper over the confirm dialog, SDK client, and global sync; its decision logic is the separately covered needsFullAccessAcknowledgement predicate"
         },
         {
           "glob": "src/composables/use-navigate-to-session.ts",

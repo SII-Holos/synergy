@@ -9457,6 +9457,22 @@ msgid "confirm.disconnectProvider.title"
 msgstr "Disconnect provider?"
 
 #. js-lingui-explicit-id
+msgid "confirm.fullAccess.cancel"
+msgstr "Keep current mode"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.confirm"
+msgstr "Enable Full Access"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.desc"
+msgstr "Full Access removes Synergy's permission checks and workspace sandboxing for the sessions it applies to. Any command the agent runs, and any file it reads or writes, will execute without asking you first. Only use it for work you are prepared to lose or that runs somewhere disposable."
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.title"
+msgstr "Enable Full Access?"
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr "Stay in worktree"
 
@@ -13115,7 +13131,7 @@ msgstr "Autonomous"
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.autonomous.description"
-msgstr "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting."
+msgstr "Never asks. Medium-risk work is allowed and high-risk work is denied instead of prompting, so a run cannot stall waiting for you."
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.autonomous.short"
@@ -13127,7 +13143,7 @@ msgstr "Full Access"
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.fullAccess.description"
-msgstr "Allow all tool requests without approval prompts or workspace sandboxing."
+msgstr "Never asks and allows everything, with no permission checks and no workspace sandboxing."
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.fullAccess.short"
@@ -13139,7 +13155,7 @@ msgstr "Guarded"
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.guarded.description"
-msgstr "Auto-approve reads, safe edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions."
+msgstr "Asks you before risky work: shell, external writes, identity, platform, or extension actions. Reads, safe edits, and network lookups proceed automatically."
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.guarded.short"
@@ -15398,7 +15414,7 @@ msgstr "Configuration source"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.autonomous.description"
-msgstr "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting."
+msgstr "Never asks. Medium-risk work is allowed and high-risk work is denied instead of prompting, so a run cannot stall waiting for you."
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.autonomous.label"
@@ -15406,7 +15422,7 @@ msgstr "Autonomous"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.fullAccess.description"
-msgstr "Allow all local tool requests without approval prompts."
+msgstr "Never asks and allows everything, with no permission checks and no workspace sandboxing."
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.fullAccess.label"
@@ -15414,11 +15430,31 @@ msgstr "Full Access"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.guarded.description"
-msgstr "Auto-allow reads, safe local edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions."
+msgstr "Asks you before risky work: shell, external writes, identity, platform, or extension actions. Reads, safe local edits, and network lookups proceed automatically."
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.guarded.label"
 msgstr "Guarded"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.aria"
+msgstr "Non-interactive control profile"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.autonomous"
+msgstr "Autonomous"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.desc"
+msgstr "Profile for sessions started by Channels and scheduled Agenda runs, which have nobody available to answer an approval prompt. Guarded is unavailable here because an unattended ask could never be answered. Changes apply to sessions created afterwards."
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.fullAccess"
+msgstr "Full Access"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.title"
+msgstr "Non-interactive sessions"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.page.desc"
@@ -15839,6 +15875,26 @@ msgstr "Appearance, behavior, and notification preferences."
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "General"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.active"
+msgstr "Keeping this computer awake"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.description"
+msgstr "Keep this computer awake while any Synergy agent is working. The display can still turn off, and closing the laptop lid can still suspend the computer."
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.failed"
+msgstr "Could not change the sleep setting"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.idle"
+msgstr "Waiting for work"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.title"
+msgstr "Prevent sleep while running"
 
 #. js-lingui-explicit-id
 msgid "settings.general.theme.description"
@@ -17591,6 +17647,10 @@ msgstr "Plugins"
 #. js-lingui-explicit-id
 msgid "settings.panel.loading.label"
 msgstr "Loading..."
+
+#. js-lingui-explicit-id
+msgid "settings.panel.preventSleep.saveFailed"
+msgstr "The sleep setting could not be saved"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterDescription"

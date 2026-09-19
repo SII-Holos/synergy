@@ -118,6 +118,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
 
   params.setSettings("safety", {
     controlProfile: cfg.controlProfile ?? UI_DEFAULTS.controlProfile,
+    nonInteractiveControlProfile: cfg.nonInteractiveControlProfile ?? UI_DEFAULTS.nonInteractiveControlProfile,
     permission: resolvePermissionForUi(cfg.permission),
     smartAllow: cfg.smartAllow === true ? "true" : "false",
     sandboxEnabled: cfg.sandbox?.enabled === false ? "false" : UI_DEFAULTS.sandboxEnabled,
