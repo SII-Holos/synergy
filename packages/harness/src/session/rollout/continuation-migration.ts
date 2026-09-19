@@ -38,6 +38,10 @@ export namespace RolloutContinuationMigration {
   }
 
   export const migration: Migration = {
+    scope: "session",
+    async upSession(owner) {
+      await session({ kind: "session", ...owner })
+    },
     id: "20260910-rollout-unanswered-continuation",
     description: "Recover prematurely completed rollouts with unanswered continuation messages",
     dependsOn: ["20260907-session-rollout-evidence"],

@@ -1001,6 +1001,7 @@ export async function migrateExecutionConfigFile(filepath: string): Promise<bool
 
 export const migrations: Migration[] = [
   {
+    scope: "global",
     id: "20260907-config-execution-domains",
     description: "Move legacy experiment toggles to their owning configuration domains",
     async up(progress) {
@@ -1018,6 +1019,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260410-config-holos-top-level",
     description: "Migrate Holos config from channel.holos to top-level holos",
     async up(progress) {
@@ -1033,6 +1035,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260413-config-holos-legacy-cleanup",
     description: "Remove legacy channel.holos config when top-level holos already exists",
     async up(progress) {
@@ -1048,6 +1051,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260414-config-schema-local",
     description: "Migrate $schema from remote URL to local file:// path",
     async up(progress) {
@@ -1063,6 +1067,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260422-config-sii-to-plugin",
     description: "Migrate sii config, auth, and cache to inspire plugin",
     async up(progress) {
@@ -1086,6 +1091,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260422-config-inspire-remove-deprecated-keys",
     description: "Remove deprecated defaultSpecId and defaultComputeGroup from pluginConfig.inspire",
     async up(progress) {
@@ -1156,6 +1162,7 @@ export const migrations: Migration[] = [
   },
 
   {
+    scope: "global",
     id: "20260617-config-identity-to-library",
     description: "Migrate identity config to embedding/rerank/library fields",
     async up(progress) {
@@ -1178,6 +1185,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260618-config-repair-legacy-library-shapes",
     description: "Repair invalid library config shapes from legacy identity migration",
     async up(progress) {
@@ -1193,6 +1201,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260619-config-remove-holos-friend-reply-model",
     description: "Remove deprecated Holos friend reply model config",
     async up(progress) {
@@ -1208,6 +1217,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260625-config-smart-allow",
     description: "Migrate auto_classifier config to smartAllow",
     async up(progress) {
@@ -1223,6 +1233,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260625-config-engram-to-library",
     description: "Migrate legacy engram config domains and keys to library/general",
     async up(progress) {
@@ -1232,6 +1243,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260628-config-remove-autoupdate",
     description: "Remove deprecated product update config",
     async up(progress) {
@@ -1241,6 +1253,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260801-config-remove-plugin-approval-policy",
     description: "Remove retired plugin risk approval policy config",
     async up(progress) {
@@ -1253,6 +1266,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260625-provider-auth-v2",
     description: "Migrate provider credentials to the v2 provider auth store",
     async up(progress) {
@@ -1263,6 +1277,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260905-config-remove-provider-catalog",
     description: "Remove retired signed provider catalog config",
     async up(progress) {
@@ -1272,6 +1287,7 @@ export const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: "20260625-provider-profile-normalize",
     description: "Normalize provider profile aliases in config",
     async up(progress) {

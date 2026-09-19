@@ -8,6 +8,8 @@ The [transactional agent authority](2026-09-14-transactional-agent-authority.md)
 
 ## Decision
 
+The [staged upgrade decision](2026-09-19-staged-session-upgrade.md) extends this protocol with automatic eligibility, per-owner migration callbacks, segmented backup and a SQL catalog. This record retains the rationale for the named compatibility boundary and shared migration barriers; existing manifests keep their backup protocol.
+
 `SYNERGY_STORAGE_COMPAT_DEFER=1` opts a newly created storage manifest into the named `20260919-session-deferred-import` boundary. The choice remains fixed across interrupted bootstrap. The packed importer seals the complete backup and imports non-Session records eagerly, while `compat_import` records track deferred Session ownership and committed file hashes.
 
 Before any registered domain migration runs, the central runner stages every unresolved aggregate into SQL. Original files remain until the owning migrations succeed. Failed migrations leave the completion ledger incomplete and block touch imports. The staging lock retains the affected domains, so running an unrelated domain cannot release a failed owner. This includes Scope and product-owned migrations; there is no second per-Session replay registry. Malformed aggregates prevent this migration barrier from advancing until repaired.

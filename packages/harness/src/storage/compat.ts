@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { StorageIntegrityError } from "./errors"
 import { legacyRecords } from "./legacy-source"
-import type { TransactionalStore } from "./transactional-store"
+import type { TransactionalStore, StoreTransaction } from "./transactional-store"
 
 /**
  * Storage-layer primitives for the phased activation contract: the session
@@ -27,6 +27,9 @@ export namespace StorageCompat {
     source?: string
     staged?: boolean
     retiring?: boolean
+    failures?: number
+    retryAfter?: number
+    activity?: number
   }
 
   export function deferRelative(relative: string) {
@@ -52,18 +55,67 @@ export namespace StorageCompat {
     return locator
   }
 
-  export async function writeLocator(store: TransactionalStore, locator: Locator) {
-    await store.write(locatorKey(locator.sessionID), locator)
+  export interface Catalog extends Locator {
+    info?: unknown
+  }
+  export interface Info {
+    boundary: string
+    backupID?: string
+    discovered?: boolean
+    counts: { pending: number; partial: number; imported: number; quarantined: number; total: number }
+  }
+
+  export const infoKey = ["compat_import", "info"]
+  export const catalogKey = (locator: Locator) => [
+    "compat_catalog",
+    locator.scopeID,
+    String(locator.activity ?? 0).padStart(16, "0"),
+    locator.sessionID,
+  ]
+
+  export async function setLocator(tx: StoreTransaction, locator: Locator, info?: unknown) {
+    const [previous, catalog, state] = await tx.readMany<Locator | Catalog | Info>([
+      locatorKey(locator.sessionID),
+      catalogKey(locator),
+      infoKey,
+    ])
+    const before = previous as Locator | undefined
+    const current = state as Info | undefined
+    const counts = { ...(current?.counts ?? { pending: 0, partial: 0, imported: 0, quarantined: 0, total: 0 }) }
+    if (!before) {
+      counts.total++
+      counts[locator.status]++
+    } else if (before.status !== locator.status) {
+      counts[before.status]--
+      counts[locator.status]++
+    }
+    await tx.writeMany([
+      { key: locatorKey(locator.sessionID), value: locator },
+      { key: infoKey, value: { ...current, boundary, counts } },
+    ])
+    if (locator.status === "imported") await tx.remove(catalogKey(locator))
+    else await tx.write(catalogKey(locator), { ...locator, info: info ?? (catalog as Catalog | undefined)?.info })
+  }
+
+  export function writeLocator(store: TransactionalStore, locator: Locator) {
+    return store.transaction((tx) => setLocator(tx, locator))
+  }
+
+  export async function* catalog(store: TransactionalStore, scopeID?: string) {
+    let after: string[] | undefined
+    for (;;) {
+      const page = await store.query<Catalog>({ kind: "compat_catalog", scopeID, after, limit: 128, descending: true })
+      yield* page.map((row) => row.value)
+      if (page.length < 128) return
+      after = page.at(-1)!.key
+    }
   }
 
   export async function pendingLocators(store: TransactionalStore): Promise<Locator[]> {
-    const keys = await store.list(locatorRoot)
-    const locators = await store.readMany<Locator>(keys)
-    return locators
-      .filter(
-        (entry): entry is Locator => entry !== undefined && (entry.status === "pending" || entry.status === "partial"),
-      )
-      .sort((a, b) => a.sessionID.localeCompare(b.sessionID))
+    const result: Locator[] = []
+    for await (const entry of catalog(store))
+      if (entry.status === "pending" || entry.status === "partial") result.push(entry)
+    return result
   }
 
   export async function assertConverged(store: TransactionalStore) {
@@ -79,21 +131,32 @@ export namespace StorageCompat {
    * retires anything. Stat-only on purpose: hashing every pending rollout blob
    * here would re-create the startup cost the deferral exists to remove.
    */
-  export async function seedLocators(store: TransactionalStore, dataRoot: string) {
-    await store.write(["compat_import", "info"], { boundary })
+  export async function seedLocators(store: TransactionalStore, dataRoot: string, backupID?: string) {
+    const [previous] = await store.readMany<Info>([infoKey])
+    if (previous?.discovered) return 0
+    const counts = previous?.counts ?? { pending: 0, partial: 0, imported: 0, quarantined: 0, total: 0 }
+    if (!previous?.counts) {
+      for (const locator of await store.readMany<Locator>(await store.list(locatorRoot))) {
+        if (!locator) continue
+        counts[locator.status]++
+        counts.total++
+      }
+    }
+    await store.write(infoKey, { ...previous, boundary, backupID: backupID ?? previous?.backupID, counts })
     const sessionsRoot = path.join(dataRoot, deferredRoot)
     const scopes = await fs.readdir(sessionsRoot).catch((error) => {
       if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error
       return []
     })
     let seeded = 0
-    let batch: Locator[] = []
+    const seen = new Map<string, string>()
+    let batch: Array<{ locator: Locator; info?: unknown }> = []
     const flush = async () => {
       if (!batch.length) return
       const pending = batch
       batch = []
       await store.transaction(async (tx) => {
-        for (const locator of pending) await tx.write(locatorKey(locator.sessionID), locator)
+        for (const { locator, info } of pending) await setLocator(tx, locator, info)
       })
       seeded += pending.length
     }
@@ -104,15 +167,35 @@ export namespace StorageCompat {
         if (sessionID === ".locks" || sessionID.startsWith(".tmp-")) continue
         const sessionDir = path.join(scopeDir, sessionID)
         if (!(await fs.stat(sessionDir).then((entry) => entry.isDirectory()))) continue
+        const otherScope = seen.get(sessionID)
+        if (otherScope && otherScope !== scopeID)
+          throw new StorageIntegrityError("Deferred Session identity belongs to more than one Scope")
+        seen.set(sessionID, scopeID)
         const existing = await readLocator(store, sessionID)
         if (existing && existing.scopeID !== scopeID)
           throw new StorageIntegrityError("Deferred Session identity belongs to more than one Scope")
-        if (existing) continue
-        batch.push({ sessionID, scopeID, status: "pending" })
+        let info: unknown
+        try {
+          info = JSON.parse(await fs.readFile(path.join(sessionDir, "info.json"), "utf8"))
+        } catch (error) {
+          if (
+            !(error instanceof SyntaxError) &&
+            !(error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+          )
+            throw error
+        }
+        const time = info && typeof info === "object" && "time" in info ? info.time : undefined
+        const updated = time && typeof time === "object" && "updated" in time ? time.updated : undefined
+        const activity = typeof updated === "number" && Number.isSafeInteger(updated) && updated >= 0 ? updated : 0
+        batch.push({ locator: existing ?? { sessionID, scopeID, status: "pending", activity }, info })
         if (batch.length >= 256) await flush()
       }
     }
     await flush()
+    await store.transaction(async (tx) => {
+      const state = await tx.read<Info>(infoKey)
+      await tx.write(infoKey, { ...state, discovered: true })
+    })
     return seeded
   }
 
@@ -123,13 +206,14 @@ export namespace StorageCompat {
    * deferred tree, means a legacy writer is alive.
    */
   export async function rejectForeignWriters(dataRoot: string, store: TransactionalStore) {
+    const [info] = await store.readMany<Info>([infoKey])
     const locators = new Map(
       (await store.readMany<Locator>(await store.list(locatorRoot))).flatMap((entry) =>
         entry ? [[entry.sessionID, entry] as const] : [],
       ),
     )
     for await (const relative of legacyRecords(dataRoot)) {
-      if (!deferRelative(relative)) {
+      if (info?.backupID || !deferRelative(relative)) {
         throw new StorageIntegrityError(
           `Legacy JSON records appeared after database activation (${relative}); preserve both datasets and resolve the old writer before starting`,
         )

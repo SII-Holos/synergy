@@ -249,7 +249,9 @@ export class PackedLegacyImporter {
         progress?.({ stage: phase, current: state.cursor, total: state.files, bytes: 0 })
         if (state.fatal) throw new StorageIntegrityError(globalFailure)
       }
-      for await (const entry of backup.entries()) {
+      for await (const entry of backup.entries(
+        (relative) => !this.deferred(relative) && (phase !== "owners" || isOwner(legacyRecordKey(relative))),
+      )) {
         position++
         if (position <= state.cursor) continue
         const key = legacyRecordKey(entry.relative)
@@ -344,7 +346,7 @@ export class PackedLegacyImporter {
       committed = position
       progress?.({ stage: "activate", current: position, total: state.files, bytes: 0 })
     }
-    for await (const entry of backup.entries()) {
+    for await (const entry of backup.entries(() => false)) {
       position++
       if (position <= committed) continue
       if (this.deferred(entry.relative)) continue
