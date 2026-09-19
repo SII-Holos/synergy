@@ -210,6 +210,73 @@ function watcherFixture(input: {
 }
 
 describe("desktop activity watcher", () => {
+  test("a stalled activity request is aborted so failure recovery can continue", async () => {
+    const fixture = watcherFixture({
+      resolve: () => undefined,
+      overrides: {
+        intervalMs: 60_000,
+        requestTimeoutMs: 5,
+        fetchActivity: (_url, signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+          }),
+      },
+    })
+    try {
+      fixture.watcher.start()
+      await waitFor(() => fixture.errors.length === 1)
+      expect(fixture.errors[0]).toBeInstanceOf(Error)
+    } finally {
+      fixture.watcher.stop()
+    }
+  })
+
+  test("discarded polls cannot restore activity after a stop and restart", async () => {
+    const old = Promise.withResolvers<unknown>()
+    const current = Promise.withResolvers<unknown>()
+    let calls = 0
+    const fixture = watcherFixture({
+      resolve: () => (++calls === 1 ? old.promise : current.promise),
+      overrides: { intervalMs: 60_000 },
+    })
+    try {
+      fixture.watcher.start()
+      fixture.watcher.stop()
+      fixture.watcher.start()
+      old.resolve({ active: true, sessions: 1, backgroundJobs: 0 })
+      await old.promise
+      await Bun.sleep(0)
+      expect(fixture.desired).toEqual([])
+      fixture.watcher.recheck()
+      expect(calls).toBe(2)
+    } finally {
+      fixture.watcher.stop()
+      old.resolve({ active: false, sessions: 0, backgroundJobs: 0 })
+      current.resolve({ active: false, sessions: 0, backgroundJobs: 0 })
+    }
+  })
+
+  test("a resume recheck restores a dropped assertion while work stays active", async () => {
+    const { blocker, stopped } = blockerFixture()
+    const guard = createDesktopPowerGuard(blocker)
+    const fixture = watcherFixture({
+      resolve: () => ({ active: true, sessions: 1, backgroundJobs: 0 }),
+      overrides: { intervalMs: 60_000, onDesiredChange: (active) => guard.apply(active) },
+    })
+    try {
+      fixture.watcher.start()
+      await waitFor(() => guard.active())
+      stopped.add(1)
+      expect(guard.active()).toBe(false)
+      fixture.watcher.recheck()
+      await Bun.sleep(0)
+      expect(guard.active()).toBe(true)
+    } finally {
+      fixture.watcher.stop()
+      guard.release()
+    }
+  })
+
   test("does not poll before start", async () => {
     const fixture = watcherFixture({ resolve: () => ({ active: true, sessions: 1, backgroundJobs: 0 }) })
     await Bun.sleep(30)

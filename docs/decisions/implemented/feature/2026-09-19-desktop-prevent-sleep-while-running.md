@@ -40,6 +40,8 @@ The setting is `keepAwakeWhileRunning`, default `false`, persisted per user in `
 
 ## Consequences
 
+Activity requests have a five-second deadline and belong to a single watcher generation. A response from a stopped generation cannot restore intent or alter the new poll schedule. Resume rechecks reapply the last active intent so the OS assertion can be reacquired even when server activity has not changed.
+
 - The setting is opt-in and off by default, so no existing user's machine behavior or battery profile changes until they enable it.
 - The design trades instant release for stability. A genuinely finished machine keeps its assertion for up to `RELEASE_DEBOUNCE_MS`, and a server that has truly died keeps it for up to `ACTIVITY_FAILURE_GRACE_MS`. Both windows are bounded and short relative to the minutes-long idle-sleep timer they guard against.
 - Polling costs one in-memory GET every five seconds while enabled and nothing at all while disabled. The endpoint is exempt from request logging and performance spans; without that exemption it would dominate both.

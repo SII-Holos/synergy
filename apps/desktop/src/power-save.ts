@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
-import z from "zod"
+import { z } from "zod"
 
 export const DesktopPowerStateV1 = z
   .object({
@@ -123,6 +123,7 @@ export function createDesktopPowerGuard(blocker: PowerSaveBlockerLike): DesktopP
 
 export interface DesktopActivityWatcherOptions {
   intervalMs: number
+  requestTimeoutMs?: number
   failureGraceMs: number
   releaseDebounceMs: number
   /** Current server origin, re-read every poll so a restarted server is picked up. */
@@ -149,11 +150,12 @@ export function createDesktopActivityWatcher(options: DesktopActivityWatcherOpti
   let releaseTimer: ReturnType<typeof setTimeout> | null = null
   let controller: AbortController | null = null
   let running = false
+  let generation = 0
   let inFlight = false
   let recheckRequested = false
   let desired = false
   let failureStartedAt: number | null = null
-  let now: () => number = () => Date.now()
+  const now = () => Date.now()
 
   function clearTimer() {
     if (timer !== null) {
@@ -219,23 +221,31 @@ export function createDesktopActivityWatcher(options: DesktopActivityWatcherOpti
       return
     }
     inFlight = true
+    const pollGeneration = generation
     const request = new AbortController()
     controller = request
+    const deadline = setTimeout(
+      () => request.abort(new Error("Activity request timed out")),
+      options.requestTimeoutMs ?? ACTIVITY_POLL_MS,
+    )
     try {
       const activity = parseDesktopActivity(await options.fetchActivity(`${baseUrl}/global/activity`, request.signal))
-      if (!running) return
+      if (!running || pollGeneration !== generation) return
       if (activity.active) applyActive()
       else applyInactive()
     } catch (error) {
-      if (!running) return
+      if (!running || pollGeneration !== generation) return
       applyFailure(error)
     } finally {
-      inFlight = false
-      if (controller === request) controller = null
-      schedule()
-      if (recheckRequested) {
-        recheckRequested = false
-        void poll()
+      clearTimeout(deadline)
+      if (pollGeneration === generation) {
+        inFlight = false
+        if (controller === request) controller = null
+        schedule()
+        if (recheckRequested) {
+          recheckRequested = false
+          void poll()
+        }
       }
     }
   }
@@ -243,11 +253,13 @@ export function createDesktopActivityWatcher(options: DesktopActivityWatcherOpti
   return {
     start() {
       if (running) return
+      generation++
       running = true
       void poll()
     },
     stop() {
       if (!running) return
+      generation++
       running = false
       recheckRequested = false
       clearTimer()
@@ -263,6 +275,7 @@ export function createDesktopActivityWatcher(options: DesktopActivityWatcherOpti
     },
     recheck() {
       if (!running) return
+      if (desired) options.onDesiredChange(true)
       if (inFlight) {
         recheckRequested = true
         return
