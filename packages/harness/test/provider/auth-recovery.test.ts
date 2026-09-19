@@ -135,7 +135,7 @@ test("a request-local rejection cannot mark the newly selected backup dead", asy
   expect((await Auth.select("test-thrown-backup"))?.credentialID).toBe("backup")
 })
 
-test("a lone API key is invalidated only after a confirmed rejection", async () => {
+test("a lone API key cools down on a first rejection and is invalidated only after repeated rejections", async () => {
   await Auth.set("test-api-confirm", { type: "api", key: "transient" })
   let requests = 0
 
@@ -152,21 +152,123 @@ test("a lone API key is invalidated only after a confirmed rejection", async () 
   )
 
   await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
-  requests = 0
+  const before = Math.floor(Date.now() / 1000)
+  const rejected = await ProviderAuthRecovery.execute({
+    providerID: "test-api-confirm",
+    request: async () => new Response(null, { status: 401 }),
+  })
+
+  expect(rejected.status).toBe(401)
+  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+  expect(entry).toMatchObject({ status: "exhausted", failureCode: "credential_rejected" })
+  expect(entry.rejectedAt).toBeGreaterThanOrEqual(before)
+  expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"])).toMatchObject({
+    status: "exhausted",
+    canDisconnect: false,
+  })
+})
+
+test("a first-rejection cooldown honors the strict retry hint ceiling", async () => {
+  await Auth.set("test-exhausted", { type: "api", key: "hinted" })
+  const before = Math.floor(Date.now() / 1000)
+  await ProviderAuthRecovery.execute({
+    providerID: "test-exhausted",
+    request: async () => new Response(null, { status: 401, headers: { "retry-after": "1200" } }),
+  })
+  const entry = (await Auth.entries())["test-exhausted"].pool![0]
+  expect(entry.status).toBe("exhausted")
+  expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
+  expect(entry.cooldownUntil).toBeLessThanOrEqual(before + Auth.RejectionPolicy.maxCooldownSeconds)
+})
+
+test("a rejection after the cooldown elapses within the window escalates to dead", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
+  const stale = Math.floor(Date.now() / 1000) - 120
+  await Auth.markRejected("test-api-confirm", {
+    failureCode: "credential_rejected",
+    cooldownUntil: stale,
+    rejectedAt: stale,
+  })
+
   await expect(
     ProviderAuthRecovery.execute({
       providerID: "test-api-confirm",
-      request: async () => {
-        requests++
-        return new Response(null, { status: 401 })
-      },
+      request: async () => new Response(null, { status: 401 }),
     }),
   ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
 
-  expect(requests).toBe(2)
-  expect(await Auth.get("test-api-confirm")).toBeUndefined()
+  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+  expect(entry).toMatchObject({ status: "dead", failureCode: "credential_rejected" })
+  expect(entry.rejectedAt).toBeUndefined()
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"])).toMatchObject({
+    status: "action_required",
+    recovery: "reconnect",
+    canDisconnect: true,
+  })
+})
+
+test("a rejection outside the escalation window restarts the cooldown without killing the credential", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
+  const old = Math.floor(Date.now() / 1000) - (Auth.RejectionPolicy.escalationWindowSeconds + 120)
+  await Auth.markRejected("test-api-confirm", {
+    failureCode: "credential_rejected",
+    cooldownUntil: Math.floor(Date.now() / 1000) - 1,
+    rejectedAt: old,
+  })
+
+  const response = await ProviderAuthRecovery.execute({
+    providerID: "test-api-confirm",
+    request: async () => new Response(null, { status: 401 }),
+  })
+
+  expect(response.status).toBe(401)
+  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+  expect(entry.status).toBe("exhausted")
+  expect(entry.rejectedAt).toBeGreaterThan(old)
+})
+
+test("a successful request reactivates a cooling credential and clears the rejection anchor", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
+  const stale = Math.floor(Date.now() / 1000) - 120
+  await Auth.markRejected("test-api-confirm", {
+    failureCode: "credential_rejected",
+    cooldownUntil: stale,
+    rejectedAt: stale,
+  })
+
+  const response = await ProviderAuthRecovery.execute({
+    providerID: "test-api-confirm",
+    request: async () => new Response(null, { status: 200 }),
+  })
+
+  expect(response.status).toBe(200)
+  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+  expect(entry).toMatchObject({ status: "active" })
+  expect(entry.rejectedAt).toBeUndefined()
+  expect(entry.cooldownUntil).toBeUndefined()
   expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
-    "action_required",
+    "connected",
+  )
+})
+
+test("a burst of concurrent first rejections stays a bounded cooldown", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
+
+  const responses = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      ProviderAuthRecovery.execute({
+        providerID: "test-api-confirm",
+        request: async () => new Response(null, { status: 401 }),
+      }),
+    ),
+  )
+
+  expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401])
+  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+  expect(entry.status).toBe("exhausted")
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+    "exhausted",
   )
 })
 

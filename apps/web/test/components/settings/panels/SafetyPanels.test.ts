@@ -22,7 +22,7 @@ describe("control profile copy", () => {
     const i18n = setupI18n({ locale: "en" })
     const translate = i18n._.bind(i18n)
     expect(controlProfileLabel(guarded, translate)).toBe("Guarded")
-    expect(controlProfileDescription(guarded, translate)).toContain("Auto-allow reads")
+    expect(controlProfileDescription(guarded, translate)).toContain("Asks you before risky work")
     expect(controlProfileLabel(custom, translate)).toBe("Custom profile")
     expect(controlProfileDescription(custom, translate)).toBe("Plugin-defined profile")
 

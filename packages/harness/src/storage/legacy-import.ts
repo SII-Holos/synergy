@@ -6,6 +6,7 @@ import { validateLegacyRecord } from "./legacy-record"
 import type { StorageStartupProgress } from "@ericsanchezok/synergy-util/runtime-startup"
 import { AtomicFile } from "./atomic-file"
 import { StorageIntegrityError } from "./errors"
+import { verifyRetirement } from "./file-digest"
 import { TransactionalStore } from "./transactional-store"
 
 import { legacyRecordKey, legacySources, sourcePath } from "./legacy-source"
@@ -290,12 +291,17 @@ export class LegacyJsonImporter {
         }
         if (entry.disposition !== "imported" && entry.disposition !== "quarantined")
           throw new StorageIntegrityError("Cannot retire an unaccounted legacy record")
-        if ((await digest(path.join(backupRoot, "data", entry.relative))) !== entry.hash)
-          throw new StorageIntegrityError("Cannot retire a legacy record whose backup is invalid")
+        await verifyRetirement(
+          path.join(backupRoot, "data", entry.relative),
+          entry.hash,
+          entry.size,
+          "Cannot retire a legacy record whose backup is invalid",
+        )
         const source = sourcePath(dataRoot, entry.relative)
+        await verifyRetirement(source, entry.hash, entry.size, "A legacy writer changed data during activation", {
+          tolerateMissing: true,
+        })
         try {
-          if ((await digest(source)) !== entry.hash)
-            throw new StorageIntegrityError("A legacy writer changed data during activation")
           await fs.unlink(source)
         } catch (error) {
           if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error

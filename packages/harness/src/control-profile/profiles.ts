@@ -253,7 +253,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Guarded",
         description:
-          "Auto-allow ordinary reads, safe local edits, and network lookups. Ask before shell, external writes, identity, or platform actions.",
+          "Asks before risky work: shell, external writes, identity, or platform actions. Ordinary reads, safe local edits, and network lookups proceed automatically.",
         ruleset: guardedRules(),
         ...policy,
         sandbox: effectiveSandbox,
@@ -268,7 +268,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Autonomous",
         description:
-          "Unattended development: ordinary safe work is auto-approved, while high-risk operations are auto-denied instead of prompting.",
+          "Never asks. Ordinary safe work is auto-approved, while high-risk operations are auto-denied instead of prompting, so a run cannot stall waiting for a human.",
         ruleset: autonomousRules(),
         ...policy,
         sandbox: effectiveSandbox,

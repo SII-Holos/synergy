@@ -34,8 +34,11 @@ export interface ElectronMockState {
   quitCalls: number
   shouldUseDarkColors: boolean
   appEmitter: EventEmitter
+  powerSaveBlockerStarts: Array<{ id: number; type: string }>
+  powerSaveBlockerStops: number[]
+  powerSaveBlockerReleased: Set<number>
+  powerMonitorEmitter: EventEmitter
 }
-
 export const electronMockState: ElectronMockState = {
   whenReady: Promise.resolve(),
   userDataPath: "/tmp/synergy-desktop-test",
@@ -59,6 +62,10 @@ export const electronMockState: ElectronMockState = {
   quitCalls: 0,
   shouldUseDarkColors: true,
   appEmitter: electronAppEmitter,
+  powerSaveBlockerStarts: [],
+  powerSaveBlockerStops: [],
+  powerSaveBlockerReleased: new Set<number>(),
+  powerMonitorEmitter: new EventEmitter(),
 }
 
 export const app = Object.assign(electronAppEmitter, {
@@ -107,6 +114,29 @@ export const electronMock = {
   },
   screen: {
     getAllDisplays: () => electronMockState.displays,
+  },
+  powerSaveBlocker: {
+    start(type: string) {
+      const id = (electronMockState.powerSaveBlockerStarts.at(-1)?.id ?? 0) + 1
+      electronMockState.powerSaveBlockerStarts.push({ id, type })
+      electronMockState.powerSaveBlockerReleased.delete(id)
+      return id
+    },
+    stop(id: number) {
+      electronMockState.powerSaveBlockerStops.push(id)
+      electronMockState.powerSaveBlockerReleased.add(id)
+    },
+    isStarted(id: number) {
+      return !electronMockState.powerSaveBlockerReleased.has(id)
+    },
+  },
+  powerMonitor: {
+    on(event: string, listener: (...args: unknown[]) => void) {
+      electronMockState.powerMonitorEmitter.on(event, listener)
+    },
+    off(event: string, listener: (...args: unknown[]) => void) {
+      electronMockState.powerMonitorEmitter.off(event, listener)
+    },
   },
   session: {
     defaultSession: {

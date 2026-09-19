@@ -804,7 +804,7 @@ describe("tool exposure", () => {
     }
   })
 
-  test("Plan keeps bash visible and forces the note group without exposing other deferred groups", async () => {
+  test("Plan gates no tool while deferred groups stay deferred", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -816,7 +816,11 @@ describe("tool exposure", () => {
 
         const ids = await definitionIDs(await Session.get(session.id))
         expect(ids.has("bash")).toBe(true)
-        expect(ids.has("edit")).toBe(false)
+        expect(ids.has("edit")).toBe(true)
+        expect(ids.has("write")).toBe(true)
+        expect(ids.has("process")).toBe(true)
+        expect(ids.has("attach")).toBe(true)
+        expect(ids.has("render")).toBe(true)
         expect(ids.has("search_tools")).toBe(true)
         expect(ids.has("expand_tools")).toBe(true)
         expect(ids.has("note_read")).toBe(true)
@@ -825,6 +829,81 @@ describe("tool exposure", () => {
         expect(ids.has("agenda_list")).toBe(false)
       },
     })
+  })
+
+  test("Plan leaves MCP tools eligible instead of diagnosis-blocked", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalToolEntries = MCP.toolEntries
+    const toolID = ToolExposure.mcpToolID("anysearch", "search")
+    ;(MCP as any).toolEntries = async () => [
+      {
+        id: toolID,
+        serverName: "anysearch",
+        toolName: "search",
+        inputSchema: {
+          type: "object" as const,
+          properties: { query: { type: "string" as const } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+        tool: { description: "Search MCP tool", inputSchema: jsonSchema({ type: "object" }) },
+      },
+    ]
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "plan" }
+          })
+          const current = await Session.get(session.id)
+          const catalog = await ToolDiscovery.collect({
+            providerID: model.providerID,
+            agent: allowAllAgent,
+            session: current,
+            includeMCP: true,
+          })
+
+          expect(catalog.disabled.has(toolID)).toBe(false)
+          expect(catalog.diagnostics.has(toolID)).toBe(false)
+          expect(ToolDiscovery.nonResidentEntries(catalog).some((entry) => entry.id.includes("anysearch"))).toBe(true)
+
+          const availability = await ToolResolver.availability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session: current,
+            includeMCP: true,
+          })
+          expect(availability.visible.some((def) => def.id === toolID)).toBe(false)
+          expect(availability.autoExpandable.has(toolID)).toBe(true)
+          expect(availability.diagnostics.get(toolID)?.message).toContain("Use search_tools or expand_tools")
+
+          const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
+          const expanded = await expand.execute(
+            { groups: [ToolExposure.mcpGroupID("anysearch")] },
+            toolContext(session.id),
+          )
+          expect(expanded.metadata.changed).toBe(true)
+          expect(expanded.metadata.issues.unknownGroups).toEqual([])
+          expect(expanded.metadata.issues.permissionHidden).toEqual([])
+
+          const afterExpansion = await ToolResolver.availability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session: await Session.get(session.id),
+            includeMCP: true,
+          })
+          expect(afterExpansion.visible.some((def) => def.id === toolID)).toBe(true)
+          expect(afterExpansion.diagnostics.has(toolID)).toBe(false)
+        },
+      })
+    } finally {
+      ;(MCP as any).toolEntries = originalToolEntries
+    }
   })
 
   test("Plan does not override explicit permission denial for bash", async () => {
@@ -1204,15 +1283,8 @@ describe("tool exposure", () => {
         })
 
         expect(resolved.activeToolIDs).toContain("bash")
-        expect(resolved.activeToolIDs).not.toContain("edit")
+        expect(resolved.activeToolIDs).toContain("edit")
         expect(resolved.executionTools.edit).toBeDefined()
-
-        await expect(
-          (resolved.executionTools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
-        ).rejects.toThrow("Plan")
-        const outcome = await executions.get("call_edit")
-        expect(outcome.status).toBe("error")
-        expect(outcome.metadata.toolDiagnostic.code).toBe("plan_mode_blocked")
       },
     })
   })

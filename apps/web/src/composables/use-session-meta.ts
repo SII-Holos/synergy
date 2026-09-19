@@ -13,7 +13,6 @@ export interface SessionMeta {
   cortex: SessionCortexDelegation | undefined
 
   // Interaction mode
-  isUnattended: boolean
   isAgenda: boolean
 
   // Read/write state
@@ -35,7 +34,6 @@ const DEFAULT_META: SessionMeta = {
   isCortexSubagent: false,
   parentID: null,
   cortex: undefined,
-  isUnattended: false,
   isAgenda: false,
   isReadOnly: false,
   canSelectModel: true,
@@ -56,7 +54,6 @@ export function deriveSessionMeta(session: Session | undefined, hasMessages: boo
   const isSubsession = session.parentID != null
   const isCortexSubagent = session.cortex != null
   const parentID = session.parentID ?? null
-  const isUnattended = session.interaction?.mode === "unattended"
   const isAgenda = session.agenda != null
   const isReadOnly = isCortexSubagent && hasMessages
   const canSelectModel = !isReadOnly
@@ -75,7 +72,6 @@ export function deriveSessionMeta(session: Session | undefined, hasMessages: boo
     isCortexSubagent,
     parentID,
     cortex: session.cortex ?? undefined,
-    isUnattended,
     isAgenda,
     isReadOnly,
     canSelectModel,

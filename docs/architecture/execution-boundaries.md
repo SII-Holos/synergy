@@ -44,7 +44,7 @@ Memory recovery follows the same ownership boundary. The Control Plane decides B
 
 Policy workers isolate capability analysis from the HTTP/WebSocket event loop. Their protocol carries only the tool name, JSON-like arguments, and immutable workspace/plugin classification context. It bounds request size, queue depth, aggregate queued bytes, per-request time, IPC frames, request count, RSS, and heap use. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on the child process; the first classification waits up to the fixed ten-second handshake deadline before the shorter per-request queue/transfer/classification deadline begins. Repeated pre-ready exits use exponential backoff and open a finite startup circuit instead of entering a respawn loop. The Control Plane remains the sole owner of profile compilation results, approval state, audit state, sandbox accumulation, and the final allow/ask/deny decision.
 
-Classification failure never re-enters the in-process top-level classifier. Worker startup timeout, request timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability and an immediate transient denial. Infrastructure failure cannot enter the approval system because the user cannot safely authorize an operation whose capabilities are unknown; this also keeps `guarded` and `full_access` from turning an ordinary runtime failure into execution. Cancellation remains cancellation rather than being converted into a policy result.
+Classification failure never re-enters the in-process top-level classifier. Worker startup timeout, request timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability. Under `guarded` and `autonomous` that capability produces an immediate transient denial. Under `full_access` the operation proceeds instead: the profile already authorizes every classified capability, so the classifier's labels are not what stops anything there, and failing closed would let an unrelated infrastructure fault refuse work the user explicitly pre-authorized. The opaque capability, the gate audit record, and the `enforcement.policy.fallback` metric remain the evidence trail for that fail-open path. Infrastructure failure never enters the approval system under any profile, because the user cannot safely authorize an operation whose capabilities are unknown. Cancellation remains cancellation rather than being converted into a policy result.
 
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
@@ -78,20 +78,27 @@ Synergy provides three standard profiles:
 
 | Profile       | Intended use            | Approval behavior                                                       | Default sandbox                     |
 | ------------- | ----------------------- | ----------------------------------------------------------------------- | ----------------------------------- |
-| `guarded`     | Interactive work        | Allows routine work and may ask for protected or higher-risk operations | Workspace-write, restricted network |
+| `guarded`     | Interactive work        | Asks the user for protected or higher-risk operations                   | Workspace-write, restricted network |
 | `autonomous`  | Unattended work         | Never asks; operations outside policy are denied                        | Workspace-write, restricted network |
-| `full_access` | Author-at-own-risk work | Silently authorizes every classified capability                         | No sandbox, full network            |
+| `full_access` | Author-at-own-risk work | Never asks and allows everything, including non-bypassable capabilities | No sandbox, full network            |
+
+The three profiles differ on exactly two axes: whether the user is asked, and whether anything is refused. `guarded` asks. `autonomous` never asks and refuses instead. `full_access` never asks and allows, so no Synergy-internal condition produces a permission denial under it — not a hard boundary, not a non-bypassable capability, and not a classification-infrastructure failure.
 
 `full_access` bypasses Synergy's permission boundary; it does not suppress validation errors, missing files, operating-system failures, test failures, hooks, or network errors.
+
+Because enabling `full_access` is the point where the user stops being asked, the UI shows a one-time confirmation that then records `fullAccessAcknowledged`. That key is an awareness record, not a security boundary: it does not gate the HTTP API or a hand-edited config file, and it never applies to programmatic session creation. Re-selecting the mode already in force does not re-prompt.
 
 The effective profile is resolved in this order:
 
 1. the closest explicit profile on the session or one of its parent sessions
 2. the selected agent's profile
-3. the top-level configured profile
-4. the source default
+3. the top-level configured profile, for any session whose source can answer an ask
+4. for a non-interactive root, the configured `nonInteractiveControlProfile`
+5. the source default
 
-Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda default to `autonomous`. A delegated child therefore inherits an explicit profile from its parent chain unless it defines its own.
+Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda — the sources with no human available to answer a prompt — take the configured `nonInteractiveControlProfile`, whose default is `autonomous`. A top-level profile that can answer for itself still applies to those roots, so an operator who set `full_access` or `autonomous` keeps it; a top-level `guarded` does not apply there, because an ask raised with nobody attached would pend forever. `guarded` is likewise not selectable for the non-interactive key. A delegated child inherits an explicit profile from its parent chain unless it defines its own.
+
+The configured non-interactive profile governs sessions created after the change. An already-created session keeps the profile persisted on it, because an operator changing the setting must not retroactively re-permission a task that is already running.
 
 ## Approval Sources
 
@@ -119,7 +126,7 @@ The frontend keeps the permission-mode selector available while the session is r
 1. The explicit `full_access` profile is persisted on the session before any other side effect.
 2. All inheriting descendant sessions are identified — sessions whose effective profile resolves through the target session because they have no explicit profile of their own.
 3. Eligible pending permission asks for the target session and its inheriting descendants are resolved with `once` semantics (one-time approval of the specific operation). This does not create persistent user or session permission rules.
-4. Hard denials and Policy Worker infrastructure failures never enter the pending approval flow and remain denials. As defense in depth, any pending request marked non-bypassable is not auto-resolved.
+4. Hard denials and Policy Worker infrastructure failures never enter the pending approval flow. Under `guarded` and `autonomous` they remain denials; under `full_access` neither can deny at all, because the profile authorizes non-bypassable capabilities and does not fail closed on classification failure. As defense in depth, any pending request marked non-bypassable is not auto-resolved.
 
 ### Agent-facing tool remains idle-only
 
@@ -129,6 +136,7 @@ The `session_control.set_control_profile` tool used by agents still requires an 
 
 - In-flight tool execution already admitted under the previous control profile continues unchanged. Later permission decisions see the new profile.
 - `full_access` authorizes every classified capability encountered from the transition point onward, but it does not retroactively convert validation errors, missing files, operating-system failures, test failures, hooks, or network errors into success.
+- Enabling `full_access` from the UI is preceded once by the risk confirmation described under [Control Profiles](#control-profiles). The transition itself is unchanged by whether that acknowledgement is recorded.
 - Pending-ask resolution covers only the target session and descendant sessions that inherit its profile. Sessions with their own explicit profile override are not affected.
 
 ## SmartAllow
@@ -204,7 +212,7 @@ Local child-process completion has a separate output-drain boundary. The parent 
 
 ## Session and Workflow Restrictions
 
-Authorization is also constrained by the current session role. Plan is read-only with respect to project execution. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.
+Authorization is also constrained by the current session role. Plan supplies Blueprint-oriented prompt guidance without restricting tools; the selected control profile remains the authorization boundary. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.
 
 These restrictions are evaluated before the tool implementation. A permissive control profile does not make a tool visible to an agent or remove workflow-specific tool restrictions.
 

@@ -25,6 +25,7 @@ declare global {
       window?: Platform["desktopWindow"]
       zoom?: Platform["desktopZoom"]
       badge?: Platform["desktopBadge"]
+      power?: Platform["desktopPower"]
     }
   }
 }
@@ -61,6 +62,7 @@ const platform: Platform = {
   desktopTheme: window.synergyDesktop?.theme,
   desktopBadge: window.synergyDesktop?.badge,
   desktopZoom: window.synergyDesktop?.zoom,
+  desktopPower: window.synergyDesktop?.power,
   clipboard: window.synergyDesktop?.clipboard,
   openDirectoryPickerDialog: window.synergyDesktop?.openDirectoryPickerDialog,
   openLink(url: string) {

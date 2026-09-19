@@ -1,13 +1,11 @@
 import z from "zod"
 import { ConfigExtensions } from "../config/extensions"
-import type { ProfileId } from "../control-profile/types"
 import type { SessionExtensionShape } from "./types"
 
 export namespace SessionSchemaRegistry {
   export interface Contribution {
     shape: z.ZodRawShape
     isBackground?(input: Record<string, unknown>): boolean
-    defaultControlProfile?(input: Record<string, unknown>): ProfileId | undefined
     created?(input: Record<string, unknown>): Promise<void>
     /** Session navigation identity this owner contributes to
      * `SessionNavEntry` (for example the Blueprint loop binding). Runs
@@ -56,14 +54,6 @@ export namespace SessionSchemaRegistry {
   export function isBackground(input: object | undefined): boolean {
     if (!input) return false
     return [...owners.values()].some((owner) => owner.isBackground?.(input as Record<string, unknown>))
-  }
-
-  export function defaultControlProfile(input: object | undefined): ProfileId | undefined {
-    if (!input) return undefined
-    for (const owner of owners.values()) {
-      const profile = owner.defaultControlProfile?.(input as Record<string, unknown>)
-      if (profile) return profile
-    }
   }
 
   export function navIdentity(input: object): Record<string, unknown> {

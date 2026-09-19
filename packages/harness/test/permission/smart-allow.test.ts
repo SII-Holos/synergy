@@ -233,6 +233,7 @@ describe("SmartAllow classifier session attribution", () => {
         expect(call.mock.calls[0][0]).toMatchObject({
           sessionId: session.id,
           user: { id: root.id, system: undefined, variant: undefined },
+          retries: 1,
         })
       },
     })

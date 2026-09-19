@@ -249,6 +249,16 @@ export namespace LoopJob {
     }
   }
 
+  /**
+   * Total in-flight background runs, including detached runs that already
+   * outlived their turn lease. Read-only process-wide liveness signal for the
+   * global activity probe: session status alone cannot see detached work, so a
+   * machine running only background jobs would otherwise look idle.
+   */
+  export function activeBackgroundCount(): number {
+    return background.size
+  }
+
   export interface ScheduleDetachedInput {
     sessionID: string
     rootID: string

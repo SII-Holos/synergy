@@ -4,21 +4,54 @@ import type { SandboxBlockExplanation } from "../sandbox/explain"
  * Structured error types for enforcement and sandbox denials.
  */
 export namespace EnforcementError {
+  export interface PolicyDeniedOptions {
+    /** False only for enforcement infrastructure failures that a retry can clear. */
+    permanent?: boolean
+    guidance?: string
+  }
+
   /**
-   * Config rule or profile rule denied the action.
-   * This is a POLICY decision — the agent should NOT retry the same approach.
+   * Config rule or profile rule denied the action, or enforcement infrastructure
+   * could not classify it. A POLICY decision is permanent — the agent should NOT
+   * retry the same approach. An infrastructure failure is transient and retryable.
    */
   export class PolicyDenied extends Error {
     readonly kind = "policy_denied" as const
-    readonly retryable = false as const
+    readonly permanent: boolean
+    readonly guidance: string | undefined
 
     constructor(
       message: string,
       public readonly capabilities: string[],
       public readonly profileId: string,
+      options?: PolicyDeniedOptions,
     ) {
       super(message)
       this.name = "PolicyDenied"
+      this.permanent = options?.permanent ?? true
+      this.guidance = options?.guidance
+    }
+
+    get retryable(): boolean {
+      return !this.permanent
+    }
+
+    /** Model-facing text: a policy decision and an infrastructure failure must not read alike. */
+    get modelMessage(): string {
+      if (this.permanent) {
+        return [
+          `Permission denied by profile "${this.profileId}".`,
+          `Blocked capabilities: ${this.capabilities.join(", ")}`,
+          `This is a policy restriction. Do not retry the same approach.`,
+          this.message,
+        ].join("\n")
+      }
+      return [
+        `Permission classification is temporarily unavailable for profile "${this.profileId}".`,
+        `The operation was not executed; this is an enforcement infrastructure failure, not a policy decision.`,
+        ...(this.guidance ? [this.guidance] : []),
+        this.message,
+      ].join("\n")
     }
   }
 

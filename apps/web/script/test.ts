@@ -8,7 +8,12 @@ const root = path.resolve(import.meta.dir, "..")
 // processes and reaps dangling children when a worker exits, which can kill a
 // sibling suite's freshly launched browser. Run every Chromium suite serially
 // after the main batch to keep their processes alive.
+// These `mock.module`-heavy suites stub the same context modules under the same
+// specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/kanban/full-access-ack.test.ts",
+  "test/components/prompt-input/full-access-ack.test.ts",
+  "test/components/settings/panels/full-access-ack.test.ts",
   "test/components/settings/panels/StoragePanel.test.ts",
   "test/plugin/components.dom.test.ts",
   "test/plugin/overlays.dom.test.ts",
@@ -16,6 +21,7 @@ const playwrightIsolated = [
   "test/components/prompt-input/editor.dom.test.ts",
   "test/components/app-shell/mobile-drawer-drag-region.test.tsx",
   "test/components/app-shell/mobile-drawer-root.test.tsx",
+  "test/components/app-shell/model-unavailable-banner.test.tsx",
   "test/components/dialog/model-selector-layout.test.ts",
   "test/components/file-workbench/scrollbar-dark.test.ts",
   "test/components/file-workbench/selection.test.ts",
@@ -56,7 +62,10 @@ await runBatchedTests({
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/kanban/full-access-ack.test.ts",
+    "test/components/prompt-input/full-access-ack.test.ts",
     "test/components/settings/panels/StoragePanel.test.ts",
+    "test/components/settings/panels/full-access-ack.test.ts",
     "test/plugin/shell-surface.test.ts",
     "test/plugin/shell-preference.test.ts",
     "test/components/note/document-editor-core.test.ts",

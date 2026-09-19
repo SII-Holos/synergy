@@ -1707,6 +1707,12 @@ export type AgendaItem = {
   }
 }
 
+export type GlobalActivity = {
+  active: boolean
+  sessions: number
+  backgroundJobs: number
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -4550,6 +4556,14 @@ export type Config = {
   sandbox?: SandboxConfig
   observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
+  /**
+   * Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.
+   */
+  nonInteractiveControlProfile?: "autonomous" | "full_access"
+  /**
+   * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
+   */
+  fullAccessAcknowledged?: boolean
   /**
    * Additional instruction files or patterns to include
    */
@@ -12095,6 +12109,31 @@ export type GlobalAgendaListResponses = {
 }
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
+
+export type GlobalActivityData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/activity"
+}
+
+export type GlobalActivityErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalActivityError = GlobalActivityErrors[keyof GlobalActivityErrors]
+
+export type GlobalActivityResponses = {
+  /**
+   * Global activity snapshot
+   */
+  200: GlobalActivity
+}
+
+export type GlobalActivityResponse = GlobalActivityResponses[keyof GlobalActivityResponses]
 
 export type GlobalSessionSearchData = {
   body?: never

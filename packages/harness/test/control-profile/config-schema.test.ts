@@ -102,3 +102,55 @@ describe("Config schema accepts controlProfile", () => {
     }
   })
 })
+
+describe("Config schema accepts the non-interactive profile key", () => {
+  const { Info } = require("../../src/config/schema")
+
+  test("accepts autonomous and full_access", () => {
+    for (const value of ["autonomous", "full_access"]) {
+      const result = Info.safeParse({
+        $schema: "file:///test/schema.json",
+        nonInteractiveControlProfile: value,
+      })
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.nonInteractiveControlProfile).toBe(value)
+    }
+  })
+
+  test("rejects guarded, because an unattended ask can never be answered", () => {
+    const result = Info.safeParse({
+      $schema: "file:///test/schema.json",
+      nonInteractiveControlProfile: "guarded",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test("rejects an unknown profile id", () => {
+    const result = Info.safeParse({
+      $schema: "file:///test/schema.json",
+      nonInteractiveControlProfile: "bogus",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test("defaults to undefined so the resolver owns the autonomous default", () => {
+    const result = Info.safeParse({ $schema: "file:///test/schema.json" })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.nonInteractiveControlProfile).toBeUndefined()
+  })
+
+  test("accepts the Full Access acknowledgement as a boolean", () => {
+    const result = Info.safeParse({
+      $schema: "file:///test/schema.json",
+      fullAccessAcknowledged: true,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.fullAccessAcknowledged).toBe(true)
+  })
+
+  test("both keys belong to the permissions domain", async () => {
+    const { ConfigDomain } = await import("../../src/config/domain")
+    expect(ConfigDomain.domainForKey("nonInteractiveControlProfile")?.id).toBe("permissions")
+    expect(ConfigDomain.domainForKey("fullAccessAcknowledged")?.id).toBe("permissions")
+  })
+})

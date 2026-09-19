@@ -64,6 +64,7 @@ export namespace ProviderProfile {
     exhausted?: boolean
     cooldownUntil?: number
     resetAt?: number
+    rejectedAt?: number
   }
 
   export interface RuntimeOptionsInput {

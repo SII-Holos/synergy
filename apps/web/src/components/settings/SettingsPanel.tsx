@@ -117,6 +117,7 @@ import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./s
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 import { createDesktopZoomController } from "./desktop-zoom-model"
+import { createDesktopPowerController } from "./desktop-power-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
 import {
   canRefreshChannelAccount,
@@ -230,6 +231,7 @@ const copy = {
   interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
   themeSaveFailed: { id: "settings.panel.theme.saveFailed", message: "Theme change could not be saved" },
   zoomSaveFailed: { id: "settings.panel.zoom.saveFailed", message: "Interface zoom could not be saved" },
+  preventSleepFailed: { id: "settings.panel.preventSleep.saveFailed", message: "The sleep setting could not be saved" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -376,6 +378,27 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description: requestErrorMessage(error),
       })
     },
+  })
+
+  const [desktopPowerSaved, { mutate: setDesktopPowerSaved }] = createResource(async () => {
+    if (!platform.desktopPower) return undefined
+    return platform.desktopPower.get().catch(() => undefined)
+  })
+  const desktopPowerController = createDesktopPowerController({
+    bridge: platform.desktopPower,
+    onApplied: (snapshot) => setDesktopPowerSaved(snapshot),
+    onFailure: (error) => {
+      showToast({
+        type: "error",
+        title: _(copy.preventSleepFailed),
+        description: requestErrorMessage(error),
+      })
+    },
+  })
+  createEffect(() => {
+    const bridge = platform.desktopPower
+    if (!bridge?.onEvent) return
+    return bridge.onEvent((event) => setDesktopPowerSaved(event.snapshot))
   })
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
@@ -581,6 +604,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
   function restoreInstantZoom() {
     void desktopZoomController.restore()
   }
+  // Keep-awake is applied instantly and persisted by the desktop bridge, so
+  // re-read the live value on discard and after an explicit save to keep the
+  // toggle in sync with the assertion the shell is actually holding.
+  function restoreInstantPower() {
+    void desktopPowerController.restore()
+  }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
     if (!initialized() || !config()) return {}
@@ -628,6 +657,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     doEnsureInit()
     restoreInstantTheme()
     void restoreInstantZoom()
+    void restoreInstantPower()
   }
 
   const save = useSettingsSave({
@@ -801,6 +831,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     desktopZoomController.apply(factor)
   }
 
+  function applyDesktopPower(keepAwakeWhileRunning: boolean) {
+    desktopPowerController.apply(keepAwakeWhileRunning)
+  }
+
   const saveFooterStatus = createMemo(() =>
     settingsSaveFooterStatus({
       saving: saving() || personalizeController.busy(),
@@ -900,6 +934,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onDesktopUpdateModeChange={stageDesktopUpdateMode}
         desktopZoom={desktopZoomSaved() ?? 1}
         onDesktopZoomChange={applyDesktopZoomFactor}
+        desktopPower={desktopPowerSaved()}
+        onDesktopPowerChange={applyDesktopPower}
         popoverLayer={settingsPopoverLayer()}
       />
     ),

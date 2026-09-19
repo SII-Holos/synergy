@@ -96,7 +96,7 @@ Conversation ingress separates durable acceptance from execution. `host.conversa
 - it keys one endpoint Session by provider, account, external Project, and external Task;
 - when provider state already binds the Task to a Session, it validates and reuses that bound Session under the endpoint creation lock, so concurrent replay cannot create a replacement;
 - it runs provider preparation before Session creation or inbox delivery, so a failed precondition leaves no empty Task Session;
-- it creates that Session with `autonomous` control and unattended interaction;
+- it creates that Session with the configured non-interactive control profile (default `autonomous`) and unattended interaction;
 - it delivers the assignment as a visible `task` inbox item;
 - it may deliver separate hidden system-origin participation guidance as a deduplicated `steer` item;
 - it persists provider assignment state before waking the Session loop.
