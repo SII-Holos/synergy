@@ -20,11 +20,7 @@
       "source": "deepswe-1.1",
       "path": "tasks/dasel-html-document-format",
       "digest": "dca5f40de1b3fad7c4917da8762990b5f3b112f291cb58955ec8f407bdcaa5bd",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "go"
-      ],
+      "tags": ["deepswe-1.1", "feature_request", "go"],
       "agent_seconds": 3600,
       "verifier_seconds": 1800.0
     },
@@ -33,11 +29,7 @@
       "source": "deepswe-1.1",
       "path": "tasks/fd-deterministic-multi-key-sorting",
       "digest": "d7bc1a5bc96128183f01fe8251d840a4a30f35382a2cbd799e8a0c3efaddcff3",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "rust"
-      ],
+      "tags": ["deepswe-1.1", "feature_request", "rust"],
       "agent_seconds": 3600,
       "verifier_seconds": 1800.0
     },
@@ -62,13 +54,7 @@
       "source": "terminal-bench-2.1",
       "path": "tasks/openssl-selfsigned-cert",
       "digest": "887b6437e4a30bdbf090aaa5185fead08bc33dbcc6fcc298b6dcfac454183578",
-      "tags": [
-        "coding",
-        "file-operations",
-        "security",
-        "system",
-        "terminal-bench-2.1"
-      ],
+      "tags": ["coding", "file-operations", "security", "system", "terminal-bench-2.1"],
       "agent_seconds": 900.0,
       "verifier_seconds": 2400
     },
@@ -77,11 +63,7 @@
       "source": "terminal-bench-2.1",
       "path": "tasks/polyglot-c-py",
       "digest": "39f07cf87a1373d7942eb345d5fb84280961e7662e710393970968c0a9557600",
-      "tags": [
-        "coding",
-        "software-engineering",
-        "terminal-bench-2.1"
-      ],
+      "tags": ["coding", "software-engineering", "terminal-bench-2.1"],
       "agent_seconds": 900.0,
       "verifier_seconds": 2400
     }
