@@ -266,6 +266,16 @@ export namespace SandboxBackend {
 
     const cmd: string[] = [wrapper.command, ...wrapper.args]
 
+    // ── macOS denial logger ──────────────────────────────────────
+    // Started before the child so the stream is live when the denial is
+    // emitted: a fast command's record is produced microseconds after spawn,
+    // so binding the pid afterwards loses the race. The pid is adopted once
+    // the child exists.
+    let denialSession: DenialLoggerSession | null = null
+    if (wrapper.sandboxed && detectPlatform() === "macos") {
+      denialSession = startDenialLogger()
+    }
+
     const child = Bun.spawn({
       cmd,
       cwd,
@@ -275,15 +285,7 @@ export namespace SandboxBackend {
       stdin: null,
       onExit: () => {},
     })
-
-    // ── macOS denial logger: capture sandboxd audit events ───────
-    let denialSession: DenialLoggerSession | null = null
-    if (wrapper.sandboxed) {
-      const platform = detectPlatform()
-      if (platform === "macos") {
-        denialSession = startDenialLogger(child.pid)
-      }
-    }
+    denialSession?.adoptPid(child.pid)
     // ── after_spawn hook: caller callback after child process created ─────
     if (opts.after_spawn) {
       try {

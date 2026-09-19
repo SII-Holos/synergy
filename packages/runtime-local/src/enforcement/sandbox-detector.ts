@@ -294,8 +294,15 @@ export namespace SandboxDetector {
   ): SandboxBlockExplanation | null {
     if (detections.length === 0) return null
 
-    // Use the highest-confidence match (scan returns best first)
-    const best = detections[0]!
+    // Pick the most informative match rather than the first one. A shell's own
+    // "Operation not permitted" names the path but not the access, while the
+    // kernel audit record names both; taking the first match would discard the
+    // access and with it the only recovery action that can approve the path.
+    const best =
+      detections.find((d) => d.path && d.access) ??
+      detections.find((d) => d.path) ??
+      detections.find((d) => d.access) ??
+      detections[0]!
     const platform: PlatformName = best.platform ?? "linux"
 
     // Map SandboxDetectionResult access → SandboxBlockKind
