@@ -24,7 +24,14 @@ PACKAGES = {
 
 
 def harness_configuration(
-    kind: str, model: ModelProfile, endpoint: str, home: str, *, bun_jit: bool | None = None
+    kind: str,
+    model: ModelProfile,
+    endpoint: str,
+    home: str,
+    *,
+    bun_jit: bool | None = None,
+    merge_system_messages: bool | None = None,
+    strip_reasoning: bool | None = None,
 ) -> dict[str, Any]:
     files: dict[str, str] = {}
     env: dict[str, str] = {
@@ -39,6 +46,12 @@ def harness_configuration(
         # Local adaptation: expose Bun's supported override as an explicit experiment
         # condition; do not use the distinct JSC_useJIT variable or auto-detect a fallback.
         env["BUN_JSC_useJIT"] = str(int(bun_jit))
+    if merge_system_messages is not None:
+        if kind != "synergy" or type(merge_system_messages) is not bool:
+            raise ValueError("merge_system_messages requires an explicit boolean for synergy")
+    if strip_reasoning is not None:
+        if kind != "synergy" or type(strip_reasoning) is not bool:
+            raise ValueError("strip_reasoning requires an explicit boolean for synergy")
     protocol = "responses" if kind == "codex" else model.protocol
     api = "openai-completions" if protocol == "chat-completions" else "openai-responses"
     name = model.model
@@ -61,6 +74,7 @@ def harness_configuration(
         files[path] = json.dumps(value, ensure_ascii=False, indent=2)
 
     if kind in {"synergy", "opencode"}:
+        options: dict[str, object] = {"apiKey": "{env:BENCH_GATEWAY_KEY}", "baseURL": endpoint}
         provider = {
             "name": "Benchmark model",
             "npm": "@ai-sdk/openai-compatible" if protocol == "chat-completions" else "@ai-sdk/openai",
@@ -72,10 +86,14 @@ def harness_configuration(
                     "limit": {"context": model.context_window, "output": model.max_output_tokens},
                 }
             },
-            "options": {"apiKey": "{env:BENCH_GATEWAY_KEY}", "baseURL": endpoint},
+            "options": options,
         }
         config: dict[str, Any] = {"provider": {"benchmark": provider}, "model": f"benchmark/{name}"}
         if kind == "synergy":
+            if merge_system_messages is not None:
+                options["mergeSystemMessages"] = merge_system_messages
+            if strip_reasoning is not None:
+                options["stripReasoning"] = strip_reasoning
             config["controlProfile"] = "full_access"
             for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
                 config[f"{role}_model"] = f"benchmark/{name}"
