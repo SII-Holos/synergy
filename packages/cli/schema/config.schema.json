@@ -1089,6 +1089,25 @@
         }
       },
       "additionalProperties": false
+    },
+    "worktree": {
+      "ref": "WorktreeConfig",
+      "type": "object",
+      "properties": {
+        "maxManaged": {
+          "description": "Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sweepIntervalHours": {
+          "description": "Hours between managed-worktree janitor sweeps",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "janitor": { "description": "Run the managed-worktree janitor at all (default: true)", "type": "boolean" }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": {}
