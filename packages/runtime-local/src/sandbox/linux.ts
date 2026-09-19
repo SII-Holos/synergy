@@ -12,6 +12,7 @@ import {
   expandGitProtectedSubpaths,
   joinPathLike,
   uniqueRoots,
+  readDenyPathsFor,
 } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { isWsl1 } from "./wsl"
@@ -500,7 +501,7 @@ export namespace LinuxBackend {
    * Security invariants:
    * - sandboxed: true only when the helper binary is actually used
    * - If helper is unavailable, returns skipReason to signal unavailability
-   * - NEVER --ro-bind / / in inline bwrap path
+   * - Reads follow the deny-list model (`--ro-bind / /` plus credential covers)
    * - read_only mode must enforce read-only workspace
    * - Protected paths must not be writable
    */
@@ -563,16 +564,7 @@ export namespace LinuxBackend {
 
     const homedir = os.homedir()
     const workspace = opts.workspace
-    // Full-network children share the host network namespace but start from a
-    // --tmpfs root, so resolv.conf and CA stores would be invisible. Bind the
-    // network config paths read-only when full networking is approved; every
-    // entry is existence-filtered because bwrap hard-fails on missing sources.
-    const networkConfigRoots =
-      opts.networkMode === "full"
-        ? ["/etc", "/etc/resolv.conf", "/run/systemd/resolve", "/var/run/systemd/resolve"].filter((p) =>
-            fs.existsSync(p),
-          )
-        : []
+    const writableRoots = opts.sandboxMode === "workspace_write" ? [workspace, ...(opts.extraWritableRoots ?? [])] : []
 
     // Aggregate protected paths: the platform defaults plus every protected
     // path accumulated by the enforcement gate — which includes `<root>/.git`
@@ -628,42 +620,26 @@ export namespace LinuxBackend {
       }
     }
 
-    // Dynamically linked children cannot start unless the ELF interpreter
-    // and libc are visible at their PT_INTERP / default search paths. On
-    // usr-merged distros /lib and /lib64 are those entry points and
-    // defaultRuntimeReadRoots (macOS-first) does not cover them. Restricted
-    // mode deliberately keeps /etc out; the full-network branch binds it
-    // above via networkConfigRoots.
-    const linkerRoots = ["/lib", "/lib64"].filter((p) => fs.existsSync(p))
-
-    // The plan's inner command re-execs this helper for stage 2, so the exec
-    // copy's directory must be visible inside the sandbox — staging above
-    // keeps that copy out of the shadowed /tmp. The backend owns the
-    // two-stage re-exec contract: callers pass read roots for their own data
-    // and never need to know about the helper. Existence filtering below
-    // drops test override paths whose directory is absent.
-    const helperRoots = [path.dirname(helperExecPath)]
-
-    // Read roots aggregate platform defaults (which include macOS-only
-    // entries on Linux), gate-forwarded roots, and approved read paths.
-    // bwrap hard-fails when a --ro-bind source is missing, so every entry is
-    // existence-filtered here like protectedPaths and the network roots above.
-    const readableRoots = uniqueRoots([
+    // Read model: reads are allowed globally and only credential and sensitive
+    // paths stay unreadable — the same deny list macOS compiles into its
+    // Seatbelt profile, produced here by the shared `readDenyPathsFor` owner so
+    // the platforms cannot drift. Declaring "/" as the readable root makes the
+    // helper bind the host root read-only, which covers the workspace, the
+    // dynamic-linker entry points, the staged helper, and the network config
+    // paths in one bind; the deny list is what keeps credentials unreadable.
+    // Ordinary external reads therefore no longer depend on the enforcement
+    // gate predicting the paths a command will touch.
+    const readDenyPaths = readDenyPathsFor({
       workspace,
-      ...linkerRoots,
-      ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(homedir)),
-      ...(opts.extraReadRoots ?? []),
-      ...networkConfigRoots,
-      ...helperRoots,
-      stagingDir,
-    ]).filter((p) => fs.existsSync(p))
+      extraDenyPaths: opts.dataDenyRoots,
+    })
 
     // Build the sandbox permission profile JSON for the helper
     const profile: Record<string, unknown> = {
       fileSystem: {
         workspace,
-        readableRoots,
-        writableRoots: opts.sandboxMode === "workspace_write" ? [workspace, ...(opts.extraWritableRoots ?? [])] : [],
+        readableRoots: ["/"],
+        writableRoots,
         readOnlySubpaths: protectedPaths,
         protectedPaths,
         // Without ".git" in the metadata names, the helper's per-root ro-bind
@@ -671,6 +647,7 @@ export namespace LinuxBackend {
         // the granular hooks/config read-only mounts above keep the tamper and
         // code-execution surface protected while git writes work.
         protectedMetadataNames: [".agents", ".codex"],
+        dataDenyRoots: readDenyPaths,
         includePlatformDefaults: true,
       },
       network: {

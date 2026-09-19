@@ -6,12 +6,10 @@ import {
   gitProtectedSubpaths,
   protectedMetadataUnderWritableRoot,
   PROTECTED_METADATA_PATH_NAMES,
-  READ_DENY_PATHS,
-  readDenyHomeDirs,
+  readDenyPathsFor,
   uniqueRoots,
   isMetadataWriteDenied,
 } from "./policy"
-import { normalizeSlashes } from "../util/path"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "sandbox-policy-engine" })
@@ -144,28 +142,16 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     readableRoots.push(input.executionCwd)
   }
 
-  // Deny-list read model (macOS deny-default backend): reads are allowed
-  // globally and only credential-bearing locations stay denied. Denies are
-  // derived from every read-deny home — the OS home plus the Synergy
-  // runtime home when it differs — so custom SYNERGY_HOME installs keep
-  // their provider/MCP/account/plugin stores protected, and explicit
-  // non-default dataDenyRoots merge in.
-  //
-  // Only a deny EQUAL to the workspace is dropped: a Scope directory rooted
-  // exactly at a credential path cannot deny itself without making the
-  // project's own files unreadable. A deny inside the workspace or a writable
-  // root is kept — pruning those is what silently re-exposed credentials
-  // whenever a workspace was rooted at the OS home or a trusted root
-  // contained a credential directory. Making each kept deny effective is the
-  // backend's job, via rule or mount order; a backend must never be handed a
-  // set that has already given up.
-  const workspaceDeny = normalizeSlashes(input.workspace)
-  const defaultHomeDeny = normalizeSlashes(homedir)
-  const explicitDataDenyRoots = (input.dataDenyRoots ?? []).filter((p) => normalizeSlashes(p) !== defaultHomeDeny)
-  const readDenyPaths = uniqueRoots([
-    ...readDenyHomeDirs().flatMap((home) => READ_DENY_PATHS(home)),
-    ...explicitDataDenyRoots,
-  ]).filter((p) => normalizeSlashes(p) !== workspaceDeny)
+  // Deny-list read model: reads are allowed globally and only
+  // credential-bearing locations stay denied. The deny set has one owner
+  // (`readDenyPathsFor`) so the macOS and Linux backends cannot drift, and it
+  // is derived from the workspace and explicit deny roots alone — a writable
+  // root is never grounds to prune an entry. Each backend is responsible for
+  // making a kept deny effective through rule or mount order.
+  const readDenyPaths = readDenyPathsFor({
+    workspace: input.workspace,
+    extraDenyPaths: input.dataDenyRoots,
+  })
   const fileSystem: SynergyFileSystemSandboxPolicy = {
     readableRoots,
     writableRoots,

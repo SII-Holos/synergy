@@ -1,16 +1,18 @@
 // ---------------------------------------------------------------------------
 // sandbox/linux-readable-roots.test.ts
 //
-// The Linux helper profile must only list readable roots that exist on disk.
-// bwrap hard-fails when a --ro-bind source is missing, and the aggregated
-// readableRoots mix platform defaults (macOS-only entries on Linux),
-// gate-forwarded roots, and approved read paths — so existence filtering
-// happens at wrapper-prepare time, like protectedPaths and network config
-// roots already are.
+// The Linux helper profile uses the same deny-list read model as macOS:
+// reads are allowed globally and only credential and sensitive paths stay
+// unreadable. The profile therefore declares "/" as its readable root, which
+// makes the helper bind the host root read-only, and carries the credential
+// deny list instead of enumerating read roots.
 //
-// Dynamically linked children additionally need the ELF interpreter entry
-// points (/lib, /lib64) to be visible or every exec dies with ENOENT.
-//
+// Enumerating read roots was the old model: every host path a command might
+// touch had to be predicted and granted, so ordinary external reads such as
+// `cat /etc/hosts` failed unless the enforcement gate had anticipated the
+// path. The deny list removes that dependency, and the dynamic-linker entry
+// points (/lib, /lib64) that used to need explicit binds are covered by the
+// root bind.
 // Run with:
 //   cd packages/runtime-local && bun test test/sandbox/linux-readable-roots.test.ts
 // ---------------------------------------------------------------------------
@@ -37,12 +39,16 @@ function prepare(input: { workspace: string; runtimeReadRoots?: string[]; extraR
 }
 
 function readProfile(wrapper: { tempPath?: string }) {
-  const profile = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
-  return profile.fileSystem.readableRoots as string[]
+  return JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8")).fileSystem as {
+    readableRoots: string[]
+    writableRoots: string[]
+    protectedPaths: string[]
+    dataDenyRoots: string[]
+  }
 }
 
-describe("Linux helper profile readable roots", () => {
-  test("filters non-existent readable roots so bwrap does not hard-fail", async () => {
+describe("Linux helper profile read model", () => {
+  test("declares a full-read root instead of enumerating read roots", async () => {
     await using tmp = await tmpdir()
     const existing = path.join(tmp.path, "existing-root")
     await fs.promises.mkdir(existing, { recursive: true })
@@ -55,51 +61,98 @@ describe("Linux helper profile readable roots", () => {
     })
 
     expect(wrapper.sandboxed).toBe(true)
-    const roots = readProfile(wrapper)
-
-    expect(roots).toContain(tmp.path)
-    expect(roots).toContain(existing)
-    expect(roots).not.toContain(missing)
+    // "/" subsumes the workspace, the platform defaults, the gate-forwarded
+    // roots, and the dynamic-linker entry points. A non-existent caller root is
+    // harmless under this model: it is not a mount source, so bwrap cannot
+    // hard-fail on it.
+    expect(readProfile(wrapper).readableRoots).toEqual(["/"])
 
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
 
-  test("default runtime roots are existence-filtered on every host", async () => {
+  test("denies credential paths instead of granting them read access", async () => {
     await using tmp = await tmpdir()
 
     const wrapper = prepare({ workspace: tmp.path })
 
     expect(wrapper.sandboxed).toBe(true)
-    const roots = readProfile(wrapper)
+    const { dataDenyRoots } = readProfile(wrapper)
 
-    expect(roots.length).toBeGreaterThan(0)
-    for (const root of roots) {
-      expect(fs.existsSync(root)).toBe(true)
+    // Credentials are what keep a global read allow safe, so the deny list must
+    // be populated on Linux exactly as it is on macOS. An empty list here would
+    // silently expose every credential store on the host.
+    const homedir = os.homedir()
+    for (const credential of [".ssh", ".aws", ".gnupg", ".netrc", ".git-credentials"]) {
+      expect({ credential, denied: dataDenyRoots }).toEqual({
+        credential,
+        denied: expect.arrayContaining([path.join(homedir, credential)]),
+      })
     }
 
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
 
-  test("includes dynamic linker roots so executables can start", async () => {
-    await using tmp = await tmpdir()
-
-    const wrapper = prepare({ workspace: tmp.path })
+  test("home-shaped workspace keeps credential denies in the helper profile", () => {
+    // The configuration whose deny set collapsed to zero: the Scope directory
+    // resolves to the home directory itself. Linux has no `--tmpfs /` model
+    // left to hide these paths, so the profile's deny list is the only thing
+    // keeping them unreadable. Measured through the real backend entry point,
+    // since the deny owner derives its scope from the writable roots the
+    // backend computes rather than from a caller-supplied list.
+    const homedir = os.homedir()
+    const wrapper = prepare({ workspace: homedir })
 
     expect(wrapper.sandboxed).toBe(true)
-    const roots = readProfile(wrapper)
+    const { dataDenyRoots, writableRoots } = readProfile(wrapper)
 
-    // The ELF interpreter lives at /lib64/ld-linux-*.so.2 on usr-merged
-    // distros (or /lib/ld-musl-*.so.1 on musl); without these binds every
-    // dynamically linked child dies with execvp ENOENT.
-    for (const root of ["/lib", "/lib64"]) {
-      if (!fs.existsSync(root)) continue
-      expect(roots).toContain(root)
+    expect(writableRoots).toContain(homedir)
+    expect(dataDenyRoots.length).toBeGreaterThan(0)
+    for (const credential of [".ssh", ".aws", ".gnupg", ".netrc", ".git-credentials"]) {
+      expect({ credential, denied: dataDenyRoots }).toEqual({
+        credential,
+        denied: expect.arrayContaining([path.join(homedir, credential)]),
+      })
     }
 
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
 
-  test("helper under the host tmpdir is staged outside the shadowed /tmp", async () => {
+  test("never denies the workspace or its writable roots", async () => {
+    await using tmp = await tmpdir()
+    const workspace = tmp.path
+    const extraWritable = path.join(workspace, "generated")
+    await fs.promises.mkdir(extraWritable, { recursive: true })
+
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "echo",
+      args: ["hello"],
+      workspace,
+      sandboxMode: "workspace_write",
+      forcePlatform: "linux",
+      forceHelperPath: "/test/synergy-sandbox-linux",
+      forceHelperVerified: true,
+      extraWritableRoots: [extraWritable],
+    })
+
+    expect(wrapper.sandboxed).toBe(true)
+    const profile = readProfile(wrapper)
+
+    // A deny covering the workspace would make the project's own files
+    // unreadable. A deny inside a writable root is kept and enforced by mount
+    // order (the helper emits it after the writable bind), but no credential
+    // deny falls inside this temporary workspace, so none is expected here.
+    for (const deny of profile.dataDenyRoots) {
+      expect({ deny, inWorkspace: deny === workspace || deny.startsWith(workspace + "/") }).toEqual({
+        deny,
+        inWorkspace: false,
+      })
+    }
+    expect(profile.writableRoots).toContain(workspace)
+
+    fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+
+  test("stages a tmpdir helper outside the shadowed /tmp", async () => {
     await using tmp = await tmpdir()
     const helperDir = path.join(tmp.path, "helper-install")
     await fs.promises.mkdir(helperDir, { recursive: true })
@@ -117,18 +170,21 @@ describe("Linux helper profile readable roots", () => {
     })
 
     expect(wrapper.sandboxed).toBe(true)
-    const roots = readProfile(wrapper)
     const relToTmp = path.relative(os.tmpdir(), helperPath)
     if (relToTmp !== "" && !relToTmp.startsWith("..") && !path.isAbsolute(relToTmp)) {
-      // The controlled-/tmp bind shadows every host path under /tmp, so the
-      // exec copy must be staged into the real-home cache dir and that
-      // directory must be a read root.
+      // The full-read root bind does not help here: the plan's controlled-/tmp
+      // bind still shadows every host path under /tmp, and stage 2 re-execs the
+      // helper by absolute path, so a helper under /tmp must be copied out
+      // before it is exec'd.
       expect(wrapper.command).not.toBe(helperPath)
-      expect(roots).toContain(path.dirname(wrapper.command))
+      const relExecToTmp = path.relative(os.tmpdir(), wrapper.command)
+      expect({
+        staged: relExecToTmp === "" || relExecToTmp.startsWith("..") || path.isAbsolute(relExecToTmp),
+      }).toEqual({ staged: true })
       // Never leave a test helper behind in the real home.
       fs.rmSync(wrapper.command, { force: true })
     } else {
-      expect(roots).toContain(helperDir)
+      expect(wrapper.command).toBe(helperPath)
     }
 
     fs.rmSync(wrapper.tempPath!, { force: true })
