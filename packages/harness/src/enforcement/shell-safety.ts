@@ -1176,6 +1176,7 @@ const NETWORK_TOOLS = new Set([
   "ftp",
   "dig",
   "nslookup",
+  "host",
   "aria2c",
   "axel",
   "mosh",
@@ -1252,6 +1253,13 @@ function networkInvocationIn(command: string, state: ClassificationState, depth 
   // Budget or depth exhaustion fails closed: an unanalyzable command reports
   // the capability rather than silently passing as inert.
   if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  // Bash builtin network redirects are matched on unquoted text at every
+  // recursion level: a redirect buried inside a quoted `bash -c`/`eval`
+  // payload is invisible to the top-level mask, but fully visible once the
+  // payload is unwrapped and re-scanned as its own command text.
+  if (command.includes("/dev/") && /\/dev\/(?:tcp|udp)\//.test(literalMaskedShellText(normalizeCommand(command)))) {
+    return true
+  }
 
   const compound = lexCompoundCommands(command)
   const segments = compound.segments.length > 0 ? compound.segments : [command]
@@ -1297,6 +1305,11 @@ function networkInvocationIn(command: string, state: ClassificationState, depth 
     }
 
     if (invocationReachesNetwork(executable, args)) return true
+    // Opaque interpreter code (`-c`/`-e`/`--eval` payloads) can open sockets
+    // with no static tell, and the sandbox network relaxation is driven by
+    // this very capability — fail closed here like budget exhaustion does,
+    // instead of failing at runtime after the sandbox stayed restricted.
+    if (isInlineInterpreterCommand(executable) && hasInlineInterpreterPayload(executable, args)) return true
 
     // A shell or interpreter re-parse payload carries its own command text.
     if (isShellPayloadCommand(executable)) {
@@ -1315,6 +1328,15 @@ function networkInvocationIn(command: string, state: ClassificationState, depth 
     }
   }
 
+  // A heredoc whose header executes stdin as code (`bash <<EOF`) runs the
+  // body as commands; `cat <<EOF` merely reads data and stays unwalked,
+  // matching the sudo path's gate.
+  for (const heredoc of extractShellHeredocBodies(command)) {
+    if (!heredoc.effective || normalizeFileDescriptor(heredoc.fd) !== "0") continue
+    if (!heredocHeaderExecutesStdin(heredoc.header)) continue
+    if (heredoc.body && networkInvocationIn(heredoc.body, state, depth + 1)) return true
+  }
+
   const payloads = commandSubstitutionPayloads(command, state)
   if (payloads === undefined) return true
   if (payloads.some((payload) => networkInvocationIn(payload, state, depth + 1))) return true
@@ -1325,13 +1347,13 @@ function networkInvocationIn(command: string, state: ClassificationState, depth 
 /**
  * Whether a shell command performs a network operation. Bash builtin network
  * redirects (`/dev/tcp`, `/dev/udp`) are matched on unquoted executable text
- * because they only function as redirect targets; every other case is decided
- * from the resolved command name and its subcommand, so documentation and
- * commit-message text that happens to contain a URL or a tool name stays inert.
+ * at every command level — including unwrapped shell/interpreter payloads,
+ * eval bodies, and code-executing heredocs — because they only function as
+ * redirect targets; every other case is decided from the resolved command
+ * name and its subcommand, so documentation and commit-message text that
+ * happens to contain a URL or a tool name stays inert.
  */
 function commandReachesNetwork(command: string): boolean {
-  const executableText = literalMaskedShellText(normalizeCommand(command))
-  if (/\/dev\/(?:tcp|udp)\//.test(executableText)) return true
   return networkInvocationIn(command, newClassificationState())
 }
 
