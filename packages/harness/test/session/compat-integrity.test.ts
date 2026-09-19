@@ -176,6 +176,13 @@ test("failed owner migration preserves originals and does not mark the migration
       expect((await StorageCompat.readLocator(f.store, f.id))?.status).toBe("partial")
       expect((await Storage.readMany([StoragePath.metaMigrationLogDomain(domain)]))[0]).toBeUndefined()
       await expect(SessionCompat.requireImported(f.id)).rejects.toThrow("owning domain migrations")
+      MigrationRegistry.register("compat-unrelated-fixture", [])
+      try {
+        await runMigrations({ targetDomain: "compat-unrelated-fixture", output: "silent" })
+        await expect(SessionCompat.requireImported(f.id)).rejects.toThrow("owning domain migrations")
+      } finally {
+        MigrationRegistry.unregister("compat-unrelated-fixture")
+      }
     })
   } finally {
     MigrationRegistry.unregister(domain)

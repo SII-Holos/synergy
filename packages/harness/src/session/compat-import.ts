@@ -101,9 +101,10 @@ export namespace SessionCompat {
     return StorageCompat.pendingLocators(Storage.current().store)
   }
 
-  export async function stageForMigrations() {
+  export async function stageForMigrations(domains: string[]) {
     if (!(await isActive())) return
-    await Storage.write(migrationKey, { running: true })
+    const [previous] = await Storage.readMany<{ domains: string[] }>([migrationKey])
+    await Storage.write(migrationKey, { domains: [...new Set([...(previous?.domains ?? []), ...domains])] })
     const locators = await Storage.readMany<StorageCompat.Locator>(await Storage.list(["compat_import", "sessions"]))
     for (const locator of locators) {
       if (!locator || locator.status === "imported") continue
@@ -112,8 +113,12 @@ export namespace SessionCompat {
     }
   }
 
-  export async function migrationsCompleted() {
-    if ((await Storage.readMany([migrationKey]))[0]) await Storage.remove(migrationKey)
+  export async function migrationsCompleted(domains: string[]) {
+    const [pending] = await Storage.readMany<{ domains: string[] }>([migrationKey])
+    if (!pending) return
+    const remaining = pending.domains.filter((domain) => !domains.includes(domain))
+    if (remaining.length) await Storage.write(migrationKey, { domains: remaining })
+    else await Storage.remove(migrationKey)
   }
 
   export async function prepareRecovery() {

@@ -134,8 +134,12 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
   const output = options?.output ?? "interactive"
   const domains = collectByDomain({ targetDomain: options?.targetDomain })
   if (domains.size === 0) return emptySummary()
-  if (!dryRun && Object.values(await getMigrationStatus(options?.targetDomain)).some((status) => status.pending.length))
-    await SessionCompat.stageForMigrations()
+  if (!dryRun) {
+    const pending = Object.entries(await getMigrationStatus(options?.targetDomain))
+      .filter(([, status]) => status.pending.length)
+      .map(([domain]) => domain)
+    if (pending.length) await SessionCompat.stageForMigrations(pending)
+  }
 
   // Set up context for migrations that want it (arity-based detection)
   const ctx: MigrationContext = {
@@ -146,7 +150,7 @@ export async function runMigrations(options?: RunOptions): Promise<MigrationSumm
   setActiveMigrationContext(ctx)
   try {
     const summary = await runMigrationsInternal(domains, { dryRun, ctx, output, reporter: options?.reporter })
-    if (!dryRun) await SessionCompat.migrationsCompleted()
+    if (!dryRun) await SessionCompat.migrationsCompleted([...domains.keys()])
     return summary
   } finally {
     setActiveMigrationContext(undefined)
