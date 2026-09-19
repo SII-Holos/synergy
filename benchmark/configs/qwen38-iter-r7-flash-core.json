@@ -1,0 +1,37 @@
+{
+  "agent": {
+    "synergy-flash": {
+      "deferredTools": [
+        "task",
+        "task_list",
+        "task_output",
+        "task_cancel",
+        "dagwrite",
+        "dagread",
+        "dagpatch",
+        "file_search",
+        "webfetch",
+        "attach",
+        "skill",
+        "process",
+        "runtime_reload",
+        "question",
+        "glob",
+        "grep",
+        "view_file",
+        "view_image",
+        "scan_files",
+        "save_file",
+        "revise_file",
+        "resolve_conflicts",
+        "todoread",
+        "todowrite",
+        "session_list",
+        "session_read",
+        "session_search",
+        "session_send",
+        "scope_list"
+      ]
+    }
+  }
+}
