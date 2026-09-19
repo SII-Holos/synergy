@@ -11,6 +11,7 @@ import { useWorkbenchPanels } from "@/context/workbench"
 import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope, resolveProjectScope } from "@/utils/scope"
+import { isWorkingStatus } from "@/utils/session-status"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { sessionScopeRequestFor } from "@/components/session/session-actions"
 import { SessionRow } from "@/components/scopes/session-row"
@@ -31,7 +32,7 @@ import {
   MobileDrawerSettingsButton,
   type MobileDrawerRecentVisual,
 } from "./mobile-drawer-root"
-import { resolveSessionVisualState, scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
+import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
 import "./mobile-drawer.css"
 
 export function MobileDrawer() {
@@ -212,9 +213,14 @@ function ScopeListView(props: {
   // for the localization contract (see script/localization-check.ts).
   const translateSessionState = (descriptor: MessageDescriptor) => _(descriptor)
   const recentVisualFor = (entry: NavEntry): MobileDrawerRecentVisual => {
-    const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
-    const store = scopeKey ? globalSync.peekScopeState(scopeKey)?.[0] : undefined
-    const visual = resolveSessionVisualState(store, entry)
+    const visual = resolveSessionVisualState({
+      entry,
+      status: globalSync.sessionStatus[entry.id],
+      waiting: (globalSync.permissions[entry.id]?.length ?? 0) > 0 || (globalSync.questions[entry.id]?.length ?? 0) > 0,
+      runningChildTasks: globalSync.cortex.some(
+        (task) => task.parentSessionID === entry.id && task.status === "running",
+      ),
+    })
     const meaningful = visual.completionUnread || visual.tone !== "default"
     return { visual, label: meaningful ? translateSessionState(visual.label) : "" }
   }
@@ -408,6 +414,7 @@ function SessionListDrawerView(props: {
 }) {
   const layout = useLayout()
   const globalSDK = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const { _ } = useLingui()
@@ -417,7 +424,6 @@ function SessionListDrawerView(props: {
   const [pagedTotal, setPagedTotal] = createSignal(0)
 
   const allSessions = createMemo(() => layout.nav.projectSessions(props.scope))
-  const childStore = createMemo(() => layout.nav.childStoreForScope(props.scope))
   const totalPages = createMemo(() => Math.max(1, Math.ceil(pagedTotal() / SESSION_PAGE_SIZE)))
 
   const scopeName = createMemo(() => getScopeLabel(props.scope))
@@ -445,12 +451,8 @@ function SessionListDrawerView(props: {
   }
 
   function getSessionState(session: Session) {
-    const store = childStore()
-    if (!store)
-      return { isWorking: false, hasPermission: false, hasError: false, hasNotification: false, notificationCount: 0 }
-    const status = store.session_status[session.id]
-    const isWorking = status?.type === "busy" || status?.type === "retry" || status?.type === "recovering"
-    const hasPermission = (store.permission[session.id] ?? []).length > 0
+    const isWorking = isWorkingStatus(globalSync.sessionStatus[session.id])
+    const hasPermission = (globalSync.permissions[session.id]?.length ?? 0) > 0
     const unseen = props.notification.session.unseen(session.id)
     const hasError = unseen.some((n) => n.type === "error")
     const hasNotification = unseen.length > 0
@@ -503,16 +505,12 @@ function SessionListDrawerView(props: {
         <span>{_(appShell.newSession)}</span>
       </button>
 
-      <Show when={childStore()}>
-        {(store) => (
-          <ActiveZone
-            sessions={allSessions()}
-            childStore={store()}
-            notification={props.notification}
-            onSelectSession={props.onSelectSession}
-          />
-        )}
-      </Show>
+      <ActiveZone
+        sessions={allSessions()}
+        runtime={globalSync}
+        notification={props.notification}
+        onSelectSession={props.onSelectSession}
+      />
 
       <div class="flex-1 min-h-0 overflow-y-auto">
         <For each={pagedSessions()}>

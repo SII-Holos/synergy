@@ -76,6 +76,124 @@ describe("ObservabilityStore", () => {
     expect(rows[0]?.value).toBe(100)
   })
 
+  test("collapses aggregated counters that differ only in per-turn identity", () => {
+    const identity = [
+      { sessionID: "ses_collapse_a", messageID: "msg_collapse_a", callID: "call_collapse_a" },
+      { sessionID: "ses_collapse_b", messageID: "msg_collapse_b", callID: "call_collapse_b" },
+    ]
+    identity.forEach((fields, index) => {
+      ObservabilityMetrics.record({
+        name: "storage.operation.count",
+        value: 1,
+        unit: "count",
+        module: "storage",
+        labels: { operation: "read" },
+        traceId: `trace_collapse_${index}`,
+        spanId: `span_collapse_${index}`,
+        correlationId: `corr_collapse_${index}`,
+        processId: `proc_collapse_${index}`,
+        pid: 100 + index,
+        ...fields,
+      })
+    })
+    ObservabilityStore.flush()
+
+    const rows = ObservabilityStore.queryMetrics({ since: 0, names: ["storage.operation.count"] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.value).toBe(2)
+  })
+
+  test("keeps aggregated counters separate per scope and tool", () => {
+    const groups = [
+      { scopeID: "scope_keep_a", tool: "bash" },
+      { scopeID: "scope_keep_b", tool: "bash" },
+      { scopeID: "scope_keep_b", tool: "read" },
+    ]
+    for (const group of groups) {
+      ObservabilityMetrics.record({
+        name: "process.output.chars",
+        value: 5,
+        unit: "count",
+        module: "process",
+        source: "process",
+        ...group,
+      })
+    }
+    ObservabilityStore.flush()
+
+    const rows = ObservabilityStore.queryMetrics({ since: 0, names: ["process.output.chars"] })
+    expect(rows).toHaveLength(3)
+    expect(rows.map((row) => row.value)).toEqual([5, 5, 5])
+  })
+
+  test("keeps per-session rows for metrics outside the aggregated counter family", () => {
+    for (const sessionID of ["ses_keep_a", "ses_keep_b"]) {
+      ObservabilityMetrics.record({
+        name: "http.request.duration",
+        value: 1,
+        unit: "ms",
+        module: "server",
+        sessionID,
+      })
+    }
+    ObservabilityStore.flush()
+
+    const rows = ObservabilityStore.queryMetrics({ since: 0, names: ["http.request.duration"] })
+    expect(rows.map((row) => row.session_id).sort()).toEqual(["ses_keep_a", "ses_keep_b"])
+  })
+
+  test("keeps agent queue lane and pool source labels addressable in the store", () => {
+    for (const lane of ["interactive", "background"]) {
+      ObservabilityMetrics.record({
+        name: "agent.queue.depth",
+        value: lane === "interactive" ? 2 : 1,
+        unit: "count",
+        module: "session",
+        labels: { lane },
+      })
+      ObservabilityMetrics.record({
+        name: "agent.queue.wait",
+        value: lane === "interactive" ? 12 : 240,
+        unit: "ms",
+        module: "session",
+        labels: { lane },
+      })
+    }
+    ObservabilityMetrics.record({
+      name: "agent.pool.size",
+      value: 20,
+      unit: "count",
+      module: "session",
+      labels: { source: "derived" },
+    })
+    ObservabilityStore.flush()
+
+    const depth = ObservabilityStore.queryMetrics({ since: 0, names: ["agent.queue.depth"] })
+    expect(depth).toHaveLength(2)
+    const depthByLane = new Map(depth.map((row) => [JSON.parse(row.labels_json).lane as string, row.value]))
+    expect(depthByLane.get("interactive")).toBe(2)
+    expect(depthByLane.get("background")).toBe(1)
+
+    const wait = ObservabilityStore.queryMetrics({ since: 0, names: ["agent.queue.wait"] })
+    expect(wait).toHaveLength(2)
+    expect(new Set(wait.map((row) => JSON.parse(row.labels_json).lane))).toEqual(new Set(["interactive", "background"]))
+
+    const pool = ObservabilityStore.queryMetrics({ since: 0, names: ["agent.pool.size"] })
+    expect(pool).toHaveLength(1)
+    expect(JSON.parse(pool[0]!.labels_json).source).toBe("derived")
+    expect(pool[0]!.value).toBe(20)
+  })
+
+  test("defaults the log mirror switch to off and honors an explicit opt-in", () => {
+    expect(ObservabilityConfig.logMirror()).toBe(false)
+
+    ObservabilityConfig.refresh({ observability: { logMirror: true } })
+    expect(ObservabilityConfig.logMirror()).toBe(true)
+
+    ObservabilityConfig.refresh()
+    expect(ObservabilityConfig.logMirror()).toBe(false)
+  })
+
   test("ignores JSONL-only mirror files in indexed runtime query", async () => {
     const fs = await import("fs/promises")
     const path = await import("path")

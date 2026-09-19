@@ -37,19 +37,37 @@ export type StoreOptions = {
   mustExist?: boolean
 } & ({ backend: "sqlite"; filename: string } | { backend: "postgres"; url: string; maxConnections?: number })
 
+export type SqliteMaintenanceOperation = "enable-incremental-vacuum" | "reclaim"
+
+export type SqliteMaintenanceRequest = {
+  operation: SqliteMaintenanceOperation
+  maxPages?: number
+}
+
+export type SqliteMaintenanceResult = {
+  // True when the operation changed the physical database: a VACUUM that
+  // converted the file to incremental mode, or freelist pages that were freed.
+  changed: boolean
+  autoVacuum: "none" | "full" | "incremental"
+  releasedPages: number
+  freelistPages: number
+}
+
 export type SqliteRequest = {
   id: number
-  action: "open" | "query" | "close"
+  action: "open" | "query" | "close" | "maintain"
   filename?: string
   readonly?: boolean
   reader?: boolean
   statement?: string
   values?: SqlValue[]
   maintenance?: boolean
+  maintain?: SqliteMaintenanceRequest
 }
 
 export type SqliteResponse = {
   id: number
   rows?: SqlRow[]
+  maintain?: SqliteMaintenanceResult
   error?: { name: string; message: string; code?: string }
 }

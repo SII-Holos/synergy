@@ -1,3 +1,6 @@
+import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import { isWorkingStatus } from "@/utils/session-status"
+
 import {
   createSessionStartupSteps,
   type SessionStartupWorkspaceStep,
@@ -10,7 +13,7 @@ export type NewSessionWorkspaceSelection =
   | { mode: "create" }
   | { mode: "existing"; target: string }
 
-export type WorkspaceChangeStatus = { type?: string } | undefined
+export type WorkspaceChangeStatus = SessionStatus
 
 export function normalizePathForCompare(input: string) {
   const normalized = input.replace(/\\/g, "/").replace(/\/+$/, "")
@@ -59,8 +62,7 @@ export function isSessionRunningForWorkspaceChange(input: {
 }) {
   if (input.pending) return true
   if (input.working) return true
-  if (!input.status) return false
-  return input.status.type !== undefined && input.status.type !== "idle"
+  return isWorkingStatus(input.status)
 }
 
 export function worktreeSetupFailureMessage(input: { setupFailed?: boolean; setupError?: string } | undefined) {

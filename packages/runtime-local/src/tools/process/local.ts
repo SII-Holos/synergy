@@ -70,7 +70,7 @@ export namespace LocalProcessBackend {
       case "poll": {
         ProcessRegistry.settleStaleProcesses()
         if (proc && !proc.exited && params.block) {
-          await waitForExit(processId, (params.timeout ?? ToolTimeout.DEFAULTS.processPollWaitMs / 1_000) * 1000)
+          await waitForExit(processId, (params.timeoutSeconds ?? ToolTimeout.DEFAULTS.processPollWaitMs / 1_000) * 1000)
         }
 
         const current = ProcessRegistry.get(processId)

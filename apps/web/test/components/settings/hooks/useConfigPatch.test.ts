@@ -339,6 +339,27 @@ describe("settings config patch", () => {
     expect(patch.execution).toEqual({ agentWorkers: 3, policyWorkers: 2 })
   })
 
+  test("clearing the agent worker pool size removes the explicit ceiling", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.agentWorkers = ""
+
+    expect(
+      buildPatch({
+        cfg: { execution: { agentWorkers: 6, policyWorkers: 2 } } as Config,
+        state,
+        originalMcps: {},
+      }).execution,
+    ).toEqual({ agentWorkers: null, policyWorkers: 2 })
+  })
+
+  test("keeps an already-adaptive pool out of the patch when the field stays cleared", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({ cfg: { execution: { policyWorkers: 2 } } as Config, state, originalMcps: {} }),
+    ).not.toHaveProperty("execution")
+  })
+
   test("omits automatic, unchanged, and out-of-range agent worker pool sizes", () => {
     const state = defaultSettingsState("enter")
 

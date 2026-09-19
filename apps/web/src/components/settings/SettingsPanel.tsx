@@ -26,6 +26,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
+  AgentWorkerCapacityStatus,
   ChannelStatus,
   ConfigDomainSummary,
   ControlProfileSummary,
@@ -357,6 +358,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data as CortexConcurrencyStatus | undefined
   })
 
+  const [agentWorkerCapacityStatus, { refetch: refetchAgentWorkerCapacityStatus }] = createResource(async () => {
+    const res = await globalSDK.client.runtime.agentWorkers()
+    return res.data as AgentWorkerCapacityStatus | undefined
+  })
+
   const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
     const res = await globalSDK.client.config.domain.list()
     return res.data ?? []
@@ -562,6 +568,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ...(modelFields.some((field) => changed.has(field)) ? [refetchModelRoleSummaries()] : []),
       ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
       ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
+      ...(changed.has("execution") ? [refetchAgentWorkerCapacityStatus()] : []),
       ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
       ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
       ...(changed.has("skills") ? [refetchSkillSources()] : []),
@@ -1101,7 +1108,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
         concurrencyStatus={cortexConcurrencyStatus()}
-        configuredAgentWorkers={config()?.execution?.agentWorkers}
+        capacityStatus={agentWorkerCapacityStatus()}
         popoverLayer={settingsPopoverLayer()}
       />
     ),

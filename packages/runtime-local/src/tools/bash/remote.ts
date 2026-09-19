@@ -6,14 +6,7 @@ export namespace RemoteBashBackend {
     params: BashParams,
     target: Extract<SynergyLinkExecution.ExecutionTarget, { kind: "remote" }>,
   ) {
-    const {
-      targetID: _targetID,
-      linkID: _linkID,
-      backgroundAfterSeconds: _backgroundAfterSeconds,
-      timeoutSeconds: _timeoutSeconds,
-      detach,
-      ...basePayload
-    } = params
+    const { targetID: _targetID, linkID: _linkID, detach, ...basePayload } = params
     const supportsBashDetach = target.session.supportsBashDetach === true
     if (detach === true && !supportsBashDetach) {
       throw new Error(

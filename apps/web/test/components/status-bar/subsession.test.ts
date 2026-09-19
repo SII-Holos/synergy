@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import type { I18n } from "@lingui/core"
+import type { SessionStatus } from "@ericsanchezok/synergy-sdk"
 import {
   normalizeSubsessionSearch,
   resolveSubsessionStatus,
   subsessionCursorParams,
   subsessionRangeLabel,
 } from "../../../src/components/status-bar/subsession"
+import { isWorkingStatus } from "../../../src/utils/session-status"
 
 function mockI18n(): I18n {
   return {
@@ -46,5 +48,30 @@ describe("status bar subsession helpers", () => {
     expect(resolveSubsessionStatus({ waiting: true, running: true })).toBe("waiting")
     expect(resolveSubsessionStatus({ waiting: false, running: true })).toBe("running")
     expect(resolveSubsessionStatus({ waiting: false, running: false })).toBe("idle")
+  })
+})
+
+// status-bar.tsx decides a child session's running state as
+// `isWorkingStatus(status)` fed into the resolver. That closure is not
+// exported, so the composition is asserted here: every status the shell
+// classifies as working must surface as a running subsession, and a missing
+// status must stay idle rather than render a running row.
+describe("subsession running classification", () => {
+  const childState = (status: SessionStatus | undefined, waiting = false) =>
+    resolveSubsessionStatus({ waiting, running: isWorkingStatus(status) })
+
+  test("surfaces busy, retry, and recovering child sessions as running", () => {
+    expect(childState({ type: "busy" })).toBe("running")
+    expect(childState({ type: "retry", attempt: 1, message: "rate limited", next: 1_000 })).toBe("running")
+    expect(childState({ type: "recovering" })).toBe("running")
+  })
+
+  test("keeps a missing or idle child status out of running", () => {
+    expect(childState(undefined)).toBe("idle")
+    expect(childState({ type: "idle" })).toBe("idle")
+  })
+
+  test("reports a waiting child as waiting instead of running", () => {
+    expect(childState({ type: "recovering" }, true)).toBe("waiting")
   })
 })
