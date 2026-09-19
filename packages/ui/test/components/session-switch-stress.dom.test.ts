@@ -114,14 +114,25 @@ beforeAll(async () => {
 
       const doneTextPart = { id: "part-stress", sessionID, messageID: doneID, type: "text", text: "Stress answer" }
 
+      const runtimeSeed = {
+        sessionStatus: { [sessionID]: { type: "busy" } },
+        permissions: { [sessionID]: [] },
+      }
       const [store, setStore] = createStore({
         session: [],
-        session_status: { [sessionID]: { type: "busy" } },
         session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
         message: { [sessionID]: [rootMessage, doneAssistant] },
         part: { [doneID]: [doneTextPart] },
       })
+      // Session runtime state lives outside the Scope store, so the view reads
+      // it from this separately-mutated accessor bag.
+      const [runtimeState, setRuntimeState] = createStore(runtimeSeed)
+      const NO_REQUESTS = []
+      const runtime = {
+        statusFor: (id) => runtimeState.sessionStatus[id],
+        permissionsFor: (id) => runtimeState.permissions[id] ?? NO_REQUESTS,
+        questionsFor: () => NO_REQUESTS,
+      }
 
       setExternalToolLookup(() => undefined)
       const resourceController = {
@@ -143,17 +154,13 @@ beforeAll(async () => {
 
       const fullState = () => ({
         session: [],
-        session_status: { [sessionID]: { type: "busy" } },
         session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
         message: { [sessionID]: [rootMessage, doneAssistant] },
         part: { [doneID]: [doneTextPart] },
       })
       const emptyState = () => ({
         session: [],
-        session_status: {},
         session_diff: {},
-        permission: {},
         message: {},
         part: {},
       })
@@ -165,7 +172,7 @@ beforeAll(async () => {
               <ResourceOpenProvider value={resourceController}>
                 <MarkedProvider>
                   <DiffComponentProvider component={EmptyDiff}>
-                    <DataProvider data={store} directory="/workspace" serverUrl="http://localhost">
+                    <DataProvider data={store} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
                       <ErrorBoundary
                         fallback={(err) => {
                           boundaryErrors++
@@ -195,13 +202,13 @@ beforeAll(async () => {
       globalThis.__sessionSwitchStressHarness = {
         replaceMessageBucket: (sid, messages) => setStore("message", sid, messages),
         replacePartBucket: (mid, parts) => setStore("part", mid, parts),
-        replacePermissionBucket: (sid, permissions) => setStore("permission", sid, permissions),
-        replaceSessionStatus: (sid, status) => setStore("session_status", sid, status),
+        replacePermissionBucket: (sid, permissions) => setRuntimeState("permissions", sid, permissions),
+        replaceSessionStatus: (sid, status) => setRuntimeState("sessionStatus", sid, status),
         replaceWithFreshObjects: () => {
           setStore("message", sessionID, [buildUser(rootID), buildAssistant(doneID)])
           setStore("part", doneID, [doneTextPart])
-          setStore("permission", sessionID, [])
-          setStore("session_status", sessionID, { type: "busy" })
+          setRuntimeState("permissions", sessionID, [])
+          setRuntimeState("sessionStatus", sessionID, { type: "busy" })
         },
         replaceMessagesGrown: () => {
           // Grows the display window (a second assistant becomes the latest)
@@ -212,10 +219,16 @@ beforeAll(async () => {
           // instead of throwing.
           setStore("message", sessionID, [buildUser(rootID), buildAssistant(doneID), buildAssistant("assistant-stress-2")])
           setStore("part", doneID, undefined)
-          setStore("permission", sessionID, undefined)
+          setRuntimeState("permissions", sessionID, undefined)
         },
-        clearAllBuckets: () => setStore(emptyState()),
-        restoreBuckets: () => setStore(fullState()),
+        clearAllBuckets: () => {
+          setStore(emptyState())
+          setRuntimeState({ sessionStatus: {}, permissions: {} })
+        },
+        restoreBuckets: () => {
+          setStore(fullState())
+          setRuntimeState(runtimeSeed)
+        },
         getErrors: () => boundaryErrors + windowErrors,
       }
     `,

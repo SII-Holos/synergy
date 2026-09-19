@@ -202,7 +202,7 @@ describe("tool.bash", () => {
         {
           command: "(sleep 0.05; printf late-tail) &",
           description: "Emit output after the parent exits",
-          backgroundAfterSeconds: 0,
+          yieldSeconds: 0,
         },
         allowedCtx,
       )
@@ -219,7 +219,7 @@ describe("tool.bash", () => {
         {
           command: sleepCommand(100),
           description: "Close tracked process",
-          backgroundAfterSeconds: 0.01,
+          yieldSeconds: 0.01,
         },
         ctx,
       )

@@ -95,11 +95,18 @@ export const WorkflowInfo = z
   .meta({ ref: "SessionWorkflowInfo" })
 export type WorkflowInfo = z.infer<typeof WorkflowInfo>
 
+export const SessionBlueprintPhase = z.enum(["running", "waiting", "auditing"])
+export type SessionBlueprintPhase = z.infer<typeof SessionBlueprintPhase>
+
 export const SessionFields = {
   agenda: z.object({ itemID: z.string() }).optional(),
   superplan: SuperPlanSessionInfo.optional(),
   blueprint: z
-    .object({ loopID: z.string().optional(), loopRole: z.enum(["execution", "audit"]).optional() })
+    .object({
+      loopID: z.string().optional(),
+      loopRole: z.enum(["execution", "audit"]).optional(),
+      phase: SessionBlueprintPhase.optional(),
+    })
     .optional(),
   workflow: WorkflowInfo.optional(),
 }
@@ -119,6 +126,11 @@ const contribution: SessionSchemaRegistry.Contribution = {
   shape: SessionFields,
   isBackground: (input) => Boolean(input.agenda),
   defaultControlProfile: (input) => (input.agenda ? "autonomous" : undefined),
+  navIdentity(input) {
+    const blueprint = SessionFields.blueprint.safeParse(input.blueprint)
+    if (!blueprint.success || !blueprint.data) return undefined
+    return { blueprint: blueprint.data }
+  },
   async created(input) {
     const agenda = SessionFields.agenda.parse(input.agenda)
     if (!agenda) return

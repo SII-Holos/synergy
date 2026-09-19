@@ -2043,11 +2043,20 @@ export namespace ToolResolver {
     } as AITool
   }
 
-  export async function resolveWithAvailability(input: Input): Promise<ResolvedTools> {
+  /**
+   * Resolve execution tools from an availability result. Callers that already
+   * hold one for this round (the turn loop resolves definitions while it
+   * assembles the prompt) pass it as `prepared` so the registry, MCP, and
+   * ephemeral sources are collected once per round instead of twice. The
+   * `availability` and `resolveWithAvailability` timing spans stay in place:
+   * the caller still measures collection, and this function still measures
+   * resolution.
+   */
+  export async function resolveWithAvailability(input: Input, prepared?: Availability): Promise<ResolvedTools> {
     using _ = log.time("resolveWithAvailability")
     const executionTools: Record<string, AITool> = {}
     const executorKinds: Record<string, ToolExecutorKind> = {}
-    const availabilityResult = await availability(input)
+    const availabilityResult = prepared ?? (await availability(input))
     const activeToolIDs = availabilityResult.visible.map((item) => item.id)
     const runtimeInput = { ...input, activeToolIDs }
 

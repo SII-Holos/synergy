@@ -5,7 +5,7 @@ import path from "path"
 import { watchManagedParent } from "../util/managed-parent"
 import { ObservabilityDbSchema } from "./db-schema"
 import { ObservabilityDbWrites } from "./db-writes"
-import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
+import { SqliteMaintenance } from "../storage/sqlite-maintenance"
 import { TelemetryProtocol } from "./telemetry-protocol"
 
 let db: Database | undefined
@@ -68,7 +68,7 @@ function enforceSize(budgetMs: number, vacuumAlways = false): void {
     clearTimeout(deferredRetryTimer)
     deferredRetryTimer = undefined
   }
-  const result = ObservabilitySqliteMaintenance.enforce({
+  const result = SqliteMaintenance.enforce({
     db,
     path: dbPathValue ?? "",
     maxBytes: config.maxSqliteBytes,
@@ -136,7 +136,7 @@ function handle(message: TelemetryProtocol.HostToWorker): void {
       ObservabilityDbSchema.configureWriteConnection(conn, fresh)
       const autoVacuum = conn.query("PRAGMA auto_vacuum").get() as { auto_vacuum?: number } | undefined
       if (!fresh && Number(autoVacuum?.auto_vacuum ?? 0) === 0) {
-        ObservabilitySqliteMaintenance.enableIncrementalVacuum(conn)
+        SqliteMaintenance.enableIncrementalVacuum(conn)
       }
       db = conn
       dbPathValue = message.dbPath

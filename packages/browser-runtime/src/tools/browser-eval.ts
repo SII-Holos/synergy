@@ -9,7 +9,13 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
     .object({
       expression: z.string().min(1).max(1_000_000),
       mode: z.enum(["readonly", "trusted"]).default("readonly"),
-      timeoutMs: z.number().int().min(100).max(120_000).optional(),
+      timeoutSeconds: z
+        .number()
+        .int()
+        .min(1)
+        .max(120)
+        .optional()
+        .describe("Maximum seconds to evaluate the script (1-120); defaults to 10."),
       maxChars: z.number().int().min(1).max(200_000).default(64_000),
     })
     .strict(),
@@ -26,7 +32,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
           type: "evaluate",
           mode: params.mode,
           expression: params.expression,
-          timeoutMs: params.timeoutMs,
+          ...(params.timeoutSeconds !== undefined ? { timeoutMs: params.timeoutSeconds * 1_000 } : {}),
         })
         if (result.type !== "evaluation") throw new Error("Browser eval returned an unexpected result.")
         const raw = JSON.stringify(result.value, null, 2) ?? String(result.value)

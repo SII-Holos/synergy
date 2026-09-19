@@ -49,7 +49,7 @@ export namespace AgentTurn {
     recovery.close()
   }
 
-  export function resize(size = DEFAULT_AGENT_WORKER_POOL_OPTIONS.size): void {
+  export function resize(size: number): void {
     if (!Number.isInteger(size) || size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
     }

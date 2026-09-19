@@ -409,8 +409,16 @@ export const LOGO_DESC = {
 } as const
 
 // ── Countdown ───────────────────────────────────────────────────────
+// Labels describe what the window actually is. `auto_background` means the
+// command keeps running in the background when the window closes, so calling
+// it a timeout would misstate what happens; only `tool_timeout` aborts.
 export const COUNTDOWN_DESC = {
-  timeoutLabel: d("countdown.timeout-label", "{remaining}s timeout"),
+  toBackground: d("countdown.to-background", "{remaining}s to background"),
+  toTimeout: d("countdown.to-timeout", "{remaining}s to timeout"),
+  remaining: d("countdown.remaining", "{remaining}s remaining"),
+  backgrounded: d("countdown.backgrounded", "backgrounded"),
+  timedOut: d("countdown.timed-out", "timed out"),
+  pastLimit: d("countdown.past-limit", "past limit"),
 } as const
 
 // ── Anchored tool card ──────────────────────────────────────────────
