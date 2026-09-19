@@ -142,8 +142,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       cfg.cortex?.maxConcurrentTasks !== undefined
         ? String(cfg.cortex.maxConcurrentTasks)
         : UI_DEFAULTS.cortexConcurrency,
-    agentWorkers:
-      cfg.execution?.agentWorkers !== undefined ? String(cfg.execution.agentWorkers) : UI_DEFAULTS.agentWorkers,
+    agentWorkers: cfg.execution?.agentWorkers != null ? String(cfg.execution.agentWorkers) : UI_DEFAULTS.agentWorkers,
     invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
     providerTtfbTimeout:
       cfg.timeout?.provider?.ttfb_sec !== undefined

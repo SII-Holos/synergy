@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync } from "fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
 import { ProcessMemory } from "../../src/process/memory-usage"
@@ -85,6 +85,62 @@ describe("ServiceMemory", () => {
       measuredChildProcessCount: 2,
       childProcessRssBytes: 100,
     })
+  })
+
+  test("applies the strictest ancestor limit along the cgroup chain", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "synergy-cgroup-chain-"))
+    directories.push(root)
+    const child = path.join(root, "session")
+    const grandchild = path.join(child, "scope")
+    mkdirSync(child)
+    mkdirSync(grandchild)
+    writeFileSync(path.join(root, "memory.max"), String(8 * 1024 * 1024 * 1024))
+    writeFileSync(path.join(child, "memory.max"), String(2 * 1024 * 1024 * 1024))
+    writeFileSync(path.join(grandchild, "memory.max"), String(6 * 1024 * 1024 * 1024))
+
+    expect(ServiceMemory.memoryLimitFromDirectories([grandchild, child, root])).toBe(2 * 1024 * 1024 * 1024)
+  })
+
+  test("treats a memory.high throttle below memory.max as the effective limit", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "synergy-cgroup-high-"))
+    directories.push(directory)
+    writeFileSync(path.join(directory, "memory.max"), String(4 * 1024 * 1024 * 1024))
+    writeFileSync(path.join(directory, "memory.high"), String(1024 * 1024 * 1024))
+
+    expect(ServiceMemory.memoryLimitFromDirectories([directory])).toBe(1024 * 1024 * 1024)
+  })
+
+  test("normalizes the unlimited sentinel and missing or invalid limits", () => {
+    const unlimited = mkdtempSync(path.join(tmpdir(), "synergy-cgroup-unlimited-"))
+    const partial = mkdtempSync(path.join(tmpdir(), "synergy-cgroup-partial-"))
+    const invalid = mkdtempSync(path.join(tmpdir(), "synergy-cgroup-invalid-"))
+    directories.push(unlimited, partial, invalid)
+    writeFileSync(path.join(unlimited, "memory.max"), "max\n")
+    writeFileSync(path.join(unlimited, "memory.high"), "max\n")
+    writeFileSync(path.join(partial, "memory.max"), String(3 * 1024 * 1024 * 1024))
+    writeFileSync(path.join(partial, "memory.high"), "max\n")
+    writeFileSync(path.join(invalid, "memory.max"), "not-a-number\n")
+    writeFileSync(path.join(invalid, "memory.high"), "-5\n")
+
+    expect(ServiceMemory.memoryLimitFromDirectories([unlimited])).toBeUndefined()
+    expect(ServiceMemory.memoryLimitFromDirectories([partial])).toBe(3 * 1024 * 1024 * 1024)
+    expect(ServiceMemory.memoryLimitFromDirectories([invalid])).toBeUndefined()
+    expect(ServiceMemory.memoryLimitFromDirectories([unlimited, partial])).toBe(3 * 1024 * 1024 * 1024)
+    expect(ServiceMemory.memoryLimitFromDirectories([])).toBeUndefined()
+  })
+
+  test("resolves a usable budget and clamps a zero limit to at least one byte", () => {
+    const zero = mkdtempSync(path.join(tmpdir(), "synergy-cgroup-zero-"))
+    directories.push(zero)
+    writeFileSync(path.join(zero, "memory.max"), "0\n")
+
+    expect(ServiceMemory.memoryLimitFromDirectories([zero])).toBe(0)
+
+    const budget = ServiceMemory.resolveMemoryBudget()
+    expect(budget.totalBytes).toBeGreaterThan(0)
+    expect(budget.limitBytes).toBeGreaterThanOrEqual(1)
+    expect(budget.limitBytes).toBeLessThanOrEqual(budget.totalBytes)
+    expect(["cgroup_v2", "host"]).toContain(budget.source)
   })
 })
 

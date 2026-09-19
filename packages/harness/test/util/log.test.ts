@@ -267,4 +267,67 @@ describe("util.log", () => {
       expect(stderr.indexOf("before init")).toBeLessThan(stderr.indexOf("after init"))
     })
   })
+
+  describe("writer buffering", () => {
+    async function runScript(source: string, home: string) {
+      const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", source], {
+        cwd: path.resolve(import.meta.dir, "../.."),
+        env: {
+          ...process.env,
+          SYNERGY_TEST_HOME: home,
+          SYNERGY_DISABLE_MODELS_FETCH: "true",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [stderr, stdout, exitCode] = await Promise.all([
+        new Response(proc.stderr).text(),
+        new Response(proc.stdout).text(),
+        proc.exited,
+      ])
+      return { stderr, stdout, exitCode }
+    }
+
+    test("delivers every buffered line on process shutdown", async () => {
+      const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-log-buffer-"))
+      const result = await runScript(
+        `
+        import { Log } from "./src/util/log.ts"
+        await Log.init({ print: false, dev: true, level: "INFO" })
+        const log = Log.create({ service: "buffer-test" })
+        for (let index = 0; index < 200; index++) log.info("buffered-line-" + index)
+      `,
+        home,
+      )
+      const written = await Bun.file(path.join(home, ".synergy", "log", "dev.log"))
+        .text()
+        .catch(() => "")
+      await fs.rm(home, { recursive: true, force: true })
+
+      expect(result.exitCode).toBe(0)
+      expect(written.match(/buffered-line-/g)?.length).toBe(200)
+      expect(written).toContain("buffered-line-199")
+    })
+
+    test.skipIf(process.platform !== "linux")("flushes buffered lines to stderr when the writer errors", async () => {
+      const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-log-error-"))
+      const logDir = path.join(home, ".synergy", "log")
+      await fs.mkdir(logDir, { recursive: true })
+      await fs.symlink("/dev/full", path.join(logDir, "dev.log"))
+
+      const result = await runScript(
+        `
+        import { Log } from "./src/util/log.ts"
+        await Log.init({ print: false, dev: true, level: "INFO" })
+        Log.create({ service: "error-test" }).info("error-path-line")
+        Log.flush()
+      `,
+        home,
+      )
+      await fs.rm(home, { recursive: true, force: true })
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stderr).toContain("error-path-line")
+    })
+  })
 })

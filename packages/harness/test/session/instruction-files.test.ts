@@ -5,6 +5,7 @@ import path from "path"
 import { Config } from "../../src/config/config"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
+import { InstructionFiles } from "../../src/session/instruction-files"
 import { SystemPrompt } from "../../src/session/system"
 import type { Workspace } from "../../src/session/types"
 import { Log } from "../../src/util/log"
@@ -22,6 +23,16 @@ async function customPromptFor(scope: Scope, workspacePath?: string) {
       await Config.state.reset()
       return SystemPrompt.custom()
     },
+  })
+}
+
+async function loadPromptFor(scope: Scope, workspacePath?: string) {
+  return ScopeContext.provide({
+    scope,
+    workspace: workspacePath
+      ? ({ type: "main", path: workspacePath, scopeID: scope.id } satisfies Workspace)
+      : undefined,
+    fn: () => SystemPrompt.custom(),
   })
 }
 
@@ -179,5 +190,40 @@ describe("instruction files", () => {
 
     expect(joined).toContain("abcd")
     expect(joined).not.toContain("abcde")
+  })
+
+  test("reuses loaded parts across rounds of one turn and refreshes them when the configuration reloads", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "AGENTS.md"), "first revision")
+      },
+    })
+    const scope = await tmp.scope()
+    const doc = path.join(tmp.path, "AGENTS.md")
+
+    await customPromptFor(scope)
+    InstructionFiles.resetStatsForTest()
+
+    const first = await loadPromptFor(scope)
+    expect(first.join("\n\n")).toContain("first revision")
+
+    const second = await loadPromptFor(scope)
+    expect(second.join("\n\n")).toContain("first revision")
+    expect(InstructionFiles.stats().fileReads).toBe(0)
+    expect(InstructionFiles.stats().fileReuses).toBeGreaterThan(0)
+
+    await Bun.write(doc, "edited without a config reload")
+    const edited = await loadPromptFor(scope)
+    expect(edited.join("\n\n")).toContain("edited without a config reload")
+
+    await Bun.write(doc, "served after the reload")
+    await ScopeContext.provide({ scope, fn: () => Config.state.reset() })
+    InstructionFiles.resetStatsForTest()
+    const reloaded = await loadPromptFor(scope)
+    expect(reloaded.join("\n\n")).toContain("served after the reload")
+    expect(reloaded.join("\n\n")).not.toContain("edited without a config reload")
+    expect(InstructionFiles.stats().fileReads).toBeGreaterThan(0)
+    expect(InstructionFiles.stats().fileReuses).toBe(0)
   })
 })

@@ -29,7 +29,7 @@ export const WebFetchTool = Tool.define("webfetch", {
       .enum(["text", "markdown", "html"])
       .default("markdown")
       .describe("The format to return the content in (text, markdown, or html). Defaults to markdown."),
-    timeout: z.number().describe("Optional timeout in seconds (max 120)").optional(),
+    timeoutSeconds: z.number().describe("Optional timeout in seconds (max 120); defaults to 30.").optional(),
   }),
   async execute(params, ctx) {
     ctx.abort.throwIfAborted()
@@ -59,15 +59,18 @@ export const WebFetchTool = Tool.define("webfetch", {
       metadata: {
         url: params.url,
         format: params.format,
-        timeout: params.timeout,
+        timeoutSeconds: params.timeoutSeconds,
       },
     })
     SearchGuard.recordAttempt(searchScope, "webfetch", params)
 
-    const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
+    const timeoutMs = Math.min((params.timeoutSeconds ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), timeout)
+    const timeoutId = setTimeout(
+      () => controller.abort(new DOMException("Request timed out", "TimeoutError")),
+      timeoutMs,
+    )
     const signal = AbortSignal.any([controller.signal, ctx.abort])
 
     // Build Accept header based on requested format with q parameters for fallbacks

@@ -20,6 +20,10 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { CortexOutput } from "@ericsanchezok/synergy-harness/test/internal/cortex/output"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 
+function emptyAvailability(): ToolResolver.Availability {
+  return { visible: [], diagnostics: new Map(), autoExpandable: new Set() }
+}
+
 function testModel() {
   return {
     id: "test-model",
@@ -83,7 +87,7 @@ function installDagLoopMocks(options?: {
   const originalGetAgent = Agent.get
   const originalGetAvailableModel = Agent.getAvailableModel
   const originalConfigCurrent = Config.current
-  const originalDefinitions = ToolResolver.definitions
+  const originalAvailability = ToolResolver.availability
   const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
   const originalBuildPlan = PromptBudgeter.buildPlan
   const originalDecide = PromptBudgeter.decide
@@ -103,7 +107,7 @@ function installDagLoopMocks(options?: {
     compaction: { auto: true, maxHistoryImages: 8 },
     library: { memory: { enabled: false }, experience: { retrieve: false } },
   }))
-  ;(ToolResolver.definitions as any) = mock(async () => [])
+  ;(ToolResolver.availability as any) = mock(async () => emptyAvailability())
   ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
     definitions: [],
     executionTools: {},
@@ -148,7 +152,7 @@ function installDagLoopMocks(options?: {
     ;(Agent.get as any) = originalGetAgent
     ;(Agent.getAvailableModel as any) = originalGetAvailableModel
     ;(Config.current as any) = originalConfigCurrent
-    ;(ToolResolver.definitions as any) = originalDefinitions
+    ;(ToolResolver.availability as any) = originalAvailability
     ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
     ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
     ;(PromptBudgeter.decide as any) = originalDecide

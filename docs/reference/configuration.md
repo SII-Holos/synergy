@@ -41,7 +41,7 @@ File: `00-general.jsonc` · Merge: merge
 | `rerank` | RerankConfig |  |
 | `theme` | string (optional) | Theme name to use for the interface |
 | `keybinds` | Keybinds.optional (optional) | Custom keybind configurations |
-| `toast` | "info" \| "success" \| "warning" \| "error" (optional) | Toast notification preferences |
+| `toast` | object (optional) | Toast notification preferences |
 | `compactReasoning` | boolean (optional) | Show live reasoning in a compact single-line viewport |
 | `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
 | `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced) |
@@ -62,7 +62,7 @@ File: `10-models.jsonc` · Merge: merge
 | `long_context_model` | string (optional) | Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. |
 | `creative_model` | string (optional) | Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. |
 | `vision_model` | string (optional) | Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. |
-| `role_variant` | string (optional) | Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. |
+| `role_variant` | record (optional) | Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. |
 | `quick_switcher` | QuickSwitcher.optional (optional) | Quick switcher model visibility preferences |
 
 ## Providers
@@ -71,9 +71,9 @@ File: `20-providers.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `provider` | string (optional) | Custom provider configurations and model overrides |
-| `enabled_providers` | string (optional) | When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters |
-| `disabled_providers` | string (optional) | Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters |
+| `provider` | record (optional) | Custom provider configurations and model overrides |
+| `enabled_providers` | array (optional) | When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters |
+| `disabled_providers` | array (optional) | Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters |
 
 ## Library
 
@@ -89,7 +89,7 @@ File: `40-mcp.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `mcp` | object (optional) | MCP (Model Context Protocol) server configurations |
+| `mcp` | record (optional) | MCP (Model Context Protocol) server configurations |
 | `mcpDefaults` | McpDefaults.optional (optional) | Default settings applied to all MCP servers that don't override them |
 
 ## Plugins
@@ -99,7 +99,7 @@ File: `50-plugins.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `plugin` | string (optional) |  |
-| `pluginConfig` | string (optional) | Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config. |
+| `pluginConfig` | record (optional) | Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config. |
 | `pluginRuntimePolicy` | PluginRuntimePolicy.optional (optional) | Plugin runtime isolation policy configuration |
 | `pluginMarketplace` | PluginMarketplace.optional (optional) | Public plugin marketplace registry configuration |
 
@@ -119,12 +119,12 @@ File: `60-agents.jsonc` · Merge: merge
 | --- | --- | --- |
 | `default_agent` | string (optional) | Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid. |
 | `agent` | object (optional) | Agent configuration |
-| `instructions` | string (optional) | Additional instruction files or patterns to include |
-| `project_doc_fallback_filenames` | string (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
+| `instructions` | array (optional) | Additional instruction files or patterns to include |
+| `project_doc_fallback_filenames` | array (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
 | `project_doc_max_bytes` | number (optional) | Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery) |
-| `category` | string (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
-| `prompt` | object (optional) | Include the git coauthor reminder in agent prompts (default: true) |
-| `external_agent` | string (optional) | External agent configurations (e.g. codex, claude-code) |
+| `category` | record (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
+| `prompt` | object (optional) |  |
+| `external_agent` | record (optional) | External agent configurations (e.g. codex, claude-code) |
 
 ## Commands
 
@@ -132,7 +132,7 @@ File: `70-commands.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `command` | string (optional) |  |
+| `command` | array (optional) |  |
 
 ## Permissions
 
@@ -141,7 +141,7 @@ File: `80-permissions.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `permission` | Permission.optional (optional) |  |
-| `tools` | string (optional) |  |
+| `tools` | record (optional) |  |
 | `controlProfile` | ControlProfileId.optional (optional) | Default control profile applied to all agents |
 | `nonInteractiveControlProfile` | "autonomous" \| "full_access" (optional) | Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with. |
 | `fullAccessAcknowledged` | boolean (optional) | Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary. |
@@ -154,7 +154,7 @@ File: `90-channels.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `channel` | string (optional) | Channel configurations for messaging platform integrations |
+| `channel` | record (optional) | Channel configurations for messaging platform integrations |
 
 ## Holos
 
@@ -163,7 +163,7 @@ File: `100-holos.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `holos` | Holos.optional (optional) | Holos platform configuration |
-| `enterprise` | object (optional) | Enterprise URL |
+| `enterprise` | object (optional) |  |
 
 ## Email
 
@@ -190,17 +190,17 @@ File: `120-runtime.jsonc` · Merge: merge
 | `server` | Server.optional (optional) | Server configuration for synergy serve and web commands |
 | `timeout` | number (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
 | `cortex` | object (optional) | Cortex task scheduling configuration |
-| `execution` | object (optional) | Time an excess idle Agent worker remains warm before retirement (default: 60000) |
+| `execution` | object (optional) | Process isolation, worker recycling, and bounded execution scheduling |
 | `watcher` | object (optional) |  |
-| `question` | object (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
-| `compaction` | object (optional) | Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false). |
+| `question` | object (optional) |  |
+| `compaction` | object (optional) |  |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
-| `formatter` | object (optional) |  |
+| `formatter` | union (optional) |  |
 | `lsp` | boolean (optional) | Expose the LSP tool; permission checks still apply (default: false) |
 | `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
-| `lspDiagnostics` | "error" \| "warning" (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
-| `toolExposure` | object (optional) | Expose the LSP tool; permission checks still apply (default: false) |
-| `boss` | object (optional) | Re-inject the versioned world-overview briefing every N days (default: disabled) |
+| `lspDiagnostics` | object (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
+| `toolExposure` | object (optional) |  |
+| `boss` | object (optional) |  |
 
 ## Voice
 
