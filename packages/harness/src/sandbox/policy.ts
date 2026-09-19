@@ -309,6 +309,41 @@ export function readDenyHomeDirs(): string[] {
     ...(process.env.SYNERGY_TEST_HOME ? [process.env.SYNERGY_TEST_HOME] : []),
   ])
 }
+
+/**
+ * Split read denies into the ones a backend must emit BEFORE a writable root's
+ * allow and the ones it must emit AFTER it.
+ *
+ * Both backends resolve an overlapping allow and deny by rule order, not by
+ * specificity: Seatbelt applies the last matching rule and bwrap applies the
+ * last mount, so which one is emitted second decides the outcome. Ordering
+ * therefore has to follow containment:
+ *
+ * - a deny CONTAINING a writable root is emitted before it, so the deeper
+ *   writable allow wins and a workspace nested inside a credential directory
+ *   keeps working while its credential siblings stay denied;
+ * - a deny equal to or INSIDE a writable root is emitted after it, so the deny
+ *   wins; a deny equal to a writable root is fail-closed this way.
+ *
+ * Without the second half, a writable root re-exposes every deny inside it —
+ * which is exactly why the deny set used to prune those entries, and why
+ * restoring them requires this ordering. Callers must canonicalize both sides
+ * in the same spelling the rules are emitted in.
+ */
+export function partitionDeniesByWritableRoot(
+  denies: string[],
+  writableRoots: string[],
+): { beforeWritableRoots: string[]; afterWritableRoots: string[] } {
+  const roots = writableRoots.map((root) => normalizeSlashes(root).replace(/\/+$/, ""))
+  const insideWritableRoot = (deny: string) => {
+    const candidate = normalizeSlashes(deny).replace(/\/+$/, "")
+    return roots.some((root) => candidate === root || candidate.startsWith(root + "/"))
+  }
+  return {
+    beforeWritableRoots: denies.filter((deny) => !insideWritableRoot(deny)),
+    afterWritableRoots: denies.filter(insideWritableRoot),
+  }
+}
 export const PROTECTED_METADATA_PATH_NAMES = [".git", ".agents", ".codex"]
 
 /**
