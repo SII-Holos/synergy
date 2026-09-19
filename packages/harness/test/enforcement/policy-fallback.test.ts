@@ -90,10 +90,13 @@ describe("Policy classification fallback", () => {
   /**
    * The single per-profile regression assertion for this change.
    *
-   * `guarded` and `autonomous` must be indistinguishable from their documented
-   * pre-change behavior, and `full_access` must differ only where classification
-   * is unavailable. Stated as a difference rather than a snapshot so that a
-   * future edit to either profile's failure handling fails here first.
+   * `guarded` and `autonomous` must be indistinguishable in their *failure*
+   * handling, and `full_access` must differ only where classification is
+   * unavailable. Stated as a difference rather than a snapshot so that a
+   * future edit to either profile's failure handling fails here first. The
+   * healthy baseline reflects the classifier's host-level hardline verdict
+   * for `rm -rf /` (non-bypassable, denied under every non-full_access
+   * profile) rather than a risk the profiles could ask about.
    */
   test("guarded and autonomous are unchanged and full_access differs only when classification is unavailable", async () => {
     const base = { activeWorkspace: import.meta.dir, workspaceType: "worktree" as const }
@@ -108,11 +111,15 @@ describe("Policy classification fallback", () => {
       full_access: (await gateFor("full_access")).evaluate("bash", { command }),
     }
 
-    expect(healthy.guarded).toMatchObject({ decision: "ask", opaque: false })
+    expect(healthy.guarded).toMatchObject({
+      decision: "deny",
+      opaque: false,
+      refusal: { matchedPermission: "shell_hardline", permanent: true },
+    })
     expect(healthy.autonomous).toMatchObject({
       decision: "deny",
       opaque: false,
-      refusal: { matchedPermission: "shell_destructive", permanent: true },
+      refusal: { matchedPermission: "shell_hardline", permanent: true },
     })
     expect(healthy.full_access).toMatchObject({ decision: "allow", opaque: false })
 
