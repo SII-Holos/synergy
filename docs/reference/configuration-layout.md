@@ -202,6 +202,8 @@ String values support two substitutions:
 
 Use file or environment references for secrets instead of checking credentials into project config. Provider, MCP, Holos, and plugin auth stores remain separate from ordinary JSONC configuration.
 
+Substitution happens at read time only. Domain writes — Settings saves, `synergy config` writes, and config import — edit the raw fragment with targeted JSONC edits: `{env:}`/`{file:}` reference text stays a reference, `//` comments survive, untouched entries remain byte-identical, and a save that changes nothing does not rewrite the file at all. A patch value that merely echoes a reference's resolved value (for example a redacted Settings round-trip) restores the reference instead of writing the literal; a genuinely new value replaces the reference with the literal. Domain fragments are written user-only (`0600`). Only export resolves references into its payload — see the export caveat in [Config export](#config-export).
+
 Malformed JSONC is a startup/config error with line and column information. When the root remains valid but individual schema sections are invalid, Synergy can drop those sections, warn, and retain usable config; do not rely on this recovery as validation.
 
 ## Agents and Commands from Markdown
@@ -631,7 +633,7 @@ Export secrets handling:
 Additional export semantics:
 
 - **Export is read-only.** A domain file that fails to parse is skipped and reported in the result's `warnings` (and on stderr for the CLI); it is not quarantined. This differs from the startup/reload path, which moves broken files aside.
-- **`{env:VAR}` and `{file:path}` references are resolved at read time.** An export therefore contains resolved values, not the references: `--include-secrets` backups materialize the referenced secret, and re-importing an export produced from referenced values writes those values back as plain literals. If you rely on env/file indirection, re-add the `{env:}`/`{file:}` references after importing.
+- **`{env:VAR}` and `{file:path}` references are resolved at read time.** An export therefore contains resolved values, not the references, and `--include-secrets` backups materialize the referenced secret. Re-importing an export on a machine where the reference still resolves to the exported value restores the reference text; where it does not (missing file, changed secret, different machine), the exported value is written as a plain literal.
 - **`plugin` specs are exported relative to the config directory** (`./dev-plugins/foo` stays `./dev-plugins/foo`) so the payload is machine-independent in shape. The referenced plugin directories themselves commonly differ across machines — after a cross-machine import, re-check plugin paths before reloading.
 - **The HTTP API is always redacted.** `GET /config/export` rejects `includeSecrets=true` with `400 ConfigExportSecretsRejectedError`; plaintext export is available only through the local CLI (`synergy config export --include-secrets`).
 

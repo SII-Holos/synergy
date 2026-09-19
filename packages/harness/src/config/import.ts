@@ -1,7 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { applyEdits, modify, parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
+import { parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
 import z from "zod"
 import { Global } from "../global"
 import { RuntimeSchema } from "./reload-schema"
@@ -11,6 +11,7 @@ import { Scope as WorkspaceScope } from "../scope"
 import { Config } from "./config"
 import { ConfigDomain } from "./domain"
 import * as Schema from "./schema"
+import { DOMAIN_FRAGMENT_MODE, MalformedFragmentError, renderDomainFragment } from "./fragment-render"
 
 export namespace ConfigImport {
   export const MAX_SOURCE_BYTES = 1024 * 1024
@@ -347,7 +348,7 @@ export namespace ConfigImport {
         const staged = `${domain.path}.tmp-${token}`
         const backup = `${domain.path}.backup-${token}`
         await fs.mkdir(path.dirname(domain.path), { recursive: true })
-        await Bun.write(staged, renderJsonc(raw.content, next, domain.path))
+        await Bun.write(staged, await renderJsonc(raw.content, next, domain.path), { mode: DOMAIN_FRAGMENT_MODE })
         snapshots.push({
           domain,
           filepath: domain.path,
@@ -481,28 +482,16 @@ export namespace ConfigImport {
     )
   }
 
-  function renderJsonc(current: string, next: Schema.Info, filepath: string) {
-    if (!current.trim()) return Config.serializeConfig(next)
-    const bom = current.charCodeAt(0) === 0xfeff ? "\uFEFF" : ""
-    let result = bom ? current.slice(1) : current
-    const errors: ParseError[] = []
-    const parsed = parseJsonc(result, errors, { allowTrailingComma: true })
-    if (errors.length > 0 || !parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  async function renderJsonc(current: string, next: Schema.Info, filepath: string) {
+    try {
+      return (await renderDomainFragment({ current, next, filepath, renderFresh: Config.serializeConfig })).content
+    } catch (error) {
+      if (!(error instanceof MalformedFragmentError)) throw error
       throw new Config.JsonError({
         path: filepath,
         message: "CONFIG_IMPORT_INVALID_EXISTING_JSONC: Refusing to overwrite a malformed config domain file.",
       })
     }
-    const keys = new Set([...Object.keys(parsed), ...Object.keys(next)])
-    for (const key of keys) {
-      result = applyEdits(
-        result,
-        modify(result, [key], (next as Record<string, unknown>)[key], {
-          formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
-        }),
-      )
-    }
-    return `${bom}${result.trimEnd()}\n`
   }
 
   async function readFileSnapshot(filepath: string) {

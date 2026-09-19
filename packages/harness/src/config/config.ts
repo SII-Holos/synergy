@@ -22,6 +22,7 @@ import { BusEvent } from "../bus/bus-event"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { loadFragments } from "./fragment"
+import { DOMAIN_FRAGMENT_MODE, MalformedFragmentError, renderDomainFragment } from "./fragment-render"
 import * as Schema from "./schema"
 import { ConfigDomain } from "./domain"
 import { ConfigExtensions } from "./extensions"
@@ -685,7 +686,9 @@ export namespace Config {
         const filepath = path.join(tempDir, domain.filename)
         const existing = await loadFile(filepath, { addSchema: false })
         const fragment = split.get(domain.id) ?? {}
-        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)))
+        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)), {
+          mode: DOMAIN_FRAGMENT_MODE,
+        })
       }
 
       await fs.mkdir(path.dirname(domainDir), { recursive: true })
@@ -1538,7 +1541,37 @@ export namespace Config {
   async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
     const filepath = ConfigDomain.filepath(id, root)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
-    await Bun.write(filepath, serializeConfig(config))
+    let content = serializeConfig(config)
+    let changed = true
+    try {
+      const rendered = await renderDomainFragment({
+        current: await Bun.file(filepath)
+          .text()
+          .catch(() => ""),
+        next: config,
+        filepath,
+        renderFresh: serializeConfig,
+      })
+      content = rendered.content
+      changed = rendered.changed
+    } catch (error) {
+      // A malformed fragment cannot be edited in place; replace it with the
+      // valid merged config so the save still lands, matching the quarantine
+      // recovery contract instead of turning silent overwrites into failures.
+      if (!(error instanceof MalformedFragmentError)) throw error
+    }
+    // An unchanged document skips the write entirely: an empty Settings save
+    // must not churn the fragment's mtime or wake the file watcher.
+    if (!changed) {
+      await fs
+        .chmod(filepath, DOMAIN_FRAGMENT_MODE)
+        .catch((error) => log.warn("failed to restrict config fragment permissions", { filepath, error }))
+      return
+    }
+    await Bun.write(filepath, content, { mode: DOMAIN_FRAGMENT_MODE })
+    await fs
+      .chmod(filepath, DOMAIN_FRAGMENT_MODE)
+      .catch((error) => log.warn("failed to restrict config fragment permissions", { filepath, error }))
   }
 
   export function serializeConfig(config: Partial<Info>) {
