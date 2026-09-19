@@ -24,6 +24,7 @@ The primary checkout, pre-existing checkouts, and active Synergy runtime may be 
 - Preserve unrelated dirty and untracked files; inspect status again before staging and stage only files owned by the current task.
 - Do not use destructive Git commands, force pushes, or hook bypasses without explicit user authority and a reviewed recovery plan.
 - Push, open a PR, or mutate external systems only when the user requests that action.
+- A pull request whose intent corresponds to a BlueprintLoop is accepted only when that loop reached `completed` through `blueprint_loop_approve`. An executor's self-assessment, or a loop that stalled in `auditing`, failed, or was rejected without a fresh audit, is not acceptance. State the loop's final status and audit conclusion in the pull request body.
 - Keep local/runtime paths, session/Scope IDs, logs, credentials, and private endpoints out of commit messages, PR bodies, comments, and reviews. Every agent-created commit uses a concise conventional type and the `Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>` footer.
 - Never stop, restart, signal, or modify the `SYNERGY_HOME` of the Synergy instance carrying the current task.
 - Run source changes in an isolated second home with explicit alternate ports. Load `develop-synergy` for the exact workflow.
