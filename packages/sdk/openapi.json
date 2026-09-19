@@ -2855,6 +2855,41 @@
         ]
       }
     },
+    "/global/activity": {
+      "get": {
+        "operationId": "global.activity",
+        "summary": "Get global activity",
+        "description": "Report whether any session or background job is currently working, across every scope. Non-idle session statuses (busy, retry, recovering) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
+        "responses": {
+          "200": {
+            "description": "Global activity snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalActivity"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/session": {
       "get": {
         "operationId": "global.session.search",
@@ -32147,6 +32182,25 @@
         },
         "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
+      "GlobalActivity": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backgroundJobs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["active", "sessions", "backgroundJobs"]
+      },
       "SessionRecoveringReason": {
         "type": "string",
         "enum": ["workflow", "incomplete-turn", "pending-reply"]
@@ -34625,9 +34679,9 @@
                     "maximum": 9007199254740991
                   },
                   "retentionMs": {
-                    "description": "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days); retention stays off until this is set",
+                    "description": "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.",
                     "type": "integer",
-                    "exclusiveMinimum": 0,
+                    "minimum": 0,
                     "maximum": 9007199254740991
                   },
                   "walCheckpointIntervalMs": {

@@ -19,6 +19,7 @@ import {
 } from "./directory-picker.js"
 import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
 import type { DesktopBadgeState } from "./ipc-contract.js"
+import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
 
 const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
@@ -172,6 +173,23 @@ const desktopBadge = {
   },
 }
 
+const desktopPower = {
+  get() {
+    return ipcRenderer.invoke("desktop.power.get") as Promise<DesktopPowerSnapshot>
+  },
+  set(update: DesktopPowerUpdate) {
+    return ipcRenderer.invoke("desktop.power.set", update) as Promise<DesktopPowerSnapshot>
+  },
+  activityChanged() {
+    return ipcRenderer.invoke("desktop.power.activityChanged") as Promise<void>
+  },
+  onEvent(listener: (event: DesktopPowerEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: DesktopPowerEvent) => listener(payload)
+    ipcRenderer.on("desktop-power:event", wrapped)
+    return () => ipcRenderer.off("desktop-power:event", wrapped)
+  },
+}
+
 contextBridge.exposeInMainWorld("synergyDesktop", {
   platform: "desktop",
   openDirectoryPickerDialog,
@@ -183,6 +201,7 @@ contextBridge.exposeInMainWorld("synergyDesktop", {
   theme: desktopTheme,
   window: desktopWindow,
   badge: desktopBadge,
+  power: desktopPower,
   zoom: desktopZoom,
   browserNative,
 })
