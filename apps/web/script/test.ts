@@ -34,6 +34,7 @@ const playwrightIsolated = [
   "test/components/menu-field/menu-field.test.ts",
   "test/components/prompt-input/prompt-input-hover-style.test.ts",
   "test/components/prompt-input/pending-attachment-card.dom.test.tsx",
+  "test/components/prompt-input/stop-control.render.test.ts",
   "test/components/settings/components/ThemePicker.behavior.test.tsx",
   "test/components/settings/settings-dialog-dismiss.test.tsx",
   "test/components/settings/settings-mobile-layout.test.ts",
@@ -65,6 +66,7 @@ await runBatchedTests({
   browserOnly: [
     "test/components/kanban/full-access-ack.test.ts",
     "test/components/prompt-input/full-access-ack.test.ts",
+    "test/components/prompt-input/stop-control.render.test.ts",
     "test/components/settings/panels/StoragePanel.test.ts",
     "test/components/settings/panels/McpPanel.render.test.ts",
     "test/components/settings/panels/full-access-ack.test.ts",
