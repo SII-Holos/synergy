@@ -50,6 +50,7 @@ interface Issue {
     | "extra_branches"
     | "detached_head"
     | "gc_needed"
+    | "unpushed"
   level: "warn" | "critical"
   message: string
   detail: Record<string, unknown>
