@@ -692,7 +692,7 @@ export class StoreTransaction {
 }
 
 export class TransactionalStore {
-  private readonly writes = new StorageQueue()
+  private readonly writes = new StorageQueue("store.writes")
   private readonly owner = randomUUID()
   private closing?: Promise<void>
   private unavailable?: Error
@@ -880,6 +880,12 @@ export class TransactionalStore {
    * Evidence owners with the recency of their newest record. Only keys and
    * timestamps are read, so the scan stays bounded by owner count rather than
    * by how much evidence each owner holds.
+   *
+   * Rollout records group by the indexed `scope_id`/`session_id` columns;
+   * extracting those segments from the key text per row made this the most
+   * expensive statement in a retention pass by an order of magnitude. Operation
+   * records store no such columns, but there are only thousands of them, so the
+   * key-text form stays bounded there.
    */
   async evidenceOwners(): Promise<
     Array<{ keyPrefix: string[]; kind: string; scopeID: string; ownerID: string; newest: number; records: number }>
@@ -889,10 +895,14 @@ export class TransactionalStore {
     // no budget for retention to defend; pruning is SQLite-only.
     if (this.driver.backend !== "sqlite") return []
     const rows = await this.driver.query(
-      `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind IN ('rollout', 'operations') AND body IS NOT NULL GROUP BY json_extract(key_text, '$[0]'), json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
+      `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL GROUP BY scope_id, session_id`,
       [this.options.namespace],
     )
-    return rows.flatMap((row) => {
+    const operations = await this.driver.query(
+      `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'operations' AND body IS NOT NULL GROUP BY json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
+      [this.options.namespace],
+    )
+    return [...rows, ...operations].flatMap((row) => {
       const key = JSON.parse(String(row.key_text)) as string[]
       if (key.length < 4) return []
       return [
@@ -911,13 +921,19 @@ export class TransactionalStore {
   /**
    * Runs one offline SQLite maintenance operation through the owning worker.
    * PostgreSQL keeps no in-file freelist, so it reports nothing to do.
+   *
+   * Maintenance holds the same serialized writer an ordinary transaction does,
+   * so it acquires the same admission slot. Reserving the writer without
+   * consuming a slot would let a long maintenance pass hold every waiting
+   * caller past its deadline while the queue still reports itself as free.
    */
   async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     if (!(this.driver instanceof SqliteDriver))
       return { changed: false, autoVacuum: "none", releasedPages: 0, freelistPages: 0 }
-    return this.driver.maintain(request)
+    const driver = this.driver
+    return this.writes.run(() => driver.maintain(request))
   }
 
   async operationReceipt(operationID: string) {

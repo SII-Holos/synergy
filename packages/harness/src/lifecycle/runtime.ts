@@ -204,7 +204,7 @@ export namespace RuntimeHandle {
       StorageRetention.schedule({
         current: () => ({
           retentionMs: ObservabilityConfig.current().storage.retentionMs,
-          maxBytes: ObservabilityConfig.current().storage.maxSqliteBytes,
+          maxBytes: ObservabilityConfig.current().storage.retentionBytes,
         }),
         liveSessionIDs: () => SessionManager.liveSessionIDs(),
       })

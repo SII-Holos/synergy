@@ -52,6 +52,7 @@ export namespace ObservabilityConfig {
       sqliteEnabled?: boolean
       jsonlMirrorEnabled?: boolean
       maxSqliteBytes?: number
+      retentionBytes?: number
       retentionMs?: number
       walCheckpointIntervalMs?: number
     }
@@ -79,6 +80,7 @@ export namespace ObservabilityConfig {
       sqliteEnabled: z.boolean(),
       jsonlMirrorEnabled: z.boolean(),
       maxSqliteBytes: z.number(),
+      retentionBytes: z.number(),
       retentionMs: z.number(),
       walCheckpointIntervalMs: z.number(),
     }),
@@ -133,6 +135,13 @@ export namespace ObservabilityConfig {
       sqliteEnabled: true,
       jsonlMirrorEnabled: false,
       maxSqliteBytes: 250 * 1024 * 1024,
+      // A backstop above the retention window's steady state rather than a
+      // target. Measured heavy use produced ~4GB/day of evidence at roughly 5x
+      // storage overhead, so a 7-day window can exceed this: a budget at or
+      // below that is unreachable and makes every sweep delete destructively
+      // without converging. A window whose steady state does not fit is
+      // reported as an infeasible budget instead of being pruned in a loop.
+      retentionBytes: 40 * 1024 ** 3,
       retentionMs: 7 * 24 * 60 * 60 * 1000,
       walCheckpointIntervalMs: 60_000,
     },
@@ -187,6 +196,10 @@ export namespace ObservabilityConfig {
             observability?.maxBytes ?? defaults.storage.maxSqliteBytes,
           ),
         ),
+        // Deliberately not narrowed by `observability.maxBytes`: that value caps
+        // the observability database, and clamping the authoritative budget to
+        // it is what made retention permanently over budget.
+        retentionBytes: Math.max(1024 * 1024, raw?.storage?.retentionBytes ?? defaults.storage.retentionBytes),
         // The window bounds how far back budgeted pruning may go: below an hour
         // it would remove evidence an in-flight task still needs, and beyond 90
         // days the byte budget alone governs. 0 disables retention entirely.

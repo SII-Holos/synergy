@@ -212,7 +212,7 @@ export namespace Storage {
     if (!pack) {
       pack = {
         pack: new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts")),
-        gate: new StorageQueue(),
+        gate: new StorageQueue("artifact.gate"),
       }
       artifactPacks.set(handle.store, pack)
     }
