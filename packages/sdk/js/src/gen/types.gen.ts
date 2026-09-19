@@ -2677,7 +2677,7 @@ export type ObservabilityConfig = {
        */
       maxSqliteBytes?: number
       /**
-       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days); retention stays off until this is set
+       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds maxSqliteBytes.
        */
       retentionMs?: number
       walCheckpointIntervalMs?: number

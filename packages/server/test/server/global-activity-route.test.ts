@@ -39,7 +39,7 @@ test("global activity reports busy sessions, detached background work, and no-st
       expect(before.response.headers.get("cache-control")).toBe("no-store")
       expect(before.body).toEqual({
         active: before.body.sessions > 0 || before.body.backgroundJobs > 0,
-        sessions: Object.keys(await SessionManager.listStatuses()).length,
+        sessions: SessionManager.activeRuntimeCount(),
         backgroundJobs: LoopJob.activeBackgroundCount(),
       })
 
