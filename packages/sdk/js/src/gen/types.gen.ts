@@ -1115,6 +1115,24 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageUpgradeStatus = {
+  ready: true
+  pending: number
+  partial: number
+  imported: number
+  quarantined: number
+  total: number
+}
+
+export type StorageUpgradeCatalog = {
+  items: Array<{
+    sessionID: string
+    scopeID: string
+    status: "pending" | "partial" | "imported" | "quarantined"
+  }>
+  next?: Array<string>
+}
+
 export type StorageSnapshotOwnerCounts = {
   legacy: number
   shared: number
@@ -11513,6 +11531,60 @@ export type PerformanceEventsStreamResponses = {
    */
   200: unknown
 }
+
+export type StorageUpgradeStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/upgrade"
+}
+
+export type StorageUpgradeStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeStatusError = StorageUpgradeStatusErrors[keyof StorageUpgradeStatusErrors]
+
+export type StorageUpgradeStatusResponses = {
+  /**
+   * Historical upgrade counts
+   */
+  200: StorageUpgradeStatus
+}
+
+export type StorageUpgradeStatusResponse = StorageUpgradeStatusResponses[keyof StorageUpgradeStatusResponses]
+
+export type StorageUpgradeCatalogData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    after?: [string, string, string, string]
+    limit?: number
+  }
+  url: "/global/storage/upgrade/sessions"
+}
+
+export type StorageUpgradeCatalogErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeCatalogError = StorageUpgradeCatalogErrors[keyof StorageUpgradeCatalogErrors]
+
+export type StorageUpgradeCatalogResponses = {
+  /**
+   * One page from the immutable upgrade cohort
+   */
+  200: StorageUpgradeCatalog
+}
+
+export type StorageUpgradeCatalogResponse = StorageUpgradeCatalogResponses[keyof StorageUpgradeCatalogResponses]
 
 export type StorageSnapshotUsageData = {
   body?: never

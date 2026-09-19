@@ -1648,6 +1648,105 @@
         ]
       }
     },
+    "/global/storage/upgrade": {
+      "get": {
+        "operationId": "storage.upgradeStatus",
+        "summary": "Get historical data upgrade progress",
+        "description": "The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.",
+        "responses": {
+          "200": {
+            "description": "Historical upgrade counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUpgradeStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.upgradeStatus({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/storage/upgrade/sessions": {
+      "get": {
+        "operationId": "storage.upgradeCatalog",
+        "summary": "List unresolved historical Sessions",
+        "responses": {
+          "200": {
+            "description": "One page from the immutable upgrade cohort",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUpgradeCatalog"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minItems": 4,
+              "maxItems": 4,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.upgradeCatalog({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/storage/snapshot": {
       "get": {
         "operationId": "storage.snapshot.usage",
@@ -31190,6 +31289,72 @@
           }
         },
         "required": ["sentAt", "metrics"]
+      },
+      "StorageUpgradeStatus": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "const": true
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "partial": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "imported": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["ready", "pending", "partial", "imported", "quarantined", "total"]
+      },
+      "StorageUpgradeCatalog": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionID": {
+                  "type": "string"
+                },
+                "scopeID": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["pending", "partial", "imported", "quarantined"]
+                }
+              },
+              "required": ["sessionID", "scopeID", "status"]
+            }
+          },
+          "next": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["items"]
       },
       "StorageSnapshotOwnerCounts": {
         "type": "object",

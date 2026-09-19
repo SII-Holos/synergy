@@ -59,7 +59,21 @@ export namespace RolloutPending {
    * pending state and falls back to the exhaustive scan, so every failure
    * mode lands on the safe side.
    */
+  async function undiscoveredOwners() {
+    const [compat] = await Storage.readMany<{
+      discovered?: boolean
+      counts?: { pending: number; partial: number; quarantined: number }
+    }>([["compat_import", "info"]])
+    return (
+      compat &&
+      (!compat.discovered ||
+        !compat.counts ||
+        compat.counts.pending + compat.counts.partial + compat.counts.quarantined > 0)
+    )
+  }
+
   export async function tracked(): Promise<Document | undefined> {
+    if (await undiscoveredOwners()) return undefined
     const state = await load()
     return state.kind === "ok" ? { version: 1, owners: state.owners } : undefined
   }
@@ -97,6 +111,7 @@ export namespace RolloutPending {
 
   /** Re-arms the fast path after a verified recovery pass. */
   export async function markClean(): Promise<void> {
+    if (await undiscoveredOwners()) return
     await record(() =>
       Storage.transaction(async () => {
         await Storage.write(key(), { version: 1, owners: [] } satisfies Document)

@@ -8820,6 +8820,14 @@ msgstr "隐藏"
 msgid "app.topBar.sideWorkspace.open"
 msgstr "打开"
 
+#. js-lingui-explicit-id
+msgid "app.upgrade.attention"
+msgstr "有 {count} 个历史会话需要修复"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.progress"
+msgstr "正在准备历史记录：{done}/{total}"
+
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.add.bottomPanel"
 msgstr "添加底部面板"
