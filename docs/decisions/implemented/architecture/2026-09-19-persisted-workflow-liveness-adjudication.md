@@ -39,6 +39,8 @@ The same evidence test serves explicit user stops. `WorkflowRecovery.hasResumabl
 
 ## Consequences
 
+Unreadable Inbox or continuation evidence is unknown liveness, never evidence of absence. Storage errors propagate into the existing recovery failure report and preserve the active loop for a later retry; explicit abort likewise does not abandon a workflow after a failed evidence read.
+
 A session can no longer be pinned indefinitely by a workflow record with no driver. Startup recovery now produces a terminal loop and a clearable session instead of a permanent `recovering` state, and the reason is visible to the user rather than encoded in a log line.
 
 The cost is that adjudication runs against every active loop in the runtime scope during startup reconciliation, requiring an inbox and continuation-recovery read per loop. A loop whose only resume evidence existed in the dead process's memory is now terminalized rather than left intact, which is the intended outcome but does mean recovery no longer preserves every active record it finds.

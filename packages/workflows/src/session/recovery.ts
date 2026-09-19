@@ -49,8 +49,8 @@ export namespace WorkflowRecovery {
 
   /** Whether the session itself carries queued work that will be driven. */
   export async function sessionHasDurableDriver(sessionID: string): Promise<boolean> {
-    if (await SessionInbox.hasRunnableItem(sessionID).catch(() => false)) return true
-    return RolloutContinuationRecovery.pending(sessionID).catch(() => false)
+    if (await SessionInbox.hasRunnableItem(sessionID)) return true
+    return RolloutContinuationRecovery.pending(sessionID)
   }
 
   /**

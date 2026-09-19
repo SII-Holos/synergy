@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint/loop-store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { NoteStore } from "@ericsanchezok/synergy-note"
@@ -7,6 +7,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { RolloutContinuationRecovery } from "@ericsanchezok/synergy-harness/session/rollout/continuation-recovery"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -47,6 +48,28 @@ async function reconcile() {
 }
 
 describe("phantom BlueprintLoop adjudication on restart", () => {
+  for (const source of ["inbox", "continuation"] as const) {
+    test(`preserves a loop when its ${source} evidence cannot be read`, async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { loop } = await createLoop("running")
+          const read =
+            source === "inbox" ? spyOn(SessionInbox, "hasRunnableItem") : spyOn(RolloutContinuationRecovery, "pending")
+          read.mockRejectedValueOnce(new Error("Evidence storage is temporarily unavailable"))
+          try {
+            const report = await reconcile()
+            expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+            expect(report.entries.some((entry) => entry.action.startsWith("scope_reconcile_failed:"))).toBe(true)
+          } finally {
+            read.mockRestore()
+          }
+        },
+      })
+    })
+  }
+
   test("terminalizes a running loop with no durable driver and clears its references", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
