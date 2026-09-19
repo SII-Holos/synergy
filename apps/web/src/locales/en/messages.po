@@ -7376,8 +7376,28 @@ msgstr "synergy config"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelNotConfigured"
-msgstr "AI model not configured — run {cmd} in your terminal to set one up"
+msgid "app.shell.modelUnavailable.action.connect"
+msgstr "Connect a provider"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.action.review"
+msgstr "Review providers"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.needsAttention"
+msgstr "A connected provider needs attention before its models can run."
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.notConfigured"
+msgstr "No AI provider is connected. Connect one to choose a model, or run {cmd} in your terminal."
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.restricted"
+msgstr "No model is available to select. Check that a connected provider is enabled and offers models."
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"

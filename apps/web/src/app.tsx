@@ -170,16 +170,6 @@ export function AppInterface() {
   )
 }
 
-function ModelReadyWarning() {
-  const { i18n } = useLocale()
-  return (
-    <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-weak text-text-on-warning-base">
-      <span>{"\u26A0"}</span>
-      <span>{i18n._(AP.appModelNotConfigured.id, { cmd: i18n._(AP.appModelConfigCmd.id) })}</span>
-    </div>
-  )
-}
-
 function ConnectedApp() {
   const dialog = useDialog()
   const server = useServer()
@@ -205,8 +195,6 @@ function ConnectedApp() {
     dialog.show(() => <DialogSelectServer />)
   }
 
-  const showModelReadyWarning = createMemo(() => server.modelReady() === false && server.healthy() === true)
-
   return (
     <GlobalSDKProvider>
       <ProductUpdateProvider>
@@ -225,9 +213,6 @@ function ConnectedApp() {
                 />
               </Match>
               <Match when={startupView() === "ready"}>
-                <Show when={showModelReadyWarning()}>
-                  <ModelReadyWarning />
-                </Show>
                 <Router
                   base={proxyPrefix()}
                   root={(props) => (

@@ -254,7 +254,7 @@ async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginA
       messages: [{ role: "user", content: resolved.text }],
       signal,
       timeoutMs: resolved.timeoutMs,
-      retries: 1,
+      retries: 2,
       maxInputChars: resolved.maxInputChars,
       maxOutputChars: resolved.maxOutputChars,
     })

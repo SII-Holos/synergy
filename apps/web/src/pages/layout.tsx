@@ -37,6 +37,7 @@ import {
   DesktopWindowChrome,
   MobileDrawer,
   MobileToolsDrawer,
+  ModelUnavailableBanner,
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
@@ -459,6 +460,7 @@ function LayoutContent(
       <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
+      <ModelUnavailableBanner />
       <ConnectionBanner />
       <SkinRoot>
         <ShellOutlet shell={shell} workbench={workbench} />

@@ -26,6 +26,18 @@ There is no SQL-to-legacy live writer. For a sealed version 2 Home backup, run `
 
 For version 1, reconstruct `data/` from the backup, restore `data/@home/config/` to the Home's `config/`, and restore `data/@home/plugin.lock` to the Home root. Validate all inventory hashes before starting the old release. The version 2 restore command deliberately rejects version 1 and artifact-only backups.
 
+## Deferred session import
+
+Set `SYNERGY_STORAGE_COMPAT_DEFER=1` before the first SQL bootstrap to opt into the named manifest boundary. The complete backup is still sealed before activation. The packed importer initially leaves Session aggregates on disk and records their ownership in SQL.
+
+Deferral is conservative: any pending domain migration first stages every unresolved aggregate into SQL and then uses the central migration runner. A migration failure preserves originals and blocks touch imports. Startup imports non-archived Sessions before recovery. Only an already-current archived cohort can remain deferred after activation; a future upgrade with pending migrations stages that cohort first.
+
+Touch and endpoint delivery import an aggregate before querying its indexes. Record batches are bounded, binary files are copied without whole-file buffering, and all recognized source hashes and target artifacts are verified before retirement. Unknown auxiliary files are preserved. Missing or malformed Session data is quarantined; storage and I/O errors remain retryable. Pending listing projections never enter persisted indexes.
+
+The Runtime imports a bounded number of pending aggregates per tick. Create `data/storage/compat-pause` to hold background import between ticks; remove it to resume. Shutdown stops and drains the ticker. This mode does not promise a particular startup speedup, and ordinary storage status output does not yet include convergence counts.
+
+Pack, merge, move and storage-target migration reject pending or quarantined aggregates. Let background import converge and repair quarantined evidence before transferring the Home. The sealed backup contains pre-upgrade state; it does not capture changes made after SQL activation. An official downgrade therefore restores the backup into a separate Home.
+
 ## Transfer
 
 Use `data pack` for a portable logical backup, and `data merge` or `data move` to restore or combine data. Agent records, revisions and operation receipts move independently of the engine; Git objects and artifacts move with their references. Grants, consent and trust records (plugin approvals, permissions, registry) are refused from another home's archive during `data merge` and only travel with `data move`. A target Session ID wins as a whole aggregate. The retained source snapshot and transfer report let an operator recover skipped content even after `move --remove-original`.
