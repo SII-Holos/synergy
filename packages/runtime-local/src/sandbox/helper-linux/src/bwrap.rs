@@ -326,15 +326,16 @@ fn push_ro_bind(mounts: &mut Vec<MountOp>, source: &str, target: &str) {
 
 /// Whether `path` is equal to, or inside, any writable root.
 ///
-/// Containment, deliberately: the partition needs "this deny must lose to a
-/// writable bind" in both the equal and the deeper case, and a deny equal to a
-/// writable root fails closed by mounting after it.
+/// Compare the same canonical destinations used for cover mounts so a symlink
+/// cannot move a deny across a writable boundary after ordering it.
 fn is_inside_writable_root(path: &str, writable_roots: &[String]) -> bool {
-    let candidate = path.trim_end_matches('/');
-    writable_roots.iter().any(|root| {
-        let writable = root.trim_end_matches('/');
-        !writable.is_empty() && (candidate == writable || candidate.starts_with(&format!("{writable}/")))
-    })
+    if path.is_empty() {
+        return false;
+    }
+    let candidate = canonical_mount_path(path);
+    writable_roots
+        .iter()
+        .any(|root| !root.is_empty() && candidate.starts_with(canonical_mount_path(root)))
 }
 
 /// Whether a read deny makes a read-only bind of `path` redundant.
@@ -346,8 +347,10 @@ fn is_inside_writable_root(path: &str, writable_roots: &[String]) -> bool {
 /// ancestor deny here is what made `<ws>/.git/hooks` and `<ws>/.git/config`
 /// writable for a workspace nested inside a credential directory.
 fn is_read_deny_for(path: &str, deny_roots: &[String]) -> bool {
-    let candidate = path.trim_end_matches('/');
-    deny_roots.iter().any(|root| !root.is_empty() && root.trim_end_matches('/') == candidate)
+    let candidate = canonical_mount_path(path);
+    deny_roots
+        .iter()
+        .any(|root| !root.is_empty() && canonical_mount_path(root) == candidate)
 }
 /// Cover a denied path so the sandbox cannot read it.
 ///
@@ -362,11 +365,15 @@ fn is_read_deny_for(path: &str, deny_roots: &[String]) -> bool {
 /// store such as `~/.ssh` is commonly a link. Resolving keeps the cover on the
 /// path the kernel actually serves. A path that does not exist hides nothing and
 /// is skipped, so the plan never carries a missing mount source.
+fn canonical_mount_path(path: &str) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+}
+
 fn push_read_deny(mounts: &mut Vec<MountOp>, path: &str) {
     if path.trim().is_empty() {
         return;
     }
-    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+    let resolved = canonical_mount_path(path);
     let target = resolved.to_string_lossy().into_owned();
     match std::fs::metadata(&resolved) {
         Ok(metadata) if metadata.is_dir() => mounts.push(MountOp::Tmpfs { target }),
@@ -595,11 +602,76 @@ mod tests {
     }
 
     #[test]
+    fn read_deny_inside_root_workspace_mounts_after_writable_root() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_root_deny_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let denied = std::fs::canonicalize(&tmp)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let mut profile = profile_with_denies(&[&denied]);
+        profile.file_system.writable_roots = vec!["/".into()];
+        let plan = plan(&profile, "/");
+        let write = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Bind { target, .. } if target == "/"))
+            .unwrap();
+        let deny = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Tmpfs { target } if target == &denied))
+            .unwrap();
+        assert!(write < deny, "root workspace must not uncover credentials");
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_deny_symlink_target_stays_covered_after_writable_bind() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_link_deny_{}", std::process::id()));
+        let workspace = tmp.join("workspace");
+        let target = workspace.join("credentials");
+        std::fs::create_dir_all(&target).unwrap();
+        let alias = tmp.join("credential-link");
+        let _ = std::fs::remove_file(&alias);
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let ws = std::fs::canonicalize(&workspace)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let denied = std::fs::canonicalize(&target)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let mut profile = profile_with_denies(&[alias.to_str().unwrap()]);
+        profile.file_system.writable_roots = vec![ws.clone()];
+        profile.file_system.read_only_subpaths = vec![denied.clone()];
+        let plan = plan(&profile, &ws);
+        let write = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Bind { target, .. } if target == &ws))
+            .unwrap();
+        let deny = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Tmpfs { target } if target == &denied))
+            .unwrap();
+        assert!(write < deny, "mount order must use the symlink target");
+        assert!(!plan.mounts.iter().any(|m| matches!(m, MountOp::RoBind { source, target } if source == &denied && target == &denied)), "a metadata bind must not uncover the same canonical deny");
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
+
+    #[test]
     fn read_deny_directory_is_covered_by_tmpfs() {
         let tmp = std::env::temp_dir().join(format!("bwrap_deny_dir_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        let denied = std::fs::canonicalize(&tmp).unwrap().to_string_lossy().into_owned();
+        let denied = std::fs::canonicalize(&tmp)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         let plan = plan(&profile_with_denies(&[&denied]), "/ws");
         assert!(
             plan.mounts.contains(&MountOp::Tmpfs {
@@ -678,8 +750,10 @@ mod tests {
                 .position(|m| pred(m))
                 .expect("expected mount not found in plan")
         };
-        let deny_idx = index_of(&|m| matches!(m, MountOp::Tmpfs { target } if *target == denied_str));
-        let writable_idx = index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == ws));
+        let deny_idx =
+            index_of(&|m| matches!(m, MountOp::Tmpfs { target } if *target == denied_str));
+        let writable_idx =
+            index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == ws));
         assert!(
             deny_idx < writable_idx,
             "the read deny must mount before the writable bind that it contains"
@@ -719,7 +793,8 @@ mod tests {
                 .expect("expected mount not found in plan")
         };
         let deny_idx = index_of(&|m| matches!(m, MountOp::Tmpfs { target } if *target == denied));
-        let writable_idx = index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == ws));
+        let writable_idx =
+            index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == ws));
         assert!(
             writable_idx < deny_idx,
             "a read deny inside a writable root must mount after it or the writable bind re-exposes the credential"
