@@ -303,8 +303,12 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.cortex = { maxConcurrentTasks: cortexConcurrency }
   }
 
-  const agentWorkers = boundedInteger(runtime.agentWorkers, 1, 64)
-  if (agentWorkers !== undefined && agentWorkers !== cfg.execution?.agentWorkers) {
+  // A cleared field must send null, not undefined: the SDK JSON serializer
+  // drops undefined keys, so undefined would leave the stored ceiling in
+  // place and the runtime would keep the explicit value instead of deriving.
+  const agentWorkers = runtime.agentWorkers.trim() === "" ? null : boundedInteger(runtime.agentWorkers, 1, 64)
+  const currentAgentWorkers = cfg.execution?.agentWorkers ?? null
+  if (agentWorkers !== undefined && agentWorkers !== currentAgentWorkers) {
     patch.execution = { ...(cfg.execution ?? {}), agentWorkers }
   }
 

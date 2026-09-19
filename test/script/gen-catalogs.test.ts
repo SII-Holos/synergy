@@ -5,7 +5,15 @@ import path from "node:path"
 import { generate as generateCli, parseCommandBlocks, collectCommandSources } from "../../script/gen/gen-cli-reference"
 import { generate as generateConfig, parseDefCall, parseDomainObject } from "../../script/gen/gen-config-reference"
 import { generate as generateTools, parseTaxonomy } from "../../script/gen/gen-tool-catalog"
-import { findBlock, isFresh, matchClose, stringLiteral, templateLiteral } from "../../script/gen/shared"
+import {
+  findBlock,
+  isFresh,
+  matchClose,
+  parseObjectFields,
+  stringLiteral,
+  templateLiteral,
+  zodTypeOf,
+} from "../../script/gen/shared"
 
 const roots: string[] = []
 
@@ -207,6 +215,47 @@ const DEFAULT_ENTRY = entry("platform.external")
     expect(stringLiteral('"line1\\nline2"')).toBe("line1 line2")
     expect(templateLiteral("`one\ntwo`", 0)).toBe("one two")
     expect(templateLiteral("`a\\`b`", 0)).toBe("a`b")
+  })
+
+  test("parseObjectFields attributes a describe to the field that owns it", () => {
+    const fields = parseObjectFields(`
+    parent: z
+      .object({
+        child: z.number().optional().describe("child description"),
+      })
+      .optional()
+      .describe("parent description"),
+    sibling: z.string().optional().describe("sibling description"),
+  `)
+    expect(fields.find((field) => field.name === "parent")?.description).toBe("parent description")
+    expect(fields.find((field) => field.name === "sibling")?.description).toBe("sibling description")
+  })
+
+  test("parseObjectFields reaches a large object's own describe and outermost type", () => {
+    const inner = Array.from(
+      { length: 40 },
+      (_, index) => `        field${index}: z.number().optional().describe("inner ${index}"),`,
+    ).join("\n")
+    const fields = parseObjectFields(`
+    big: z
+      .object({
+${inner}
+      })
+      .strict()
+      .optional()
+      .describe("big description"),
+  `)
+    const big = fields.find((field) => field.name === "big")
+    expect(big?.description).toBe("big description")
+    expect(big?.type).toBe("object")
+  })
+
+  test("zodTypeOf reports the outermost constructor rather than a nested one", () => {
+    expect(zodTypeOf('z.object({ level: z.enum(["error", "warning"]).optional() })')).toBe("object")
+    expect(zodTypeOf('z.enum(["error", "warning"])')).toBe('"error" | "warning"')
+    expect(zodTypeOf("z.record(z.string(), z.string())")).toBe("record")
+    expect(zodTypeOf("z.array(z.string())")).toBe("array")
+    expect(zodTypeOf("z\n      .number()\n      .int()\n      .optional()")).toBe("number")
   })
 
   test("matchClose and findBlock skip string and template contents", () => {

@@ -1,3 +1,5 @@
+import type { Info as SessionInfo } from "./types"
+
 /**
  * H3 workflow kind registry: product domains register extension workflow
  * kinds through descriptors instead of editing the core kind dispatch. The
@@ -16,6 +18,12 @@ export namespace WorkflowKindRegistry {
     managesLock?: boolean
     /** Core kinds this extension is mutually exclusive with. */
     conflicts: string[]
+    /** Synchronous presentation predicate for the session navigation
+     * projection: whether this kind's workflow is still active on a session.
+     * `WorkflowPromptRegistry.isActive` is asynchronous and cannot be awaited
+     * inside the session transactions that build nav entries. Kinds without a
+     * predicate report inactive. */
+    activeForPresentation?(session: SessionInfo): boolean
     /** Enable the workflow on a session; owns conflict checks and the
      * durable projection write (runs under the workflow lock). */
     enable(input: { sessionID: string; args: Record<string, unknown> }): Promise<unknown>

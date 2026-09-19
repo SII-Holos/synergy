@@ -3,6 +3,13 @@ import z from "zod"
 export namespace ObservabilityConfig {
   let dirty = true
   let cached: Info | undefined
+  let mirrorEnabled = false
+
+  // Resolved from the observability domain rather than the performance schema,
+  // so the opt-in log mirror never widens the performance config API.
+  export function logMirror() {
+    return mirrorEnabled
+  }
 
   export function current() {
     if (cached && !dirty) return cached
@@ -11,13 +18,17 @@ export namespace ObservabilityConfig {
     return cached
   }
 
-  export function refresh(input?: { observability?: { enabled?: boolean; maxBytes?: number; performance?: Raw } }) {
+  export function refresh(input?: {
+    observability?: { enabled?: boolean; maxBytes?: number; logMirror?: boolean; performance?: Raw }
+  }) {
     if (input) {
+      mirrorEnabled = input.observability?.logMirror === true
       cached = effective(input)
       dirty = false
-    } else {
-      dirty = true
+      return
     }
+    mirrorEnabled = false
+    dirty = true
   }
 
   export interface Raw {
@@ -41,6 +52,7 @@ export namespace ObservabilityConfig {
       sqliteEnabled?: boolean
       jsonlMirrorEnabled?: boolean
       maxSqliteBytes?: number
+      retentionMs?: number
       walCheckpointIntervalMs?: number
     }
     thresholds?: Record<string, number | undefined>
@@ -67,6 +79,7 @@ export namespace ObservabilityConfig {
       sqliteEnabled: z.boolean(),
       jsonlMirrorEnabled: z.boolean(),
       maxSqliteBytes: z.number(),
+      retentionMs: z.number(),
       walCheckpointIntervalMs: z.number(),
     }),
     thresholds: z.record(z.string(), z.number()),
@@ -120,6 +133,7 @@ export namespace ObservabilityConfig {
       sqliteEnabled: true,
       jsonlMirrorEnabled: false,
       maxSqliteBytes: 250 * 1024 * 1024,
+      retentionMs: 7 * 24 * 60 * 60 * 1000,
       walCheckpointIntervalMs: 60_000,
     },
     thresholds: {
@@ -141,7 +155,7 @@ export namespace ObservabilityConfig {
   } satisfies Info
 
   export function effective(input?: {
-    observability?: { enabled?: boolean; maxBytes?: number; performance?: Raw }
+    observability?: { enabled?: boolean; maxBytes?: number; logMirror?: boolean; performance?: Raw }
   }): Info {
     const observability = input?.observability
     const raw = observability?.performance as Raw | undefined
@@ -173,6 +187,15 @@ export namespace ObservabilityConfig {
             observability?.maxBytes ?? defaults.storage.maxSqliteBytes,
           ),
         ),
+        // The window bounds how far back budgeted pruning may go: below an hour
+        // it would remove evidence an in-flight task still needs, and beyond 90
+        // days the byte budget alone governs. 0 disables retention entirely.
+        retentionMs:
+          raw?.storage?.retentionMs === undefined
+            ? defaults.storage.retentionMs
+            : raw.storage.retentionMs <= 0
+              ? 0
+              : clamp(raw.storage.retentionMs, 60 * 60 * 1000, 90 * 24 * 60 * 60 * 1000),
       },
       thresholds: { ...defaults.thresholds, ...(raw?.thresholds ?? {}) },
     })

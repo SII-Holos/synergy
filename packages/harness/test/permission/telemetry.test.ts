@@ -10,8 +10,15 @@ test("permission evaluation does not emit per-check telemetry at info level", as
   expect(result.data).toBeUndefined()
 })
 
-test("permission evaluation emits bounded telemetry without rule contents at debug level", async () => {
+test("permission evaluation stays out of the store while the log mirror is off", async () => {
   const result = await evaluateWithTelemetry("DEBUG")
+
+  expect(result.action).toBe("allow")
+  expect(result.data).toBeUndefined()
+})
+
+test("permission evaluation emits bounded telemetry without rule contents when the log mirror is on", async () => {
+  const result = await evaluateWithTelemetry("DEBUG", true)
 
   expect(result.action).toBe("allow")
   expect(result.data).toMatchObject({
@@ -27,14 +34,16 @@ test("permission evaluation emits bounded telemetry without rule contents at deb
   expect(JSON.stringify(result.data).length).toBeLessThan(256)
 })
 
-async function evaluateWithTelemetry(level: "INFO" | "DEBUG") {
+async function evaluateWithTelemetry(level: "INFO" | "DEBUG", logMirror = false) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-permission-telemetry-"))
   const script = `
     import { Log } from "./src/util/log.ts"
+    import { ObservabilityConfig } from "./src/observability/config.ts"
     import { ObservabilityStore } from "./src/observability/store.ts"
     import { PermissionNext } from "./src/permission/next.ts"
 
     await Log.init({ print: false, dev: true, level: "${level}" })
+    ObservabilityConfig.refresh({ observability: { logMirror: ${logMirror} } })
 
     const permission = \`telemetry-test-\${crypto.randomUUID()}\`
     const sensitivePattern = \`secret-pattern-\${crypto.randomUUID()}\`

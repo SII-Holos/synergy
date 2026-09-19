@@ -10,6 +10,7 @@ import { NoteStore } from "@ericsanchezok/synergy-note"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
+import type { SessionBlueprintPhase } from "../session-schema"
 import type { Info } from "./types"
 
 type LoopStatus = Info["status"]
@@ -30,6 +31,41 @@ function isValidTransition(from: LoopStatus, to: LoopStatus): boolean {
 
 export function isActiveLoopStatus(status: LoopStatus) {
   return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+}
+
+/** Loop status → the phase a bound session renders. Terminal statuses are
+ * absent: their binding is cleared instead of re-phased. */
+const PRESENTATION_PHASE: Partial<Record<LoopStatus, SessionBlueprintPhase>> = {
+  armed: "running",
+  running: "running",
+  waiting: "waiting",
+  auditing: "auditing",
+}
+
+/** Single writer for a bound session's Blueprint identity: re-phases the
+ * binding on an active transition and clears it on release. Guarded by loop id
+ * so a session rebound to a different loop is never clobbered. */
+async function syncBoundSessionBlueprint(input: {
+  sessionID: string | undefined
+  loopID: string
+  phase?: SessionBlueprintPhase
+  archive?: boolean
+}) {
+  if (!input.sessionID) return
+  try {
+    await Session.update(input.sessionID, (draft) => {
+      if (draft.blueprint?.loopID === input.loopID) {
+        draft.blueprint = input.phase
+          ? { ...draft.blueprint, phase: input.phase }
+          : { ...draft.blueprint, loopID: undefined, loopRole: undefined, phase: undefined }
+      } else if (input.phase) {
+        return
+      }
+      if (input.archive) draft.time.archived = Date.now()
+    })
+  } catch (error) {
+    if (!(error instanceof Storage.NotFoundError)) throw error
+  }
 }
 
 function terminalHookLock(scopeID: string, loopID: string): string {
@@ -222,19 +258,13 @@ export namespace BlueprintLoopStore {
         if (patch.error !== undefined) draft.error = patch.error
       })
 
-      async function unbind(sessionID: string | undefined, archive = false) {
-        if (!sessionID) return
-        try {
-          await Session.update(sessionID, (draft) => {
-            draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
-            if (archive) draft.time.archived = Date.now()
-          })
-        } catch (error) {
-          if (!(error instanceof Storage.NotFoundError)) throw error
-        }
-      }
+      const phase = PRESENTATION_PHASE[updated.status]
       if (isTerminal || (patch.status === "running" && current.status === "auditing"))
-        await unbind(current.auditSessionID)
+        await syncBoundSessionBlueprint({ sessionID: current.auditSessionID, loopID: id })
+      if (phase !== undefined) {
+        await syncBoundSessionBlueprint({ sessionID: updated.sessionID, loopID: id, phase })
+        await syncBoundSessionBlueprint({ sessionID: updated.auditSessionID, loopID: id, phase })
+      }
       if (isTerminal) {
         await NoteStore.recordBlueprintRun({
           scopeID,
@@ -243,7 +273,11 @@ export namespace BlueprintLoopStore {
           ended: true,
           archive: updated.source === "plugin",
         })
-        await unbind(updated.sessionID, updated.source === "plugin")
+        await syncBoundSessionBlueprint({
+          sessionID: updated.sessionID,
+          loopID: id,
+          archive: updated.source === "plugin",
+        })
       }
 
       await Bus.publish(LoopEvent.Updated, { loop: updated })

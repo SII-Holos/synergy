@@ -69,7 +69,7 @@ test("bash records stdout and stderr before its bounded display buffer", async (
           {
             command: `${quote(process.execPath)} -e ${quote(script)}`,
             description: "Output capture fixture",
-            backgroundAfterSeconds: 0,
+            yieldSeconds: 0,
           },
           {
             sessionID: "fixture",

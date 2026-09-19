@@ -11,7 +11,7 @@ const parameters = z
   .object({
     action: z.enum(["list", "wait", "cancel", "export"]),
     id: z.string().min(1).max(20_000).optional().describe("Required for wait, cancel, and export."),
-    timeoutMs: z.number().int().min(100).max(60_000).optional().describe("Valid only for wait; defaults to 30000."),
+    timeoutSeconds: z.number().int().min(1).max(60).optional().describe("Valid only for wait; defaults to 30."),
     path: z.string().min(1).max(20_000).optional().describe("Required only for export."),
     page: z.number().int().min(0).optional().describe("Valid only for list; defaults to 0."),
     pageSize: z.number().int().min(1).max(500).optional().describe("Valid only for list; defaults to 100."),
@@ -24,8 +24,8 @@ const parameters = z
     if (value.action === "list" && value.id !== undefined) {
       ctx.addIssue({ code: "custom", path: ["id"], message: "id is not valid for list." })
     }
-    if (value.action !== "wait" && value.timeoutMs !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["timeoutMs"], message: "timeoutMs is valid only for wait." })
+    if (value.action !== "wait" && value.timeoutSeconds !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["timeoutSeconds"], message: "timeoutSeconds is valid only for wait." })
     }
     if (value.action === "export" && !value.path) {
       ctx.addIssue({ code: "custom", path: ["path"], message: "path is required for export." })
@@ -66,7 +66,7 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       }
     }
     if (params.action === "wait") {
-      const record = await BrowserDownloads.wait(owner, params.id!, params.timeoutMs ?? 30_000, ctx.abort)
+      const record = await BrowserDownloads.wait(owner, params.id!, (params.timeoutSeconds ?? 30) * 1_000, ctx.abort)
       const visible = publicRecord(record)
       const formatted = formatBrowserJSON(visible)
       return {

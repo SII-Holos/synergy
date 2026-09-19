@@ -67,11 +67,16 @@ export function KanbanPaneComposer(props: {
   const profileVisual = createMemo(() => permissionModeVisual(profile()))
   const statusText = createMemo(() => {
     const s = props.status
-    if (!s || s.type === "idle") return _(kanbanPage.statusIdle)
-    if (s.type === "busy") return s.description ?? _(kanbanPage.statusBusy)
-    if (s.type === "retry") return _(kanbanPage.statusRetry)
-    if (s.type === "recovering") return _(kanbanPage.statusRecovering)
-    return ""
+    switch (s?.type) {
+      case "busy":
+        return s.description ?? _(kanbanPage.statusBusy)
+      case "retry":
+        return _(kanbanPage.statusRetry)
+      case "recovering":
+        return _(kanbanPage.statusRecovering)
+      default:
+        return _(kanbanPage.statusIdle)
+    }
   })
   const visibleAgents = createMemo(() => props.agents.filter((a) => !a.hidden && a.mode !== "subagent"))
   const currentAgent = createMemo(() => agent() ?? visibleAgents()[0]?.name ?? _(kanbanPage.composerDefaultAgent))

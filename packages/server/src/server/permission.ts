@@ -95,8 +95,18 @@ export const PermissionRoute = new Hono()
         },
       },
     }),
+    validator(
+      "query",
+      z.object({
+        sessionID: z
+          .string()
+          .optional()
+          .meta({ description: "Only return pending permission requests owned by this session" }),
+      }),
+    ),
     async (c) => {
+      const sessionID = c.req.valid("query").sessionID
       const permissions = await PermissionNext.list()
-      return c.json(permissions)
+      return c.json(sessionID ? permissions.filter((permission) => permission.sessionID === sessionID) : permissions)
     },
   )

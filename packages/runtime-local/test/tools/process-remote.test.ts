@@ -40,11 +40,17 @@ test("caps remote blocking poll timeouts below the transport deadline", async ()
     },
   }
 
-  await RemoteProcessBackend.execute({ action: "poll", processId: "proc_poll_clamp", block: true, timeout: 60 }, target)
-  await RemoteProcessBackend.execute({ action: "poll", processId: "proc_poll_clamp", block: true }, target)
-  await RemoteProcessBackend.execute({ action: "poll", processId: "proc_poll_clamp", block: true, timeout: 10 }, target)
   await RemoteProcessBackend.execute(
-    { action: "poll", processId: "proc_poll_clamp", block: false, timeout: 60 },
+    { action: "poll", processId: "proc_poll_clamp", block: true, timeoutSeconds: 60 },
+    target,
+  )
+  await RemoteProcessBackend.execute({ action: "poll", processId: "proc_poll_clamp", block: true }, target)
+  await RemoteProcessBackend.execute(
+    { action: "poll", processId: "proc_poll_clamp", block: true, timeoutSeconds: 10 },
+    target,
+  )
+  await RemoteProcessBackend.execute(
+    { action: "poll", processId: "proc_poll_clamp", block: false, timeoutSeconds: 60 },
     target,
   )
 
