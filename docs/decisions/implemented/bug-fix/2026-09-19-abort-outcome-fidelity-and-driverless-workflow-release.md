@@ -8,7 +8,7 @@ Status: implemented
 
 That mattered because abort has two independent jobs and can silently fail at both. `SessionManager.signalAbort` returns `"not_found"` when no runtime exists, so aborting a session with no live loop stops nothing. `repairAfterAbort` deliberately refused to publish idle while `SessionWorking.resolve()` was truthy, and a phantom BlueprintLoop kept it truthy with no runtime driving it. Neither condition reached the caller.
 
-During the [host-suspend incident](../../../postmortem/0017-host-suspend-pinned-session-in-recovering.md), a user pressed abort seven times over 54 seconds on a session pinned by exactly that phantom loop. Every request returned HTTP 200. Only a two-second long-press on the Blueprint slot icon freed the session, because that gesture is the one path that also cancels the loop.
+During the [host-suspend incident](../../../postmortem/0018-host-suspend-pinned-session-in-recovering.md), a user pressed abort seven times over 54 seconds on a session pinned by exactly that phantom loop. Every request returned HTTP 200. Only a two-second long-press on the Blueprint slot icon freed the session, because that gesture is the one path that also cancels the loop.
 
 An abort that reports success without effect is worse than an error. It consumes the user's attempts and hides the remedy.
 
