@@ -10,22 +10,21 @@ import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 // SIGTERM, exiting non-zero so a supervisor (systemd Restart=on-failure, launchd
 // KeepAlive, the Desktop manager) restarts the process. Because the escalation
 // ends in `process.exit`, it is asserted out of process: a same-process test
-// could only observe it by stubbing the behavior under test. The child reports
-// readiness through a marker file first, so a startup failure cannot be mistaken
-// for a successful escalation.
+// could only observe it by stubbing the behavior under test.
 //
-// The child observes escalation through its own subscription rather than
-// inferring it from the exit status alone. That distinction matters because the
-// exit status is produced by `gracefulShutdown` after `handle.close()` and
-// `Log.flush()` return, and under a loaded coverage shard those can outlast the
-// parent's patience — which made earlier versions of this test report a missing
-// escalation when escalation had in fact happened. The subscription records the
-// event itself, so the assertion names the behaviour under test.
+// The child watches the shutdown through the Runtime's own HTTP surface. Closing
+// admission is the first act of `gracefulShutdown`, so a 503 from the health
+// route is direct evidence that the storage-unavailable listener reached the
+// escalation, and polling for it also leaves the child with pending I/O while
+// the shutdown drains. An earlier version parked the child on a bare promise
+// with no work in flight instead, and under a loaded coverage shard the close
+// that follows never completed inside the parent's patience — which read as a
+// missing escalation when escalation had in fact started.
 //
-// The child deliberately has no deadline of its own: `run()` never settles, and
-// parking forever leaves the escalation and the parent's timeout as the only two
-// ways it can stop.
+// The child has no deadline of its own: `run()` never settles, so the escalation
+// and the parent's timeout remain the only two ways it can stop.
 const STARTUP_DEADLINE_MS = 120_000
+const ESCALATION_DEADLINE_MS = 120_000
 const PARENT_TIMEOUT_MS = 240_000
 
 test(
@@ -43,6 +42,7 @@ test(
     const script = String.raw`
       import { writeFile } from "node:fs/promises"
       import path from "node:path"
+      const mark = (file) => writeFile(file, "").catch(() => {})
       const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
       Log.init({ print: false })
       const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
@@ -54,19 +54,13 @@ test(
         printBanner: false,
         printChannelStatus: false,
         network: { hostname: "127.0.0.1", port: 0 },
-      }).catch((error) => {
-        // run() is long-lived. Killing the store is the condition under test, and
-        // this rejection is the same event that drives the escalation, which
-        // still owes its graceful shutdown — so publishing this catch's code here
-        // would report the wrong exit status. Only a rejection before the runtime
-        // ever served is a real startup failure.
-        if (started) return
-        console.error("runtime startup failed", error)
-        process.exit(2)
-      })
+      }).then(
+        () => mark(process.env.SYNERGY_ESCALATION_RESOLVED),
+        () => mark(process.env.SYNERGY_ESCALATION_REJECTED),
+      )
 
-      const deadline = Date.now() + ${STARTUP_DEADLINE_MS}
-      while (Date.now() < deadline) {
+      const readyDeadline = Date.now() + ${STARTUP_DEADLINE_MS}
+      while (Date.now() < readyDeadline) {
         try {
           const response = await fetch(getRuntimeEndpoint().url + "/global/health")
           if (response.ok) { started = true; break }
@@ -77,17 +71,22 @@ test(
         console.error("runtime never became healthy")
         process.exit(3)
       }
-      await writeFile(process.env.SYNERGY_ESCALATION_READY, "")
-      // Record the escalation where it happens. This is an independent
-      // subscription beside the Runtime's own, so it proves the event reached a
-      // listener without asserting anything about how long the graceful close
-      // that follows it takes.
-      Storage.onUnavailable(() => void writeFile(process.env.SYNERGY_ESCALATION_ESCALATED, ""))
+      await mark(process.env.SYNERGY_ESCALATION_READY)
+      Storage.onUnavailable(() => void mark(process.env.SYNERGY_ESCALATION_LISTENER))
       Storage.current().store.driver.worker.kill()
-      // Park forever. The escalation owns the only exit that may happen; if it
-      // never arrives, the parent's timeout reports the missing escalation
-      // instead of this statement manufacturing an outcome.
-      await new Promise(() => {})
+
+      const escalationDeadline = Date.now() + ${ESCALATION_DEADLINE_MS}
+      while (Date.now() < escalationDeadline) {
+        await Bun.sleep(25)
+        try {
+          if ((await fetch(getRuntimeEndpoint().url + "/global/health")).status === 503) break
+        } catch {}
+      }
+      await mark(process.env.SYNERGY_ESCALATION_ESCALATED)
+
+      // Stay alive with pending work so the shutdown can finish draining; the
+      // escalation owns the only exit that may happen.
+      for (;;) await Bun.sleep(1_000)
     `
 
     const child = Bun.spawn([process.execPath, "-e", script], {
@@ -100,6 +99,9 @@ test(
         SYNERGY_TEST_ROOT: isolated.env.SYNERGY_TEST_ROOT,
         SYNERGY_ESCALATION_READY: readyMarker,
         SYNERGY_ESCALATION_ESCALATED: escalatedMarker,
+        SYNERGY_ESCALATION_LISTENER: path.join(root, "listener"),
+        SYNERGY_ESCALATION_RESOLVED: path.join(root, "resolved"),
+        SYNERGY_ESCALATION_REJECTED: path.join(root, "rejected"),
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -123,16 +125,16 @@ test(
       await stdoutText
 
       // Each assertion separates a different defect: readiness distinguishes
-      // "never reached the listener" from "reached it and did not escalate",
-      // the escalation marker names the behaviour, and the exit status covers
-      // the supervisor contract the escalation exists to satisfy.
+      // "never reached the listener" from "reached it and did not escalate", the
+      // escalation marker names the behaviour, and the exit status covers the
+      // supervisor contract the escalation exists to satisfy.
       expect(
         await readFile(readyMarker, "utf8").catch(() => undefined),
         `runtime never became healthy: ${stderr}`,
       ).toBe("")
       expect(
         await readFile(escalatedMarker, "utf8").catch(() => undefined),
-        `storage unavailability never reached a listener: ${stderr}`,
+        `storage unavailability never reached the escalation: ${stderr}`,
       ).toBe("")
       expect(exitCode, `runtime kept running over a dead store: ${stderr}`).toBe(1)
     } finally {
