@@ -349,7 +349,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   // connecting while the panel is open would otherwise keep reading as
   // not-yet-connected.
   const unsubscribeMcpStatuses = globalSDK.event.listen((event) => {
-    if (event.details?.type.startsWith("mcp.")) void refetchMcpStatuses()
+    if (event.details?.type?.startsWith("mcp.")) void refetchMcpStatuses()
   })
   onCleanup(unsubscribeMcpStatuses)
 
