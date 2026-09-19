@@ -8,6 +8,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotStore } from "./snapshot-store"
 import { Storage } from "../storage/storage"
+import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
@@ -100,6 +101,13 @@ export namespace Snapshot {
     const hash = writeResult.text.trim()
     if (!(await SnapshotStore.retainCurrent(hash, signal))) return undefined
     log.info("tracking", { hash, cwd: ScopeContext.current.directory, git, duration: Date.now() - started })
+    ObservabilityMetrics.record({
+      name: "snapshot.track.duration",
+      value: Date.now() - started,
+      unit: "ms",
+      module: "session",
+      sessionID,
+    })
     return hash
   }
 
@@ -217,6 +225,13 @@ export namespace Snapshot {
 
     const filesText = diffResult.text
     log.debug("patch done", { sessionID, hash, duration: Date.now() - started })
+    ObservabilityMetrics.record({
+      name: "snapshot.patch.duration",
+      value: Date.now() - started,
+      unit: "ms",
+      module: "session",
+      sessionID,
+    })
     return {
       hash,
       files: filesText

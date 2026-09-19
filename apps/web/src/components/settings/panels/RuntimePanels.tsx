@@ -1,7 +1,7 @@
 import type { MessageDescriptor } from "@lingui/core"
 
 import { useLingui } from "@lingui/solid"
-import type { Agent, CortexConcurrencyStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { Agent, AgentWorkerCapacityStatus, CortexConcurrencyStatus } from "@ericsanchezok/synergy-sdk/client"
 import { For, Show } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -12,6 +12,7 @@ import { SettingsFieldGrid, SettingsPage, SettingsPathRow, SettingsSection } fro
 import type { RuntimeStore } from "../types"
 import type { DesktopShellEnvironmentDiagnostics } from "@/context/platform"
 import { concurrencyPressureState } from "./runtime-concurrency-model"
+import { agentWorkerCapacityDisplay } from "./runtime-agent-workers-model"
 
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
 
@@ -109,10 +110,6 @@ const agentWorkersRowDesc = {
   id: "settings.runtime.agents.agentWorkers.desc",
   message:
     "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire.",
-}
-const agentWorkersAutomatic = {
-  id: "settings.runtime.agents.agentWorkers.automatic",
-  message: "Automatic",
 }
 const agentWorkersPlaceholder = {
   id: "settings.runtime.agents.agentWorkers.placeholder",
@@ -287,7 +284,7 @@ export function TimeoutsPanel(props: {
   defaultAgent: string
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
-  configuredAgentWorkers?: number
+  capacityStatus?: AgentWorkerCapacityStatus
   popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
@@ -324,12 +321,28 @@ export function TimeoutsPanel(props: {
     )
   }
   const resetInvalidAgentWorkers = () => {
-    const parsed = Number(props.runtime.agentWorkers)
+    const draft = props.runtime.agentWorkers.trim()
+    if (draft === "") return
+    const parsed = Number(draft)
     if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 64) return
-    props.onRuntimeChange(
-      "agentWorkers",
-      props.configuredAgentWorkers === undefined ? "" : String(props.configuredAgentWorkers),
-    )
+    const configured = props.capacityStatus?.configured
+    props.onRuntimeChange("agentWorkers", configured === null || configured === undefined ? "" : String(configured))
+  }
+  const agentWorkerStateLabel = () => {
+    const display = agentWorkerCapacityDisplay(props.capacityStatus)
+    if (!display) return undefined
+    if (display.source === "derived") {
+      return _({
+        id: "settings.runtime.agents.agentWorkers.derived",
+        message: "Auto · machine-derived: {value}",
+        values: { value: display.value },
+      })
+    }
+    return _({
+      id: "settings.runtime.agents.agentWorkers.explicit",
+      message: "Configured: {value}",
+      values: { value: display.value },
+    })
   }
 
   return (
@@ -361,7 +374,7 @@ export function TimeoutsPanel(props: {
         <SettingRow
           title={_(agentWorkersRowTitle)}
           description={_(agentWorkersRowDesc)}
-          stateLabel={props.runtime.agentWorkers ? undefined : _(agentWorkersAutomatic)}
+          stateLabel={agentWorkerStateLabel()}
           trailing={
             <TextField
               type="number"

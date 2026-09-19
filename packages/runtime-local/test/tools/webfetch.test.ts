@@ -129,9 +129,9 @@ test("classifies upstream failures and enforces declared and streamed response l
   }
 })
 test("aborts slow requests at configured timeout and honors caller cancellation", async () => {
-  await expect(tool.execute({ url: url("/slow"), format: "text", timeout: 0.01 }, context().ctx)).rejects.toThrow(
-    "Request timed out",
-  )
+  await expect(
+    tool.execute({ url: url("/slow"), format: "text", timeoutSeconds: 0.01 }, context().ctx),
+  ).rejects.toThrow("Request timed out")
   const controller = new AbortController()
   const reason = new DOMException("Cancelled by caller", "AbortError")
   controller.abort(reason)
@@ -165,11 +165,11 @@ test("bounds attempts and includes body reading and backoff in the total deadlin
   await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow("503")
   expect(retryRequests.get(pathname)).toBe(3)
   const waiting = `/retry/429/wait-${crypto.randomUUID()}`
-  await expect(tool.execute({ url: url(waiting), format: "text", timeout: 0.05 }, context().ctx)).rejects.toThrow(
-    "Request timed out",
-  )
+  await expect(
+    tool.execute({ url: url(waiting), format: "text", timeoutSeconds: 0.05 }, context().ctx),
+  ).rejects.toThrow("Request timed out")
   expect(retryRequests.get(waiting)).toBe(1)
-  await expect(tool.execute({ url: url("/slow-body"), format: "text", timeout: 0.05 }, context().ctx)).rejects.toThrow(
-    "Request timed out",
-  )
+  await expect(
+    tool.execute({ url: url("/slow-body"), format: "text", timeoutSeconds: 0.05 }, context().ctx),
+  ).rejects.toThrow("Request timed out")
 })

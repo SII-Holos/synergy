@@ -348,14 +348,14 @@ Prefer `ast_grep` when searching for code structure, not just text. It's more pr
 When using `bash`, adhere to these guidelines:
 
 - Quote file paths containing spaces with double quotes.
-- For long-running commands (dev servers, watch mode, builds), let bash auto-background after its default 30 seconds or set a positive `backgroundAfterSeconds` threshold. Use `timeoutSeconds` for a hard command termination timeout; when both are set, keep `backgroundAfterSeconds` less than or equal to `timeoutSeconds`.
+- For long-running commands (dev servers, watch mode, builds), let bash auto-background after its default 30 seconds or set a positive `yieldSeconds` threshold. Bash has no command-level termination timeout: pass `yieldSeconds` to bound how long you wait in the foreground, then manage the process with the `process` tool.
 - Command output may be truncated. For large outputs, use dedicated tools or pagination.
 - After launching a background bash command, use the `process` tool to manage it:
   - `poll` — check if still running and get recent output. Use `block: true` to wait for completion instead of polling in a loop.
   - `log` — get full output (supports offset/limit for pagination)
   - `send-keys` — send key sequences (e.g., `["C-c"]` for Ctrl+C, `["Enter"]`)
   - `kill` — terminate the process
-- **Do NOT poll in a tight loop.** Use `process(action: "poll", block: true, timeout: 60)` to wait for a process to finish. If it times out and you have other work, do that first and check back later.
+- **Do NOT poll in a tight loop.** Use `process` with `action: "poll"` and `block: true` to wait for a process to finish. If it times out and you have other work, do that first and check back later.
 
 ## Subagent Boundary
 

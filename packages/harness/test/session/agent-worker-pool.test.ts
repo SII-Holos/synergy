@@ -1297,6 +1297,149 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
+  test("serves a queued interactive turn before an earlier background turn", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 1 }, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+
+    const background = inScope(() => pool.run({ ...input(new AbortController().signal), lane: "background" }))
+    const interactive = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(pool.stats()).toMatchObject({ configured: 1, active: 1, queued: 2 })
+
+    let settled: string | undefined
+    background.then(
+      () => {
+        settled = "background"
+      },
+      () => {
+        settled = "failed"
+      },
+    )
+    interactive.then(
+      () => {
+        settled = "interactive"
+      },
+      () => {
+        settled = "failed"
+      },
+    )
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], firstRun.requestId)
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    const nextRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: nextRun.requestId })
+    await Bun.sleep(0)
+
+    expect(settled).toBe("interactive")
+    expect(pool.stats()).toMatchObject({ active: 1, queued: 1 })
+
+    await pool.stop()
+    await background.catch(() => undefined)
+  })
+
+  test("occupies the whole pool with background turns while no interactive turn waits", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 2 }, fake.spawn)
+    const firstPromise = inScope(() => pool.run({ ...input(new AbortController().signal), lane: "background" }))
+    expect(fake.workers).toHaveLength(1)
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+
+    const secondPromise = inScope(() => pool.run({ ...input(new AbortController().signal), lane: "background" }))
+    expect(fake.workers).toHaveLength(2)
+    fake.workers[1].ready()
+    const secondRun = startTurn(fake.workers[1])
+    fake.workers[1].receive({ type: "started", requestId: secondRun.requestId })
+    const second = await secondPromise
+
+    expect(pool.stats()).toMatchObject({ configured: 2, active: 2, queued: 0 })
+
+    for (const [worker, run] of [
+      [fake.workers[0], firstRun],
+      [fake.workers[1], secondRun],
+    ] as const) {
+      worker.receive({
+        type: "complete",
+        requestId: run.requestId,
+        turns: 1,
+        memoryBeforeDispose: workerMemory(2, 2),
+        memory: workerMemory(),
+      })
+      releaseTurn(worker, run.requestId)
+    }
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("labels queue depth with the turn lane", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 1 }, fake.spawn)
+    using _metrics = spyOn(ObservabilityMetrics, "record")
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    await firstPromise
+
+    const background = inScope(() => pool.run({ ...input(new AbortController().signal), lane: "background" }))
+    const calls = (
+      _metrics as unknown as {
+        mock: { calls: Array<Array<{ name?: string; labels?: Record<string, unknown> }>> }
+      }
+    ).mock.calls
+    expect(calls.some((call) => call[0]?.name === "agent.queue.depth" && call[0]?.labels?.lane === "interactive")).toBe(
+      true,
+    )
+    expect(calls.some((call) => call[0]?.name === "agent.queue.depth" && call[0]?.labels?.lane === "background")).toBe(
+      true,
+    )
+
+    await pool.stop()
+    await background.catch(() => undefined)
+  })
+
+  test("keeps the turn lane out of the serialized worker envelope", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run({ ...input(new AbortController().signal), lane: "background" }))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    const chunks = fake.workers[0].sent
+      .filter(
+        (message): message is Extract<AgentTurnProtocol.HostToWorker, { type: "run-chunk" }> =>
+          message.type === "run-chunk" && message.requestId === run.requestId,
+      )
+      .map((message) => message.data)
+    const payload = Buffer.concat(chunks)
+    const envelope = AgentTurnProtocol.deserializeTurn(payload)
+
+    expect("lane" in envelope.input).toBe(false)
+    expect(payload.toString()).not.toContain('"lane"')
+
+    fake.workers[0].receive({
+      type: "error",
+      requestId: run.requestId,
+      error: { name: "Error", message: "stop" },
+    })
+    await expect(streamPromise).rejects.toThrow("stop")
+    await pool.stop()
+  })
+
   test("admits queued demand immediately after raising the worker ceiling", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)

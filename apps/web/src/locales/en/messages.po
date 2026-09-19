@@ -9536,9 +9536,29 @@ msgstr "Uninstall {name}? It will be removed from this Synergy install."
 msgid "confirm.uninstallPlugin.title"
 msgstr "Uninstall plugin?"
 
-#. ── Countdown ───────────────────────────────────────────────────────
-msgid "countdown.timeout-label"
-msgstr "{remaining}s timeout"
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.backgrounded"
+msgstr "backgrounded"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.past-limit"
+msgstr "past limit"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.remaining"
+msgstr "{remaining}s remaining"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.timed-out"
+msgstr "timed out"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-background"
+msgstr "{remaining}s to background"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-timeout"
+msgstr "{remaining}s to timeout"
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
 msgid "dag.chrome.blocked"
@@ -13650,12 +13670,32 @@ msgid "session.state.home.unread"
 msgstr "Home session; response ready"
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr "Light Loop session"
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr "Light Loop session; response ready"
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr "Light Loop waiting for you"
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr "Session recovering"
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr "Running session"
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
 msgstr "Running Blueprint"
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
+msgstr "Running Light Loop"
 
 #. js-lingui-explicit-id
 msgid "session.state.waiting"
@@ -18117,12 +18157,16 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "Agent"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
-msgstr "Automatic"
+msgid "settings.runtime.agents.agentWorkers.derived"
+msgstr "Auto · machine-derived: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
 msgstr "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
+msgstr "Configured: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.placeholder"

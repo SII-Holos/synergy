@@ -21,6 +21,7 @@ import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
+import type { ToolMetadata } from "./tool-registry-lazy"
 
 const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
 const autoExpandedLabelDescriptor = { id: "ui.basicTool.autoExpanded", message: "Auto-loaded" }
@@ -58,9 +59,7 @@ export interface BasicToolProps {
   defaultOpen?: boolean
   forceOpen?: boolean
   status?: string
-  countdown?: number
-  countdownStartedAt?: number
-  metadata?: Record<string, any>
+  metadata?: ToolMetadata
   time?: ToolTime
   charsReceived?: number
   onSubtitleClick?: () => void
@@ -145,12 +144,7 @@ export function BasicTool(props: BasicToolProps) {
     if (!props.metadata?.autoExpanded) return null
     return _(autoExpandedLabelDescriptor)
   })
-  const countdown = createMemo(() => {
-    if (props.countdown !== undefined) {
-      return { seconds: props.countdown, startedAt: props.countdownStartedAt ?? props.time?.start }
-    }
-    return toolCountdown(props.metadata, props.time)
-  })
+  const countdown = createMemo(() => toolCountdown(props.metadata, props.time))
 
   const triggerProps = createMemo(() => {
     const base = fromTrigger(props.trigger, props.icon, props.onSubtitleClick)
@@ -192,7 +186,9 @@ export function BasicTool(props: BasicToolProps) {
                 <span data-slot="tool-trigger-chars">{charsLabel()}</span>
               </Show>
               <Show keyed when={countdown()}>
-                {(value) => <Countdown seconds={value.seconds} startedAt={value.startedAt} active={active()} />}
+                {(value) => (
+                  <Countdown seconds={value.seconds} startedAt={value.startedAt} kind={value.kind} active={active()} />
+                )}
               </Show>
               <Spinner />
             </Match>
