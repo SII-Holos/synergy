@@ -54,6 +54,8 @@ export namespace Worktree {
       lastUsedAt: z.number().optional(),
       setupFailed: z.boolean().optional(),
       setupError: z.string().optional(),
+      locked: z.string().optional(),
+      prunable: z.boolean().optional(),
     })
     .meta({ ref: "Worktree" })
   export type Info = z.infer<typeof Info>
@@ -214,17 +216,25 @@ export namespace Worktree {
     branch?: string
     detached?: boolean
     bare?: boolean
+    /** Git's `locked` line value, verbatim: "" when locked without a reason. */
+    locked?: string
+    /** Git translates the `prunable` reason, so only the line's presence is recorded. */
+    prunable?: boolean
   }
 
   export interface LockResult {
     acquired: boolean
     /** true when git reported that the worktree was already locked before this call. */
     existing: boolean
+    /** true when the lock already on disk carries this repository's own marker. */
+    markerOwner?: boolean
   }
 
   interface LockState {
     count: number
     synergyAcquired: boolean
+    /** A lock already on disk that this repository provably wrote, so it stays reclaimable. */
+    markerOwner: boolean
   }
 
   interface UseState {
@@ -235,6 +245,27 @@ export namespace Worktree {
   const activeLocks = new Map<string, LockState>()
   const activeUses = new Map<string, UseState>()
   const registryMutations = new Map<string, Promise<void>>()
+
+  let sweepRequester: ((scope: Scope.Project) => void) | undefined
+
+  /**
+   * Let the owner of the worktree janitor ask for a cap sweep after a worktree
+   * is created. This module owns the cap; it does not own when to run it, the
+   * configuration, or the timer, so the requester is injected rather than
+   * imported. A requester must never throw or block: creation has already
+   * succeeded, so cleanup failing is not creation failing.
+   */
+  export function setSweepRequester(requester: ((scope: Scope.Project) => void) | undefined) {
+    sweepRequester = requester
+  }
+
+  function requestSweep(scope: Scope.Project) {
+    try {
+      sweepRequester?.(scope)
+    } catch (error) {
+      log.warn("worktree sweep request failed", { scopeID: scope.id, error })
+    }
+  }
 
   function useState(directory: string) {
     const resolved = path.resolve(directory)
@@ -279,13 +310,17 @@ export namespace Worktree {
     }
   }
 
-  function beginRemoval(info: Info) {
+  function beginRemoval(info: Info, excludeSessionID?: string) {
     const current = useState(info.path)
     if (current.state.removing) {
       throw new CreateFailedError({ message: `Worktree ${info.name} is already being removed.` })
     }
-    if (current.state.active.size > 0) {
-      const sessionID = Array.from(current.state.active.values()).find((value) => value !== undefined)
+    // A removal issued from the caller's own turn must not be blocked by the
+    // use token that turn itself holds, while every other user still must.
+    // Anonymous uses carry no session, so they always remain blockers.
+    const others = Array.from(current.state.active.values()).filter((value) => value !== excludeSessionID)
+    if (others.length > 0) {
+      const sessionID = others.find((value) => value !== undefined)
       if (sessionID) {
         throw new SessionBusyError({
           sessionID,
@@ -471,6 +506,12 @@ export namespace Worktree {
       if (key === "branch") current.branch = value.replace(/^refs\/heads\//, "")
       if (key === "detached") current.detached = true
       if (key === "bare") current.bare = true
+      // Porcelain keys are never translated, but the `prunable` reason is, so
+      // only the lock's own marker is stored verbatim and prunability is
+      // recorded as presence. Stderr must not be parsed for either: git
+      // localizes it, and a zh_CN runtime would miss an English-only match.
+      if (key === "locked") current.locked = value
+      if (key === "prunable") current.prunable = true
     }
     flush()
     return result
@@ -514,6 +555,8 @@ export namespace Worktree {
       lastUsedAt: registry?.lastUsedAt,
       setupFailed: registry?.setupFailed,
       setupError: registry?.setupError,
+      locked: entry.locked,
+      prunable: entry.prunable,
     })
   }
 
@@ -743,7 +786,7 @@ export namespace Worktree {
     })
 
     try {
-      return await withUse(registry.path, parsed.sessionID, async () => {
+      const result = await withUse(registry.path, parsed.sessionID, async () => {
         const setup = await setupInfo(repoRoot)
         try {
           await copyIgnoredFiles(setup, repoRoot, registry.path)
@@ -756,6 +799,11 @@ export namespace Worktree {
         if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
         return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
       })
+      // Opportunistic cap top-up, fire-and-forget by contract: creation has
+      // already succeeded, so a sweep that cannot converge must never surface
+      // as a creation failure.
+      requestSweep(scope)
+      return result
     } catch (error) {
       await cleanupCreatedWorktree(repoRoot, registry.path, registry.branch)
       throw error
@@ -889,10 +937,14 @@ export namespace Worktree {
     }
   }
 
-  async function leaveBoundSessions(info: Info, extraSessionID?: string) {
+  async function leaveBoundSessions(info: Info, extraSessionID?: string, options?: { excludeRunning?: string }) {
     const bindings = new Set(info.bindings ?? [])
     if (extraSessionID) bindings.add(extraSessionID)
+    // The caller's own turn is running by definition. It is still unbound in
+    // the loop below, but it must not count as a competing session here, or a
+    // removal issued from that turn rejects itself.
     for (const sessionID of bindings) {
+      if (sessionID === options?.excludeRunning) continue
       if (await isSessionRunning(sessionID)) {
         throw new SessionBusyError({
           sessionID,
@@ -910,67 +962,194 @@ export namespace Worktree {
     }
   }
 
-  export async function remove(input: RemoveInput & { sessionID?: string }) {
+  export async function remove(input: RemoveInput & { sessionID?: string }, options?: { insideCallerTurn?: boolean }) {
     const sessionID = input.sessionID
+    // Internal fact, never a wire field: only the caller that owns the running
+    // turn may exclude itself from the guards below.
+    const excludeSessionID = options?.insideCallerTurn ? sessionID : undefined
     const parsed = RemoveInput.parse(input)
     const initial = await find(parsed.target)
     if (initial.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
-    const finishRemoval = beginRemoval(initial)
+    const finishRemoval = beginRemoval(initial, excludeSessionID)
     try {
       const info = await find(parsed.target)
       if (info.stale) {
-        await leaveBoundSessions(info, sessionID)
+        await leaveBoundSessions(info, sessionID, { excludeRunning: excludeSessionID })
         if (info.managed) await removeRegistry(info.id)
         return info
       }
       if (!parsed.force && (await isDirty(info.path))) {
         throw new DirtyError({ message: `Worktree ${info.name} has uncommitted changes. Re-run with force to remove.` })
       }
-      await leaveBoundSessions(info, sessionID)
-      const removed = parsed.force
-        ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
-        : await $`git worktree remove ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
-      if (removed.exitCode !== 0) {
-        throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
-      }
-      if (info.managed) await removeRegistry(info.id)
+      await leaveBoundSessions(info, sessionID, { excludeRunning: excludeSessionID })
+      await removeWorktree(info, { force: parsed.force, reason: "explicit" })
       return info
     } finally {
       finishRemoval()
     }
   }
 
-  export async function pruneStaleRegistry() {
-    const { repoRoot } = ensureGitScope()
-    const items = await list()
-    for (const item of items) {
-      if (item.stale && item.managed) await removeRegistry(item.id, repoRoot)
-    }
-    return true
+  /** The branch a landed check compares against: the remote default, else HEAD. */
+  async function targetBranch(repoRoot: string): Promise<string | undefined> {
+    const remote = await $`git symbolic-ref --short refs/remotes/origin/HEAD`.quiet().nothrow().cwd(repoRoot)
+    const fromRemote = outputText(remote.stdout).replace(/^origin\//, "")
+    if (remote.exitCode === 0 && fromRemote) return fromRemote
+    const head = await $`git rev-parse --abbrev-ref HEAD`.quiet().nothrow().cwd(repoRoot)
+    const value = outputText(head.stdout)
+    return head.exitCode === 0 && value ? value : undefined
   }
 
-  export async function lock(directory: string): Promise<LockResult> {
+  /**
+   * Stable patch-id of a diff, used to match a squash commit against a branch.
+   * The diff is streamed through stdin rather than interpolated into a shell
+   * command, so revision expressions never reach a shell parser.
+   */
+  async function patchIdOf(repoRoot: string, args: string[]): Promise<string | undefined> {
+    const diff = await $`git ${args}`.quiet().nothrow().cwd(repoRoot)
+    if (diff.exitCode !== 0) return undefined
+    const proc = Bun.spawn(["git", "patch-id", "--stable"], {
+      cwd: repoRoot,
+      stdin: diff.stdout,
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    const id = (await new Response(proc.stdout).text()).trim().split(/\s+/)[0]
+    return (await proc.exited) === 0 && id ? id : undefined
+  }
+
+  /**
+   * Content-level landed detection. `git branch -d` and `merge-base
+   * --is-ancestor` compare commit reachability, so both report a squash- or
+   * rebase-merged branch as unmerged even when its content is already on the
+   * target. Tree equality is the cheapest proof; an aggregate patch-id match
+   * covers a squash that rewrote the tree; `git cherry` only settles a regular
+   * merge. Anything unproven leaves the branch alone, because deleting a branch
+   * is the one step here that can lose work.
+   */
+  async function branchLanded(repoRoot: string, branch: string, target: string): Promise<boolean> {
+    const identical = await $`git diff --quiet ${branch} ${target}`.quiet().nothrow().cwd(repoRoot)
+    if (identical.exitCode === 0) return true
+
+    const mergeBase = await $`git merge-base ${target} ${branch}`.quiet().nothrow().cwd(repoRoot)
+    const base = outputText(mergeBase.stdout)
+    if (mergeBase.exitCode !== 0 || !base) return false
+
+    const aggregate = await patchIdOf(repoRoot, ["diff", base, branch])
+    if (aggregate) {
+      const commits = await $`git log --format=%H ${base}..${target}`.quiet().nothrow().cwd(repoRoot).text()
+      for (const commit of commits
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, 25)) {
+        const candidate = await patchIdOf(repoRoot, ["show", commit])
+        if (candidate && candidate === aggregate) return true
+      }
+    }
+
+    const cherry = await $`git cherry -v ${target} ${branch}`.quiet().nothrow().cwd(repoRoot).text()
+    const lines = cherry
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+    return lines.length > 0 && lines.every((line) => line.startsWith("-"))
+  }
+
+  async function deleteBranchIfLanded(repoRoot: string, branch: string) {
+    if (!branch) return
+    const target = await targetBranch(repoRoot)
+    if (!target || target === branch) return
+    const porcelain = await $`git worktree list --porcelain`.quiet().nothrow().cwd(repoRoot).text()
+    const stillCheckedOut = parsePorcelain(porcelain).some(
+      (item) => item.branch === branch && path.resolve(item.path) !== path.resolve(repoRoot),
+    )
+    if (stillCheckedOut) return
+    if (!(await branchLanded(repoRoot, branch, target))) {
+      log.info("worktree branch kept (content not proven landed)", { branch, target })
+      return
+    }
+    await $`git branch -D ${branch}`.quiet().nothrow().cwd(repoRoot)
+    log.info("worktree branch deleted (content landed)", { branch, target })
+  }
+
+  /**
+   * The single place a managed worktree is destroyed, shared by explicit
+   * removal, the janitor, and Cortex cleanup so all three honour the same lock
+   * and branch rules.
+   */
+  async function removeWorktree(info: Info, options: { force: boolean; reason: string }) {
+    const { repoRoot } = ensureGitScope()
+    // An explicit removal runs inside the turn that holds a git-level lock, and
+    // the janitor may meet a Synergy lock a dead holder left behind. Either one
+    // blocks `git worktree remove` at every force level below `-f -f`, so
+    // release it here; `-f -f` is not an option because the turn's own finally
+    // would then unlock a path that is no longer a working tree and throw.
+    // A lock this repository did not write is refused, never cleared: it is
+    // indistinguishable from one a user pinned by hand.
+    if (!(await releaseLockForRemoval(info.path))) {
+      throw new CreateFailedError({
+        message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
+      })
+    }
+    const removed = options.force
+      ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(repoRoot)
+      : await $`git worktree remove ${info.path}`.quiet().nothrow().cwd(repoRoot)
+    if (removed.exitCode !== 0) {
+      throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
+    }
+    if (info.managed) await removeRegistry(info.id)
+    await deleteBranchIfLanded(repoRoot, info.branch ?? "")
+    log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
+  }
+
+  const LOCK_MARKER_PREFIX = "synergy:v1:"
+
+  function lockMarker(sessionID?: string) {
+    return `${LOCK_MARKER_PREFIX}session=${sessionID ?? "unknown"}`
+  }
+
+  function ownsLockMarker(reason: string | undefined) {
+    return typeof reason === "string" && reason.startsWith(LOCK_MARKER_PREFIX)
+  }
+
+  async function readLockReason(directory: string, repoRoot: string): Promise<string | undefined> {
+    const text = await $`git worktree list --porcelain`.quiet().nothrow().cwd(repoRoot).text()
+    if (!text) return undefined
+    const resolved = path.resolve(directory)
+    return parsePorcelain(text).find((item) => path.resolve(item.path) === resolved)?.locked
+  }
+
+  export async function lock(directory: string, sessionID?: string): Promise<LockResult> {
     const resolved = path.resolve(directory)
     let state = activeLocks.get(resolved)
     if (!state) {
-      state = { count: 0, synergyAcquired: false }
+      state = { count: 0, synergyAcquired: false, markerOwner: false }
       activeLocks.set(resolved, state)
     }
     state.count += 1
-    if (state.count > 1) return { acquired: false, existing: false }
+    if (state.count > 1) return { acquired: false, existing: false, markerOwner: state.markerOwner }
     const { repoRoot } = ensureGitScope()
-    const result = await $`git worktree lock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    const result = await $`git worktree lock --reason ${lockMarker(sessionID)} ${resolved}`
+      .quiet()
+      .nothrow()
+      .cwd(repoRoot)
     if (result.exitCode !== 0) {
-      const msg = errorText(result)
-      if (/already locked/i.test(msg)) {
-        activeLocks.delete(resolved)
-        return { acquired: false, existing: true }
+      // "Already locked" is decided from porcelain, never from stderr: git
+      // localizes that message, so a text match only holds under an English
+      // locale and a non-English runtime threw instead of reporting the lock.
+      const existingReason = await readLockReason(resolved, repoRoot)
+      if (existingReason !== undefined) {
+        // Keep the state so a concurrent holder's count survives, and record
+        // whether this repository provably wrote the lock that is on disk.
+        state.markerOwner = ownsLockMarker(existingReason)
+        return { acquired: false, existing: true, markerOwner: state.markerOwner }
       }
       activeLocks.delete(resolved)
-      throw new LockFailedError({ message: msg || `Failed to lock worktree: ${resolved}` })
+      throw new LockFailedError({ message: errorText(result) || `Failed to lock worktree: ${resolved}` })
     }
     state.synergyAcquired = true
-    return { acquired: true, existing: false }
+    state.markerOwner = true
+    return { acquired: true, existing: false, markerOwner: true }
   }
 
   export async function unlock(directory: string) {
@@ -982,12 +1161,39 @@ export namespace Worktree {
       return
     }
     activeLocks.delete(resolved)
-    if (!state.synergyAcquired) return
+    // A lock this repository did not write is never cleared, so a user's own
+    // `git worktree lock` survives a session that merely ran in the worktree.
+    if (!state.synergyAcquired && !state.markerOwner) return
     const { repoRoot } = ensureGitScope()
     const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) {
       throw new LockFailedError({ message: errorText(result) || `Failed to unlock worktree: ${resolved}` })
     }
+  }
+
+  /**
+   * Clear the lock that blocks removing a worktree. Only a lock carrying this
+   * repository's own marker is released: an unmarked lock is indistinguishable
+   * from one a user wrote by hand, so it is reported instead of guessed at.
+   */
+  export async function releaseLockForRemoval(directory: string): Promise<boolean> {
+    const resolved = path.resolve(directory)
+    const { repoRoot } = ensureGitScope()
+    const existingReason = await readLockReason(resolved, repoRoot)
+    if (existingReason === undefined) return true
+    if (!ownsLockMarker(existingReason)) return false
+    const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    if (result.exitCode !== 0) return false
+    // Both flags must clear. The turn's own finally still calls unlock(), and
+    // leaving the marker recorded would make it run `git worktree unlock` on a
+    // path that is no longer a working tree, throwing out of that finally and
+    // failing an otherwise successful turn.
+    const state = activeLocks.get(resolved)
+    if (state) {
+      state.synergyAcquired = false
+      state.markerOwner = false
+    }
+    return true
   }
 
   export async function detachSession(sessionID: string) {
@@ -1008,86 +1214,147 @@ export namespace Worktree {
   }
   const log = Log.create({ service: "worktree" })
 
-  export type CleanupAction = "keep" | "safe_to_remove" | "prompt"
-  export interface CleanupDecision {
-    action: CleanupAction
-    reason: string
+  export const DEFAULT_MAX_MANAGED = 20
+
+  export interface SweepEvidence {
+    /** Who owns the on-disk lock, decided from the porcelain marker. */
+    lock: "none" | "synergy" | "foreign"
+    dirty?: boolean
+    running: boolean
+    localOnlyCommits: number
   }
 
-  export function cleanupState(info: Info): CleanupDecision {
-    if (!info.managed) return { action: "keep", reason: "external worktree, not managed by Synergy" }
-    if (info.isMain) return { action: "keep", reason: "main worktree" }
-    if (info.lifecycle === "active" && info.bindings && info.bindings.length > 0)
-      return { action: "keep", reason: "active with live bindings" }
-    if (info.lifecycle === "active" && activeLocks.has(info.path)) return { action: "keep", reason: "locked" }
-    if (info.dirty === true) return { action: "prompt", reason: "has uncommitted changes" }
-    if (info.lifecycle === "gc_candidate") return { action: "safe_to_remove", reason: "marked for garbage collection" }
-    if (info.stale === true && (!info.bindings || info.bindings.length === 0))
-      return { action: "safe_to_remove", reason: "stale with no bindings" }
-    return { action: "keep", reason: "in use or undetermined" }
+  export type SweepKeepReason =
+    | "external"
+    | "main"
+    | "foreign_lock"
+    | "running"
+    | "dirty"
+    | "unknown_dirty"
+    | "local_only_commits"
+    | "removal_failed"
+
+  export type SweepDecision = { eligible: true } | { eligible: false; reason: SweepKeepReason }
+
+  /**
+   * Pure eligibility decision. Evidence is supplied by the caller so this stays
+   * testable and independent of where the facts came from — an earlier version
+   * consulted the in-process lock map here, which cannot see another process.
+   * Whether an eligible worktree is actually reclaimed is the caller's cap
+   * decision, not this function's.
+   */
+  export function decide(info: Info, evidence: SweepEvidence): SweepDecision {
+    if (!info.managed) return { eligible: false, reason: "external" }
+    if (info.isMain) return { eligible: false, reason: "main" }
+    if (evidence.lock === "foreign") return { eligible: false, reason: "foreign_lock" }
+    if (evidence.running) return { eligible: false, reason: "running" }
+    if (evidence.dirty === true) return { eligible: false, reason: "dirty" }
+    if (evidence.dirty === undefined) return { eligible: false, reason: "unknown_dirty" }
+    if (evidence.localOnlyCommits > 0) return { eligible: false, reason: "local_only_commits" }
+    return { eligible: true }
   }
 
-  async function unlockStale(directory: string, repoRoot: string) {
-    try {
-      const result = await $`git worktree unlock ${directory}`.quiet().nothrow().cwd(repoRoot)
-      return result.exitCode === 0
-    } catch {
-      return false
-    }
+  export interface SweepReport {
+    scanned: number
+    maxManaged: number
+    removed: string[]
+    skipped: { id: string; name: string; reason: SweepKeepReason }[]
+    reconciled: string[]
   }
 
-  export async function collectGarbage(): Promise<{ removed: string[]; skipped: string[] }> {
-    const removed: string[] = []
-    const skipped: string[] = []
+  /** Local commits with no remote-tracking counterpart, i.e. work only this checkout holds. */
+  export async function localOnlyCommitCount(directory: string): Promise<number> {
+    // With no remote-tracking refs this count degenerates to the whole local
+    // history, so confirm a remote exists before trusting it.
+    const remotes = await $`git for-each-ref --count=1 refs/remotes/`.quiet().nothrow().cwd(directory).text()
+    if (!remotes.trim()) return 0
+    const result = await $`git rev-list --count HEAD --not --remotes`.quiet().nothrow().cwd(directory)
+    const count = Number.parseInt(outputText(result.stdout), 10)
+    return result.exitCode === 0 && Number.isFinite(count) && count > 0 ? count : 0
+  }
+
+  function lockOwner(locked: string | undefined): SweepEvidence["lock"] {
+    if (locked === undefined) return "none"
+    return ownsLockMarker(locked) ? "synergy" : "foreign"
+  }
+
+  /**
+   * Reconcile stale registrations and enforce the managed-worktree cap.
+   *
+   * Uses the lightweight inventory rather than `list()`: the sweep runs on a
+   * background tick, and `list()` computes directory size for every worktree,
+   * which on this checkout meant walking tens of gigabytes. Expensive probes
+   * (dirty, local-only commits) run only for worktrees that survived the cheap
+   * guards. The cap is measured over all managed worktrees but drawn only from
+   * eligible ones, so a blocked worktree is reported rather than deleted to
+   * reach the target.
+   */
+  export async function sweep(options?: { maxManaged?: number }): Promise<SweepReport> {
     const { repoRoot } = ensureGitScope()
-    const items = await list()
-    log.info("starting gc scan", { count: items.length })
+    const maxManaged = options?.maxManaged ?? DEFAULT_MAX_MANAGED
+    const { items } = await inventory()
+    const report: SweepReport = { scanned: items.length, maxManaged, removed: [], skipped: [], reconciled: [] }
 
+    // Stale registrations first: nothing is left to lose, and they would
+    // otherwise occupy cap slots that no usable worktree can free. A record is
+    // reconcilable as soon as git stops listing it (`stale`) or reports its
+    // gitdir gone (`prunable`); the directory check makes the filesystem agree
+    // before `-f -f` is used, so a path is only ever removed with nothing left
+    // in it. Both cases require a Synergy-managed record.
+    const reconciled = new Set<string>()
     for (const item of items) {
+      if (!item.managed || item.isMain) continue
+      if (!item.stale && item.prunable !== true) continue
+      if (await exists(item.path)) continue
+      await $`git worktree remove -f -f ${item.path}`.quiet().nothrow().cwd(repoRoot)
+      await removeRegistry(item.id, repoRoot)
+      reconciled.add(item.id)
+      report.reconciled.push(item.id)
+      log.info("sweep reconciled stale worktree", { id: item.id, name: item.name, prunable: item.prunable === true })
+    }
+
+    const managed = items.filter((item) => !reconciled.has(item.id) && !item.stale && item.managed && !item.isMain)
+    const oldestFirst = [...managed].sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0))
+    const eligible: Info[] = []
+
+    for (const item of oldestFirst) {
+      const lock = lockOwner(item.locked)
+      let running = false
+      for (const sessionID of item.bindings ?? []) {
+        if (await isSessionRunning(sessionID)) {
+          running = true
+          break
+        }
+      }
+      // A foreign lock already decides this item, so leave the dirty probe
+      // unanswered rather than asserting a fact that was never measured.
+      const dirty = lock === "foreign" ? undefined : await isDirty(item.path).catch(() => undefined)
+      const localOnlyCommits = dirty === false ? await localOnlyCommitCount(item.path) : 0
+      const decision = decide(item, { lock, dirty, running, localOnlyCommits })
+      if (decision.eligible) eligible.push(item)
+      else report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
+    }
+
+    const excess = Math.max(managed.length - maxManaged, 0)
+    for (const item of eligible.slice(0, excess)) {
       try {
-        if (item.stale) {
-          await unlockStale(item.path, repoRoot)
-          log.info("unlocked stale worktree locks", { id: item.id, name: item.name })
-        }
-
-        const decision = cleanupState(item)
-        if (decision.action === "keep") {
-          log.info("gc keeping worktree", { id: item.id, name: item.name, reason: decision.reason })
-          continue
-        }
-
-        if (decision.action === "prompt") {
-          log.info("gc skipping worktree (prompt)", { id: item.id, name: item.name, reason: decision.reason })
-          skipped.push(item.id)
-          continue
-        }
-
-        if (decision.action === "safe_to_remove") {
-          log.info("gc removing worktree", { id: item.id, name: item.name, reason: decision.reason })
-          const dirty = await isDirty(item.path).catch(() => true)
-          if (dirty) {
-            log.warn("gc skipping worktree (unexpected dirty)", { id: item.id, name: item.name })
-            skipped.push(item.id)
-            continue
-          }
-          const op = await $`git worktree remove ${item.path}`.quiet().nothrow().cwd(repoRoot)
-          if (op.exitCode !== 0) {
-            log.warn("gc failed to remove worktree", { id: item.id, name: item.name, error: errorText(op) })
-            skipped.push(item.id)
-          } else {
-            if (item.managed) await removeRegistry(item.id, repoRoot)
-            removed.push(item.id)
-            log.info("gc removed worktree", { id: item.id, name: item.name })
-          }
-        }
+        await removeWorktree(item, { force: false, reason: "managed cap" })
+        report.removed.push(item.id)
       } catch (error) {
-        log.warn("gc error for worktree", { id: item.id, name: item.name, error })
-        skipped.push(item.id)
+        const message = error instanceof Error ? error.message : String(error)
+        log.warn("sweep failed to remove worktree", { id: item.id, name: item.name, error: message })
+        report.skipped.push({ id: item.id, name: item.name, reason: "removal_failed" })
       }
     }
 
-    log.info("gc scan complete", { removed: removed.length, skipped: skipped.length })
-    return { removed, skipped }
+    await $`git worktree prune --expire=now`.quiet().nothrow().cwd(repoRoot)
+    log.info("sweep complete", {
+      scanned: report.scanned,
+      removed: report.removed.length,
+      skipped: report.skipped.length,
+      reconciled: report.reconciled.length,
+    })
+    return report
   }
 
   export async function markLifecycle(id: string, lifecycle: RegistryInfo["lifecycle"]) {

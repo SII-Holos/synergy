@@ -524,6 +524,80 @@ describe("git worktree integration", () => {
     })
   })
 
+  test("remove succeeds from inside the caller's own running turn", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create({ title: "Self Turn Remove" })
+          const created = await Worktree.create({
+            name: "self-turn-remove",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+
+          // The turn holds both an in-process use token for this session and a
+          // git-level lock on the worktree, so removing the worktree it is
+          // executing in must exclude the caller itself.
+          let removalError: unknown
+          let removedWhileRunning: Awaited<ReturnType<typeof Worktree.remove>> | undefined
+          const execution = SessionManager.run(session.id, async () => {
+            try {
+              removedWhileRunning = await Worktree.remove(
+                { sessionID: session.id, target: created.id, force: false },
+                { insideCallerTurn: true },
+              )
+            } catch (error) {
+              removalError = error
+            }
+          })
+
+          // A rejected turn would surface here; the removal must not make the
+          // turn's own finally block throw.
+          await execution
+          expect(removalError).toBeUndefined()
+          expect(removedWhileRunning?.id).toBe(created.id)
+          expect((await Worktree.list()).some((item) => item.id === created.id)).toBe(false)
+
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("remove still rejects another running session inside a caller turn", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const caller = await Session.create({ title: "Self Turn Caller" })
+          const other = await Session.create({ title: "Self Turn Other" })
+          const created = await Worktree.create({ name: "self-turn-other", bind: false, baseRef: "current" })
+          await Worktree.enter({ sessionID: other.id, target: created.id })
+
+          const lease = SessionManager.acquire(other.id)
+          expect(lease).toBeDefined()
+
+          try {
+            await expect(
+              Worktree.remove({ sessionID: caller.id, target: created.id, force: true }, { insideCallerTurn: true }),
+            ).rejects.toThrow("Stop session")
+          } finally {
+            await SessionManager.release(lease!)
+            await Worktree.remove({ target: created.id, force: true })
+            await Session.remove(caller.id)
+            await Session.remove(other.id)
+          }
+        })(),
+    })
+  })
+
   test("concurrent enters retain every managed worktree binding", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
