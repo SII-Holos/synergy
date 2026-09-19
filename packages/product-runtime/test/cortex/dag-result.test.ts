@@ -279,10 +279,12 @@ describe("delegated subagent with DAG context (integration)", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        let systemText = ""
+        const systemPlans = new Map<string, string[]>()
         const restore = installDagLoopMocks({
           onBuildPlan(input) {
-            systemText = input.system.join("\n")
+            const plans = systemPlans.get(input.sessionID) ?? []
+            plans.push(input.system.join("\n"))
+            systemPlans.set(input.sessionID, plans)
           },
         })
         try {
@@ -322,10 +324,27 @@ describe("delegated subagent with DAG context (integration)", () => {
 
           const completed = await Cortex.waitFor(task.id, 10)
           expect(completed?.status).toBe("completed")
-          expect(systemText).toContain("<upstream-results>")
-          expect(systemText).toContain("Structured output:")
-          expect(systemText).toContain('"winner": "drake"')
-          expect(systemText).toContain('"score": 3')
+          await Cortex.drain(task.id)
+          const independent = await Session.create({})
+          await SessionInvoke.invokeInternal({
+            sessionID: independent.id,
+            model: { providerID: "test-provider", modelID: "test-model" },
+            agent: "developer",
+            parts: [{ type: "text", text: "Run an independent task" }],
+          })
+          const plans = systemPlans.get(task.sessionID) ?? []
+          expect(plans.length).toBeGreaterThan(0)
+          for (const systemText of plans) {
+            expect(systemText).toContain("<upstream-results>")
+            expect(systemText).toContain("Structured output:")
+            expect(systemText).toContain('"winner": "drake"')
+            expect(systemText).toContain('"score": 3')
+          }
+          const independentPlans = systemPlans.get(independent.id) ?? []
+          expect(independentPlans.length).toBeGreaterThan(0)
+          for (const systemText of independentPlans) {
+            expect(systemText).not.toContain("<upstream-results>")
+          }
         } finally {
           restore()
         }
