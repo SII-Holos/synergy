@@ -13,12 +13,11 @@ import {
   type RecordQuery,
   type StoredEvent,
 } from "./transactional-store"
+import { measureStorageOperation } from "./measure"
 import { ObservabilityIssues } from "../observability/issues"
-import { ObservabilityMetrics } from "../observability/metrics"
 import { ObservabilityResources } from "../observability/resources"
 
 export namespace Storage {
-  const STORAGE_DURATION_SAMPLE_RATE = 0.02
   export const NotFoundError = MissingRecord
   export const writeJsonAtomic = AtomicFile.writeJsonAtomic
   export interface Handle {
@@ -320,65 +319,15 @@ export namespace Storage {
     }
   }
 
-  async function measureStorage<T>(
+  // One measurement source for the whole store: this surface and the store
+  // primitives that query the driver directly share `measureStorageOperation`,
+  // so latency, volume and errors agree and no operation is invisible.
+  function measureStorage<T>(
     operation: string,
     key: string[],
     body: () => Promise<T>,
     options: { silentNotFound?: boolean } = {},
   ) {
-    const start = performance.now()
-    let status = "ok"
-    try {
-      return await body()
-    } catch (error) {
-      status = "error"
-      // Expected "file does not exist" paths (note scope probing, index
-      // rebuilds) used try/catch as control flow; every miss raised a
-      // PERF_STORAGE_OPERATION_ERROR issue and amplified telemetry writes.
-      // Keep the error metric (observability still counts it) but skip the
-      // issue when the caller declared the miss expected.
-      const isNotFound = error instanceof NotFoundError
-      if (!(options.silentNotFound && isNotFound)) {
-        ObservabilityIssues.raise({
-          code: "PERF_STORAGE_OPERATION_ERROR",
-          severity: "warning",
-          module: "storage",
-          title: "Storage operation failed",
-          message: `${operation} failed for ${key[0] ?? "root"}`,
-          evidence: {
-            operation,
-            keyPrefix: key[0] ?? "root",
-            errorName: error instanceof Error ? error.name : "unknown",
-          },
-        })
-      }
-      throw error
-    } finally {
-      const durationMs = performance.now() - start
-      ObservabilityMetrics.record({
-        name: "storage.operation.duration",
-        value: durationMs,
-        unit: "ms",
-        module: "storage",
-        labels: { operation, keyPrefix: key[0] ?? "root", status },
-        sampleRate: status === "error" ? 1 : STORAGE_DURATION_SAMPLE_RATE,
-      })
-      ObservabilityMetrics.record({
-        name: "storage.operation.count",
-        value: 1,
-        unit: "count",
-        module: "storage",
-        labels: { operation, status },
-      })
-      if (status === "error") {
-        ObservabilityMetrics.record({
-          name: "storage.operation.error",
-          value: 1,
-          unit: "count",
-          module: "storage",
-          labels: { operation },
-        })
-      }
-    }
+    return measureStorageOperation(operation, key[0] ?? "root", body, options)
   }
 }

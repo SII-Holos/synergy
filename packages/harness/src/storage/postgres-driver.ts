@@ -7,7 +7,7 @@ import {
   StorageOwnershipError,
   StorageIntegrityError,
 } from "./errors"
-import type { SqlConnection, SqlDriver, SqlRow, SqlValue } from "./sql-contract"
+import type { SqlConnection, SqlDriver, SqlRow, SqlTransactionOptions, SqlValue } from "./sql-contract"
 
 function statement(sql: string) {
   let index = 0
@@ -71,7 +71,7 @@ export class PostgresDriver implements SqlDriver {
 
   async transaction<T>(
     body: (connection: SqlConnection) => Promise<T>,
-    options: { readOnly?: boolean; operationID?: string } = {},
+    options: SqlTransactionOptions = {},
   ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       try {
@@ -85,30 +85,39 @@ export class PostgresDriver implements SqlDriver {
 
   private async attempt<T>(
     body: (connection: SqlConnection) => Promise<T>,
-    options: { readOnly?: boolean; operationID?: string } = {},
+    options: SqlTransactionOptions = {},
   ): Promise<T> {
     if (this.closed) throw new StorageClosedError()
     if (!options.readOnly) await this.assertOwnership()
     const connection = await this.pool.reserve()
     const query = <Row extends SqlRow = SqlRow>(sql: string, values: SqlValue[] = []) =>
       connection.unsafe(statement(sql), values) as unknown as Promise<Row[]>
+    // A declared single statement is already atomic, so BEGIN/COMMIT would only
+    // add round trips to an engine that guarantees no more than the statement
+    // itself does.
+    const transactional = !(options.readOnly && options.singleStatement)
     let committing = false
     try {
-      await query(
-        options.readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN ISOLATION LEVEL SERIALIZABLE",
-      )
-      if (!options.readOnly) await query("SET LOCAL synchronous_commit = on")
+      if (transactional)
+        await query(
+          options.readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN ISOLATION LEVEL SERIALIZABLE",
+        )
+      if (transactional && !options.readOnly) await query("SET LOCAL synchronous_commit = on")
       const result = await body({ query })
       if (!options.readOnly) await this.assertOwnership()
-      committing = true
-      await query("COMMIT")
+      if (transactional) {
+        committing = true
+        await query("COMMIT")
+      }
       return result
     } catch (error) {
       const code = databaseErrorCode(error)
-      try {
-        await query("ROLLBACK")
-      } catch {
-        /* A broken connection is closed below. */
+      if (transactional) {
+        try {
+          await query("ROLLBACK")
+        } catch {
+          /* A broken connection is closed below. */
+        }
       }
       if (committing && code !== "40001" && code !== "40P01")
         throw new StorageCommitUnknownError(options.operationID, error)
