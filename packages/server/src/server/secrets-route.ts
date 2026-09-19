@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
-import z from "zod"
+import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { SecretVault } from "@ericsanchezok/synergy-harness/secrets/vault"
 import { errors } from "./error"
@@ -94,15 +94,21 @@ export const SecretsRoute = new Hono()
           description: "The registered entry without its value",
           content: { "application/json": { schema: resolver(SecretEntry) } },
         },
-        ...errors(400),
+        ...errors(400, 409),
       },
     }),
     validator("json", SecretCreateInput),
     async (c) => {
       const { value, policy } = c.req.valid("json")
-      const entry = await SecretVault.register(value, { kind: "user" }, { policy })
-      const { value: _stored, ...rest } = entry
-      return c.json(rest)
+      try {
+        const entry = await SecretVault.register(value, { kind: "user" }, { policy })
+        const { value: _stored, ...rest } = entry
+        return c.json(rest)
+      } catch (error) {
+        if (error instanceof SecretVault.ConflictError)
+          return c.json({ name: "SecretConflictError", data: { message: error.message } }, 409)
+        throw error
+      }
     },
   )
   .patch(
@@ -137,7 +143,7 @@ export const SecretsRoute = new Hono()
           description: "The rotated entry without its value",
           content: { "application/json": { schema: resolver(SecretEntry) } },
         },
-        ...errors(400, 404),
+        ...errors(400, 404, 409),
       },
     }),
     validator("json", SecretRotateInput),
@@ -147,8 +153,11 @@ export const SecretsRoute = new Hono()
         const entry = await SecretVault.rotate(c.req.param("id"), value)
         const { value: _stored, ...rest } = entry
         return c.json(rest)
-      } catch {
-        throw new Storage.NotFoundError({ message: `secret ${c.req.param("id")} does not exist` })
+      } catch (error) {
+        if (error instanceof SecretVault.NotFoundError) throw new Storage.NotFoundError({ message: error.message })
+        if (error instanceof SecretVault.ConflictError)
+          return c.json({ name: "SecretConflictError", data: { message: error.message } }, 409)
+        throw error
       }
     },
   )

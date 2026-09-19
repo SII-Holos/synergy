@@ -28,6 +28,8 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 
 Inspect two nearby tests and `packages/harness/test/support/preload.ts` before introducing a new harness pattern.
 
+Importing an App `src/components/**` module directly from `bun:test` needs its module-load side effects satisfied first: `mock.module("@/locales/en/messages.po?lingui", () => ({ messages: {} }))` for the catalog, because the `.po?lingui` module is not Bun-loadable, and a stub for anything reaching `@ericsanchezok/synergy-ui/icon`, whose `lucide-solid` `Dynamic` chain throws "Client-only API called on the server side". Prefer extracting the logic under test into a plain module (a classifier, a resolver, a projection) and testing that directly; reach for the mocks only when the component's own wiring is the subject.
+
 Place every test under the owning package's `test/` directory, mirroring the relevant source domain when that helps navigation. Place repository-level script and policy tests under the root `test/` directory. Never cascade `*.test.*` or `*.spec.*` files beside implementation files in `src/`, `script/`, or another source directory. Run `bun run test-layout:check` when adding or moving tests.
 
 For localized UI behavior, use a real Lingui `I18nProvider` with minimal English and Simplified Chinese messages. Assert visible text and accessibility labels after a reactive locale change; do not mock translation calls to return IDs because that hides missing catalogs and stale module-load translations. Keep plugin-author, user, LLM, path, identifier, and raw-error pass-through in the same boundary test as translated host chrome.
@@ -39,6 +41,8 @@ Per-session recovery tests must migrate only their owned session fixture. Exerci
 Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. A module-level replacement of a process global — `globalThis.fetch` above all — is visible to every sibling file in the same shard process: capture the original before installing the replacement and restore it in `afterAll`, because a per-test `finally` that re-reads `globalThis.fetch` restores the replacement, not the original. Honor abort signals and dispose processes, Browser pages, servers, and timers.
 
 Cancellation tests must cover the interval after execution ownership releases but before asynchronous ledger reconciliation finishes, preserving interrupted call evidence and the terminal cancellation result.
+
+Capture process-global loop observations by their owning Session ID and assert the target Session's requests. A single last-call variable can be overwritten by unrelated background work; exercise an independent Session and drain the owned Cortex task before restoring loop mocks.
 
 Electron fixtures should launch the resolved Electron executable rather than the npm CLI wrapper so timeout signals reach the owned application. Include cold startup and teardown in the test budget, and retain phase diagnostics on failure.
 

@@ -86,6 +86,15 @@ export namespace ProviderAuthRecovery {
     return undefined
   }
 
+  function rejectionCooldownUntil(failure: ProviderProfile.ClassifiedError) {
+    const now = Math.floor(Date.now() / 1000)
+    if (failure.cooldownUntil === undefined) return now + Auth.RejectionPolicy.cooldownSeconds
+    return Math.min(
+      Math.max(failure.cooldownUntil, now + Auth.RejectionPolicy.cooldownSeconds),
+      now + Auth.RejectionPolicy.maxCooldownSeconds,
+    )
+  }
+
   async function classify(input: ExecuteInput, response: Response) {
     const body = await responseBody(response)
     const profile = ProviderProfile.resolve(input.providerID, input.profileID)
@@ -103,10 +112,13 @@ export namespace ProviderAuthRecovery {
       }
     }
     if (response.status === 401 && profile?.origin !== "plugin") {
+      const retryAfter = retryAfterSeconds(response)
       return {
         code: "credential_rejected",
         retryable: false,
         reloginRequired: true,
+        rejectedAt: Math.floor(Date.now() / 1000),
+        cooldownUntil: retryAfter ? Math.floor(Date.now() / 1000) + retryAfter : undefined,
       } satisfies ProviderProfile.ClassifiedError
     }
     if (response.status === 429) {
@@ -158,10 +170,14 @@ export namespace ProviderAuthRecovery {
     environment?: string[],
   ) {
     if (!manageStoredCredential) return
-    const entry = (await Auth.entries())[providerID]
+    const selected = await Auth.select(providerID)
     if (Auth.removalRevision(providerID) !== removalRevision) return
-    if (entry) {
-      await ProviderAuthHealth.clearObservation(providerID, entry)
+    if (selected) {
+      if (selected.poolEntry?.rejectedAt !== undefined) {
+        await Auth.markRecovered(providerID)
+        return
+      }
+      await ProviderAuthHealth.clearObservation(providerID, selected.entry)
       return
     }
     const runtime = runtimeCredential(providerID, profileID, environment)
@@ -204,10 +220,30 @@ export namespace ProviderAuthRecovery {
       await reloadProvider(`provider auth exhausted: ${input.providerID}`, input.reloadOnTransition !== false)
       return
     }
+    if (failure.rejectedAt !== undefined) {
+      const cooldownUntil = rejectionCooldownUntil(failure)
+      if (selected) {
+        const escalated = await Auth.markRejected(input.providerID, {
+          credentialID: selected.credentialID,
+          failureCode: failure.code,
+          cooldownUntil,
+          rejectedAt: failure.rejectedAt,
+        })
+        if (escalated) {
+          await reloadProvider(`provider auth rejected: ${input.providerID}`, input.reloadOnTransition !== false)
+        }
+        return
+      }
+      await observeRejectionWithoutCredential(input, failure, cooldownUntil)
+      return
+    }
     if (!failure.reloginRequired) return
     if (selected) {
       await Auth.markDead(input.providerID, failure.code, { credentialID: selected.credentialID })
     } else {
+      const entry = (await Auth.entries())[input.providerID]
+      const cooling = (entry?.pool ?? []).some((item) => item.status === "exhausted" && item.rejectedAt !== undefined)
+      if (cooling && failure.code.endsWith("_missing")) return
       await ProviderAuthHealth.observe({
         providerID: input.providerID,
         status: "action_required",
@@ -218,6 +254,37 @@ export namespace ProviderAuthRecovery {
       })
     }
     await reloadProvider(`provider auth rejected: ${input.providerID}`, input.reloadOnTransition !== false)
+  }
+
+  async function observeRejectionWithoutCredential(
+    input: ExecuteInput,
+    failure: ProviderProfile.ClassifiedError,
+    cooldownUntil: number,
+  ) {
+    const entry = (await Auth.entries())[input.providerID]
+    if (!entry) {
+      const runtime = runtimeCredential(input.providerID, input.profileID, input.environment)
+      await ProviderAuthHealth.observe({
+        providerID: input.providerID,
+        status: "action_required",
+        recovery: runtime.recovery,
+        source: runtime.source,
+        authKind: runtime.authKind,
+        failureCode: failure.code,
+      })
+      await reloadProvider(`provider auth rejected: ${input.providerID}`, input.reloadOnTransition !== false)
+      return
+    }
+    const health = ProviderAuthHealth.fromEntry(input.providerID, entry)
+    if (health.status === "action_required") return
+    await ProviderAuthHealth.observe({
+      providerID: input.providerID,
+      status: "exhausted",
+      source: health.source,
+      authKind: health.authKind,
+      failureCode: failure.code,
+      cooldownUntil,
+    })
   }
 
   async function refresh(input: ExecuteInput, selected: NonNullable<Awaited<ReturnType<typeof Auth.select>>>) {

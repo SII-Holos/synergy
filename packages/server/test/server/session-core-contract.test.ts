@@ -71,3 +71,32 @@ test("core HTTP sessions support listing, fork, file export and import without p
     },
   })
 })
+
+test("abort reports what it actually did instead of an unconditional success", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const create = await app.request("/session", json("POST", { title: "Abort contract fixture" }))
+      const session = (await create.json()) as Session.Info
+
+      const response = await app.request(`/session/${session.id}/abort`, { method: "POST" })
+      expect(response.status).toBe(200)
+      const result = (await response.json()) as {
+        outcome: string
+        repaired: boolean
+        abandoned: boolean
+        settled: boolean
+      }
+
+      // The payload must distinguish "a running turn was stopped" from "nothing
+      // was running"; a bare `true` made a no-op stop indistinguishable from a
+      // real one, which is what left the stuck session un-abortable.
+      expect(Object.keys(result).sort()).toEqual(["abandoned", "outcome", "repaired", "settled"])
+      expect(["idle", "not_found"]).toContain(result.outcome)
+      expect(result.repaired).toBe(false)
+      expect(result.abandoned).toBe(false)
+      expect(result.settled).toBe(false)
+    },
+  })
+})

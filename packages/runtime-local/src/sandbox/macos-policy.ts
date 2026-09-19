@@ -12,8 +12,10 @@
 // parameterized writable roots.
 // ------------------------------------------------------------------
 import * as fs_node from "fs"
+import * as path_node from "path"
 
 import type { SynergySandboxPermissionProfile } from "@ericsanchezok/synergy-harness/sandbox/policy-engine"
+import { partitionDeniesByWritableRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { MacOSSbpl } from "./macos-sbpl"
 
 // ------------------------------------------------------------------
@@ -35,6 +37,10 @@ function paramWriteRule(paramName: string): string {
 
 function readOnlyDeny(subpath: string): string {
   return `(deny file-write* (subpath "${escapeSbpl(subpath)}"))`
+}
+
+function readDenyRule(denied: string): string {
+  return `(deny file-read* (subpath "${escapeSbpl(denied)}"))`
 }
 
 function metadataDenyRegex(name: string): string {
@@ -178,13 +184,33 @@ function compileGlobBody(glob: string): string {
  * SBPL rules using user-visible paths may not match kernel-resolved paths,
  * so we resolve all paths to their canonical form before Rule generation.
  *
- * Returns the original path if realpath fails (e.g. path doesn't exist yet).
+ * `realpathSync` fails for a path that does not exist yet, which is the common
+ * case for protected subpaths such as `<workspace>/.git/hooks` — the whole
+ * point of denying them is that nothing has created them. Falling back to the
+ * raw string would emit that deny in whatever spelling the caller used, while
+ * the writable-root parameter is always bound through its canonical spelling.
+ * The deny then covers a path the kernel never resolves and the deeper write
+ * allow wins, so a firmlink alias (`/var/folders/...` for
+ * `/private/var/folders/...`) escapes the protected subpath entirely.
+ *
+ * Resolving the nearest existing ancestor and re-appending the missing
+ * components keeps every emitted rule in the kernel's spelling, whether or not
+ * the target exists. Only a genuinely unresolvable path (no existing ancestor)
+ * falls back to the input.
  */
 function canonicalize(p: string): string {
-  try {
-    return fs_node.realpathSync(p)
-  } catch {
-    return p
+  let existing = p
+  const trailing: string[] = []
+  for (;;) {
+    try {
+      const resolved = fs_node.realpathSync(existing)
+      return trailing.length === 0 ? resolved : path_node.join(resolved, ...trailing)
+    } catch {
+      const parent = path_node.dirname(existing)
+      if (parent === existing) return p
+      trailing.unshift(path_node.basename(existing))
+      existing = parent
+    }
   }
 }
 
@@ -197,9 +223,10 @@ export namespace MacOSPolicy {
    *
    * Uses (deny default) as the base policy with parameterized writable
    * roots so the profile is portable. Reads are allowed globally and
-   * denied only for the credential paths in readDenyPaths — a subpath
-   * deny is more specific than the bare global allow and wins under
-   * Seatbelt's most-specific-match resolution regardless of rule order.
+   * denied only for the credential paths in readDenyPaths. A deny is
+   * emitted on whichever side of the writable-root allow makes it
+   * effective, because Seatbelt applies the last matching rule, not the
+   * most specific one — see partitionDeniesByWritableRoot.
    *
    * Call generateParams() to produce the corresponding -D parameter map.
    */
@@ -214,22 +241,38 @@ export namespace MacOSPolicy {
     lines.push(MacOSSbpl.PLATFORM_DEFAULTS)
 
     // 3. Global read allow — the read model is a deny list. A bare
-    //    (allow file-read*) carries no path filter, so every subpath-scoped
-    //    deny below is more specific and wins. Tool configs (e.g.
-    //    ~/.config/gh), the developer toolchain, and arbitrary host paths
-    //    stay readable without per-root enumeration.
+    //    (allow file-read*) carries no path filter, so a subpath-scoped
+    //    deny wins over it. Tool configs (e.g. ~/.config/gh), the developer
+    //    toolchain, and arbitrary host paths stay readable without per-root
+    //    enumeration.
     lines.push("(allow file-read*)")
 
-    // 3a. Credential read denies — the only paths that stay unreadable.
-    //     Canonicalized for APFS firmlink path remapping; a missing path
-    //     canonicalizes to itself and denies nothing that exists.
-    for (const denied of fs.readDenyPaths ?? []) {
-      lines.push(`(deny file-read* (subpath "${escapeSbpl(canonicalize(denied))}"))`)
+    // 3a. Credential read denies placed before the writable-root allows: a
+    //     deny CONTAINING a writable root must lose to the deeper allow, so a
+    //     workspace nested inside a credential directory still works while its
+    //     credential siblings stay denied. Canonicalized both because a
+    //     missing path canonicalizes to itself (denying nothing that exists)
+    //     and because the -D writable roots bind canonicalized spellings —
+    //     comparing raw spellings could place a deny on the wrong side.
+    const readDenies = partitionDeniesByWritableRoot(
+      (fs.readDenyPaths ?? []).map(canonicalize),
+      fs.writableRoots.map(canonicalize),
+    )
+    for (const denied of readDenies.beforeWritableRoots) {
+      lines.push(readDenyRule(denied))
     }
 
     // 4. Writable roots — parameterized allow rules
     for (let i = 0; i < fs.writableRoots.length; i++) {
       lines.push(paramWriteRule(writeParamName(i)))
+    }
+
+    // 4a. Credential read denies inside a writable root, placed after the
+    //     allow that would otherwise re-expose them. Rule order is the
+    //     enforcement mechanism here, exactly as the Linux helper orders its
+    //     cover mounts on both sides of the writable binds.
+    for (const denied of readDenies.afterWritableRoots) {
+      lines.push(readDenyRule(denied))
     }
 
     // 5. Read-only subpaths (protected paths inside writable roots)

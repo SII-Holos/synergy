@@ -21,6 +21,8 @@ export function registerWorkflowSessions() {
       id: kind,
       managesLock: true,
       conflicts: ["plan", "lightloop", "lattice", "boss"],
+      activeForPresentation:
+        kind === "lightloop" ? (session) => isActiveLightLoopWorkflow(session.workflow) : undefined,
       async enable({ sessionID, args }) {
         if (kind === "plan") return WorkflowSessionService.enablePlan(sessionID)
         if (kind === "boss") return WorkflowSessionService.enableBoss(sessionID)
@@ -60,6 +62,27 @@ export function registerWorkflowSessions() {
         ? await SessionBlueprintState.getLoop(session.scope.id, session.blueprint.loopID)
         : undefined
       return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
+    },
+    async recoveringDescription(session) {
+      if (session.blueprint?.loopID) {
+        const loop = await SessionBlueprintState.getLoop(session.scope.id, session.blueprint.loopID)
+        if (loop && SessionBlueprintState.isActiveStatus(loop.status)) return WorkflowRecovery.describeActiveLoop(loop)
+      }
+      if (isActiveLightLoopWorkflow(session.workflow)) return "Light Loop active"
+      if (session.workflow?.kind === "lattice") return "Lattice run active"
+      return undefined
+    },
+    async abandonPhantom(session) {
+      // Scope: only BlueprintLoops. Light Loop and Lattice own their own
+      // restart reconciliation, and an active Light Loop is legitimately
+      // re-driven by the continuation kernel between turns.
+      const loopID = session.blueprint?.loopID
+      if (!loopID) return false
+      const loop = await SessionBlueprintState.getLoop(session.scope.id, loopID)
+      if (!loop || !SessionBlueprintState.isActiveStatus(loop.status)) return false
+      if (await WorkflowRecovery.hasResumableEvidence(loop)) return false
+      await WorkflowRecovery.abandonLoop(session.scope.id, loopID)
+      return true
     },
     hasContinuation(session) {
       return (
@@ -107,9 +130,7 @@ export function registerWorkflowSessions() {
   CoreModePolicy.register({
     id: "workflows",
     visibility: SessionModePolicy.visibility,
-    evaluateCall: SessionModePolicy.evaluateCall,
-    unavailable: (input) =>
-      SessionModePolicy.isPlan(input.session) ? SessionModePolicy.unavailable(input) : undefined,
+    unavailable: SessionModePolicy.unavailable,
     availability: workflowToolAvailability,
     forcedGroups: (session) =>
       session?.workflow?.kind === "plan" || session?.workflow?.kind === "lattice" || session?.blueprint?.loopID

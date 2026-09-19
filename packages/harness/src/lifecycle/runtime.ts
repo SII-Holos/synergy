@@ -3,6 +3,8 @@ import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
 import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
+import { SessionCompat } from "../session/compat-import"
+import { StorageRetention } from "../storage/retention"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -79,6 +81,7 @@ export namespace RuntimeHandle {
     let uninstallStorage: (() => void) | undefined
     let server: RuntimeServer | undefined
     let residentStarted = false
+    let stopCompat: (() => Promise<void>) | undefined
     let closing: Promise<void> | undefined
 
     function closeAdmission() {
@@ -100,6 +103,8 @@ export namespace RuntimeHandle {
             errors.push(error)
           }
         }
+        await cleanup(() => StorageRetention.stop())
+        await cleanup(() => stopCompat?.())
         await cleanup(() => services.reload?.stop())
         closeAdmission()
         if (residentStarted) await cleanup(() => services.resident?.stop())
@@ -172,6 +177,7 @@ export namespace RuntimeHandle {
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
+      await SessionCompat.prepareRecovery()
       if (storage && storage.manifest.phase !== "active")
         await StorageRecovery.validate((current, timeoutMs) =>
           options.storageReporter?.(
@@ -184,6 +190,7 @@ export namespace RuntimeHandle {
       await StorageRecovery.recoverOwners()
       await StorageRecovery.load()
       await StorageRecovery.reconcileNotifications()
+      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
       options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
@@ -214,6 +221,13 @@ export namespace RuntimeHandle {
       ObservabilityConfig.refresh(config)
       ObservabilityStore.open()
       ObservabilityResources.start()
+      StorageRetention.schedule({
+        current: () => ({
+          retentionMs: ObservabilityConfig.current().storage.retentionMs,
+          maxBytes: ObservabilityConfig.current().storage.retentionBytes,
+        }),
+        liveSessionIDs: () => SessionManager.liveSessionIDs(),
+      })
       if (options.mode === "server") {
         // First-message latency: warm the execution pools and tokenizer while
         // transport and resident services initialize, so the first turn or

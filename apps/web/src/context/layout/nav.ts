@@ -15,6 +15,9 @@ export type NavSessionUpdate = {
   lastActivityAt?: number
   archived: boolean
   parentID?: string
+  blueprint?: NavEntry["blueprint"]
+  workspaceType?: string
+  workflow?: NavEntry["workflow"]
   completionNoticeUnread?: boolean
   completionNoticeUnreadCount?: number
 }
@@ -28,7 +31,7 @@ export function navUpdateFromSession(
     time?: { updated?: number; archived?: number }
     completionNotice?: { unread?: boolean; unreadCount?: number }
   },
-  navEntry?: Pick<NavEntry, "lastActivityAt">,
+  navEntry?: Pick<NavEntry, "lastActivityAt" | "blueprint" | "workspaceType" | "workflow">,
 ): NavSessionUpdate {
   return {
     id: info.id,
@@ -37,6 +40,18 @@ export function navUpdateFromSession(
     lastActivityAt: navEntry?.lastActivityAt ?? info.time?.updated,
     archived: !!info.time?.archived,
     parentID: info.parentID,
+    // A navigation projection is authoritative for the clearable identity keys:
+    // carrying the key with an absent value tells the merges to clear it, while
+    // omitting the keys entirely (no `navEntry`) leaves the projected value
+    // alone. `session.updated` has publishers that omit `navEntry`, so absence
+    // here must stay distinguishable from a cleared field.
+    ...(navEntry
+      ? {
+          blueprint: navEntry.blueprint,
+          workspaceType: navEntry.workspaceType,
+          workflow: navEntry.workflow,
+        }
+      : {}),
     completionNoticeUnread: info.completionNotice?.unread,
     completionNoticeUnreadCount: info.completionNotice?.unreadCount,
   }
@@ -70,6 +85,11 @@ export function applySessionToNavList(
       unreadCount: update.completionNoticeUnreadCount ?? prev.completionNotice.unreadCount,
     },
   }
+  // The projected identity keys are authoritative when present, including when
+  // their value is absent — that is how the backend's clear reaches the list.
+  if ("blueprint" in update) merged.blueprint = update.blueprint
+  if ("workspaceType" in update) merged.workspaceType = update.workspaceType
+  if ("workflow" in update) merged.workflow = update.workflow
   const items = list.items.map((entry, i) => (i === idx ? merged : entry))
   return { list: { ...list, items }, applied: true }
 }
@@ -249,7 +269,14 @@ export function mergeNavListByID(previous: NavListState | undefined, next: NavLi
     items: next.items.map((entry) => {
       const previousEntry = previousByID.get(entry.id)
       if (!previousEntry) return entry
-      return { ...previousEntry, ...entry }
+      const merged: NavEntry = { ...previousEntry, ...entry }
+      // A server page projects every identity key, so a key it omits is a
+      // cleared one. The spread above cannot express that: it leaves the
+      // previous value in place and the entry would read stale forever.
+      if (!("blueprint" in entry)) merged.blueprint = undefined
+      if (!("workspaceType" in entry)) merged.workspaceType = undefined
+      if (!("workflow" in entry)) merged.workflow = undefined
+      return merged
     }),
   }
 }

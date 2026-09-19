@@ -1,5 +1,8 @@
 import { readFileSync } from "fs"
+import { totalmem } from "os"
 import path from "path"
+
+const CGROUP_V2_ROOT = "/sys/fs/cgroup"
 
 export namespace ServiceMemory {
   export type Source = "cgroup_v2" | "process_sum"
@@ -52,6 +55,12 @@ export namespace ServiceMemory {
     childProcessCount: number
     measuredChildProcessCount: number
     childProcessRssBytes: number
+  }
+
+  export type MemoryBudget = {
+    totalBytes: number
+    limitBytes: number
+    source: "cgroup_v2" | "host"
   }
 
   let cachedCgroupDir: string | undefined | null
@@ -150,6 +159,48 @@ export namespace ServiceMemory {
     cachedCgroupDir = undefined
   }
 
+  export function memoryLimitFromDirectories(directories: readonly string[]): number | undefined {
+    let limit: number | undefined
+    for (const directory of directories) {
+      const level = minDefined(
+        readNumber(path.join(directory, "memory.max")),
+        readNumber(path.join(directory, "memory.high")),
+      )
+      if (level === undefined) continue
+      limit = limit === undefined ? level : Math.min(limit, level)
+    }
+    return limit
+  }
+
+  export function cgroupDirectoryChain(): string[] | undefined {
+    const directory = cgroupV2Directory()
+    if (!directory) return undefined
+    const chain: string[] = []
+    let current = directory
+    while (true) {
+      chain.push(current)
+      if (current === CGROUP_V2_ROOT) break
+      const parent = path.dirname(current)
+      if (parent === current) break
+      current = parent
+    }
+    return chain
+  }
+
+  export function cgroupMemoryLimitBytes(): number | undefined {
+    const chain = cgroupDirectoryChain()
+    if (!chain) return undefined
+    return memoryLimitFromDirectories(chain)
+  }
+
+  export function resolveMemoryBudget(): MemoryBudget {
+    const totalBytes = totalmem()
+    const cgroupLimitBytes = cgroupMemoryLimitBytes()
+    if (cgroupLimitBytes === undefined || cgroupLimitBytes >= totalBytes)
+      return { totalBytes, limitBytes: totalBytes, source: "host" }
+    return { totalBytes, limitBytes: Math.max(1, cgroupLimitBytes), source: "cgroup_v2" }
+  }
+
   function cgroupV2Directory() {
     if (cachedCgroupDir !== undefined) return cachedCgroupDir
     if (process.platform !== "linux") {
@@ -166,7 +217,7 @@ export namespace ServiceMemory {
         return cachedCgroupDir
       }
       const relative = unified.slice("0::".length).replace(/^\/+/, "")
-      cachedCgroupDir = relative ? `/sys/fs/cgroup/${relative}` : "/sys/fs/cgroup"
+      cachedCgroupDir = relative ? path.join(CGROUP_V2_ROOT, relative) : CGROUP_V2_ROOT
     } catch {
       cachedCgroupDir = null
     }
@@ -225,5 +276,11 @@ export namespace ServiceMemory {
 
   function optional(key: string, value: number | undefined): Record<string, number> {
     return value === undefined ? {} : { [key]: value }
+  }
+
+  function minDefined(a: number | undefined, b: number | undefined): number | undefined {
+    if (a === undefined) return b
+    if (b === undefined) return a
+    return Math.min(a, b)
   }
 }

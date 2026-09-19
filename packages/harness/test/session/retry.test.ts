@@ -5,6 +5,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { APICallError } from "ai"
 import { ProviderAuthRecovery } from "../../src/provider/auth-recovery"
 import { ProviderModelUnavailableError } from "../../src/provider/model-unavailable-error"
+import { StorageBusyError } from "../../src/storage/errors"
 
 function apiError(headers?: Record<string, string>): MessageV2.APIError {
   return new MessageV2.APIError({
@@ -232,7 +233,7 @@ describe("session.message-v2.fromError", () => {
 
     const retryable = SessionRetry.retryable(error)
     expect(retryable).toBeDefined()
-    expect(retryable).toBe("Connection reset by server")
+    expect(retryable?.message).toBe("Connection reset by server")
   })
 
   test("converts Bun connection-refused errors to retryable APIError", () => {
@@ -256,7 +257,7 @@ describe("session.message-v2.fromError", () => {
 
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
     expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
-    expect(SessionRetry.retryable(result)).toBe("Unable to connect. Is the computer able to access the url?")
+    expect(SessionRetry.retryable(result)?.message).toBe("Unable to connect. Is the computer able to access the url?")
   })
 
   test("marks API call unable-to-connect errors retryable when provider did not", () => {
@@ -271,7 +272,7 @@ describe("session.message-v2.fromError", () => {
 
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
     expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
-    expect(SessionRetry.retryable(result)).toBe("Unable to connect. Is the computer able to access the url?")
+    expect(SessionRetry.retryable(result)?.message).toBe("Unable to connect. Is the computer able to access the url?")
   })
 
   test("preserves the requested model when the provider explicitly rejects it", () => {
@@ -308,7 +309,7 @@ describe("session.message-v2.fromError", () => {
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
     expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
     expect((result as MessageV2.APIError).data.statusCode).toBe(503)
-    expect(SessionRetry.retryable(result)).toBe("The upstream service is temporarily unavailable")
+    expect(SessionRetry.retryable(result)?.message).toBe("The upstream service is temporarily unavailable")
   })
 
   test("keeps unknown errors unknown when no retry metadata survives", () => {
@@ -325,7 +326,7 @@ describe("session.message-v2.fromError", () => {
     const result = MessageV2.fromError(workerCrash, { providerID: "test" })
 
     expect(result.name).toBe("UnknownError")
-    expect(SessionRetry.retryable(result)).toBe("Agent worker restarted")
+    expect(SessionRetry.retryable(result)?.message).toBe("Agent worker restarted")
   })
 
   test("does not classify unrelated errors as worker exits", () => {
@@ -340,4 +341,103 @@ test("a timeout wrapper cannot hide a permanent certificate cause", () => {
   const error = Object.assign(new DOMException("timeout", "TimeoutError"), { cause: { code: "CERT_HAS_EXPIRED" } })
   const parsed = MessageV2.fromError(error, { providerID: "test" })
   expect(SessionRetry.retryable(parsed)).toBeUndefined()
+})
+
+// The reported incident: a long Cortex run died on Bun's unmapped BoringSSL fallback string.
+test("an unmapped certificate verification failure becomes a bounded retry", () => {
+  const parsed = MessageV2.fromError(new Error("unknown certificate verification error"), {
+    providerID: "deepseek",
+    modelID: "deepseek-flash",
+    endpointHost: "api.deepseek.com",
+  })
+
+  expect(parsed).toMatchObject({
+    name: "APIError",
+    data: {
+      isRetryable: true,
+      metadata: {
+        networkKind: "indeterminate",
+        category: "tls-verification",
+        endpointHost: "api.deepseek.com",
+      },
+    },
+  })
+  const retryable = SessionRetry.retryable(parsed)
+  expect(retryable).toEqual({
+    message: "Secure connection could not be verified; retrying",
+    maxAttempts: SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS,
+  })
+  expect(retryable?.maxAttempts).toBe(2)
+})
+
+test("reports the TLS reason instead of claiming the provider is unavailable", () => {
+  const parsed = MessageV2.fromError(new Error("unknown certificate verification error"), { providerID: "test" })
+  expect(SessionRetry.retryable(parsed)?.message).not.toBe("Provider is temporarily unavailable")
+})
+
+test("keeps a mapped certificate code terminal after the classifier change", () => {
+  for (const code of ["CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID"]) {
+    const parsed = MessageV2.fromError(Object.assign(new Error("failed"), { code }), { providerID: "test" })
+    expect(SessionRetry.retryable(parsed)).toBeUndefined()
+  }
+})
+
+test("bounds the TLS retry backoff below the transport ceiling", () => {
+  const error = new MessageV2.APIError({
+    message: "unknown certificate verification error",
+    isRetryable: true,
+    metadata: { category: "tls-verification", networkKind: "indeterminate" },
+  }).toObject() as MessageV2.APIError
+
+  const delays = Array.from({ length: 6 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
+  expect(Math.max(...delays)).toBe(SessionRetry.RETRY_TLS_VERIFICATION_MAX_DELAY)
+  expect(SessionRetry.delay(10, error, () => 1)).toBeLessThanOrEqual(SessionRetry.RETRY_TLS_VERIFICATION_MAX_DELAY)
+})
+
+test("still honors a valid retry-after hint for a TLS verification failure", () => {
+  const error = new MessageV2.APIError({
+    message: "unknown certificate verification error",
+    isRetryable: true,
+    responseHeaders: { "retry-after": "30" },
+    metadata: { category: "tls-verification" },
+  }).toObject() as MessageV2.APIError
+  expect(SessionRetry.delay(4, error)).toBe(30000)
+})
+
+test("leaves the transport retry ceiling unchanged for classified failures", () => {
+  const error = apiError()
+  const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
+  expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
+})
+
+test("keeps the full attempt budget for a classified transient failure", () => {
+  const parsed = MessageV2.fromError(
+    Object.assign(new TypeError("getaddrinfo ETIMEOUT provider.invalid"), { code: "ETIMEOUT" }),
+    { providerID: "test" },
+  )
+  expect(SessionRetry.retryable(parsed)?.maxAttempts).toBe(SessionRetry.RETRY_MAX_ATTEMPTS)
+})
+
+test("does not persist a credentialed endpoint path in error metadata", () => {
+  const endpointHost = "gateway.example.test"
+  const parsed = MessageV2.fromError(new Error("unknown certificate verification error"), {
+    providerID: "test",
+    endpointHost,
+  })
+  const metadata = (parsed as MessageV2.APIError).data.metadata ?? {}
+  const serialized = JSON.stringify(parsed)
+  expect(metadata.endpointHost).toBe(endpointHost)
+  expect(serialized).not.toContain("/v2/sk-")
+  expect(Object.values(metadata).every((value) => !value.includes("sk-"))).toBe(true)
+})
+
+// A rejected request is not corrupted evidence: the queue drains and the same
+// turn succeeds, so storage pressure must stay inside the retry budget rather
+// than terminalizing the session.
+test("retries a turn rejected by authoritative storage pressure", () => {
+  for (const message of ["Authoritative storage admission deadline exceeded", "Authoritative storage queue is full"]) {
+    const parsed = MessageV2.fromError(new StorageBusyError(message), { providerID: "test" })
+    expect(parsed.name).toBe("UnknownError")
+    expect(SessionRetry.retryable(parsed)?.message).toBe("Authoritative storage is busy; retrying")
+  }
 })

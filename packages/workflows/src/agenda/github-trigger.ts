@@ -4,6 +4,7 @@ import { AgendaStore } from "./store"
 import { AgendaTypes } from "./types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { GitHubProvider } from "@ericsanchezok/synergy-harness/provider/github"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 /**
  * GitHub agenda trigger — polls the GitHub REST API on a per-trigger interval
@@ -22,8 +23,10 @@ import { GitHubProvider } from "@ericsanchezok/synergy-harness/provider/github"
  *   `github.watch.defaultIntervalMs` (default 5 minutes, floor 30 seconds).
  * - Multiple transitions observed in one poll are dispatched sequentially so
  *   the Agenda inflight guard cannot drop later transitions.
- * - Repeated poll failures (unreachable repo, revoked token) auto-pause the
- *   item instead of retrying forever.
+ * - Repeated poll failures (unreachable repo, invalid token) auto-pause the
+ *   item instead of retrying forever, and a credential that stays missing
+ *   across consecutive polls (account disconnected after creation) pauses
+ *   the item too instead of holding a wait silently.
  */
 export namespace AgendaGithubTrigger {
   const log = Log.create({ service: "agenda.github-trigger" })
@@ -37,7 +40,7 @@ export namespace AgendaGithubTrigger {
 
   type Handler = (signal: AgendaTypes.FiredSignal, scopeID: string) => Promise<void>
 
-  interface Entry {
+  export interface Entry {
     itemID: string
     scopeID: string
     resource: "pr" | "issue" | "workflow" | "check"
@@ -58,6 +61,8 @@ export namespace AgendaGithubTrigger {
      */
     allowInitialMatch: boolean
     consecutiveFailures: number
+    /** Consecutive polls that found no resolvable GitHub credential. */
+    missingCredentialPolls: number
     /** Serializes handler dispatch so concurrent transitions run in order
      *  instead of racing the Agenda inflight guard. */
     dispatch: Promise<void>
@@ -112,6 +117,7 @@ export namespace AgendaGithubTrigger {
         // silently so restarts do not re-notify.
         allowInitialMatch: opts.hasRun !== true,
         consecutiveFailures: 0,
+        missingCredentialPolls: 0,
         dispatch: Promise.resolve(),
       })
     }
@@ -139,6 +145,11 @@ export namespace AgendaGithubTrigger {
     return { items: entries.size, entries: countEntries() }
   }
 
+  /** Test/inspection hook: the live poll entries registered for an item. */
+  export function entriesFor(itemID: string): Entry[] {
+    return entries.get(itemID) ?? []
+  }
+
   function countEntries(): number {
     let n = 0
     for (const list of entries.values()) n += list.length
@@ -161,7 +172,7 @@ export namespace AgendaGithubTrigger {
     return GithubWatchPolicy.read()
   }
 
-  async function poll(entry: Entry) {
+  export async function poll(entry: Entry) {
     entry.timer = undefined
     let configuredDefaultMs: number | undefined
     let abandoned = false
@@ -172,14 +183,23 @@ export namespace AgendaGithubTrigger {
         // Polling was switched off after this item was created: pause it now
         // (releasing any continuation holding it) instead of idling forever.
         abandoned = true
-        await pauseDisabled(entry)
+        await pauseEntry(entry, "github.watch.enabled=false")
         return
       }
       const resolved = await GitHubProvider.resolveToken()
       if (!resolved?.token) {
-        // No credential: stay silent, retry at the normal cadence.
+        // Credential vanished after creation (account disconnected, env
+        // removed): poll silently a few times, then pause the item — the
+        // same release path as the other pauses — so a waiting session is
+        // not held forever by a watch that can never fire.
+        entry.missingCredentialPolls++
+        if (entry.missingCredentialPolls >= MAX_CONSECUTIVE_FAILURES) {
+          abandoned = true
+          await pauseEntry(entry, "no GitHub credential resolves")
+        }
         return
       }
+      entry.missingCredentialPolls = 0
       const snapshots = await fetchSnapshots(entry, resolved.token)
       const changes = collectChanges(entry, snapshots)
       // The first poll after a restart is the restore baseline: it must not
@@ -200,7 +220,7 @@ export namespace AgendaGithubTrigger {
       })
       if (entry.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         abandoned = true
-        await pauseAfterFailures(entry)
+        await pauseEntry(entry, "repeated poll failures")
       }
     } finally {
       // Never reschedule a detached entry: unregister()/stop() may have run
@@ -212,41 +232,32 @@ export namespace AgendaGithubTrigger {
     }
   }
 
-  /** Pause an item whose polling was disabled in config after creation. */
-  async function pauseDisabled(entry: Entry): Promise<void> {
-    unregister(entry.itemID)
+  /**
+   * Pause an item and release any continuation it holds (Light Loop /
+   * BlueprintLoop) — the same release hook Agenda pause/cancel use — or the
+   * session stays stopped forever.
+   */
+  async function pauseEntry(entry: Entry, reason: string): Promise<void> {
     try {
-      const before = await AgendaStore.get(entry.scopeID, entry.itemID)
-      const item = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
-      await AgendaSessionWakeup.resumeIfReleased({ before, after: item })
+      const transition = await Storage.transaction(async () => {
+        if (!entries.get(entry.itemID)?.includes(entry)) return
+        const before = await AgendaStore.get(entry.scopeID, entry.itemID)
+        if (before.status !== "active" || !entries.get(entry.itemID)?.includes(entry)) return
+        const after = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
+        return { before, after }
+      })
+      if (!transition) return
+      if (entries.get(entry.itemID)?.includes(entry)) unregister(entry.itemID)
+      await AgendaSessionWakeup.resumeIfReleased(transition)
     } catch (err) {
-      log.error("failed to pause github trigger after watch was disabled", {
+      log.error("failed to pause github trigger", {
         itemID: entry.itemID,
+        reason,
         error: err instanceof Error ? err : new Error(String(err)),
       })
+      return
     }
-    log.warn("github trigger paused because github.watch.enabled=false", {
-      itemID: entry.itemID,
-      repository: entry.repository,
-    })
-  }
-
-  async function pauseAfterFailures(entry: Entry): Promise<void> {
-    unregister(entry.itemID)
-    try {
-      const before = await AgendaStore.get(entry.scopeID, entry.itemID)
-      const item = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
-      // Pausing a continuation-holding watch must release the waiting
-      // session (Light Loop / BlueprintLoop) — the same release hook Agenda
-      // pause/cancel use — or the session stays stopped forever.
-      await AgendaSessionWakeup.resumeIfReleased({ before, after: item })
-    } catch (err) {
-      log.error("failed to pause github trigger after repeated failures", {
-        itemID: entry.itemID,
-        error: err instanceof Error ? err : new Error(String(err)),
-      })
-    }
-    log.warn("github trigger auto-paused after repeated poll failures", {
+    log.warn(`github trigger paused: ${reason}`, {
       itemID: entry.itemID,
       repository: entry.repository,
     })

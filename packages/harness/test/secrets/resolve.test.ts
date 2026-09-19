@@ -34,7 +34,7 @@ describe("SecretResolve execution boundary", () => {
     )
 
     const name = `SYNERGY_SEC_${entry.id.toUpperCase()}`
-    expect((outcome.args as Record<string, string>).command).toBe(`echo \${${name}}`)
+    expect((outcome.args as Record<string, string>).command).toBe(`echo "\${${name}}"`)
     expect(outcome.secretEnv?.[name]).toBe(value)
     expect(JSON.stringify(outcome.args)).not.toContain(value)
   })
@@ -101,4 +101,48 @@ describe("SecretResolve execution boundary", () => {
     expect(args.list[0]).toBe(value)
     expect(outcome.resolved).toBe(2)
   })
+})
+
+test("single-quoted Bash tokens receive the secret value", async () => {
+  const value = `key_quoted_fakekey_${crypto.randomUUID()}`
+  const entry = await SecretVault.register(value, { kind: "user" })
+  tracked.push(entry.id)
+  const outcome = await SecretResolve.transformArgs({ command: `printf '%s' '⟦sec:${entry.id}⟧'` }, { tool: "bash" })
+  const child = Bun.spawn(["bash", "-c", outcome.args.command], {
+    env: { ...process.env, ...outcome.secretEnv },
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  expect(await new Response(child.stdout).text()).toBe(value)
+  expect(await child.exited).toBe(0)
+})
+
+test("standalone Bash tokens preserve spaces and shell metacharacters as one argument", async () => {
+  const value = `value with spaces * \" ' $(printf injected) ${crypto.randomUUID()}`
+  const entry = await SecretVault.register(value, { kind: "user" })
+  tracked.push(entry.id)
+  const outcome = await SecretResolve.transformArgs({ command: `printf '<%s>' ⟦sec:${entry.id}⟧` }, { tool: "bash" })
+  const child = Bun.spawn(["bash", "-c", outcome.args.command], {
+    env: { ...process.env, ...outcome.secretEnv },
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  expect(await new Response(child.stdout).text()).toBe(`<${value}>`)
+  expect(await child.exited).toBe(0)
+})
+
+test("literal Bash substitution rejects values that could introduce shell syntax", async () => {
+  const entry = await SecretVault.register("$(printf injected)-fake-secret", { kind: "user" })
+  tracked.push(entry.id)
+  await expect(
+    SecretResolve.transformArgs({ command: `printf '%s' prefix⟦sec:${entry.id}⟧` }, { tool: "bash" }),
+  ).rejects.toThrow("standalone")
+})
+
+test("spaces around a token inside quotes do not authorize an unquoted expansion", async () => {
+  const entry = await SecretVault.register("credential with spaces", { kind: "user" })
+  tracked.push(entry.id)
+  await expect(
+    SecretResolve.transformArgs({ command: `printf '%s' "prefix ⟦sec:${entry.id}⟧ suffix"` }, { tool: "bash" }),
+  ).rejects.toThrow("standalone")
 })

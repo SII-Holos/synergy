@@ -109,8 +109,10 @@ The stub does NOT take ownership of the name — the built-in server stays manag
 Rules:
 1. A stub without `type` never becomes a user-owned server; only a full typed entry takes ownership.
 2. `{ "enabled": false }` opts the built-in out; `{ "enabled": true }` is the merge-safe re-enable.
-3. Keys are redacted (`__REDACTED__`) in every config read-back; never log or echo the stored value.
+3. Keys are redacted (`__REDACTED__`) in every config read-back; never log or echo the stored value. The one exception is the display-only tail-4 hint described below.
 4. After writing the stub, run `runtime_reload(target: "mcp")` — the reconnect uses the new credential immediately.
+
+`GET /mcp/builtins` reports `keyConfigured` plus `keyHint` for each built-in server. `keyHint` is server-computed and deliberately reveals only the stored key's last four characters (`••••1234`), falling back to a bare `••••` mask for keys of 8 characters or fewer; it is absent when no key is stored. It exists because config read-backs only ever contain `__REDACTED__`, so a client cannot otherwise tell the user that a key is saved. Never widen it to a longer fragment and never log the underlying key.
 
 ## Converting from other formats
 

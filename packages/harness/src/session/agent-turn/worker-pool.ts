@@ -1,4 +1,3 @@
-import { availableParallelism } from "os"
 import { ScopeContext } from "../../scope/context"
 import { Log } from "../../util/log"
 import { ObservabilityMetrics } from "../../observability/metrics"
@@ -9,20 +8,23 @@ import type { ContextUsage } from "../context-usage"
 import { AgentTurnProtocol } from "./protocol"
 import type { RolloutSchema } from "../rollout/schema"
 import type { RolloutTransportSchema } from "../rollout/transport-schema"
-import { RolloutRecordingError } from "../rollout/error"
+import { RolloutRecordingError, isTransientStorageError } from "../rollout/error"
 import { spawnAgentWorkerProcess, type AgentWorkerProcess, type SpawnAgentWorkerProcessOptions } from "./process-host"
 
 export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
+
+export type AgentTurnLane = "interactive" | "background"
 
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn" | "prepared"> {
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance
   recording?: { owner: RolloutSchema.Owner; runID: string; purpose: string }
+  lane?: AgentTurnLane
 }
 
 export type AgentTurnWorkerInput = Omit<
   AgentTurnInput,
-  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording"
+  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording" | "lane"
 > & {
   user: Pick<AgentTurnInput["user"], "id">
   agent: Pick<AgentTurnInput["agent"], "name">
@@ -107,6 +109,7 @@ interface PoolTask {
   nextChunk: number
   sessionID: string
   messageID: string
+  lane: AgentTurnLane
   signal: AbortSignal
   stream: FrameStream
   usage: Promise<Awaited<LLM.StreamOutput["usage"]> | undefined>
@@ -273,7 +276,8 @@ class FrameStream {
 export class AgentWorkerPool {
   private readonly log = Log.create({ service: "agent.worker.pool" })
   private readonly workers = new Map<string, PoolWorker>()
-  private readonly queue: PoolTask[] = []
+  private readonly interactiveQueue: PoolTask[] = []
+  private readonly backgroundQueue: PoolTask[] = []
   private queuedBytes = 0
   private stopping = false
   private readonly healthTimer: ReturnType<typeof setInterval>
@@ -332,12 +336,12 @@ export class AgentWorkerPool {
     if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
     if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("Agent turn aborted", "AbortError"))
     const activeTasks = this.activeTaskCount()
-    if (activeTasks + this.queue.length >= this.targetSize + this.options.maxQueued) {
+    if (activeTasks + this.queuedCount() >= this.targetSize + this.options.maxQueued) {
       return Promise.reject(new Error(`Agent worker queue is full (${this.options.maxQueued} waiting)`))
     }
 
     const requestId = `agent_turn_${crypto.randomUUID()}`
-    const { abort: _abort, archive, ...turnInput } = input
+    const { abort: _abort, archive, lane: _lane, ...turnInput } = input
     const workerInput: AgentTurnWorkerInput = {
       ...turnInput,
       user: { id: input.user.id },
@@ -384,6 +388,7 @@ export class AgentWorkerPool {
         nextChunk: 0,
         sessionID: input.sessionID,
         messageID: input.user.id,
+        lane: input.lane ?? "interactive",
         signal,
         stream,
         usage,
@@ -396,14 +401,14 @@ export class AgentWorkerPool {
         transferCommitted: false,
         removeAbortListener: () => signal.removeEventListener("abort", onAbort),
       }
-      this.queue.push(task)
-      this.queuedBytes += requestBytes
+      this.enqueue(task)
       ObservabilityMetrics.record({
         name: "agent.queue.depth",
-        value: this.queue.length,
+        value: task.lane === "interactive" ? this.interactiveQueue.length : this.backgroundQueue.length,
         unit: "count",
         module: "session",
         sessionID: input.sessionID,
+        labels: { lane: task.lane },
       })
       this.ensureWorkers()
       this.drain()
@@ -434,7 +439,7 @@ export class AgentWorkerPool {
       workers: this.workers.size,
       ready,
       active,
-      queued: this.queue.length,
+      queued: this.queuedCount(),
       queuedBytes: this.queuedBytes,
       rssBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.rssBytes ?? 0), 0),
       heapUsedBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapUsedBytes ?? 0), 0),
@@ -460,7 +465,7 @@ export class AgentWorkerPool {
     this.clearStartupRetryWindow()
     this.startupRetryGeneration++
     const error = new Error("Agent worker pool stopped")
-    for (const task of this.queue.splice(0)) {
+    for (const task of this.flushQueued()) {
       this.queuedBytes -= task.requestBytes
       task.removeAbortListener()
       task.reject(error)
@@ -529,7 +534,7 @@ export class AgentWorkerPool {
   }
 
   private desiredWorkerCount(): number {
-    const demand = this.activeTaskCount() + this.queue.length
+    const demand = this.activeTaskCount() + this.queuedCount()
     return Math.min(this.targetSize, Math.max(this.options.minIdle, demand + this.options.minIdle))
   }
 
@@ -671,9 +676,10 @@ export class AgentWorkerPool {
           if (!task.archive) throw new RolloutRecordingError({ message: "Agent turn has no rollout archive owner" })
           await task.archive(message.event)
         } catch (error) {
-          failure = RolloutRecordingError.isInstance(error)
-            ? error
-            : new RolloutRecordingError({ message: "Unable to persist worker rollout evidence" }, { cause: error })
+          failure =
+            RolloutRecordingError.isInstance(error) || isTransientStorageError(error)
+              ? error
+              : new RolloutRecordingError({ message: "Unable to persist worker rollout evidence" }, { cause: error })
           task.recordingFailure = failure
         } finally {
           task.archiving = false
@@ -717,6 +723,7 @@ export class AgentWorkerPool {
         messageID: task.messageID,
         processId: worker.id,
         pid: worker.pid,
+        labels: { lane: task.lane },
       })
       task.resolve({
         fullStream: task.stream.iterate(),
@@ -912,7 +919,7 @@ export class AgentWorkerPool {
       module: "session",
       labels: { attempts },
     })
-    for (const task of this.queue.splice(0)) {
+    for (const task of this.flushQueued()) {
       this.queuedBytes -= task.requestBytes
       task.removeAbortListener()
       task.resolveUsage(undefined)
@@ -1087,7 +1094,7 @@ export class AgentWorkerPool {
     if (this.stopping) return
     for (const worker of this.workers.values()) {
       if (!worker.ready || worker.stopping || worker.task) continue
-      const task = this.queue.shift()
+      const task = this.nextTask()
       if (!task) return
       this.queuedBytes -= task.requestBytes
       if (task.signal.aborted) {
@@ -1106,6 +1113,35 @@ export class AgentWorkerPool {
         chunkCount: Math.ceil(task.payload.byteLength / AgentTurnProtocol.REQUEST_CHUNK_BYTES),
       })
     }
+  }
+
+  private enqueue(task: PoolTask): void {
+    if (task.lane === "interactive") this.interactiveQueue.push(task)
+    else this.backgroundQueue.push(task)
+  }
+
+  private queuedCount(): number {
+    return this.interactiveQueue.length + this.backgroundQueue.length
+  }
+
+  private flushQueued(): PoolTask[] {
+    return [...this.interactiveQueue.splice(0), ...this.backgroundQueue.splice(0)]
+  }
+
+  private nextTask(): PoolTask | undefined {
+    const interactive = this.interactiveQueue.shift()
+    if (interactive) return interactive
+    if (!this.backgroundQueue.length) return undefined
+    let interactiveActive = 0
+    let backgroundActive = 0
+    for (const worker of this.workers.values()) {
+      if (worker.stopping || !worker.task) continue
+      if (worker.task.lane === "interactive") interactiveActive++
+      else backgroundActive++
+    }
+    const backgroundReserve = Math.max(1, this.targetSize - interactiveActive - this.interactiveQueue.length)
+    if (backgroundActive >= backgroundReserve) return undefined
+    return this.backgroundQueue.shift()
   }
 
   private sendNextChunk(worker: PoolWorker, task: PoolTask): void {
@@ -1128,9 +1164,10 @@ export class AgentWorkerPool {
   }
 
   private cancel(requestId: string, reason?: unknown): void {
-    const queuedIndex = this.queue.findIndex((task) => task.requestId === requestId)
-    if (queuedIndex !== -1) {
-      const [task] = this.queue.splice(queuedIndex, 1)
+    for (const queue of [this.interactiveQueue, this.backgroundQueue]) {
+      const queuedIndex = queue.findIndex((task) => task.requestId === requestId)
+      if (queuedIndex === -1) continue
+      const [task] = queue.splice(queuedIndex, 1)
       this.queuedBytes -= task.requestBytes
       task.removeAbortListener()
       task.reject(reason ?? new DOMException("Agent turn aborted", "AbortError"))
@@ -1277,7 +1314,9 @@ export class AgentWorkerPool {
 }
 
 export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
-  size: Math.max(1, Math.min(4, availableParallelism() - 1)),
+  // Constructor fallback only. Production resolves a capacity through
+  // resolveAgentWorkerCapacity, which adapts to the effective memory budget.
+  size: 1,
   minIdle: 1,
   idleTimeoutMs: 60_000,
   maxQueued: 256,

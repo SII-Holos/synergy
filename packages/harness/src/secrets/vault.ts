@@ -14,6 +14,18 @@ const ID_LENGTH = 12
 const MAX_RESOLVE_HISTORY = 200
 
 export namespace SecretVault {
+  export class NotFoundError extends Error {
+    constructor() {
+      super("Secret does not exist")
+    }
+  }
+
+  export class ConflictError extends Error {
+    constructor() {
+      super("Secret value or identifier is already registered")
+    }
+  }
+
   export type Source =
     | { kind: "user" }
     | { kind: "config"; path?: string }
@@ -179,7 +191,10 @@ export namespace SecretVault {
   function registerInStore(store: Store, value: string, source: Source, input?: RegisterInput): InternalEntry {
     const id = deriveId(value)
     const existing = store.entries[id]
-    if (existing && existing.fingerprint.sha256 === fingerprintOf(value).sha256) return existing
+    if (existing) {
+      if (existing.fingerprint.sha256 === fingerprintOf(value).sha256) return existing
+      throw new ConflictError()
+    }
     const now = Date.now()
     const entry: InternalEntry = {
       id,
@@ -251,7 +266,9 @@ export namespace SecretVault {
     const nextId = deriveId(nextValue)
     return mutate((store) => {
       const entry = store.entries[id]
-      if (!entry) throw new Error(`secret ${id} does not exist`)
+      if (!entry) throw new NotFoundError()
+      if ((nextId !== id && store.entries[nextId]) || (nextId === id && entry.value !== nextValue))
+        throw new ConflictError()
       if (nextId !== id) delete store.entries[id]
       entry.id = nextId
       entry.value = nextValue

@@ -1024,6 +1024,8 @@ export type PerfConfig = {
     sqliteEnabled: boolean
     jsonlMirrorEnabled: boolean
     maxSqliteBytes: number
+    retentionBytes: number
+    retentionMs: number
     walCheckpointIntervalMs: number
   }
   thresholds: {
@@ -1060,6 +1062,8 @@ export type PerformanceConfigPatch = {
     sqliteEnabled: boolean
     jsonlMirrorEnabled: boolean
     maxSqliteBytes: number
+    retentionBytes: number
+    retentionMs: number
     walCheckpointIntervalMs: number
   }
   thresholds?: {
@@ -1705,6 +1709,34 @@ export type AgendaItem = {
   }
 }
 
+export type GlobalActivity = {
+  active: boolean
+  sessions: number
+  backgroundJobs: number
+}
+
+export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      type: "busy"
+      description?: string
+    }
+  | {
+      type: "recovering"
+      reason?: SessionRecoveringReason
+      description?: string
+    }
+
 export type SessionNavEntry = {
   id: string
   scopeID: string
@@ -1738,6 +1770,16 @@ export type SessionNavEntry = {
         externalProjectId: string
         externalTaskId: string
       }
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+    phase?: "running" | "waiting" | "auditing"
+  }
+  workspaceType?: string
+  workflow?: {
+    kind: string
+    active: boolean
+  }
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -2547,6 +2589,10 @@ export type ObservabilityConfig = {
    */
   enabled?: boolean
   /**
+   * Mirror debug/info records that opt in with `mirror: true` into indexed observability events
+   */
+  logMirror?: boolean
+  /**
    * Days to retain optional observability mirror files (default: 7)
    */
   retentionDays?: number
@@ -2631,7 +2677,18 @@ export type ObservabilityConfig = {
        * Enable optional JSONL mirror files for debugging exports
        */
       jsonlMirrorEnabled?: boolean
+      /**
+       * Maximum bytes for the local observability database (default: 250MB)
+       */
       maxSqliteBytes?: number
+      /**
+       * Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.
+       */
+      retentionBytes?: number
+      /**
+       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.
+       */
+      retentionMs?: number
       walCheckpointIntervalMs?: number
     }
     thresholds?: {
@@ -4316,9 +4373,9 @@ export type Config = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
      */
-    agentWorkers?: number
+    agentWorkers?: number | null
     /**
      * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
@@ -4439,42 +4496,42 @@ export type Config = {
    */
   enabled_providers?: Array<string>
   /**
-   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
    */
-  model?: string
+  model?: string | null
   /**
-   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.
+   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model
    */
-  nano_model?: string
+  nano_model?: string | null
   /**
-   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.
+   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model
    */
-  mini_model?: string
+  mini_model?: string | null
   /**
-   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.
+   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model
    */
-  mid_model?: string
+  mid_model?: string | null
   /**
-   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.
+   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  thinking_model?: string
+  thinking_model?: string | null
   /**
-   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.
+   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  long_context_model?: string
+  long_context_model?: string | null
   /**
-   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.
+   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  creative_model?: string
+  creative_model?: string | null
   /**
-   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.
+   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model
    */
-  vision_model?: string
+  vision_model?: string | null
   /**
-   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant
    */
   role_variant?: {
-    [key: string]: string
+    [key: string]: string | null
   }
   /**
    * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
@@ -4508,6 +4565,14 @@ export type Config = {
   sandbox?: SandboxConfig
   observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
+  /**
+   * Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.
+   */
+  nonInteractiveControlProfile?: "autonomous" | "full_access"
+  /**
+   * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
+   */
+  fullAccessAcknowledged?: boolean
   /**
    * Additional instruction files or patterns to include
    */
@@ -4765,25 +4830,6 @@ export type Command = {
   hints: Array<string>
 }
 
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-      description?: string
-    }
-  | {
-      type: "recovering"
-      description?: string
-    }
-
 export type SessionScope = {
   id: string
   type?: string
@@ -4932,6 +4978,8 @@ export type SessionWorkingInfo =
     }
   | {
       status: "recovering"
+      reason?: SessionRecoveringReason
+      description?: string
     }
 
 export type SessionWorkspace = {
@@ -5085,6 +5133,7 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
+    phase?: "running" | "waiting" | "auditing"
   }
 }
 
@@ -5700,6 +5749,21 @@ export type SecretResolveAuditEntry = {
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
+export type AgentWorkerCapacityStatus = {
+  /**
+   * Explicit execution.agentWorkers ceiling, or null when the machine derives it
+   */
+  configured: number | null
+  /**
+   * Capacity the Agent worker pool runs with
+   */
+  effective: number
+  /**
+   * Whether configuration or the machine sizes the pool
+   */
+  source: "explicit" | "derived"
+}
+
 export type ControlProfileSummary = {
   id: "guarded" | "autonomous" | "full_access"
   label: string
@@ -5922,42 +5986,42 @@ export type ExperimentOverrides = {
     coauthorReminder?: boolean
   }
   /**
-   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
    */
-  model?: string
+  model?: string | null
   /**
-   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.
+   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model
    */
-  nano_model?: string
+  nano_model?: string | null
   /**
-   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.
+   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model
    */
-  mini_model?: string
+  mini_model?: string | null
   /**
-   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.
+   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model
    */
-  mid_model?: string
+  mid_model?: string | null
   /**
-   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.
+   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  thinking_model?: string
+  thinking_model?: string | null
   /**
-   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.
+   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  long_context_model?: string
+  long_context_model?: string | null
   /**
-   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.
+   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model
    */
-  creative_model?: string
+  creative_model?: string | null
   /**
-   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.
+   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model
    */
-  vision_model?: string
+  vision_model?: string | null
   /**
-   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant
    */
   role_variant?: {
-    [key: string]: string
+    [key: string]: string | null
   }
   toolExposure?: {
     /**
@@ -6032,9 +6096,9 @@ export type ExperimentRuntime = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
      */
-    agentWorkers?: number
+    agentWorkers?: number | null
     /**
      * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
      */
@@ -6621,6 +6685,25 @@ export type SessionForkPointMissingError = {
     messageID: string
     message: string
   }
+}
+
+export type SessionAbortResult = {
+  /**
+   * Runtime signal result; not_found/idle mean no running turn was stopped
+   */
+  outcome: "not_found" | "idle" | "signaled" | "already_stopping" | "not_owner"
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * A driverless workflow was terminalized
+   */
+  abandoned: boolean
+  /**
+   * The session settled to idle
+   */
+  settled: boolean
 }
 
 export type AttachmentSourceText = {
@@ -12096,6 +12179,31 @@ export type GlobalAgendaListResponses = {
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
 
+export type GlobalActivityData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/activity"
+}
+
+export type GlobalActivityErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalActivityError = GlobalActivityErrors[keyof GlobalActivityErrors]
+
+export type GlobalActivityResponses = {
+  /**
+   * Global activity snapshot
+   */
+  200: GlobalActivity
+}
+
+export type GlobalActivityResponse = GlobalActivityResponses[keyof GlobalActivityResponses]
+
 export type GlobalSessionSearchData = {
   body?: never
   path?: never
@@ -12191,6 +12299,33 @@ export type GlobalSessionSearchResponses = {
 }
 
 export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
+
+export type GlobalSessionStatusesData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/session/status"
+}
+
+export type GlobalSessionStatusesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalSessionStatusesError = GlobalSessionStatusesErrors[keyof GlobalSessionStatusesErrors]
+
+export type GlobalSessionStatusesResponses = {
+  /**
+   * Cross-scope session status map
+   */
+  200: {
+    [key: string]: SessionStatus
+  }
+}
+
+export type GlobalSessionStatusesResponse = GlobalSessionStatusesResponses[keyof GlobalSessionStatusesResponses]
 
 export type GlobalNavRecentData = {
   body?: never
@@ -13349,6 +13484,13 @@ export type SecretsCreateErrors = {
    */
   400: BadRequestError
   /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -13457,6 +13599,13 @@ export type SecretsRotateErrors = {
    */
   404: NotFoundError
   /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -13539,6 +13688,34 @@ export type RuntimeReloadResponses = {
 }
 
 export type RuntimeReloadResponse = RuntimeReloadResponses[keyof RuntimeReloadResponses]
+
+export type RuntimeAgentWorkersData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/runtime/agent-workers"
+}
+
+export type RuntimeAgentWorkersErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RuntimeAgentWorkersError = RuntimeAgentWorkersErrors[keyof RuntimeAgentWorkersErrors]
+
+export type RuntimeAgentWorkersResponses = {
+  /**
+   * Agent worker capacity status
+   */
+  200: AgentWorkerCapacityStatus
+}
+
+export type RuntimeAgentWorkersResponse = RuntimeAgentWorkersResponses[keyof RuntimeAgentWorkersResponses]
 
 export type ControlProfileListData = {
   body?: never
@@ -14701,9 +14878,9 @@ export type SessionAbortError = SessionAbortErrors[keyof SessionAbortErrors]
 
 export type SessionAbortResponses = {
   /**
-   * Aborted session
+   * Abort result
    */
-  200: boolean
+  200: SessionAbortResult
 }
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]
@@ -15825,6 +16002,10 @@ export type PermissionListData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Only return pending permission requests owned by this session
+     */
+    sessionID?: string
   }
   url: "/permission"
 }
@@ -22541,6 +22722,7 @@ export type McpBuiltinsResponses = {
     url: string
     status: McpStatus
     keyConfigured: boolean
+    keyHint?: string
   }>
 }
 

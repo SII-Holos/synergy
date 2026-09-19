@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { createReadStream } from "node:fs"
 import path from "node:path"
-import { gzipSync, gunzipSync } from "node:zlib"
+import { promisify } from "node:util"
+import { gzip as gzipCallback, gunzipSync } from "node:zlib"
 import { z } from "zod"
 import { AtomicFile } from "./atomic-file"
 import { StorageIntegrityError } from "./errors"
@@ -11,6 +12,8 @@ import { legacyBinaryKey, legacySources, sourcePath } from "./legacy-source"
 
 const MAX_GROUP_BYTES = 4 * 1024 * 1024
 const MAX_GROUP_FILES = 1024
+const gzip = promisify(gzipCallback)
+const COMPRESSION_FLIGHTS = 8
 const Entry = z
   .object({
     relative: z.string(),
@@ -303,7 +306,7 @@ export class PackedBackup {
       }
       const flush = async () => {
         if (!groupFiles) return
-        const index = gzipSync(JSON.stringify(metadata), { level: 1 })
+        const index = await gzip(JSON.stringify(metadata), { level: 1 })
         const header = Buffer.alloc(4)
         header.writeUInt32BE(index.length)
         const content = Buffer.concat([header, index, ...frames])
@@ -324,6 +327,35 @@ export class PackedBackup {
         groupFiles = 0
         groupBytes = 0
       }
+      // Compress ahead across the zlib threadpool while later source files
+      // stream in; resolved entries append in source order so sealed groups
+      // stay byte-identical with the synchronous layout.
+      type PreparedFlight = {
+        entry: { relative: string; size: number; linkTarget?: string }
+        item: {
+          relative: string
+          size: number
+          linkTarget?: string
+          hash: string
+          codec: "raw" | "gzip"
+          storedBytes: number
+        }
+        stored: Buffer
+        size: number
+      }
+      let failure: unknown
+      const flights: Array<Promise<PreparedFlight | undefined>> = []
+      const drainOne = async () => {
+        const prepared = await flights.shift()!
+        if (!prepared) throw failure ?? new StorageIntegrityError("Legacy data changed during backup")
+        const { entry, item, stored, size } = prepared
+        if (frameBytes + size > MAX_GROUP_BYTES || groupFiles === MAX_GROUP_FILES) await flush()
+        metadata.push(item)
+        frames.push(stored)
+        frameBytes += size
+        groupBytes += entry.size
+        groupFiles++
+      }
       for (;;) {
         const next = await sourceFiles.next()
         if (next.done) break
@@ -331,6 +363,7 @@ export class PackedBackup {
         const entry = next.value
         const filename = sourcePath(dataRoot, entry.relative)
         if (entry.linkTarget === undefined && entry.size > MAX_GROUP_BYTES / 2) {
+          while (flights.length) await drainOne()
           await flush()
           await this.options.capacity?.(entry.size + 16_384)
           const temporary = this.chunk(groups) + ".tmp-" + randomUUID()
@@ -365,23 +398,31 @@ export class PackedBackup {
           }
           continue
         }
-        const data = entry.linkTarget === undefined ? await fs.readFile(filename) : Buffer.alloc(0)
-        if ((entry.linkTarget === undefined ? data.length : Buffer.byteLength(entry.linkTarget)) !== entry.size)
-          throw new StorageIntegrityError("Legacy data changed during backup")
-        const value = { ...entry, hash: hash(entry.linkTarget ?? data) }
-        const metadataBytes = Buffer.byteLength(JSON.stringify(value))
-        if (metadataBytes > 65536) throw new StorageIntegrityError("Legacy path metadata exceeds the backup limit")
-        const size = metadataBytes + data.length
-        if (frameBytes + size > MAX_GROUP_BYTES || groupFiles === MAX_GROUP_FILES) await flush()
-        const compressed = gzipSync(data, { level: 1 })
-        const smaller = compressed.length < data.length * 0.9
-        const stored = smaller ? compressed : data
-        metadata.push({ ...value, codec: smaller ? "gzip" : "raw", storedBytes: stored.length })
-        frames.push(stored)
-        frameBytes += size
-        groupBytes += entry.size
-        groupFiles++
+        if (flights.length >= COMPRESSION_FLIGHTS) await drainOne()
+        flights.push(
+          (async () => {
+            const data = entry.linkTarget === undefined ? await fs.readFile(filename) : Buffer.alloc(0)
+            if ((entry.linkTarget === undefined ? data.length : Buffer.byteLength(entry.linkTarget)) !== entry.size)
+              throw new StorageIntegrityError("Legacy data changed during backup")
+            const value = { ...entry, hash: hash(entry.linkTarget ?? data) }
+            const metadataBytes = Buffer.byteLength(JSON.stringify(value))
+            if (metadataBytes > 65536) throw new StorageIntegrityError("Legacy path metadata exceeds the backup limit")
+            const compressed = await gzip(data, { level: 1 })
+            const smaller = compressed.length < data.length * 0.9
+            const stored = smaller ? compressed : data
+            return {
+              entry,
+              item: { ...value, codec: smaller ? ("gzip" as const) : ("raw" as const), storedBytes: stored.length },
+              stored,
+              size: metadataBytes + data.length,
+            }
+          })().catch((error: unknown) => {
+            failure ??= error
+            return undefined
+          }),
+        )
       }
+      while (flights.length) await drainOne()
       await flush()
       const manifest: PackedBackupManifest = {
         version: 2,

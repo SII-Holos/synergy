@@ -546,6 +546,7 @@ export const LocalBashBackend = {
             cwd,
             env: windowsProcessJob.env,
             stdio: ["pipe", "pipe", "pipe"],
+            windowsVerbatimArguments: windowsProcessJob.verbatimCommandLine,
           })
         } else if (process.platform === "win32") {
           child = spawn(executionCommand, {
@@ -601,11 +602,10 @@ export const LocalBashBackend = {
     let aborted = false
     let timedOut = false
     let timeoutMarkerAdded = false
-    let hardCeilingReached = false
     let exited = false
     let finalized = false
     let childError: Error | undefined
-    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
+    const yieldSeconds = params.yieldSeconds ?? ToolTimeout.DEFAULTS.bashAutoBackgroundMs / 1_000
     let resolveChildFinished: (result: "exited" | "error") => void = () => {}
     const childFinished = new Promise<"exited" | "error">((resolve) => {
       resolveChildFinished = resolve
@@ -627,12 +627,7 @@ export const LocalBashBackend = {
     const kill = () => ProcessRegistry.terminate(regProc)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
-    let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
     let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined
-    let resolveTimeout: (() => void) | undefined
-    const commandTimeout = new Promise<"timeout">((resolve) => {
-      resolveTimeout = () => resolve("timeout")
-    })
 
     const cleanupForegroundWait = () => {
       if (autoBackgroundTimer) {
@@ -648,16 +643,9 @@ export const LocalBashBackend = {
         clearTimeout(hardCeilingTimer)
         hardCeilingTimer = undefined
       }
-      if (commandTimeoutTimer) {
-        clearTimeout(commandTimeoutTimer)
-        commandTimeoutTimer = undefined
-      }
     }
 
-    const timeoutMessage = () =>
-      hardCeilingReached
-        ? "The command was interrupted: bash hard ceiling timed out."
-        : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
+    const timeoutMessage = "The command was interrupted: bash hard ceiling timed out."
 
     const releaseChildReferences = () => {
       child.stdout?.off("data", appendStdout)
@@ -749,7 +737,7 @@ export const LocalBashBackend = {
       ProcessRegistry.markStdioClosed(regProc, { drainTimedOut })
       if (regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, exitSignal)
-      } else if (backgroundAfterSeconds > 0) {
+      } else if (yieldSeconds > 0) {
         // Process finished before the auto-background timer fired; still
         // persist through markExited so tests and callers can find it.
         ProcessRegistry.markExited(regProc, code, exitSignal)
@@ -812,33 +800,17 @@ export const LocalBashBackend = {
       pid: child.pid,
       command: ObservabilityRedaction.commandSummary(params.command),
       sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
-      backgroundAfterSeconds,
-      timeoutSeconds: params.timeoutSeconds,
+      yieldSeconds,
     })
     if (childError) throw childError
 
     hardCeilingTimer = setTimeout(() => {
       if (exited) return
-      hardCeilingReached = true
       timedOut = true
       log.warn("bash hard ceiling reached, killing", { description: params.description })
-      appendTimeoutMarker(timeoutMessage())
+      appendTimeoutMarker(timeoutMessage)
       void kill()
-      resolveTimeout?.()
     }, ToolTimeout.DEFAULTS.bashHardCeilingMs)
-
-    if (params.timeoutSeconds !== undefined) {
-      commandTimeoutTimer = setTimeout(() => {
-        if (exited) return
-        timedOut = true
-        appendTimeoutMarker(timeoutMessage())
-        void trace("bash.command.timeout", {
-          timeoutSeconds: params.timeoutSeconds,
-        })
-        void kill()
-        resolveTimeout?.()
-      }, params.timeoutSeconds * 1000)
-    }
 
     if (ctx.abort.aborted) {
       aborted = true
@@ -861,21 +833,16 @@ export const LocalBashBackend = {
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
 
     const autoBackground = new Promise<"background">((resolve) => {
-      if (backgroundAfterSeconds <= 0) return
+      if (yieldSeconds <= 0) return
       autoBackgroundTimer = setTimeout(() => {
         if (!exited) resolve("background")
-      }, backgroundAfterSeconds * 1000)
+      }, yieldSeconds * 1000)
     })
 
-    const waitResult = await Promise.race([childFinished.then((result) => result), autoBackground, commandTimeout])
+    const waitResult = await Promise.race([childFinished.then((result) => result), autoBackground])
 
     if (waitResult === "error") {
       throw childError ?? new Error("Bash child process failed")
-    }
-
-    if (waitResult === "timeout") {
-      cleanupForegroundWait()
-      await childFinished
     }
 
     if (waitResult === "background") {
@@ -892,7 +859,7 @@ export const LocalBashBackend = {
             backend: "local",
           },
           output: warnOutput(
-            `Command auto-backgrounded after ${backgroundAfterSeconds}s.\n\n` +
+            `Command auto-backgrounded after ${yieldSeconds}s.\n\n` +
               `Process ID: ${regProc.id}\n` +
               `Command: ${params.command}\n` +
               `Status: running\n\n` +

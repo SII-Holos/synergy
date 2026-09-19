@@ -7376,8 +7376,28 @@ msgstr "synergy config"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelNotConfigured"
-msgstr "尚未配置 AI 模型——请在终端中运行 {cmd} 完成设置"
+msgid "app.shell.modelUnavailable.action.connect"
+msgstr "连接提供商"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.action.review"
+msgstr "查看提供商"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.needsAttention"
+msgstr "已连接的提供商需要处理后，其模型才能使用。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.notConfigured"
+msgstr "尚未连接任何 AI 提供商。连接一个即可选择模型，也可以在终端中运行 {cmd}。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.restricted"
+msgstr "没有可选择的模型。请确认已连接的提供商已启用并提供模型。"
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
@@ -8549,6 +8569,18 @@ msgid "app.statusBar.runtime.recovering"
 msgstr "会话正在从未完成的回合中恢复"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.incompleteTurn"
+msgstr "会话正在从未完成的回合中恢复"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.pendingReply"
+msgstr "会话正在等待未回复的答复"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.workflow"
+msgstr "BlueprintLoop 工作流仍占用此会话"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.runtime.recoveringState"
 msgstr "正在恢复"
 
@@ -9437,6 +9469,22 @@ msgid "confirm.disconnectProvider.title"
 msgstr "断开提供商连接？"
 
 #. js-lingui-explicit-id
+msgid "confirm.fullAccess.cancel"
+msgstr "保持当前模式"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.confirm"
+msgstr "启用完全访问权限"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.desc"
+msgstr "完全访问权限会对其生效的会话移除 Synergy 的权限检查和工作区沙箱。智能体运行的任何命令、读写的任何文件，都不会事先征求你的同意。请仅用于你能够承受损失、或运行在可随时丢弃的环境中的工作。"
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.title"
+msgstr "启用完全访问权限？"
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr "留在工作树"
 
@@ -9536,9 +9584,29 @@ msgstr "卸载 {name}？它将从此 Synergy 安装中移除。"
 msgid "confirm.uninstallPlugin.title"
 msgstr "卸载插件？"
 
-#. ── Countdown ───────────────────────────────────────────────────────
-msgid "countdown.timeout-label"
-msgstr "{remaining} 秒超时"
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.backgrounded"
+msgstr "已转后台"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.past-limit"
+msgstr "已超出限制"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.remaining"
+msgstr "剩余 {remaining} 秒"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.timed-out"
+msgstr "已超时"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-background"
+msgstr "{remaining} 秒后转后台"
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-timeout"
+msgstr "{remaining} 秒后超时"
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
 msgid "dag.chrome.blocked"
@@ -11087,6 +11155,20 @@ msgstr "请先停止会话，再更改工作流模式。"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.stopping"
 msgstr "正在停止…"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.stopRun.control"
+msgstr "停止本次运行并取消其工作流"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.stopRun.failed"
+msgstr "无法停止本次运行"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13650,12 +13732,32 @@ msgid "session.state.home.unread"
 msgstr "全局会话；回复已生成"
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr "Light Loop 会话"
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr "Light Loop 会话；回复已生成"
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr "Light Loop 等待你处理"
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr "会话恢复中"
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr "正在运行的会话"
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
 msgstr "正在运行 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
+msgstr "正在运行 Light Loop"
 
 #. js-lingui-explicit-id
 msgid "session.state.waiting"
@@ -15373,6 +15475,26 @@ msgid "settings.controlProfile.guarded.label"
 msgstr "受控"
 
 #. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.aria"
+msgstr "非交互会话的权限模式"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.autonomous"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.desc"
+msgstr "用于渠道和定时日程启动的会话，这类会话没有人可以回答权限确认。此处不提供“守护”模式，因为无人值守的确认请求将永远无法得到回应。更改仅对之后新建的会话生效。"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.fullAccess"
+msgstr "完全访问权限"
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.title"
+msgstr "非交互会话"
+
+#. js-lingui-explicit-id
 msgid "settings.controlProfile.page.desc"
 msgstr "设置会话和智能体在执行操作时如何请求确认。"
 
@@ -15791,6 +15913,26 @@ msgstr "外观、行为和通知偏好设置。"
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "常规"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.active"
+msgstr "正在保持此电脑唤醒"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.description"
+msgstr "当任意 Synergy 智能体正在工作时保持此电脑唤醒。显示器仍可关闭，合上笔记本盖子仍可能使电脑休眠。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.failed"
+msgstr "无法更改休眠设置"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.idle"
+msgstr "等待任务"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.title"
+msgstr "运行期间阻止休眠"
 
 #. js-lingui-explicit-id
 msgid "settings.general.theme.description"
@@ -17029,10 +17171,6 @@ msgid "settings.mcp.builtins.apiKey.clearUndo"
 msgstr "保留已存储的密钥"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.apiKey.configured"
-msgstr "已设置密钥"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.description"
 msgstr "可选。将作为 Bearer 令牌发送，用于提升匿名额度之外的速率限制。"
 
@@ -17041,8 +17179,24 @@ msgid "settings.mcp.builtins.apiKey.label"
 msgstr "API 密钥"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.pending"
+msgstr "尚未保存"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.placeholder"
 msgstr "粘贴密钥以提升速率限制"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.replace"
+msgstr "粘贴新密钥以替换已存储的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.saved"
+msgstr "已设置密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.unset"
+msgstr "未设置密钥"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.builtins.badge"
@@ -17057,18 +17211,6 @@ msgid "settings.mcp.builtins.section.title"
 msgstr "内置服务器"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.disabled"
-msgstr "已关闭"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.other"
-msgstr "不可用"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "收起服务器详情"
 
@@ -17079,10 +17221,6 @@ msgstr "未设置命令"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "连接类型"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.enabled"
-msgstr "已启用"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.env"
@@ -17547,6 +17685,10 @@ msgstr "插件"
 #. js-lingui-explicit-id
 msgid "settings.panel.loading.label"
 msgstr "正在加载…"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.preventSleep.saveFailed"
+msgstr "休眠设置无法保存"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterDescription"
@@ -18129,12 +18271,16 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
-msgstr "自动"
+msgid "settings.runtime.agents.agentWorkers.derived"
+msgstr "自动 · 由机器推导：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
 msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
+msgstr "已配置：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.placeholder"

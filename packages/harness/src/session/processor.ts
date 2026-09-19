@@ -12,7 +12,8 @@ import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
-import type { Provider } from "../provider/provider"
+import { providerEndpointHost } from "../provider/retry-coordinator"
+import { Provider } from "../provider/provider"
 import { LLM } from "./llm"
 import { Config } from "../config/config"
 import { TimeoutConfig } from "../util/timeout-config"
@@ -1802,9 +1803,18 @@ export namespace SessionProcessor {
               log.error("process", {
                 error: e,
               })
-              const error = MessageV2.fromError(e, { providerID: input.model.providerID, modelID: input.model.id })
+              // Derive the endpoint host from the same connection identity
+              // source as providerRetryKey: provider-level options (e.g. a
+              // proxy baseURL) must merge over the model record, or a proxied
+              // provider reports the catalog URL instead of the real host.
+              const providerRecord = await Provider.getProvider(input.model.providerID).catch(() => undefined)
+              const error = MessageV2.fromError(e, {
+                providerID: input.model.providerID,
+                modelID: input.model.id,
+                endpointHost: providerEndpointHost(input.model, providerRecord),
+              })
               const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error)
-              if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
+              if (retry !== undefined && attempt < retry.maxAttempts) {
                 attempt++
                 const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
                 ObservabilityMetrics.record({
@@ -1814,7 +1824,7 @@ export namespace SessionProcessor {
                   module: "session",
                   sessionID: input.sessionID,
                   messageID: input.assistantMessage.id,
-                  labels: { attempt, retry, errorName: error.name },
+                  labels: { attempt, retry: retry.message, errorName: error.name },
                 })
                 await Observability.emit("session.turn.retry", {
                   traceId: turnTraceId,
@@ -1824,14 +1834,14 @@ export namespace SessionProcessor {
                   data: {
                     attempt,
                     delay,
-                    retry,
+                    retry: retry.message,
                     error,
                   },
                 })
                 SessionManager.setStatus(input.sessionID, {
                   type: "retry",
                   attempt,
-                  message: retry,
+                  message: retry.message,
                   next: Date.now() + delay,
                 })
                 await SessionRetry.sleep(delay, input.abort).catch(() => {})

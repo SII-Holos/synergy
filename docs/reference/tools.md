@@ -14,7 +14,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `agenda_schedule` | `orchestration.agenda` | Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session  |
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", stat |
-| `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess h |
+| `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one o |
 | `agent_config` | `platform.config` | Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent |
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `attach` | `communication.deliver` | Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots,  |
@@ -160,14 +160,14 @@ View execution history for an agenda item. Shows recent runs with status, durati
 
 Kind: `orchestration.agenda`
 
-Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. - `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
+Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. - `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential — creation is rejected with connection steps when none resolves; do not substitute a generic `every` interval that shell-checks GitHub. For "wait until a GitHub resource reaches a state" requests, the github trigger IS the right schedule — prefer it over a generic `every` interval plus manual shell checks. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `title` | string | yes | Task title |
 | `prompt` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
 | `trigger` | AgendaTypes.ScheduleTrigger.describe | yes |  |
-| `tags` | string |  | Tags for organization and filtering |
+| `tags` | array |  | Tags for organization and filtering |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 | `wake` | boolean |  | If true, wake this session's agent when execution completes. Default: true |
 | `silent` | boolean |  | If true, suppress result delivery entirely. Default: false |
@@ -176,7 +176,7 @@ Create a recurring task that runs in its own separate session, isolated from thi
 | `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
 | `timeout` | number |  | Execution timeout in milliseconds |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports. |
-| `sessionRefs` | object |  | Sessions whose content is relevant context for execution |
+| `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
 | `sessionID` | string | yes | Session ID to reference |
 | `hint` | string |  | What to focus on in this session |
 
@@ -202,7 +202,7 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 | `title` | string |  | New title |
 | `description` | string |  | New description |
 | `status` | AgendaTypes.ItemStatus.optional |  | New status: pending, active, paused, done, cancelled |
-| `tags` | string |  | New tags (replaces existing) |
+| `tags` | array |  | New tags (replaces existing) |
 | `triggers` | array |  | New triggers (replaces existing, recomputes nextRunAt) |
 | `prompt` | string |  | New execution prompt |
 | `wake` | boolean |  | Whether to wake the origin session on completion |
@@ -212,7 +212,7 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 | `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
 | `timeout` | number |  | Execution timeout in milliseconds |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Set 'ephemeral' to create a fresh session on every fire. |
-| `sessionRefs` | object |  | Sessions whose content is relevant context for execution |
+| `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
 | `sessionID` | string | yes | Session ID to reference |
 | `hint` | string |  | What to focus on in this session |
 
@@ -220,7 +220,7 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 
 Kind: `orchestration.agenda`
 
-Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. When the watch fires, you continue in this session with full conversation history. The watch auto-completes after firing. You can also wake on another session's turn instead of a delay: pass `onSessionEnd: {sessionID, agent?, finish?}` (mutually exclusive with `delay` and `onGithub`). When the watched session ends a turn — optionally filtered by agent or finish state — you are woken in THIS session with your prompt and full conversation history. The watch auto-completes after firing. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}` to react when the research session finishes its turn. You can also wake on a GitHub state change: pass `onGithub: {resource, repository, number?, ref?, states?}` (mutually exclusive with `delay` and `onSessionEnd`). `resource` is "pr" | "issue" | "workflow" | "check"; `repository` is owner/repo; `number` targets one PR/issue or workflow run id (omit for the repository's recent items); `ref` targets a branch/tag/commit for workflow/check watches; `states` filters which new state should wake you (e.g. ["merged"], ["failure"]). When the watched resource transitions into a matching state, you are woken in THIS session with the transition details (number, title, state, previousState, url). The watch auto-completes after firing. Requires a connected GitHub credential; watches stay idle and silent without one. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool. Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions.
+Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one of `delay`, `onSessionEnd`, or `onGithub`. **Prefer managed GitHub watches over repeated shell polling.** When the condition you are waiting for is a GitHub event (PR merged/closed, issue closed, workflow or check run finishing), pass `onGithub: {resource, repository, number?, ref?, states?}` instead of a `delay` plus repeated shell checks. The trigger polls the GitHub REST API with the connected credential on an interval (default 5 minutes, minimum 30 seconds) and wakes you when it next observes a matching state. Intermediate transitions between polls may be missed. `resource` is "pr" | "issue" | "workflow" | "check"; `repository` is owner/repo; `number` targets one PR/issue or workflow run id (omit for the repository's recent items); `ref` targets a branch/tag/commit for workflow/check watches; `states` filters which new state should wake you (e.g. ["merged"], ["failure"], ["completed"]). Requires a connected GitHub credential — without one the watch is rejected with connection steps; ask the user to connect GitHub in Settings → GitHub rather than substituting timed shell polling. Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions. **Wake on another session's turn**: pass `onSessionEnd: {sessionID, agent?, finish?}` to react when the watched session ends a turn, optionally filtered by agent or finish state. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}`. **Timed wake-up** (external processes without an event source): the primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -231,12 +231,12 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `sessionID` | string | yes | Session to watch — wake when it ends a turn |
 | `agent` | string |  | Only wake when the turn's agent matches |
 | `finish` | string |  | Only wake when the turn's finish state matches (e.g. 'stop', 'error') |
-| `onGithub` | "pr" \| "issue" \| "workflow" \| "check" |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
+| `onGithub` | object |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
 | `resource` | "pr" \| "issue" \| "workflow" \| "check" | yes | GitHub resource kind to watch |
 | `repository` | string | yes | Repository in owner/repo form |
 | `number` | number |  | PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set |
 | `ref` | string |  | Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows |
-| `states` | string |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
+| `states` | array |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 
 ## agent_config
@@ -259,8 +259,8 @@ Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep 
 | --- | --- | --- | --- |
 | `pattern` | string | yes | AST pattern with meta-variables ($VAR for single node, $$$ for multiple nodes). Must be a complete AST node. |
 | `lang` | z.enum | yes | Target language for AST parsing |
-| `paths` | string |  | Paths to search (default: current directory) |
-| `globs` | string |  | Include/exclude globs (prefix ! to exclude) |
+| `paths` | array |  | Paths to search (default: current directory) |
+| `globs` | array |  | Include/exclude globs (prefix ! to exclude) |
 | `context` | number |  | Number of context lines around each match |
 
 ## attach
@@ -271,14 +271,14 @@ Deliver files to the user by making them available as conversation attachments. 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `file_path` | string | yes | Absolute or relative path to the file to deliver |
-| `filename` | string |  | Display name for the file (defaults to the original filename) |
+| `file_path` | union | yes | Absolute or relative path to the file to deliver |
+| `filename` | union |  | Display name for the file (defaults to the original filename) |
 
 ## bash
 
 Kind: `code.execute`
 
-Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable). Usage notes: - `command` and `description` are required. The `description` is what the model does, written clearly in 5-10 words. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `linkID` is the legacy Synergy Link instance ID; prefer `targetID`. Omit both for intentional local execution — a supplied remote target never falls back locally, and placeholders like `":local"`, `"local"`, `"localhost"`, or `"undefined"` are rejected. Remote linkIDs always start with `link_`. When targeting a remote `synergy-link` host, open a remote collaboration session first with the `connect` tool — remote bash does not implicitly create sessions. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 10); if the command completes first it returns normally. For remote Synergy Link execution the host clamps `yieldSeconds` to at most 5 seconds. A timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote command was cancelled. Reconnect and inspect session/process state; never auto-retry a mutating or ambiguous remote command. - After backgrounding, use the `process` tool to monitor and interact: list, poll, log, write, send-keys, kill, clear, remove. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are allowed on POSIX Synergy Link hosts (the tracked flow is still preferred); locally they are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). Windows Link hosts reject all detached launchers — split oversized work into tracked `bash`/`process` operations. - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; local bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Note virtual paths materialize only for local bash execution. Prefer dedicated tools over shell equivalents: Glob for file search (not find/ls), Grep for content search (not grep/rg), Read for files (not cat/head/tail), Edit/Write for edits (not sed/awk/echo), and output text directly (not echo/printf). When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). AVOID `cd <dir> && <cmd>` — use the `workdir` parameter. # Committing changes with git Only create commits when requested by the user. If unclear, ask first. Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create` with a HEREDOC or `--body-file` Note for the body. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
+Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable). Usage notes: - `command` and `description` are required. The `description` is what the model does, written clearly in 5-10 words. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `linkID` is the legacy Synergy Link instance ID; prefer `targetID`. Omit both for intentional local execution — a supplied remote target never falls back locally, and placeholders like `":local"`, `"local"`, `"localhost"`, or `"undefined"` are rejected. Remote linkIDs always start with `link_`. When targeting a remote `synergy-link` host, open a remote collaboration session first with the `connect` tool — remote bash does not implicitly create sessions. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. For remote Synergy Link execution the host clamps `yieldSeconds` to at most 5 seconds. A timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote command was cancelled. Reconnect and inspect session/process state; never auto-retry a mutating or ambiguous remote command. - After backgrounding, use the `process` tool to monitor and interact: list, poll, log, write, send-keys, kill, clear, remove. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are allowed on POSIX Synergy Link hosts (the tracked flow is still preferred); locally they are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). Windows Link hosts reject all detached launchers — split oversized work into tracked `bash`/`process` operations. - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; local bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Note virtual paths materialize only for local bash execution. Prefer dedicated tools over shell equivalents: Glob for file search (not find/ls), Grep for content search (not grep/rg), Read for files (not cat/head/tail), Edit/Write for edits (not sed/awk/echo), and output text directly (not echo/printf). When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). AVOID `cd <dir> && <cmd>` — use the `workdir` parameter. # Committing changes with git Only create commits when requested by the user. If unclear, ask first. Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create` with a HEREDOC or `--body-file` Note for the body. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -286,7 +286,7 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 | `workdir` | string |  | The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands. |
 | `description` | string | yes | Clear, concise description of what this command does in 5-10 words. Examples: Input: ls Output: Lists files in current directory Input: git status Output: Shows working tree status Input: npm install Output: Installs package dependencies Input: mkdir foo Output: Creates directory 'foo' |
 | `background` | boolean |  | Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process. |
-| `yieldSeconds` | number |  | Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout. |
+| `yieldSeconds` | number |  | Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 30 (30 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout. |
 | `linkID` | string |  | Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally. |
 | `targetID` | string |  | Persisted Synergy Link target ID returned by connect list_targets. |
 | `detach` | boolean |  | Remote-only: detach the command from the Synergy Link session lifecycle when the connected host explicitly reports support. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Unsupported hosts reject detach=true, and the field is never sent to hosts that do not advertise support. Ignored for local execution. |
@@ -325,9 +325,9 @@ Request independent review only when the one current Blueprint outcome is comple
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `summary` | string | yes | Summary of what was completed. |
-| `completed` | string |  | Completed Blueprint requirement statements. |
-| `evidence` | string |  | Concrete verification evidence such as checks, artifacts, and file paths. |
-| `remaining` | string |  | Any known remaining work or limitations. |
+| `completed` | array |  | Completed Blueprint requirement statements. |
+| `evidence` | array |  | Concrete verification evidence such as checks, artifacts, and file paths. |
+| `remaining` | array |  | Any known remaining work or limitations. |
 
 ## boss_assign
 
@@ -341,7 +341,7 @@ Assign a task to a direct-child worker session in the Boss Mode tree. The task i
 | `taskID` | string | yes | Stable task ID chosen by the caller; idempotent per (caller, taskID). |
 | `task` | string | yes | The task text the worker must complete. |
 | `context` | string |  | Optional context to include with the task. |
-| `acceptance` | string |  | Optional acceptance criteria. |
+| `acceptance` | array |  | Optional acceptance criteria. |
 
 ## boss_cancel
 
@@ -377,7 +377,7 @@ Report a worker's outcome to its parent in the Boss Mode tree. Only workers may 
 | --- | --- | --- | --- |
 | `summary` | string | yes | Summary of what was done, blocked, or needed. |
 | `status` | "completed" \| "blocked" \| "needs_input" |  | Outcome status. Defaults to completed. |
-| `refs` | string |  | Optional references (files, IDs, links). |
+| `refs` | array |  | Optional references (files, IDs, links). |
 
 ## boss_spawn
 
@@ -426,7 +426,7 @@ Read or manage user annotations on browser pages. Annotations are user comments 
 | `ref` | string |  | Reference ID for create action |
 | `element` | string |  | Element selector for create action |
 | `comment` | string |  | Annotation comment text for create action |
-| `styleFeedback` | string |  | Style feedback for create action |
+| `styleFeedback` | record |  | Style feedback for create action |
 | `page` | number |  | Valid only for list; defaults to 0. |
 | `pageSize` | number |  | Valid only for list; defaults to 50. |
 
@@ -500,7 +500,7 @@ List, wait for, cancel, or export owner-isolated managed browser downloads.
 | --- | --- | --- | --- |
 | `action` | "list" \| "wait" \| "cancel" \| "export" | yes |  |
 | `id` | string |  | Required for wait, cancel, and export. |
-| `timeoutMs` | number |  | Valid only for wait; defaults to 30000. |
+| `timeoutSeconds` | number |  | Valid only for wait; defaults to 30. |
 | `path` | string |  | Required only for export. |
 | `page` | number |  | Valid only for list; defaults to 0. |
 | `pageSize` | number |  | Valid only for list; defaults to 100. |
@@ -525,7 +525,7 @@ Evaluate JavaScript in the current page. readonly runs with CDP side-effect reje
 | --- | --- | --- | --- |
 | `expression` | string | yes |  |
 | `mode` | "readonly" \| "trusted" |  |  |
-| `timeoutMs` | number |  |  |
+| `timeoutSeconds` | number |  | Maximum seconds to evaluate the script (1-120); defaults to 10. |
 | `maxChars` | number |  |  |
 
 ## browser_inspect
@@ -537,7 +537,7 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target` | BrowserLocatorSchema | yes |  |
-| `computedStyles` | string |  |  |
+| `computedStyles` | array |  |  |
 
 ## browser_navigation
 
@@ -564,7 +564,7 @@ Read or clear Chromium network requests, responses, failures, redirects, timing,
 | --- | --- | --- | --- |
 | `action` | "list" \| "get" \| "clear" |  |  |
 | `id` | string |  | Required only for get. |
-| `resourceTypes` | string |  |  |
+| `resourceTypes` | array |  |  |
 | `status` | number |  |  |
 | `page` | number |  |  |
 | `pageSize` | number |  |  |
@@ -629,7 +629,7 @@ Upload permission-reviewed workspace files to one uniquely matched file input th
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target` | BrowserLocatorSchema | yes |  |
-| `paths` | string | yes |  |
+| `paths` | array | yes |  |
 
 ## browser_view
 
@@ -650,7 +650,7 @@ Wait for a specific page condition: load state, URL, title, text, locator state,
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `condition` | BrowserWaitConditionSchema | yes |  |
-| `timeoutMs` | number |  |  |
+| `timeoutSeconds` | number |  | Maximum seconds to wait for the condition (1-60); defaults to 10. |
 
 ## channel_push
 
@@ -765,7 +765,7 @@ Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only n
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `nodes` | object |  | Nodes to update |
+| `nodes` | array |  | Nodes to update |
 | `id` | string | yes | Node ID to update |
 | `status` | string |  | New status: completed, blocked, failed, cancelled, or pending (for retry) |
 | `task_id` | string |  | Background task ID to associate with this node |
@@ -787,7 +787,7 @@ Create and manage a directed acyclic graph (DAG) of tasks for the current sessio
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `nodes` | object | yes | The complete DAG node list |
+| `nodes` | array | yes | The complete DAG node list |
 
 ## edit
 
@@ -812,7 +812,7 @@ Read emails from an IMAP inbox. Use this tool when the user asks to check email,
 | --- | --- | --- | --- |
 | `folder` | string |  | Mailbox folder name, defaults to INBOX |
 | `action` | "search" \| "summaries" \| "read" \| "markSeen" | yes | What to do: search for UIDs, get summaries, read full email, or mark as seen |
-| `uids` | number |  | Email UIDs to fetch or mark as seen |
+| `uids` | array |  | Email UIDs to fetch or mark as seen |
 | `search` | object |  | Search criteria for finding emails |
 | `from` | string |  | Filter by sender email address |
 | `subject` | string |  | Filter by subject keyword |
@@ -831,7 +831,7 @@ Send an email via SMTP. Use this tool when the user asks you to send an email, n
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `to` | string | yes | Recipient email address(es). A single address, comma-separated string, or array of addresses |
+| `to` | union | yes | Recipient email address(es). A single address, comma-separated string, or array of addresses |
 | `subject` | string | yes | Email subject line |
 | `body` | string | yes | Email body in plain text |
 | `html` | string |  | Optional HTML version of the email body for rich formatting |
@@ -844,8 +844,8 @@ Change tool visibility for the current session by expanding deferred groups or a
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `groups` | string |  | Tool group IDs to expand, such as browser, agenda, session, note, memory. |
-| `tools` | string |  | Search-only individual tool IDs to activate. |
+| `groups` | array |  | Tool group IDs to expand, such as browser, agenda, session, note, memory. |
+| `tools` | array |  | Search-only individual tool IDs to activate. |
 | `reason` | string |  | Brief reason this capability is needed. |
 
 ## file_search
@@ -939,13 +939,13 @@ Use this when the LightLoop audit finds missing or incorrect work. Parameters: -
 
 Kind: `code.analyze`
 
-Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a separate vision model when the active model cannot accept image input directly. Accepts up to 5 images per call — all images are analyzed together in a single session. This is a separate-model analysis tool: it returns textual findings from a configured vision model. It does not load the image into the current model context, and it does not show the image to the user unless `show_to_user` is true. Use `attach` when the user should receive or inspect the file itself. Use this tool when: - `view_image` is unavailable because the current model does not support image input - You need textual analysis of screenshots, diagrams, charts, UI mockups, or photos through the configured vision model - You need to extract text or data from a screenshot and direct image context is unavailable - You need to classify or process multiple image files at once (up to 5) When NOT to use this tool: - When `view_image` is available and you want the active model to inspect the image directly - For source code or plain text files (use Read tool instead) - For PDF documents — use the Read tool instead (it extracts text from PDFs, DOCX, XLSX, PPTX) - For files that need to be edited afterward (use Read for literal content) - For simple file reading where no interpretation is needed Parameters: - file_path: Absolute path or array of up to 5 paths to the image(s) to analyze - goal: What specific information to extract (be specific!) - timeout: Optional timeout in seconds (default: 120). Increase for large or high-resolution images. - show_to_user: Optional boolean. Set true when the user should see the same image(s) you are analyzing; leave false when the image is only for your internal inspection. Examples: - look_at(file_path="/path/to/architecture.png", goal="List all microservices and their connections") - look_at(file_path="/path/to/dashboard.png", goal="Extract the current CPU, memory, and disk usage values", show_to_user=true) - look_at(file_path=["/path/to/img1.png", "/path/to/img2.png"], goal="Classify each image by content type")
+Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a separate vision model when the active model cannot accept image input directly. Accepts up to 5 images per call — all images are analyzed together in a single session. This is a separate-model analysis tool: it returns textual findings from a configured vision model. It does not load the image into the current model context, and it does not show the image to the user unless `show_to_user` is true. Use `attach` when the user should receive or inspect the file itself. Use this tool when: - `view_image` is unavailable because the current model does not support image input - You need textual analysis of screenshots, diagrams, charts, UI mockups, or photos through the configured vision model - You need to extract text or data from a screenshot and direct image context is unavailable - You need to classify or process multiple image files at once (up to 5) When NOT to use this tool: - When `view_image` is available and you want the active model to inspect the image directly - For source code or plain text files (use Read tool instead) - For PDF documents — use the Read tool instead (it extracts text from PDFs, DOCX, XLSX, PPTX) - For files that need to be edited afterward (use Read for literal content) - For simple file reading where no interpretation is needed Parameters: - file_path: Absolute path or array of up to 5 paths to the image(s) to analyze - goal: What specific information to extract (be specific!) - timeoutSeconds: Optional timeout in seconds (default: 120). Increase for large or high-resolution images. - show_to_user: Optional boolean. Set true when the user should see the same image(s) you are analyzing; leave false when the image is only for your internal inspection. Examples: - look_at(file_path="/path/to/architecture.png", goal="List all microservices and their connections") - look_at(file_path="/path/to/dashboard.png", goal="Extract the current CPU, memory, and disk usage values", show_to_user=true) - look_at(file_path=["/path/to/img1.png", "/path/to/img2.png"], goal="Classify each image by content type")
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `file_path` | string | yes | Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze |
+| `file_path` | union | yes | Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze |
 | `goal` | string | yes | What specific information to extract from the file(s) |
-| `timeout` | number |  | Optional timeout in seconds. If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes). |
+| `timeoutSeconds` | number |  | Optional timeout in seconds (default: ${DEFAULT_TIMEOUT_S}). If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes). |
 | `show_to_user` | boolean |  | When true, also deliver the analyzed image(s) to the user as visible attachments. Use this when the user should see the same visual result you are analyzing. |
 
 ## loop_stop
@@ -957,9 +957,9 @@ Request a completion review for the active Light Loop. Use this when you believe
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `summary` | string | yes | Summary of what was completed. |
-| `completed` | string |  | Completed deliverable or requirement statements. |
-| `evidence` | string |  | Concrete verification evidence (test results, file paths, checks). |
-| `remaining` | string |  | Any known remaining work or limitations. |
+| `completed` | array |  | Completed deliverable or requirement statements. |
+| `evidence` | array |  | Concrete verification evidence (test results, file paths, checks). |
+| `remaining` | array |  | Any known remaining work or limitations. |
 
 ## lsp
 
@@ -1070,7 +1070,7 @@ Archive notes by ID. Archived notes are hidden from the active list but preserve
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `ids` | string | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
+| `ids` | array | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
 | `unarchive` | boolean |  | Set to true to restore archived notes back to active state. |
 
 ## note_delete
@@ -1122,7 +1122,7 @@ Read the full content of one or more notes by ID. Blueprint documents are notes 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `ids` | string | yes | List of note IDs to read (max 10) |
+| `ids` | array | yes | List of note IDs to read (max 10) |
 | `offset` | z.coerce.number |  | Line or block offset to start reading from (0-based) |
 | `limit` | z.coerce.number |  | Maximum number of lines or blocks to return per note (max 2000) |
 | `format` | "markdown" \| "blocks" \| "json" |  | Output format. 'markdown': content as markdown (default). 'blocks': editable block anchors for note_edit. 'json': structured note data. |
@@ -1143,7 +1143,7 @@ Search notes using regex patterns. Searches across note titles and content, retu
 | `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
 | `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
 | `before` | string |  | Only include notes updated before this date (ISO 8601). |
-| `tags` | string |  | Only search notes that have ALL of these tags. |
+| `tags` | array |  | Only search notes that have ALL of these tags. |
 | `pinned` | boolean |  | Filter by pinned status. |
 
 ## note_write
@@ -1158,7 +1158,7 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `title` | string |  | Note title. Required when creating a new note. |
 | `content` | string | yes | Note content in markdown format. |
 | `mode` | "create" \| "append" \| "replace" |  | 'create': new note, 'append': add content to end of existing note, 'replace': overwrite content. |
-| `tags` | string |  | Tags for the note. |
+| `tags` | array |  | Tags for the note. |
 | `kind` | "note" \| "blueprint" |  | Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop. |
 | `description` | string |  | Short blueprint description. Only used when kind is 'blueprint'. |
 | `scope` | "current" \| "home" |  | Which scope to create the note in. Only used for create mode. |
@@ -1219,8 +1219,8 @@ Search code with AST-aware patterns and return anchored file blocks. Use this in
 | --- | --- | --- | --- |
 | `pattern` | string | yes | AST pattern with meta-variables; must be a complete, parseable AST node for the selected language |
 | `lang` | z.enum | yes | Target language for AST parsing |
-| `paths` | string |  | Paths to search; defaults to the current working directory |
-| `globs` | string |  | Additional include/exclude globs; prefix exclusions with ! |
+| `paths` | array |  | Paths to search; defaults to the current working directory |
+| `globs` | array |  | Additional include/exclude globs; prefix exclusions with ! |
 | `context` | number |  | Number of context lines to include around each structural match |
 | `limit` | number |  | Maximum matches to return; defaults to 50 |
 | `skip` | number |  | Matches to skip for pagination |
@@ -1246,18 +1246,18 @@ Replace the complete ordered list of pending future Steps in the current Lattice
 
 Kind: `code.execute`
 
-Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check if a process is still running and get recent output. Non-blocking by default — returns immediately with current status and tail output. Use `block: true` to wait for the process to exit (with optional `timeout` in seconds, default 30s). Synergy Link hosts cap the blocking wait at 25 seconds so a still-running result returns before the 30-second transport deadline; pass a shorter `timeout` to wait less. Note: `block: true` holds the agent turn until the process exits — the agent cannot respond or act during this time. Prefer non-blocking `poll` or `log` first, then `block: true` only when you have nothing else to do before the process finishes. - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far. - **write**: Write raw data to a process's stdin - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"]) - **kill**: Terminate a running process - **clear**: Remove a finished process from the list. On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants before deleting retained output. - **remove**: Remove a process (kills if running, then removes). On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants. ## Notes On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dynamic or opaque script entry points, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Use the tracked Bash background flow and split oversized work into smaller `bash`/`process` operations because a detached descendant cannot be recovered safely after its launcher exits. ## Usage `linkID` is optional. Omit it to manage processes in the current local environment; provide it to target a Synergy Link target. Prefer the stable `targetID` returned by `connect list_targets` over raw `linkID` locators. For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely. When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. Remote process management does not implicitly create sessions, never falls back locally, and a timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote action was not applied. Reconnect and inspect state; never auto-retry mutating actions after an ambiguous failure. After a bash command auto-backgrounds: ``` bash(command: "npm run dev", backgroundAfterSeconds: 30) → { processId: "proc_xxx" } ``` Get current output (non-blocking, recommended first step): ``` process(action: "log", processId: "proc_xxx") ``` Check status (non-blocking by default): ``` process(action: "poll", processId: "proc_xxx") ``` Wait for completion (BLOCKS — agent cannot act until process exits): ``` process(action: "poll", processId: "proc_xxx", block: true) process(action: "poll", processId: "proc_xxx", block: true, timeout: 60) ``` Send input: ``` process(action: "write", processId: "proc_xxx", data: "y\n") ``` Send Ctrl+C to interrupt: ``` process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"]) ``` Terminate: ``` process(action: "kill", processId: "proc_xxx") ``` ## Key Tokens for send-keys - Single characters: `"a"`, `"1"`, `"/"` - Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"` - Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"` - Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z) - Alt combinations: `"M-x"` (Alt+X) - Function keys: `"F1"` through `"F12"`
+Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check if a process is still running and get recent output. Non-blocking by default — returns immediately with current status and tail output. Use `block: true` to wait for the process to exit (with optional `timeoutSeconds` in seconds, default 30s). Synergy Link hosts cap the blocking wait at 25 seconds so a still-running result returns before the 30-second transport deadline; pass a shorter `timeoutSeconds` to wait less. Note: `block: true` holds the agent turn until the process exits — the agent cannot respond or act during this time. Prefer non-blocking `poll` or `log` first, then `block: true` only when you have nothing else to do before the process finishes. - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far. - **write**: Write raw data to a process's stdin - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"]) - **kill**: Terminate a running process - **clear**: Remove a finished process from the list. On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants before deleting retained output. - **remove**: Remove a process (kills if running, then removes). On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants. ## Notes On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dynamic or opaque script entry points, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Use the tracked Bash background flow and split oversized work into smaller `bash`/`process` operations because a detached descendant cannot be recovered safely after its launcher exits. ## Usage `linkID` is optional. Omit it to manage processes in the current local environment; provide it to target a Synergy Link target. Prefer the stable `targetID` returned by `connect list_targets` over raw `linkID` locators. For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely. When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. Remote process management does not implicitly create sessions, never falls back locally, and a timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote action was not applied. Reconnect and inspect state; never auto-retry mutating actions after an ambiguous failure. After a bash command auto-backgrounds: ``` bash(command: "npm run dev", yieldSeconds: 30) → { processId: "proc_xxx" } ``` Get current output (non-blocking, recommended first step): ``` process(action: "log", processId: "proc_xxx") ``` Check status (non-blocking by default): ``` process(action: "poll", processId: "proc_xxx") ``` Wait for completion (BLOCKS — agent cannot act until process exits): ``` process(action: "poll", processId: "proc_xxx", block: true) process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 60) ``` Send input: ``` process(action: "write", processId: "proc_xxx", data: "y\n") ``` Send Ctrl+C to interrupt: ``` process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"]) ``` Terminate: ``` process(action: "kill", processId: "proc_xxx") ``` ## Key Tokens for send-keys - Single characters: `"a"`, `"1"`, `"/"` - Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"` - Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"` - Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z) - Alt combinations: `"M-x"` (Alt+X) - Function keys: `"F1"` through `"F12"`
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `action` | "list" \| "poll" \| "log" \| "write" \| "send-keys" \| "kill" \| "clear" \| "remove" | yes | Action to perform on the process |
 | `processId` | string |  | Process ID (required for all actions except list) |
 | `data` | string |  | Data to write to stdin (for write action) |
-| `keys` | string |  | Key tokens to send (for send-keys action) |
+| `keys` | array |  | Key tokens to send (for send-keys action) |
 | `offset` | number |  | Line offset for log retrieval |
 | `limit` | number |  | Number of lines to retrieve for log |
 | `block` | boolean |  | Wait for process to exit before returning (for poll action) |
-| `timeout` | number |  | Max seconds to wait when block is true (default: ${ ToolTimeout.DEFAULTS.processPollWaitMs / 1_000 }). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline. |
+| `timeoutSeconds` | number |  | Max seconds to wait when block is true (default: ${ ToolTimeout.DEFAULTS.processPollWaitMs / 1_000 } seconds). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline. |
 | `linkID` | string |  | Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally. |
 | `targetID` | string |  | Persisted Synergy Link target ID returned by connect list_targets. |
 
@@ -1335,7 +1335,7 @@ Reload Synergy runtime state after self-configuration changes. Use this when con
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `target` | array | yes | One target or an array of targets to reload |
+| `target` | union | yes | One target or an array of targets to reload |
 | `scope` | RuntimeSchema.ReloadScope.optional |  | Config reload scope. Defaults to auto |
 | `force` | boolean |  | Reserved for future expansion |
 | `reason` | string |  | Optional short note about why the reload is happening |
@@ -1367,18 +1367,18 @@ Read and paginate through document files by converting them to Markdown. Use thi
 
 Kind: `search.codebase`
 
-Search file contents and return anchored file blocks. Use this instead of `grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed. Parameters: - `pattern` is a regular expression. - `path` is the directory to search; defaults to the current working directory. - `include` and `globs` filter file paths. - `limitFiles` caps how many matched files are returned; use `skipFiles` to continue when the result says the limit was reached. - `perFileLimit` caps matched lines per file so one hot file cannot dominate the result. - `timeoutMs` bounds long searches. If a search times out, narrow `path`, `include`/`globs`, or `pattern`. - `outputMode` defaults to `matches`; use `files` only when you intentionally want full file blocks for small results. Critical: - Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are returned with tags. - Search results are intentionally bounded. If the output says the result limit was reached, continue with `skipFiles` or narrow the search. - Match line numbers identify where to inspect/edit via `view_file`, but `revise_file` still requires tight ranges and the latest tag. Use `view_file` to visually confirm the range before editing. - After retrieving a match, call `view_file` with the matched region to get a fresh tag before attempting edits. Do not assume scan output alone provides an editable tag — `view_file` is the definitive source.
+Search file contents and return anchored file blocks. Use this instead of `grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed. Parameters: - `pattern` is a regular expression. - `path` is the directory to search; defaults to the current working directory. - `include` and `globs` filter file paths. - `limitFiles` caps how many matched files are returned; use `skipFiles` to continue when the result says the limit was reached. - `perFileLimit` caps matched lines per file so one hot file cannot dominate the result. - `timeoutSeconds` bounds long searches (min 1, default 10). If a search times out, narrow `path`, `include`/`globs`, or `pattern`. - `outputMode` defaults to `matches`; use `files` only when you intentionally want full file blocks for small results. Critical: - Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are returned with tags. - Search results are intentionally bounded. If the output says the result limit was reached, continue with `skipFiles` or narrow the search. - Match line numbers identify where to inspect/edit via `view_file`, but `revise_file` still requires tight ranges and the latest tag. Use `view_file` to visually confirm the range before editing. - After retrieving a match, call `view_file` with the matched region to get a fresh tag before attempting edits. Do not assume scan output alone provides an editable tag — `view_file` is the definitive source.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `pattern` | string | yes | Regular expression to search for; matched files are returned with [path#TAG] headers for follow-up edits |
 | `path` | string |  | Directory to search in. Defaults to the current working directory. |
 | `include` | string |  | File pattern to include in the search, e.g. "*.ts" |
-| `globs` | string |  | Additional include/exclude globs; prefix exclusions with ! |
+| `globs` | array |  | Additional include/exclude globs; prefix exclusions with ! |
 | `limitFiles` | number |  | Maximum matched files to return; defaults to 20 |
 | `perFileLimit` | number |  | Maximum matched lines per file; defaults to 20 |
 | `skipFiles` | number |  | Matched files to skip for pagination |
-| `timeoutMs` | number |  | Search timeout in milliseconds; defaults to 10000 |
+| `timeoutSeconds` | number |  | Search timeout in seconds; defaults to 10 |
 | `outputMode` | "matches" \| "files" |  | matches returns only matching lines; files returns full file blocks for small result sets |
 
 ## scope_list
@@ -1431,7 +1431,7 @@ Control a target session remotely — inspect its state and perform actions as i
 | `force` | boolean |  | Force worktree switch/remove operations when supported. |
 | `cleanup` | "keep" \| "remove_if_clean" |  | Cleanup behavior for worktree_leave. |
 | `requestID` | string |  | ID of the pending question or permission request. Required for question_reply, question_reject, and permission_reply. |
-| `answers` | string |  | Answers for question_reply. An array of arrays of selected labels — one array per question, each containing the label(s) selected. |
+| `answers` | array |  | Answers for question_reply. An array of arrays of selected labels — one array per question, each containing the label(s) selected. |
 | `reply` | "once" \| "reject" |  | Reply for permission_reply. 'once' approves this request; 'reject' denies it. |
 | `message` | string |  | Optional feedback message when rejecting a permission request. |
 
@@ -1532,7 +1532,7 @@ Launch a new agent to handle complex, multistep tasks. Available agent types: {a
 | `background` | boolean |  | Run task in background (async). Returns immediately with task_id. Use for parallel exploration or long-running tasks. Default: false (sync) |
 | `category` | string |  | Category preset to override model and inject context: Default: none (uses subagent's original model and prompt) |
 | `output` | CortexTypes.OutputConfig.optional |  |  |
-| `worktree` | "current" \| "fresh" |  |  |
+| `worktree` | object |  |  |
 | `create` | literal | yes |  |
 | `name` | string |  |  |
 | `baseRef` | "current" \| "fresh" |  |  |
@@ -1559,14 +1559,14 @@ List background tasks visible from the current session. Use this before `task_ou
 
 Kind: `orchestration.task`
 
-Retrieve output from a visible background task. ## Parameters - **task_id** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, tool calls, duration) - `tail` — recent session activity from the subagent - `full` — final result with progress summary, including structured output as rendered JSON (default) - `summary` — compact one-liner (status, health, elapsed) - **block** (optional): Wait for completion if still running. Valid only with `mode="full"` or the default mode - **timeout** (optional): Maximum seconds to wait (default: 300) Subagents commonly run 5–30 minutes. Do not repeatedly call `task_output` while a task is running. Continue independent work, or wait for the automatic completion notification. Use progress, tail, or summary only for a one-shot diagnostic check. The completion notification does not contain the final result; retrieve it once with `mode="full"`. ## Usage List visible tasks first: ``` task_output() ``` Check live progress without waiting: ``` task_output(task_id: "ctx_abc123", mode: "progress") ``` Inspect recent activity: ``` task_output(task_id: "ctx_abc123", mode: "tail") ``` Compact status check: ``` task_output(task_id: "ctx_abc123", mode: "summary") ``` Wait once for the final result when the next action depends on completion (up to 300s): ``` task_output(task_id: "ctx_abc123", mode: "full", block: true) ``` If the task is still running after this wait, continue other work or use a later one-shot diagnostic only when new evidence is needed. Do not start a polling loop.
+Retrieve output from a visible background task. ## Parameters - **task_id** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, tool calls, duration) - `tail` — recent session activity from the subagent - `full` — final result with progress summary, including structured output as rendered JSON (default) - `summary` — compact one-liner (status, health, elapsed) - **block** (optional): Wait for completion if still running. Valid only with `mode="full"` or the default mode - **timeoutSeconds** (optional): Maximum seconds to wait (default: 300) Subagents commonly run 5–30 minutes. Do not repeatedly call `task_output` while a task is running. Continue independent work, or wait for the automatic completion notification. Use progress, tail, or summary only for a one-shot diagnostic check. The completion notification does not contain the final result; retrieve it once with `mode="full"`. ## Usage List visible tasks first: ``` task_output() ``` Check live progress without waiting: ``` task_output(task_id: "ctx_abc123", mode: "progress") ``` Inspect recent activity: ``` task_output(task_id: "ctx_abc123", mode: "tail") ``` Compact status check: ``` task_output(task_id: "ctx_abc123", mode: "summary") ``` Wait once for the final result when the next action depends on completion (up to 300s): ``` task_output(task_id: "ctx_abc123", mode: "full", block: true) ``` If the task is still running after this wait, continue other work or use a later one-shot diagnostic only when new evidence is needed. Do not start a polling loop.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `task_id` | string |  | Task ID from a visible background task |
 | `mode` | "summary" \| "progress" \| "tail" \| "full" |  | Output mode: progress for live status, tail for recent session activity, full for final output. Default: full |
 | `block` | boolean |  | Wait for completion if still running |
-| `timeout` | number |  | Max seconds to wait (default: ${DEFAULT_WAIT_S}) |
+| `timeoutSeconds` | number |  | Max seconds to wait (default: ${DEFAULT_WAIT_S}) |
 
 ## todoread
 
@@ -1583,7 +1583,7 @@ Use this tool to create and manage a structured task list for your current codin
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `todos` | object | yes | The updated todo list |
+| `todos` | array | yes | The updated todo list |
 
 ## view_file
 
@@ -1618,7 +1618,7 @@ Kind: `search.web`
 | --- | --- | --- | --- |
 | `url` | string | yes | The URL to fetch content from |
 | `format` | "text" \| "markdown" \| "html" |  | The format to return the content in (text, markdown, or html). Defaults to markdown. |
-| `timeout` | number |  | Optional timeout in seconds (max 120) |
+| `timeoutSeconds` | number |  | Optional timeout in seconds (max 120); defaults to 30. |
 
 ## worktree_enter
 

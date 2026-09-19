@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { spawn } from "node:child_process"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import type { ChildProcess } from "node:child_process"
 import { WindowsProcessJob } from "../../src/process/windows-process-job"
 
@@ -281,6 +285,7 @@ describe("WindowsProcessJob.prepare", () => {
     expect(prepared!.args[0]).toBe("-c")
     expect(prepared!.args[1]).toContain("SYNERGY_WINDOWS_JOB_GATE")
     expect(prepared!.args[1]).toEndWith("echo hi")
+    expect(prepared!.verbatimCommandLine).toBe(false)
     expect(prepared!.env.SYNERGY_WINDOWS_JOB_GATE).toMatch(/synergy-process-job-.*\.gate$/)
     expect(prepared!.cleanup).toBeDefined()
     prepared!.cleanup()
@@ -302,6 +307,7 @@ describe("WindowsProcessJob.prepare", () => {
     const gated = prepared!.args[3]
     expect(gated).toContain("for /l %i in (1,1,200)")
     expect(gated).toContain("for %i in (*.txt) do @echo %i")
+    expect(prepared!.verbatimCommandLine).toBe(true)
     expect(prepared!.env.SYNERGY_WINDOWS_JOB_GATE).toBeDefined()
     prepared!.cleanup()
   })
@@ -318,7 +324,76 @@ describe("WindowsProcessJob.prepare", () => {
     const gated = prepared!.args[2]
     expect(gated).toContain("Test-Path -LiteralPath $g")
     expect(gated).toEndWith("Write-Host test")
+    expect(prepared!.verbatimCommandLine).toBe(false)
     expect(prepared!.env.SYNERGY_WINDOWS_JOB_GATE).toBeDefined()
     prepared!.cleanup()
   })
+})
+
+describe("WindowsProcessJob cmd gate spawn", () => {
+  const shell = () => process.env.ComSpec ?? "cmd.exe"
+
+  function prepare(command: string): WindowsProcessJob.Prepared {
+    const prepared = WindowsProcessJob.prepareShell({
+      shell: shell(),
+      command,
+      env: { ...(process.env as Record<string, string>) },
+    })
+    if (!prepared) throw new Error("WindowsProcessJob.prepareShell returned no preparation on win32")
+    return prepared
+  }
+
+  function spawnPrepared(prepared: WindowsProcessJob.Prepared, cwd: string) {
+    return spawn(prepared.command, prepared.args, {
+      cwd,
+      env: prepared.env,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsVerbatimArguments: prepared.verbatimCommandLine,
+    })
+  }
+
+  test.skipIf(process.platform !== "win32")(
+    "runs the user command once the job attaches and the gate opens",
+    async () => {
+      const home = mkdtempSync(path.join(tmpdir(), "synergy-cmd-gate-"))
+      try {
+        const marker = path.join(home, "marker.txt")
+        const prepared = prepare(`echo gated-ok>"${marker}"`)
+        const child = spawnPrepared(prepared, home)
+        const owner = await prepared.activate(child)
+        const code = await new Promise<number | null>((resolve) => child.once("exit", (exitCode) => resolve(exitCode)))
+        expect(code).toBe(0)
+        expect(existsSync(marker)).toBe(true)
+        expect(await Bun.file(marker).text()).toContain("gated-ok")
+        try {
+          owner.terminateOrRelease()
+        } catch {}
+      } finally {
+        rmSync(home, { recursive: true, force: true })
+      }
+    },
+    20_000,
+  )
+
+  test.skipIf(process.platform !== "win32")(
+    "fails closed without running the user command when the gate never opens",
+    async () => {
+      const home = mkdtempSync(path.join(tmpdir(), "synergy-cmd-gate-"))
+      try {
+        const marker = path.join(home, "marker.txt")
+        const prepared = prepare(`echo gated-ok>"${marker}"`)
+        const child = spawnPrepared(prepared, home)
+        const stderr: Buffer[] = []
+        child.stderr?.on("data", (chunk) => stderr.push(chunk as Buffer))
+        const code = await new Promise<number | null>((resolve) => child.once("exit", (exitCode) => resolve(exitCode)))
+        expect(code).not.toBe(0)
+        expect(existsSync(marker)).toBe(false)
+        expect(Buffer.concat(stderr).toString()).toContain("Synergy Windows job gate")
+        prepared.cleanup()
+      } finally {
+        rmSync(home, { recursive: true, force: true })
+      }
+    },
+    20_000,
+  )
 })

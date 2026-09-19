@@ -473,7 +473,7 @@ export namespace Agent {
           source: agent.source,
           modelSource: agent.modelSource,
           model: agent.model,
-          defaultVariant: agent.defaultVariant ?? cfg.role_variant?.[agent.modelRole || "default"],
+          defaultVariant: agent.defaultVariant ?? cfg.role_variant?.[agent.modelRole || "default"] ?? undefined,
         }))
 
       return {
@@ -553,7 +553,7 @@ export namespace Agent {
         model,
         fallbackModel,
         timeoutMs: 30_000,
-        retries: 1,
+        retries: 2,
         maxOutputChars: 4_000,
         messages: [
           {

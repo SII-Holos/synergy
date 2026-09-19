@@ -19,7 +19,7 @@ When NOT to use this tool:
 Parameters:
 - file_path: Absolute path or array of up to 5 paths to the image(s) to analyze
 - goal: What specific information to extract (be specific!)
-- timeout: Optional timeout in seconds (default: 120). Increase for large or high-resolution images.
+- timeoutSeconds: Optional timeout in seconds (default: 120). Increase for large or high-resolution images.
 - show_to_user: Optional boolean. Set true when the user should see the same image(s) you are analyzing; leave false when the image is only for your internal inspection.
 
 Examples:

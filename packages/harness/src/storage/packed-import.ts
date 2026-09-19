@@ -5,9 +5,10 @@ import type { ArtifactLocation } from "./artifact-location"
 import { ArtifactPack } from "./artifact-pack"
 import { PackedBackup, type PackedBackupEntry } from "./packed-backup"
 import { syncRetiredDirectories, legacyBinaryKey, legacyRecordKey, legacySources, sourcePath } from "./legacy-source"
+import { StorageCompat } from "./compat"
 import { validateLegacyRecord } from "./legacy-record"
 import { StorageIntegrityError } from "./errors"
-import { fileDigest } from "./file-digest"
+import { verifyRetirement } from "./file-digest"
 import type { ImportProgress, ImportResult } from "./legacy-import"
 import type { TransactionalStore, StoreTransaction } from "./transactional-store"
 
@@ -15,7 +16,7 @@ const stateKey = ["storage_import", "info"]
 const GiB = 1024 ** 3
 const globalFailure =
   "A global identity or migration ledger is corrupt; restore and repair a copy of the pre-upgrade backup before retrying"
-type Result = ImportResult & { artifacts: number }
+type Result = ImportResult & { artifacts: number; deferred?: number }
 interface State {
   version: 2
   source: string
@@ -38,6 +39,7 @@ type Prepared = {
   error?: string
   binary?: { key: string[]; location: ArtifactLocation }
   position: number
+  deferred?: boolean
 }
 function hash(value: string) {
   return createHash("sha256").update(value).digest("hex")
@@ -53,8 +55,13 @@ export class PackedLegacyImporter {
       backupRoot: string
       store: TransactionalStore
       progress?: (value: ImportProgress) => void
+      deferSessions?: boolean
     },
   ) {}
+
+  private deferred(relative: string) {
+    return this.options.deferSessions === true && StorageCompat.deferRelative(relative)
+  }
 
   private async capacity(required: number) {
     const disk = await fs.statfs(this.options.dataRoot, { bigint: true })
@@ -119,7 +126,7 @@ export class PackedLegacyImporter {
       reserveBytes,
       journalBudgetBytes,
       migrationBudgetBytes,
-      result: { files, bytes, imported: 0, retained: 0, quarantined: 0, artifacts: 0 },
+      result: { files, bytes, imported: 0, retained: 0, quarantined: 0, artifacts: 0, deferred: 0 },
     }
     await store.write(stateKey, state)
     return state
@@ -145,7 +152,10 @@ export class PackedLegacyImporter {
     progress?.({ stage: "inventory", current: manifest.files, total: manifest.files, bytes: manifest.storedBytes })
     if (state.fatal) throw new StorageIntegrityError(globalFailure)
     if (state.phase === "complete") {
-      if (state.result.imported + state.result.quarantined + state.result.retained !== state.files)
+      if (
+        state.result.imported + state.result.quarantined + state.result.retained + (state.result.deferred ?? 0) !==
+        state.files
+      )
         throw new StorageIntegrityError("Migration did not account for every source file")
       return state.result
     }
@@ -171,11 +181,14 @@ export class PackedLegacyImporter {
           const next = { ...state, result: { ...state.result }, cursor: prepared.at(-1)!.position }
           const records: Array<{ key: string[]; value: unknown }> = []
           const binaries: Array<{ key: string[]; location: ArtifactLocation }> = []
-          const candidates = prepared.filter((item) => item.key && (phase !== "owners" || isOwner(item.key)))
+          const candidates = prepared.filter(
+            (item) => item.key && !item.deferred && (phase !== "owners" || isOwner(item.key)),
+          )
           const existing = await tx.readMany(candidates.map((item) => item.key!))
           const ownerKeys = new Map<string, string[]>()
           if (phase === "import")
             for (const item of prepared) {
+              if (item.deferred) continue
               const key = item.key ?? item.binary?.key
               if (key?.[0] === "sessions" && key.length > 4) ownerKeys.set(key[2], key.slice(0, 3))
             }
@@ -194,6 +207,10 @@ export class PackedLegacyImporter {
           let candidateIndex = 0
           for (const item of prepared) {
             const { key, entry } = item
+            if (item.deferred) {
+              if (phase === "import") next.result.deferred = (next.result.deferred ?? 0) + 1
+              continue
+            }
             if (phase === "owners" && !isOwner(key)) continue
             const before = key ? existing[candidateIndex++] : undefined
             if (phase === "import" && isOwner(key)) {
@@ -236,8 +253,9 @@ export class PackedLegacyImporter {
         position++
         if (position <= state.cursor) continue
         const key = legacyRecordKey(entry.relative)
-        const item: Prepared = { entry, key, position }
-        if (key && ((phase === "import" && !isOwner(key)) || (phase === "owners" && isOwner(key)))) {
+        const deferred = this.deferred(entry.relative)
+        const item: Prepared = { entry, key, position, deferred }
+        if (key && !deferred && ((phase === "import" && !isOwner(key)) || (phase === "owners" && isOwner(key)))) {
           try {
             item.value = JSON.parse(
               entry.data ? entry.data.toString("utf8") : await fs.readFile(entry.filename!, "utf8"),
@@ -248,7 +266,7 @@ export class PackedLegacyImporter {
             item.error = error instanceof SyntaxError ? "Invalid JSON" : error.message
           }
         }
-        if (phase === "import") {
+        if (!deferred && phase === "import") {
           const binary = legacyBinaryKey(entry.relative)
           if (binary) {
             if (adopted?.group !== entry.group) adopted = { group: entry.group, pack: await pack.adopt(entry.packed) }
@@ -274,14 +292,18 @@ export class PackedLegacyImporter {
       if (position !== state.files) throw new StorageIntegrityError("The packed inventory is incomplete")
       if (
         phase === "import" &&
-        state.result.imported + state.result.quarantined + state.result.retained !== state.files
+        state.result.imported + state.result.quarantined + state.result.retained + (state.result.deferred ?? 0) !==
+          state.files
       )
         throw new StorageIntegrityError("Migration did not account for every source file")
       state = { ...state, phase: phase === "owners" ? "import" : "complete", cursor: 0 }
       await store.write(stateKey, state)
     }
     progress?.({ stage: "verify", current: 0, total: state.files, bytes: 0 })
-    if (state.result.imported + state.result.quarantined + state.result.retained !== state.files)
+    if (
+      state.result.imported + state.result.quarantined + state.result.retained + (state.result.deferred ?? 0) !==
+      state.files
+    )
       throw new StorageIntegrityError("Migration did not account for every source file")
     progress?.({ stage: "verify", current: state.files, total: state.files, bytes: state.result.bytes })
     return state.result
@@ -325,11 +347,13 @@ export class PackedLegacyImporter {
     for await (const entry of backup.entries()) {
       position++
       if (position <= committed) continue
+      if (this.deferred(entry.relative)) continue
       if (legacyRecordKey(entry.relative) || legacyBinaryKey(entry.relative)) {
         const filename = sourcePath(dataRoot, entry.relative)
         try {
-          if ((await fileDigest(filename, entry.size)) !== entry.hash)
-            throw new StorageIntegrityError("A legacy writer changed data during activation")
+          await verifyRetirement(filename, entry.hash, entry.size, "A legacy writer changed data during activation", {
+            tolerateMissing: true,
+          })
           await fs.unlink(filename)
         } catch (error) {
           if (error instanceof StorageIntegrityError)

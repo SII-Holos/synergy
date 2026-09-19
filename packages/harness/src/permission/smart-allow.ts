@@ -236,7 +236,7 @@ export namespace SmartAllow {
       sessionId: input.sessionID,
       user,
       timeoutMs: 10_000,
-      retries: 0,
+      retries: 1,
       maxOutputChars: 1_000,
       small: false,
     })

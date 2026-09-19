@@ -1,48 +1,85 @@
 import { describe, expect, test } from "bun:test"
-import { EnforcementGate } from "@ericsanchezok/synergy-harness/enforcement/gate"
 import { SessionModePolicy } from "../../src/session/tool-mode-policy"
 
 const planSession = {
   workflow: { kind: "plan" },
 } as any
 
-async function bashDiagnostic(command: string) {
-  const gate = await EnforcementGate.create({
-    activeWorkspace: "/tmp/synergy-plan",
-    workspaceType: "main",
-  })
-  const envelope = gate.evaluate("bash", { command })
-  return SessionModePolicy.evaluateCall({
-    toolName: "bash",
-    args: { command },
-    session: planSession,
-    capabilities: envelope.capabilities,
-  })
-}
-
 describe("SessionModePolicy Plan visibility", () => {
   test("allows bash to stay visible in Plan", () => {
     expect(SessionModePolicy.visibility({ toolName: "bash", session: planSession })).toBeUndefined()
   })
 
-  test("blocks direct implementation write tools in Plan", () => {
-    const diagnostic = SessionModePolicy.visibility({ toolName: "edit", session: planSession })
-    expect(diagnostic?.code).toBe("plan_mode_blocked")
-    expect(diagnostic?.mode).toBe("plan")
+  test("does not gate any tool by the Plan workflow", () => {
+    for (const toolName of [
+      "edit",
+      "write",
+      "save_file",
+      "revise_file",
+      "resolve_conflicts",
+      "process",
+      "attach",
+      "render",
+      "todowrite",
+      "memory_write",
+      "email_read",
+      "email_send",
+      "channel_push",
+      "computer_apps",
+      "computer_observe",
+      "browser_read",
+      "browser_action",
+      "openai_image_gen",
+      "mcp__anysearch__search",
+      "mcp__scholight__search_papers",
+      "agent_config",
+      "connect",
+    ]) {
+      expect(SessionModePolicy.visibility({ toolName, session: planSession }), toolName).toBeUndefined()
+    }
+  })
+
+  test("keeps shell commands ungated because Plan is guidance rather than a shell boundary", () => {
+    for (const toolName of ["bash", "process"]) {
+      expect(SessionModePolicy.visibility({ toolName, session: planSession }), toolName).toBeUndefined()
+    }
   })
 })
 
-describe("SessionModePolicy Plan bash calls", () => {
-  test("does not add a Plan-only bash restriction", async () => {
-    await expect(bashDiagnostic('rg "ToolResolver" packages/harness/src')).resolves.toBeUndefined()
-    await expect(
-      bashDiagnostic("ls -la && cat package.json && git diff -- packages/harness/src/session/tool-resolver.ts"),
-    ).resolves.toBeUndefined()
-    await expect(bashDiagnostic("git status --short")).resolves.toBeUndefined()
-    await expect(bashDiagnostic("npm view @ericsanchezok/synergy-plugin versions --json")).resolves.toBeUndefined()
-    await expect(bashDiagnostic("bun pm view @ericsanchezok/synergy-plugin version")).resolves.toBeUndefined()
-    for (const command of ["echo hi > file.txt", "rm file.txt", "git commit -m test", "git push origin main"]) {
-      await expect(bashDiagnostic(command)).resolves.toBeUndefined()
+describe("SessionModePolicy workflow-surface guards", () => {
+  test("still hides Lattice parent tools outside Lattice", () => {
+    for (const toolName of ["pathway_read", "pathway_write", "lattice_submit"]) {
+      expect(SessionModePolicy.visibility({ toolName, session: planSession }), toolName).toMatchObject({
+        code: "tool_unavailable",
+        toolName,
+      })
+    }
+  })
+
+  test("still hides Boss tools outside Boss Mode", () => {
+    for (const toolName of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel", "boss_project"]) {
+      expect(SessionModePolicy.visibility({ toolName, session: planSession }), toolName).toMatchObject({
+        code: "tool_unavailable",
+        toolName,
+      })
+    }
+  })
+
+  test("keeps workflow-domain unavailable reasons outside Plan", () => {
+    for (const reason of ["audit_only", "blueprint_loop_required", "light_loop_required"]) {
+      expect(SessionModePolicy.unavailable({ toolName: "blueprint_loop_stop", reason })).toMatchObject({
+        code: "tool_unavailable",
+        toolName: "blueprint_loop_stop",
+      })
+    }
+    expect(SessionModePolicy.unavailable({ toolName: "blueprint_loop_stop", reason: "audit_only" })?.message).toContain(
+      "Blueprint audit session",
+    )
+  })
+
+  test("leaves generic unavailable reasons to the core implementation", () => {
+    for (const reason of ["permission", "user_disabled", "deferred"]) {
+      expect(SessionModePolicy.unavailable({ toolName: "read", reason })).toBeUndefined()
     }
   })
 })

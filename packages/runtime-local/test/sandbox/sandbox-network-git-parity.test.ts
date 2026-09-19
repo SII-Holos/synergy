@@ -204,15 +204,21 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     })
     const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
     MacBackend.cleanupTemp(wrapper.tempPath!)
+    // macOS firmlinks the home to its /private/... spelling, so a compiled rule
+    // may carry either form; the protected relative location is the invariant.
+    const homes = readDenyHomeDirs().flatMap((home) => {
+      const canonical = home.replace(/\/+$/, "")
+      let resolved: string
+      try {
+        resolved = fs.realpathSync(canonical)
+      } catch {
+        resolved = canonical
+      }
+      return [canonical, resolved]
+    })
     const expected = new Set(
       readDenyHomeDirs().flatMap((home) =>
-        READ_DENY_PATHS(home).map((p) => {
-          try {
-            return fs.realpathSync(p)
-          } catch {
-            return p
-          }
-        }),
+        READ_DENY_PATHS(home).map((p) => p.slice(home.replace(/\/+$/, "").length + 1)),
       ),
     )
     const denyLines = sbpl.split("\n").filter((line) => line.startsWith("(deny file-read*"))
@@ -220,7 +226,9 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     for (const line of denyLines) {
       const match = line.match(/\(subpath "([^"]+)"\)/)
       expect(match).not.toBeNull()
-      expect(expected.has(match![1])).toBe(true)
+      const home = homes.find((h) => match![1].startsWith(h + "/"))
+      expect(home).toBeDefined()
+      expect(expected.has(match![1].slice(home!.length + 1))).toBe(true)
     }
   })
 

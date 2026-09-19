@@ -23,6 +23,7 @@ import { BusEvent } from "../bus/bus-event"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { loadFragments } from "./fragment"
+import { DOMAIN_FRAGMENT_MODE, MalformedFragmentError, renderDomainFragment } from "./fragment-render"
 import * as Schema from "./schema"
 import { ConfigDomain } from "./domain"
 import { ConfigExtensions } from "./extensions"
@@ -334,6 +335,7 @@ export namespace Config {
 
     merge(LegacyExecutionConfig.environment(), "legacy_environment")
 
+    normalizeRoleNulls(result)
     ConfigExtensions.normalize(result)
     const config = Info.parse(result)
     mark(config, "default", "", true)
@@ -344,6 +346,31 @@ export namespace Config {
       sources,
     }
   }
+  // Role models and role_variant values accept explicit null as a stored
+  // "cleared" marker: the settings round trip needs it to survive deep merge
+  // across config layers. Strip the markers here so readers always see unset.
+  function normalizeRoleNulls(config: Info) {
+    const roleFields = [
+      "model",
+      "nano_model",
+      "mini_model",
+      "mid_model",
+      "thinking_model",
+      "long_context_model",
+      "creative_model",
+      "vision_model",
+    ] as const
+    for (const field of roleFields) {
+      if (config[field] === null) delete config[field]
+    }
+    if (config.role_variant) {
+      for (const [role, variant] of Object.entries(config.role_variant)) {
+        if (variant === null) delete config.role_variant[role]
+      }
+      if (Object.keys(config.role_variant).length === 0) delete config.role_variant
+    }
+  }
+
   /**
    * Fetch and parse one well-known remote config, caching the result.
    * Returns null when the remote config is unavailable or invalid so the
@@ -686,7 +713,9 @@ export namespace Config {
         const filepath = path.join(tempDir, domain.filename)
         const existing = await loadFile(filepath, { addSchema: false })
         const fragment = split.get(domain.id) ?? {}
-        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)))
+        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)), {
+          mode: DOMAIN_FRAGMENT_MODE,
+        })
       }
 
       await fs.mkdir(path.dirname(domainDir), { recursive: true })
@@ -1468,7 +1497,37 @@ export namespace Config {
   async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
     const filepath = ConfigDomain.filepath(id, root)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
-    await Bun.write(filepath, serializeConfig(config))
+    let content = serializeConfig(config)
+    let changed = true
+    try {
+      const rendered = await renderDomainFragment({
+        current: await Bun.file(filepath)
+          .text()
+          .catch(() => ""),
+        next: config,
+        filepath,
+        renderFresh: serializeConfig,
+      })
+      content = rendered.content
+      changed = rendered.changed
+    } catch (error) {
+      // A malformed fragment cannot be edited in place; replace it with the
+      // valid merged config so the save still lands, matching the quarantine
+      // recovery contract instead of turning silent overwrites into failures.
+      if (!(error instanceof MalformedFragmentError)) throw error
+    }
+    // An unchanged document skips the write entirely: an empty Settings save
+    // must not churn the fragment's mtime or wake the file watcher.
+    if (!changed) {
+      await fs
+        .chmod(filepath, DOMAIN_FRAGMENT_MODE)
+        .catch((error) => log.warn("failed to restrict config fragment permissions", { filepath, error }))
+      return
+    }
+    await Bun.write(filepath, content, { mode: DOMAIN_FRAGMENT_MODE })
+    await fs
+      .chmod(filepath, DOMAIN_FRAGMENT_MODE)
+      .catch((error) => log.warn("failed to restrict config fragment permissions", { filepath, error }))
   }
 
   export function serializeConfig(config: Partial<Info>) {

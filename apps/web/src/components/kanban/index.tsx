@@ -8,6 +8,7 @@ import { Persist, persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLayout, type NavEntry } from "@/context/layout"
+import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { planMessagePageApply } from "@/context/session-message-page"
 import { scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
@@ -42,8 +43,6 @@ const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
   messageWindow: {},
   part: {},
   session_diff: {},
-  session_status: {},
-  cortex: [],
   session: [],
   agent: [],
 }
@@ -53,6 +52,7 @@ export function KanbanPanel() {
   const navigate = useNavigate()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const fullAccessAck = useFullAccessAcknowledgement()
   const layout = useLayout()
 
   const [store, setStore, , ready] = persisted(
@@ -218,6 +218,8 @@ export function KanbanPanel() {
   }
   const updateProfileFor = (pane: BoardPane) => async (profile: ControlProfileId) => {
     if (pane.kind !== "live") return
+    const current = globalSync.peekScopeState(pane.scopeKey)?.[0]?.session?.find((s) => s.id === pane.sessionID)
+    if (!(await fullAccessAck.ensure(profile, current?.controlProfile))) return
     await clientFor(pane).session.update({
       sessionID: pane.sessionID,
       controlProfile: profile,

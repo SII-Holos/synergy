@@ -1,5 +1,5 @@
+import { extractShellHeredocBodies, walkShellChars } from "../enforcement/shell-command"
 import { Log } from "../util/log"
-import { SecretMask } from "./mask"
 import { SecretVault } from "./vault"
 
 const log = Log.create({ service: "secrets.resolve" })
@@ -50,7 +50,7 @@ export namespace SecretResolve {
    * visible marker and lets the operation proceed; a removed entry leaves
    * the token literal, matching what the model saw.
    */
-  export async function transformArgs<T extends Record<string, any>>(args: T, input: Input): Promise<Outcome<T>> {
+  export async function transformArgs<T extends Record<string, unknown>>(args: T, input: Input): Promise<Outcome<T>> {
     const outcome: Outcome<T> = { args, resolved: 0, denied: 0 }
     if (input.tool === "bash" && typeof args.command === "string" && args.command.includes("⟦sec:")) {
       const remote = typeof args.targetID === "string" || typeof args.linkID === "string"
@@ -129,7 +129,7 @@ export namespace SecretResolve {
   }
 
   function isFreeBoundary(ch: string | undefined): boolean {
-    return ch === undefined || /[\s"'|&;<>()=]/.test(ch)
+    return ch === undefined || /[\s|&;<>()=]/.test(ch)
   }
 
   async function resolveBashCommand(
@@ -142,6 +142,16 @@ export namespace SecretResolve {
     const decisions: Decision[] = []
     for (const match of matches) decisions.push(await decide(match[1]!, input))
 
+    const expandable = new Set<number>()
+    if (extractShellHeredocBodies(command).length === 0)
+      walkShellChars(
+        command,
+        (char, index, quote, context) => {
+          if (char === "⟦" && !quote && !context.inBacktick && !context.arithmetic && !context.commandSubstitutionDepth)
+            expandable.add(index)
+        },
+        { comments: true, backticks: true },
+      )
     const secretEnv: Record<string, string> = {}
     let out = ""
     let cursor = 0
@@ -155,11 +165,15 @@ export namespace SecretResolve {
       out += command.slice(cursor, start)
       if (decision.kind === "value") {
         resolved++
-        if (standalone && !remote) {
+        if (standalone && expandable.has(start) && !remote) {
           const name = envName(match[1]!)
           secretEnv[name] = decision.value
-          out += `\${${name}}`
+          out += `"\${${name}}"`
         } else {
+          if (!/^[A-Za-z0-9_./:@%+=,-]+$/.test(decision.value))
+            throw new Error(
+              "This secret requires a standalone unquoted token in local Bash; literal substitution would change shell syntax",
+            )
           out += decision.value
         }
       } else if (decision.kind === "denied") {

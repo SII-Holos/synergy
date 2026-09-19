@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { createStore } from "solid-js/store"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import { buildPatch } from "../../../../src/components/settings/hooks/useConfigPatch"
+import { ensureInit } from "../../../../src/components/settings/hooks/useSettingsForm"
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
@@ -150,8 +152,37 @@ describe("settings config patch", () => {
       }),
     ).toEqual({
       model: "openai/gpt-5.5",
-      mini_model: undefined,
+      mini_model: null,
     })
+  })
+
+  test("clearing a role variant emits a per-role null and preserves siblings", () => {
+    const state = defaultSettingsState("enter")
+    state.roleVariant = { default: "", title: "low" }
+
+    const patch = buildPatch({
+      cfg: { role_variant: { default: "high", title: "low" } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.role_variant).toEqual({ default: null, title: "low" })
+  })
+
+  test("seeded role variant draft does not re-send stored variants", () => {
+    // After a clear save the normalized config omits the cleared key; a
+    // seeded draft must produce no variant patch, or the panel would stay
+    // permanently dirty across saves.
+    const state = defaultSettingsState("enter")
+    state.roleVariant = { title: "low" }
+
+    const patch = buildPatch({
+      cfg: { role_variant: { title: "low" } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("role_variant")
   })
 
   test("persists quick switcher model preferences through the models domain", () => {
@@ -335,6 +366,27 @@ describe("settings config patch", () => {
     })
 
     expect(patch.execution).toEqual({ agentWorkers: 3, policyWorkers: 2 })
+  })
+
+  test("clearing the agent worker pool size removes the explicit ceiling", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.agentWorkers = ""
+
+    expect(
+      buildPatch({
+        cfg: { execution: { agentWorkers: 6, policyWorkers: 2 } } as Config,
+        state,
+        originalMcps: {},
+      }).execution,
+    ).toEqual({ agentWorkers: null, policyWorkers: 2 })
+  })
+
+  test("keeps an already-adaptive pool out of the patch when the field stays cleared", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({ cfg: { execution: { policyWorkers: 2 } } as Config, state, originalMcps: {} }),
+    ).not.toHaveProperty("execution")
   })
 
   test("omits automatic, unchanged, and out-of-range agent worker pool sizes", () => {
@@ -1267,5 +1319,156 @@ describe("settings config patch builtin mcp", () => {
     const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
 
     expect(patch).not.toHaveProperty("mcp")
+  })
+
+  // A stored built-in stub plus a typed server is the shape that made the
+  // panel permanently dirty: the builder hoists type-less stubs first while
+  // the domain file keeps its own insertion order, so a textual comparison
+  // reported a change on every save even though the content was identical.
+  const mixedOrderCases: Array<{ label: string; stored: Record<string, Record<string, unknown>> }> = [
+    {
+      label: "typed server stored before the stub",
+      stored: {
+        notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+        anysearch: { apiKey: "__REDACTED__" },
+      },
+    },
+    {
+      label: "stub stored before the typed server",
+      stored: {
+        anysearch: { apiKey: "__REDACTED__" },
+        notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      },
+    },
+  ]
+
+  function mixedState() {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [
+      {
+        key: "notion",
+        type: "remote",
+        enabled: true,
+        expandByDefault: false,
+        command: "",
+        url: "https://mcp.notion.com/mcp",
+        timeout: "",
+        environment: "",
+        headers: "",
+      },
+    ]
+    state.mcps.builtins = [builtin({ keyConfigured: true })]
+    return state
+  }
+
+  for (const { label, stored } of mixedOrderCases) {
+    test(`a typed server plus an unchanged stored stub emits no mcp patch (${label})`, () => {
+      const patch = buildPatch({
+        cfg: { mcp: stored } as unknown as Config,
+        state: mixedState(),
+        originalMcps: { notion: { ...stored.notion } },
+      })
+
+      expect(patch).not.toHaveProperty("mcp")
+    })
+  }
+
+  test("a real built-in change still emits the mcp patch alongside a typed server", () => {
+    const state = mixedState()
+    state.mcps.builtins = [builtin({ keyConfigured: true, toggle: false })]
+    const stored = {
+      notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      anysearch: { apiKey: "__REDACTED__" },
+    }
+
+    const patch = buildPatch({
+      cfg: { mcp: stored } as unknown as Config,
+      state,
+      originalMcps: { notion: { ...stored.notion } },
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).anysearch).toEqual({
+      apiKey: "__REDACTED__",
+      enabled: false,
+    })
+    expect((patch.mcp as Record<string, Record<string, unknown>>).notion).toEqual(stored.notion)
+  })
+
+  test("a rotated key still emits the mcp patch alongside a typed server", () => {
+    const state = mixedState()
+    state.mcps.builtins = [builtin({ keyConfigured: true, apiKeyDraft: "as_sk_rotated" })]
+    const stored = {
+      notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      anysearch: { apiKey: "__REDACTED__" },
+    }
+
+    const patch = buildPatch({
+      cfg: { mcp: stored } as unknown as Config,
+      state,
+      originalMcps: { notion: { ...stored.notion } },
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).anysearch).toEqual({
+      apiKey: "as_sk_rotated",
+    })
+  })
+
+  // The reported symptom, reproduced through the real panel hydration path
+  // rather than a hand-built draft: load the exact config shape the user has,
+  // save it back, and confirm the panel reports no pending changes.
+  test("a real save of the affected config leaves the panel clean", () => {
+    const stored = {
+      notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      scholens: {
+        type: "remote",
+        url: "https://scholens.sanchezcloud.net/mcp",
+        headers: { Authorization: "Bearer __REDACTED__" },
+        enabled: true,
+      },
+      scholight: { apiKey: "__REDACTED__" },
+      anysearch: { apiKey: "__REDACTED__" },
+    }
+    const cfg = { mcp: stored } as unknown as Config
+    const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
+    const [state, setSettings] = createStore(defaultSettingsState("enter"))
+
+    ensureInit({
+      cfg,
+      setName: "global",
+      refreshing: () => false,
+      initialized: () => false,
+      initializedForSet: undefined,
+      sendShortcut: () => "enter",
+      colorScheme: () => "system",
+      setSettings,
+      setInitialized: () => undefined,
+      originalMcpsRef,
+      builtinMcps: [
+        {
+          name: "anysearch",
+          url: "https://api.anysearch.com/mcp",
+          status: { status: "connected" } as never,
+          keyConfigured: true,
+          keyHint: "••••1234",
+        },
+        {
+          name: "scholight",
+          url: "https://scholight.sanchezcloud.net/api/mcp",
+          status: { status: "connected" } as never,
+          keyConfigured: true,
+          keyHint: "••••5678",
+        },
+      ],
+    })
+
+    const patch = buildPatch({ cfg, state, originalMcps: originalMcpsRef.current })
+
+    expect(patch).not.toHaveProperty("mcp")
+
+    // Control: a genuine edit still produces a patch, so the fix cannot be
+    // passing merely by suppressing every mcp write.
+    setSettings("mcps", "builtins", 0, "toggle", false)
+    const edited = buildPatch({ cfg, state, originalMcps: originalMcpsRef.current })
+    expect(edited).toHaveProperty("mcp")
   })
 })

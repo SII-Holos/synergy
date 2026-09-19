@@ -25,21 +25,25 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
 
   if (await hasActiveWorkflow({ session, scopeID })) {
     log.info("detected recovering session (workflow)", { sessionID, workflow: session.workflow?.kind })
-    return { status: "recovering" }
+    return {
+      status: "recovering",
+      reason: "workflow",
+      description: await SessionExecutionContributions.recoveringDescription(session),
+    }
   }
 
   for await (const info of MessageV2.readNewestInfos({ scopeID, sessionID: sid })) {
     if (info.role !== "assistant") continue
     if (!SessionProgress.isTerminalAssistant(info as MessageV2.Assistant)) {
       log.info("detected recovering session (incomplete)", { sessionID, messageID: info.id })
-      return { status: "recovering" }
+      return { status: "recovering", reason: "incomplete-turn" }
     }
     break
   }
 
   if (session.pendingReply && (await SessionProgress.pendingReplyFor({ scopeID, sessionID }))) {
     log.info("detected recovering session (pending reply)", { sessionID })
-    return { status: "recovering" }
+    return { status: "recovering", reason: "pending-reply" }
   }
 
   return undefined
@@ -59,6 +63,10 @@ export function toStatus(working: WorkingInfo): StatusInfo {
     case "retry":
       return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
     case "recovering":
-      return { type: "recovering" }
+      return {
+        type: "recovering",
+        ...(working.reason ? { reason: working.reason } : {}),
+        ...(working.description ? { description: working.description } : {}),
+      }
   }
 }

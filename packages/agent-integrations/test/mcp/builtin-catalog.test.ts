@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { DISABLE_BUILTIN_MCP_ENV, builtinServerStaged, collectBuiltinMcpServers } from "../../src/mcp/builtin-catalog"
+import {
+  DISABLE_BUILTIN_MCP_ENV,
+  builtinApiKeyHint,
+  builtinServerStaged,
+  collectBuiltinMcpServers,
+} from "../../src/mcp/builtin-catalog"
 
 // test/preload.ts sets SYNERGY_DISABLE_BUILTIN_MCP=true so no test touches
 // external endpoints; these tests toggle the env within this file's process
@@ -132,5 +137,29 @@ describe("collectBuiltinMcpServers", () => {
     expect(builtinServerStaged("anysearch", { anysearch: { expandByDefault: false } })).toBe(true)
     process.env[DISABLE_BUILTIN_MCP_ENV] = "true"
     expect(builtinServerStaged("anysearch", undefined)).toBe(false)
+  })
+})
+
+describe("builtinApiKeyHint", () => {
+  test("masks all but the last four characters of a long key", () => {
+    expect(builtinApiKeyHint({ apiKey: "fake-key-9876" })).toBe("••••9876")
+  })
+
+  test("returns the bare mask for keys of eight characters or fewer", () => {
+    expect(builtinApiKeyHint({ apiKey: "12345678" })).toBe("••••")
+    expect(builtinApiKeyHint({ apiKey: "short" })).toBe("••••")
+  })
+
+  test("returns undefined when no key is stored", () => {
+    expect(builtinApiKeyHint(undefined)).toBeUndefined()
+    expect(builtinApiKeyHint({})).toBeUndefined()
+    // An empty apiKey is the clear marker and behaves like an absent key.
+    expect(builtinApiKeyHint({ apiKey: "" })).toBeUndefined()
+  })
+
+  test("returns undefined for non-object entries", () => {
+    expect(builtinApiKeyHint(null)).toBeUndefined()
+    expect(builtinApiKeyHint("sk_live_abcdefgh")).toBeUndefined()
+    expect(builtinApiKeyHint(42)).toBeUndefined()
   })
 })

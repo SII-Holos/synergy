@@ -21,7 +21,9 @@ import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
 
 import { MigrationRegistry } from "../migration/registry"
+import { work } from "../util/queue"
 const log = Log.create({ service: "session.migration" })
+const MIGRATION_CONCURRENCY = 8
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
@@ -476,6 +478,76 @@ function collectLegacyToolDisplayPartCandidates() {
   return collectPartCandidates(needsToolDisplayMigration)
 }
 
+/** A tool state still awaiting settlement. Shares MessageV2's classification so
+ * this migration and restore-time repair cannot drift apart. */
+function isNonTerminalToolState(state: unknown): boolean {
+  const status = asRecord(state)?.status
+  return status === "pending" || status === "generating" || status === "running"
+}
+
+/**
+ * Settle tool parts left non-terminal on an already-terminal assistant message.
+ *
+ * A process that ends mid-call can persist the part in `running` while the
+ * owning message is terminal, leaving a permanent spinner that contradicts the
+ * rollout ledger's interrupted record. Only the contradictory pair is touched:
+ * a non-terminal part on a non-terminal message is a genuinely unfinished turn,
+ * which SessionInvoke repair owns.
+ */
+async function migrateOrphanedToolParts(progress: (current: number, total: number) => void) {
+  const candidates: Array<{ key: string[]; part: Record<string, unknown> }> = []
+  for await (const record of Storage.records<unknown>({ kind: "part" })) {
+    const part = asRecord(record.value)
+    if (!part || part.type !== "tool") continue
+    if (!isNonTerminalToolState(part.state)) continue
+    candidates.push({ key: [...record.key], part })
+  }
+  // Report the scanned total even when there is nothing to rewrite, so a
+  // progress reporter shows a completed pass rather than silence.
+  progress(0, candidates.length)
+  if (candidates.length === 0) return
+
+  let done = 0
+  let settled = 0
+  for (const { key, part } of candidates) {
+    try {
+      const [, scopeID, sessionID, , messageID] = key
+      const info = await Storage.read<MessageV2.Info>(
+        StoragePath.messageInfo(
+          Identifier.asScopeID(scopeID),
+          Identifier.asSessionID(sessionID),
+          Identifier.asMessageID(messageID),
+        ),
+      ).catch(() => undefined)
+      if (info?.role !== "assistant" || !SessionProgress.isTerminalAssistant(info)) {
+        done++
+        progress(done, candidates.length)
+        continue
+      }
+      const state = asRecord(part.state)!
+      const input = asRecord(state.input) ?? {}
+      const metadata = asRecord(state.metadata)
+      const start = typeof asRecord(state.time)?.start === "number" ? (state.time as { start: number }).start : 0
+      await Storage.write(key, {
+        ...part,
+        state: {
+          status: "error",
+          input,
+          error: MessageV2.INTERRUPTED_TOOL_ERROR,
+          ...(metadata ? { metadata } : {}),
+          time: { start: start || info.time.created, end: info.time.completed ?? info.time.created },
+        },
+      })
+      settled++
+    } catch (error) {
+      log.warn("failed to settle orphaned tool part", { key: key.join("/"), error: String(error) })
+    }
+    done++
+    progress(done, candidates.length)
+  }
+  log.info("orphaned tool part migration complete", { candidates: candidates.length, settled })
+}
+
 async function migrateSessionAttachmentParts(progress: (current: number, total: number) => void) {
   const tasks = await collectLegacyAttachmentPartCandidates()
   if (tasks.length === 0) return
@@ -702,7 +774,7 @@ async function migrateBoundedSessionData(progress: (current: number, total: numb
 
   let done = 0
   let changed = 0
-  for (const { scopeID, sessionID } of sessions) {
+  await work(MIGRATION_CONCURRENCY, sessions, async ({ scopeID, sessionID }) => {
     const scope = Identifier.asScopeID(scopeID)
     const sid = Identifier.asSessionID(sessionID)
     try {
@@ -712,7 +784,7 @@ async function migrateBoundedSessionData(progress: (current: number, total: numb
     }
     done++
     progress(done, sessions.length)
-  }
+  })
   log.info("bounded session data migration complete", { sessions: sessions.length, changed })
 }
 
@@ -925,7 +997,7 @@ async function recomputePendingReplyFlags(progress: (current: number, total: num
 
   let done = 0
   let updated = 0
-  for (const { scopeID, sessionID, info } of tasks) {
+  await work(MIGRATION_CONCURRENCY, tasks, async ({ scopeID, sessionID, info }) => {
     const scope = Identifier.asScopeID(scopeID)
     const sid = Identifier.asSessionID(sessionID)
     try {
@@ -942,10 +1014,9 @@ async function recomputePendingReplyFlags(progress: (current: number, total: num
     } catch (error) {
       log.warn("failed to recompute pendingReply flag", { scopeID, sessionID, error: String(error) })
     }
-
     done++
     progress(done, tasks.length)
-  }
+  })
 
   log.info("pendingReply recompute complete", { checked: tasks.length, updated })
 }
@@ -1764,13 +1835,13 @@ export const migrations: Migration[] = [
 
         const sessions = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
 
-        for (const sessionID of sessions) {
+        await work(MIGRATION_CONCURRENCY, sessions, async (sessionID) => {
           const sessionRepo = path.join(oldSharedPath, sessionID)
 
           // Idempotent: skip if repo already exists
           try {
             await fs.stat(path.join(sessionRepo, "HEAD"))
-            continue
+            return
           } catch {
             // Repo does not exist, create it
           }
@@ -1788,7 +1859,7 @@ export const migrations: Migration[] = [
             await fs.mkdir(infoDir, { recursive: true })
             await fs.writeFile(path.join(infoDir, "alternates"), objectsPath + "\n")
           }
-        }
+        })
 
         done++
         progress(done, scopeIDs.length)
@@ -1924,7 +1995,7 @@ export const migrations: Migration[] = [
       if (tasks.length === 0) return
 
       let done = 0
-      for (const { scopeID, sessionID } of tasks) {
+      await work(MIGRATION_CONCURRENCY, tasks, async ({ scopeID, sessionID }) => {
         const scope = Identifier.asScopeID(scopeID)
         const sid = Identifier.asSessionID(sessionID)
         const messageIDs = (await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => []))
@@ -1975,7 +2046,7 @@ export const migrations: Migration[] = [
 
         done++
         progress(done, tasks.length)
-      }
+      })
 
       log.info("message semantics backfill complete", { total: tasks.length })
     },
@@ -2055,6 +2126,14 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260918-session-nav-identity",
+    description:
+      "Rebuild session nav indexes to backfill session identity (Blueprint phase, workspace type, workflow activity)",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
   RolloutMigration.migration,
   RolloutContinuationMigration.migration,
 
@@ -2092,29 +2171,39 @@ export const migrations: Migration[] = [
     async up(progress) {
       const { SessionInbox } = await import("./inbox")
       let done = 0
-      for await (const record of Storage.records<MessageV2.Info>({ kind: "message" })) {
-        const message = record.value
-        const deliveryKey = message.metadata?.inboxDeliveryKey
-        const itemID =
-          typeof deliveryKey === "string"
-            ? SessionInbox.stableDeliveryItemID(message.sessionID, deliveryKey)
-            : /^msg_[a-f0-9]{26}$/.test(message.id)
-              ? `inb_${message.id.slice(4)}`
-              : undefined
-        if (itemID)
-          await Storage.transaction(async () => {
-            const key = ["sessions", record.key[1], message.sessionID, "inbox-materialized", itemID]
-            if ((await Storage.readMany([key]))[0] === undefined)
-              await Storage.write(key, {
-                itemID,
-                messageID: message.id,
-                deliveryKey,
-                completedAt: message.time.created,
-              })
-          })
-        done++
-        if (done % 128 === 0) progress?.(0, 0)
+      let batch: Array<{ scopeID: string; message: MessageV2.Info }> = []
+      const flush = async () => {
+        if (!batch.length) return
+        const pending = batch
+        batch = []
+        await work(MIGRATION_CONCURRENCY, pending, async ({ scopeID, message }) => {
+          const deliveryKey = message.metadata?.inboxDeliveryKey
+          const itemID =
+            typeof deliveryKey === "string"
+              ? SessionInbox.stableDeliveryItemID(message.sessionID, deliveryKey)
+              : /^msg_[a-f0-9]{26}$/.test(message.id)
+                ? `inb_${message.id.slice(4)}`
+                : undefined
+          if (itemID)
+            await Storage.transaction(async () => {
+              const key = ["sessions", scopeID, message.sessionID, "inbox-materialized", itemID]
+              if ((await Storage.readMany([key]))[0] === undefined)
+                await Storage.write(key, {
+                  itemID,
+                  messageID: message.id,
+                  deliveryKey,
+                  completedAt: message.time.created,
+                })
+            })
+          done++
+          if (done % 128 === 0) progress?.(0, 0)
+        })
       }
+      for await (const record of Storage.records<MessageV2.Info>({ kind: "message" })) {
+        batch.push({ scopeID: record.key[1], message: record.value })
+        if (batch.length >= 256) await flush()
+      }
+      await flush()
       progress?.(done, done)
     },
   },
@@ -2141,6 +2230,13 @@ export const migrations: Migration[] = [
         if (done % 128 === 0) progress?.(done, 0)
       }
       progress?.(done, done)
+    },
+  },
+  {
+    id: "20260919-settle-orphaned-tool-parts",
+    description: "Settle tool parts left running on terminal assistant messages by an interrupted runtime",
+    async up(progress) {
+      await migrateOrphanedToolParts(progress)
     },
   },
 ]

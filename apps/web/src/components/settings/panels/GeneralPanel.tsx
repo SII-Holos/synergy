@@ -9,7 +9,7 @@ import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useProductUpdate } from "@/context/product-update"
 import type { LocalePreference } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
-import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
+import { usePlatform, type DesktopUpdateMode, type DesktopPowerSnapshot } from "@/context/platform"
 import { DevicePushBlock } from "./DevicePushBlock"
 import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { SegmentPill } from "../components/SegmentPill"
@@ -113,6 +113,15 @@ const copy = {
     id: "settings.general.compactReasoning.description",
     message: "Show live reasoning in a single line; completed turns keep an expandable reasoning row",
   },
+  preventSleepTitle: { id: "settings.general.preventSleep.title", message: "Prevent sleep while running" },
+  preventSleepDescription: {
+    id: "settings.general.preventSleep.description",
+    message:
+      "Keep this computer awake while any Synergy agent is working. The display can still turn off, and closing the laptop lid can still suspend the computer.",
+  },
+  preventSleepActive: { id: "settings.general.preventSleep.active", message: "Keeping this computer awake" },
+  preventSleepIdle: { id: "settings.general.preventSleep.idle", message: "Waiting for work" },
+  preventSleepFailed: { id: "settings.general.preventSleep.failed", message: "Could not change the sleep setting" },
   notificationsTitle: { id: "settings.general.notifications.title", message: "Notifications" },
   notificationsDescription: {
     id: "settings.general.notifications.description",
@@ -190,6 +199,8 @@ export function GeneralPanel(props: {
   onDesktopUpdateModeChange: (mode: DesktopUpdateMode) => void
   desktopZoom?: number
   onDesktopZoomChange?: (factor: number) => void
+  desktopPower?: DesktopPowerSnapshot
+  onDesktopPowerChange?: (keepAwakeWhileRunning: boolean) => void
   popoverLayer?: HTMLElement
 }) {
   const theme = useTheme()
@@ -347,6 +358,19 @@ export function GeneralPanel(props: {
             />
           }
         />
+        <Show when={platform.desktopPower}>
+          <SettingRow
+            title={_(copy.preventSleepTitle)}
+            description={_(copy.preventSleepDescription)}
+            stateLabel={props.desktopPower?.active ? _(copy.preventSleepActive) : _(copy.preventSleepIdle)}
+            trailing={
+              <Switch
+                checked={props.desktopPower?.keepAwakeWhileRunning ?? false}
+                onChange={(value) => props.onDesktopPowerChange?.(value)}
+              />
+            }
+          />
+        </Show>
         <ProductUpdates mode={props.desktopUpdateMode} onModeChange={props.onDesktopUpdateModeChange} />
       </SettingsSection>
 

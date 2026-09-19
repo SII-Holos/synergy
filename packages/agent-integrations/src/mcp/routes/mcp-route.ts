@@ -70,6 +70,7 @@ export const McpRoute = new Hono()
                     url: z.string(),
                     status: MCP.Status,
                     keyConfigured: z.boolean(),
+                    keyHint: z.string().optional(),
                   }),
                 ),
               ),

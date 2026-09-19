@@ -20,10 +20,10 @@ const parameters = z.object({
     .union([z.string(), z.array(z.string())])
     .describe(`Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze`),
   goal: z.string().describe("What specific information to extract from the file(s)"),
-  timeout: z
+  timeoutSeconds: z
     .number()
     .describe(
-      `Optional timeout in seconds. If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes).`,
+      `Optional timeout in seconds (default: ${DEFAULT_TIMEOUT_S}). If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes).`,
     )
     .optional(),
   show_to_user: z
@@ -154,7 +154,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         }
       }
 
-      const timeout = params.timeout ?? DEFAULT_TIMEOUT_S
+      const timeout = params.timeoutSeconds ?? DEFAULT_TIMEOUT_S
 
       ctx.metadata({
         title: files.length === 1 ? `Analyzing: ${files[0].filename}` : `Analyzing ${files.length} files...`,

@@ -64,6 +64,11 @@ function milliseconds(translate: (descriptor: MessageDescriptor) => string, valu
   return count === undefined ? undefined : translate({ ...BROWSER_TOOL_DESC.milliseconds, values: { count } })
 }
 
+function timeoutInputMs(input: Record<string, any>): number | undefined {
+  const seconds = browserNumber(input.timeoutSeconds)
+  return seconds === undefined ? undefined : seconds * 1_000
+}
+
 function BrowserActionTool(props: ToolProps & { config: BrowserToolConfig }) {
   const { _ } = useLingui()
   const input = () => props.input ?? {}
@@ -152,7 +157,10 @@ function BrowserWaitTool(props: ToolProps & { config: BrowserToolConfig }) {
       <SummaryGrid
         rows={[
           { label: _(BROWSER_TOOL_DESC.condition), value: formatBrowserCondition(waitCondition()) },
-          { label: _(BROWSER_TOOL_DESC.timeout), value: milliseconds(_, metadata().timeoutMs ?? input().timeoutMs) },
+          {
+            label: _(BROWSER_TOOL_DESC.timeout),
+            value: milliseconds(_, metadata().timeoutMs ?? timeoutInputMs(input())),
+          },
           { label: _(BROWSER_TOOL_DESC.elapsed), value: milliseconds(_, metadata().elapsedMs) },
           { label: _(BROWSER_TOOL_DESC.url), value: browserUrl(input(), metadata()) },
           { label: _(BROWSER_TOOL_DESC.title), value: shortText(metadata().title) },

@@ -141,3 +141,20 @@ describe("SecretVault store discipline", () => {
     for (const id of registered) await SecretVault.remove(id.id)
   })
 })
+
+test("rotating to another registered value preserves both entries and policies", async () => {
+  const source = await SecretVault.register(randomValue("source"), { kind: "user" }, { policy: { tools: ["bash"] } })
+  const target = await SecretVault.register(
+    randomValue("target"),
+    { kind: "user" },
+    { policy: { tools: ["save_file"] } },
+  )
+  try {
+    await expect(SecretVault.rotate(source.id, target.value)).rejects.toThrow("already registered")
+    expect(await SecretVault.reveal(source.id)).toBe(source.value)
+    expect((await SecretVault.get(target.id))?.policy).toEqual({ tools: ["save_file"] })
+  } finally {
+    await SecretVault.remove(source.id)
+    await SecretVault.remove(target.id)
+  }
+})

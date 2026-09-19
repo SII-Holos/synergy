@@ -597,6 +597,9 @@
 .sb-session-icon-active-tone {
   color: var(--icon-base);
 }
+.sb-session-icon-retry-tone {
+  color: var(--icon-critical-base);
+}
 
 .sb-session-icon-waiting-tone {
   color: var(--icon-critical-base);
@@ -619,6 +622,9 @@
 }
 
 .sb-session-icon-blueprint-audit-tone {
+  color: var(--icon-info-base);
+}
+.sb-session-icon-loop-tone {
   color: var(--icon-info-base);
 }
 

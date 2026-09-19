@@ -29,6 +29,8 @@ import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { EnforcementGate, type Capability, type GateOptions } from "../enforcement/gate"
 import { SandboxHost } from "../sandbox/host"
+import { approvablePath, formatExplanationForModel } from "../sandbox/explain"
+import { SandboxSessionApproval } from "../sandbox/session-approval"
 import type { BashSandboxPrepare } from "../tool/bash-contract"
 import type { ResolvedProfile } from "../control-profile/types"
 import { EnforcementError } from "../enforcement/errors"
@@ -759,7 +761,10 @@ export namespace ToolResolver {
         smartAllow = { skipped: true, reason: "Non-bypassable capability" }
       }
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
-      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId, {
+        permanent: envelope.refusal?.permanent ?? true,
+        guidance: envelope.refusal?.guidance,
+      })
     }
 
     if (profile.profileId === "autonomous" && decision.action === "ask") {
@@ -772,7 +777,10 @@ export namespace ToolResolver {
         smartAllow = { skipped: true, reason: "Non-bypassable capability" }
       }
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
-      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId, {
+        permanent: envelope.refusal?.permanent ?? true,
+        guidance: envelope.refusal?.guidance,
+      })
     }
 
     // Pre-authorization origin: sessions created by system scheduling (e.g. agenda wake)
@@ -826,22 +834,80 @@ export namespace ToolResolver {
     }
   }
 
-  function formatErrorForModel(error: unknown): string {
+  function controlProfileForContext(ctx: Tool.Context | undefined): string | undefined {
+    const profileId = (ctx?.extra as { controlProfile?: unknown } | undefined)?.controlProfile
+    return typeof profileId === "string" && profileId.length > 0 ? profileId : undefined
+  }
+
+  /**
+   * Ask the user to approve the exact path a sandbox denial named, then carry
+   * that approval into later tool calls.
+   *
+   * A sandbox denial happens while the command is already running, so the
+   * denied path never reached the gate's own ask pass. `guarded` is the only
+   * profile that may prompt: `autonomous` stays fail-closed and `full_access`
+   * never reaches a sandbox at all. Only an outside-the-write-roots boundary is
+   * approvable — a blocked read is not something the profile ruleset turns into
+   * a real prompt, so promising it would be dishonest. The approval is
+   * remembered for the session and re-seeded into the sandbox roots of the next
+   * call, so retrying the same command succeeds instead of being denied again.
+   */
+  async function requestSandboxDenialApproval(
+    error: EnforcementError.SandboxBlocked,
+    ctx: Tool.Context,
+    input: Input,
+  ): Promise<void> {
+    if (controlProfileForContext(ctx) !== "guarded") return
+    const target = approvablePath(error.explanation)
+    if (!target || target.access !== "write") return
+
+    try {
+      await ctx.ask({
+        permission: "external_directory",
+        patterns: [target.path],
+        metadata: {
+          nonBypassable: true,
+          capability: "file_external_write",
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+          sandboxDeniedPath: target.path,
+          sandboxDeniedAccess: target.access,
+        },
+      })
+    } catch (approvalError) {
+      log.debug("sandbox denial path not approved", {
+        sessionID: input.sessionID,
+        path: target.path,
+        access: target.access,
+        error: errorMessage(approvalError),
+      })
+      return
+    }
+
+    SandboxSessionApproval.remember(input.session?.id ?? ctx.sessionID, target.path, target.access)
+    ;(ctx.extra as any).sandboxDeniedApproved = target
+    log.info("sandbox denial path approved", {
+      sessionID: input.sessionID,
+      path: target.path,
+      access: target.access,
+    })
+  }
+
+  function formatErrorForModel(error: unknown, ctx?: Tool.Context): string {
     if (error instanceof ToolDiagnosticError) {
       return error.message
     }
 
     if (error instanceof EnforcementError.PolicyDenied) {
-      return [
-        `Permission denied by profile "${error.profileId}".`,
-        `Blocked capabilities: ${error.capabilities.join(", ")}`,
-        `This is a policy restriction. Do not retry the same approach.`,
-        error.message,
-      ].join("\n")
+      return error.modelMessage
     }
 
     if (error instanceof EnforcementError.SandboxBlocked) {
-      return error.message
+      return formatExplanationForModel(error.explanation, {
+        controlProfile: controlProfileForContext(ctx),
+        approved: ((ctx?.extra as any)?.sandboxDeniedApproved as { path: string; access: "read" | "write" }) ?? null,
+        message: error.message,
+      })
     }
 
     if (error instanceof EnforcementError.BoundaryHit) {
@@ -1499,11 +1565,16 @@ export namespace ToolResolver {
                 if (item.id === "bash") {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
-                    // Register externally-approved roots into the gate so the
-                    // policy engine can aggregate them with auto-approved paths.
-                    const extRoots = approvedExternalRoots(ctx)
-                    if (extRoots.length > 0) {
-                      gate.registerApprovedPaths(extRoots, extRoots, false)
+                    // Register externally-approved roots, plus the paths the
+                    // user approved for this session after a sandbox denial,
+                    // so the policy engine aggregates them with auto-approved
+                    // paths and a retry finds them inside the sandbox roots.
+                    const sessionKey = runtimeInput.session?.id ?? ctx.sessionID
+                    const sessionReads = SandboxSessionApproval.readPaths(sessionKey)
+                    const sessionWrites = SandboxSessionApproval.writePaths(sessionKey)
+                    const extRoots = [...new Set([...approvedExternalRoots(ctx), ...sessionReads])]
+                    if (extRoots.length > 0 || sessionWrites.length > 0) {
+                      gate.registerApprovedPaths(extRoots, [...new Set([...extRoots, ...sessionWrites])], false)
                     }
                     const sandboxPolicy = gate.getSandboxPolicy()
                     const sandboxPrepare: BashSandboxPrepare = async (input) => {
@@ -1619,6 +1690,7 @@ export namespace ToolResolver {
                 return result
               } catch (error) {
                 if (error instanceof EnforcementError.SandboxBlocked) {
+                  await requestSandboxDenialApproval(error, ctx, runtimeInput)
                   await setApprovalMetadata(ctx, {
                     status: "sandbox_blocked",
                     source: "sandbox",
@@ -1644,7 +1716,7 @@ export namespace ToolResolver {
                   owner: "builtin",
                 })
                 RolloutTool.afterCommit(() =>
-                  slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx))),
+                  slot.fail(args, formatErrorForModel(error, ctx), metadataForError(error, approvalFromContext(ctx))),
                 )
                 log.warn("tool.execute.callback.failed", {
                   tool: item.id,
@@ -1917,7 +1989,7 @@ export namespace ToolResolver {
                     owner: "mcp",
                   })
                   RolloutTool.afterCommit(() =>
-                    slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx))),
+                    slot.fail(args, formatErrorForModel(error, ctx), metadataForError(error, approvalFromContext(ctx))),
                   )
                   log.warn("tool.execute.callback.failed", {
                     tool: key,
@@ -1992,11 +2064,20 @@ export namespace ToolResolver {
     } as AITool
   }
 
-  export async function resolveWithAvailability(input: Input): Promise<ResolvedTools> {
+  /**
+   * Resolve execution tools from an availability result. Callers that already
+   * hold one for this round (the turn loop resolves definitions while it
+   * assembles the prompt) pass it as `prepared` so the registry, MCP, and
+   * ephemeral sources are collected once per round instead of twice. The
+   * `availability` and `resolveWithAvailability` timing spans stay in place:
+   * the caller still measures collection, and this function still measures
+   * resolution.
+   */
+  export async function resolveWithAvailability(input: Input, prepared?: Availability): Promise<ResolvedTools> {
     using _ = log.time("resolveWithAvailability")
     const executionTools: Record<string, AITool> = {}
     const executorKinds: Record<string, ToolExecutorKind> = {}
-    const availabilityResult = await availability(input)
+    const availabilityResult = prepared ?? (await availability(input))
     const activeToolIDs = availabilityResult.visible.map((item) => item.id)
     const runtimeInput = { ...input, activeToolIDs }
 

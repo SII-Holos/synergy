@@ -7376,7 +7376,27 @@ msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelNotConfigured"
+msgid "app.shell.modelUnavailable.action.connect"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.action.review"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.needsAttention"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.notConfigured"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.shell.modelUnavailable.restricted"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8549,6 +8569,18 @@ msgid "app.statusBar.runtime.recovering"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.incompleteTurn"
+msgstr ""
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.pendingReply"
+msgstr ""
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.recovering.workflow"
+msgstr ""
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.runtime.recoveringState"
 msgstr ""
 
@@ -9437,6 +9469,22 @@ msgid "confirm.disconnectProvider.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.fullAccess.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.fullAccess.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr ""
 
@@ -9536,8 +9584,28 @@ msgstr ""
 msgid "confirm.uninstallPlugin.title"
 msgstr ""
 
-#. ── Countdown ───────────────────────────────────────────────────────
-msgid "countdown.timeout-label"
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.backgrounded"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.past-limit"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.remaining"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.timed-out"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-background"
+msgstr ""
+
+#. it a timeout would misstate what happens; only `tool_timeout` aborts.
+msgid "countdown.to-timeout"
 msgstr ""
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
@@ -11086,6 +11154,20 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.stopping"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.stopRun.control"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.stopRun.failed"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
@@ -13650,11 +13732,31 @@ msgid "session.state.home.unread"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.state.loop"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.loop.unread"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.loopWaiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.recovering"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.state.running"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.state.runningBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.runningLoop"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15373,6 +15475,26 @@ msgid "settings.controlProfile.guarded.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.autonomous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.fullAccess"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.controlProfile.nonInteractive.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.controlProfile.page.desc"
 msgstr ""
 
@@ -15790,6 +15912,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preventSleep.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17029,10 +17171,6 @@ msgid "settings.mcp.builtins.apiKey.clearUndo"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.apiKey.configured"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.description"
 msgstr ""
 
@@ -17041,7 +17179,23 @@ msgid "settings.mcp.builtins.apiKey.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.unset"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17057,18 +17211,6 @@ msgid "settings.mcp.builtins.section.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.connected"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.disabled"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.builtins.status.other"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr ""
 
@@ -17078,10 +17220,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.enabled"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17546,6 +17684,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.panel.loading.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.preventSleep.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18129,11 +18271,15 @@ msgid "settings.runtime.agents.agent.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.agentWorkers.automatic"
+msgid "settings.runtime.agents.agentWorkers.derived"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.explicit"
 msgstr ""
 
 #. js-lingui-explicit-id

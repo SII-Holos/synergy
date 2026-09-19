@@ -84,6 +84,15 @@ export const HistoryInfo = z
   .meta({ ref: "SessionHistoryInfo" })
 export type HistoryInfo = z.infer<typeof HistoryInfo>
 
+/** Why a session reports `recovering`. Carried through to clients so a
+ * recovery state is diagnosable instead of collapsing three unrelated causes
+ * into one opaque status. `workflow`-caused recovery needs no data repair and
+ * is the only reason a session can remain recovering indefinitely. */
+export const RecoveringReason = z
+  .enum(["workflow", "incomplete-turn", "pending-reply"])
+  .meta({ ref: "SessionRecoveringReason" })
+export type RecoveringReason = z.infer<typeof RecoveringReason>
+
 export const WorkingInfo = z
   .union([
     z.object({
@@ -98,6 +107,8 @@ export const WorkingInfo = z
     }),
     z.object({
       status: z.literal("recovering"),
+      reason: RecoveringReason.optional(),
+      description: z.string().optional(),
     }),
   ])
   .meta({ ref: "SessionWorkingInfo" })
@@ -235,6 +246,7 @@ export const StatusInfo = z
     }),
     z.object({
       type: z.literal("recovering"),
+      reason: RecoveringReason.optional(),
       description: z.string().optional(),
     }),
   ])

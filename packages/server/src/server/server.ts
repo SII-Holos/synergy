@@ -49,6 +49,7 @@ import { AssetRoute } from "./asset"
 import { SkillRoute } from "./skill-route"
 import { RuntimeRoute } from "./runtime-route"
 import { GlobalSessionRoute } from "./global-session"
+import { GlobalActivityRoute } from "./global-activity"
 import { SessionNavRoute } from "./session-nav"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
@@ -484,7 +485,11 @@ export namespace Server {
       .use(async (c, next) => {
         const reqPath = c.req.path
         const routePath = ObservabilityRedaction.routePath(reqPath)
-        const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
+        const skipLogging =
+          reqPath === "/log" ||
+          reqPath === "/global/health" ||
+          reqPath === "/global/activity" ||
+          reqPath.startsWith("/assets/")
         const skipPerformance = skipLogging || reqPath.startsWith("/global/performance/")
         const start = Date.now()
         const requestId = crypto.randomUUID().slice(0, 8)
@@ -886,6 +891,7 @@ export namespace Server {
         },
       )
       .route("", contributionRoutes("global-services"))
+      .route("/global/activity", GlobalActivityRoute)
       .route("/global/session", GlobalSessionRoute)
       .route("", contributionRoutes("global-navigation"))
       .get("/doc", async (c) => c.json(await openapi()))

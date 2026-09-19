@@ -10,6 +10,7 @@ import {
   resolvePermissionForUi,
   snapToastDuration,
 } from "../types"
+import { builtinServerEnabled } from "./useConfigPatch"
 
 export type EnsureInitParams = {
   cfg: Config | undefined
@@ -62,7 +63,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   params.setSettings("agents", {
     defaultAgent: cfg.default_agent ?? UI_DEFAULTS.defaultAgent,
   })
-  params.setSettings("roleVariant", cfg.role_variant ?? {})
+  const roleVariantDraft: Record<string, string> = {}
+  for (const [role, variant] of Object.entries(cfg.role_variant ?? {})) {
+    // Stored nulls are cleared-role markers; the draft only tracks concrete variants.
+    if (variant) roleVariantDraft[role] = variant
+  }
+  params.setSettings("roleVariant", roleVariantDraft)
 
   params.setSettings("providers", {
     enabledProviders: formatList(cfg.enabled_providers),
@@ -109,7 +115,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     }),
     builtins: (params.builtinMcps ?? []).map((info) => ({
       ...info,
-      toggle: info.status.status !== "disabled",
+      toggle: builtinServerEnabled(cfg, info.name),
       apiKeyDraft: "",
       clearApiKey: false,
     })),
@@ -117,6 +123,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
 
   params.setSettings("safety", {
     controlProfile: cfg.controlProfile ?? UI_DEFAULTS.controlProfile,
+    nonInteractiveControlProfile: cfg.nonInteractiveControlProfile ?? UI_DEFAULTS.nonInteractiveControlProfile,
     permission: resolvePermissionForUi(cfg.permission),
     smartAllow: cfg.smartAllow === true ? "true" : "false",
     sandboxEnabled: cfg.sandbox?.enabled === false ? "false" : UI_DEFAULTS.sandboxEnabled,
@@ -141,8 +148,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       cfg.cortex?.maxConcurrentTasks !== undefined
         ? String(cfg.cortex.maxConcurrentTasks)
         : UI_DEFAULTS.cortexConcurrency,
-    agentWorkers:
-      cfg.execution?.agentWorkers !== undefined ? String(cfg.execution.agentWorkers) : UI_DEFAULTS.agentWorkers,
+    agentWorkers: cfg.execution?.agentWorkers != null ? String(cfg.execution.agentWorkers) : UI_DEFAULTS.agentWorkers,
     invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
     providerTtfbTimeout:
       cfg.timeout?.provider?.ttfb_sec !== undefined

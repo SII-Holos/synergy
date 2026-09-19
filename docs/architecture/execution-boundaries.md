@@ -44,7 +44,7 @@ Memory recovery follows the same ownership boundary. The Control Plane decides B
 
 Policy workers isolate capability analysis from the HTTP/WebSocket event loop. Their protocol carries only the tool name, JSON-like arguments, and immutable workspace/plugin classification context. It bounds request size, queue depth, aggregate queued bytes, per-request time, IPC frames, request count, RSS, and heap use. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on the child process; the first classification waits up to the fixed ten-second handshake deadline before the shorter per-request queue/transfer/classification deadline begins. Repeated pre-ready exits use exponential backoff and open a finite startup circuit instead of entering a respawn loop. The Control Plane remains the sole owner of profile compilation results, approval state, audit state, sandbox accumulation, and the final allow/ask/deny decision.
 
-Classification failure never re-enters the in-process top-level classifier. Worker startup timeout, request timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability and an immediate transient denial. Infrastructure failure cannot enter the approval system because the user cannot safely authorize an operation whose capabilities are unknown; this also keeps `guarded` and `full_access` from turning an ordinary runtime failure into execution. Cancellation remains cancellation rather than being converted into a policy result.
+Classification failure never re-enters the in-process top-level classifier. Worker startup timeout, request timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability. Under `guarded` and `autonomous` that capability produces an immediate transient denial. Under `full_access` the operation proceeds instead: the profile already authorizes every classified capability, so the classifier's labels are not what stops anything there, and failing closed would let an unrelated infrastructure fault refuse work the user explicitly pre-authorized. The opaque capability, the gate audit record, and the `enforcement.policy.fallback` metric remain the evidence trail for that fail-open path. Infrastructure failure never enters the approval system under any profile, because the user cannot safely authorize an operation whose capabilities are unknown. Cancellation remains cancellation rather than being converted into a policy result.
 
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
@@ -84,6 +84,10 @@ Unquoted physical newlines are classified as shell-list boundaries equivalent to
 
 Absolute-path candidates terminate at closing shell punctuation (`)`, `}`), and null-device sinks (`/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`, `/dev/fd/N`) are never filesystem paths — including when a redirect such as `2>/dev/null` is glued to a closing paren/brace inside a subshell or loop body (`2>/dev/null)`). A statically resolvable write-redirect target (`>`, `>>`, `>|`, `&>`, `&>>`, `N>`, `<>`) is a genuine write even when the rest of the segment classifies read-only (for example `git status > /tmp/out`); dynamic targets (`$var`, backtick) are left to the execution sandbox boundary when one is active.
 
+One tokenizing owner decides every shell risk the OS sandbox cannot express; no substring or lowercased pattern scan participates. Host-level destruction is decided from operands: an `rm` targeting the filesystem root, the home directory, or a wildcard form of either is a machine-wide hardline rule, as are the filesystem and power tools (`mkfs.*`, `fdisk`, `parted`, `lvremove`, `pvremove`, `vgremove`, `shutdown`, `reboot`, `halt`, `poweroff`) except their read-only and help forms, so `fdisk -l`, `parted --list`, `mkfs -h`, and `shutdown --help` stay executable while `fdisk /dev/sda` and `shutdown -h now` do not. Irreversible secure deletion or truncation of a system location, and privilege escalation through `sudo` or an equivalent indirect executor, classify as destructive. Remote irreversibility follows the destination branch rather than the flag spelling: a force or delete against a protected branch (`main`, `master`, `dev`, `develop`, `trunk`) is a remote write, while the same operation against an explicitly named non-protected branch is remote publish because the loss is bounded by that branch's own commits; `--force-with-lease` and `--force-if-includes` are not destructive in themselves, an unbounded destination set (`--all`, `--tags`, `--mirror`, or a repository-selecting flag) stays a remote write, and a bare `git push --force` stays a remote write because `push.default` resolves its destination only at runtime. Irreversible local history (`reset --hard`, `clean -fdx`, `stash drop`, `stash clear`, `checkout -- <path>`, `filter-branch`, `filter-repo`, `reflog expire|delete`) stays destructive, while reflog- or worktree-recoverable operations — `rebase` including `--abort`/`--continue`, `reset --soft`/`--mixed`, `stash pop`, `commit --amend`, `revert`, `pull --rebase`, and `git rm` — do not; `git clean -f`/`-fd` removes only untracked files and is not destructive, while removing ignored files (`-x`) is. Whole-current-directory spellings (`.`, `./`, `./*`, `..`, and `*`) remain conservative hardline targets even inside a workspace. Host-level targets are decided before a path's containment is considered, so `rm -rf /` remains a hardline rule while `rm -rf <workspace subtree>` is an ordinary write the sandbox contains.
+
+Network activity is likewise decided from the resolved operation rather than from command text: a closed set of network clients, the git and OpenSSL subcommands that contact a remote, package-manager subcommands that reach a registry, and an `rsync` operand carrying a remote host. Wrappers, shell and interpreter re-parse payloads, and command substitutions are unwrapped, and `/dev/tcp` and `/dev/udp` are matched on unquoted executable text because they function only as redirect targets. Argument text that merely names a tool or contains a URL — `echo "see https://example.com"`, `rg -n "ssh " docs/`, `git commit -m "fix npm install docs"` — is not network activity, which matters beyond reporting accuracy because an allowed `network_request` also relaxes the sandbox network mode to full. Budget or depth exhaustion reports the capability rather than assuming an inert command.
+
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
 ## Control Profiles
@@ -92,20 +96,27 @@ Synergy provides three standard profiles:
 
 | Profile       | Intended use            | Approval behavior                                                       | Default sandbox                     |
 | ------------- | ----------------------- | ----------------------------------------------------------------------- | ----------------------------------- |
-| `guarded`     | Interactive work        | Allows routine work and may ask for protected or higher-risk operations | Workspace-write, restricted network |
+| `guarded`     | Interactive work        | Asks the user for protected or higher-risk operations                   | Workspace-write, restricted network |
 | `autonomous`  | Unattended work         | Never asks; operations outside policy are denied                        | Workspace-write, restricted network |
-| `full_access` | Author-at-own-risk work | Silently authorizes every classified capability                         | No sandbox, full network            |
+| `full_access` | Author-at-own-risk work | Never asks and allows everything, including non-bypassable capabilities | No sandbox, full network            |
+
+The three profiles differ on exactly two axes: whether the user is asked, and whether anything is refused. `guarded` asks. `autonomous` never asks and refuses instead. `full_access` never asks and allows, so no Synergy-internal condition produces a permission denial under it — not a hard boundary, not a non-bypassable capability, and not a classification-infrastructure failure.
 
 `full_access` bypasses Synergy's permission boundary; it does not suppress validation errors, missing files, operating-system failures, test failures, hooks, or network errors.
+
+Because enabling `full_access` is the point where the user stops being asked, the UI shows a one-time confirmation that then records `fullAccessAcknowledged`. That key is an awareness record, not a security boundary: it does not gate the HTTP API or a hand-edited config file, and it never applies to programmatic session creation. Re-selecting the mode already in force does not re-prompt.
 
 The effective profile is resolved in this order:
 
 1. the closest explicit profile on the session or one of its parent sessions
 2. the selected agent's profile
-3. the top-level configured profile
-4. the source default
+3. the top-level configured profile, for any session whose source can answer an ask
+4. for a non-interactive root, the configured `nonInteractiveControlProfile`
+5. the source default
 
-Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda default to `autonomous`. A delegated child therefore inherits an explicit profile from its parent chain unless it defines its own.
+Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda — the sources with no human available to answer a prompt — take the configured `nonInteractiveControlProfile`, whose default is `autonomous`. A top-level profile that can answer for itself still applies to those roots, so an operator who set `full_access` or `autonomous` keeps it; a top-level `guarded` does not apply there, because an ask raised with nobody attached would pend forever. `guarded` is likewise not selectable for the non-interactive key. A delegated child inherits an explicit profile from its parent chain unless it defines its own.
+
+The configured non-interactive profile governs sessions created after the change. An already-created session keeps the profile persisted on it, because an operator changing the setting must not retroactively re-permission a task that is already running.
 
 ## Approval Sources
 
@@ -133,7 +144,7 @@ The frontend keeps the permission-mode selector available while the session is r
 1. The explicit `full_access` profile is persisted on the session before any other side effect.
 2. All inheriting descendant sessions are identified — sessions whose effective profile resolves through the target session because they have no explicit profile of their own.
 3. Eligible pending permission asks for the target session and its inheriting descendants are resolved with `once` semantics (one-time approval of the specific operation). This does not create persistent user or session permission rules.
-4. Hard denials and Policy Worker infrastructure failures never enter the pending approval flow and remain denials. As defense in depth, any pending request marked non-bypassable is not auto-resolved.
+4. Hard denials and Policy Worker infrastructure failures never enter the pending approval flow. Under `guarded` and `autonomous` they remain denials; under `full_access` neither can deny at all, because the profile authorizes non-bypassable capabilities and does not fail closed on classification failure. As defense in depth, any pending request marked non-bypassable is not auto-resolved.
 
 ### Agent-facing tool remains idle-only
 
@@ -143,6 +154,7 @@ The `session_control.set_control_profile` tool used by agents still requires an 
 
 - In-flight tool execution already admitted under the previous control profile continues unchanged. Later permission decisions see the new profile.
 - `full_access` authorizes every classified capability encountered from the transition point onward, but it does not retroactively convert validation errors, missing files, operating-system failures, test failures, hooks, or network errors into success.
+- Enabling `full_access` from the UI is preceded once by the risk confirmation described under [Control Profiles](#control-profiles). The transition itself is unchanged by whether that acknowledgement is recorded.
 - Pending-ask resolution covers only the target session and descendant sessions that inherit its profile. Sessions with their own explicit profile override are not affected.
 
 ## SmartAllow
@@ -199,7 +211,11 @@ An explicit policy authorization can mark a shell operation as sandbox-bypassed.
 
 The `autonomous` profile's writable roots include a controlled temporary root at `<workspace>/.synergy/tmp` (session-scoped as `synergy-<pid>-<session>` when a session key is available), reusing the Linux controlled-tmp precedent. Sandboxed Bash points `TMPDIR`/`TMP`/`TEMP` at that root, so tools that honor `TMPDIR` write inside the workspace boundary; literal writes to the root classify as ordinary workspace `file_write`, while the host's shared temporary directory remains an external write. Because `autonomous` never prompts, its sandbox fallback defaults to `deny` (fail-closed): when the OS sandbox cannot be prepared, the operation is refused rather than run unsandboxed. Operators can override through `sandbox.fallbackPolicy`, `sandbox.enabled=false`, or switching to `guarded`/`full_access`; `guarded` keeps `warn`.
 
-The sandbox network mode follows the gate-approved network capability: when the gate approves a network command (`git fetch`, `curl`, `npm install`) the compiled profile uses full networking, otherwise it stays restricted; macOS full networking pairs `(allow network*)` with system.sb's `(system-network)` helper so DNS/SystemConfiguration lookups resolve under `(deny default)`. Deny-list entries equal to or inside the workspace or a writable root are dropped at profile build; entries that contain them stay in the profile — the deeper parameterized writable-root allow wins under most-specific-match, so a project nested inside a credential directory works while its credential siblings remain unreadable. Writable-root `.git` protection is granular: only `.git/hooks` and `.git/config` stay read-only, leaving objects/refs/HEAD/index writable so `git commit`/`git branch` keep working while the tamper/code-execution surface remains protected; `.agents`/`.codex` stay blanket-protected.
+The sandbox network mode follows the gate-approved network capability: when the gate approves a network command (`git fetch`, `curl`, `npm install`) the compiled profile uses full networking, otherwise it stays restricted; macOS full networking pairs `(allow network*)` with system.sb's `(system-network)` helper so DNS/SystemConfiguration lookups resolve under `(deny default)`. Deny-list entries are all kept except one equal to the workspace itself; each kept entry is emitted on whichever side of the parameterized writable-root allow makes it effective, because Seatbelt applies the last matching rule rather than ranking by specificity — a project nested inside a credential directory works while its credential siblings remain unreadable. Writable-root `.git` protection is granular: only `.git/hooks` and `.git/config` stay read-only, leaving objects/refs/HEAD/index writable so `git commit`/`git branch` keep working while the tamper/code-execution surface remains protected; `.agents`/`.codex` stay blanket-protected.
+
+Every Linux helper mount source must exist: bwrap hard-fails when a `--ro-bind` source is missing, so readable roots — platform defaults, gate-forwarded roots, and approved read paths — are existence-filtered at wrapper preparation, the same invariant protected paths already follow, and the dynamic-linker entry points (`/lib`, `/lib64`) are added so restricted-mode children can start at all. The helper's permission profile is staged under `~/.synergy/cache/synergy-sandbox/`, a default sandbox read root that the final controlled-`/tmp` bind never shadows, so stage 2 re-reads the same absolute path inside the sandbox; homes or workspaces that cannot host it fall back to the workspace controlled tmp and then the host tmpdir with a warning, where only stage 1 reads the file. See [the decision record](../decisions/implemented/bug-fix/2026-09-18-linux-sandbox-readable-roots.md).
+
+The backend also owns the helper's own visibility: the mount plan re-execs the helper inside the sandbox (stage 2), and the plan's final controlled-`/tmp` bind shadows every host path under `/tmp` — including a helper resolved from a tmpdir test home. `LinuxBackend.prepare` stages a verified copy of such a helper into `~/.synergy/cache/synergy-sandbox/` (never under `/tmp`), execs that copy, and binds the exec copy's directory as a read root. Callers grant read roots for their own data and never need to know about the two-stage re-exec; the enforced CI end-to-end runs with no caller-side helper grant.
 
 ## OOM Victim Preference
 
@@ -214,7 +230,7 @@ Local child-process completion has a separate output-drain boundary. The parent 
 
 ## Session and Workflow Restrictions
 
-Authorization is also constrained by the current session role. Plan is read-only with respect to project execution. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.
+Authorization is also constrained by the current session role. Plan supplies Blueprint-oriented prompt guidance without restricting tools; the selected control profile remains the authorization boundary. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.
 
 These restrictions are evaluated before the tool implementation. A permissive control profile does not make a tool visible to an agent or remove workflow-specific tool restrictions.
 
@@ -241,3 +257,5 @@ These restrictions are evaluated before the tool implementation. A permissive co
 ## Native Computer eligibility
 
 `computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
+
+Bash secret substitution keeps a standalone, unquoted local token in a quoted environment expansion so whitespace and metacharacters remain one argument. Quoted, embedded, heredoc and remote substitutions accept only shell-inert credential characters; other values fail explicitly instead of introducing shell syntax. Vault rotation rejects values already registered under another entry, preserving its policy and audit history. Secret API conflicts return 409; storage failures remain server errors rather than false 404 responses.

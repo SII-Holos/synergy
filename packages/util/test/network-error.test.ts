@@ -34,3 +34,60 @@ test("bounds cyclic and oversized error graphs", () => {
   const errors = Array.from({ length: 100 }, () => ({ code: "ECONNRESET", message: "lost" }))
   expect(classifyNetworkError(new AggregateError(errors))?.kind).toBe("permanent")
 })
+
+// Provenance: https://github.com/oven-sh/bun/issues/11821
+// Bun's bundled BoringSSL emits this fallback string when it cannot map a verification failure to a reason code.
+test("treats an unmapped certificate verification failure as indeterminate", () => {
+  expect(classifyNetworkError(new Error("unknown certificate verification error"))).toMatchObject({
+    kind: "indeterminate",
+    category: "tls-verification",
+  })
+  expect(classifyNetworkError("Error: unknown certificate verification error")).toMatchObject({
+    kind: "indeterminate",
+    category: "tls-verification",
+  })
+})
+
+test("keeps an unmapped certificate verification failure visible through a fetch wrapper", () => {
+  const wrapped = new TypeError("fetch failed", {
+    cause: new Error("unknown certificate verification error"),
+  })
+  expect(classifyNetworkError(wrapped)).toMatchObject({ kind: "indeterminate", category: "tls-verification" })
+})
+
+test.each([
+  "certificate verification failed",
+  "certificate verify failed",
+  "certificate has expired",
+  "self signed certificate",
+  "unable to verify the first certificate",
+])("keeps the known certificate wording %s terminal", (message) => {
+  expect(classifyNetworkError(new Error(message))?.kind).toBe("permanent")
+})
+
+test.each([
+  "CERT_HAS_EXPIRED",
+  "CERT_NOT_YET_VALID",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+])("keeps the mapped certificate code %s terminal", (code) => {
+  expect(classifyNetworkError(Object.assign(new Error("verification failed"), { code }))?.kind).toBe("permanent")
+})
+
+test("a permanent certificate code outranks an unmapped sibling failure", () => {
+  const error = new TypeError("fetch failed", {
+    cause: new AggregateError([
+      new Error("unknown certificate verification error"),
+      Object.assign(new Error("expired"), { code: "CERT_HAS_EXPIRED" }),
+    ]),
+  })
+  expect(classifyNetworkError(error)).toMatchObject({ kind: "permanent", code: "CERT_HAS_EXPIRED" })
+})
+
+test("does not infer an unmapped verification failure without certificate wording", () => {
+  expect(classifyNetworkError(new Error("invalid TLS configuration"))).toBeUndefined()
+  expect(classifyNetworkError(new Error("verification code rejected"))).toBeUndefined()
+})

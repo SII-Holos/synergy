@@ -2,6 +2,7 @@ import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration/types"
 import { Storage } from "./storage"
 import { StorageArtifactMigration } from "./artifact-migration"
+import { StorageIncrementalVacuum } from "./incremental-vacuum"
 
 const migrations: Migration[] = [
   {
@@ -24,6 +25,16 @@ const migrations: Migration[] = [
         },
       })
       progress(1, 1, phase + 1)
+    },
+  },
+  {
+    id: StorageIncrementalVacuum.id,
+    description: "Convert authoritative SQLite storage to incremental auto-vacuum",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageIncrementalVacuum.run(progress)
+      progress(1, 1, 2)
     },
   },
 ]

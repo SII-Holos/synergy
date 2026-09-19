@@ -263,7 +263,10 @@ describe("SessionWorking", () => {
             error: new MessageV2.APIError({ message: "provider failed", isRetryable: false }).toObject(),
           })
 
-          expect(await SessionWorking.resolve(session.id)).toEqual({ status: "recovering" })
+          expect(await SessionWorking.resolve(session.id)).toEqual({
+            status: "recovering",
+            reason: "incomplete-turn",
+          })
         },
       })
     })

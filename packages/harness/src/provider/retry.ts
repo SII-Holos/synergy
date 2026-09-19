@@ -32,7 +32,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 export function providerRetryable(error: unknown): boolean | undefined {
   if (findRecordingError(error)) return false
   const network = classifyNetworkError(error)
-  if (network && network.kind !== "transient") return false
+  if (network && network.kind !== "transient" && network.kind !== "indeterminate") return false
   const source = record(error)
   if (source?.name === "AI_RetryError") return false
   let payload = source
@@ -61,7 +61,7 @@ export function providerRetryable(error: unknown): boolean | undefined {
   }
   if (codes.some((code) => TRANSIENT_CODES.has(code))) return true
   if (entries.some((entry) => typeof entry?.message === "string" && /\bno_kv_space\b/i.test(entry.message))) return true
-  if (network?.kind === "transient") return true
+  if (network?.kind === "transient" || network?.kind === "indeterminate") return true
   return typeof source?.isRetryable === "boolean" ? source.isRetryable : undefined
 }
 

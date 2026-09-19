@@ -88,6 +88,7 @@ export namespace Auth {
       cooldownUntil: z.number().optional(),
       resetAt: z.number().optional(),
       failureCode: z.string().optional(),
+      rejectedAt: z.number().optional(),
       usageCount: z.number().int().min(0).optional(),
       updatedAt: z.number(),
     })
@@ -567,11 +568,92 @@ export namespace Auth {
               ...item,
               status: "dead" as const,
               failureCode,
+              cooldownUntil: undefined,
+              resetAt: undefined,
+              rejectedAt: undefined,
               updatedAt: Date.now(),
             }
           : item,
       )
       entry.updatedAt = Date.now()
     })
+  }
+
+  export const RejectionPolicy = {
+    cooldownSeconds: 60,
+    maxCooldownSeconds: 600,
+    escalationWindowSeconds: 30 * 60,
+  } as const
+
+  export async function markRejected(
+    providerID: string,
+    input: { failureCode: string; credentialID?: string; cooldownUntil?: number; rejectedAt?: number },
+  ): Promise<boolean> {
+    let escalated = false
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const selected = input.credentialID ?? selectPoolEntry(entry)?.id
+      if (selected === undefined) return
+      const now = nowSeconds()
+      const pool = materializePool(entry)
+      entry.pool = pool.map((item) => {
+        if (item.id !== selected || item.status === "dead") return item
+        const cooling = item.status === "exhausted" && item.rejectedAt !== undefined
+        const cooldownElapsed = (item.cooldownUntil ?? 0) <= now
+        let rejectedAt = cooling ? (item.rejectedAt ?? now) : (input.rejectedAt ?? now)
+        if (cooling && cooldownElapsed) {
+          if (now - rejectedAt <= RejectionPolicy.escalationWindowSeconds) {
+            escalated = true
+            return {
+              ...item,
+              status: "dead" as const,
+              failureCode: input.failureCode,
+              cooldownUntil: undefined,
+              resetAt: undefined,
+              rejectedAt: undefined,
+              updatedAt: Date.now(),
+            }
+          }
+          rejectedAt = now
+        }
+        return {
+          ...item,
+          status: "exhausted" as const,
+          failureCode: input.failureCode,
+          cooldownUntil: input.cooldownUntil ?? now + RejectionPolicy.cooldownSeconds,
+          rejectedAt,
+          updatedAt: Date.now(),
+        }
+      })
+      entry.updatedAt = Date.now()
+    })
+    return escalated
+  }
+
+  export async function markRecovered(providerID: string): Promise<boolean> {
+    let recovered = false
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const pool = materializePool(entry)
+      if (!pool.some((item) => item.rejectedAt !== undefined)) return
+      entry.pool = pool.map((item) =>
+        item.rejectedAt === undefined
+          ? item
+          : {
+              ...item,
+              status: "active" as const,
+              failureCode: undefined,
+              cooldownUntil: undefined,
+              resetAt: undefined,
+              rejectedAt: undefined,
+              updatedAt: Date.now(),
+            },
+      )
+      entry.updatedAt = Date.now()
+      recovered = true
+    })
+    return recovered
   }
 }

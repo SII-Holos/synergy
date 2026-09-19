@@ -11,7 +11,8 @@ import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
 // contents (credential paths minus tool-compatibility exemptions), the
 // dual-home derivation (OS home + Synergy runtime home), and the profile
 // scope rules (ancestor denies kept for nested workspaces, explicit
-// dataDenyRoots merged, workspace-internal denies dropped).
+// dataDenyRoots merged, a deny equal to the workspace dropped but a deny
+// inside it kept).
 //
 // Run with:
 //   cd packages/harness && bun test test/sandbox/policy-engine.test.ts
@@ -94,9 +95,36 @@ describe("buildPermissionProfile read deny scope", () => {
     expect(p.fileSystem.readDenyPaths).not.toContain(path.join(home, ".ssh"))
   })
 
-  test("drops a deny inside the workspace", () => {
+  test("keeps a deny inside the workspace", () => {
     const p = profile({ dataDenyRoots: ["/srv/project/secrets"] })
-    expect(p.fileSystem.readDenyPaths).not.toContain("/srv/project/secrets")
+    expect(p.fileSystem.readDenyPaths).toContain("/srv/project/secrets")
+  })
+
+  test("keeps every credential deny when the workspace is the OS home", () => {
+    const home = os.homedir()
+    // A Scope directory rooted at $HOME must not be grounds to drop the
+    // credential denies: the workspace is the writable root here, so a
+    // dropped deny would leave the whole home readable.
+    const p = profile({ workspace: home, executionCwd: home, approvedWritePaths: [home] })
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".aws"))
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".netrc"))
+  })
+
+  test("keeps every credential deny when a trusted root is the OS home", () => {
+    const home = os.homedir()
+    // Additional project folders reach the profile as approvedWritePaths;
+    // one of them being $HOME must not prune the credential denies either.
+    const p = profile({ approvedWritePaths: ["/srv/other", home] })
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".aws"))
+  })
+
+  test("keeps the credential deny when the workspace is the Synergy runtime home", () => {
+    const home = os.homedir()
+    const p = profile({ workspace: path.join(home, ".synergy"), executionCwd: path.join(home, ".synergy") })
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".synergy", "data", "auth"))
   })
 
   test("merges explicit non-default dataDenyRoots into the read denies", () => {

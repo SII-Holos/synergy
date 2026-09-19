@@ -1,4 +1,5 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import { isDeepEqual } from "remeda"
 import { UI_DEFAULTS, MODEL_ROLES, resolvePermissionForUi } from "../types"
 import { normalizeServerToast, toastPatchFromPreferences } from "../toast-preferences"
 import type { SettingsState } from "../types"
@@ -7,6 +8,19 @@ export type BuildPatchParams = {
   cfg: Config
   state: SettingsState
   originalMcps: Record<string, Record<string, unknown>>
+}
+
+/**
+ * Configuration intent for a built-in server: a full typed user entry or an
+ * `enabled: false` stub disables it, while an absent entry or a bare
+ * `enabled: true`/`apiKey` stub keeps it enabled. Read from config rather than
+ * from a live connection status so the settings switch tracks what is saved
+ * and never flips while the server is reconnecting.
+ */
+export function builtinServerEnabled(cfg: Config | undefined, name: string): boolean {
+  const configured = cfg?.mcp?.[name]
+  if (!configured || typeof configured !== "object") return true
+  return (configured as Record<string, unknown>).enabled !== false
 }
 
 export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
@@ -90,18 +104,33 @@ function buildEmbeddingPatch(cfg: Config, state: SettingsState, patch: Record<st
 
 function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   for (const role of MODEL_ROLES) {
-    const origVal = (cfg[role.key as keyof Config] as string | undefined) ?? ""
+    const origVal = (cfg[role.key as keyof Config] as string | null | undefined) ?? ""
     const newVal = state.models[role.key]
-    if (newVal !== origVal) patch[role.key] = newVal || undefined
+    if (newVal !== origVal) {
+      // Clearing a role sends explicit null: the models domain merges deep
+      // and the SDK JSON serializer drops undefined, so an omitted key would
+      // keep the stored value forever. The schema persists null as the
+      // cleared marker (same convention as boss.identityText).
+      patch[role.key] = newVal || null
+    }
   }
-  const origVariant = cfg.role_variant
+  const origVariant = cfg.role_variant ?? {}
   const variants = state.roleVariant
-  const cleanedVariant: Record<string, string> = {}
-  for (const [role, variant] of Object.entries(variants)) {
-    if (variant) cleanedVariant[role] = variant
+  const nextVariant: Record<string, string | null> = {}
+  const storedVariant: Record<string, string> = {}
+  for (const [role, variant] of Object.entries(origVariant)) {
+    if (variant) storedVariant[role] = variant
   }
-  if (JSON.stringify(cleanedVariant) !== JSON.stringify(origVariant ?? {})) {
-    patch.role_variant = Object.keys(cleanedVariant).length ? cleanedVariant : undefined
+  for (const [role, variant] of Object.entries(variants)) {
+    if (variant) nextVariant[role] = variant
+    else if (storedVariant[role]) nextVariant[role] = null
+  }
+  if (Object.keys(nextVariant).length > 0 && JSON.stringify(nextVariant) !== JSON.stringify(storedVariant)) {
+    // Per-role nulls clear that role while mergeDeep preserves sibling
+    // entries the draft did not touch; omitting the field would resurrect
+    // every stored variant after the save round trip. Compared against the
+    // stored values (null markers excluded) so a saved clear never re-dirties.
+    patch.role_variant = nextVariant
   }
 
   const cleanedQuickSwitcher = state.models.quick_switcher.filter(
@@ -220,13 +249,23 @@ function buildMcpPatch(
     newMcp[builtin.name] = stub
   }
 
-  if (JSON.stringify(newMcp) !== JSON.stringify(cfg.mcp ?? {})) patch.mcp = newMcp
+  // Structural, not textual: stubs are hoisted ahead of typed servers while the
+  // domain file keeps its own insertion order, so a JSON.stringify comparison
+  // reported a change on every save and left the panel permanently unsaved.
+  if (!isDeepEqual(newMcp, cfg.mcp ?? {})) patch.mcp = newMcp
 }
 
 function buildSafetyPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const { safety } = state
   if (safety.controlProfile !== (cfg.controlProfile ?? UI_DEFAULTS.controlProfile)) {
     patch.controlProfile = safety.controlProfile
+  }
+
+  if (
+    safety.nonInteractiveControlProfile !==
+    (cfg.nonInteractiveControlProfile ?? UI_DEFAULTS.nonInteractiveControlProfile)
+  ) {
+    patch.nonInteractiveControlProfile = safety.nonInteractiveControlProfile
   }
 
   if (safety.permission !== resolvePermissionForUi(cfg.permission)) {
@@ -303,8 +342,12 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.cortex = { maxConcurrentTasks: cortexConcurrency }
   }
 
-  const agentWorkers = boundedInteger(runtime.agentWorkers, 1, 64)
-  if (agentWorkers !== undefined && agentWorkers !== cfg.execution?.agentWorkers) {
+  // A cleared field must send null, not undefined: the SDK JSON serializer
+  // drops undefined keys, so undefined would leave the stored ceiling in
+  // place and the runtime would keep the explicit value instead of deriving.
+  const agentWorkers = runtime.agentWorkers.trim() === "" ? null : boundedInteger(runtime.agentWorkers, 1, 64)
+  const currentAgentWorkers = cfg.execution?.agentWorkers ?? null
+  if (agentWorkers !== undefined && agentWorkers !== currentAgentWorkers) {
     patch.execution = { ...(cfg.execution ?? {}), agentWorkers }
   }
 

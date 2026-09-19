@@ -83,7 +83,7 @@ export namespace ConfigDomainOpen {
     const filepath = ConfigDomain.filepath(id, root)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
     if (!(await Bun.file(filepath).exists())) {
-      await Bun.write(filepath, "{}\n")
+      await Bun.write(filepath, "{}\n", { mode: 0o600 })
     }
     return filepath
   }
