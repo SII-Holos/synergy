@@ -196,18 +196,49 @@ export namespace Experiment {
     freeze(copy)
     return storage.run(copy, action)
   }
+  // apply() composes and parses the configuration, and the turn path resolves it
+  // on every round. The memo is keyed by the identity of all three inputs — the
+  // live config, the runtime overrides, and the active snapshot — so an unchanged
+  // triple reuses one parsed object while a reload, a reconfigure, or a different
+  // run still parses again. Weak keys keep the memo proportional to inputs still
+  // in use.
+  const NO_RUNTIME_OVERRIDES = {}
+  const NO_SNAPSHOT = {}
+  const applied = new WeakMap<Config, WeakMap<object, WeakMap<object, Config>>>()
+
   export function apply(live: Config): Config {
-    if (runtimeOverrides) live = applyRuntime(live, runtimeOverrides)
+    const overrides = runtimeOverrides
     const snapshot = current()
-    if (!snapshot) return live
-    const result = { ...live }
-    for (const key of taskKeys) delete (result as Record<string, unknown>)[key]
-    return ConfigSchema.parse({
-      ...result,
-      ...snapshot.effective,
-      execution: { ...live.execution, ...snapshot.effective.execution },
-      cortex: { ...live.cortex, ...snapshot.effective.cortex },
-    })
+    if (!overrides && !snapshot) return live
+
+    const overridesKey: object = overrides ?? NO_RUNTIME_OVERRIDES
+    let byOverrides = applied.get(live)
+    if (!byOverrides) {
+      byOverrides = new WeakMap()
+      applied.set(live, byOverrides)
+    }
+    let bySnapshot = byOverrides.get(overridesKey)
+    if (!bySnapshot) {
+      bySnapshot = new WeakMap()
+      byOverrides.set(overridesKey, bySnapshot)
+    }
+    const snapshotKey: object = snapshot ?? NO_SNAPSHOT
+    const cached = bySnapshot.get(snapshotKey)
+    if (cached) return cached
+
+    let value = overrides ? applyRuntime(live, overrides) : live
+    if (snapshot) {
+      const result = { ...value }
+      for (const key of taskKeys) delete (result as Record<string, unknown>)[key]
+      value = ConfigSchema.parse({
+        ...result,
+        ...snapshot.effective,
+        execution: { ...value.execution, ...snapshot.effective.execution },
+        cortex: { ...value.cortex, ...snapshot.effective.cortex },
+      })
+    }
+    bySnapshot.set(snapshotKey, value)
+    return value
   }
   export function applyRuntime(config: Config, runtime: z.infer<typeof Runtime>): Config {
     return ConfigSchema.parse(merge(config, Runtime.parse(runtime)))

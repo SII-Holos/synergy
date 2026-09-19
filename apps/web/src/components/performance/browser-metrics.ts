@@ -39,6 +39,14 @@ export type TokenReceipt = {
   deltaChars: number
   partType?: string
 }
+type TokenDurationAggregate = {
+  phase: "apply" | "paint"
+  context: BrowserTelemetryContext
+  partType: string
+  messageID: string | null
+  deltaChars: number
+  maxMs: number
+}
 const MAX_BATCH = 100
 const MAX_PAYLOAD_BYTES = 256 * 1024
 const MAX_KEEPALIVE_PAYLOAD_BYTES = 60 * 1024
@@ -47,14 +55,17 @@ const FLUSH_INTERVAL_MS = 10_000
 const MAX_LABEL_LENGTH = 160
 const RECENT_LONG_TASK_WINDOW_MS = 60_000
 const MAX_TOKEN_RECEIPTS = 500
+const DEFAULT_TOKEN_DURATION_SAMPLE_RATE = 0.1
 
 let started = false
 let timer: number | undefined
 let queue: QueueEntry[] = []
 let locallyRejected = 0
+let tokenDurationSampleRate = DEFAULT_TOKEN_DURATION_SAMPLE_RATE
 let cleanup: Array<() => void> = []
 const recentLongTasks: LongTaskEntry[] = []
 const tokenReceipts = new Map<string, TokenReceipt>()
+const tokenDurations = new Map<string, TokenDurationAggregate>()
 
 export function mergeTokenReceipt(current: TokenReceipt | undefined, next: TokenReceipt): TokenReceipt {
   if (!current) return next
@@ -64,17 +75,34 @@ export function mergeTokenReceipt(current: TokenReceipt | undefined, next: Token
   }
 }
 
+type BrowserPerformanceConfig = {
+  observability?: { enabled?: boolean; performance?: { enabled?: boolean; samplingRate?: number } }
+}
+
 // Mirror the backend ObservabilityConfig.effective() semantics: the master
 // observability.enabled flag wins when performance.enabled is unset. The
 // collector must not run when the effective value is false.
-export function browserPerformanceEnabled(config?: {
-  observability?: { enabled?: boolean; performance?: { enabled?: boolean } }
-}): boolean {
+export function browserPerformanceEnabled(config?: BrowserPerformanceConfig): boolean {
   return config?.observability?.performance?.enabled ?? config?.observability?.enabled ?? true
 }
 
-export function startBrowserPerformanceMetrics(input: { url: string; client: SynergyClient }): boolean {
-  if (started || typeof window === "undefined") return started
+// An unset rate is absent from the raw global config, while the resolved
+// backend default would be 1. Reading only the explicit value keeps the low
+// token-duration default for operators who never set a rate.
+export function browserTokenDurationSampleRate(config?: BrowserPerformanceConfig): number {
+  return config?.observability?.performance?.samplingRate ?? DEFAULT_TOKEN_DURATION_SAMPLE_RATE
+}
+
+export function startBrowserPerformanceMetrics(input: {
+  url: string
+  client: SynergyClient
+  tokenDurationSampleRate?: number
+}): boolean {
+  if (typeof window === "undefined") return started
+  // Assigned before the guard: the config effect re-runs the start on every
+  // config change, so a rate change must reach an already-running collector.
+  tokenDurationSampleRate = input.tokenDurationSampleRate ?? DEFAULT_TOKEN_DURATION_SAMPLE_RATE
+  if (started) return started
   started = true
 
   const flush = () => void flushBrowserMetrics(input)
@@ -205,23 +233,9 @@ export function recordTokenApply(part: { id: string; sessionID?: string; message
   if (!receipt) return
   tokenReceipts.delete(key)
   const appliedAt = browserNow()
-  const applyMetric = buildTokenTimingMetric({
-    phase: "apply",
-    value: appliedAt - receipt.time,
-    unit: "ms",
-    part,
-    receipt,
-  })
-  if (applyMetric) enqueue({ kind: "metric", value: applyMetric })
+  recordTokenDuration({ phase: "apply", value: appliedAt - receipt.time, part, receipt })
   const paint = () => {
-    const paintMetric = buildTokenTimingMetric({
-      phase: "paint",
-      value: browserNow() - receipt.time,
-      unit: "ms",
-      part,
-      receipt,
-    })
-    if (paintMetric) enqueue({ kind: "metric", value: paintMetric })
+    recordTokenDuration({ phase: "paint", value: browserNow() - receipt.time, part, receipt })
   }
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
     window.requestAnimationFrame(() => paint())
@@ -254,7 +268,60 @@ export function buildTokenTimingMetric(input: {
   })
 }
 
+// Apply/paint report one row per flush batch per label set instead of one row
+// per delta, carrying the batch maximum and the deltas that produced it, and
+// are sampled at the configured token-duration rate. Receive stays exact: it
+// is the volume measure.
+function recordTokenDuration(input: {
+  phase: "apply" | "paint"
+  value: number
+  part: { id: string; sessionID?: string; messageID?: string; type?: string }
+  receipt: TokenReceipt
+}) {
+  const duration = finiteDuration(input.value)
+  if (duration === undefined) return
+  const partType = input.receipt.partType ?? safeString(input.part.type ?? "unknown")
+  const messageID = safeContextID(input.part.messageID) ?? null
+  const key = JSON.stringify([input.phase, contextLabels(input.receipt.context), partType, messageID])
+  const existing = tokenDurations.get(key)
+  if (existing) {
+    existing.deltaChars += input.receipt.deltaChars
+    existing.maxMs = Math.max(existing.maxMs, duration)
+    return
+  }
+  tokenDurations.set(key, {
+    phase: input.phase,
+    context: input.receipt.context,
+    partType,
+    messageID,
+    deltaChars: input.receipt.deltaChars,
+    maxMs: duration,
+  })
+}
+
+export function drainTokenDurationMetrics(): BrowserMetric[] {
+  if (tokenDurations.size === 0) return []
+  const aggregates = [...tokenDurations.values()]
+  tokenDurations.clear()
+  const metrics: BrowserMetric[] = []
+  for (const aggregate of aggregates) {
+    if (Math.random() >= tokenDurationSampleRate) continue
+    metrics.push(
+      metricValue(`frontend.token.${aggregate.phase}.duration`, aggregate.maxMs, "ms", {
+        ...contextLabels(aggregate.context),
+        phase: aggregate.phase,
+        tokenPhase: aggregate.phase,
+        deltaChars: aggregate.deltaChars,
+        partType: aggregate.partType,
+        messageID: aggregate.messageID,
+      }),
+    )
+  }
+  return metrics
+}
+
 async function flushBrowserMetrics(input: { url: string; client: SynergyClient }, options?: { keepalive?: boolean }) {
+  for (const metric of drainTokenDurationMetrics()) enqueue({ kind: "metric", value: metric })
   if (queue.length === 0 && locallyRejected === 0) return
   const candidates = queue.splice(0, MAX_BATCH)
   const rejected = locallyRejected
@@ -515,5 +582,7 @@ export function stopBrowserPerformanceMetrics() {
   timer = undefined
   queue = []
   locallyRejected = 0
+  tokenDurations.clear()
+  tokenDurationSampleRate = DEFAULT_TOKEN_DURATION_SAMPLE_RATE
   started = false
 }

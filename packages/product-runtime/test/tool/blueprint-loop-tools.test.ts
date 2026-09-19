@@ -264,7 +264,7 @@ describe("blueprint_loop_stop", () => {
         expect(reviewing.status).toBe("auditing")
         expect(reviewing.auditTaskID).toBeDefined()
         const reviewSession = await Session.get(reviewing.auditSessionID!)
-        expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
+        expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit", phase: "auditing" })
       },
     })
   })

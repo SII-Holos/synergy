@@ -588,16 +588,81 @@ export namespace LinuxBackend {
       uniqueRoots([...DEFAULT_PROTECTED_PATHS(homedir, workspace), ...(opts.protectedPaths ?? [])]),
     ).filter((p) => fs.existsSync(p))
 
+    // Stage 2 re-reads the helper profile at the same absolute path inside
+    // the sandbox. The plan's final controlled-tmp bind shadows every host
+    // path under /tmp, so a profile staged under a /tmp workspace or the
+    // host tmpdir is invisible to stage 2. The runtime cache dir is a
+    // default sandbox read root and never under /tmp; create it up front so
+    // the readable-roots existence filter below keeps it.
+    const stagingDir = joinPathLike(os.homedir(), ".synergy", "cache", "synergy-sandbox")
+    try {
+      fs.mkdirSync(stagingDir, { recursive: true })
+    } catch {
+      // Staging falls back below; this directory only matters when a
+      // sandboxed stage 2 re-reads the profile.
+    }
+
+    // A helper resolved under os.tmpdir() — test homes and custom
+    // SYNERGY_HOME setups — sits under the plan's final controlled-/tmp
+    // bind, which shadows every host path under /tmp: stage 2 re-execs the
+    // same absolute path inside the sandbox and dies with execvp ENOENT
+    // before any command runs. Mirror the profile staging above: copy the
+    // verified binary into the real-home staging dir, which is never under
+    // /tmp, and exec that copy. Production installs live under the real
+    // home and keep running in place.
+    let helperExecPath = helper.path
+    const relHelperToTmp = path.relative(os.tmpdir(), helper.path)
+    if (relHelperToTmp !== "" && !relHelperToTmp.startsWith("..") && !path.isAbsolute(relHelperToTmp)) {
+      try {
+        const staged = path.join(stagingDir, "synergy-sandbox-linux")
+        if (!isTarballHelperUpToDate(helper.path, staged)) {
+          fs.copyFileSync(helper.path, staged)
+          fs.chmodSync(staged, 0o755)
+        }
+        helperExecPath = staged
+      } catch (e) {
+        log.warn("failed to stage sandbox helper outside /tmp; stage 2 re-exec will fail", {
+          helper: helper.path,
+          error: String(e),
+        })
+      }
+    }
+
+    // Dynamically linked children cannot start unless the ELF interpreter
+    // and libc are visible at their PT_INTERP / default search paths. On
+    // usr-merged distros /lib and /lib64 are those entry points and
+    // defaultRuntimeReadRoots (macOS-first) does not cover them. Restricted
+    // mode deliberately keeps /etc out; the full-network branch binds it
+    // above via networkConfigRoots.
+    const linkerRoots = ["/lib", "/lib64"].filter((p) => fs.existsSync(p))
+
+    // The plan's inner command re-execs this helper for stage 2, so the exec
+    // copy's directory must be visible inside the sandbox — staging above
+    // keeps that copy out of the shadowed /tmp. The backend owns the
+    // two-stage re-exec contract: callers pass read roots for their own data
+    // and never need to know about the helper. Existence filtering below
+    // drops test override paths whose directory is absent.
+    const helperRoots = [path.dirname(helperExecPath)]
+
+    // Read roots aggregate platform defaults (which include macOS-only
+    // entries on Linux), gate-forwarded roots, and approved read paths.
+    // bwrap hard-fails when a --ro-bind source is missing, so every entry is
+    // existence-filtered here like protectedPaths and the network roots above.
+    const readableRoots = uniqueRoots([
+      workspace,
+      ...linkerRoots,
+      ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(homedir)),
+      ...(opts.extraReadRoots ?? []),
+      ...networkConfigRoots,
+      ...helperRoots,
+      stagingDir,
+    ]).filter((p) => fs.existsSync(p))
+
     // Build the sandbox permission profile JSON for the helper
     const profile: Record<string, unknown> = {
       fileSystem: {
         workspace,
-        readableRoots: [
-          workspace,
-          ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(homedir)),
-          ...(opts.extraReadRoots ?? []),
-          ...networkConfigRoots,
-        ],
+        readableRoots,
         writableRoots: opts.sandboxMode === "workspace_write" ? [workspace, ...(opts.extraWritableRoots ?? [])] : [],
         readOnlySubpaths: protectedPaths,
         protectedPaths,
@@ -615,14 +680,35 @@ export namespace LinuxBackend {
       },
     }
 
-    // Write profile to a private temp file. The helper consumes this path before
-    // entering bwrap; keep the file unpredictable and owner-readable only.
-    const tmpDir = os.tmpdir()
-    const profilePath = path.join(tmpDir, `synergy-sandbox-linux-${crypto.randomBytes(8).toString("hex")}.json`)
-    fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), { encoding: "utf-8", mode: 0o600 })
+    // Stage the profile where stage 2 can re-read it at the same absolute
+    // path (see stagingDir above). Keep the name unpredictable and the file
+    // owner-readable only; execution cleanup removes it afterwards.
+    // Synthetic workspaces and unwritable homes fall back to the workspace
+    // controlled tmp and then the host tmpdir, where only stage 1 reads
+    // the file.
+    const fileName = `synergy-sandbox-linux-${crypto.randomBytes(8).toString("hex")}.json`
+    const body = JSON.stringify(profile, null, 2)
+    let profilePath: string
+    try {
+      profilePath = path.join(stagingDir, fileName)
+      fs.writeFileSync(profilePath, body, { encoding: "utf-8", mode: 0o600 })
+    } catch {
+      try {
+        const tmpDir = joinPathLike(workspace, ".synergy", "tmp")
+        fs.mkdirSync(tmpDir, { recursive: true })
+        profilePath = path.join(tmpDir, fileName)
+        fs.writeFileSync(profilePath, body, { encoding: "utf-8", mode: 0o600 })
+      } catch {
+        profilePath = path.join(os.tmpdir(), fileName)
+        fs.writeFileSync(profilePath, body, { encoding: "utf-8", mode: 0o600 })
+        log.warn("staged sandbox profile outside sandbox-visible roots; stage 2 cannot re-read it", {
+          workspace,
+        })
+      }
+    }
 
     return {
-      command: helper.path,
+      command: helperExecPath,
       args: ["--sandbox-policy-cwd", opts.workspace, "--permission-profile", profilePath, "--", command, ...args],
       sandboxed: true,
       tempPath: profilePath,

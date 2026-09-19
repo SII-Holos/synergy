@@ -111,14 +111,20 @@ beforeAll(async () => {
       }
       const data = {
         session: [],
-        session_status: { [sessionID]: { type: "idle" } },
         session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
         message: { [sessionID]: [rootMessage, assistantMessage] },
         part: {
           [rootID]: [],
           [assistantID]: [attachPart, mediaPart],
         },
+      }
+      // Session runtime state lives outside the Scope store; the view resolves
+      // it from this accessor bag.
+      const NO_REQUESTS = []
+      const runtime = {
+        statusFor: () => ({ type: "idle" }),
+        permissionsFor: () => NO_REQUESTS,
+        questionsFor: () => NO_REQUESTS,
       }
       const resourceController = {
         open: () => false,
@@ -135,7 +141,7 @@ beforeAll(async () => {
               <ResourceOpenProvider value={resourceController}>
                 <MarkedProvider>
                   <DiffComponentProvider component={EmptyDiff}>
-                    <DataProvider data={data} directory="/workspace" serverUrl="http://localhost">
+                    <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
                       <SessionTurn
                         sessionID={sessionID}
                         messageID={rootID}

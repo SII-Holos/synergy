@@ -2,6 +2,7 @@ import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
 import z from "zod"
+import { ObservabilityConfig } from "../observability/config"
 import { ObservabilityEvents } from "../observability/events"
 import { ObservabilityRedaction } from "../observability/redaction"
 import { ObservabilitySchema } from "../observability/schema"
@@ -66,8 +67,11 @@ export namespace Log {
     return (await listArchives(Global.Path.log, /^dev\.\d{8}-\d{6}(?:\.\d+)?\.log$/)).map((item) => item.path)
   }
 
+  const FLUSH_INTERVAL_MS = 250
   let initialized = false
   const buffered: string[] = []
+  let pending: string[] = []
+  let flushTimer: ReturnType<typeof setInterval> | undefined
   let write = (msg: string) => {
     if (!initialized) {
       buffered.push(msg)
@@ -87,6 +91,7 @@ export namespace Log {
       }
       initialized = true
       flushBuffered()
+      flush()
       return
     }
     logpath = path.join(
@@ -99,15 +104,23 @@ export namespace Log {
     await openWriter(logpath)
     initialized = true
     flushBuffered()
+    flush()
   }
 
   function flushBuffered() {
     if (buffered.length === 0) return
-    const pending = buffered.splice(0)
-    for (const msg of pending) write(msg)
+    const queued = buffered.splice(0)
+    for (const msg of queued) write(msg)
+  }
+
+  function scheduleFlush() {
+    if (flushTimer) return
+    flushTimer = setInterval(flush, FLUSH_INTERVAL_MS)
+    flushTimer.unref?.()
   }
 
   async function openWriter(filePath: string) {
+    flush()
     if (currentWriter) {
       try {
         currentWriter.writer.end()
@@ -120,12 +133,11 @@ export namespace Log {
       const writer = logfile.writer()
       currentWriter = { writer, path: filePath }
       write = (msg: string) => {
-        try {
-          writer.write(msg)
-          writer.flush()
-        } catch {}
+        pending.push(msg)
+        scheduleFlush()
       }
     } catch {
+      currentWriter = undefined
       write = (msg: string) => {
         process.stderr.write(msg)
       }
@@ -177,12 +189,25 @@ export namespace Log {
   }
 
   export function flush() {
-    if (currentWriter) {
-      try {
-        currentWriter.writer.flush()
-      } catch {}
+    if (pending.length === 0) return
+    const batch = pending.join("")
+    pending = []
+    const writer = currentWriter?.writer
+    if (!writer) {
+      process.stderr.write(batch)
+      return
+    }
+    try {
+      writer.write(batch)
+      writer.flush()
+    } catch {
+      process.stderr.write(batch)
     }
   }
+
+  // Buffered lines are flushed from the process exit hook so an abrupt exit
+  // still reaches the log file; the server runtime also calls flush().
+  process.once("exit", flush)
 
   async function cleanup(dir: string) {
     const glob = new Bun.Glob("????-??-??T??????.log")
@@ -252,12 +277,15 @@ export namespace Log {
     return "observability"
   }
 
-  // Only warnings and errors are mirrored into the observability store; debug
-  // and info logs stay file-only unless the caller explicitly opts in with
-  // `mirror: true` (used by deliberately bounded hot-path audit telemetry).
+  // Warnings and errors are mirrored into the observability store. Debug and
+  // info stay file-only unless the caller opts in with `mirror: true` and the
+  // observability.logMirror switch is enabled.
   function mirror(level: Level, tags: Record<string, any>, message: any, extra?: Record<string, any>) {
     if (mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
-    if ((level === "DEBUG" || level === "INFO") && tags["mirror"] !== true && extra?.["mirror"] !== true) return
+    if (level === "DEBUG" || level === "INFO") {
+      const optedIn = tags["mirror"] === true || extra?.["mirror"] === true
+      if (!optedIn || !ObservabilityConfig.logMirror()) return
+    }
     mirroring = true
     try {
       const data: Record<string, unknown> = { ...tags, ...(extra ?? {}) }

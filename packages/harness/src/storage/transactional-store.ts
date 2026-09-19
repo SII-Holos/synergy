@@ -14,7 +14,15 @@ import { observeStorageProgress } from "./progress"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
 import { sqlParameterBytes } from "./sql-contract"
-import type { SqlConnection, SqlDriver, SqlRow, SqlValue, StoreOptions } from "./sql-contract"
+import type {
+  SqlConnection,
+  SqlDriver,
+  SqlRow,
+  SqlValue,
+  SqliteMaintenanceRequest,
+  SqliteMaintenanceResult,
+  StoreOptions,
+} from "./sql-contract"
 
 export type { StoreOptions } from "./sql-contract"
 export interface StoredEvent {
@@ -380,6 +388,40 @@ export class StoreTransaction {
       "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
       [this.namespace, keyID(prefix), this.namespace, Date.now(), this.namespace],
     )
+  }
+
+  /**
+   * Physically removes a subtree. Retention uses this instead of `removeTree`
+   * because a budgeted prune must return the bytes: `removeTree` leaves a
+   * revision tombstone per record, which keeps the rows and their pages. Node
+   * rows drop in dependency order so the logical index cannot keep a pruned
+   * path reachable, and removed artifact references enqueue the same durable
+   * collection intent ordinary deletion uses.
+   */
+  async pruneTree(prefix: string[]): Promise<number> {
+    this.check(true)
+    if (!prefix.length) throw new StorageIntegrityError("Cannot prune the storage root")
+    const text = JSON.stringify(prefix)
+    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
+    const artifactCondition = "namespace = ? AND (key_text = ? OR key_text LIKE ? ESCAPE '!')"
+    const artifactValues: SqlValue[] = [this.namespace, text, like]
+    await this.connection.query(
+      `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${artifactCondition} ON CONFLICT(namespace, pack) DO NOTHING`,
+      artifactValues,
+    )
+    await this.connection.query(`DELETE FROM storage_artifacts WHERE ${artifactCondition}`, artifactValues)
+    const removed = await this.connection.query<SqlRow>(
+      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) RETURNING key_id",
+      [this.namespace, keyID(prefix), this.namespace, this.namespace],
+    )
+    for (let round = 0; round < 64; round++) {
+      const dropped = await this.connection.query<SqlRow>(
+        "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = storage_nodes.key_id) AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = storage_nodes.key_id) RETURNING key_id",
+        [this.namespace, keyID(prefix), this.namespace, this.namespace, this.namespace, this.namespace],
+      )
+      if (!dropped.length) break
+    }
+    return removed.length
   }
 
   async query<T>(input: RecordQuery): Promise<StoredRecord<T>[]> {
@@ -812,6 +854,58 @@ export class TransactionalStore {
   }
   query<T>(input: RecordQuery) {
     return this.snapshot((tx) => tx.query<T>(input))
+  }
+
+  pruneTree(prefix: string[]) {
+    return this.transaction((tx) => tx.pruneTree(prefix))
+  }
+
+  get sqliteFilename() {
+    return this.options.backend === "sqlite" ? this.options.filename : undefined
+  }
+
+  /**
+   * Evidence owners with the recency of their newest record. Only keys and
+   * timestamps are read, so the scan stays bounded by owner count rather than
+   * by how much evidence each owner holds.
+   */
+  async evidenceOwners(): Promise<
+    Array<{ keyPrefix: string[]; kind: string; scopeID: string; ownerID: string; newest: number; records: number }>
+  > {
+    this.check()
+    // PostgreSQL has no in-file freelist and no incremental reclaim, so it has
+    // no budget for retention to defend; pruning is SQLite-only.
+    if (this.driver.backend !== "sqlite") return []
+    const rows = await this.driver.query(
+      `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind IN ('rollout', 'operations') AND body IS NOT NULL GROUP BY json_extract(key_text, '$[0]'), json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
+      [this.options.namespace],
+    )
+    return rows.flatMap((row) => {
+      const key = JSON.parse(String(row.key_text)) as string[]
+      if (key.length < 4) return []
+      return [
+        {
+          keyPrefix: key.slice(0, 4),
+          kind: key[0] === "operations" ? "operation" : "session",
+          scopeID: key[1]!,
+          ownerID: key[2]!,
+          newest: Number(row.newest),
+          records: Number(row.records),
+        },
+      ]
+    })
+  }
+
+  /**
+   * Runs one offline SQLite maintenance operation through the owning worker.
+   * PostgreSQL keeps no in-file freelist, so it reports nothing to do.
+   */
+  async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
+    this.check()
+    if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
+    if (!(this.driver instanceof SqliteDriver))
+      return { changed: false, autoVacuum: "none", releasedPages: 0, freelistPages: 0 }
+    return this.driver.maintain(request)
   }
 
   async operationReceipt(operationID: string) {

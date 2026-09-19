@@ -255,6 +255,29 @@ jobs:
         run: bun run --cwd apps/web playwright install chromium
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Install sandbox e2e prerequisites
+        if: matrix.shard == 'runtime'
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap apparmor
+          # Runner images restrict unprivileged user namespaces
+          # (kernel.apparmor_restrict_unprivileged_userns=1); the operator
+          # userns profile lets /usr/bin/bwrap create its sandbox so the
+          # real-helper e2e in runtime-local executes instead of silently
+          # skipping behind a green build.
+          cat <<'PROFILE' | sudo tee /etc/apparmor.d/synergy-bwrap
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile synergy-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+
+            include if exists <local/bwrap>
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/synergy-bwrap
+          cargo build --locked --release --manifest-path packages/runtime-local/src/sandbox/helper-linux/Cargo.toml
+          mkdir -p "$HOME/.synergy/sandbox-helper"
+          cp packages/runtime-local/src/sandbox/helper-linux/target/release/synergy-sandbox-linux "$HOME/.synergy/sandbox-helper/synergy-sandbox-linux"
       - name: Configure git identity
         run: |
           git config --global user.email "ci@synergy.dev"
@@ -269,6 +292,7 @@ jobs:
           bun turbo test --concurrency=2 "${filters[@]}"
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
+          SYNERGY_TEST_LINUX_SANDBOX_E2E: ${{ matrix.shard == 'runtime' && '1' || '' }}
           TEST_PACKAGES: ${{ matrix.packages }}
 
   test-aux:

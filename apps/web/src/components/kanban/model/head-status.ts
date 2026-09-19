@@ -1,4 +1,5 @@
 import type { SessionVisualState } from "@/components/sidebar/session-visual-state"
+import { isWorkingStatus } from "@/utils/session-status"
 
 /**
  * Head-status tint for a Kanban pane, derived from the session's resolved
@@ -19,20 +20,21 @@ export function paneHeadStatusFromVisual(input: {
     case "waiting":
     case "blueprint-waiting":
       return "waiting"
-    case "blueprint-audit":
-      if (input.pulse) return "working"
-      break
+    case "retry":
     case "active":
     case "blueprint-running":
       return "working"
+    case "loop":
+      if (input.pulse) return "working"
+      break
+    case "blueprint-audit":
+      if (input.pulse) return "working"
+      break
     default:
       break
   }
-  // Recovering is not surfaced as "active" by the sidebar visual resolution
-  // (it counts as idle there), but on the board it is still live work and
-  // should read as working rather than completed or idle.
-  if (input.statusType === "busy" || input.statusType === "retry" || input.statusType === "recovering") {
-    return "working"
-  }
+  // The raw status covers a pane whose resolved tone is still resting, so a
+  // session that is working must not read as completed or idle.
+  if (isWorkingStatus({ type: input.statusType })) return "working"
   return input.completionUnread ? "completed" : undefined
 }
