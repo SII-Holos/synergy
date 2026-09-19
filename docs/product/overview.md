@@ -202,6 +202,8 @@ The standard profiles express three product modes:
 
 Users can switch an active session to `full_access` without stopping execution. The frontend keeps the permission-mode selector available while the session is running. Selecting Full Access persists the profile immediately and resolves eligible pending permission asks for the session and its inheriting descendant sessions with one-time approval; the agent cannot self-escalate through the `session_control` tool, which remains idle-only. See [Live Profile Transitions](../architecture/execution-boundaries.md#live-profile-transitions) for the complete semantics.
 
+Registered secrets — provider API keys, pasted credentials, values captured from tool output — are masked everywhere the model can see: session records, provider payloads, and rollout artifacts hold only stable `⟦sec:<id>⟧` references. Real values are resolved only when a tool call executes, delivered to local commands through environment variables so they never appear in the command line. The mechanism applies under every control profile, including Full Access. Secrets are managed from the Settings Secrets panel and the `synergy secrets` CLI; values are never displayed in the browser. See [Secret Masking](../architecture/execution-boundaries.md#secret-masking) for the complete semantics.
+
 ## Standalone and Connected Use
 
 A standalone Synergy installation supports the complete local work model:
