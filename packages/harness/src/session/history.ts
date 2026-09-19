@@ -388,12 +388,10 @@ export namespace SessionHistory {
     }
 
     input.signal?.throwIfAborted()
-    const messages = await Promise.all(
-      selected.map(async (info) => ({
-        info,
-        parts: await loadParts(info.id),
-      })),
-    )
+    const messages = await mapWithConcurrency(selected, PAGE_HYDRATION_CONCURRENCY, async (info) => ({
+      info,
+      parts: await loadParts(info.id),
+    }))
     input.signal?.throwIfAborted()
     return MessageV2.deriveSemantics(messages)
   }
