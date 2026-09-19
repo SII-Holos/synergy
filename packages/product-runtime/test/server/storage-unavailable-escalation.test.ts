@@ -14,13 +14,17 @@ import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 // readiness through a marker file first, so a startup failure cannot be mistaken
 // for a successful escalation.
 //
-// The child deliberately has no deadline of its own. It parks on a promise that
-// never settles, so the only two ways it can stop are the escalation's own
-// `process.exit(1)` and the parent's timeout. That keeps the observation
-// structural rather than temporal: no inner timer can end the child early and
-// produce a spurious verdict, which is what made earlier versions of this test
-// report harness timing — an exit code from a competing handler, or a hold that
-// outlived the escalation it was waiting for — under a loaded shard.
+// The child observes escalation through its own subscription rather than
+// inferring it from the exit status alone. That distinction matters because the
+// exit status is produced by `gracefulShutdown` after `handle.close()` and
+// `Log.flush()` return, and under a loaded coverage shard those can outlast the
+// parent's patience — which made earlier versions of this test report a missing
+// escalation when escalation had in fact happened. The subscription records the
+// event itself, so the assertion names the behaviour under test.
+//
+// The child deliberately has no deadline of its own: `run()` never settles, and
+// parking forever leaves the escalation and the parent's timeout as the only two
+// ways it can stop.
 const STARTUP_DEADLINE_MS = 120_000
 const PARENT_TIMEOUT_MS = 240_000
 
@@ -35,7 +39,10 @@ test(
     const isolated = await createIsolatedTestEnv()
     const root = await mkdtemp(path.join(os.tmpdir(), "storage-escalation-runtime-"))
     const readyMarker = path.join(root, "ready")
+    const escalatedMarker = path.join(root, "escalated")
     const script = String.raw`
+      import { writeFile } from "node:fs/promises"
+      import path from "node:path"
       const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
       Log.init({ print: false })
       const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
@@ -70,11 +77,16 @@ test(
         console.error("runtime never became healthy")
         process.exit(3)
       }
-      await Bun.write(process.env.SYNERGY_ESCALATION_READY, "")
+      await writeFile(process.env.SYNERGY_ESCALATION_READY, "")
+      // Record the escalation where it happens. This is an independent
+      // subscription beside the Runtime's own, so it proves the event reached a
+      // listener without asserting anything about how long the graceful close
+      // that follows it takes.
+      Storage.onUnavailable(() => void writeFile(process.env.SYNERGY_ESCALATION_ESCALATED, ""))
       Storage.current().store.driver.worker.kill()
-      // Park forever. Escalation is asynchronous and owns the only exit that is
-      // allowed to happen; if it never arrives the parent's timeout reports the
-      // missing escalation instead of this statement manufacturing an outcome.
+      // Park forever. The escalation owns the only exit that may happen; if it
+      // never arrives, the parent's timeout reports the missing escalation
+      // instead of this statement manufacturing an outcome.
       await new Promise(() => {})
     `
 
@@ -87,6 +99,7 @@ test(
         SYNERGY_TEST_HOME: isolated.env.SYNERGY_TEST_HOME,
         SYNERGY_TEST_ROOT: isolated.env.SYNERGY_TEST_ROOT,
         SYNERGY_ESCALATION_READY: readyMarker,
+        SYNERGY_ESCALATION_ESCALATED: escalatedMarker,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -109,11 +122,17 @@ test(
       const stderr = await stderrText
       await stdoutText
 
-      // Readiness first: it separates "never reached the listener" from "reached
-      // it and did not escalate", which are different defects.
+      // Each assertion separates a different defect: readiness distinguishes
+      // "never reached the listener" from "reached it and did not escalate",
+      // the escalation marker names the behaviour, and the exit status covers
+      // the supervisor contract the escalation exists to satisfy.
       expect(
         await readFile(readyMarker, "utf8").catch(() => undefined),
         `runtime never became healthy: ${stderr}`,
+      ).toBe("")
+      expect(
+        await readFile(escalatedMarker, "utf8").catch(() => undefined),
+        `storage unavailability never reached a listener: ${stderr}`,
       ).toBe("")
       expect(exitCode, `runtime kept running over a dead store: ${stderr}`).toBe(1)
     } finally {
