@@ -5,7 +5,7 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Session } from "@ericsanchezok/synergy-sdk/client"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
@@ -38,6 +38,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = scope.state
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
+
+    // The initial latest page only needs to fill the rendered turn bound
+    // (MAX_RENDERED_TURNS in pages/session.tsx), not the whole transcript;
+    // history prepends keep the larger page so "Load earlier" refills the cap.
+    const INITIAL_LATEST_PAGE_LIMIT = 100
     const inflight = new Map<string, TrackedSessionSync>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightInbox = new Map<string, Promise<void>>()
@@ -58,25 +63,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const hasMessageSnapshot = (sessionID: string) =>
       hasMessageWindowSnapshot(store.message[sessionID], store.messageWindow[sessionID])
 
-    const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
-
-    const reconcileCortexFromSession = (session: Session) => {
-      const cortex = session.cortex
-      if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
-      const idx = store.cortex.findIndex((task) => task.sessionID === session.id)
-      if (idx === -1) return
-      setStore(
-        "cortex",
-        idx,
-        reconcile({
-          ...store.cortex[idx],
-          status: cortex.status,
-          completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
-          output: cortex.output ?? store.cortex[idx].output,
-          error: cortex.error ?? store.cortex[idx].error,
-        }),
-      )
-    }
+    const reconcileCortexFromSession = (session: Session) => globalSync.reconcileCortexFromSession(session)
 
     const upsertSession = (session: Session) => {
       reconcileCortexFromSession(session)
@@ -224,7 +211,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       })
 
     const loadLatestMessages = (sessionID: string, options?: { force?: boolean; reconnectVersion?: number }) =>
-      loadMessagePage(sessionID, { mode: "latest", limit: chunk }, options)
+      loadMessagePage(
+        sessionID,
+        { mode: "latest", limit: hasMessageSnapshot(sessionID) ? chunk : INITIAL_LATEST_PAGE_LIMIT },
+        options,
+      )
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -386,15 +377,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return { phase: "idle", generation: 0, hasSnapshot: false }
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
+          // The permission route is cross-Scope; the sessionID filter keeps
+          // the payload bounded while the response still seeds the global
+          // index. `seedSessionPermissions` replaces this session's slice and
+          // keeps any request whose event write postdates the response stamp.
           const syncPermissions = () =>
-            retry(() => sdk.client.permission.list())
-              .then((res) => {
-                const entries = (res.data ?? [])
-                  .filter((entry): entry is PermissionRequest => !!entry?.id && entry.sessionID === sessionID)
-                  .slice()
-                  .sort((a, b) => a.id.localeCompare(b.id))
-                setStore("permission", sessionID, reconcile(entries, { key: "id" }))
-              })
+            retry(() => sdk.client.permission.list({ sessionID }))
+              .then((res) => globalSync.seedSessionPermissions(sessionID, res.data ?? [], res.response?.headers))
               .catch(() => {})
           // Force session/message reloads after reconnect or backend restart.
           // Session metadata alone is not enough: tool parts publish as

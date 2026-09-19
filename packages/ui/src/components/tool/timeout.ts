@@ -1,9 +1,6 @@
-export interface ToolTimeoutMetadata {
-  toolTimeoutMs?: number
-  operationTimeoutMs?: number
-  displayMs?: number
-  source?: string
-}
+import type { ToolMetadata } from "../tool-registry-lazy"
+
+export type CountdownKind = "auto_background" | "timeout" | "remaining"
 
 export interface ToolTime {
   start?: number
@@ -12,18 +9,28 @@ export interface ToolTime {
 
 export interface ToolCountdown {
   seconds: number
-  startedAt?: number
+  startedAt: number
+  kind: CountdownKind
 }
 
 export function toolCountdown(
-  metadata: Record<string, any> | undefined,
+  metadata: ToolMetadata | undefined,
   time: ToolTime | undefined,
 ): ToolCountdown | undefined {
-  const timeout = metadata?.toolTimeout as ToolTimeoutMetadata | undefined
+  const timeout = metadata?.toolTimeout
   const displayMs = timeout?.displayMs
   if (typeof displayMs !== "number" || !Number.isFinite(displayMs) || displayMs <= 0) return undefined
+  const startedAt = time?.start
+  if (typeof startedAt !== "number" || !Number.isFinite(startedAt)) return undefined
   return {
     seconds: Math.ceil(displayMs / 1000),
-    startedAt: typeof time?.start === "number" ? time.start : undefined,
+    startedAt,
+    kind: countdownKind(timeout?.source),
   }
+}
+
+function countdownKind(source: string | undefined): CountdownKind {
+  if (source === "auto_background") return "auto_background"
+  if (source === "tool_timeout") return "timeout"
+  return "remaining"
 }

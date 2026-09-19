@@ -54,7 +54,7 @@ beforeAll(async () => {
       `
         import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
         export const useSessionDataView = () => () =>
-          createSessionDataView(globalThis.__DECISION_SURFACE_DATA)
+          createSessionDataView(globalThis.__DECISION_SURFACE_DATA, globalThis.__DECISION_SURFACE_RUNTIME)
       `,
     ),
     Bun.write(
@@ -96,12 +96,20 @@ beforeAll(async () => {
 
         globalThis.__DECISION_SURFACE_DATA = {
           session: [{ id: "s1" }],
-          session_status: { s1: { type: "idle" } },
           session_diff: {},
           message: {},
           part: {},
-          question: mode !== "none" && mode !== "permission" ? { s1: [questionRequest] } : {},
-          permission: mode !== "none" && mode !== "question" ? { s1: [permissionRequest] } : {},
+        }
+
+        // Session runtime state lives outside the Scope store, so the view
+        // resolves it from this accessor bag rather than from the data object.
+        const questions = mode !== "none" && mode !== "permission" ? { s1: [questionRequest] } : {}
+        const permissions = mode !== "none" && mode !== "question" ? { s1: [permissionRequest] } : {}
+        const NO_REQUESTS = []
+        globalThis.__DECISION_SURFACE_RUNTIME = {
+          statusFor: (id) => (id === "s1" ? { type: "idle" } : undefined),
+          permissionsFor: (id) => permissions[id] ?? NO_REQUESTS,
+          questionsFor: (id) => questions[id] ?? NO_REQUESTS,
         }
 
         const i18n = setupI18n({ locale: "en", messages: {} })
@@ -117,6 +125,7 @@ beforeAll(async () => {
                       get children() {
                         return createComponent(DataProvider, {
                           data: globalThis.__DECISION_SURFACE_DATA,
+                          runtime: globalThis.__DECISION_SURFACE_RUNTIME,
                           directory: "/tmp/fixture",
                           serverUrl: "http://127.0.0.1:5212",
                           onPermissionRespond: () => {},

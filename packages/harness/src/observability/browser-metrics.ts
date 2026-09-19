@@ -50,7 +50,26 @@ export namespace ObservabilityBrowserMetrics {
   const SAFE_DIMENSION = /^[A-Za-z0-9_.:-]{1,80}$/
   const SECRET_LIKE_ID = /^(authorization|bearer|basic|prompt|completion|content|body|sk-|ghp_|xoxb-|tok_|key_)/i
   const ENUM_LABELS = new Map<string, Set<string>>([
-    ["phase", new Set(["receive", "apply", "paint", "fetch", "sync", "render", "complete", "timeout"])],
+    [
+      "phase",
+      new Set([
+        "receive",
+        "apply",
+        "paint",
+        "fetch",
+        "sync",
+        "render",
+        "complete",
+        "timeout",
+        "session:params",
+        "session:data-ready",
+        "session:first-turn-mounted",
+        "storage:prompt-ready",
+        "storage:terminal-ready",
+        "storage:file-view-ready",
+        "navigate:start",
+      ]),
+    ],
     ["tokenphase", new Set(["receive", "apply", "paint"])],
     ["parttype", new Set(["text", "tool-call", "tool-result", "reasoning", "file", "unknown"])],
     ["reason", new Set(["complete", "timeout", "navigation", "manual", "route", "unknown"])],
