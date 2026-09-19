@@ -334,17 +334,23 @@ beforeAll(async () => {
       const navigateCalls: string[] = []
       const data = {
         session: [],
-        session_status: {},
         session_diff: {},
-        permission: {},
         message: {},
         part: {},
+      }
+      // Session runtime state lives outside the Scope store; the view resolves
+      // it from this accessor bag.
+      const NO_REQUESTS = []
+      const runtime = {
+        statusFor: () => undefined,
+        permissionsFor: () => NO_REQUESTS,
+        questionsFor: () => NO_REQUESTS,
       }
       const root = document.querySelector("#root")!
       render(
         () => (
           <I18nProvider i18n={i18n}>
-            <DataProvider data={data} directory="/workspace" serverUrl="http://localhost" onNavigateToSession={(id) => navigateCalls.push(id)}>
+            <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost" onNavigateToSession={(id) => navigateCalls.push(id)}>
 
             <CodeComponentProvider component={CodeFixture}>
               <div id="count-host">

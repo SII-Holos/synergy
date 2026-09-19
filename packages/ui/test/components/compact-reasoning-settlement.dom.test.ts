@@ -97,12 +97,19 @@ beforeAll(async () => {
 
       const [state, setState] = createStore({
         session: [],
-        session_status: { [sessionID]: { type: "busy" } },
         session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
         message: { [sessionID]: [rootMessage, assistantMessage] },
         part: { [rootID]: [], [assistantID]: [reasoningPart, answerPart] },
       })
+      // Session runtime state lives outside the Scope store; the view resolves
+      // it from this accessor bag.
+      const [runtimeState, setRuntimeState] = createStore({ status: { [sessionID]: { type: "busy" } } })
+      const NO_REQUESTS = []
+      const runtime = {
+        statusFor: (id) => runtimeState.status[id],
+        permissionsFor: () => NO_REQUESTS,
+        questionsFor: () => NO_REQUESTS,
+      }
 
       const resourceController = {
         open: () => false,
@@ -125,7 +132,7 @@ beforeAll(async () => {
               <ResourceOpenProvider value={resourceController}>
                 <MarkedProvider>
                   <DiffComponentProvider component={EmptyDiff}>
-                    <DataProvider data={state} directory="/workspace" serverUrl="http://localhost">
+                    <DataProvider data={state} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
                       <SessionTurn
                         sessionID={sessionID}
                         messageID={rootID}
@@ -147,7 +154,7 @@ beforeAll(async () => {
 
       globalThis.__settlementHarness = {
         settle: () => {
-          setState("session_status", sessionID, { type: "idle" })
+          setRuntimeState("status", sessionID, { type: "idle" })
           setState("message", sessionID, (messages) =>
             messages.map((m) =>
               m.id === assistantID ? { ...m, time: { ...m.time, completed: 5000 }, finish: "stop" } : m,

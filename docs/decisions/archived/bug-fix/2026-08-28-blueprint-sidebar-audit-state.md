@@ -1,6 +1,7 @@
 # Decision Record: Blueprint sidebar audit state from bound audit sessions, not any running child task
 
 Status: implemented
+Archived: 2026-09-18
 
 ## Problem
 

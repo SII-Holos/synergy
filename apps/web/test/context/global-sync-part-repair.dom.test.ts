@@ -55,7 +55,7 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     }
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>
@@ -65,6 +65,7 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     export const browserPerformanceEnabled=()=>false
     export const startBrowserPerformanceMetrics=()=>{}
     export const stopBrowserPerformanceMetrics=()=>{}
+    export const browserTokenDurationSampleRate=()=>0.1
     export const recordTokenApply=()=>{}
   `,
   )

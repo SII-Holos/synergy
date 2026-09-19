@@ -15,6 +15,9 @@ export type NavSessionUpdate = {
   lastActivityAt?: number
   archived: boolean
   parentID?: string
+  blueprint?: NavEntry["blueprint"]
+  workspaceType?: string
+  workflow?: NavEntry["workflow"]
   completionNoticeUnread?: boolean
   completionNoticeUnreadCount?: number
 }
@@ -28,7 +31,7 @@ export function navUpdateFromSession(
     time?: { updated?: number; archived?: number }
     completionNotice?: { unread?: boolean; unreadCount?: number }
   },
-  navEntry?: Pick<NavEntry, "lastActivityAt">,
+  navEntry?: Pick<NavEntry, "lastActivityAt" | "blueprint" | "workspaceType" | "workflow">,
 ): NavSessionUpdate {
   return {
     id: info.id,
@@ -37,6 +40,9 @@ export function navUpdateFromSession(
     lastActivityAt: navEntry?.lastActivityAt ?? info.time?.updated,
     archived: !!info.time?.archived,
     parentID: info.parentID,
+    blueprint: navEntry?.blueprint,
+    workspaceType: navEntry?.workspaceType,
+    workflow: navEntry?.workflow,
     completionNoticeUnread: info.completionNotice?.unread,
     completionNoticeUnreadCount: info.completionNotice?.unreadCount,
   }
@@ -65,6 +71,9 @@ export function applySessionToNavList(
     pinned: update.pinned ?? prev.pinned,
     lastActivityAt: update.lastActivityAt ?? prev.lastActivityAt,
     parentID: update.parentID ?? prev.parentID,
+    blueprint: update.blueprint ?? prev.blueprint,
+    workspaceType: update.workspaceType ?? prev.workspaceType,
+    workflow: update.workflow ?? prev.workflow,
     completionNotice: {
       unread: update.completionNoticeUnread ?? prev.completionNotice.unread,
       unreadCount: update.completionNoticeUnreadCount ?? prev.completionNotice.unreadCount,

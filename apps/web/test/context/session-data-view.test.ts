@@ -1,14 +1,29 @@
 import { describe, expect, mock, test } from "bun:test"
 import { createRoot, createSignal } from "solid-js"
 
-// The app hook reads the shared scope store through useSync(). Substitute a
-// plain signal-backed sync object so the hook's memo reactivity can be
-// exercised without the full sync runtime.
+// The app hook reads the shared scope store through useSync() and the
+// eviction-independent runtime index through useGlobalSync(). Substitute plain
+// signal-backed objects so the hook's memo reactivity can be exercised without
+// the full sync runtime.
 let dataSignal: ReturnType<typeof createSignal<Record<string, unknown>>>
+let runtimeSignal: ReturnType<typeof createSignal<Record<string, unknown>>>
 mock.module("../../src/context/sync", () => ({
   useSync: () => ({
     get data() {
       return dataSignal[0]()
+    },
+  }),
+}))
+mock.module("../../src/context/global-sync", () => ({
+  useGlobalSync: () => ({
+    get sessionStatus() {
+      return runtimeSignal[0]().sessionStatus
+    },
+    get permissions() {
+      return runtimeSignal[0]().permissions
+    },
+    get questions() {
+      return runtimeSignal[0]().questions
     },
   }),
 }))
@@ -18,20 +33,32 @@ const { useSessionDataView } = await import("../../src/context/session-data-view
 function storeState() {
   return {
     session: [{ id: "s1" }],
-    session_status: { s1: { type: "idle" } },
     session_diff: {},
     message: { s1: [{ id: "m1", sessionID: "s1" }] },
     part: { m1: [{ id: "p1", sessionID: "s1", messageID: "m1" }] },
-    permission: {},
     planBlueprintOffer: {
       s1: { key: "offer-key", offer: { noteID: "n1", title: "Offer", key: "offer-key" } },
     },
   }
 }
 
-function runWithData(initial: Record<string, unknown>, fn: (view: ReturnType<typeof useSessionDataView>) => void) {
+function runtimeState() {
+  return {
+    sessionStatus: { s1: { type: "idle" } },
+    permissions: {},
+    questions: {},
+  }
+}
+
+function runWithData(
+  initial: Record<string, unknown>,
+  fn: (view: ReturnType<typeof useSessionDataView>) => void,
+  runtime: Record<string, unknown> = runtimeState(),
+) {
   const [data, setData] = createSignal(initial)
   dataSignal = [data, setData]
+  const [runtimeValue, setRuntime] = createSignal(runtime)
+  runtimeSignal = [runtimeValue, setRuntime]
   return createRoot((dispose) => {
     const view = useSessionDataView()
     fn(view)
@@ -66,11 +93,27 @@ describe("useSessionDataView", () => {
   })
 
   test("survives an empty store", () => {
-    runWithData({} as Record<string, unknown>, (view) => {
-      expect(view().messagesFor("s1")).toEqual([])
-      expect(view().partsFor("m1")).toEqual([])
+    runWithData(
+      {} as Record<string, unknown>,
+      (view) => {
+        expect(view().messagesFor("s1")).toEqual([])
+        expect(view().partsFor("m1")).toEqual([])
+        expect(view().statusFor("s1")).toBeUndefined()
+        expect(view().planBlueprintOfferFor("s1")).toBeUndefined()
+      },
+      { sessionStatus: {}, permissions: {}, questions: {} },
+    )
+  })
+
+  test("reads runtime state from the global index, not the scope store", () => {
+    runWithData(storeState(), (view) => {
+      expect(view().statusFor("s1")).toEqual({ type: "idle" })
+      expect(view().statusFor("missing")).toBeUndefined()
+      // The runtime index keeps only non-idle sessions, so a session the index
+      // dropped reads as undefined while the scope store still holds it.
+      const current = runtimeSignal[0]()
+      current.sessionStatus = {}
       expect(view().statusFor("s1")).toBeUndefined()
-      expect(view().planBlueprintOfferFor("s1")).toBeUndefined()
     })
   })
 

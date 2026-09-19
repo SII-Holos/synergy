@@ -33,11 +33,7 @@ import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
 import { listNavigation, navigationEntryLabel, subscribeNavigation, type NavigationEntry } from "@/plugin"
 import { selectAppAttention, type AppAttentionNotice } from "./app-attention"
-import {
-  resolveSessionVisualState,
-  scopeKeyForNavEntry,
-  type SessionVisualStore,
-} from "@/components/sidebar/session-visual-state"
+import { resolveSessionVisualState, scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
 import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import { SessionDraftBadge } from "./session-draft-badge"
@@ -57,13 +53,8 @@ interface SidebarProps {
   onSearchOpen: () => void
 }
 
-function getStoreForEntry(
-  globalSync: ReturnType<typeof useGlobalSync>,
-  entry: NavEntry,
-): SessionVisualStore | undefined {
-  const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
-  if (!scopeKey) return undefined
-  return globalSync.peekScopeState(scopeKey)?.[0]
+function runningChildTasksForEntry(globalSync: ReturnType<typeof useGlobalSync>, entry: NavEntry): boolean {
+  return globalSync.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running")
 }
 
 function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
@@ -71,6 +62,7 @@ function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
   return {
     "sb-session-icon-wrap": true,
     "sb-session-icon-active-tone": tone === "active",
+    "sb-session-icon-retry-tone": tone === "retry",
     "sb-session-icon-waiting-tone": tone === "waiting",
     "sb-session-icon-worktree-tone": tone === "worktree",
     "sb-session-icon-muted-tone": tone === "muted",
@@ -78,6 +70,7 @@ function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
     "sb-session-icon-blueprint-running-tone": tone === "blueprint-running",
     "sb-session-icon-blueprint-waiting-tone": tone === "blueprint-waiting",
     "sb-session-icon-blueprint-audit-tone": tone === "blueprint-audit",
+    "sb-session-icon-loop-tone": tone === "loop",
     "sb-session-icon-pulse": !!visual?.pulse,
   }
 }
@@ -1211,10 +1204,16 @@ function SidebarSessionRow(props: {
   const lingui = useLingui()
   const globalSync = useGlobalSync()
 
-  const visual = createMemo(() => {
-    if (props.scope) return resolveSessionVisualState(globalSync.peekScopeState(props.scope.worktree)?.[0], props.entry)
-    return resolveSessionVisualState(getStoreForEntry(globalSync, props.entry), props.entry)
-  })
+  const visual = createMemo(() =>
+    resolveSessionVisualState({
+      entry: props.entry,
+      status: globalSync.sessionStatus[props.entry.id],
+      waiting:
+        (globalSync.permissions[props.entry.id]?.length ?? 0) > 0 ||
+        (globalSync.questions[props.entry.id]?.length ?? 0) > 0,
+      runningChildTasks: runningChildTasksForEntry(globalSync, props.entry),
+    }),
+  )
 
   const sessionTooltip = createMemo(() => {
     const v = visual()
@@ -1246,11 +1245,7 @@ function SidebarSessionRow(props: {
       onClick={props.onClick}
     >
       <span classList={{ ...sessionIconClassList(visual()) }} title={sessionTooltip()}>
-        <Icon
-          name={visual()?.icon ?? "loader"}
-          size="small"
-          class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"}
-        />
+        <Icon name={visual().icon} size="small" class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"} />
         <Show when={visual()?.completionUnread}>
           <span class="sb-session-completion-dot" />
         </Show>

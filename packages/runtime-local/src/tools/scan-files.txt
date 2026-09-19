@@ -8,7 +8,7 @@ Parameters:
 - `include` and `globs` filter file paths.
 - `limitFiles` caps how many matched files are returned; use `skipFiles` to continue when the result says the limit was reached.
 - `perFileLimit` caps matched lines per file so one hot file cannot dominate the result.
-- `timeoutMs` bounds long searches. If a search times out, narrow `path`, `include`/`globs`, or `pattern`.
+- `timeoutSeconds` bounds long searches (min 1, default 10). If a search times out, narrow `path`, `include`/`globs`, or `pattern`.
 - `outputMode` defaults to `matches`; use `files` only when you intentionally want full file blocks for small results.
 
 Critical:
