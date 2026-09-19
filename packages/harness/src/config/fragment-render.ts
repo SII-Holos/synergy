@@ -164,9 +164,15 @@ export async function renderDomainFragment(options: {
   const edits = collectEdits(raw, normalized)
   if (edits.length === 0) return { content: options.current, changed: false }
   let result = text
-  // Apply in reverse so array-index deletions never shift the paths of the
-  // remaining edits (object keys cannot shift).
-  for (const edit of [...edits].reverse()) {
+  const isTailDeletion = (edit: { path: (string | number)[]; value: unknown }) =>
+    edit.value === undefined && typeof edit.path.at(-1) === "number"
+  // Two passes with opposite orders. Array-tail deletions apply in reverse so
+  // earlier indices never shift (object keys cannot shift, so their deletions
+  // are safe in either pass). Every other edit applies in ascending order:
+  // array appends are only honored by jsonc-parser at exactly the current
+  // length, so applying them in reverse silently drops the out-of-range tail
+  // and forces the fresh-render fallback, losing comments.
+  const apply = (edit: { path: (string | number)[]; value: unknown }) => {
     result = applyEdits(
       result,
       modify(result, edit.path, edit.value, {
@@ -174,6 +180,8 @@ export async function renderDomainFragment(options: {
       }),
     )
   }
+  for (const edit of edits.filter(isTailDeletion).reverse()) apply(edit)
+  for (const edit of edits.filter((edit) => !isTailDeletion(edit))) apply(edit)
   const errorsAfter: ParseError[] = []
   const rendered = parseJsonc(result, errorsAfter, { allowTrailingComma: true })
   if (

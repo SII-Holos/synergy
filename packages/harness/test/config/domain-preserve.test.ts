@@ -139,6 +139,72 @@ describe("domain writes preserve authored reference text", () => {
   })
 })
 
+describe("domain writes preserve comments across array edits", () => {
+  const ARRAY_FRAGMENT = [
+    "{",
+    "  // allowed browser origins",
+    '  "server": {',
+    '    "cors": [',
+    '      "https://app.example" // production origin',
+    "    ]",
+    "  }",
+    "}",
+  ].join("\n")
+
+  test("appending two or more array elements keeps comments instead of re-serializing", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "config")
+    const file = await writeFragment(root, "runtime", ARRAY_FRAGMENT)
+    await Config.domainUpdate(
+      "runtime",
+      { server: { cors: ["https://app.example", "https://a.example", "https://b.example"] } },
+      { root },
+    )
+    const after = await fs.readFile(file, "utf8")
+    expect(after).toContain("// allowed browser origins")
+    expect(after).toContain("// production origin")
+    expect(after).toContain('"https://a.example"')
+    expect(after).toContain('"https://b.example"')
+  })
+
+  test("shrinking an array by two or more elements keeps the structural comment", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "config")
+    const file = await writeFragment(root, "runtime", ARRAY_FRAGMENT)
+    await Config.domainUpdate(
+      "runtime",
+      { server: { cors: ["https://app.example", "https://a.example", "https://b.example"] } },
+      { root },
+    )
+    await Config.domainUpdate("runtime", { server: { cors: ["https://app.example"] } }, { root })
+    const after = await fs.readFile(file, "utf8")
+    expect(after).toContain("// allowed browser origins")
+    expect(after).toContain('"https://app.example"')
+    expect(after).not.toContain("a.example")
+    expect(after).not.toContain("b.example")
+    // An inline comment originally attached to element 0 may migrate to the
+    // appended tail (jsonc-parser re-associates trailing comments), so this
+    // test pins the structural comment only — the data and every surviving
+    // comment's correctness are already guaranteed by the parse-back check.
+  })
+
+  test("replacing an element while appending two more keeps comments", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "config")
+    const file = await writeFragment(root, "runtime", ARRAY_FRAGMENT)
+    await Config.domainUpdate(
+      "runtime",
+      { server: { cors: ["https://replacement.example", "https://a.example", "https://b.example"] } },
+      { root },
+    )
+    const after = await fs.readFile(file, "utf8")
+    expect(after).toContain("// allowed browser origins")
+    expect(after).toContain('"https://replacement.example"')
+    expect(after).toContain('"https://a.example"')
+    expect(after).toContain('"https://b.example"')
+  })
+})
+
 describe("config import preserves authored reference text", () => {
   test("importing an unrelated key keeps references, comments, and untouched entries", async () => {
     await using tmp = await tmpdir({ git: true })
