@@ -10,6 +10,10 @@ import {
   StorageOwnershipError,
   StorageUnavailableError,
 } from "./errors"
+import { StorageBudgets } from "./budgets"
+import { Log } from "../util/log"
+import { ObservabilityIssues } from "../observability/issues"
+import { ObservabilityMetrics } from "../observability/metrics"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { StorageQueue } from "./queue"
 import { sqlParameterBytes } from "./sql-contract"
@@ -26,15 +30,14 @@ import type {
   SqlValue,
 } from "./sql-contract"
 
-// A probe is answered from the worker's own event loop, so it only replies once
-// the ordinary statement occupying that loop returns; a healthy worker running a
-// long statement is therefore indistinguishable from a hung one until the
-// statement finishes. The probe budget mirrors the ordinary request deadline and
-// is retried a bounded number of times, because a false kill turns one overdue
-// request into a whole-process restart.
-const PROBE_TIMEOUT_MS = 30_000
-const PROBE_ATTEMPTS = 3
+const log = Log.create({ service: "storage.driver" })
 
+// The worker answers one statement at a time from one event loop, so an
+// unanswered probe means only that the loop is occupied — it cannot by itself
+// distinguish a healthy worker running a long statement from a hung one. The
+// two are separated on the *duration* of the silence: a probe timeout makes the
+// driver busy, and only sustained silence past the hard ceiling is a wedge. One
+// missed probe must never turn an overdue statement into a process restart.
 type PendingRequest = {
   resolve(result: { rows: SqlRow[]; maintain?: SqliteMaintenanceResult }): void
   reject(error: unknown): void
@@ -63,6 +66,13 @@ export class SqliteDriver implements SqlDriver {
   private unavailableError?: Error
   private readonly unavailableListeners = new Set<(error: Error) => void>()
   private probing?: Promise<boolean>
+  // Explicit worker state. `busy` is a degraded-but-alive worker whose event
+  // loop is occupied; only `exited` and `latched` are terminal.
+  private state: "healthy" | "busy" | "exited" | "latched" = "healthy"
+  // Set when a probe fails and cleared when one succeeds. Its presence is what
+  // keeps the monitor probing until the worker answers or the ceiling passes.
+  private unresponsiveSince?: number
+  private monitoring?: Promise<boolean>
 
   private constructor(private readonly ownership?: { release(): Promise<void> }) {
     const entry = fileURLToPath(new URL("./sqlite-worker.ts", import.meta.url))
@@ -76,6 +86,10 @@ export class SqliteDriver implements SqlDriver {
       stderr: "inherit",
       ipc: (message: SqliteResponse) => {
         if (!this.pending.has(message.id)) return
+        // Any answer at all is proof the event loop is alive, so it both clears
+        // the busy state and restarts the silence window that the ceiling is
+        // measured against.
+        this.observeResponse()
         if (message.error)
           this.settle(message.id, { error: Object.assign(new Error(message.error.message), message.error) })
         else this.settle(message.id, { rows: message.rows ?? [], maintain: message.maintain })
@@ -143,6 +157,11 @@ export class SqliteDriver implements SqlDriver {
     }
   }
 
+  private observeResponse() {
+    this.unresponsiveSince = undefined
+    this.leaveBusy()
+  }
+
   private settle(id: number, result: { rows: SqlRow[]; maintain?: SqliteMaintenanceResult } | { error: unknown }) {
     const pending = this.pending.get(id)
     if (!pending) return
@@ -185,27 +204,21 @@ export class SqliteDriver implements SqlDriver {
   ): Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }> {
     if (this.unavailableError) return Promise.reject(this.unavailableError)
     if (this.closed) return Promise.reject(new StorageClosedError())
-    let deadline = 30_000
-    if (request.maintenance || request.action === "maintain") {
-      // Offline maintenance may rewrite every page; the finite deadline scales
-      // with the current snapshot size, including uncheckpointed WAL growth.
-      const { rows: pages } = await this.request({
-        action: "query",
-        reader: request.reader,
-        statement: "PRAGMA page_count",
-      })
-      const { rows: size } = await this.request({
-        action: "query",
-        reader: request.reader,
-        statement: "PRAGMA page_size",
-      })
-      const bytes = Number(pages[0]?.page_count ?? 0) * Number(size[0]?.page_size ?? 0)
-      if (!Number.isSafeInteger(bytes) || bytes < 0)
-        throw new StorageIntegrityError("SQLite maintenance size is invalid")
-      // Full integrity checks revisit every index entry (https://sqlite.org/pragma.html#pragma_integrity_check).
-      deadline = Math.min(2_147_483_647, 600_000 + Math.ceil(bytes / 1024 ** 2) * 1000)
-      onMaintenanceBudget?.(deadline)
-    }
+    // A degraded worker accepts no new work: queueing behind a statement that is
+    // already over budget would only convert a fast, retryable busy into a long
+    // wait. Work already dispatched keeps its own deadline and still gets the
+    // full ceiling before anything terminal happens.
+    if (this.state === "busy")
+      return Promise.reject(new StorageBusyError("Authoritative storage is busy; retry when the worker answers"))
+    const budgets = StorageBudgets.current()
+    // Every statement gets a bounded budget. Maintenance used to scale its own
+    // deadline by database size, which let one statement occupy the worker for
+    // hours while the probe budget that actually decides this driver's fate
+    // stayed at a fraction of it. Chunking the work is what makes the budget
+    // enforceable, so every path now shares one fixed budget.
+    const deadline =
+      request.maintenance || request.action === "maintain" ? budgets.chunkBudgetMs : budgets.requestDeadlineMs
+    if (request.maintenance || request.action === "maintain") onMaintenanceBudget?.(deadline)
     const bytes = sqlParameterBytes(request.values ?? [])
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
@@ -241,42 +254,104 @@ export class SqliteDriver implements SqlDriver {
       return
     }
     if (pending.probe) {
+      // An unanswered probe means the worker's event loop is occupied. It does
+      // not mean the worker is gone, so the silence is recorded rather than
+      // escalated, and the reason reaches the metrics and the log instead of
+      // being discarded when the probe settles.
+      this.unresponsiveSince ??= performance.now()
+      ObservabilityMetrics.record({
+        name: "storage.worker.probe.timeout",
+        value: 1,
+        unit: "count",
+        module: "storage",
+      })
       this.settle(id, { error: new StorageBusyError("SQLite worker did not answer a liveness probe") })
       return
     }
     void this.evaluate(id)
   }
 
-  private async evaluate(id: number) {
-    if (!this.pending.has(id)) return
-    if (!(await this.probeWorker())) {
-      this.failTerminal(
-        new StorageUnavailableError("The SQLite worker did not answer a liveness probe and cannot be recovered"),
-      )
-      return
-    }
-    // The worker answered, so only this request exceeded its budget.
-    this.settle(id, { error: new StorageBusyError("SQLite worker exceeded its request deadline") })
+  /** Declares the worker occupied. Idempotent, so a long silence reports once. */
+  private enterBusy() {
+    if (this.state === "busy" || this.state === "latched") return
+    this.state = "busy"
+    const budgets = StorageBudgets.current()
+    log.warn("SQLite worker is busy; storage is degraded until it answers", {
+      ceilingMs: budgets.hardCeilingMs,
+    })
+    ObservabilityIssues.raise({
+      code: "STORAGE_WORKER_BUSY",
+      severity: "warning",
+      module: "storage",
+      title: "Authoritative storage is degraded",
+      message:
+        "The SQLite worker stopped answering liveness probes, so its event loop is occupied by a statement. Storage is degraded and accepts no new work until the worker answers; the runtime keeps running.",
+      recommendation:
+        "Confirm no maintenance or migration statement exceeds the chunk budget, then inspect storage.queue.hold and storage.operation.duration for the occupying statement.",
+      evidence: { ceilingMs: budgets.hardCeilingMs, probeTimeoutMs: budgets.probeTimeoutMs },
+    })
+    ObservabilityMetrics.record({
+      name: "storage.worker.busy",
+      value: 1,
+      unit: "count",
+      module: "storage",
+    })
   }
 
-  private probeWorker(): Promise<boolean> {
-    this.probing ??= (async () => {
+  private leaveBusy() {
+    if (this.state !== "busy") return
+    this.state = "healthy"
+    log.info("SQLite worker answered again; storage is healthy")
+    ObservabilityMetrics.record({
+      name: "storage.worker.recovered",
+      value: 1,
+      unit: "count",
+      module: "storage",
+    })
+  }
+
+  private async evaluate(id: number) {
+    if (!this.pending.has(id)) return
+    // The worker is probed until it answers or the silence outlasts the
+    // ceiling. `probeAttempts` is how many unanswered probes it takes to call
+    // the worker occupied; the ceiling is what finally calls it wedged.
+    if (await this.monitorWorker()) {
+      // The worker answered, so only this request exceeded its budget.
+      this.settle(id, { error: new StorageBusyError("SQLite worker exceeded its request deadline") })
+      return
+    }
+    this.state = "exited"
+    this.failTerminal(
+      new StorageUnavailableError(
+        "The SQLite worker did not answer a liveness probe within its recovery ceiling and cannot be recovered",
+      ),
+    )
+  }
+
+  private monitorWorker(): Promise<boolean> {
+    if (this.monitoring) return this.monitoring
+    const run = (async (): Promise<boolean> => {
       try {
-        for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt++) {
+        const budgets = StorageBudgets.current()
+        for (let consecutive = 0; ; consecutive++) {
           if (await this.ping()) return true
+          if (consecutive + 1 >= budgets.probeAttempts) this.enterBusy()
+          const silent = performance.now() - (this.unresponsiveSince ?? performance.now())
+          if (silent >= budgets.hardCeilingMs) return false
         }
-        return false
       } finally {
-        this.probing = undefined
+        this.monitoring = undefined
       }
     })()
-    return this.probing
+    this.monitoring = run
+    return run
   }
 
   private ping(): Promise<boolean> {
     // A probe is pointless once this driver already gave up on the worker; the
     // terminal failure was reported when it happened.
     if (this.unavailableError || this.closed) return Promise.resolve(false)
+    const timeoutMs = StorageBudgets.current().probeTimeoutMs
     const id = ++this.sequence
     return new Promise<boolean>((resolve) => {
       const pending: PendingRequest = {
@@ -285,10 +360,10 @@ export class SqliteDriver implements SqlDriver {
         bytes: 0,
         probe: true,
         dispatchedAt: performance.now(),
-        deadline: PROBE_TIMEOUT_MS,
+        deadline: timeoutMs,
       }
       this.pending.set(id, pending)
-      this.arm(id, pending, PROBE_TIMEOUT_MS)
+      this.arm(id, pending, timeoutMs)
       try {
         this.worker.send({ action: "ping", id })
       } catch (error) {
@@ -362,17 +437,50 @@ export class SqliteDriver implements SqlDriver {
 
   close(): Promise<void> {
     this.closing ??= (async () => {
+      // A drain must be bounded. An unbounded `await` here hung the whole
+      // shutdown when a statement could not be interrupted, which is what made
+      // the runtime watchdog exit before it could settle anything.
+      const ceilingMs = StorageBudgets.current().hardCeilingMs
       try {
-        await Promise.all([this.writerQueue.close(), this.readerQueue.close()])
-        if (!this.closed) await this.request({ action: "close" })
+        await this.within(Promise.all([this.writerQueue.close(), this.readerQueue.close()]), ceilingMs, "queue drain")
+        if (!this.closed) await this.within(this.request({ action: "close" }), ceilingMs, "worker close")
+      } catch (error) {
+        // Bounded teardown continues regardless: the worker is killed below, so
+        // a drain that ran out of budget is reported rather than propagated as
+        // a shutdown failure.
+        log.warn("authoritative storage teardown exceeded its budget; killing the worker", { error })
       } finally {
         this.stopping = true
         this.closed = true
         this.worker.kill()
-        await this.worker.exited
+        await this.within(this.worker.exited, ceilingMs, "worker exit").catch(() => {})
         await this.ownership?.release()
       }
     })()
     return this.closing
+  }
+
+  /**
+   * Bounds a teardown step. A rejected timer is not an error path: the caller
+   * treats a timeout as "this step did not finish" and escalates by killing the
+   * worker, which is what actually unblocks the process.
+   */
+  private within<T>(task: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer: ReturnType<typeof setTimeout> = setTimeout(
+        () => reject(new StorageBusyError(`SQLite ${label} exceeded ${ms}ms`)),
+        ms,
+      )
+      task.then(
+        (value) => {
+          clearTimeout(timer)
+          resolve(value)
+        },
+        (error) => {
+          clearTimeout(timer)
+          reject(error)
+        },
+      )
+    })
   }
 }

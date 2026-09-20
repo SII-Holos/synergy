@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { SqliteDriver } from "../../src/storage/sqlite-driver"
 import { StorageBusyError, StorageUnavailableError } from "../../src/storage/errors"
+import { StorageBudgets } from "../../src/storage/budgets"
 import type { SqliteRequest } from "../../src/storage/sql-contract"
 
 const OWED_QUERY = "SELECT 1 AS value"
@@ -93,6 +94,10 @@ async function failure(task: Promise<unknown>) {
   )
 }
 
+// The probe count is bounded by the ceiling-to-probe ratio rather than a fixed
+// constant, because a probe timeout is a busy signal, not a death signal.
+const budgets = StorageBudgets.current()
+
 describe("SQLite worker deadline across host suspension", () => {
   test("a wall-clock deadline that fires while the monotonic budget stands does not kill the worker", async () => {
     using deadlines = capWallClockDeadlines()
@@ -130,8 +135,12 @@ describe("SQLite worker deadline across host suspension", () => {
     const first = await failure(driver.query(OWED_QUERY))
     expect(first).toBeInstanceOf(StorageUnavailableError)
     expect(unavailable).toHaveLength(1)
+    // The worker is probed until its silence outlasts the ceiling rather than
+    // being declared dead after a fixed number of unanswered probes, so the
+    // count is bounded by the ceiling-to-probe-timeout ratio instead of a
+    // constant.
     expect(probes).toBeGreaterThan(1)
-    expect(probes).toBeLessThanOrEqual(5)
+    expect(probes).toBeLessThanOrEqual(Math.ceil(budgets.hardCeilingMs / budgets.probeTimeoutMs) + 1)
     expect(internals(driver).closed).toBe(true)
     await internals(driver).worker.exited
     expect(internals(driver).worker.killed).toBe(true)
