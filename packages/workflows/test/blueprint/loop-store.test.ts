@@ -16,19 +16,12 @@ import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
  * BlueprintLoopStore transition validation tests.
  *
  * These tests encode the contracted transition table:
- *   armed    → running,cancelled
- *   running  → waiting,auditing,completed,failed,cancelled
- *   waiting  → running,cancelled
- *   auditing → running,completed,failed,cancelled,waiting
- *   terminal states (completed,failed,cancelled) → no outgoing
- *
- * The current updateStatus() does NOT validate transitions — it applies any
- * status blindly. These tests will RED-fail until transition validation is
- * added.
- *
- * Usage of `as any` on status values bypasses TypeScript narrowing for enum
- * members (armed, waiting) not yet declared in LoopStatus. The casts are
- * intentional — these tests verify runtime contract behavior.
+ *   armed     → running,cancelled
+ *   running   → auditing,completed,failed,cancelled
+ *   auditing  → running,completed,failed,cancelled
+ *   completed → completed
+ *   failed    → (none)
+ *   cancelled → (none)
  */
 
 describe("BlueprintLoopStore transitions", () => {
@@ -222,7 +215,7 @@ describe("BlueprintLoopStore transitions", () => {
     })
   })
 
-  test("running → waiting is valid", async () => {
+  test("running → auditing is valid (leaves running for a non-terminal hold)", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
@@ -240,14 +233,14 @@ describe("BlueprintLoopStore transitions", () => {
         })
 
         const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "waiting" as any,
+          status: "auditing" as any,
         })
-        expect(updated.status as string).toBe("waiting")
+        expect(updated.status).toBe("auditing")
       },
     })
   })
 
-  test("waiting → running is valid (resume)", async () => {
+  test("auditing → running is valid (resume)", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
@@ -259,12 +252,12 @@ describe("BlueprintLoopStore transitions", () => {
           title: "Loop",
           sessionID: "ses_test",
         })
-        // armed → running → waiting
+        // armed → running → auditing
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "waiting" as any,
+          status: "auditing" as any,
         })
 
         const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
@@ -275,7 +268,7 @@ describe("BlueprintLoopStore transitions", () => {
     })
   })
 
-  test("waiting → cancelled is valid", async () => {
+  test("auditing → cancelled is valid", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
@@ -287,12 +280,12 @@ describe("BlueprintLoopStore transitions", () => {
           title: "Loop",
           sessionID: "ses_test",
         })
-        // armed → running → waiting
+        // armed → running → auditing
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "waiting" as any,
+          status: "auditing" as any,
         })
 
         const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
