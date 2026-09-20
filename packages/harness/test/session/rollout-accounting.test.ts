@@ -102,3 +102,32 @@ test("reported charges stay independent of token estimates, retries and aggregat
   expect(summary.apiEstimate.known).toBe(0.0105)
   expect(RolloutAccounting.merge([summary, summary]).reported).toEqual({ currencies: { USD: 0.04 }, unreported: 2 })
 })
+
+test("usage recorded on the call survives a lost transport recording", async () => {
+  const fixture = await record()
+  await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+    status: "completed",
+    sdkUsage: { inputTokens: 1000, outputTokens: 500, totalTokens: 1500, cachedInputTokens: 200 },
+  })
+  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+  // No attempt was ever recorded, so the call is still counted as unobserved…
+  expect(summary.attempts).toBe(0)
+  expect(summary.unobservedCalls).toBe(1)
+  // …but its provider-reported usage is real, so tokens must not read as unknown.
+  expect(summary.tokens.total.known).toBe(1500)
+  expect(summary.tokens.total.unknown).toBe(0)
+  expect(summary.tokens.input.known).toBe(1000)
+  expect(summary.tokens.cacheRead.known).toBe(200)
+})
+
+test("a recorded attempt still wins over the call-level usage", async () => {
+  const fixture = await record()
+  await fixture.attempt(usage)
+  await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+    status: "completed",
+    sdkUsage: { inputTokens: 999_999, outputTokens: 999_999, totalTokens: 1_999_998 },
+  })
+  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+  expect(summary.attempts).toBe(1)
+  expect(summary.tokens.total.known).toBe(1500)
+})

@@ -219,7 +219,7 @@ Models with an explicit input limit (for example 400k context / 272k input / 128
 
 Before each provider call, the per-request maximum output is clamped to the configured output and to the context remaining after the measured input and margin, so a long prompt cannot push the request past the window. An explicit per-request output limit remains effective when context metadata is unavailable. If no response space remains, automatic compaction runs first when enabled; Synergy permits one hard-overflow recovery attempt for the root before the next provider turn, then records a local actionable error instead of repeatedly compacting or sending a guaranteed-to-fail provider request.
 
-After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider.
+After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider. The baseline is only reused for the provider and model that reported it, the delta counts every part that reaches the provider — including reasoning traces — and calibration withdraws itself in favor of a full measurement once that delta grows large relative to the baseline.
 
 ## Context Usage Snapshots
 

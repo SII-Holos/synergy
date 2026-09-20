@@ -161,4 +161,41 @@ export namespace RolloutUsage {
           result.output.total !== null
     return result
   }
+
+  /**
+   * Normalize an AI SDK `LanguageModelUsage` payload.
+   *
+   * Transport recording is best-effort: a request can reach the provider
+   * through a path that bypasses the recording fetch while the SDK result still
+   * carries usage, which `finishCall` persists on the call record. Those field
+   * names are camelCase, unlike the provider wire format `normalize` parses, so
+   * they need their own mapping.
+   */
+  export function normalizeSdk(raw: unknown): Info | null {
+    const usage = object(raw)
+    const input = count(usage.inputTokens)
+    const output = count(usage.outputTokens)
+    if (input === null && output === null) return null
+    // OpenAI-compatible SDKs report `inputTokens` inclusive of cached tokens.
+    const cacheRead = count(usage.cachedInputTokens) ?? (input === null ? null : 0)
+    const result: Info = {
+      version: 1,
+      protocol: "openai",
+      raw: (raw ?? null) as Info["raw"],
+      input: { total: input, uncached: null, cacheRead, cacheWrite: 0 },
+      output: { total: output, reasoning: count(usage.reasoningTokens) },
+      cacheWrites: {},
+      units: [],
+      billing: "tokens",
+      reported: null,
+      complete: false,
+    }
+    result.input.uncached = difference(input, cacheRead, 0)
+    result.complete =
+      result.input.total !== null &&
+      result.input.uncached !== null &&
+      result.input.cacheRead !== null &&
+      result.output.total !== null
+    return result
+  }
 }
