@@ -1,3 +1,5 @@
+import type { StorageMaintenanceOperation, StorageMaintenanceStage } from "@ericsanchezok/synergy-util/runtime-startup"
+
 export type SqlValue = string | number | bigint | Uint8Array | null
 export type SqlRow = Record<string, SqlValue>
 
@@ -11,16 +13,12 @@ export function sqlParameterBytes(values: SqlValue[]): number {
 }
 
 export interface SqlQueryOptions {
-  // Maintenance statements (integrity verification) legitimately run longer
-  // than ordinary operations; engines may extend their deadline.
-  maintenance?: boolean
-  // Declares a statement that cannot be split: an index build, a table rebuild,
-  // a physical integrity check, a `VACUUM`. Chunked maintenance is bounded by
-  // construction and stays on the chunk budget; these are bounded only by the
-  // ceiling, because their cost grows with the store and failing one at a chunk
-  // deadline would roll back work that would otherwise have finished.
-  unchunkable?: boolean
-  onMaintenanceBudget?: (timeoutMs: number) => void
+  // The operation names what a statement is doing *and* whether it can be split:
+  // `reclaim` frees a bounded page count per call, while every other operation is
+  // one engine call whose cost grows with the store. That distinction is what
+  // decides the budget, so the operation -- not a separate flag that could
+  // disagree with it -- is the single source of truth for it.
+  maintenance?: StorageMaintenanceOperation
 }
 
 export interface SqlTransactionOptions {
@@ -81,13 +79,13 @@ export type SqliteRequest = {
   reader?: boolean
   statement?: string
   values?: SqlValue[]
-  maintenance?: boolean
-  unchunkable?: boolean
+  maintenance?: StorageMaintenanceOperation
   maintain?: SqliteMaintenanceRequest
 }
 
 export type SqliteResponse = {
   id: number
+  stage?: StorageMaintenanceStage
   rows?: SqlRow[]
   maintain?: SqliteMaintenanceResult
   error?: { name: string; message: string; code?: string }

@@ -104,7 +104,9 @@ process.on("message", (request: SqliteRequest) => {
       const operation = request.maintain!.operation
       if (operation === "enable-incremental-vacuum") {
         response.maintain = {
-          changed: SqliteMaintenance.enableIncrementalVacuum(writer),
+          changed: SqliteMaintenance.enableIncrementalVacuum(writer, (stage) =>
+            process.send?.({ id: request.id, stage } satisfies SqliteResponse),
+          ),
           autoVacuum: SqliteMaintenance.autoVacuumMode(writer),
           releasedPages: 0,
           freelistPages: 0,

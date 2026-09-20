@@ -13,6 +13,7 @@ import { RecordCodec, type BodyContainer } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
+import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/runtime-startup"
 import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
@@ -957,8 +958,7 @@ export class TransactionalStore {
                 // that deadline is rolled back, and because the index is then still
                 // missing the next open repeats the same doomed build. `CREATE TABLE`
                 // stays on the ordinary deadline: it is a no-op once the table exists.
-                maintenance: statement.startsWith("CREATE INDEX"),
-                unchunkable: statement.startsWith("CREATE INDEX"),
+                maintenance: statement.startsWith("CREATE INDEX") ? "create-index" : undefined,
               })
           const [existing] = await connection.query(
             "SELECT version, owner, state FROM storage_namespaces WHERE namespace = ?",
@@ -1163,18 +1163,21 @@ export class TransactionalStore {
    * owns the statement text, so any interpolated identifier is its
    * responsibility to validate.
    */
-  async maintainDdl(statement: string): Promise<void> {
+  async maintainDdl(
+    statement: string,
+    operation: Extract<StorageMaintenanceOperation, "create-index" | "drop-index">,
+  ): Promise<void> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
-        await connection.query(statement, [], { maintenance: true, unchunkable: true })
+        await connection.query(statement, [], { maintenance: operation })
       }),
     )
   }
 
   /**
-   * Runs several DDL statements as one atomic unit on the maintenance budget.
+   * Runs several DDL statements as one atomic unit.
    *
    * The format rewrite has to drop a table, rename its replacement and rebuild
    * the indexes that drop removed. Committing those separately would expose a
@@ -1183,15 +1186,25 @@ export class TransactionalStore {
    * index build to outlast a request. SQLite DDL is transactional, so one
    * transaction leaves the previous table intact unless every statement
    * succeeds.
+   *
+   * `operation` opts the bundle into the maintenance lifecycle, and through it
+   * the ceiling budget: an index build or rebuild is one engine call whose cost
+   * grows with the store. Omit it for bookkeeping and staging DDL -- a migration
+   * state row, a replacement table created for a batched copy -- which is
+   * bounded by construction and would otherwise announce a lifecycle transition
+   * for every batch of a copy that runs tens of thousands of them.
    */
-  async maintainDdlTransaction(statements: Array<{ statement: string; values?: SqlValue[] }>): Promise<void> {
+  async maintainDdlTransaction(
+    statements: Array<{ statement: string; values?: SqlValue[] }>,
+    operation?: Extract<StorageMaintenanceOperation, "create-index" | "drop-index">,
+  ): Promise<void> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     if (!statements.length) return
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
         for (const { statement, values } of statements)
-          await connection.query(statement, values ?? [], { maintenance: true, unchunkable: true })
+          await connection.query(statement, values ?? [], operation ? { maintenance: operation } : undefined)
       }),
     )
   }
@@ -1222,7 +1235,7 @@ export class TransactionalStore {
   async dropIndexIfExists(index: string): Promise<void> {
     this.check()
     if (!/^[a-z_][a-z0-9_]*$/.test(index)) throw new StorageIntegrityError("Invalid storage index name")
-    await this.maintainDdl(`DROP INDEX IF EXISTS ${index}`)
+    await this.maintainDdl(`DROP INDEX IF EXISTS ${index}`, "drop-index")
   }
 
   /**
@@ -1369,7 +1382,7 @@ export class TransactionalStore {
     )
   }
 
-  async verify(progress?: (current: number, timeoutMs?: number) => void) {
+  async verify(progress?: (current: number) => void) {
     this.check()
     progress?.(0)
     let work = 0
@@ -1380,13 +1393,10 @@ export class TransactionalStore {
             if (this.driver.backend === "sqlite") {
               const rows = await connection.query("PRAGMA integrity_check", [], {
                 // A physical check is one engine call with no progress callback, so
-                // it cannot be split and its cost grows with the store. Bounding it
-                // by the chunk budget would fail a healthy store's verification, and
-                // the host waiting on this progress uses the reported budget as the
-                // deadline for the stage.
-                maintenance: true,
-                unchunkable: true,
-                onMaintenanceBudget: (timeoutMs) => recordProgress({ current: work, timeoutMs }),
+                // it cannot be split and its cost grows with the store. The driver
+                // reports the ceiling as this operation's budget on the maintenance
+                // lifecycle, which is the deadline the host waits on for the stage.
+                maintenance: "integrity-check",
               })
               if (rows.length !== 1 || rows[0].integrity_check !== "ok")
                 throw new StorageIntegrityError("SQLite integrity verification failed")
@@ -1550,7 +1560,7 @@ export class TransactionalStore {
                   }
                 }
                 work += batch.length
-                recordProgress({ current: work })
+                recordProgress(work)
                 batch = []
               }
               for await (const record of tx.records<Record<string, unknown>>()) {
@@ -1559,7 +1569,7 @@ export class TransactionalStore {
               }
               if (batch.length) await verifyBatch()
               for (const orphan of await collectOrphanNodes()) issues.push(orphan)
-              recordProgress({ current: work })
+              recordProgress(work)
               return { backend: this.driver.backend, namespace: this.options.namespace, records, kinds, issues }
             } finally {
               tx.finish()
@@ -1567,9 +1577,7 @@ export class TransactionalStore {
           },
           { readOnly: true },
         ),
-      progress
-        ? (value: { current: number; timeoutMs?: number }) => progress(value.current, value.timeoutMs)
-        : undefined,
+      progress,
     )
   }
 

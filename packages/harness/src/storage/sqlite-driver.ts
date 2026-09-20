@@ -17,6 +17,8 @@ import { ObservabilityMetrics } from "../observability/metrics"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { StorageQueue } from "./queue"
 import { sqlParameterBytes } from "./sql-contract"
+import { beginStorageMaintenance } from "./maintenance-progress"
+import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/runtime-startup"
 import type {
   SqlConnection,
   SqlDriver,
@@ -48,6 +50,7 @@ type PendingRequest = {
   dispatchedAt: number
   deadline: number
   timeout?: ReturnType<typeof setTimeout>
+  maintenance?: ReturnType<typeof beginStorageMaintenance>
 }
 
 export class SqliteDriver implements SqlDriver {
@@ -86,6 +89,14 @@ export class SqliteDriver implements SqlDriver {
       stderr: "inherit",
       ipc: (message: SqliteResponse) => {
         if (!this.pending.has(message.id)) return
+        // A staged progress report proves the process is alive and advancing, so
+        // it restarts the silence window without clearing the busy state: the
+        // loop is still occupied by the statement that produced those stages.
+        if (message.stage) {
+          this.observeProgress()
+          this.pending.get(message.id)?.maintenance?.stage(message.stage)
+          return
+        }
         // Any answer at all is proof the event loop is alive, so it both clears
         // the busy state and restarts the silence window that the ceiling is
         // measured against.
@@ -102,12 +113,8 @@ export class SqliteDriver implements SqlDriver {
           return
         }
         this.closed = true
-        for (const pending of this.pending.values()) {
-          if (pending.timeout) clearTimeout(pending.timeout)
-          pending.reject(new Error(`SQLite worker exited with code ${code}`))
-        }
-        this.pending.clear()
-        this.queuedBytes = 0
+        for (const id of this.pending.keys())
+          this.settle(id, { error: new Error(`SQLite worker exited with code ${code}`) })
       },
     })
   }
@@ -162,12 +169,22 @@ export class SqliteDriver implements SqlDriver {
     this.leaveBusy()
   }
 
+  // A staged maintenance report proves the worker is alive and advancing, but not
+  // that it is free: the stage came from the very statement occupying the loop. It
+  // therefore restarts the silence window the ceiling is measured against without
+  // clearing the busy state, so a long rewrite that keeps reporting stages is
+  // neither mistaken for a wedge nor reported healthy while it still blocks work.
+  private observeProgress() {
+    this.unresponsiveSince = undefined
+  }
+
   private settle(id: number, result: { rows: SqlRow[]; maintain?: SqliteMaintenanceResult } | { error: unknown }) {
     const pending = this.pending.get(id)
     if (!pending) return
     if (pending.timeout) clearTimeout(pending.timeout)
     this.pending.delete(id)
     this.queuedBytes -= pending.bytes
+    pending.maintenance?.finish("error" in result ? "failed" : "completed")
     if ("error" in result) pending.reject(result.error)
     else pending.resolve({ rows: result.rows, maintain: result.maintain })
   }
@@ -178,12 +195,7 @@ export class SqliteDriver implements SqlDriver {
     this.closed = true
     this.stopping = true
     this.worker.kill()
-    for (const pending of [...this.pending.values()]) {
-      if (pending.timeout) clearTimeout(pending.timeout)
-      pending.reject(error)
-    }
-    this.pending.clear()
-    this.queuedBytes = 0
+    for (const id of this.pending.keys()) this.settle(id, { error })
     for (const listener of [...this.unavailableListeners]) listener(error)
   }
 
@@ -198,9 +210,26 @@ export class SqliteDriver implements SqlDriver {
     }
   }
 
+  /**
+   * The budget for one statement, chosen by whether the work could have been split
+   * rather than by how long it is expected to take.
+   *
+   * Only `reclaim` is splittable: it frees a bounded page count per call, so a
+   * chunk budget it can actually meet is enforceable. Every other maintenance
+   * operation is a single engine call — `VACUUM` rewrites every page, `PRAGMA
+   * integrity_check` has no progress callback, `CREATE INDEX` has no partial form —
+   * and each grows with the store, so measuring one against the chunk budget would
+   * fail work that would have finished, and would fail an index build in the worst
+   * way: rolled back, then rebuilt on every open. Those are governed by the
+   * ceiling, which is what the ceiling exists to bound.
+   */
+  private statementBudget(operation?: StorageMaintenanceOperation): number {
+    const budgets = StorageBudgets.current()
+    if (!operation) return budgets.requestDeadlineMs
+    return operation === "reclaim" ? budgets.chunkBudgetMs : budgets.engineBudgetMs
+  }
   private async request(
     request: Omit<SqliteRequest, "id">,
-    onMaintenanceBudget?: (timeoutMs: number) => void,
   ): Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }> {
     if (this.unavailableError) return Promise.reject(this.unavailableError)
     if (this.closed) return Promise.reject(new StorageClosedError())
@@ -210,30 +239,27 @@ export class SqliteDriver implements SqlDriver {
     // full ceiling before anything terminal happens.
     if (this.state === "busy")
       return Promise.reject(new StorageBusyError("Authoritative storage is busy; retry when the worker answers"))
-    const budgets = StorageBudgets.current()
-    // Every statement gets a bounded budget, and which bound applies depends on
-    // whether the work could have been split. Maintenance used to scale its own
-    // deadline by database size, which let one statement occupy the worker for
-    // hours while the probe budget that actually decides this driver's fate
-    // stayed at a fraction of it; chunking the work is what makes a fixed budget
-    // enforceable. The statements that cannot be chunked are the exception, and
-    // they are what the ceiling itself governs: an index build or a physical
-    // check failed at a chunk deadline is rolled back and repeated on the next
-    // open, so bounding it there would prevent the one thing the ceiling exists
-    // to bound.
-    const maintenance = request.maintenance || request.action === "maintain"
-    const deadline = request.unchunkable
-      ? budgets.engineBudgetMs
-      : maintenance
-        ? budgets.chunkBudgetMs
-        : budgets.requestDeadlineMs
-    if (maintenance) onMaintenanceBudget?.(deadline)
+    // The budget follows whether the work could have been split; see
+    // `statementBudget`.
+    const deadline = this.statementBudget(request.maintenance)
     const bytes = sqlParameterBytes(request.values ?? [])
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
+    const budgets = StorageBudgets.current()
+    const maintenance = request.maintenance
+      ? beginStorageMaintenance(request.maintenance, deadline + budgets.probeAttempts * budgets.probeTimeoutMs)
+      : undefined
     const promise = new Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, bytes, probe: false, dispatchedAt: performance.now(), deadline })
+      this.pending.set(id, {
+        resolve,
+        reject,
+        bytes,
+        probe: false,
+        dispatchedAt: performance.now(),
+        deadline,
+        maintenance,
+      })
     })
     this.queuedBytes += bytes
     this.arm(id, this.pending.get(id)!, deadline)
@@ -383,11 +409,15 @@ export class SqliteDriver implements SqlDriver {
 
   async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
     // Converting a store to incremental auto-vacuum rewrites every page with one
-    // `VACUUM`, which cannot be split, so it is bounded by the ceiling. Reclaim is
-    // the exception: it frees a bounded page count per call and stays chunked.
-    const unchunkable = request.operation === "enable-incremental-vacuum"
+    // `VACUUM`, which cannot be split, so `statementBudget` bounds it by the
+    // ceiling. Reclaim is the exception: it frees a bounded page count per call
+    // and stays on the chunk budget.
     const result = await this.writerQueue.run(() =>
-      this.request({ action: "maintain", maintain: request, maintenance: true, unchunkable }),
+      this.request({
+        action: "maintain",
+        maintain: request,
+        maintenance: request.operation === "enable-incremental-vacuum" ? "vacuum" : "reclaim",
+      }),
     )
     if (!result.maintain) throw new StorageIntegrityError("SQLite maintenance returned no result")
     return result.maintain
@@ -399,17 +429,7 @@ export class SqliteDriver implements SqlDriver {
     options?: SqlQueryOptions,
   ): Promise<Row[]> {
     const result = await this.readerQueue.run(() =>
-      this.request(
-        {
-          action: "query",
-          reader: true,
-          statement,
-          values,
-          maintenance: options?.maintenance,
-          unchunkable: options?.unchunkable,
-        },
-        options?.onMaintenanceBudget,
-      ),
+      this.request({ action: "query", reader: true, statement, values, maintenance: options?.maintenance }),
     )
     return result.rows as Row[]
   }
@@ -423,17 +443,13 @@ export class SqliteDriver implements SqlDriver {
         queryOptions?: SqlQueryOptions,
       ) =>
         (
-          await this.request(
-            {
-              action: "query",
-              reader: options.readOnly,
-              statement,
-              values,
-              maintenance: queryOptions?.maintenance,
-              unchunkable: queryOptions?.unchunkable,
-            },
-            queryOptions?.onMaintenanceBudget,
-          )
+          await this.request({
+            action: "query",
+            reader: options.readOnly,
+            statement,
+            values,
+            maintenance: queryOptions?.maintenance,
+          })
         ).rows as Row[]
       // A declared single statement is already atomic, so BEGIN/COMMIT would
       // cost this worker two extra IPC round trips for no consistency gain.

@@ -6,6 +6,7 @@ import path from "node:path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { SqliteDriver } from "../../src/storage/sqlite-driver"
 import { StorageBudgets } from "../../src/storage/budgets"
+import { observeStorageMaintenance } from "../../src/storage/maintenance-progress"
 import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import type { SqlConnection, SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
 
@@ -64,37 +65,47 @@ test("maintenance statements keep a fixed chunk budget bounded below the worker 
       }),
     )
     const budgets: number[] = []
-    const maintenance = { maintenance: true, onMaintenanceBudget: (timeoutMs: number) => budgets.push(timeoutMs) }
-    expect(await driver.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
+    const maintenance = { maintenance: "integrity-check" as const }
+    const observe = <T>(operation: () => Promise<T>) =>
+      observeStorageMaintenance(operation, (event) => {
+        if (event.state === "started") budgets.push(event.timeoutMs)
+      })
+    expect(await observe(() => driver.query("PRAGMA integrity_check", [], maintenance))).toEqual([
+      { integrity_check: "ok" },
+    ])
     const initial = Math.max(...deadlines)
-    expect(budgets).toEqual([initial])
-    // A statement cannot buy itself a longer budget by growing the database: it
-    // shares one fixed chunk budget that leaves a margin below the ceiling the
-    // driver measures silence against. The statements that cannot be chunked are
-    // the exception and report the ceiling itself.
-    const unchunkable: number[] = []
-    expect(
-      await driver.query("PRAGMA integrity_check", [], {
-        maintenance: true,
-        unchunkable: true,
-        onMaintenanceBudget: (timeoutMs: number) => unchunkable.push(timeoutMs),
-      }),
-    ).toEqual([{ integrity_check: "ok" }])
-    expect(unchunkable).toEqual([StorageBudgets.current().hardCeilingMs])
-    expect(Math.max(...deadlines)).toBe(StorageBudgets.current().hardCeilingMs)
-    deadlines.length = 0
-    await driver.transaction((tx) => tx.query("INSERT INTO evidence VALUES (zeroblob(8388608))"))
-    await driver.transaction(
-      async (tx) => {
-        expect(await tx.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
-      },
-      { readOnly: true },
-    )
-    expect(Math.max(...deadlines)).toBe(initial)
-    expect(budgets).toEqual([initial, initial])
+    expect(budgets).toEqual([initial + 90_000])
     const current = StorageBudgets.current()
-    expect(initial).toBe(current.chunkBudgetMs)
-    expect(initial * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(current.hardCeilingMs)
+    // A maintenance statement cannot buy itself a longer budget by growing the
+    // database, which is what a size-derived deadline did. The operation decides
+    // the budget, and the physical check is one of the operations that cannot be
+    // chunked, so it reports the ceiling the driver measures silence against.
+    expect(initial).toBe(current.engineBudgetMs)
+    expect(initial).toBe(current.hardCeilingMs)
+    expect(current.chunkBudgetMs * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(current.hardCeilingMs)
+    for (const operation of ["vacuum", "create-index", "drop-index"] as const) {
+      deadlines.length = 0
+      await driver.query("PRAGMA integrity_check", [], { maintenance: operation })
+      expect(Math.max(...deadlines)).toBe(current.engineBudgetMs)
+    }
+    deadlines.length = 0
+    await driver.query("SELECT 1 AS value", [], { maintenance: "reclaim" })
+    expect(Math.max(...deadlines)).toBe(current.chunkBudgetMs)
+    await driver.transaction((tx) => tx.query("INSERT INTO evidence VALUES (zeroblob(8388608))"))
+    deadlines.length = 0
+    await observe(() =>
+      driver.transaction(
+        async (tx) => {
+          expect(await tx.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
+        },
+        { readOnly: true },
+      ),
+    )
+    // Growing the database must not extend the deadline: a size-derived budget is
+    // precisely what let one statement outlast the probe budget that decides this
+    // driver's fate.
+    expect(Math.max(...deadlines)).toBe(initial)
+    expect(budgets).toEqual([initial + 90_000, initial + 90_000])
     deadlines.length = 0
     expect(await driver.query("SELECT 1 AS value")).toEqual([{ value: 1n }])
     expect(deadlines).toEqual([current.requestDeadlineMs])
@@ -171,19 +182,30 @@ test("verification reports outside retried transactions and counts repeated scan
       }
     }
   })
-  const result = await data.store.verify((current, timeoutMs) => {
-    expect(context.getStore()).toBeUndefined()
-    progress.push(current)
-    if (timeoutMs !== undefined) budgets.push(timeoutMs)
-  })
+  const result = await observeStorageMaintenance(
+    () =>
+      data.store.verify((current) => {
+        expect(context.getStore()).toBeUndefined()
+        progress.push(current)
+      }),
+    (event) => {
+      expect(context.getStore()).toBeUndefined()
+      if (event.state === "started") budgets.push(event.timeoutMs)
+    },
+  )
   expect(result.records).toBe(600)
+  const budgets_ = StorageBudgets.current()
   expect(budgets).toHaveLength(2)
   // A physical check is one engine call with no progress callback, so it cannot
-  // be split and its cost grows with the store. The host waiting on this progress
-  // uses the reported budget as the deadline for the stage, so bounding it by the
-  // chunk budget would fail a healthy store's verification.
-  expect(budgets.every((value) => value === StorageBudgets.current().engineBudgetMs)).toBe(true)
-  expect(StorageBudgets.current().engineBudgetMs).toBe(StorageBudgets.current().hardCeilingMs)
+  // be split and its cost grows with the store. Bounding it by the chunk budget
+  // would fail a healthy store's verification, so the lifecycle reports the
+  // ceiling, plus the bounded probe margin the driver adds before the host's
+  // deadline: a probe that is itself answered from the occupied event loop must
+  // have room to time out without the host declaring the stage late.
+  const engineReported = budgets_.engineBudgetMs + budgets_.probeAttempts * budgets_.probeTimeoutMs
+  expect(budgets).toEqual([engineReported, engineReported])
+  expect(budgets_.engineBudgetMs).toBe(budgets_.hardCeilingMs)
+  expect(budgets_.chunkBudgetMs).toBeLessThan(budgets_.engineBudgetMs)
   expect(progress.at(-1)).toBe(1200)
   expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true)
 })

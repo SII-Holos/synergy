@@ -331,13 +331,16 @@ export namespace StorageFormatV3Migration {
    */
   export async function rebuildNodes(store: TransactionalStore): Promise<void> {
     if (store.options.backend !== "sqlite") return
-    await store.maintainDdlTransaction([
-      { statement: `DROP TABLE IF EXISTS ${nodesTable}` },
-      { statement: nodesTableDdl("sqlite", nodesTable) },
-      { statement: "DROP TABLE storage_nodes" },
-      { statement: `ALTER TABLE ${nodesTable} RENAME TO storage_nodes` },
-      { statement: STORAGE_NODES_PARENT_INDEX },
-    ])
+    await store.maintainDdlTransaction(
+      [
+        { statement: `DROP TABLE IF EXISTS ${nodesTable}` },
+        { statement: nodesTableDdl("sqlite", nodesTable) },
+        { statement: "DROP TABLE storage_nodes" },
+        { statement: `ALTER TABLE ${nodesTable} RENAME TO storage_nodes` },
+        { statement: STORAGE_NODES_PARENT_INDEX },
+      ],
+      "create-index",
+    )
     await deriveNodes(store, "storage_nodes", "", () => {})
   }
 
@@ -574,29 +577,37 @@ export namespace StorageFormatV3Migration {
     progress?.(0, 0, 4)
     const namespace = store.options.namespace
     const next: State = { ...state, phase: "reclaim" }
-    await store.maintainDdlTransaction([
-      { statement: "DROP TABLE storage_records" },
-      { statement: `ALTER TABLE ${recordsTable} RENAME TO storage_records` },
-      { statement: "DROP TABLE storage_nodes" },
-      { statement: `ALTER TABLE ${nodesTable} RENAME TO storage_nodes` },
-      { statement: "DROP TABLE storage_artifacts" },
-      { statement: `ALTER TABLE ${artifactsTable} RENAME TO storage_artifacts` },
-      // `DROP TABLE` took every index with the dropped tables, so these rebuilds
-      // are the only ones. They run on the maintenance budget because each reads
-      // a whole table.
-      ...storageRecordsIndexes("sqlite").map((statement) => ({ statement })),
-      { statement: STORAGE_NODES_PARENT_INDEX },
-      ...storageArtifactsIndexes.map((statement) => ({ statement })),
-      // The recorded format, the namespace version and the terminal phase all
-      // change in the same transaction as the tables they describe, so no
-      // observer can see format 3 recorded over format 2 rows, and re-entry can
-      // never mistake a finished rewrite for an unfinished one.
-      {
-        statement: `INSERT INTO ${stateTable}(namespace, state) VALUES (?, ?) ON CONFLICT(namespace) DO UPDATE SET state = excluded.state`,
-        values: [namespace, JSON.stringify(next)] as SqlValue[],
-      },
-      { statement: "UPDATE storage_namespaces SET version = 3 WHERE namespace = ?", values: [namespace] as SqlValue[] },
-    ])
+    await store.maintainDdlTransaction(
+      [
+        { statement: "DROP TABLE storage_records" },
+        { statement: `ALTER TABLE ${recordsTable} RENAME TO storage_records` },
+        { statement: "DROP TABLE storage_nodes" },
+        { statement: `ALTER TABLE ${nodesTable} RENAME TO storage_nodes` },
+        { statement: "DROP TABLE storage_artifacts" },
+        { statement: `ALTER TABLE ${artifactsTable} RENAME TO storage_artifacts` },
+        // `DROP TABLE` took every index with the dropped tables, so these rebuilds
+        // are the only ones. Each build reads a whole table, so the bundle is
+        // announced as an index build on the maintenance lifecycle; that is what
+        // gives it the ceiling budget rather than a chunk budget a store this size
+        // cannot meet.
+        ...storageRecordsIndexes("sqlite").map((statement) => ({ statement })),
+        { statement: STORAGE_NODES_PARENT_INDEX },
+        ...storageArtifactsIndexes.map((statement) => ({ statement })),
+        // The recorded format, the namespace version and the terminal phase all
+        // change in the same transaction as the tables they describe, so no
+        // observer can see format 3 recorded over format 2 rows, and re-entry can
+        // never mistake a finished rewrite for an unfinished one.
+        {
+          statement: `INSERT INTO ${stateTable}(namespace, state) VALUES (?, ?) ON CONFLICT(namespace) DO UPDATE SET state = excluded.state`,
+          values: [namespace, JSON.stringify(next)] as SqlValue[],
+        },
+        {
+          statement: "UPDATE storage_namespaces SET version = 3 WHERE namespace = ?",
+          values: [namespace] as SqlValue[],
+        },
+      ],
+      "create-index",
+    )
     // Reads declare a single-statement contract and cannot re-read the format per
     // statement, so the store adopts the byte encoding in the process that
     // performed the swap.

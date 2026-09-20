@@ -61,7 +61,9 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0019 | Retention maintenance stalled the live writer | implemented | 2026-09-19 |
 
-| 0020 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
+| 0020 | Managed startup maintenance outgrew Desktop progress | implemented | 2026-09-20 |
+
+| 0021 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
 
 ## History rules
 
