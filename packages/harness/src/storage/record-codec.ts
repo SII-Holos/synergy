@@ -33,18 +33,53 @@ export namespace RecordCodec {
   export const MAX_BODY_BYTES = 128 * 1024 * 1024
   const ZSTD_LEVEL = 3
 
-  export function encode(value: unknown): RecordBody {
-    const json = JSON.stringify(value)
-    if (json === undefined) throw new StorageIntegrityError("A storage record must be JSON serializable")
+  // The honest comparison: the frame is stored only when it is actually
+  // smaller than the JSON it replaces. The retired codec compared a base64
+  // expansion against the original, so a body had to beat an inflated target to
+  // be stored compressed at all.
+  function frame(json: string): RecordBody {
     const raw = Buffer.from(json, "utf8")
     if (raw.byteLength < COMPRESSION_FLOOR || raw.byteLength > MAX_BODY_BYTES) return json
     const compressed = Buffer.from(Bun.zstdCompressSync(raw, { level: ZSTD_LEVEL }))
-    const frame = Buffer.concat([Buffer.from([CODEC_MARKER, CODEC_ZSTD]), writeVarint(raw.byteLength), compressed])
-    // The honest comparison: the frame is stored only when it is actually
-    // smaller than the JSON it replaces. The retired codec compared a base64
-    // expansion against the original, so a body had to beat an inflated target
-    // to be stored compressed at all.
-    return frame.byteLength < raw.byteLength ? frame : json
+    const body = Buffer.concat([Buffer.from([CODEC_MARKER, CODEC_ZSTD]), writeVarint(raw.byteLength), compressed])
+    return body.byteLength < raw.byteLength ? body : json
+  }
+
+  export function encode(value: unknown): RecordBody {
+    const json = JSON.stringify(value)
+    if (json === undefined) throw new StorageIntegrityError("A storage record must be JSON serializable")
+    return frame(json)
+  }
+
+  /**
+   * Moves an already-stored body into the current frame form when that is
+   * smaller.
+   *
+   * This deliberately does not decode and re-encode through `JSON`: a stored
+   * body is JSON *text*, and a parse/serialize round trip is not byte-preserving
+   * for every value a caller may have written (`1e21`, duplicate keys, number
+   * precision). A rewrite that changed the recorded bytes would rewrite stored
+   * evidence. Only the container changes here; the text is carried across
+   * exactly.
+   */
+  export function reencode(body: RecordBody): RecordBody {
+    return frame(text(body))
+  }
+
+  /** The JSON text a stored body holds, without parsing it. */
+  export function text(body: RecordBody): string {
+    try {
+      if (typeof body === "string") {
+        if (!body.startsWith("z:")) return body
+        const encoded = body.slice(2)
+        const bytes = Buffer.from(encoded, "base64")
+        if (bytes.toString("base64") !== encoded) throw new Error("Invalid record encoding")
+        return inflateSync(bytes, { maxOutputLength: MAX_BODY_BYTES }).toString("utf8")
+      }
+      return frameText(body)
+    } catch {
+      throw new StorageIntegrityError("Stored record encoding is invalid")
+    }
   }
 
   export function decode<T = unknown>(body: RecordBody): T {
@@ -67,7 +102,7 @@ export namespace RecordCodec {
     return JSON.parse(inflateSync(bytes, { maxOutputLength: MAX_BODY_BYTES }).toString("utf8")) as unknown
   }
 
-  function decodeFrame(body: Uint8Array) {
+  function frameText(body: Uint8Array) {
     if (body.byteLength < 3 || body[0] !== CODEC_MARKER) throw new Error("Invalid record frame")
     const codec = body[1]!
     const [declared, start] = readVarint(body, 2)
@@ -82,7 +117,11 @@ export namespace RecordCodec {
     else if (codec === CODEC_RAW) raw = Buffer.from(payload)
     else throw new Error("Unknown record codec")
     if (raw.byteLength !== declared) throw new Error("Stored record length disagrees with its header")
-    return JSON.parse(raw.toString("utf8")) as unknown
+    return raw.toString("utf8")
+  }
+
+  function decodeFrame(body: Uint8Array) {
+    return JSON.parse(frameText(body)) as unknown
   }
 
   function writeVarint(value: number): Buffer {

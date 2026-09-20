@@ -1,0 +1,66 @@
+# Decision Record: Storage format 3
+
+Status: implemented
+
+## Problem
+
+A live authoritative store reached 42.9 GiB and 37.9M rows while holding roughly 21.5 GiB of payload. Measured attribution put the difference in structure and literal duplication rather than in evidence:
+
+- `storage_nodes.key_text` stored the _full cumulative path JSON for every prefix level_, against a 12-byte segment. A rollout record seven levels deep carried seven growing path strings, and the column measured ~149 B/row. Its only consumer was an assertion that compared it with the record's own `key_text`, which the record already stores.
+- Every logical key was written as a 64-character hex string in `key_id`. That text is the record's identity in two tables and in four secondary indexes on `storage_records`, plus the `storage_nodes` primary key and its parent index — so every key was paid for six times at double its binary length.
+- `storage_records_message` indexed `message_id` unconditionally, but 100% of rollout rows carry an empty `message_id`, so each one still paid a full index key entry.
+- `storage_artifacts.pack` duplicated a value already present in the `location` JSON beside it.
+
+The constraint that makes this non-trivial is the upgrade path. A store cannot be rewritten in place by a schema change: the rows have to move between encodings, and there are tens of millions of them, on a live authority whose reads are answered by a single SQLite worker with a fixed statement budget.
+
+## Decision
+
+**A key column with no affinity holds both encodings.** Format 3 stores the raw 32-byte sha256 of a logical key in `key_id BLOB`. The declaration is load-bearing: a column with `BLOB` affinity has no affinity at all, so a byte string written by format 3 and the hex text written by format 2 occupy the same column and both remain readable. That is what allows the rewrite to run in bounded batches alongside the live table instead of requiring a second value column, a full-table rewrite in one statement, or a downtime window.
+
+`KeyEncoding` (`"hex" | "bytes"`) is derived from the namespace's recorded format at open, not from the backend, and every SQL site that addresses a record by key binds through it. Hex remains the JavaScript identity in `Map`/`Set`, because a `Uint8Array` is keyed by reference and would break every lookup.
+
+**`storage_nodes.key_text` is dropped.** The table is derived: its rows are exactly the prefixes of the live record keys, and no path text is needed to address a node. What the column was used for — proving the index names the record a key resolves to — is now checked directly against the node's own `segment` and `parent_id`, which are the columns traversal actually reads.
+
+**`storage_records_message` is partial.** The `WHERE message_id <> ''` predicate keeps ownerless rows out of the index. `queryRows` restates the predicate when a `messageID` is given, because an equality alone does not imply it and the planner would otherwise fall back to a scan.
+
+**`storage_artifacts.pack` is a virtual generated column** derived from `location`, keeping the name and the `storage_artifacts_pack` index. It cannot be named in an `INSERT` or a `DO UPDATE`, so the write path omits it under format 3 and still supplies it under format 2, where the column is a real `NOT NULL` one.
+
+**`verify()` replaces the retired join assertion with two explicit invariants.** A live record whose node is missing is unreachable by traversal while the record page still returns it, so it remains a hard integrity failure. A node whose subtree holds no record at all is reported as an `issues` entry with reason `node_without_record` and counted. A tombstoned record counts as a record for this purpose: `remove` and `removeTree` deliberately keep a revision tombstone per record as a deletion fence, so a deleted subtree retains its rows and nodes by design, and treating those nodes as orphans would report normal deletion as corruption. The reachable-but-stranded case is what an interrupted `pruneTree` leaves between its record delete and its node delete.
+
+**The rewrite is resumable and swaps atomically.** `StorageFormatV3Migration` (`20260920-storage-format-v3`, storage domain) builds each replacement table alongside the live one in 256-row keyset batches and swaps all three in one transaction. Swapping them separately would be unsafe: traversal joins `storage_records.key_id` to `storage_nodes.key_id`, so a window in which one table holds byte keys and the other hex text makes every prefix walk return nothing. SQLite DDL is transactional, so an interruption leaves a fully readable store in one format or the other, never a mixture. The durable state lives in its own `storage_format_v3_state` table rather than in `storage_records`, because a bookkeeping row inside the record space would make `scan`, `list`, `query` and portable export differ before and after the rewrite even though no stored evidence changed. Record bodies cross the rewrite through `RecordCodec.reencode`, which moves an existing body into the current frame form without parsing it: a `JSON.parse`/`JSON.stringify` round trip is not byte-preserving for every value a caller may have written, so re-encoding through `decode`/`encode` could silently rewrite stored evidence. Tombstones stay `NULL` and are never re-encoded into a body.
+
+**`version: 3` is written by the swap, never by the open path.** `TransactionalStore.open` writes the new format only for a namespace it is creating, and otherwise preserves whatever version is recorded. That is the one ordering that cannot leave a store claiming format 3 while holding format 2 rows: opening a v2 store for writing keeps it at 2 and serves it with hex bindings until the rewrite stamps 3 in the same transaction that installs the byte-encoded tables. The acceptance gate accepts 1, 2 and 3; a version-1 store keeps its existing "upgrade required" rejection for read-only opens.
+
+**PostgreSQL keeps the format 2 layout.** PostgreSQL cannot mix `text` and `bytea` in one column, and `json_extract` is not available, so a PostgreSQL namespace keeps hex keys, the real `pack` column and the full message index. The DDL is defined per backend through `artifactsTableDdl`/`nodesTableDdl`/`recordsTableDdl`, and the migration returns immediately there.
+
+## Alternatives considered
+
+**One `VACUUM` and no format change.** Reclaiming free pages does not shrink a table whose rows still carry a redundant 149-byte path column and six copies of every key. The measured attribution is structure and duplication, which only a rewrite returns.
+
+**Keep `key_id` as hex text and only drop `key_text`.** This is the smaller change and would have reclaimed the node-path duplication alone, but it leaves every key at twice its binary length in two primary keys and four secondary indexes — the largest single component of the measured excess.
+
+**Store bytes in a value-column with a separate byte column beside the old one.** A second column doubles the row width during the rewrite and then needs its own drop and rebuild, which is strictly more work than a no-affinity column that already accepts both encodings.
+
+**Convert the keys with SQL `unhex()` in one `UPDATE`.** A single statement over 37.9M rows cannot finish inside the worker's fixed chunk budget, and a statement killed at that deadline is rolled back and retried on every open. Bounded batches with a durable cursor are what make the rewrite interruptible.
+
+**Swap `storage_records` and `storage_nodes` in separate transactions.** Traversal joins the two tables on `key_id`, so any window where one holds bytes and the other holds hex makes `scan`, `list` and `removeTree` return nothing for that interval. Both must move together.
+
+**Rebuild `storage_nodes` in the swap transaction instead of copying it.** Deriving 37.9M records' prefixes inside the swap would hold the writer for minutes and make the atomic step the long one. Building it beforehand in bounded batches keeps the swap itself bounded by the index rebuilds.
+
+**Report orphan nodes as a hard integrity failure.** `verify()`'s `issues` is the corruption channel: `StorageRecovery.validate` throws for a non-session issue and quarantines a session for a session one. `removeTree` is called throughout the product, so treating its tombstoned subtrees as corruption would quarantine sessions after ordinary deletion.
+
+**Keep `verify()`'s `LEFT JOIN storage_nodes` to satisfy the old assertion.** The join existed only to compare `n.key_text` with `r.key_text`. With the path column gone it would read the node row it already looks up and assert nothing, while forcing a join per record page.
+
+**Re-encode bodies with `decode`/`encode` instead of `reencode`.** Round-tripping through `JSON` is not byte-preserving for every value a caller may have written, so a rewrite could change stored evidence while reporting success.
+
+**Apply the generated `pack` column through `ALTER TABLE ... DROP COLUMN` + `ADD COLUMN` in place.** `ADD COLUMN` on a populated table cannot add a `NOT NULL` column, and rebuilding the table is required for the primary key and index to be recreated around the generated column; the migration's table-rebuild path does exactly that and is verified by the same code that rebuilds the other two.
+
+## Consequences
+
+A realistic store shrinks substantially. Measured on a 20,600-record rollout-shaped fixture (200 sessions × 100 runs, plus 400 artifacts, incremental auto-vacuum, reported from `dbstat`): **39.6 MiB → 21.3 MiB, a 46.1% reduction**, with `storage_records` 13.17 → 8.73 MiB, `storage_nodes` plus its two indexes 16.5 → 7.6 MiB, and `storage_records_message` 2.23 → 1.47 MiB implied away by the partial predicate and the shorter keys. The rewrite ran in 3.2 s and left `verify()` clean at 20,600 records with zero issues.
+
+The gain is only realised once freed pages are returned, so the rewrite ends with its own bounded, resumable `reclaim` phase that empties the freelist before the migration is recorded as complete. It relies on the incremental auto-vacuum mode that [budgeted retention](2026-09-18-storage-retention-and-incremental-vacuum.md) already performs, but not on that pass's reclaim: retention returns early whenever the store is under budget, and a store this rewrite has just shrunk is under budget by definition, so depending on it would strand every freed page. Measured on a 3.17 GB fixture the rewrite now takes the file from 3,175,849,984 to 1,853,894,656 bytes on its own, with a subsequent reclaim call releasing zero pages because there are none left. A store whose mode is not incremental is reported as `STORAGE_FORMAT_V3_RECLAIM_INCOMPLETE` with the phase left resumable rather than silently accepting the loss. Before the reclaim step the measured fixture was _larger_ (55.3 MiB), because the rewrite builds a second copy of every table before dropping the first; that transient peak is bounded by roughly one extra copy of the record and node tables and is the price of an atomic swap.
+
+An existing store pays one full rewrite during the migration window, in bounded batches, before admission. That rewrite is not free of disk: the replacement tables are built alongside the live ones, so the store transiently occupies the old plus the new copy before the swap drops the old. Measured against a format 2 fixture of the production schema the peak was 1.44x the original file, and the store actually in service during this work is 51.2 GB (47.7 GiB) of 12,501,502 pages holding 17,060,420 records, so the rewrite needs roughly 21 GB of headroom it does not currently hold. A volume that cannot supply that peak runs out of space part way through. The store itself stays consistent when that happens — the swap is transactional and the recorded phase resumes the copy — but the runtime does not start until it is given the space, and this migration appears in the ordinary startup path rather than behind an explicit operator command. Unlike the legacy importers, which check free space with `statfs` before writing, the format rewrite performs no such preflight. Intermediate `storage_records_v3`/`storage_nodes_v3`/`storage_artifacts_v3` tables and a row in `storage_format_v3_state` are left behind only if the process dies mid-rewrite, and re-running resumes from the recorded phase.
+
+Format 3 is a one-way writer: an older release rejects a version 3 namespace it cannot read, and downgrade uses the pre-upgrade backup in a separate Home, as [the authority decision](2026-09-14-transactional-agent-authority.md) already requires. A PostgreSQL namespace never reaches format 3 and is unaffected.
