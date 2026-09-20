@@ -18,13 +18,14 @@ import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 //     handler, which records the code the escalation passed to `process.exit`.
 //
 // The exit marker is what makes the teardown tail assertable. `process.exit`
-// runs exit handlers and then terminates, so that marker is written at the very
-// end of the chain — after `handle.close()`, `Log.flush()` and the rest of the
-// drain have returned. Waiting for it therefore cannot be confused with waiting
-// on the drain itself, which on a loaded coverage shard is not a duration this
-// test can honestly bound. The parent additionally confirms that the operating
-// system observed the same status, which is a short wait because the process is
-// already at the end of its life once the marker exists.
+// runs its handlers and then terminates, so the marker is the last thing the
+// process writes — reached either by a drain that completed, or by the
+// `handle.shutdownTimeoutMs` watchdog that bounds a drain which cannot complete.
+// Either way this is not a wait on the drain itself, which on a loaded coverage
+// shard is not a duration this test can honestly bound. The parent additionally
+// confirms that the operating system observed the same status, which is a short
+// wait because the process is already at the end of its life once the marker
+// exists.
 //
 // The one-shot/terminal semantics of the listener are covered deterministically
 // by `packages/harness/test/storage/storage-unavailable-escalation.test.ts`.
