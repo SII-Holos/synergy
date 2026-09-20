@@ -198,6 +198,46 @@ export const ObservabilityConfig = z
                 "Retain authoritative evidence for this long (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). This is a promise the byte budget may shorten, never lengthen: when retentionBytes holds less than this window at the measured ingress rate, pruning uses the shorter budget-derived window and reports it, and a budget that cannot hold even one day raises an unreachable-budget issue without pruning.",
               ),
             walCheckpointIntervalMs: z.number().int().positive().optional(),
+            requestDeadlineMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Budget for one ordinary statement against authoritative storage (default: 30000 ms). Exceeding it retries rather than terminating: the worker's liveness probe reports occupancy separately, so one slow statement cannot restart the runtime.",
+              ),
+            probeTimeoutMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Budget for one authoritative-storage liveness probe (default: 30000 ms). An unanswered probe marks the worker busy rather than dead, so this value decides how quickly degradation is noticed, not whether the runtime survives.",
+              ),
+            probeAttempts: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Unanswered liveness probes in a row before the worker is reported as busy (default: 3). Only sustained silence past hardCeilingMs is terminal, so this value governs when the condition becomes visible.",
+              ),
+            hardCeilingMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 300000 ms, ten times the ordinary statement budget). Must stay above the longest legitimate statement: an index build grows with store size and cannot be split, so raise this if a store large enough to outlast it needs one.",
+              ),
+            chunkBudgetMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Budget for one maintenance, migration or delete chunk (default: 30000 ms). Every maintenance path is chunked so no single statement grows with the store, and this value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume.",
+              ),
           })
           .strict()
           .optional(),
