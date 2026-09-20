@@ -3,6 +3,12 @@ import { Database } from "bun:sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { TransactionalStore, keyBytes } from "../../src/storage/transactional-store"
+import { createV2Store, keyHex } from "./format-v3-fixture"
+import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
+
+// `setCustomSQLite` only works before SQLite auto-loads, and several tests here
+// open a `Database` directly, so the engine must be selected first.
+initializeSqliteEngine()
 
 const NAMESPACE = "node-cleanup"
 const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "node-cleanup-"))
@@ -233,5 +239,86 @@ test("removeTree of the whole namespace tombstones every record and drains every
     for (const { key } of entries) expect(check.recordExists(key)).toBe(true)
   } finally {
     check.close()
+  }
+})
+
+test("a format 2 namespace cleans its hex node rows without touching the fence", async () => {
+  // A production store is format 2 until the v3 rewrite runs, and it binds every
+  // key column as hex text rather than as a byte digest. The cleanup has to follow
+  // the namespace's own encoding, or it would address no row at all.
+  const filename = path.join(root, "v2-namespace.sqlite")
+  createV2Store({
+    filename,
+    namespace: NAMESPACE,
+    records: [
+      { key: ["sessions", "scope", "ses", "info"], body: JSON.stringify({ id: "ses" }) },
+      { key: ["sessions", "scope", "ses", "messages", "msg", "info"], body: JSON.stringify({ id: "msg" }) },
+      { key: ["sessions", "scope", "other", "info"], body: JSON.stringify({ id: "other" }) },
+    ],
+  })
+  const store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
+  stores.push(store)
+  try {
+    // The namespace keeps its recorded version, so it is served with hex keys;
+    // the assertions below address the node rows by hex digest, which is what
+    // proves the cleanup followed that encoding rather than the byte one.
+    const version = new Database(filename, { readonly: true })
+    try {
+      expect(
+        Number(
+          (
+            version.query("SELECT version FROM storage_namespaces WHERE namespace = ?").get(NAMESPACE) as {
+              version: number | bigint
+            }
+          ).version,
+        ),
+      ).toBe(2)
+    } finally {
+      version.close()
+    }
+    expect((await store.verify()).issues).toEqual([])
+
+    await store.removeTree(["sessions", "scope", "ses"])
+
+    expect(await store.scan(["sessions", "scope"])).toEqual(["other"])
+    await expect(
+      store.transaction((tx) =>
+        tx.writeMany([{ key: ["sessions", "scope", "ses", "messages", "m9", "info"], value: {} }]),
+      ),
+    ).rejects.toThrow("A deleted record cannot be revived by a delayed writer")
+    expect((await store.verify()).issues).toEqual([])
+    await store.close()
+
+    const database = new Database(filename, { readonly: true })
+    try {
+      const count = (statement: string) =>
+        Number((database.query(statement).get(NAMESPACE) as { c: number | bigint }).c)
+      const nodeExists = (key: string[]) =>
+        database.query("SELECT 1 FROM storage_nodes WHERE namespace = ? AND key_id = ?").get(NAMESPACE, keyHex(key)) !==
+        null
+      // The removed chain is addressed by hex text and drains; the two shared
+      // prefix nodes and the live sibling's chain remain.
+      for (const key of [
+        ["sessions", "scope", "ses"],
+        ["sessions", "scope", "ses", "info"],
+        ["sessions", "scope", "ses", "messages"],
+        ["sessions", "scope", "ses", "messages", "msg"],
+        ["sessions", "scope", "ses", "messages", "msg", "info"],
+      ])
+        expect(nodeExists(key)).toBe(false)
+      for (const key of [
+        ["sessions"],
+        ["sessions", "scope"],
+        ["sessions", "scope", "other"],
+        ["sessions", "scope", "other", "info"],
+      ])
+        expect(nodeExists(key)).toBe(true)
+      expect(count("SELECT COUNT(*) c FROM storage_nodes WHERE namespace = ?")).toBe(4)
+      expect(count("SELECT COUNT(*) c FROM storage_records WHERE namespace = ? AND body IS NULL")).toBe(2)
+    } finally {
+      database.close()
+    }
+  } finally {
+    await store.close()
   }
 })
