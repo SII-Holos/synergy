@@ -125,11 +125,13 @@ export namespace SessionLifecycle {
     return !SessionInteraction.isUnattended(session.interaction)
   }
 
-  /** Whether the latch applies to this session at all. Archived sessions are
-   *  already gone from every surface, and a machine session is driven by a
+  /** Whether the pause latch applies to this session at all. Archived sessions
+   *  are already gone from every surface, and a machine session is driven by a
    *  domain that reconciles its own work — a user-facing pause would there be
-   *  both invisible and disobeyed. Both writers and readers share this rule. */
-  function latchable(session: Info | undefined): boolean {
+   *  both invisible and disobeyed. Both writers and readers share this rule, and
+   *  a caller deciding whether a stopped turn may stay resumable asks it too:
+   *  a stop that cannot pause a session must still settle the turn honestly. */
+  export function latchable(session: Info | undefined): boolean {
     if (!session?.time || session.time.archived) return false
     if (SessionInteraction.isUnattended(session.interaction)) return false
     // A Cortex delegation is a machine session in everything but its

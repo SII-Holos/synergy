@@ -8,7 +8,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SessionCompat } from "./compat-import"
 import type { MessageV2 } from "./message-v2"
-import { BusyError } from "./error"
+import { BusyError, PausedTurnAbort } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -507,7 +507,18 @@ export namespace SessionManager {
 
   export function signalAbort(
     sessionID: string,
-    options?: { fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
+    options?: {
+      fenceQueuedWork?: boolean
+      fenceQueuedBefore?: number
+      rootID?: string
+      /**
+       * Stop the turn so it can be resumed instead of ended. The intent rides on
+       * the abort itself, so a writer that terminalizes the interrupted turn
+       * reads it from the signal it is already reacting to rather than from a
+       * flag written by a concurrent repair.
+       */
+      pauseTurn?: boolean
+    },
   ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
@@ -521,11 +532,10 @@ export namespace SessionManager {
     if (owner.phase === "stopping") return "already_stopping"
 
     owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
-    owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
     owner.fenceQueuedBefore = options?.fenceQueuedBefore
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
-    owner.controller.abort()
+    owner.controller.abort(options?.pauseTurn ? new PausedTurnAbort() : undefined)
     cancelWaiters(runtime)
     return "signaled"
   }

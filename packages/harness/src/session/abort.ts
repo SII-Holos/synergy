@@ -3,6 +3,7 @@ import z from "zod"
 import { SessionInvoke } from "./invoke"
 import { SessionCortexRuntime } from "./cortex-runtime"
 import { SessionManager } from "./manager"
+import { SessionLifecycle } from "./lifecycle"
 type AbortHook = (sessionID: string) => void | Promise<void>
 
 export namespace SessionAbort {
@@ -54,7 +55,26 @@ export namespace SessionAbort {
     // releases the runtime, so a later sample cannot distinguish a loop that was
     // healthily driving this turn from one orphaned by a dead runtime.
     const turnWasRunning = SessionManager.isRunning(sessionID)
-    const outcome = SessionInvoke.cancel(sessionID)
+    // A stop that leaves the session resumable must not terminalize the
+    // interrupted turn: `finish:"error"` plus `time.completed` is what makes
+    // `session.continue` a silent no-op, and that terminal record belongs to the
+    // Abandon path alone. The intent rides on the abort signal itself, so every
+    // writer that would terminalize the turn reads it from the abort it is
+    // already reacting to rather than racing this call.
+    //
+    // Three stops keep the record, and each is a case where "stopped" really
+    // does mean "over" for the thing that owns the turn: an internal
+    // cancellation has withdrawn its own work, an abandon has given up on it,
+    // and a session the pause latch does not apply to (unattended or a Cortex
+    // delegation) is reconciled by a machine domain that reads the turn's
+    // terminal record to decide between `completed` and `error`. Leaving that
+    // one resumable would report a stopped task as finished instead.
+    const pauseTurn =
+      options?.internalCancel !== true &&
+      options?.terminalize !== true &&
+      options?.abandonWorkflow !== true &&
+      SessionLifecycle.latchable(await SessionManager.getSession(sessionID).catch(() => undefined))
+    const outcome = SessionInvoke.cancel(sessionID, pauseTurn ? { pauseTurn: true } : undefined)
     await SessionCortexRuntime.cancelAllForParent(sessionID)
     const state = await SessionInvoke.repairAbortState(sessionID, {
       turnWasRunning,

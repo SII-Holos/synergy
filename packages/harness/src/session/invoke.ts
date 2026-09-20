@@ -76,6 +76,7 @@ import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
 import { ObservabilitySpans } from "../observability/spans"
 import { ObservabilityContext } from "../observability/context"
 import { SkillSourceProfile } from "../instruction/source-profile"
+import { PausedTurnAbort } from "./error"
 import { SecretVault } from "../secrets/vault"
 
 export { InvokeInput, resolveInputParts } from "./input"
@@ -143,7 +144,7 @@ export namespace SessionInvoke {
   }
   export function cancel(
     sessionID: string,
-    options?: { fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
+    options?: { fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string; pauseTurn?: boolean },
   ): SessionManager.AbortOutcome {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
@@ -834,7 +835,7 @@ export namespace SessionInvoke {
               try {
                 await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
               } catch (error) {
-                await completeAssistantWithError({ sessionID, processor, model, error })
+                await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 break
               }
 
@@ -862,7 +863,7 @@ export namespace SessionInvoke {
                 SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
                 recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
               ]).catch(async (error) => {
-                await completeAssistantWithError({ sessionID, processor, model, error })
+                await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
               })
               if (!turnPreparation) break
@@ -1053,7 +1054,7 @@ export namespace SessionInvoke {
                 lateSystem: lateSystemParts,
                 toolDefinitions,
               }).catch(async (error) => {
-                await completeAssistantWithError({ sessionID, processor, model, error })
+                await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
               })
               promptPlanTimer.stop()
@@ -1067,7 +1068,7 @@ export namespace SessionInvoke {
                 calibration,
                 maxOutputTokens: requestedMaxOutputTokens,
               }).catch(async (error) => {
-                await completeAssistantWithError({ sessionID, processor, model, error })
+                await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
               })
               promptDecideTimer.stop()
@@ -1113,6 +1114,7 @@ export namespace SessionInvoke {
                   processor,
                   model,
                   error: new PromptBudgeter.ContextBudgetExceededError(),
+                  abort,
                 })
                 break
               }
@@ -1131,7 +1133,7 @@ export namespace SessionInvoke {
                 },
                 toolAvailability,
               ).catch(async (error) => {
-                await completeAssistantWithError({ sessionID, processor, model, error })
+                await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
               })
               toolResolveTimer.stop()
@@ -1316,7 +1318,7 @@ export namespace SessionInvoke {
                 if (error !== deadlineError) {
                   ObservabilitySpans.end(turnSpan, { status: "error", error })
                   turnSpanEnded = true
-                  await completeAssistantWithError({ sessionID, processor, model, error })
+                  await completeAssistantWithError({ sessionID, processor, model, error, abort })
                   result = "stop"
                 } else {
                   log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
@@ -1733,9 +1735,19 @@ export namespace SessionInvoke {
     processor: SessionProcessor.Info
     model: Provider.Model
     error: unknown
+    abort: AbortSignal
   }): Promise<void> {
     const message = input.processor.message
     if (message.time.completed != null) return
+
+    // A user stop pauses the session; it does not fail it. Writing the turn's
+    // terminal record here would destroy the breakpoint `session.continue`
+    // resumes from, so that record belongs to Abandon alone. This funnel can
+    // win the race against the processor's own unwind — an abort landing during
+    // turn preparation rejects here, not in the stream loop — so it reads the
+    // pause intent from the same abort it is already unwinding. The paused
+    // turn's in-flight tool parts are settled by `repairAbortState`.
+    if (PausedTurnAbort.is(input.abort.reason)) return
 
     if (SessionMemoryIncident.isOutOfMemory(input.error)) {
       await SessionMemoryIncident.capture({
