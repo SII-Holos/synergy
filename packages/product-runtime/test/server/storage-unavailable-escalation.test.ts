@@ -156,9 +156,13 @@ test(
 
       // Each assertion separates a different defect: readiness distinguishes
       // "never booted" from "booted and did not escalate", the escalation marker
-      // names the behaviour, the exit marker proves the escalation reached
-      // `process.exit` and carries the code it passed, and the observed status
-      // confirms the operating system saw the same thing.
+      // names the behaviour, the exit marker records the status the process
+      // predictably left with, and the observed status confirms the operating
+      // system saw the same. The status is the supervisor contract — it must be
+      // non-zero — and every path out of this escalation yields 1: the explicit
+      // code, a cleanup that fails against the dead store, and the shutdown
+      // watchdog. The assertion pins that contract rather than the argument that
+      // happens to supply it.
       expect(ready, `runtime never became healthy: ${output}`).toBe("")
       expect(escalated, `storage unavailability never closed admission: ${output}`).toBe("")
       expect(exitStatus, `the escalation never reached process.exit: ${output}`).toBe("1")
