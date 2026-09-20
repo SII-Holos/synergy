@@ -20,15 +20,24 @@ export class AsyncQueue<T> implements AsyncIterable<T> {
 
 export async function work<T>(concurrency: number, items: T[], fn: (item: T) => Promise<void>) {
   const pending = [...items]
-  await Promise.all(
+  let failed = false
+  const results = await Promise.allSettled(
     Array.from({ length: concurrency }, async () => {
-      while (true) {
+      while (!failed) {
         const item = pending.pop()
         if (item === undefined) return
-        await fn(item)
+        try {
+          await fn(item)
+        } catch (error) {
+          failed = true
+          throw error
+        }
       }
     }),
   )
+  const errors = results.filter((result) => result.status === "rejected").map((result) => result.reason)
+  if (errors.length === 1) throw errors[0]
+  if (errors.length) throw new AggregateError(errors, "Parallel work failed")
 }
 
 export async function workMap<T, R>(concurrency: number, items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {

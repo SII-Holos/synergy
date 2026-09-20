@@ -683,6 +683,10 @@ import type {
   StorageSnapshotMigrateResponses,
   StorageSnapshotUsageErrors,
   StorageSnapshotUsageResponses,
+  StorageUpgradeCatalogErrors,
+  StorageUpgradeCatalogResponses,
+  StorageUpgradeStatusErrors,
+  StorageUpgradeStatusResponses,
   SynergyLinkTargetCreateErrors,
   SynergyLinkTargetCreateInput,
   SynergyLinkTargetCreateResponses,
@@ -4440,6 +4444,53 @@ export class Snapshot extends HeyApiClient {
 }
 
 export class Storage extends HeyApiClient {
+  /**
+   * Get historical data upgrade progress
+   *
+   * The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.
+   */
+  public upgradeStatus<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageUpgradeStatusResponses,
+      StorageUpgradeStatusErrors,
+      ThrowOnError
+    >({ url: "/global/storage/upgrade", ...options })
+  }
+
+  /**
+   * List unresolved historical Sessions
+   */
+  public upgradeCatalog<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scopeID?: string
+      after?: [string, string, string, string]
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "after" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      StorageUpgradeCatalogResponses,
+      StorageUpgradeCatalogErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/sessions",
+      ...options,
+      ...params,
+    })
+  }
+
   snapshot = new Snapshot({ client: this.client })
 }
 
@@ -6449,6 +6500,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "skills"
+        | "worktree"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6498,6 +6550,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "skills"
+        | "worktree"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6554,6 +6607,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "skills"
+        | "worktree"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6811,6 +6865,7 @@ export class Config extends HeyApiClient {
         | "library"
         | "mcp"
         | "skills"
+        | "worktree"
         | "voice"
         | Array<
             | "general"
@@ -6829,6 +6884,7 @@ export class Config extends HeyApiClient {
             | "library"
             | "mcp"
             | "skills"
+            | "worktree"
             | "voice"
           >
       includeSecrets?: string

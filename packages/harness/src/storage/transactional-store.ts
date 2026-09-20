@@ -87,10 +87,10 @@ function metadata(key: string[]) {
   }
   return {
     kind: key[0],
-    scope: key[0] === "projects" ? (key[1] ?? "") : "",
+    scope: ["projects", "compat_catalog"].includes(key[0]) ? (key[1] ?? "") : "",
     session: "",
     message: "",
-    order: key.at(-1)!,
+    order: key[0] === "compat_catalog" ? key[2]! : key.at(-1)!,
   }
 }
 
@@ -98,8 +98,8 @@ function metadata(key: string[]) {
  * Serves retention's owner enumeration.
  *
  * The key carries `scope_id`, `session_id` and `updated` after the `kind` prefix,
- * which is what lets `evidenceOwners` resolve `MAX(updated)` per owner by
- * seeking rather than grouping every rollout row through a temporary b-tree.
+ * which lets `evidenceOwners` aggregate rows in owner order without a
+ * temporary b-tree. Counting still visits each live rollout index entry.
  * `key_text` is deliberately absent: selecting it would force a table walk per
  * row and the index would stop paying for itself. The partial predicate keeps
  * tombstoned rows out of a write-maintained index.
@@ -943,8 +943,8 @@ export class TransactionalStore {
 
   /**
    * Evidence owners with the recency of their newest record. Only indexed
-   * columns and timestamps are read, so the scan is bounded by owner count
-   * rather than by how much evidence each owner holds.
+   * columns and timestamps are read. Work scales with the live rollout index
+   * entries; the returned result scales with owner count.
    *
    * Rollout owners come from the `storage_records_owner` partial index, whose
    * key carries `scope_id`, `session_id` and `updated` after the `kind` prefix.

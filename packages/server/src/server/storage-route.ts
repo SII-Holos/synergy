@@ -5,6 +5,31 @@ import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snap
 import { SnapshotLease } from "@ericsanchezok/synergy-harness/session/snapshot-lease"
 import { SnapshotLifecycle } from "@ericsanchezok/synergy-harness/session/snapshot-lifecycle"
 import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-store"
+import { SessionCompat } from "@ericsanchezok/synergy-harness/persistence"
+
+const StorageUpgradeStatus = z
+  .object({
+    ready: z.literal(true),
+    pending: z.number().int().nonnegative(),
+    partial: z.number().int().nonnegative(),
+    imported: z.number().int().nonnegative(),
+    quarantined: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  })
+  .meta({ ref: "StorageUpgradeStatus" })
+
+const StorageUpgradeCatalog = z
+  .object({
+    items: z.array(
+      z.object({
+        sessionID: z.string(),
+        scopeID: z.string(),
+        status: z.enum(["pending", "partial", "imported", "quarantined"]),
+      }),
+    ),
+    next: z.array(z.string()).optional(),
+  })
+  .meta({ ref: "StorageUpgradeCatalog" })
 
 const StorageSnapshotStatistics = z
   .object({
@@ -141,6 +166,44 @@ const StorageSnapshotCompactBatch = z
   .meta({ ref: "StorageSnapshotCompactBatch" })
 
 export const GlobalStorageRoute = new Hono()
+  .get(
+    "/upgrade",
+    describeRoute({
+      summary: "Get historical data upgrade progress",
+      description:
+        "The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.",
+      operationId: "storage.upgradeStatus",
+      responses: {
+        200: {
+          description: "Historical upgrade counts",
+          content: { "application/json": { schema: resolver(StorageUpgradeStatus) } },
+        },
+      },
+    }),
+    async (c) => c.json({ ready: true as const, ...(await SessionCompat.stats()) }),
+  )
+  .get(
+    "/upgrade/sessions",
+    describeRoute({
+      summary: "List unresolved historical Sessions",
+      operationId: "storage.upgradeCatalog",
+      responses: {
+        200: {
+          description: "One page from the immutable upgrade cohort",
+          content: { "application/json": { schema: resolver(StorageUpgradeCatalog) } },
+        },
+      },
+    }),
+    validator(
+      "query",
+      z.object({
+        scopeID: z.string().optional(),
+        after: z.array(z.string()).length(4).optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+      }),
+    ),
+    async (c) => c.json(await SessionCompat.catalogPage(c.req.valid("query"))),
+  )
   .get(
     "/snapshot",
     describeRoute({

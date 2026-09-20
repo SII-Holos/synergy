@@ -24,7 +24,7 @@ The window between those two facts is a correctness window, not only a performan
 
 **Owner enumeration reads the owner columns under an index that carries them, and never selects `key_text`.**
 
-`storage_records_owner` is `(namespace, kind, scope_id, session_id, updated) WHERE body IS NOT NULL`. The rollout statement becomes `SELECT scope_id, session_id, MAX(updated) AS newest, COUNT(*) AS records ... GROUP BY scope_id, session_id`, so every column it touches is in the index and SQLite resolves `MAX(updated)` per owner by seeking rather than by materialising a temporary b-tree. `COUNT(*)` stays: measured alongside `MAX` it is inside the same envelope (1.10-1.28 s for `MAX` alone), so `Owner.records` keeps its meaning and its consumers.
+`storage_records_owner` is `(namespace, kind, scope_id, session_id, updated) WHERE body IS NOT NULL`. The rollout statement becomes `SELECT scope_id, session_id, MAX(updated) AS newest, COUNT(*) AS records ... GROUP BY scope_id, session_id`, so every column it touches is in the index and SQLite aggregates in index order without a temporary grouping b-tree or per-row table lookup. It still visits every matching index entry; the cost is not bounded by owner count. `COUNT(*)` stays: measured alongside `MAX` it is inside the same envelope (1.10-1.28 s for `MAX` alone), so `Owner.records` keeps its meaning and its consumers.
 
 The owner prefix is then **built** from the two indexed columns — `["sessions", scope_id, session_id, "rollout"]` — instead of being sliced out of a `key_text` the statement no longer reads. That is the same path `StoragePath.sessionRolloutRoot` composes, and a test asserts the two agree, because the prefix is what retention hands to `pruneTree` and a mismatched prefix would delete a different subtree than the one that was measured.
 
@@ -58,7 +58,7 @@ The rollout statement keeps no `maintenance` declaration of its own. After this 
 
 ## Consequences
 
-Owner enumeration on the measured store went from 164-251 s to 1.14-1.76 s, and its plan is a single seek with no temporary b-tree and no table access. A retention pass that previously blocked every read and write in the instance for minutes, and exceeded the request deadline that gates terminal failure, now costs seconds.
+Owner enumeration on the measured store went from 164-251 s to 1.14-1.76 s, and its plan seeks the matching index range and scans that range without a temporary grouping b-tree or per-row table lookup. A retention pass that previously blocked every read and write in the instance for minutes, and exceeded the request deadline that gates terminal failure, now costs seconds.
 
 The store keeps an index whose key carries the three owner columns and the recency it groups by, and no longer reads `key_text` for this statement. Because the retired `scope` index was larger than its replacement and is gone, the write path maintains less index than before — on a hot rollout path that writes continuously.
 

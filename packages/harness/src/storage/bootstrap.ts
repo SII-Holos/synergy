@@ -13,8 +13,34 @@ import { PackedLegacyImporter } from "./packed-import"
 import { StorageArtifactMigration } from "./artifact-migration"
 import { LegacyJsonImporter, legacyRecords, type ImportProgress } from "./legacy-import"
 import { StorageCompat } from "./compat"
+import { SegmentedBackup } from "./segmented-backup"
 import { TransactionalStore } from "./transactional-store"
 import type { StoreOptions } from "./sql-contract"
+import { MigrationRegistry } from "../migration/registry"
+
+async function canDefer(root: string) {
+  if (process.env.SYNERGY_STORAGE_COMPAT_DEFER !== undefined) return process.env.SYNERGY_STORAGE_COMPAT_DEFER === "1"
+  if (MigrationRegistry.list().size === 0) return false
+  const logs = new Map<string, Record<string, unknown>>()
+  for (const [owner, migrations] of MigrationRegistry.list()) {
+    for (const migration of migrations) {
+      if (
+        migration.scope === "global" ||
+        ((migration.scope === "session" || migration.scope === "derived") && migration.upSession)
+      )
+        continue
+      const domain = migration.domain ?? owner
+      let ledger = logs.get(domain)
+      if (!ledger) {
+        const value = await optionalJson(path.join(root, "data", "meta", "migration", `log-${domain}.json`))
+        ledger = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+        logs.set(domain, ledger)
+      }
+      if (typeof ledger[migration.id] !== "number") return false
+    }
+  }
+  return true
+}
 
 const Manifest = z
   .object({
@@ -26,6 +52,7 @@ const Manifest = z
     storeID: z.uuid().optional(),
     backupID: z.uuid(),
     compatBoundary: z.string().optional(),
+    backupFormat: z.literal(3).optional(),
     phase: z.enum(["importing", "validating", "activating", "active"]),
   })
   .strict()
@@ -215,7 +242,7 @@ export namespace StorageBootstrap {
             // The deferral decision is fixed when the manifest is created so a
             // crash and resume cannot flip between retiring and keeping the
             // session tree mid-migration.
-            ...(process.env.SYNERGY_STORAGE_COMPAT_DEFER === "1" ? { compatBoundary: StorageCompat.boundary } : {}),
+            ...((await canDefer(root)) ? { compatBoundary: StorageCompat.boundary, backupFormat: 3 as const } : {}),
           }
       if (manifest.target !== target || manifest.backend !== storeOptions.backend)
         throw new StorageIntegrityError(
@@ -248,7 +275,12 @@ export namespace StorageBootstrap {
         const [importState] = await store.readMany<{ version?: number }>([["storage_import", "info"]])
         const importerOptions = {
           dataRoot: path.join(root, "data"),
-          backupRoot: path.join(directory, "backups", manifest.backupID),
+          backupRoot: path.join(
+            directory,
+            "backups",
+            manifest.backupID,
+            ...(manifest.backupFormat === 3 ? ["global"] : []),
+          ),
           store,
           progress: options.progress,
         }
@@ -257,7 +289,11 @@ export namespace StorageBootstrap {
             ? new LegacyJsonImporter(importerOptions)
             : new PackedLegacyImporter({ ...importerOptions, deferSessions: manifest.compatBoundary !== undefined })
         if (manifest.phase === "importing") {
-          if (manifest.compatBoundary) await StorageCompat.seedLocators(store, path.join(root, "data"))
+          if (manifest.backupFormat === 3) {
+            const backup = new SegmentedBackup(path.join(root, "data"), manifest.backupID)
+            await backup.freeze()
+            await StorageCompat.seedLocators(store, backup.sourceRoot, manifest.backupID)
+          } else if (manifest.compatBoundary) await StorageCompat.seedLocators(store, path.join(root, "data"))
           await importer.run()
           const archive = path.join(root, "data", "agent-records.ndjson")
           if (await Bun.file(archive).exists())
@@ -273,6 +309,7 @@ export namespace StorageBootstrap {
                   "storage_staging",
                   "storage_transfer",
                   "compat_import",
+                  "compat_catalog",
                 ].includes(entry.key[0]) &&
                   // A convenience archive may originate from another home;
                   // grants and trust decisions must not arrive with it.
@@ -280,6 +317,11 @@ export namespace StorageBootstrap {
             })
           manifest.phase = "validating"
           await persist()
+        }
+        if (manifest.compatBoundary) {
+          const backup =
+            manifest.backupFormat === 3 ? new SegmentedBackup(path.join(root, "data"), manifest.backupID) : undefined
+          await StorageCompat.seedLocators(store, backup?.sourceRoot ?? path.join(root, "data"), backup?.backupID)
         }
         await StorageArtifactMigration.run({ dataRoot: path.join(root, "data"), store, progress: options.progress })
         if (manifest.phase === "active") {

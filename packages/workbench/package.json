@@ -11,6 +11,7 @@
     "./project/startup": "./src/project/startup.ts",
     "./project/session-health": "./src/project/session-health.ts",
     "./project/vcs": "./src/project/vcs.ts",
+    "./project/worktree-janitor": "./src/project/worktree-janitor.ts",
     "./push/bridge": "./src/push/bridge.ts",
     "./stats/routes/stats": "./src/stats/routes/stats.ts",
     "./performance/routes/performance-route": "./src/performance/routes/performance-route.ts",

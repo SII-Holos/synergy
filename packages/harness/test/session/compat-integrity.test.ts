@@ -50,6 +50,11 @@ async function fixture() {
     info,
     directory,
     write,
+    async catalog() {
+      const state = await store.read<StorageCompat.Info>(StorageCompat.infoKey)
+      await store.write(StorageCompat.infoKey, { ...state, discovered: false })
+      await StorageCompat.seedLocators(store, data)
+    },
     run<T>(fn: () => T) {
       return Storage.provide(handle, fn)
     },
@@ -78,6 +83,7 @@ test("pending endpoint resolution finds an aggregate before any endpoint index e
   await using f = await fixture()
   const endpoint = { kind: "channel" as const, channel: { type: "test", accountId: "account", chatId: "chat" } }
   await f.write("info.json", { ...f.info, endpoint })
+  await f.catalog()
   await f.run(async () => {
     expect(await SessionManager.getSessionID(endpoint)).toBe(f.id)
     expect((await SessionManager.getSession(endpoint))?.id).toBe(f.id)
@@ -100,6 +106,7 @@ test("pending projections never become persisted entries when a different sessio
 test("malformed metadata is isolated from listings and missing sources remain blocked", async () => {
   await using f = await fixture()
   await f.write("info.json", { id: f.id, time: null })
+  await f.catalog()
   await f.run(async () => {
     expect((await Session.readPageIndex("home")).entries).toEqual([])
     await expect(SessionCompat.requireImported(f.id)).rejects.toThrow("quarantined historical data")
@@ -212,14 +219,17 @@ test("transient file reads remain retryable and do not quarantine the aggregate"
   })
 })
 
-test("startup exposes non-archived sessions to recovery and leaves cold archives deferred", async () => {
+test("startup imports recovery-eligible sessions and leaves idle history deferred", async () => {
   await using active = await fixture()
+  await active.write("info.json", { ...active.info, pendingReply: true })
+  await active.catalog()
   await active.run(async () => {
     await SessionCompat.prepareRecovery()
     expect((await StorageCompat.readLocator(active.store, active.id))?.status).toBe("imported")
   })
   await using archived = await fixture()
   await archived.write("info.json", { ...archived.info, time: { ...archived.info.time, archived: 3000 } })
+  await archived.catalog()
   await archived.run(async () => {
     await SessionCompat.prepareRecovery()
     expect((await StorageCompat.readLocator(archived.store, archived.id))?.status).toBe("pending")

@@ -675,9 +675,8 @@ export namespace SessionInbox {
         log.warn("failed to open queued task run shell", { sessionID: input.sessionID, messageID, error })
       })
     }
-    // Activity bump is presentation state, not admission: keep it off the
-    // enqueue critical path so a queued task is durable and visible first.
-    void Session.recordActivity(input.sessionID).catch((error) => {
+    // The inbox is durable first; return only after navigation observes the accepted input.
+    await Session.recordActivity(input.sessionID).catch((error) => {
       log.warn("failed to record session activity after user inbox enqueue", { sessionID: input.sessionID, error })
     })
     return publicItem(stored)

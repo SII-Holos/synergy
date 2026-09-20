@@ -1115,6 +1115,24 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageUpgradeStatus = {
+  ready: true
+  pending: number
+  partial: number
+  imported: number
+  quarantined: number
+  total: number
+}
+
+export type StorageUpgradeCatalog = {
+  items: Array<{
+    sessionID: string
+    scopeID: string
+    status: "pending" | "partial" | "imported" | "quarantined"
+  }>
+  next?: Array<string>
+}
+
 export type StorageSnapshotOwnerCounts = {
   legacy: number
   shared: number
@@ -3744,6 +3762,21 @@ export type SkillsConfig = {
   compatibility?: SkillsCompatibilityConfig
 }
 
+export type WorktreeConfig = {
+  /**
+   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
+   */
+  maxManaged?: number
+  /**
+   * Hours between managed-worktree janitor sweeps
+   */
+  sweepIntervalHours?: number
+  /**
+   * Run the managed-worktree janitor at all (default: true)
+   */
+  janitor?: boolean
+}
+
 /**
  * Speech-to-text service configuration
  */
@@ -4766,6 +4799,7 @@ export type Config = {
     lsp?: boolean
   }
   skills?: SkillsConfig
+  worktree?: WorktreeConfig
   voice?: VoiceConfig
   /**
    * UI locale (system = follow OS, default: system)
@@ -5412,6 +5446,7 @@ export type ConfigDomainSummary = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   filename: string
   label: string
@@ -5469,6 +5504,7 @@ export type ConfigExportResult = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   warnings: Array<string>
@@ -5528,6 +5564,7 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   filename: string
   path: string
@@ -5582,6 +5619,7 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5666,6 +5704,7 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
     >
   }
@@ -5698,6 +5737,7 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5826,6 +5866,8 @@ export type Worktree = {
   lastUsedAt?: number
   setupFailed?: boolean
   setupError?: string
+  locked?: string
+  prunable?: boolean
 }
 
 export type WorktreeCreateInput = {
@@ -11475,6 +11517,60 @@ export type PerformanceEventsStreamResponses = {
   200: unknown
 }
 
+export type StorageUpgradeStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/upgrade"
+}
+
+export type StorageUpgradeStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeStatusError = StorageUpgradeStatusErrors[keyof StorageUpgradeStatusErrors]
+
+export type StorageUpgradeStatusResponses = {
+  /**
+   * Historical upgrade counts
+   */
+  200: StorageUpgradeStatus
+}
+
+export type StorageUpgradeStatusResponse = StorageUpgradeStatusResponses[keyof StorageUpgradeStatusResponses]
+
+export type StorageUpgradeCatalogData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    after?: [string, string, string, string]
+    limit?: number
+  }
+  url: "/global/storage/upgrade/sessions"
+}
+
+export type StorageUpgradeCatalogErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeCatalogError = StorageUpgradeCatalogErrors[keyof StorageUpgradeCatalogErrors]
+
+export type StorageUpgradeCatalogResponses = {
+  /**
+   * One page from the immutable upgrade cohort
+   */
+  200: StorageUpgradeCatalog
+}
+
+export type StorageUpgradeCatalogResponse = StorageUpgradeCatalogResponses[keyof StorageUpgradeCatalogResponses]
+
 export type StorageSnapshotUsageData = {
   body?: never
   path?: never
@@ -13084,6 +13180,7 @@ export type ConfigDomainGetData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13135,6 +13232,7 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13186,6 +13284,7 @@ export type ConfigDomainOpenData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13245,6 +13344,7 @@ export type ConfigExportData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
       | Array<
           | "general"
@@ -13263,6 +13363,7 @@ export type ConfigExportData = {
           | "library"
           | "mcp"
           | "skills"
+          | "worktree"
           | "voice"
         >
     includeSecrets?: string

@@ -376,6 +376,68 @@ describe("tool.worktree_leave", () => {
       })
     })
 
+    test("reports unknown dirty state distinctly instead of claiming dirty", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/worktrees/unknown-wt",
+          scopeID: "scope_123",
+          worktreeID: "wt_unknown",
+          name: "unknown-wt",
+        },
+        fn: async () => {
+          const removeSpy = mock(async () => ({}) as any)
+          ;(Worktree as any).leave = mock(async () => {})
+          ;(Worktree as any).status = mock(async () => ({ dirty: undefined }))
+          ;(Worktree as any).remove = removeSpy
+
+          const initialized = await WorktreeLeaveTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute({ cleanup: "remove_if_clean" }, ctx)
+
+          expect(result.metadata.action).toBe("left")
+          expect(result.metadata.cleanup?.performed).toBe(false)
+          expect(result.metadata.cleanup?.skippedReason).toBe("unknown_dirty")
+          expect(removeSpy).not.toHaveBeenCalled()
+        },
+      })
+    })
+
+    test("keeps the session left and reports the error when removal fails", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/worktrees/failing-wt",
+          scopeID: "scope_123",
+          worktreeID: "wt_failing",
+          name: "failing-wt",
+        },
+        fn: async () => {
+          const markSpy = mock(async () => {})
+          ;(Worktree as any).leave = mock(async () => {})
+          ;(Worktree as any).status = mock(async () => ({ dirty: false }))
+          ;(Worktree as any).remove = mock(async () => {
+            throw new Error("cannot remove a locked working tree")
+          })
+          ;(Worktree as any).markLifecycle = markSpy
+
+          const initialized = await WorktreeLeaveTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute({ cleanup: "remove_if_clean" }, ctx)
+
+          expect(result.metadata.action).toBe("left")
+          expect(result.metadata.cleanup?.performed).toBe(false)
+          expect(result.metadata.cleanup?.cleanupDeferred).toBe(true)
+          expect(result.metadata.cleanup?.error).toContain("locked working tree")
+          expect(markSpy).toHaveBeenCalledWith("wt_failing", "gc_candidate")
+        },
+      })
+    })
+
     test("checks Worktree.status before deciding on cleanup", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

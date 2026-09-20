@@ -30,6 +30,7 @@ const local = new Set([
   "storage_staging",
   "storage_transfer",
   "compat_import",
+  "compat_catalog",
 ])
 
 export namespace DataTransfer {
