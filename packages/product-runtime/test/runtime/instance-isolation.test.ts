@@ -7,6 +7,8 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { ObservabilityContext } from "@ericsanchezok/synergy-harness/observability/context"
 
 test("full and core compositions coexist and closing full leaves core usable", async () => {
   await using a = await runtimeHome()
@@ -174,4 +176,34 @@ test("Home Browser descriptors and navigation policy do not require a filesystem
   expect(body.ownerKey).toContain("home")
   expect(body.page).toBeNull()
   expect(body.status).toBe("empty")
+}, 30_000)
+
+test("closing HTTP runtimes releases their application and configuration", async () => {
+  async function cycle() {
+    await using fixture = await runtimeHome()
+    await using runtime = await ProductRuntimeHandle.open({
+      host: fixture.host,
+      mode: "oneshot",
+      network: { hostname: "127.0.0.1", port: 0 },
+    })
+    const response = await fetch(`http://127.0.0.1:${runtime.server.port}/global/health`)
+    expect(response.status).toBe(200)
+    await response.arrayBuffer()
+    const owner = runtime.run(RuntimeContext.current)
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: () => ObservabilityContext.withContextAsync({ module: "server" }, () => runtime.close()),
+      }),
+    )
+    return [new WeakRef(runtime.config), new WeakRef(owner)]
+  }
+  const references = [await cycle(), await cycle(), await cycle()].flat()
+  let remaining = references.length
+  for (let attempt = 0; attempt < 30 && remaining; attempt++) {
+    await Bun.sleep(20)
+    Bun.gc(true)
+    remaining = references.filter((reference) => reference.deref()).length
+  }
+  expect(remaining).toBe(0)
 }, 30_000)

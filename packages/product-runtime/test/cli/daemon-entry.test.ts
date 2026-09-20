@@ -11,7 +11,8 @@ test("daemon entry stays healthy and drains on SIGTERM in an isolated home", asy
       console.log("READY " + handle.server.port)
       return handle
     }
-    await import("./src/daemon-entry")
+    const { main } = await import("./src/daemon-entry")
+    await main()
   `
   const child = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
     cwd: new URL("../../", import.meta.url).pathname,

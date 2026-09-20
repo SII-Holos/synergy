@@ -11,6 +11,8 @@ export interface RuntimeHost {
 
 export namespace RuntimeContext {
   const context = new AsyncLocalStorage<Instance>()
+  // Domain context definitions are shared; detached native callbacks must leave every domain's active value.
+  const localContexts: Array<Pick<AsyncLocalStorage<unknown>, "exit">> = []
   const states = new WeakMap<Instance, Map<symbol, unknown>>()
   const sealedCompositions = new WeakSet<Instance>()
   const transactionOwner = new AsyncLocalStorage<Instance>()
@@ -45,6 +47,18 @@ export namespace RuntimeContext {
     }
     states.set(instance, new Map())
     return instance
+  }
+
+  export function exit<T>(body: () => T): T {
+    const leave = (index: number): T =>
+      index === localContexts.length ? context.exit(body) : localContexts[index]!.exit(() => leave(index + 1))
+    return leave(0)
+  }
+
+  export function createAsyncContext<T>() {
+    const storage = new AsyncLocalStorage<T>()
+    localContexts.push(storage)
+    return storage
   }
 
   export function current(): Instance {

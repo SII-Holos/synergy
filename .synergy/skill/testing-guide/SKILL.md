@@ -54,6 +54,8 @@ Provider/model tests use the package preload configured in `bunfig.toml`; `packa
 
 Core binary builds also default to that pinned fixture. Test build behavior through `script/release/shared/build/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
 
+For embedded Runtime lifecycle changes, repeat real open/task/close cycles in one process and verify resource release as well as port reuse. Native HTTP handlers can retain their creation context after the server stops; release handler references outside the Runtime after requests and sockets drain. Check per-instance database maintenance timers at closure. Use a focused reachability regression for a demonstrated retention defect; RSS alone includes allocator caches and cannot prove ownership release.
+
 Cold-cache tests construct a fresh Runtime and an unseeded isolated home. Module imports and the test preloader do not populate another instance’s caches. Use a subprocess when process startup, native callbacks, signals, installed artifacts or worker protocols are the contract. Never remove the positive test-home isolation marker.
 
 Full runtime fixtures that exercise model execution must serve both chat and embedding protocols when Library is enabled; a fresh home must not silently turn an execution test into a Hugging Face model-download test. Keep Library retrieval/encoding enabled and assert the normal execution evidence; validate real embedding assets separately.

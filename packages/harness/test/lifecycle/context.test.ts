@@ -33,6 +33,10 @@ test("a bound callback keeps its owner when another runtime invokes it", () => {
   const b = RuntimeContext.create(host("/isolated/b"))
   const read = a.bind(() => RuntimeContext.current().host.home)
   expect(b.run(read)).toBe("/isolated/a")
+  a.run(() => {
+    expect(RuntimeContext.exit(() => RuntimeContext.tryCurrent())).toBeUndefined()
+    expect(RuntimeContext.current()).toBe(a)
+  })
 })
 
 test("runtime switching is rejected inside a protected transaction", async () => {
@@ -69,6 +73,11 @@ test("observability context and bound callbacks keep their Runtime owner", async
   const b = RuntimeContext.create(host("/isolated/trace-b"))
   a.run(() =>
     ObservabilityContext.withContext({ sessionID: "session-a" }, () => {
+      RuntimeContext.exit(() => {
+        expect(RuntimeContext.tryCurrent()).toBeUndefined()
+        expect(ObservabilityContext.current()).toEqual({})
+      })
+      expect(ObservabilityContext.current()).toEqual({ sessionID: "session-a" })
       const read = ObservabilityContext.bind(() => ({
         owner: RuntimeContext.current(),
         context: ObservabilityContext.current(),

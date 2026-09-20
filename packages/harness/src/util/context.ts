@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "async_hooks"
 import { RuntimeContext } from "../lifecycle/context"
 
 export namespace Context {
@@ -15,7 +14,7 @@ export namespace Context {
   }
 
   export function create<T>(name: string) {
-    const storage = new AsyncLocalStorage<Store<T>>()
+    const storage = RuntimeContext.createAsyncContext<Store<T>>()
     return {
       use() {
         const store = storage.getStore()

@@ -81,6 +81,10 @@ export namespace Server {
   export const DEFAULT_URL = DEFAULT_SERVER_URL
 
   const log = Log.create({ service: "server" })
+  const closedHandlers = {
+    fetch: () => new Response(null, { status: 503 }),
+    websocket: { message() {}, open() {}, close() {} },
+  }
   // Bound on how long /global/health waits for the provider state build.
   // The daemon readiness probe aborts after 1200ms and the CLI probe after 3s,
   // so a slow build must never hold the health response past this window.
@@ -1650,6 +1654,9 @@ export namespace Server {
       if (closeActiveConnections) for (const socket of sockets) socket.terminate()
       await stopped
       await Promise.allSettled(instanceState.requests)
+      // Bun 1.3 retains native handler contexts after stop(); release them after the final request drains.
+      // API: https://github.com/oven-sh/bun/blob/main/docs/runtime/http/server.mdx#serverreload
+      RuntimeContext.exit(() => server.reload(closedHandlers))
     }
 
     return server

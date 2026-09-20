@@ -103,4 +103,8 @@ async function bootstrap(): Promise<void> {
   process.exit(process.exitCode ?? 0)
 }
 
-if (import.meta.main) await RuntimeContext.create(createLocalHost()).run(bootstrap)
+export async function main() {
+  await RuntimeContext.create(createLocalHost()).run(bootstrap)
+}
+
+if (import.meta.main) await main()

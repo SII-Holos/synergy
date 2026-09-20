@@ -15,10 +15,17 @@ test("Home tasks run in independent core and full workers, and full task data su
   await using fullHome = await runtimeHome()
   const sessions = new Map<string, string>()
   const requests: Array<{ owner: string; tools: string[] }> = []
+  let fetched = 0
   using provider = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
+      if (new URL(request.url).pathname === "/document") {
+        fetched++
+        return new Response("A Home task fetched this document without a workspace.", {
+          headers: { "content-type": "text/plain" },
+        })
+      }
       const owner = request.headers.get("authorization")?.replace("Bearer ", "") ?? ""
       const body = (await request.json()) as {
         stream?: boolean
@@ -27,11 +34,11 @@ test("Home tasks run in independent core and full workers, and full task data su
       }
       requests.push({ owner, tools: body.tools?.map((tool) => tool.function.name) ?? [] })
       const done = !body.stream || body.messages.some((message) => message.role === "tool")
-      const name = owner === "full" ? "note_write" : "session_read"
+      const name = owner === "full" ? "note_write" : "webfetch"
       const args =
         owner === "full"
           ? { mode: "create", title: "Home result", content: "Saved by the full worker", scope: "current" }
-          : { target: sessions.get(owner), limit: 20, offset: 0 }
+          : { url: new URL("/document", request.url).toString(), format: "text" }
       const message = done
         ? { role: "assistant", content: `${owner} completed` }
         : {
@@ -105,9 +112,15 @@ test("Home tasks run in independent core and full workers, and full task data su
       const tool = messages.flatMap((message) => message.parts).find((part) => part.type === "tool")
       expect(tool?.type === "tool" ? tool.state.status : undefined).toBe("completed")
       expect((await Session.get(session.id)).workspace).toBeNull()
+      if (owner === "core") {
+        expect(tool?.type === "tool" && tool.state.status === "completed" ? tool.state.output : "").toContain(
+          "A Home task fetched this document without a workspace.",
+        )
+      }
       return tool?.type === "tool" && tool.state.status === "completed" ? tool.state.metadata : undefined
     })
   const [, metadata] = await Promise.all([run(core, "core"), run(full, "full")])
+  expect(fetched).toBe(1)
   const noteID = String(metadata?.id)
   const assetID = await full.run(() => Asset.write(Buffer.from("Home artifact"), "text/plain", "result.txt"))
   full.run(() =>

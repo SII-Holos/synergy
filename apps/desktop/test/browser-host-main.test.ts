@@ -56,7 +56,7 @@ describe("Browser Host main entry", () => {
 
     expect(sockets).toHaveLength(1)
     expect(sockets[0]!.url).toContain("/browser/host/broker")
-    expect(sockets[0]!.url).toContain("protocolVersion=2")
+    expect(sockets[0]!.url).toContain("protocolVersion=3")
 
     sockets[0]!.open()
     expect(sockets[0]!.sent).toHaveLength(1)

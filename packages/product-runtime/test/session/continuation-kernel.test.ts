@@ -17,6 +17,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 const runtime = await testRuntime()
 
 const model = { providerID: "test-provider", modelID: "test-model" }
@@ -603,29 +604,28 @@ describe("provider drain reload contract (H5)", () => {
   // H5 reload contract: ContinuationKernel.reset() clears the drained-source
   // markers so registered providers re-drain on the next access — the L1
   // analogue of ToolRegistry.reload() forcing provider re-drain.
-  test("reset() clears drained sources so providers re-drain on next access", () =>
-    runtime.run(() => {
-      let drains = 0
+  test("reset() clears drained sources so providers re-drain on next access", async () => {
+    let drains = 0
+    await using fixture = await harnessRuntime({
+      register() {
+        ContinuationKernel.registerProvider("redrain-probe", () => {
+          drains++
+          return []
+        })
+      },
+    })
+    fixture.run(() => {
       ContinuationKernel.reset()
-      ContinuationKernel.registerProvider("redrain-probe", () => {
-        drains++
-        return []
-      })
-      try {
-        const first = ContinuationKernel.registeredPolicyIDs()
-        expect(drains).toBe(1)
-        ContinuationKernel.registeredPolicyIDs()
-        expect(drains).toBe(1)
-
-        ContinuationKernel.reset()
-
-        const second = ContinuationKernel.registeredPolicyIDs()
-        expect(drains).toBe(2)
-        expect(second).toEqual(first)
-      } finally {
-        ContinuationKernel.reset()
-      }
-    }))
+      const first = ContinuationKernel.registeredPolicyIDs()
+      expect(drains).toBe(1)
+      ContinuationKernel.registeredPolicyIDs()
+      expect(drains).toBe(1)
+      ContinuationKernel.reset()
+      const second = ContinuationKernel.registeredPolicyIDs()
+      expect(drains).toBe(2)
+      expect(second).toEqual(first)
+    })
+  })
 })
 
 afterRuntimeTests(() => runtime.close())

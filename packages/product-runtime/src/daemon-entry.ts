@@ -4,7 +4,7 @@ import { DaemonSpec } from "@ericsanchezok/synergy-cli/daemon/spec"
 
 const LOG_LEVELS = ["DEBUG", "INFO", "WARN", "ERROR"] as const
 
-async function main() {
+export async function main() {
   await runServerRuntime({
     logging: {
       print: true,
@@ -18,4 +18,4 @@ async function main() {
   })
 }
 
-await main()
+if (import.meta.main) await main()

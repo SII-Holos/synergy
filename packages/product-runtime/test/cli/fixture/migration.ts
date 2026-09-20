@@ -23,4 +23,5 @@ RuntimeHandle.open = (options) =>
     },
   })
 
-await import("../../../src/index")
+const { main } = await import("../../../src/index")
+await main()

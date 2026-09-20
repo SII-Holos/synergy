@@ -14,6 +14,7 @@ const log = Log.create({ service: "library.db" })
 
 const runtimeState = RuntimeContext.state(() => ({
   db: undefined as Database | undefined,
+  checkpointTimer: undefined as ReturnType<typeof setInterval> | undefined,
   embeddingDimensions: undefined as number | undefined,
   vecExperience: {
     ready: false,
@@ -129,7 +130,7 @@ function open(): Database {
 
   // Periodic WAL checkpoint to prevent unbounded WAL file growth.
   // TRUNCATE checkpoints and zeros the WAL file; failures are non-critical.
-  const checkpointTimer = setInterval(
+  instanceState.checkpointTimer = setInterval(
     () => {
       try {
         conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -137,7 +138,7 @@ function open(): Database {
     },
     5 * 60 * 1000,
   )
-  checkpointTimer.unref()
+  instanceState.checkpointTimer.unref()
 
   return instanceState.db
 }
@@ -563,6 +564,8 @@ function toFloat32(vector: number[]): Float32Array {
 
 export function closeDB() {
   const instanceState = runtimeState()
+  clearInterval(instanceState.checkpointTimer)
+  instanceState.checkpointTimer = undefined
 
   if (instanceState.db) {
     instanceState.db.close()
