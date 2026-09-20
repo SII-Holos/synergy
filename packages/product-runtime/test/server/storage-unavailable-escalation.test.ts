@@ -9,23 +9,40 @@ import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 // `registerShutdown` escalates it into the same graceful shutdown used for
 // SIGTERM, exiting non-zero so a supervisor (systemd Restart=on-failure, launchd
 // KeepAlive, the Desktop manager) restarts the process. Because the escalation
-// ends in `process.exit`, it has to be observed from outside the process.
+// ends in a process exit, it has to be observed from outside the process, and
+// the child hands over both halves of the contract:
 //
-// The observation is the escalation event itself, not the exit status that
-// follows it. `gracefulShutdown` reaches `process.exit` only after
-// `handle.close()`, `Log.flush()` and the rest of the teardown chain return, and
-// on a loaded CI shard that tail is not bounded by anything this test can
-// honestly assert: runs that had already closed admission were still draining
-// when the parent gave up, which read as a missing escalation. The child
-// therefore records the two things the escalation is responsible for — the
-// listener fired, and admission closed — and the parent asserts on those.
+//   * the `escalated` marker, written only when a 503 on the health route shows
+//     that `gracefulShutdown` closed admission — the first act of the escalation;
+//   * the `exit` marker, written from the child's own `process.on("exit")`
+//     handler, which records the code the escalation passed to `process.exit`.
 //
-// The exit code and the supervisor contract it serves are covered by design and
-// inspection (`registerShutdown` → `gracefulShutdown(signal, 1)` →
-// `process.exit(1)`), and the one-shot/terminal semantics of the listener are
-// covered deterministically by `packages/harness/test/storage/storage-unavailable-escalation.test.ts`.
+// The exit marker is what makes the teardown tail assertable. `process.exit`
+// runs exit handlers and then terminates, so that marker is written at the very
+// end of the chain — after `handle.close()`, `Log.flush()` and the rest of the
+// drain have returned. Waiting for it therefore cannot be confused with waiting
+// on the drain itself, which on a loaded coverage shard is not a duration this
+// test can honestly bound. The parent additionally confirms that the operating
+// system observed the same status, which is a short wait because the process is
+// already at the end of its life once the marker exists.
+//
+// The one-shot/terminal semantics of the listener are covered deterministically
+// by `packages/harness/test/storage/storage-unavailable-escalation.test.ts`.
 const STARTUP_DEADLINE_MS = 120_000
 const ESCALATION_DEADLINE_MS = 120_000
+const EXIT_DEADLINE_MS = 60_000
+const EXIT_CONFIRM_MS = 60_000
+
+async function waitForMarker(file: string, deadlineMs: number, stopped?: () => boolean) {
+  const deadline = Date.now() + deadlineMs
+  while (Date.now() < deadline) {
+    const text = await readFile(file, "utf8").catch(() => undefined)
+    if (text !== undefined) return text
+    if (stopped?.()) return undefined
+    await Bun.sleep(50)
+  }
+  return undefined
+}
 
 test(
   "a terminally failed store escalates into the runtime shutdown path",
@@ -39,8 +56,16 @@ test(
     const root = await mkdtemp(path.join(os.tmpdir(), "storage-escalation-runtime-"))
     const readyMarker = path.join(root, "ready")
     const escalatedMarker = path.join(root, "escalated")
+    const exitMarker = path.join(root, "exit")
     const script = String.raw`
+      import { writeFileSync } from "node:fs"
       import { writeFile } from "node:fs/promises"
+      // Registered before anything else so the escalation's exit code is captured
+      // even if a later exit handler stalls. Exit handlers run inside the
+      // process.exit call, ahead of termination.
+      process.on("exit", (code) => {
+        try { writeFileSync(process.env.SYNERGY_ESCALATION_EXIT, String(code)) } catch {}
+      })
       const mark = (file) => writeFile(file, "").catch(() => {})
       const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
       Log.init({ print: false })
@@ -92,8 +117,8 @@ test(
         await Bun.sleep(25)
       }
 
-      // Stay alive so the shutdown can drain; the parent owns termination here
-      // because the teardown tail is not this test's to bound.
+      // Stay alive with pending work so the shutdown can drain; the escalation
+      // owns the only exit that may happen, and the exit marker reports it.
       for (;;) await Bun.sleep(1_000)
     `
 
@@ -107,6 +132,7 @@ test(
         SYNERGY_TEST_ROOT: isolated.env.SYNERGY_TEST_ROOT,
         SYNERGY_ESCALATION_READY: readyMarker,
         SYNERGY_ESCALATION_ESCALATED: escalatedMarker,
+        SYNERGY_ESCALATION_EXIT: exitMarker,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -119,28 +145,27 @@ test(
     const stderrText = new Response(child.stderr).text()
 
     try {
-      const deadline = Date.now() + ESCALATION_DEADLINE_MS + 30_000
-      let escalated = false
-      while (Date.now() < deadline) {
-        if (await Bun.file(escalatedMarker).exists()) {
-          escalated = true
-          break
-        }
-        if (child.exitCode !== null) break
-        await Bun.sleep(50)
-      }
+      const exited = () => child.exitCode !== null
+      const ready = await waitForMarker(readyMarker, STARTUP_DEADLINE_MS, exited)
+      const escalated = await waitForMarker(escalatedMarker, ESCALATION_DEADLINE_MS, exited)
+      const exitStatus = await waitForMarker(exitMarker, EXIT_DEADLINE_MS, exited)
+      const observed = await Promise.race([child.exited, Bun.sleep(EXIT_CONFIRM_MS).then(() => null)])
       child.kill()
       const output = (await Promise.all([stdoutText, stderrText])).join("\n")
 
-      expect(
-        await readFile(readyMarker, "utf8").catch(() => undefined),
-        `runtime never became healthy: ${output}`,
-      ).toBe("")
-      expect(escalated, `storage unavailability never reached the runtime shutdown path: ${output}`).toBe(true)
+      // Each assertion separates a different defect: readiness distinguishes
+      // "never booted" from "booted and did not escalate", the escalation marker
+      // names the behaviour, the exit marker proves the escalation reached
+      // `process.exit` and carries the code it passed, and the observed status
+      // confirms the operating system saw the same thing.
+      expect(ready, `runtime never became healthy: ${output}`).toBe("")
+      expect(escalated, `storage unavailability never closed admission: ${output}`).toBe("")
+      expect(exitStatus, `the escalation never reached process.exit: ${output}`).toBe("1")
+      expect(observed, `the process did not exit with the escalated status: ${output}`).toBe(1)
     } finally {
       child.kill()
       await Promise.all([rm(root, { recursive: true, force: true }), isolated.dispose()])
     }
   },
-  ESCALATION_DEADLINE_MS + 60_000,
+  STARTUP_DEADLINE_MS + ESCALATION_DEADLINE_MS + EXIT_DEADLINE_MS + EXIT_CONFIRM_MS + 60_000,
 )
