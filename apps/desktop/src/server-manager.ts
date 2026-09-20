@@ -437,7 +437,7 @@ export async function waitForHealth(
           () => requestController.abort(),
         )
         if (response.ok && remaining() > 0) return
-        lastError = new Error(`health responded ${response.status}`)
+        lastError = response.ok ? undefined : new Error(`health responded ${response.status}`)
       } catch (error) {
         if (error instanceof ChildProcessHealthError) throw error
         lastError = error

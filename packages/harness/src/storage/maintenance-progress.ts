@@ -48,7 +48,7 @@ export async function observeStorageMaintenance<T>(
         sequence: 0,
         record(event) {
           if (closed) return
-          // Lifecycle transitions cannot be coalesced like item counts. Bound a stalled consumer without dropping terminal events.
+          // Lifecycle transitions cannot be coalesced like counts; overflow fails observation instead of silently losing transitions.
           if (events.length >= 1024) {
             overflow = new Error("Storage maintenance observation queue exceeded its limit")
             closed = true

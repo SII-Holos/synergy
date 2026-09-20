@@ -107,7 +107,7 @@ describe("desktop server manager", () => {
     }) as typeof fetch
     try {
       await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 30000, 1, startup)).rejects.toThrow(
-        "vacuum failed",
+        /^Synergy database maintenance vacuum failed after 1ms$/,
       )
     } finally {
       globalThis.fetch = originalFetch
