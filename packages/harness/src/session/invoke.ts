@@ -2266,8 +2266,27 @@ export namespace SessionInvoke {
       return result
     } finally {
       await RolloutLedger.finishSegment(segment, status)
-      if (status === "failed") await RolloutLedger.finishRun(owner, messageID, "failed")
-      else await RolloutLifecycle.reconcile(input.sessionID, messageID)
+      // Detached turn work (titles, summaries) keeps writing ledger records
+      // after its segment closes, and finalizing first refuses a call this
+      // process has not observed yet — stranding the run as permanently
+      // active. Wait for that work, then let reconcile settle whatever it
+      // still finds unfinished.
+      const settled = await LoopJob.settleDetached(input.sessionID, new Set([messageID])).then(
+        () => true,
+        (error) => {
+          log.error("detached turn work failed to settle before command finalization", {
+            sessionID: input.sessionID,
+            error,
+          })
+          return false
+        },
+      )
+      // A failed turn, and one whose detached work could not be accounted for,
+      // are recorded failed. Reconcile rather than finish directly, because
+      // finishing refuses a run that still holds a running call — precisely
+      // the state an unaccounted settlement leaves behind.
+      const outcome = status === "failed" || !settled ? ("failed" as const) : undefined
+      await RolloutLifecycle.reconcile(input.sessionID, messageID, outcome)
     }
   }
 
