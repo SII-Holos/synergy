@@ -1508,14 +1508,15 @@ export class TransactionalStore {
              * `LIMIT 1` stops at the first record found, so a healthy subtree
              * costs one probe. Pages are bounded by node key.
              *
-             * A tombstoned record counts. `remove` and `removeTree` deliberately
-             * keep a revision tombstone per record -- that fence is what stops a
-             * delayed writer reviving deleted data -- so a deleted subtree
-             * retains its records and its nodes by design, and calling those
-             * nodes orphans would report normal deletion as corruption. Only a
-             * node with no record row anywhere beneath it is unreachable
-             * garbage, which is what an interrupted `pruneTree` leaves behind
-             * between its record delete and its node delete.
+             * A tombstoned record counts as a record row. `remove` and
+             * `removeTree` keep a revision tombstone per record -- that fence is
+             * what stops a delayed writer reviving deleted data -- and they drop
+             * the node chain the removal emptied. Those rows therefore retain
+             * their tombstones but not their nodes, which is why the test counts
+             * any record row rather than only a live one. A node with no record
+             * row anywhere beneath it is unreachable garbage, which is what an
+             * interrupted `pruneTree` leaves between its record delete and its
+             * node delete.
              */
             /**
              * Reconstructs each node's full key by walking `parent_id` to the

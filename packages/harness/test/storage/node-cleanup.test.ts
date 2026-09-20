@@ -204,3 +204,34 @@ test("node cleanup reaches a fixed point on a chain deeper than one round can fr
     check.close()
   }
 })
+
+test("removeTree of the whole namespace tombstones every record and drains every node", async () => {
+  const { store, filename } = await open("whole-namespace")
+  const entries = [
+    session("ses"),
+    message("ses", "msg"),
+    { key: ["notes", "kept", "leaf"], value: { kept: true } },
+    { key: ["projects", "proj", "config"], value: { config: true } },
+  ]
+  await store.transaction((tx) => tx.writeMany(entries))
+  expect((await store.verify()).issues).toEqual([])
+
+  await store.removeTree([])
+
+  // Every subtree is gone from traversal and nothing is left for `verify` to
+  // call an orphan, which is the empty-prefix branch's own cleanup call.
+  expect(await store.scan([])).toEqual([])
+  expect((await store.verify()).issues).toEqual([])
+  await store.close()
+
+  const check = inspect(filename)
+  try {
+    expect(check.nodeCount()).toBe(0)
+    expect(check.liveCount()).toBe(0)
+    // The tombstone is the fence for every removed key, so all record rows stay.
+    expect(check.tombstoneCount()).toBe(entries.length)
+    for (const { key } of entries) expect(check.recordExists(key)).toBe(true)
+  } finally {
+    check.close()
+  }
+})
