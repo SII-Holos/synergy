@@ -32,6 +32,8 @@ Hosts and tests must supply their environment, composition and storage owner exp
 
 Executable discovery and its cache belong to the Host, including benchmark preparation before product startup. Build-time helper digest tables contain artifact identities, without resolving Home during module evaluation. Conditional and platform-specific tests must construct their Runtime just as ordinary tests do; source imports on a developer machine alone cannot validate compiled entrypoints. Home-safe plugin templates explicitly declare that their tools do not require a workspace.
 
+Benchmark recovery containers inherit the frozen experiment platform when using the original image digest. Ownership handoff is part of execution cleanup and cannot fall back to the operator machine's architecture; this matters when an ARM host measures an amd64 runtime.
+
 Behavioral validation targets independent instances, startup failure and cancellation, resource drain, nullable workspaces, retained tool guards, preserved history and client identity. Real process and HTTP fixture tests exercise executable entrypoints, worker protocols and shutdown without paid model calls. Performance comparisons use isolated Homes and the same workload on the base and changed revisions; unit test counts are not evidence of startup or memory performance. The [validation report](../../../research/2026-09-21-runtime-instance-validation.md) records the workloads, observed results and evidence limits.
 
 The split changes generated API schemas and the Browser protocol because local paths are nullable and Scope ID is canonical. SDK generation, worker bootstrap, CLI and installed artifacts must stay aligned with their composition; import-time registration cannot be used as a compatibility path.

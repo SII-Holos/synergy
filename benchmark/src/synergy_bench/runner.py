@@ -713,6 +713,7 @@ def environment_projects(root: Path, record: Path) -> set[str]:
 
 
 def handoff_environment(root: Path, record: Path) -> None:
+    platform = read_json(root / "plan.json")["config"]["platform"]
     project = read_json(record)["project"]
     trial = record.parent / project
     if trial.is_symlink() or not trial.resolve().is_relative_to(root.resolve()):
@@ -738,6 +739,8 @@ def handoff_environment(root: Path, record: Path) -> None:
                             "--rm",
                             "--pull",
                             "never",
+                            "--platform",
+                            platform,
                             "--cidfile",
                             str(identifier),
                             "--network",
