@@ -3,7 +3,8 @@ import { Database } from "bun:sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { RecordCodec } from "../../src/storage/record-codec"
-import { TransactionalStore } from "../../src/storage/transactional-store"
+import { StoragePortable } from "../../src/storage/portable"
+import { TransactionalStore, type StoredEvent } from "../../src/storage/transactional-store"
 
 const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "event-receipt-encoding-"))
 const stores: TransactionalStore[] = []
@@ -24,16 +25,21 @@ async function open(label: string) {
 }
 
 /** The column as the engine stored it, without going through the store's readers. */
-function stored(filename: string, table: "storage_events" | "storage_receipts", column: "payload" | "result") {
+function storedBody(
+  filename: string,
+  table: "storage_events" | "storage_receipts",
+  column: "payload" | "result",
+  row: { column: "id" | "operation_id"; value: string },
+) {
   const database = new Database(filename, { readonly: true, strict: true })
   try {
-    const [row] = database
+    const [record] = database
       .query<
         { kind: string; value: string | Uint8Array },
-        []
-      >(`SELECT typeof(${column}) AS kind, ${column} AS value FROM ${table}`)
-      .all()
-    return row!
+        [string]
+      >(`SELECT typeof(${column}) AS kind, ${column} AS value FROM ${table} WHERE ${row.column} = ?`)
+      .all(row.value)
+    return record!
   } finally {
     database.close()
   }
@@ -41,18 +47,49 @@ function stored(filename: string, table: "storage_events" | "storage_receipts", 
 
 /**
  * A body large enough that `RecordCodec` stores it as a compressed frame rather
- * than as plain JSON. This is the form the record-body column holds.
+ * than as plain JSON.
  */
-const compressibleValue = { text: "durable rollout evidence".repeat(200) }
+const compressibleValue = { text: "durable rollout evidence".repeat(200), nested: { unknown: true } }
 const smallValue = { v: 1 }
 
-test("a compressed frame is not the form these two columns hold, which is why the readers parse JSON", async () => {
-  // The premise the cleanup decision turns on: `RecordCodec` genuinely chooses the
-  // frame for a value this size, while the value a smaller one produces stays
-  // plain. `StorageEntry.result` is a string in the portable archive, and both
-  // readers parse the column as JSON text.
+test("the codec chooses the frame form for a compressible value and keeps a small one as plain JSON", () => {
   expect(RecordCodec.encode(compressibleValue)).toBeInstanceOf(Uint8Array)
   expect(RecordCodec.encode(smallValue)).toBe('{"v":1}')
+})
+
+test("both columns hold the codec's frame form above the compression floor and stay readable", async () => {
+  const store = await open("encoding-columns")
+  const filename = store.sqliteFilename!
+
+  await store.transaction(
+    async (tx) => {
+      await tx.enqueue({ id: "event-small", scopeID: "scope", type: "small", payload: smallValue })
+      await tx.enqueue({ id: "event-large", scopeID: "scope", type: "large", payload: compressibleValue })
+      await tx.write(["probe"], { ok: true })
+      return { nested: { value: compressibleValue } }
+    },
+    { operationID: "receipt-large", requestHash: "input-large" },
+  )
+
+  // The columns follow the format 3 container rule the body column uses, so a
+  // value the codec compresses is written as a real frame. This is the assertion
+  // that replaces the retired bypass: a local `JSON.stringify` could only ever
+  // leave text here.
+  expect(String(storedBody(filename, "storage_events", "payload", { column: "id", value: "event-large" }).kind)).toBe(
+    "blob",
+  )
+  expect(
+    String(storedBody(filename, "storage_receipts", "result", { column: "operation_id", value: "receipt-large" }).kind),
+  ).toBe("blob")
+
+  const payload = storedBody(filename, "storage_events", "payload", { column: "id", value: "event-large" })
+  const result = storedBody(filename, "storage_receipts", "result", { column: "operation_id", value: "receipt-large" })
+  expect(payload.value).toBeInstanceOf(Uint8Array)
+  expect(result.value).toBeInstanceOf(Uint8Array)
+  expect(RecordCodec.decode<typeof compressibleValue>(payload.value)).toEqual(compressibleValue)
+  expect(RecordCodec.decode<{ value: unknown }>(result.value)).toEqual({
+    value: { nested: { value: compressibleValue } },
+  })
 })
 
 test("event payloads and command receipts round-trip at both sizes through the serving readers", async () => {
@@ -68,8 +105,8 @@ test("event payloads and command receipts round-trip at both sizes through the s
     { id: "event-large", scopeID: "scope", type: "large", payload: compressibleValue },
   ])
 
-  // The oversized receipt proves the column survives a value far past the
-  // compression floor, and replay reads it back through the same shape.
+  // A receipt carries a nested result far past the compression floor, so the
+  // replay path has to decode a frame rather than parse the column as text.
   await store.transaction(
     async (tx) => {
       await tx.write(["probe"], { ok: true })
@@ -90,37 +127,124 @@ test("event payloads and command receipts round-trip at both sizes through the s
       { operationID: "receipt-large", requestHash: "input-large" },
     ),
   ).toEqual({ ok: true })
+  await expect(
+    store.transaction(async () => "other", { operationID: "receipt-large", requestHash: "other-input" }),
+  ).rejects.toThrow("Operation ID was already used for different input")
 })
 
-test("both columns hold JSON text rather than a frame, for a value above the compression floor", async () => {
-  const store = await open("encoding-columns")
+test("a receipt and an event written before this change stay readable as plain text", async () => {
+  const namespace = "encoding-legacy-read"
+  const store = await open(namespace)
   const filename = store.sqliteFilename!
+
+  // The retired writer stored `JSON.stringify` output directly, which is exactly
+  // the plain JSON form the codec leaves unchanged. Both readers must still
+  // accept it.
+  await store.transaction(async (tx) => {
+    await tx.raw.query(
+      "INSERT INTO storage_events(namespace, id, scope_id, type, payload, position) VALUES (?, ?, ?, ?, ?, ?)",
+      [namespace, "legacy-event", "scope", "legacy", JSON.stringify(smallValue), 1],
+    )
+    await tx.raw.query(
+      "INSERT INTO storage_receipts(namespace, operation_id, request_hash, result, created) VALUES (?, ?, ?, ?, ?)",
+      [namespace, "legacy-receipt", "legacy-input", JSON.stringify({ value: smallValue }), 1],
+    )
+  })
+
+  expect(String(storedBody(filename, "storage_events", "payload", { column: "id", value: "legacy-event" }).kind)).toBe(
+    "text",
+  )
+  expect(await store.pendingEvents(10)).toEqual<StoredEvent[]>([
+    { id: "legacy-event", scopeID: "scope", type: "legacy", payload: smallValue },
+  ])
+  expect(await store.operationReceipt("legacy-receipt")).toEqual({
+    requestHash: "legacy-input",
+    result: { value: smallValue },
+  })
+})
+
+test("restoreEntry compares decoded JSON text, so a framed receipt matches its archive string", async () => {
+  const store = await open("encoding-restore")
+  const filename = store.sqliteFilename!
+  const result = { nested: { value: compressibleValue } }
 
   await store.transaction(
     async (tx) => {
-      await tx.enqueue({ id: "event", scopeID: "scope", type: "large", payload: compressibleValue })
       await tx.write(["probe"], { ok: true })
-      return { ok: true }
+      return result
     },
     { operationID: "receipt", requestHash: "input" },
   )
+  const stored = storedBody(filename, "storage_receipts", "result", { column: "operation_id", value: "receipt" })
+  expect(stored.value).toBeInstanceOf(Uint8Array)
 
-  const payload = stored(filename, "storage_events", "payload")
-  const result = stored(filename, "storage_receipts", "result")
+  // The archive carries JSON text while the column holds a frame. An equality
+  // test against the raw column would call this an identical receipt a conflict.
+  await store.transaction(async (tx) => {
+    await tx.restoreEntry({
+      type: "receipt",
+      operationID: "receipt",
+      requestHash: "input",
+      result: RecordCodec.text(stored.value as Uint8Array),
+      created: 1,
+    })
+  })
 
-  // This is the evidence that routing the writers through `RecordCodec.encode` is
-  // not a two-line swap. The column holds the plain JSON of a value the codec would
-  // have stored as a frame, and every reader of both columns -- `pendingEvents`,
-  // `exportEntries`, `operationReceipt`, the receipt replay in `transaction`, and
-  // `restoreEntry`'s string comparison -- parses or compares that text directly. A
-  // frame here is a `Uint8Array`, which those readers cannot parse, and on
-  // PostgreSQL a `Uint8Array` bound to this declared-`TEXT` column lands as
-  // `\x`-escaped text rather than as bytes.
-  expect(String(payload.kind)).toBe("text")
-  expect(String(result.kind)).toBe("text")
-  expect(JSON.parse(String(payload.value))).toEqual(compressibleValue)
-  expect(JSON.parse(String(result.value))).toEqual({ value: { ok: true } })
-  // The two forms are genuinely different: the frame the codec would choose is not
-  // the text these columns actually hold.
-  expect(RecordCodec.encode(compressibleValue)).not.toBe(payload.value)
+  await expect(
+    store.transaction(async (tx) => {
+      await tx.restoreEntry({
+        type: "receipt",
+        operationID: "receipt",
+        requestHash: "input",
+        result: JSON.stringify({ value: { different: true } }),
+        created: 1,
+      })
+    }),
+  ).rejects.toThrow("Command receipt conflicts with existing target data")
+})
+
+test("a portable export and import round-trips both columns exactly", async () => {
+  const source = await open("encoding-portable-source")
+  const namespace = "encoding-portable-source"
+  const target = await open("encoding-portable-target")
+  const archive = path.join(root, "encoding-archive.ndjson")
+
+  await source.transaction(
+    async (tx) => {
+      await tx.enqueue({ id: "event-small", scopeID: "scope", type: "small", payload: smallValue })
+      await tx.enqueue({ id: "event-large", scopeID: "scope", type: "large", payload: compressibleValue })
+      await tx.write(["probe"], { ok: true })
+      return { nested: { value: compressibleValue } }
+    },
+    { operationID: "receipt-large", requestHash: "input-large" },
+  )
+  // A legacy plain-text row travels through the same archive as a framed one.
+  await source.transaction(async (tx) => {
+    await tx.raw.query(
+      "INSERT INTO storage_events(namespace, id, scope_id, type, payload, position) VALUES (?, ?, ?, ?, ?, ?)",
+      [namespace, "event-legacy", "scope", "legacy", JSON.stringify(smallValue), 99],
+    )
+  })
+
+  // The envelope is JSON, so the frame both columns hold must be rendered back
+  // to the JSON text the portable format carries.
+  const exported = await source.snapshot(async (tx) => Array.fromAsync(tx.exportEntries()))
+  const receipt = exported.find((entry) => entry.type === "receipt")
+  expect(receipt?.type === "receipt" && typeof receipt.result === "string").toBe(true)
+  expect(exported.some((entry) => entry.type === "event")).toBe(true)
+
+  await StoragePortable.exportFile(source, archive)
+  await StoragePortable.importFile(target, archive)
+
+  expect(await target.pendingEvents(10)).toEqual(await source.pendingEvents(10))
+  expect(await target.operationReceipt("receipt-large")).toEqual(await source.operationReceipt("receipt-large"))
+  // The imported columns take the codec's form again rather than the archive's.
+  const imported = storedBody(target.sqliteFilename!, "storage_receipts", "result", {
+    column: "operation_id",
+    value: "receipt-large",
+  })
+  expect(imported.value).toBeInstanceOf(Uint8Array)
+  expect(RecordCodec.decode<{ value: unknown }>(imported.value)).toEqual({
+    value: { nested: { value: compressibleValue } },
+  })
 })

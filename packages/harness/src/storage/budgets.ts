@@ -89,12 +89,14 @@ export namespace StorageBudgets {
   }): Timings {
     const hardCeilingMs = Math.max(1_000, storage.hardCeilingMs)
     return {
-      requestDeadlineMs: Math.max(1, storage.requestDeadlineMs),
-      probeTimeoutMs: Math.max(1, storage.probeTimeoutMs),
+      // Every budget that can occupy the loop is clamped, not just the chunk
+      // budget: the invariant only protects the worker if it holds for *every*
+      // allowed single-statement limit, so a configuration that would let one
+      // ordinary statement outlive the ceiling must not take effect either.
+      requestDeadlineMs: Math.min(Math.max(1, storage.requestDeadlineMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
+      probeTimeoutMs: Math.min(Math.max(1, storage.probeTimeoutMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
       probeAttempts: Math.max(1, storage.probeAttempts),
       hardCeilingMs,
-      // Clamped rather than rejected: a configuration that would reopen the
-      // terminal window must simply not take effect.
       chunkBudgetMs: Math.min(Math.max(1, storage.chunkBudgetMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
       engineBudgetMs: hardCeilingMs,
       // Never allowed to grow past the margin, so a ceiling raised to cover a

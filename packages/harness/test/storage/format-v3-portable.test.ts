@@ -121,18 +121,21 @@ test("node-orphan-invariant: verify reports unreachable nodes and a rebuild repa
     })
     expect((await store.verify()).issues).toEqual([])
 
-    // `removeTree` tombstones the records but keeps their revision fence, so the
-    // nodes for that subtree are still reachable by a tombstoned record and are
-    // not orphans. Deleting the records outright -- which is what an interrupted
-    // `pruneTree` leaves behind -- is what strands a node.
+    // `removeTree` tombstones the records and keeps that revision fence, but the
+    // nodes the fence leaves unreachable are cleaned up in the same transaction,
+    // so the subtree leaves no node behind and the store still verifies clean.
     await store.removeTree(["notes", "kept"])
     expect((await store.verify()).issues).toEqual([])
 
+    // An interrupted `pruneTree` deletes records before it deletes nodes, so that
+    // stranded state is reproduced by removing the record rows directly. A node
+    // with no record row anywhere beneath it is what `verify` reports.
+    await store.write(["orphan", "deep", "leaf"], { stranded: true })
     const database = new Database(filename)
     try {
       database.run("DELETE FROM storage_records WHERE namespace = ? AND key_text = ?", [
         NAMESPACE,
-        JSON.stringify(["notes", "kept", "leaf"]),
+        JSON.stringify(["orphan", "deep", "leaf"]),
       ])
     } finally {
       database.close()
@@ -140,18 +143,20 @@ test("node-orphan-invariant: verify reports unreachable nodes and a rebuild repa
     // Removing the only record beneath that path strands the whole chain: the
     // leaf, its parent and the shared root now have no record under them at all.
     const orphans = (await store.verify()).issues
-    expect(orphans.map((issue) => issue.key.join("/")).sort()).toEqual(["notes", "notes/kept", "notes/kept/leaf"])
+    expect(orphans.map((issue) => issue.key.join("/")).sort()).toEqual(["orphan", "orphan/deep", "orphan/deep/leaf"])
     expect(orphans.every((issue) => issue.reason === "node_without_record")).toBe(true)
 
-    // The rebuild derives nodes from the live records, so it removes the node no
-    // record reaches and leaves the reachable ones intact.
+    // The rebuild derives nodes from the live records, so it removes the nodes no
+    // record reaches -- the `orphan` chain just stranded -- and leaves the
+    // reachable ones intact.
     await StorageFormatV3Migration.rebuildNodes(store)
     expect((await store.verify()).issues).toEqual([])
-    // No live record remains under `notes`, so the rebuild correctly leaves no
-    // node path there: the tombstoned-and-then-deleted subtree is gone from the
-    // traversal index, and only the live session tree survives.
+    // No live record remains under `notes` or `orphan`: `removeTree` already
+    // cleaned the first and the rebuild removes the second, so only the live
+    // session tree is left in the traversal index.
     expect(await store.scan([])).toEqual(["sessions"])
     expect(await store.scan(["notes"])).toEqual([])
+    expect(await store.scan(["orphan"])).toEqual([])
     expect(await store.list(["sessions"])).toEqual([
       ["sessions", "scope", "ses", "info"],
       ["sessions", "scope", "ses", "messages", "msg", "info"],
@@ -164,6 +169,11 @@ test("node-orphan-invariant: verify reports unreachable nodes and a rebuild repa
         "SELECT segment FROM storage_nodes WHERE namespace = ? AND key_id = ?",
       )
       expect(query.get(NAMESPACE, keyBytes(["sessions"]))?.segment).toBe("sessions")
+      // The removed subtree left no node for a later write to collide with, and
+      // the rebuild did not resurrect the stranded chain.
+      expect(query.get(NAMESPACE, keyBytes(["notes"]))).toBeNull()
+      expect(query.get(NAMESPACE, keyBytes(["notes", "kept"]))).toBeNull()
+      expect(query.get(NAMESPACE, keyBytes(["orphan"]))).toBeNull()
       query.finalize()
     } finally {
       check.close()

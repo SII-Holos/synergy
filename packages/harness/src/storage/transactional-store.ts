@@ -9,7 +9,7 @@ import {
   StorageUnavailableError,
 } from "./errors"
 import { ArtifactLocation } from "./artifact-location"
-import { RecordCodec, type BodyContainer } from "./record-codec"
+import { RecordCodec, type BodyContainer, type RecordBody } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
@@ -106,10 +106,15 @@ function keyHex(value: SqlValue) {
   throw new StorageIntegrityError("A storage key column holds an unsupported value")
 }
 
-function encode(value: unknown) {
-  const result = JSON.stringify(value)
-  if (result === undefined) throw new StorageIntegrityError("A storage record must be JSON serializable")
-  return result
+/** The container a body column may hold, from the namespace's recorded key encoding. */
+function bodyContainer(keys: KeyEncoding): BodyContainer {
+  return keys === "bytes" ? "frame" : "text"
+}
+
+/** Normalizes a body column read back from either backend to the codec's input. */
+function recordBody(value: SqlValue): RecordBody {
+  if (typeof value === "string" || value instanceof Uint8Array) return value
+  throw new StorageIntegrityError("A storage body column holds an unsupported value")
 }
 
 function metadata(key: string[]) {
@@ -258,7 +263,7 @@ export class StoreTransaction {
    * disagreeing, and `adoptFormatV3` therefore flips both at once.
    */
   private get bodies(): BodyContainer {
-    return this.keys === "bytes" ? "frame" : "text"
+    return bodyContainer(this.keys)
   }
 
   constructor(
@@ -523,6 +528,9 @@ export class StoreTransaction {
       "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL",
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
+    // The tombstone stays; the node chain the removal emptied does not.
+    // The tombstone stays; the node chain the removal emptied does not.
+    await this.cleanDanglingNodes(key)
   }
 
   // SQLite must drive recursion and record lookups from the frontier; otherwise
@@ -570,12 +578,75 @@ export class StoreTransaction {
         "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND body IS NOT NULL",
         [Date.now(), this.namespace],
       )
+      await this.cleanDanglingNodes([])
       return
     }
     await this.connection.query(
       "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
       [this.namespace, keyParameter(this.keys, prefix), this.namespace, Date.now(), this.namespace],
     )
+    await this.cleanDanglingNodes(prefix)
+  }
+
+  /**
+   * Drops the node rows a tombstone-only removal left unreachable.
+   *
+   * `remove` and `removeTree` keep a record tombstone as the fence that stops a
+   * delayed writer reviving deleted data, so their record rows stay behind. A
+   * predicate that counts any record row -- which is what `pruneTree` uses, and
+   * is correct there because it deletes the rows outright -- would therefore
+   * never fire here. Eligibility is instead "no live record at this node's own
+   * key and no surviving child", so an interior node drops only once its subtree
+   * has drained and the rounds proceed leaf-to-parent.
+   *
+   * The candidate set is the removed prefix's subtree plus that prefix's own
+   * ancestors, both reached from the prefix rather than from the deleted rows: a
+   * digest cannot reconstruct a parent link, and anchoring on the prefix keeps
+   * every round independent of what an earlier round already removed. Each round
+   * is one bounded statement, so no single statement grows with the tree.
+   */
+  private async cleanDanglingNodes(prefix: string[]): Promise<void> {
+    const root = keyParameter(this.keys, prefix)
+    const ancestors: SqlValue[] = []
+    for (let depth = 1; depth < prefix.length; depth++) ancestors.push(keyParameter(this.keys, prefix.slice(0, depth)))
+    const ancestorSet = ancestors.length ? ` OR node.key_id IN (${ancestors.map(() => "?").join(",")})` : ""
+    for (;;) {
+      const dropped = await this.connection.query<SqlRow>(
+        `WITH RECURSIVE subtree(key_id) AS (
+           SELECT node.key_id FROM storage_nodes node WHERE node.namespace = ? AND (node.key_id = ? OR node.parent_id = ?)
+           UNION
+           SELECT child.key_id FROM storage_nodes child JOIN subtree ON child.parent_id = subtree.key_id WHERE child.namespace = ?
+         ), candidate(key_id) AS (
+           SELECT node.key_id FROM storage_nodes node
+            WHERE node.namespace = ? AND (node.key_id IN (SELECT key_id FROM subtree)${ancestorSet})
+              AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = node.key_id AND record.body IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = node.key_id)
+            LIMIT ?
+         )
+         DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM candidate)
+         RETURNING key_id`,
+        [
+          this.namespace,
+          root,
+          root,
+          this.namespace,
+          this.namespace,
+          ...ancestors,
+          this.namespace,
+          this.namespace,
+          PRUNE_CHUNK,
+          this.namespace,
+        ],
+      )
+      // Stop on an empty round rather than a short one: a saturated round can
+      // hold nothing but ineligible ancestors, and treating that as the end would
+      // strand the interior nodes the rounds below it were about to free. The
+      // round count is not capped: deletion is monotonic, so the candidate set
+      // can only shrink and an empty round proves the fixed point is reached,
+      // whereas stopping early would leave nodes no traversal can reach and turn
+      // them into the orphans `verify` reports.
+      if (!dropped.length) break
+    }
   }
 
   /**
@@ -735,7 +806,7 @@ export class StoreTransaction {
           type: "receipt",
           operationID: String(row.operation_id),
           requestHash: String(row.request_hash),
-          result: String(row.result),
+          result: RecordCodec.text(recordBody(row.result)),
           created: Number(row.created),
         }
       operationID = String(page.at(-1)!.operation_id)
@@ -753,7 +824,7 @@ export class StoreTransaction {
           id: String(row.id),
           scopeID: String(row.scope_id),
           eventType: String(row.type),
-          payload: JSON.parse(String(row.payload)) as unknown,
+          payload: RecordCodec.decode(recordBody(row.payload)),
         }
       position = BigInt(page.at(-1)!.position as bigint)
     }
@@ -898,14 +969,25 @@ export class StoreTransaction {
       [this.namespace, entry.operationID],
     )
     if (existing) {
-      if (existing.request_hash !== entry.requestHash || existing.result !== entry.result)
+      // The archive carries JSON text, so this compares the stored body's text
+      // rather than the frame a format 3 column holds.
+      const stored = RecordCodec.text(recordBody(existing.result))
+      if (existing.request_hash !== entry.requestHash || stored !== entry.result)
         throw new StorageConflictError("Command receipt conflicts with existing target data")
       return
     }
+    // `reencode` carries the archive's JSON text across exactly rather than
+    // parsing and re-serializing it, so a repeated import compares equal.
     JSON.parse(entry.result)
     await this.connection.query(
       "INSERT INTO storage_receipts(namespace, operation_id, request_hash, result, created) VALUES (?, ?, ?, ?, ?)",
-      [this.namespace, entry.operationID, entry.requestHash, entry.result, entry.created],
+      [
+        this.namespace,
+        entry.operationID,
+        entry.requestHash,
+        RecordCodec.reencode(entry.result, this.bodies),
+        entry.created,
+      ],
     )
   }
 
@@ -917,7 +999,14 @@ export class StoreTransaction {
     )
     await this.connection.query(
       "INSERT INTO storage_events(namespace, id, scope_id, type, payload, position) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(namespace, id) DO NOTHING",
-      [this.namespace, event.id, event.scopeID, event.type, encode(event.payload), counter.next_event],
+      [
+        this.namespace,
+        event.id,
+        event.scopeID,
+        event.type,
+        RecordCodec.encode(event.payload, this.bodies),
+        counter.next_event,
+      ],
     )
   }
 }
@@ -1067,7 +1156,7 @@ export class TransactionalStore {
               if (receipt) {
                 if (receipt.request_hash !== options.requestHash)
                   throw new StorageConflictError("Operation ID was already used for different input")
-                return (JSON.parse(String(receipt.result)) as { value: T }).value
+                return RecordCodec.decode<{ value: T }>(recordBody(receipt.result)).value
               }
             }
             const tx = new StoreTransaction(
@@ -1087,7 +1176,7 @@ export class TransactionalStore {
                     this.options.namespace,
                     options.operationID,
                     options.requestHash!,
-                    encode({ value: result }),
+                    RecordCodec.encode({ value: result }, bodyContainer(this.keyEncoding)),
                     Date.now(),
                   ],
                 )
@@ -1336,7 +1425,7 @@ export class TransactionalStore {
       ]),
     )
     return receipt
-      ? { requestHash: String(receipt.request_hash), result: JSON.parse(String(receipt.result)) as unknown }
+      ? { requestHash: String(receipt.request_hash), result: RecordCodec.decode(recordBody(receipt.result)) }
       : undefined
   }
 
@@ -1360,7 +1449,7 @@ export class TransactionalStore {
       id: String(row.id),
       scopeID: String(row.scope_id),
       type: String(row.type),
-      payload: JSON.parse(String(row.payload)) as unknown,
+      payload: RecordCodec.decode(recordBody(row.payload)),
     }))
   }
 

@@ -45,3 +45,32 @@ test("a degenerate ceiling still leaves a usable chunk budget below it", () => {
   expect(budgets.chunkBudgetMs).toBeLessThan(budgets.hardCeilingMs)
   expect(budgets.chunkBudgetMs * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(budgets.hardCeilingMs)
 })
+
+test("every budget that can occupy the loop holds the margin, not just the chunk budget", () => {
+  // The invariant has to hold for *every* allowed single-statement limit. Clamping
+  // only the chunk budget would leave an ordinary statement free to outlive the
+  // ceiling, which is the same terminal window by a different name.
+  refreshStorage({
+    requestDeadlineMs: 30_000_000,
+    probeTimeoutMs: 30_000_000,
+    chunkBudgetMs: 30_000_000,
+    hardCeilingMs: 300_000,
+  })
+  const budgets = StorageBudgets.current()
+  for (const budget of [budgets.requestDeadlineMs, budgets.probeTimeoutMs, budgets.chunkBudgetMs])
+    expect(budget * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(budgets.hardCeilingMs)
+  expect(budgets.probeAttempts).toBeGreaterThan(1)
+  // The ceiling itself is the one budget allowed to reach the ceiling: it is what
+  // bounds the statements that cannot be chunked, so it must not be reduced below
+  // the value the operator set.
+  expect(budgets.engineBudgetMs).toBe(budgets.hardCeilingMs)
+})
+
+test("a degenerate ceiling still leaves every budget usable and bounded", () => {
+  refreshStorage({ requestDeadlineMs: 900_000, probeTimeoutMs: 900_000, hardCeilingMs: 50_000 })
+  const budgets = StorageBudgets.current()
+  for (const budget of [budgets.requestDeadlineMs, budgets.probeTimeoutMs, budgets.chunkBudgetMs])
+    expect(budget).toBeGreaterThan(0)
+  expect(budgets.requestDeadlineMs * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(budgets.hardCeilingMs)
+  expect(budgets.probeTimeoutMs * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(budgets.hardCeilingMs)
+})
