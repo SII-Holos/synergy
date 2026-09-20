@@ -1,4 +1,3 @@
-import { MaintenanceProgress } from "../storage/maintenance-progress"
 import { SessionStaging } from "../session/staging"
 import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
@@ -6,6 +5,8 @@ import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
 import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
+import { observeStorageMaintenance } from "../storage/maintenance-progress"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -65,7 +66,7 @@ export interface RuntimeServices {
 export namespace RuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
-  export async function open(options: {
+  export interface OpenOptions {
     experiment?: Experiment.File
     storage?: Storage.Handle
     mode: "server" | "oneshot"
@@ -73,9 +74,28 @@ export namespace RuntimeHandle {
     services?: RuntimeServices
     reporter?: MigrationReporter
     storageReporter?: (progress: ImportProgress) => void
+    maintenanceReporter?: (event: StorageMaintenanceEvent) => void
     migrationOutput?: RunOptions["output"]
     recoveryReporter?: { progress(current: number): void; completed(): void }
-  }) {
+  }
+
+  export async function open(options: OpenOptions) {
+    let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
+    try {
+      return await observeStorageMaintenance(
+        async () => (runtime = await openRuntime(options)),
+        (event) => {
+          log.info("storage maintenance", event)
+          options.maintenanceReporter?.(event)
+        },
+      )
+    } catch (error) {
+      await runtime?.close().catch(() => {})
+      throw error
+    }
+  }
+
+  async function openRuntime(options: OpenOptions) {
     const services = options.services ?? {}
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
     let storage: StorageBootstrap.Prepared | undefined
@@ -175,35 +195,28 @@ export namespace RuntimeHandle {
       MigrationRegistry.lock()
       ConfigExtensions.lock()
       await Global.initialize({ configSchemaPath: options.services?.configSchemaPath })
-      const migration = await MaintenanceProgress.run(options.storageReporter, async () => {
-        if (options.storage) uninstallStorage = Storage.install(options.storage)
-        else {
-          storage = await StorageBootstrap.prepare({ root: Global.Path.root, progress: options.storageReporter })
-          uninstallStorage = Storage.install({ store: storage.store, artifactDirectory: Global.Path.data })
-        }
-        await SessionStaging.recover()
-        const migration = await ensureMigrations({
-          output: options.migrationOutput ?? "silent",
-          reporter: options.reporter,
-        })
-        await SessionCompat.prepareRecovery((current, total) =>
-          options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
-        )
-        if (storage && storage.manifest.phase !== "active")
-          await StorageRecovery.validate((current, timeoutMs) =>
-            options.storageReporter?.(
-              timeoutMs === undefined
-                ? { stage: "validate", current, total: 0, bytes: 0 }
-                : { stage: "validate-engine", current: 0, total: 0, bytes: 0, timeoutMs },
-            ),
-          )
-        await storage?.activate()
-        await StorageRecovery.recoverOwners()
-        await StorageRecovery.load()
-        await StorageRecovery.reconcileNotifications()
-        options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
-        return migration
+      if (options.storage) uninstallStorage = Storage.install(options.storage)
+      else {
+        storage = await StorageBootstrap.prepare({ root: Global.Path.root, progress: options.storageReporter })
+        uninstallStorage = Storage.install({ store: storage.store, artifactDirectory: Global.Path.data })
+      }
+      await SessionStaging.recover()
+      const migration = await ensureMigrations({
+        output: options.migrationOutput ?? "silent",
+        reporter: options.reporter,
       })
+      await SessionCompat.prepareRecovery((current, total) =>
+        options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
+      )
+      if (storage && storage.manifest.phase !== "active")
+        await StorageRecovery.validate((current) =>
+          options.storageReporter?.({ stage: "validate", current, total: 0, bytes: 0 }),
+        )
+      await storage?.activate()
+      await StorageRecovery.recoverOwners()
+      await StorageRecovery.load()
+      await StorageRecovery.reconcileNotifications()
+      options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested, options.mode)

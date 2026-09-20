@@ -10,6 +10,7 @@ export interface DesktopStartupStatus {
   title: string
   detail: string
   progress?: { current: number; total: number }
+  elapsedMs?: number
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
@@ -248,6 +249,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       font-weight: 600;
     }
 
+    .startup-elapsed,
     .startup-detail,
     .startup-count {
       margin-top: 10px;
@@ -316,6 +318,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       <div class="startup-mark" aria-hidden="true">${icon}</div>
       <div class="startup-status" data-startup-status role="status">Opening Synergy</div>
       <div class="startup-detail" data-startup-detail></div>
+      <div class="startup-elapsed" data-startup-elapsed></div>
       <div class="startup-progress" role="progressbar" aria-label="Startup progress" aria-valuemin="0" aria-valuemax="100" aria-describedby="startup-count">
         <div class="startup-progress__fill"></div>
       </div>
@@ -331,10 +334,20 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     const count = document.querySelector(".startup-count")
     const maximize = document.querySelector('[data-window-action="maximize"]')
 
+    const elapsed = document.querySelector("[data-startup-elapsed]")
+    let waitingSince
+    function renderElapsed() {
+      const seconds = waitingSince === undefined ? undefined : Math.floor((performance.now() - waitingSince) / 1000)
+      elapsed.textContent = seconds === undefined ? "" : "Waiting " + Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
+    }
+    setInterval(renderElapsed, 1000)
+
     function setStatus(next) {
       if (!next) return
       if (typeof next.title === "string") status.textContent = next.title
       if (typeof next.detail === "string") detail.textContent = next.detail
+      waitingSince = Number.isFinite(next.elapsedMs) ? performance.now() - Math.max(0, next.elapsedMs) : undefined
+      renderElapsed()
       const value = next.progress
       if (Number.isSafeInteger(value?.current) && Number.isSafeInteger(value?.total) && value.total > 0 && value.current >= 0 && value.current <= value.total) {
         const percent = Math.floor(value.current / value.total * 100)

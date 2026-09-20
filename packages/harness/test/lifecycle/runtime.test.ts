@@ -1,5 +1,6 @@
 import { Storage } from "../../src/storage/storage"
 import { expect, test } from "bun:test"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { RuntimeHandle } from "../../src/lifecycle/runtime"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -53,12 +54,15 @@ for (const fails of [false, true]) {
 
 test("local runtime owns its home without a transport and releases it exactly once", async () => {
   const calls: string[] = []
+  const maintenance: StorageMaintenanceEvent[] = []
   const runtime = await RuntimeHandle.open({
     storage: Storage.current(),
     mode: "oneshot",
+    maintenanceReporter: (event) => maintenance.push(event),
     services: {
       initializeExtensions: async () => {
         calls.push("initialize")
+        await Storage.current().store.verify()
       },
       disposeExtensions: async () => {
         calls.push("dispose")
@@ -66,6 +70,8 @@ test("local runtime owns its home without a transport and releases it exactly on
     },
   })
   try {
+    expect(maintenance).toContainEqual(expect.objectContaining({ state: "started", operation: "integrity-check" }))
+    expect(maintenance).toContainEqual(expect.objectContaining({ state: "completed" }))
     expect(runtime.server).toBeUndefined()
     expect((await ServerProcessLock.read())?.mode).toBe("oneshot")
     await expect(RuntimeHandle.open({ storage: Storage.current(), mode: "oneshot" })).rejects.toThrow("already owns")
@@ -96,6 +102,33 @@ test("startup failure disposes initialized resources and releases home ownership
       }),
     ).rejects.toThrow("extension initialization failed")
     expect(calls).toEqual(["dispose"])
+    expect(await ServerProcessLock.read()).toBeUndefined()
+  } finally {
+    restoreAdmission()
+  }
+}, 30_000)
+
+test("a failed maintenance reporter closes the runtime and releases ownership", async () => {
+  let disposed = false
+  try {
+    await expect(
+      RuntimeHandle.open({
+        storage: Storage.current(),
+        mode: "oneshot",
+        maintenanceReporter() {
+          throw new Error("report transport failed")
+        },
+        services: {
+          initializeExtensions: async () => {
+            await Storage.current().store.verify()
+          },
+          disposeExtensions: async () => {
+            disposed = true
+          },
+        },
+      }),
+    ).rejects.toThrow("report transport failed")
+    expect(disposed).toBe(true)
     expect(await ServerProcessLock.read()).toBeUndefined()
   } finally {
     restoreAdmission()

@@ -4,6 +4,53 @@ import { DesktopServerStartup } from "../src/server-startup.js"
 const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
 
 describe("managed startup progress", () => {
+  test("waits for maintenance inside a migration without renewing its fixed budget", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 4, current: 0, total: 0 }))
+    const begin = { phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 900_000 }
+    startup.receive(line(begin))
+    now = 300_001
+    expect(startup.remainingMs()).toBe(604_999)
+    expect(startup.status().detail).toContain("Rebuilding")
+    startup.receive(line(begin))
+    startup.receive(line({ ...begin, timeoutMs: 1_800_000 }))
+    startup.receive(line({ phase: "maintenance", id: 1, state: "stage", stage: "checkpoint-after" }))
+    startup.receive(line({ phase: "migration", step: 4, current: 1, total: 10 }))
+    expect(startup.remainingMs()).toBe(604_999)
+    now = 905_000
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("vacuum")
+    startup.receive(line({ phase: "maintenance", id: 1, state: "completed", elapsedMs: 905_000 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line(begin))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(30_000)
+  })
+
+  test("keeps overlapping maintenance bounded and ignores stale completions", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(
+      line({ phase: "maintenance", id: 1, operation: "create-index", state: "started", timeoutMs: 600_000 }),
+    )
+    now = 100
+    startup.receive(
+      line({ phase: "maintenance", id: 2, operation: "integrity-check", state: "started", timeoutMs: 900_000 }),
+    )
+    expect(startup.remainingMs()).toBe(604_900)
+    startup.receive(line({ phase: "maintenance", id: 1, state: "completed", elapsedMs: 100 }))
+    expect(startup.remainingMs()).toBe(905_000)
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(905_000)
+    startup.receive(line({ phase: "maintenance", id: 1, state: "failed", elapsedMs: 100 }))
+    expect(startup.remainingMs()).toBe(905_000)
+    startup.receive(line({ phase: "maintenance", id: 2, state: "failed", elapsedMs: 100 }))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("integrity-check failed")
+  })
+
   test("waits for a finite engine verification budget without renewing duplicate announcements", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })
@@ -165,26 +212,4 @@ describe("managed startup progress", () => {
     startup.receive(line({ phase: "migration", step: 2, current: 0, total: 0 }))
     expect(statuses).toHaveLength(2)
   })
-})
-
-test("maintenance uses its finite budget and a duplicate operation cannot renew it", () => {
-  let now = 0
-  const startup = new DesktopServerStartup({ now: () => now })
-  const progress = {
-    phase: "storage",
-    stage: "maintenance",
-    step: 1,
-    operation: 1,
-    current: 0,
-    total: 0,
-    bytes: 0,
-    timeoutMs: 900_000,
-  }
-  startup.receive(line(progress))
-  now = 400_000
-  expect(startup.remainingMs()).toBe(500_000)
-  startup.receive(line({ ...progress, step: 2 }))
-  expect(startup.remainingMs()).toBe(500_000)
-  startup.receive(line({ ...progress, step: 3, operation: 2 }))
-  expect(startup.remainingMs()).toBe(900_000)
 })

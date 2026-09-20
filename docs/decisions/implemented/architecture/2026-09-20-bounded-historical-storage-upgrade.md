@@ -20,7 +20,7 @@ Runtime readiness, historical convergence and independent backup completeness ar
 
 Completion-notice writes also wait for owner readiness. Their in-flight guard survives optimistic rollback, preventing a quarantined owner or a rejected write from causing a reactive request loop. Migrator shutdown cancels only the captured storage Handle, including when its caller is bound to another Home.
 
-Full SQLite VACUUM conversion is optional maintenance, invoked with `migration run --maintenance`; already incremental and PostgreSQL stores can finish its no-op at startup. Necessary maintenance reports the actual finite worker budget with a monotonic operation number. Desktop accepts each operation once and uses a monotonic clock; repeated announcements cannot keep a stalled operation alive indefinitely.
+Full SQLite VACUUM conversion is optional maintenance, invoked with `migration run --maintenance`; already incremental and PostgreSQL stores can finish its no-op at startup. Necessary maintenance uses the shared [driver lifecycle contract](../bug-fix/2026-09-20-startup-maintenance-contract.md), including opening DDL, finite worker budgets and terminal events. Desktop accepts each operation once and uses a monotonic clock; repeated announcements cannot keep a stalled operation alive indefinitely.
 
 ## Alternatives considered
 

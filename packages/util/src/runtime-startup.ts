@@ -4,6 +4,26 @@ export const RUNTIME_STARTUP_PREFIX = "SYNERGY_STARTUP_V1 "
 export const RUNTIME_STARTUP_MAX_LINE_LENGTH = 1024
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const timeout = z.number().int().positive().max(2_147_483_647)
+export const StorageMaintenanceOperation = z.enum([
+  "vacuum",
+  "reclaim",
+  "integrity-check",
+  "create-index",
+  "drop-index",
+])
+export type StorageMaintenanceOperation = z.infer<typeof StorageMaintenanceOperation>
+export const StorageMaintenanceStage = z.enum(["checkpoint-before", "rewrite", "checkpoint-after"])
+export type StorageMaintenanceStage = z.infer<typeof StorageMaintenanceStage>
+const maintenance = { phase: z.literal("maintenance"), id: count.positive() }
+export const StorageMaintenanceEvent = z.discriminatedUnion("state", [
+  z
+    .object({ ...maintenance, state: z.literal("started"), operation: StorageMaintenanceOperation, timeoutMs: timeout })
+    .strict(),
+  z.object({ ...maintenance, state: z.literal("stage"), stage: StorageMaintenanceStage }).strict(),
+  z.object({ ...maintenance, state: z.enum(["completed", "failed"]), elapsedMs: count }).strict(),
+])
+export type StorageMaintenanceEvent = z.infer<typeof StorageMaintenanceEvent>
 export const StorageStartupProgress = z.object({
   stage: z.enum([
     "prepare",
@@ -16,7 +36,6 @@ export const StorageStartupProgress = z.object({
     "archive-verify",
     "archive-import",
     "validate-engine",
-    "maintenance",
     "validate",
     "activate",
     "check",
@@ -25,32 +44,33 @@ export const StorageStartupProgress = z.object({
   current: count,
   total: count,
   bytes: count,
-  operation: count.positive().optional(),
   timeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
 })
 export type StorageStartupProgress = z.infer<typeof StorageStartupProgress>
 
-export const RuntimeStartupProgress = z.discriminatedUnion("phase", [
-  z.object({ phase: z.literal("starting") }).strict(),
-  StorageStartupProgress.extend({ phase: z.literal("storage"), step: count.positive() })
-    .strict()
-    .refine((value) => value.total === 0 || value.current <= value.total)
-    .refine((value) =>
-      value.stage === "validate-engine" || value.stage === "maintenance"
-        ? value.timeoutMs !== undefined && value.current === 0 && value.total === 0 && value.bytes === 0
-        : value.timeoutMs === undefined,
-    )
-    .refine((value) => (value.stage === "maintenance" ? value.operation !== undefined : value.operation === undefined)),
-  z.object({ phase: z.literal("recovery"), current: count }).strict(),
-  z
-    .object({
-      phase: z.literal("migration"),
-      step: count.positive(),
-      current: count,
-      total: count,
-    })
-    .strict()
-    .refine((value) => value.current <= value.total),
+export const RuntimeStartupProgress = z.union([
+  StorageMaintenanceEvent,
+  z.discriminatedUnion("phase", [
+    z.object({ phase: z.literal("starting") }).strict(),
+    StorageStartupProgress.extend({ phase: z.literal("storage"), step: count.positive() })
+      .strict()
+      .refine((value) => value.total === 0 || value.current <= value.total)
+      .refine((value) =>
+        value.stage === "validate-engine"
+          ? value.timeoutMs !== undefined && value.current === 0 && value.total === 0 && value.bytes === 0
+          : value.timeoutMs === undefined,
+      ),
+    z.object({ phase: z.literal("recovery"), current: count }).strict(),
+    z
+      .object({
+        phase: z.literal("migration"),
+        step: count.positive(),
+        current: count,
+        total: count,
+      })
+      .strict()
+      .refine((value) => value.current <= value.total),
+  ]),
 ])
 export type RuntimeStartupProgress = z.infer<typeof RuntimeStartupProgress>
 
