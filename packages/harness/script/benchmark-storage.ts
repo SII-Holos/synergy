@@ -172,3 +172,71 @@ try {
 } finally {
   await fs.rm(ownerRoot, { recursive: true, force: true })
 }
+
+// A mixed workload measures the coupling the owner-enumeration defect turned on.
+// The store serves reads and writes through one serialized lane per direction,
+// so read latency and write latency are not independent: a slow statement on
+// either lane delays the other. Reporting both percentiles under contention is
+// what shows whether a change moved that coupling or only one side of it.
+const mixedWorkers = Number(process.env.SYNERGY_BENCH_MIXED_WORKERS ?? 8)
+const mixedDurationMs = Number(process.env.SYNERGY_BENCH_MIXED_MS ?? 3_000)
+const mixedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-storage-mixed-"))
+try {
+  const namespace = `mixed_${crypto.randomUUID()}`
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace,
+    filename: path.join(mixedRoot, "agent.sqlite"),
+  })
+  try {
+    const seedCount = 64
+    for (let index = 0; index < seedCount; index++)
+      await store.write(["seed", String(index).padStart(8, "0")], { index })
+    const readers: number[] = []
+    const writers: number[] = []
+    const deadline = performance.now() + mixedDurationMs
+    let readIndex = 0
+    let writeIndex = 0
+    const reader = async () => {
+      while (performance.now() < deadline) {
+        const started = performance.now()
+        await store.read<{ index: number }>(["seed", String(readIndex++ % seedCount).padStart(8, "0")])
+        readers.push(performance.now() - started)
+      }
+    }
+    const writer = async () => {
+      while (performance.now() < deadline) {
+        const started = performance.now()
+        await store.write(["mixed", String(writeIndex++).padStart(8, "0")], { at: Date.now() })
+        writers.push(performance.now() - started)
+      }
+    }
+    await Promise.all([
+      ...Array.from({ length: mixedWorkers }, reader),
+      ...Array.from({ length: mixedWorkers }, writer),
+    ])
+    if (!readers.length || !writers.length) throw new Error("Mixed workload benchmark produced no samples")
+    const percentile = (samples: number[], fraction: number) => {
+      const sorted = [...samples].sort((left, right) => left - right)
+      return +sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))].toFixed(3)
+    }
+    console.log(
+      JSON.stringify({
+        harness: "storage-mixed",
+        backend: "sqlite",
+        readerWorkers: mixedWorkers,
+        writerWorkers: mixedWorkers,
+        reads: readers.length,
+        writes: writers.length,
+        readP50Ms: percentile(readers, 0.5),
+        readP95Ms: percentile(readers, 0.95),
+        writeP50Ms: percentile(writers, 0.5),
+        writeP95Ms: percentile(writers, 0.95),
+      }),
+    )
+  } finally {
+    await store.close()
+  }
+} finally {
+  await fs.rm(mixedRoot, { recursive: true, force: true })
+}
