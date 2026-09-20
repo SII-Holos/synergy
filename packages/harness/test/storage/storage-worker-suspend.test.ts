@@ -184,4 +184,22 @@ describe("SQLite worker deadline across host suspension", () => {
     await driver.close()
     expect(worker.killed).toBe(true)
   })
+  test("a worker that never finishes teardown cannot hold shutdown open", async () => {
+    using _deadlines = capWallClockDeadlines()
+    const driver = await openDriver()
+    // Swallow the close request so the worker never confirms teardown. An
+    // unbounded drain here is what let the runtime watchdog exit the process
+    // before terminal writes could settle, so `close` must bound the wait and
+    // escalate by killing the worker instead of waiting forever.
+    interceptSend(driver, (message, deliver) => {
+      if (message.action === "close") return
+      deliver()
+    })
+    const worker = internals(driver).worker
+
+    await driver.close()
+
+    expect(worker.killed).toBe(true)
+    expect(internals(driver).closed).toBe(true)
+  })
 })
