@@ -3221,10 +3221,6 @@ msgid "app.lattice.loop.running"
 msgstr "运行中"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.loop.waiting"
-msgstr "等待中"
-
-#. js-lingui-explicit-id
 msgid "app.lattice.panel.acceptanceCriteria"
 msgstr "验收标准"
 
@@ -4596,10 +4592,6 @@ msgstr "失败"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.status.running"
 msgstr "运行中"
-
-#. ── Note panel ───────────────────────────────────────────────────────────────
-msgid "app.note.blueprint.status.waiting"
-msgstr "等待你回复"
 
 #. ── Note bubble menu ─────────────────────────────────────────────────────────
 msgid "app.note.bubble.bold"

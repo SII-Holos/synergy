@@ -3221,10 +3221,6 @@ msgid "app.lattice.loop.running"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.loop.waiting"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.lattice.panel.acceptanceCriteria"
 msgstr ""
 
@@ -4595,10 +4591,6 @@ msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.status.running"
-msgstr ""
-
-#. ── Note panel ───────────────────────────────────────────────────────────────
-msgid "app.note.blueprint.status.waiting"
 msgstr ""
 
 #. ── Note bubble menu ─────────────────────────────────────────────────────────
