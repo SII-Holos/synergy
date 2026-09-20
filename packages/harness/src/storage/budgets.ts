@@ -9,11 +9,11 @@ import { ObservabilityConfig } from "../observability/config"
  * The probe timeout is therefore a *busy* signal rather than a death signal, and
  * `hardCeilingMs` is what finally decides that a worker is wedged.
  *
- * `chunkBudgetMs` is the per-chunk budget every *chunkable* maintenance, DDL,
- * delete and migration path must stay inside. `CEILING_MARGIN` is the invariant
- * that keeps a legitimate chunk from ever reaching the ceiling, so raising a
- * chunk budget cannot silently reopen the window that let one statement kill a
- * runtime.
+ * `chunkBudgetMs` is the budget for the one maintenance operation that can be
+ * split, `reclaim`: it frees a bounded page count per call, so a fixed budget is
+ * enforceable. `CEILING_MARGIN` is the invariant that keeps that budget from
+ * ever reaching the ceiling, so raising it cannot silently reopen the window
+ * that let one statement kill a runtime.
  *
  * `engineBudgetMs` is for the statements that cannot be split at all: SQLite has
  * no partial `CREATE INDEX`, `PRAGMA integrity_check` is one engine call, and
@@ -55,7 +55,7 @@ export namespace StorageBudgets {
     probeAttempts: number
     /** Sustained unresponsiveness after which the worker is a terminal wedge. */
     hardCeilingMs: number
-    /** Budget for one maintenance, DDL, delete or migration chunk. */
+    /** Budget for one splittable maintenance chunk, which is only `reclaim`. */
     chunkBudgetMs: number
     /**
      * Budget for a statement that cannot be chunked, which is the ceiling
