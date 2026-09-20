@@ -659,6 +659,14 @@ export class StoreTransaction {
    * digest cannot reconstruct a parent link, and anchoring on the prefix keeps
    * every round independent of what an earlier round already removed. Each round
    * is one bounded statement, so no single statement grows with the tree.
+   *
+   * The recursive table drives the walk -- `FROM subtree CROSS JOIN
+   * storage_nodes` -- rather than being the probe target of it. Driving from
+   * `storage_nodes` makes the planner re-scan the whole node table once per
+   * recursion step, which is quadratic in the subtree: measured on a
+   * rollout-shaped tree it cost 32 s for 32,000 nodes against 13 ms for this
+   * shape. A removal that empties a large artifact tree runs in teardown, so the
+   * difference is the difference between a close and a hang.
    */
   private async cleanDanglingNodes(prefix: string[]): Promise<void> {
     const root = keyParameter(this.keys, prefix)
@@ -670,7 +678,7 @@ export class StoreTransaction {
         `WITH RECURSIVE subtree(key_id) AS (
            SELECT node.key_id FROM storage_nodes node WHERE node.namespace = ? AND (node.key_id = ? OR node.parent_id = ?)
            UNION
-           SELECT child.key_id FROM storage_nodes child JOIN subtree ON child.parent_id = subtree.key_id WHERE child.namespace = ?
+           SELECT node.key_id FROM subtree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = subtree.key_id
          ), candidate(key_id) AS (
            SELECT node.key_id FROM storage_nodes node
             WHERE node.namespace = ? AND (node.key_id IN (SELECT key_id FROM subtree)${ancestorSet})

@@ -322,3 +322,46 @@ test("a format 2 namespace cleans its hex node rows without touching the fence",
     await store.close()
   }
 })
+
+test("node cleanup stays linear on the wide subtree a rollout teardown removes", async () => {
+  // Rollout artifacts write one leaf per chunk under a single shared prefix, so a
+  // session teardown asks the cleanup to walk tens of thousands of siblings. The
+  // walk must be driven by the recursive table: when `storage_nodes` drove it
+  // instead, the planner re-scanned the whole node table once per recursion step
+  // and a 30,000-chunk teardown ran for tens of minutes. Nothing else in the
+  // suite covers a subtree this wide -- the long-rollout contract that first hit
+  // this is gated behind SYNERGY_ROLLOUT_LONG_STREAM -- so this is the guard.
+  const { store, filename } = await open("wide-subtree")
+  const chunks = ["sessions", "scope", "ses", "rollout", "artifacts", "art_one", "chunks"]
+  // A session-prefixed store must carry its owner record, or `verify` reports
+  // every leaf as `missing_session` before the removal even runs.
+  await store.write(["sessions", "scope", "ses", "info"], { id: "ses" })
+  const leaves = Array.from({ length: 16_384 }, (_, index) => ({
+    key: [...chunks, String(index).padStart(12, "0")],
+    value: { chunk: index },
+  }))
+  for (let start = 0; start < leaves.length; start += 1024)
+    await store.transaction((tx) => tx.writeMany(leaves.slice(start, start + 1024)))
+  expect((await store.verify()).issues).toEqual([])
+
+  const started = performance.now()
+  await store.removeTree(["sessions", "scope", "ses"])
+  const elapsed = performance.now() - started
+
+  // Linear cleanup finishes this in well under a second; the quadratic walk took
+  // roughly ten. The bound is deliberate headroom for a loaded runner, not a
+  // performance target: it fails when the order of growth regresses.
+  expect(elapsed).toBeLessThan(10_000)
+  expect(await store.scan([])).toEqual([])
+  expect((await store.verify()).issues).toEqual([])
+  await store.close()
+
+  const check = inspect(filename)
+  try {
+    expect(check.nodeCount()).toBe(0)
+    // Every leaf keeps its tombstone; only the node rows are cleaned.
+    expect(check.tombstoneCount()).toBe(leaves.length + 1)
+  } finally {
+    check.close()
+  }
+}, 60_000)
