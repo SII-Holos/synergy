@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { RolloutArtifact } from "./artifact"
 import { RolloutLedger } from "./ledger"
 import { record, RolloutRecordingError } from "./error"
+import { SecretMask } from "../../secrets/mask"
 
 export namespace RolloutTool {
   const context = new AsyncLocalStorage<{
@@ -22,6 +23,9 @@ export namespace RolloutTool {
   export async function capture(value: unknown) {
     const current = context.getStore()
     if (!current) throw new Error("Tool evidence has no execution owner")
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      await SecretMask.transformResult(value as Record<string, unknown>, RolloutContext.current()?.signal)
+    }
     await current.capture(value)
   }
 

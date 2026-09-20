@@ -1,7 +1,7 @@
 use crate::config::PermissionProfile;
 use crate::error::HelperError;
 use crate::glob_expand;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Mount operation in the bubblewrap plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,20 +95,6 @@ pub fn has_writable_symlink_ancestor(
     Ok(false)
 }
 
-/// Platform default paths that are always ro-bound under a full-read bwrap
-/// plan. These mirror the conservative Codex full-read baseline.
-const FULL_READ_PLATFORM_DEFAULTS: &[&str] = &[
-    "/bin",
-    "/sbin",
-    "/usr",
-    "/etc",
-    "/lib",
-    "/lib64",
-    "/var/db/timezone",
-    "/usr/share",
-    "/usr/libexec",
-];
-
 /// Returns true when the permission profile indicates a full-disk-read policy.
 ///
 /// Full-read profiles include "/" in readable_roots. In this case the bwrap
@@ -125,9 +111,9 @@ fn is_full_read(profile: &PermissionProfile) -> bool {
 /// Build a pure bwrap plan from a Synergy permission profile.
 ///
 /// When the profile indicates a full-disk-read policy (readable_roots includes
-/// "/"), the plan starts with `--ro-bind / /` followed by platform-default
-/// ro-binds. Otherwise the plan starts with `--tmpfs /` for the restricted
-/// default view.
+/// "/"), the plan starts with `--ro-bind / /`, a complete read-only view of the
+/// host filesystem. Otherwise the plan starts with `--tmpfs /` for the
+/// restricted default view.
 pub fn build_bwrap_plan(
     profile: &PermissionProfile,
     policy_cwd: &Path,
@@ -149,9 +135,10 @@ pub fn build_bwrap_plan(
             source: "/".into(),
             target: "/".into(),
         });
-        for root in FULL_READ_PLATFORM_DEFAULTS {
-            push_ro_bind(&mut mounts, root, root);
-        }
+        // No readable-root or platform-default binds follow: the recursive
+        // read-only bind of "/" already covers all of them, and a redundant
+        // bind makes bwrap hard-fail before the child starts when the source is
+        // absent on this host (/var/db/timezone is macOS-only).
         mounts.push(MountOp::Dev {
             target: "/dev".into(),
         });
@@ -166,17 +153,50 @@ pub fn build_bwrap_plan(
         mounts.push(MountOp::Proc {
             target: "/proc".into(),
         });
+        for root in &profile.file_system.readable_roots {
+            push_ro_bind(&mut mounts, root, root);
+        }
     }
 
-    for root in &profile.file_system.readable_roots {
-        push_ro_bind(&mut mounts, root, root);
+    // Credential and sensitive paths stay unreadable, which bwrap expresses as a
+    // cover mount rather than a deny rule. bwrap resolves shadowing by mount
+    // order rather than by specificity, so covers are emitted on BOTH sides of
+    // the writable-root binds according to containment:
+    //
+    // - a deny that CONTAINS a writable root mounts first, so the deeper
+    //   writable bind restores a workspace nested inside a denied directory
+    //   while its credential siblings stay hidden;
+    // - a deny equal to or INSIDE a writable root mounts after that bind, so
+    //   the deny wins. Emitting it first would let the writable bind re-expose
+    //   the credential, which is why such denies used to be pruned from the
+    //   profile instead; ordering them makes them enforceable and keeps the
+    //   deny set complete.
+    let (denies_before_writable_binds, denies_after_writable_binds): (Vec<&String>, Vec<&String>) =
+        profile
+            .file_system
+            .data_deny_roots
+            .iter()
+            .partition(|root| !is_inside_writable_root(root, &profile.file_system.writable_roots));
+
+    for deny_root in &denies_before_writable_binds {
+        push_read_deny(&mut mounts, deny_root.as_str());
     }
 
     for root in &profile.file_system.writable_roots {
         push_bind(&mut mounts, root, root);
     }
 
+    for deny_root in &denies_after_writable_binds {
+        push_read_deny(&mut mounts, deny_root.as_str());
+    }
+
     for subpath in &profile.file_system.read_only_subpaths {
+        if is_read_deny_for(subpath, &profile.file_system.data_deny_roots) {
+            log::warn!(
+                "skipping read-only mount for {subpath}: an exact read deny replaces it with a cover, and re-binding would re-expose the covered content"
+            );
+            continue;
+        }
         match has_writable_symlink_ancestor(Path::new(subpath), &profile.file_system.writable_roots)
         {
             Ok(true) => {
@@ -196,6 +216,12 @@ pub fn build_bwrap_plan(
     }
 
     for protected_path in &profile.file_system.protected_paths {
+        if is_read_deny_for(protected_path, &profile.file_system.data_deny_roots) {
+            log::warn!(
+                "skipping read-only mount for {protected_path}: an exact read deny replaces it with a cover, and re-binding would re-expose the covered content"
+            );
+            continue;
+        }
         match has_writable_symlink_ancestor(
             Path::new(protected_path),
             &profile.file_system.writable_roots,
@@ -214,12 +240,6 @@ pub fn build_bwrap_plan(
                 );
             }
         }
-    }
-
-    for deny_root in &profile.file_system.data_deny_roots {
-        mounts.push(MountOp::Tmpfs {
-            target: deny_root.clone(),
-        });
     }
 
     for writable_root in &profile.file_system.writable_roots {
@@ -302,6 +322,67 @@ fn push_ro_bind(mounts: &mut Vec<MountOp>, source: &str, target: &str) {
         source: source.into(),
         target: target.into(),
     });
+}
+
+/// Whether `path` is equal to, or inside, any writable root.
+///
+/// Compare the same canonical destinations used for cover mounts so a symlink
+/// cannot move a deny across a writable boundary after ordering it.
+fn is_inside_writable_root(path: &str, writable_roots: &[String]) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+    let candidate = canonical_mount_path(path);
+    writable_roots
+        .iter()
+        .any(|root| !root.is_empty() && candidate.starts_with(canonical_mount_path(root)))
+}
+
+/// Whether a read deny makes a read-only bind of `path` redundant.
+///
+/// Exact match only. A deny is applied as a cover mount on its own path and,
+/// for a deny that contains `path`, mounts before the writable bind that
+/// contains both — so the deny never hides `path` itself, and skipping the
+/// read-only bind would leave it writable through that bind. Reporting an
+/// ancestor deny here is what made `<ws>/.git/hooks` and `<ws>/.git/config`
+/// writable for a workspace nested inside a credential directory.
+fn is_read_deny_for(path: &str, deny_roots: &[String]) -> bool {
+    let candidate = canonical_mount_path(path);
+    deny_roots
+        .iter()
+        .any(|root| !root.is_empty() && canonical_mount_path(root) == candidate)
+}
+/// Cover a denied path so the sandbox cannot read it.
+///
+/// bwrap has no deny rule, so a deny is a cover mount: an empty tmpfs for a
+/// directory, and the null device for a regular file. A tmpfs destination must
+/// be a directory — bwrap dies with "Destination is not a directory" otherwise
+/// — so a file cannot use one. A cover hides reads and writes at once, which is
+/// why it must mount after any write-protecting bind of the same path.
+///
+/// The target is resolved before mounting: bwrap refuses to mount over a
+/// symlink destination ("Can't mount on symlink destination"), and a credential
+/// store such as `~/.ssh` is commonly a link. Resolving keeps the cover on the
+/// path the kernel actually serves. A path that does not exist hides nothing and
+/// is skipped, so the plan never carries a missing mount source.
+fn canonical_mount_path(path: &str) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+}
+
+fn push_read_deny(mounts: &mut Vec<MountOp>, path: &str) {
+    if path.trim().is_empty() {
+        return;
+    }
+    let resolved = canonical_mount_path(path);
+    let target = resolved.to_string_lossy().into_owned();
+    match std::fs::metadata(&resolved) {
+        Ok(metadata) if metadata.is_dir() => mounts.push(MountOp::Tmpfs { target }),
+        Ok(_) => mounts.push(MountOp::RoBind {
+            source: "/dev/null".into(),
+            target,
+        }),
+        Err(_) => {}
+    }
 }
 
 #[cfg(test)]
@@ -393,17 +474,24 @@ mod tests {
     }
 
     #[test]
-    fn full_read_plan_includes_platform_defaults() {
+    fn full_read_plan_omits_macos_only_platform_defaults() {
+        // The recursive "/" bind already covers the platform defaults. Emitting
+        // them again would hard-fail on Linux, where /var/db/timezone does not
+        // exist and bwrap cannot open a missing --ro-bind source.
         let profile = make_full_read_profile("/ws", "full", vec![]);
         let plan = plan(&profile, "/ws");
-        for root in FULL_READ_PLATFORM_DEFAULTS {
-            assert!(
-                plan.mounts.iter().any(|m| {
-                    matches!(m, MountOp::RoBind { source, target } if source == *root && target == *root)
-                }),
-                "full-read plan must ro-bind platform default {root}"
-            );
-        }
+        assert!(
+            plan.mounts.iter().any(|m| {
+                matches!(m, MountOp::RoBind { source, target } if source == "/" && target == "/")
+            }),
+            "full-read plan must bind the whole host root read-only"
+        );
+        assert!(
+            !plan.mounts.iter().any(|m| {
+                matches!(m, MountOp::RoBind { source, .. } if source == "/var/db/timezone")
+            }),
+            "full-read plan must not bind the macOS-only /var/db/timezone"
+        );
     }
 
     #[test]
@@ -503,6 +591,313 @@ mod tests {
                 matches!(m, MountOp::RoBind { source, target } if source == pp && target == pp)
             }));
         }
+    }
+
+    // --- read deny (credential and sensitive paths) ---
+
+    fn profile_with_denies(denies: &[&str]) -> PermissionProfile {
+        let mut profile = make_profile("/ws", "full", vec![], vec![], vec![]);
+        profile.file_system.data_deny_roots = denies.iter().map(|s| s.to_string()).collect();
+        profile
+    }
+
+    #[test]
+    fn read_deny_inside_root_workspace_mounts_after_writable_root() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_root_deny_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let denied = std::fs::canonicalize(&tmp)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let mut profile = profile_with_denies(&[&denied]);
+        profile.file_system.writable_roots = vec!["/".into()];
+        let plan = plan(&profile, "/");
+        let write = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Bind { target, .. } if target == "/"))
+            .unwrap();
+        let deny = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Tmpfs { target } if target == &denied))
+            .unwrap();
+        assert!(write < deny, "root workspace must not uncover credentials");
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_deny_symlink_target_stays_covered_after_writable_bind() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_link_deny_{}", std::process::id()));
+        let workspace = tmp.join("workspace");
+        let target = workspace.join("credentials");
+        std::fs::create_dir_all(&target).unwrap();
+        let alias = tmp.join("credential-link");
+        let _ = std::fs::remove_file(&alias);
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let ws = std::fs::canonicalize(&workspace)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let denied = std::fs::canonicalize(&target)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let mut profile = profile_with_denies(&[alias.to_str().unwrap()]);
+        profile.file_system.writable_roots = vec![ws.clone()];
+        profile.file_system.read_only_subpaths = vec![denied.clone()];
+        let plan = plan(&profile, &ws);
+        let write = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Bind { target, .. } if target == &ws))
+            .unwrap();
+        let deny = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Tmpfs { target } if target == &denied))
+            .unwrap();
+        assert!(write < deny, "mount order must use the symlink target");
+        assert!(!plan.mounts.iter().any(|m| matches!(m, MountOp::RoBind { source, target } if source == &denied && target == &denied)), "a metadata bind must not uncover the same canonical deny");
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
+
+    #[test]
+    fn read_deny_directory_is_covered_by_tmpfs() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_deny_dir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let denied = std::fs::canonicalize(&tmp)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let plan = plan(&profile_with_denies(&[&denied]), "/ws");
+        assert!(
+            plan.mounts.contains(&MountOp::Tmpfs {
+                target: denied.clone()
+            }),
+            "a denied directory must be covered by an empty tmpfs"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn read_deny_file_is_covered_by_the_null_device() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_deny_file_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let denied_file = tmp.join("id_rsa");
+        std::fs::write(&denied_file, "secret\n").unwrap();
+        let denied = std::fs::canonicalize(&denied_file)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let plan = plan(&profile_with_denies(&[&denied]), "/ws");
+        assert!(
+            plan.mounts.contains(&MountOp::RoBind {
+                source: "/dev/null".into(),
+                target: denied.clone(),
+            }),
+            "a denied file must be covered by the null device; tmpfs needs a directory destination"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn read_deny_missing_path_produces_no_mount() {
+        let denied = std::env::temp_dir()
+            .join(format!("bwrap_deny_missing_{}", std::process::id()))
+            .join("nope")
+            .to_string_lossy()
+            .into_owned();
+
+        let plan = plan(&profile_with_denies(&[&denied]), "/ws");
+        assert!(
+            !plan.mounts.iter().any(|m| {
+                matches!(m, MountOp::Tmpfs { target } if *target == denied)
+                    || matches!(m, MountOp::RoBind { target, .. } if *target == denied)
+            }),
+            "a missing deny path has nothing to hide and must not be mounted"
+        );
+    }
+
+    #[test]
+    fn read_deny_mounts_before_a_writable_bind_it_contains() {
+        // Mount order is the whole guarantee on bwrap: the last mount wins. The
+        // cover must precede a writable bind it contains, or a workspace nested
+        // inside a denied directory would stay hidden along with the credentials
+        // it lives beside.
+        let tmp = std::env::temp_dir().join(format!("bwrap_deny_order_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let secrets = tmp.join("secrets");
+        let workspace = secrets.join("proj");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let denied = std::fs::canonicalize(&secrets).unwrap();
+        let denied_str = denied.to_string_lossy().into_owned();
+        let ws = std::fs::canonicalize(&workspace)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        let mut profile = profile_with_denies(&[&denied_str]);
+        profile.file_system.writable_roots = vec![ws.clone()];
+        let plan = plan(&profile, &ws);
+
+        let index_of = |pred: &dyn Fn(&MountOp) -> bool| {
+            plan.mounts
+                .iter()
+                .position(|m| pred(m))
+                .expect("expected mount not found in plan")
+        };
+        let deny_idx =
+            index_of(&|m| matches!(m, MountOp::Tmpfs { target } if *target == denied_str));
+        let writable_idx =
+            index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == ws));
+        assert!(
+            deny_idx < writable_idx,
+            "the read deny must mount before the writable bind that it contains"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn read_deny_inside_a_writable_root_mounts_after_it() {
+        // The inverse of the case above, and the one the deny list used to
+        // prune away. A credential store inside a writable root is only hidden
+        // if its cover mounts AFTER the writable bind: bwrap applies mounts in
+        // order and the last mount on a path wins, so a cover emitted earlier
+        // is overridden by the deeper writable bind and hides nothing.
+        let tmp = std::env::temp_dir().join(format!("bwrap_deny_inside_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let home = tmp.join("home");
+        let credentials = home.join(".ssh");
+        std::fs::create_dir_all(&credentials).unwrap();
+        let ws = std::fs::canonicalize(&home)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let denied = std::fs::canonicalize(&credentials)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        let mut profile = profile_with_denies(&[&denied]);
+        profile.file_system.writable_roots = vec![ws.clone()];
+        let plan = plan(&profile, &ws);
+
+        let index_of = |pred: &dyn Fn(&MountOp) -> bool| {
+            plan.mounts
+                .iter()
+                .position(|m| pred(m))
+                .expect("expected mount not found in plan")
+        };
+        let deny_idx = index_of(&|m| matches!(m, MountOp::Tmpfs { target } if *target == denied));
+        let writable_idx =
+            index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == ws));
+        assert!(
+            writable_idx < deny_idx,
+            "a read deny inside a writable root must mount after it or the writable bind re-exposes the credential"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn read_deny_equal_to_a_writable_root_wins() {
+        // A path both denied and writable is fail-closed: the cover is emitted
+        // last so the deny wins, rather than the writable bind re-exposing it.
+        let tmp = std::env::temp_dir().join(format!("bwrap_deny_tie_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let shared = tmp.join("shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        let path = std::fs::canonicalize(&shared)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        let mut profile = profile_with_denies(&[&path]);
+        profile.file_system.writable_roots = vec![path.clone()];
+        let plan = plan(&profile, &path);
+
+        let index_of = |pred: &dyn Fn(&MountOp) -> bool| {
+            plan.mounts
+                .iter()
+                .position(|m| pred(m))
+                .expect("expected mount not found in plan")
+        };
+        let deny_idx = index_of(&|m| matches!(m, MountOp::Tmpfs { target } if *target == path));
+        let writable_idx =
+            index_of(&|m| matches!(m, MountOp::Bind { target, .. } if *target == path));
+        assert!(
+            writable_idx < deny_idx,
+            "a deny equal to a writable root must be emitted after the writable bind"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn nested_workspace_git_metadata_stays_read_only_bound() {
+        // The protected-metadata guarantee must survive a workspace nested
+        // inside a deny root. The deny list keeps the ANCESTOR entry for such a
+        // workspace, so the ancestor containment test that used to drive the
+        // skip must not: the ancestor cover mounts BEHIND the workspace's own
+        // writable bind, so skipping these read-only binds left
+        // `.git/hooks` (code execution) and `.git/config` (alias/filter
+        // execution) writable inside a workspace the operator considers
+        // protected.
+        let tmp = std::env::temp_dir().join(format!("bwrap_nested_git_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let deny_root = tmp.join("skills");
+        let workspace = deny_root.join("proj");
+        let git_dir = workspace.join(".git");
+        std::fs::create_dir_all(git_dir.join("hooks")).unwrap();
+        std::fs::write(git_dir.join("config"), "[core]\n").unwrap();
+        let denied = std::fs::canonicalize(&deny_root)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let ws = std::fs::canonicalize(&workspace)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let hooks = format!("{ws}/.git/hooks");
+        let config = format!("{ws}/.git/config");
+
+        let mut profile = profile_with_denies(&[&denied]);
+        profile.file_system.writable_roots = vec![ws.clone()];
+        profile.file_system.read_only_subpaths = vec![hooks.clone(), config.clone()];
+        let plan = plan(&profile, &ws);
+
+        for protected in [&hooks, &config] {
+            assert!(
+                plan.mounts.iter().any(|m| matches!(
+                    m,
+                    MountOp::RoBind { source, target } if source == protected && target == protected
+                )),
+                "{protected} must stay read-only bound when the workspace is nested inside a deny root"
+            );
+        }
+
+        let writable_idx = plan
+            .mounts
+            .iter()
+            .position(|m| matches!(m, MountOp::Bind { target, .. } if *target == ws))
+            .expect("workspace writable bind missing");
+        for protected in [&hooks, &config] {
+            let protected_idx = plan
+                .mounts
+                .iter()
+                .position(|m| matches!(
+                    m,
+                    MountOp::RoBind { source, target } if source == protected && target == protected
+                ))
+                .expect("read-only bind missing");
+            assert!(
+                writable_idx < protected_idx,
+                "the read-only bind for {protected} must follow the workspace writable bind"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

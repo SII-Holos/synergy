@@ -43,7 +43,9 @@ describe("sandbox readable roots and session key (PR #1308 follow-up)", () => {
       profileId: "autonomous",
       sessionKey: "ses_abc",
     })
-    const envelope = gate.evaluate("bash", { command: "cat /etc/hosts", workdir: workspace })
+    // A structured tool's literal path argument is precise input, so it stays
+    // owned by the policy layer and reaches the sandbox readable roots.
+    const envelope = gate.evaluate("read", { filePath: "/etc/hosts" })
     expect(envelope.decision).toBe("allow")
     const policy = gate.getSandboxPolicy()
     expect(policy).not.toBeNull()

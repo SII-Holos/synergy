@@ -268,17 +268,26 @@ const READ_EXEMPT_CREDENTIAL_PATHS = (homedir: string): string[] => [
 ]
 
 /**
- * Paths that stay unreadable under the deny-list read model of the macOS
- * deny-default backend, where file reads are allowed globally and only
- * credential-bearing locations are denied. Everything in CREDENTIAL_PATHS
- * is included except the tool-compatibility exemptions above, plus registry
- * token files and browser/mail data stores that the global read allow would
- * otherwise expose (cookie jars, session stores, local mail databases).
+ * Paths that stay unreadable under the deny-list read model, where file reads
+ * are allowed globally and only credential-bearing locations are denied.
+ * Everything in CREDENTIAL_PATHS is included except the tool-compatibility
+ * exemptions above, plus registry token files, browser/mail data stores, and
+ * Synergy's own runtime stores that the global read allow would otherwise
+ * expose (cookie jars, session stores, local mail databases, token files).
  *
- * `~/.config/gh` is deliberately NOT denied: gh hard-fails when it cannot
- * read hosts.yml as configuration even when GH_TOKEN is present, keyring
- * mode keeps the token out of that directory, and the Bash tool injects
- * the managed credential as GH_TOKEN for gh invocations.
+ * Linux spellings are listed explicitly because Linux now reads globally too:
+ * these stores were previously hidden only by the old `--tmpfs /` fallback,
+ * and nothing else denies them. `~/.config/gh` is deliberately NOT denied: gh
+ * hard-fails when it cannot read hosts.yml as configuration even when
+ * GH_TOKEN is present, keyring mode keeps the token out of that directory,
+ * and the Bash tool injects the managed credential as GH_TOKEN for gh
+ * invocations.
+ *
+ * `~/.synergy/log`, `~/.synergy/state`, and `~/.synergy/data/library.db` are
+ * denied as part of that same group: a sandboxed command is an untrusted
+ * child, the directory is not a sandbox read root (only `~/.synergy/cache` is,
+ * and solely so stage 2 can re-read the staged profile), and no sandboxed tool
+ * consumes them — the runtime does, on the host side of the boundary.
  */
 export const READ_DENY_PATHS = (homedir: string): string[] => [
   ...CREDENTIAL_PATHS(homedir).filter((p) => !READ_EXEMPT_CREDENTIAL_PATHS(homedir).includes(p)),
@@ -291,6 +300,28 @@ export const READ_DENY_PATHS = (homedir: string): string[] => [
   joinPathLike(homedir, "Library", "Application Support", "Google", "Chrome"),
   joinPathLike(homedir, "Library", "Application Support", "Microsoft Edge"),
   joinPathLike(homedir, "Library", "Application Support", "BraveSoftware"),
+  // ── Linux credential and session stores ─────────────────────────
+  joinPathLike(homedir, ".zsh_history"),
+  joinPathLike(homedir, ".bash_history"),
+  joinPathLike(homedir, ".config", "google-chrome"),
+  joinPathLike(homedir, ".config", "chromium"),
+  joinPathLike(homedir, ".config", "BraveSoftware"),
+  joinPathLike(homedir, ".config", "vivaldi"),
+  joinPathLike(homedir, ".thunderbird"),
+  joinPathLike(homedir, ".local", "share", "keyrings"),
+  joinPathLike(homedir, ".password-store"),
+  joinPathLike(homedir, ".config", "rclone", "rclone.conf"),
+  joinPathLike(homedir, ".terraform.d", "credentials.tfrc.json"),
+  joinPathLike(homedir, ".my.cnf"),
+  joinPathLike(homedir, ".pgpass"),
+  joinPathLike(homedir, ".config", "wrangler"),
+  // ── Synergy runtime stores (token, session, and log state) ──────
+  joinPathLike(homedir, ".synergy", "data", "browser", "profiles"),
+  joinPathLike(homedir, ".synergy", "cache", "inspire-token.json"),
+  joinPathLike(homedir, ".synergy", "data", "library.db"),
+  joinPathLike(homedir, ".synergy", "log"),
+  joinPathLike(homedir, ".synergy", "state"),
+  joinPathLike(homedir, ".synergy", "config", "skills"),
 ]
 
 /**
@@ -308,6 +339,43 @@ export function readDenyHomeDirs(): string[] {
     ...(process.env.SYNERGY_HOME ? [process.env.SYNERGY_HOME] : []),
     ...(process.env.SYNERGY_TEST_HOME ? [process.env.SYNERGY_TEST_HOME] : []),
   ])
+}
+
+/**
+ * Credential and sensitive read denies for a workspace.
+ *
+ * The single owner of the deny-list read model's deny set, shared by every
+ * backend that allows ordinary reads globally (macOS Seatbelt, the Linux
+ * helper's full-read bind) so the platforms cannot drift apart.
+ *
+ * Denies are derived from every read-deny home — the OS home plus the Synergy
+ * runtime home when it differs — so custom SYNERGY_HOME installs keep their
+ * provider/MCP/account/plugin stores protected, and explicit non-default deny
+ * roots merge in.
+ *
+ * The set is deliberately a function of the workspace and the explicit deny
+ * roots alone: no writable root can prune an entry. Treating a writable root
+ * as grounds to drop the denies it contains collapsed the whole set to zero
+ * whenever a Scope directory resolved to the home directory (or the home
+ * directory was added as a project folder), leaving `~/.ssh`, `~/.aws`,
+ * `~/.synergy/data/auth`, and `~/.netrc` readable — and on Linux there is no
+ * `--tmpfs /` fallback left to hide them. Backends are responsible for making
+ * each kept deny effective by mount or rule order; they must not be handed a
+ * set that already gave up.
+ *
+ * The one entry dropped is a deny EQUAL to the workspace: a Scope directory
+ * rooted exactly at a credential path cannot deny itself without making the
+ * project's own files unreadable. A deny strictly inside the workspace is
+ * kept, because an explicitly denied subdirectory is operator intent, not a
+ * collision, and the ordering rule enforces it.
+ */
+export function readDenyPathsFor(input: { workspace: string; extraDenyPaths?: string[] }): string[] {
+  const workspaceScope = normalizeSlashes(input.workspace)
+  const defaultHomeDeny = normalizeSlashes(os.homedir())
+  const explicitDenyPaths = (input.extraDenyPaths ?? []).filter((p) => normalizeSlashes(p) !== defaultHomeDeny)
+  return uniqueRoots([...readDenyHomeDirs().flatMap((home) => READ_DENY_PATHS(home)), ...explicitDenyPaths]).filter(
+    (p) => normalizeSlashes(p) !== workspaceScope,
+  )
 }
 
 /**

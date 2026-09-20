@@ -96,8 +96,8 @@ console.log(
         .map((file) => path.relative(workspaceRoot, file))
         .filter(
           (file) =>
-            !["packages/harness/", "packages/util/", "packages/link-protocol/"].some((prefix) =>
-              file.startsWith(prefix),
+            !["packages/harness/", "packages/util/", "packages/link-protocol/", "packages/secret-detection/"].some(
+              (prefix) => file.startsWith(prefix),
             ),
         ),
     ],

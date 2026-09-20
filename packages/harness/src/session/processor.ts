@@ -39,6 +39,7 @@ import type { Tool as AITool } from "ai"
 import { AgentTurn } from "./agent-turn"
 import { ToolScheduler } from "./tool-scheduler"
 import type { ToolResolver } from "./tool-resolver"
+import { SecretMask } from "../secrets/mask"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -618,12 +619,18 @@ export namespace SessionProcessor {
       if (!state) return
       pendingToolCallStates.delete(callID)
 
+      const presentation = {
+        title: state.title ?? match.state.title,
+        metadata: structuredClone(
+          ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
+        ),
+      }
+      await SecretMask.transformResult(presentation)
       const updated = await Session.updatePart({
         ...match,
         state: {
           ...match.state,
-          title: state.title ?? match.state.title,
-          metadata: ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
+          ...presentation,
           status: "running",
           input: state.input,
           time: {

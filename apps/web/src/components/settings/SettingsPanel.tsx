@@ -414,7 +414,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   createEffect(() => {
     const bridge = platform.desktopPower
     if (!bridge?.onEvent) return
-    return bridge.onEvent((event) => setDesktopPowerSaved(event.snapshot))
+    // Solid ignores a returned function (that is React useEffect semantics);
+    // the unsubscribe must go through onCleanup or every dialog mount leaks a
+    // listener on the stable preload bridge.
+    onCleanup(bridge.onEvent((event) => setDesktopPowerSaved(event.snapshot)))
   })
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))

@@ -95,6 +95,7 @@ describe("coverage batch splitting", () => {
       "packages/product-runtime/test/server/resident-runtime.test.ts",
       "packages/product-runtime/test/server/runtime-handle.test.ts",
       "packages/product-runtime/test/server/skill-route.test.ts",
+      "packages/product-runtime/test/server/storage-unavailable-escalation.test.ts",
       "packages/product-runtime/test/tool/auto-expand.test.ts",
       "packages/runtime-local/test/file/watcher.test.ts",
       "packages/runtime-local/test/provider/proxy.test.ts",

@@ -46,6 +46,8 @@ export interface PrepareLinuxWrapperOpts {
   extraReadRoots?: string[]
   extraWritableRoots?: string[]
   protectedPaths?: string[]
+  /** Credential and sensitive paths that stay unreadable under the deny-list read model. */
+  dataDenyRoots?: string[]
   forcePlatform?: string
   /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
   backend?: string

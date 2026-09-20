@@ -27,6 +27,19 @@ export namespace Shell {
     args: string[]
   }
 
+  /**
+   * Wrap an invocation so it leads its own process group and keeps that group
+   * alive briefly after exit, without inserting a process between the caller
+   * and `invocation.command`.
+   *
+   * `exec` is load-bearing: callers correlate kernel-side facts with
+   * `child.pid` — the macOS sandbox audit record that names a denied path and
+   * access is attributed to the exec'd image — and an intermediate shell would
+   * be a different pid, silently detaching that evidence from the child. The
+   * ownership anchor therefore cannot be a fixed `sleep` started up front; it
+   * polls the pid it shares with the exec'd image and anchors the group only
+   * once that image has exited.
+   */
   export function prepareOwnedProcessGroup(
     invocation: ProcessInvocation,
     platform: NodeJS.Platform = process.platform,
@@ -36,7 +49,7 @@ export namespace Shell {
       command: "/bin/sh",
       args: [
         "-c",
-        '"$0" "$@"; status=$?; (sleep 5) </dev/null >/dev/null 2>&1 & exit "$status"',
+        '(while kill -0 $$ 2>/dev/null; do sleep 0.2; done; sleep 5) </dev/null >/dev/null 2>&1 & exec "$0" "$@"',
         invocation.command,
         ...invocation.args,
       ],

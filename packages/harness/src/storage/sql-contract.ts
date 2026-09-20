@@ -17,16 +17,23 @@ export interface SqlQueryOptions {
   onMaintenanceBudget?: (timeoutMs: number) => void
 }
 
+export interface SqlTransactionOptions {
+  readOnly?: boolean
+  operationID?: string
+  // Declared by the caller when its body issues at most one statement. A lone
+  // statement is already atomic, so an explicit transaction would only add round
+  // trips to the engine; a body that reads more than once must not declare it,
+  // because separate statements would then observe separate snapshots.
+  singleStatement?: boolean
+}
+
 export interface SqlConnection {
   query<Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions): Promise<Row[]>
 }
 
 export interface SqlDriver extends SqlConnection {
   readonly backend: "sqlite" | "postgres"
-  transaction<T>(
-    body: (connection: SqlConnection) => Promise<T>,
-    options?: { readOnly?: boolean; operationID?: string },
-  ): Promise<T>
+  transaction<T>(body: (connection: SqlConnection) => Promise<T>, options?: SqlTransactionOptions): Promise<T>
   close(): Promise<void>
   // Reports a store that failed terminally and cannot serve further work, so the
   // host can escalate to its managed restart instead of serving a dead store.

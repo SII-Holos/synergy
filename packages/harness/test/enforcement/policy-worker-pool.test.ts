@@ -88,7 +88,7 @@ function fakeProcess(
           options.onMessage({
             type: "result",
             requestId,
-            result: { capabilities: [{ class: "shell_read", nonBypassable: false }] },
+            result: { capabilities: [{ class: "shell", nonBypassable: false }] },
             requests: ++requests,
             memoryBeforeRelease: policyMemory(),
             memoryAfterRelease: policyMemory(),
@@ -163,7 +163,7 @@ describe("PolicyWorkerPool", () => {
                 options.onMessage({
                   type: "result",
                   requestId: message.requestId,
-                  result: { capabilities: [{ class: "shell_read", nonBypassable: false }] },
+                  result: { capabilities: [{ class: "shell", nonBypassable: false }] },
                   requests: 1,
                   memoryBeforeRelease: {
                     rssBytes: 140,
@@ -191,7 +191,7 @@ describe("PolicyWorkerPool", () => {
     try {
       const first = pool.run(classificationInput())
       const second = pool.run(classificationInput())
-      await expect(first).resolves.toMatchObject({ capabilities: [{ class: "shell_read" }] })
+      await expect(first).resolves.toMatchObject({ capabilities: [{ class: "shell" }] })
       expect(sent.filter((message) => message.type === "run-start")).toHaveLength(1)
 
       const firstStart = sent.find(
@@ -239,7 +239,7 @@ describe("PolicyWorkerPool", () => {
 
     try {
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
       for (let i = 0; i < 40 && !states[0]?.killed; i++) await Bun.sleep(1)
       expect(states[0]?.killed).toBe(true)
@@ -436,7 +436,7 @@ describe("PolicyWorkerPool", () => {
       await expect(active).rejects.toMatchObject({ name: "AbortError" })
       expect(states[0].killed).toBe(true)
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
     } finally {
       await pool.stop()
@@ -460,7 +460,7 @@ describe("PolicyWorkerPool", () => {
       await expect(pool.run(classificationInput())).rejects.toBeInstanceOf(PolicyWorkerTimeoutError)
       expect(states[0].killed).toBe(true)
       await expect(pool.run(classificationInput())).resolves.toEqual({
-        capabilities: [{ class: "shell_read", nonBypassable: false }],
+        capabilities: [{ class: "shell", nonBypassable: false }],
       })
       expect(spawned).toBe(2)
     } finally {
@@ -485,7 +485,7 @@ describe("PolicyWorkerPool", () => {
       await expect(pool.run(classificationInput())).rejects.toBeInstanceOf(PolicyWorkerTimeoutError)
       expect(states[0].killed).toBe(true)
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
     } finally {
       await pool.stop()
@@ -512,7 +512,7 @@ describe("PolicyWorkerPool", () => {
       })
       expect(states[0].killed).toBe(true)
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
     } finally {
       await pool.stop()
@@ -535,15 +535,15 @@ describe("PolicyWorkerPool", () => {
 
     try {
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
       expect(states[0].killed).toBe(false)
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
       expect(states[0].killed).toBe(true)
       await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell_read" }],
+        capabilities: [{ class: "shell" }],
       })
       expect(spawned).toBe(2)
     } finally {

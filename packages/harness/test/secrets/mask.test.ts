@@ -106,6 +106,30 @@ describe("SecretMask engine", () => {
     tracked.push(id)
   })
 
+  test("transformResult captures MCP content before masking its title and metadata", async () => {
+    const value = `sk-mcp-${crypto.randomUUID()}`
+    const id = SecretVault.idOf(value)
+    tracked.push(id)
+    const result = {
+      title: `read ${value}`,
+      content: [{ type: "text", text: value }],
+      metadata: { values: [value, { nested: [value] }] },
+    }
+    await SecretMask.transformResult(result)
+    expect(result.title).toBe(`read ${SecretMask.token(id)}`)
+    expect(result.metadata.values).toEqual([SecretMask.token(id), { nested: [SecretMask.token(id)] }])
+    expect(result.content[0].text).toBe(SecretMask.token(id))
+  })
+
+  test("transformResult masks registered values in metadata string arrays", async () => {
+    const value = `registered-${crypto.randomUUID()}`
+    const entry = await SecretVault.register(value, { kind: "user" })
+    tracked.push(entry.id)
+    const result = { metadata: { nested: [[value]] } }
+    await SecretMask.transformResult(result)
+    expect(result.metadata.nested).toEqual([[SecretMask.token(entry.id)]])
+  })
+
   test("maskPart masks user text parts only", async () => {
     const value = `tok_${crypto.randomUUID()}`
     const entry = await SecretVault.register(value, { kind: "user" })

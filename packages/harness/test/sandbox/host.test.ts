@@ -26,6 +26,7 @@ test("sandbox host receives the approved policy and returns its execution wrappe
       received = input
       return { command: "sandbox-host", args: [input.command, ...input.args], sandboxed: true }
     },
+    cleanupWrapper() {},
   })
   expect(SandboxHost.prepareWrapper(options)).toEqual({
     command: "sandbox-host",

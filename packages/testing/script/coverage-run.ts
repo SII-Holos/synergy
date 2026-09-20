@@ -147,6 +147,9 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   // Runtime startup must configure pools before any sibling suite has created them.
   "packages/product-runtime/test/server/resident-runtime.test.ts",
   "packages/product-runtime/test/server/runtime-handle.test.ts",
+  // Boots a second full Runtime in a child process to observe the storage-unavailable
+  // escalation exit; runtime startup is load-sensitive alongside sibling fixtures.
+  "packages/product-runtime/test/server/storage-unavailable-escalation.test.ts",
   // Global statistics scan all stored sessions, including sibling suites' intentionally partial fixtures.
   "packages/workbench/test/stats/engine.test.ts",
   "packages/product-runtime/test/server/plugin-official-install.test.ts",

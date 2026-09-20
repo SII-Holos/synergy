@@ -118,9 +118,6 @@ export namespace SecretMask {
     if (typeof result.output === "string" && result.output) {
       result.output = await captureAndApply(result.output, { kind: "heuristic", context: "tool_output" }, signal)
     }
-    if (typeof result.title === "string" && result.title) {
-      result.title = await apply(result.title)
-    }
     const content = result.content
     if (Array.isArray(content)) {
       for (const item of content) {
@@ -136,6 +133,16 @@ export namespace SecretMask {
         }
       }
     }
+    if (typeof result.metadata?.output === "string" && result.metadata.output) {
+      result.metadata.output = await captureAndApply(
+        result.metadata.output,
+        { kind: "heuristic", context: "tool_output" },
+        signal,
+      )
+    }
+    if (typeof result.title === "string" && result.title) {
+      result.title = await apply(result.title)
+    }
     if (result.metadata && typeof result.metadata === "object") {
       await maskStringsDeep(result.metadata)
     }
@@ -147,10 +154,6 @@ export namespace SecretMask {
     if (index.length === 0) return
     const visit = (value: unknown): void => {
       if (!value || typeof value !== "object") return
-      if (Array.isArray(value)) {
-        for (const item of value) visit(item)
-        return
-      }
       for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
         if (typeof item === "string") {
           const next = replaceAll(item, index)

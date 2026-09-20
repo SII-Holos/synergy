@@ -95,34 +95,32 @@ describe("sandbox network parity (PR #1308 follow-up)", () => {
     fs.unlinkSync(wrapper.tempPath!)
   })
 
-  test("linux helper profile binds /etc read-only only when networkMode is full", () => {
-    const full = LinuxBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "linux",
-      forceHelperPath: "/bin/true",
-      forceHelperVerified: true,
-      networkMode: "full",
-    })
-    const restricted = LinuxBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "linux",
-      forceHelperPath: "/bin/true",
-      forceHelperVerified: true,
-      networkMode: "restricted",
-    })
+  test("linux helper profile reaches network config paths under every network mode", () => {
+    const prepareFor = (networkMode: "full" | "restricted") =>
+      LinuxBackend.prepare({
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: WORKSPACE,
+        sandboxMode: "workspace_write",
+        forcePlatform: "linux",
+        forceHelperPath: "/bin/true",
+        forceHelperVerified: true,
+        networkMode,
+      })
+    const full = prepareFor("full")
+    const restricted = prepareFor("restricted")
     expect(full.sandboxed).toBe(true)
     expect(restricted.sandboxed).toBe(true)
     const fullProfile = JSON.parse(fs.readFileSync(full.tempPath!, "utf8"))
     const restrictedProfile = JSON.parse(fs.readFileSync(restricted.tempPath!, "utf8"))
-    // /etc always exists on Linux; the remaining paths are existence-filtered.
-    expect(fullProfile.fileSystem.readableRoots).toContain("/etc")
-    expect(restrictedProfile.fileSystem.readableRoots).not.toContain("/etc")
+
+    // Reads are global under the deny-list model, so /etc/resolv.conf and the
+    // CA stores are reachable in every network mode rather than needing a
+    // per-mode bind. Network mode still selects the namespace/unshare policy.
+    expect(fullProfile.fileSystem.readableRoots).toEqual(["/"])
+    expect(restrictedProfile.fileSystem.readableRoots).toEqual(["/"])
+    expect(fullProfile.network.mode).toBe("full")
+    expect(restrictedProfile.network.mode).toBe("restricted")
     fs.unlinkSync(full.tempPath!)
     fs.unlinkSync(restricted.tempPath!)
   })

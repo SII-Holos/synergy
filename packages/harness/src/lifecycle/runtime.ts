@@ -82,6 +82,8 @@ export namespace RuntimeHandle {
     let server: RuntimeServer | undefined
     let residentStarted = false
     let stopCompat: (() => Promise<void>) | undefined
+    let stopVaultSync: (() => void) | undefined
+    let vaultSync = Promise.resolve()
     let closing: Promise<void> | undefined
 
     function closeAdmission() {
@@ -105,6 +107,10 @@ export namespace RuntimeHandle {
         }
         await cleanup(() => StorageRetention.stop())
         await cleanup(() => stopCompat?.())
+        await cleanup(async () => {
+          stopVaultSync?.()
+          await vaultSync
+        })
         await cleanup(() => services.reload?.stop())
         closeAdmission()
         if (residentStarted) await cleanup(() => services.resident?.stop())
@@ -205,15 +211,19 @@ export namespace RuntimeHandle {
       await ScopeContext.provide({ scope: Scope.home(), fn: () => SecretVault.syncFromConfig(config) }).catch((error) =>
         log?.warn?.("secret vault config sync failed", { error: String(error) }),
       )
-      Bus.subscribe(Config.Event.Updated, (event) => {
-        void ScopeContext.provide({
-          scope: Scope.home(),
-          fn: async () => {
-            const current = await Config.current()
-            await SecretVault.syncFromConfig(current as Record<string, unknown>)
-          },
-        }).catch(() => undefined)
-        void event
+      stopVaultSync = Bus.subscribeGlobal(Config.Event.Updated, () => {
+        const scope = ScopeContext.current.scope
+        vaultSync = vaultSync
+          .then(() =>
+            ScopeContext.provide({
+              scope,
+              fn: async () => {
+                const current = await Config.current()
+                await SecretVault.syncFromConfig(current)
+              },
+            }),
+          )
+          .catch(() => log.warn("secret vault config sync failed"))
       })
       SessionManager.openAdmission()
       await RolloutRecovery.all((current) => options.recoveryReporter?.progress(current))

@@ -4,10 +4,12 @@ const { EnforcementGate } = await import("../../src/enforcement/gate")
 const WORKSPACE = "/Users/test/synergy-control-profile"
 
 // ---------------------------------------------------------------------------
-// Regression: autonomous bash false positives around /dev/null-family sinks
-// and compound commands (Blueprinted fix). The reported repo-scan script was
-// denied as file_external_write because `2>/dev/null)` inside a compound was
-// extracted as the pseudo path "/dev/null)" and classified as a write target.
+// Regression: autonomous bash around /dev/null-family sinks and compound
+// commands. A shell command string is the imprecise input, so bash predicts no
+// filesystem path at all: which file a command reaches is decided by the OS
+// sandbox from the real syscall. These anchors pin that boundary — a null sink
+// and every other spelling must never surface a file_* capability, while the
+// boundaries the sandbox cannot express (raw device writes) stay refused.
 // ---------------------------------------------------------------------------
 
 const REPOSCAN_COMMAND = [
@@ -34,13 +36,21 @@ const REPOSCAN_COMMAND = [
   'wc -l "$out"',
 ].join("\n")
 
+function fileCapabilities(envelope: any): string[] {
+  return envelope.capabilities.map((cap: any) => cap.class as string).filter((name: string) => name.startsWith("file_"))
+}
+
+async function autonomousGate() {
+  return EnforcementGate.create({
+    activeWorkspace: WORKSPACE,
+    workspaceType: "worktree",
+    profileId: "autonomous",
+  })
+}
+
 describe("autonomous bash sink regression (Phase 0)", () => {
-  test("repo-scan script is allowed under autonomous with no file_external_write", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
+  test("repo-scan script is allowed under autonomous with no file capability", async () => {
+    const gate = await autonomousGate()
 
     const envelope = gate.evaluate("bash", {
       command: REPOSCAN_COMMAND,
@@ -48,12 +58,10 @@ describe("autonomous bash sink regression (Phase 0)", () => {
     })
 
     expect(envelope.decision).toBe("allow")
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_read")).toBe(false)
+    expect(fileCapabilities(envelope)).toEqual([])
   })
 
-  // Sink spellings that contain no dynamic directory change or real write
-  // target must be allowed under autonomous.
+  // Sink spellings, dynamic targets, and absolute paths are all sandbox-owned.
   test.each([
     'for d in *; do ls "$d" 2>/dev/null; done',
     'for d in *; do ls "$d" 2>/dev/null); done',
@@ -62,114 +70,57 @@ describe("autonomous bash sink regression (Phase 0)", () => {
     "git status -sb 2>/dev/null | head -1",
     'for f in *.ts; do wc -l "$f" 2>/dev/null; done',
     'for d in */; do git -C "$d" log -1 --oneline 2>/dev/null; done',
-  ])("null-sink compound is allowed with no external path: %j", async (command: string) => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
+  ])("null-sink compound emits no file capability: %j", async (command: string) => {
+    const gate = await autonomousGate()
     const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
     expect(envelope.decision).toBe("allow")
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_read")).toBe(false)
+    expect(fileCapabilities(envelope)).toEqual([])
   })
 
-  // A dynamic `cd` into an un-resolvable target inside a compound stays a
-  // conservative opaque external-write deny (variable cd could escape the
-  // workspace). This is the intended boundary, not a false positive.
-  test("dynamic cd compound stays conservative deny (opaque external write)", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
+  // A dynamic `cd` into an unresolvable target is no longer predicted as an
+  // opaque external write: the sandbox contains the command wherever it lands.
+  test("dynamic cd compound is sandbox-owned, not an opaque prediction", async () => {
+    const gate = await autonomousGate()
     for (const command of [
       'for d in */; do (cd "$d" && git log -1 --oneline) 2>/dev/null; done',
       'for d in */; do (cd "$d" && echo x > out.txt); done',
     ]) {
       const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-      expect(envelope.decision).toBe("deny")
-      const opaque = envelope.capabilities.find((c: any) => c.class === "file_external_write" && c.opaque)
-      expect(opaque).toBeDefined()
+      expect({ command, decision: envelope.decision }).toEqual({ command, decision: "allow" })
+      expect({ command, file: fileCapabilities(envelope) }).toEqual({ command, file: [] })
     }
   })
 
-  // Safety anchors: genuine external writes and protected paths stay denied.
-  test("literal external write cp a /etc/x stays file_external_write", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
-    const envelope = gate.evaluate("bash", { command: "cp a /etc/x", workdir: WORKSPACE })
-    expect(envelope.decision).toBe("deny")
+  // Absolute targets are the sandbox's business in every direction: the gate
+  // stops predicting reads, writes, and directory changes for a command string.
+  test.each([
+    "cp a /etc/x",
+    "mv a /etc/x",
+    "cat < /etc/passwd",
+    "git status > /tmp/out",
+    "git status > out.txt",
+    "cat /etc/passwd",
+  ])("an absolute target is not predicted as a file capability: %j", async (command: string) => {
+    const gate = await autonomousGate()
+    const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+    expect({ command, file: fileCapabilities(envelope) }).toEqual({ command, file: [] })
+    expect({ command, decision: envelope.decision }).toEqual({ command, decision: "allow" })
   })
 
-  test("cat < /etc/passwd stays an external read (input redirection preserved)", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
-    const result = gate.classify("bash", { command: "cat < /etc/passwd", workdir: WORKSPACE })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
-    expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(false)
-    expect(external.paths).toContain("/etc/passwd")
-  })
-
-  test("mv across the boundary and dd raw device stays destructive/external", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
-    expect(gate.evaluate("bash", { command: "mv a /etc/x", workdir: WORKSPACE }).decision).toBe("deny")
+  test("a raw-device write stays refused (a boundary the sandbox cannot express)", async () => {
+    const gate = await autonomousGate()
     const dd = gate.evaluate("bash", { command: "dd if=/dev/zero of=/dev/sda", workdir: WORKSPACE })
     expect(dd.decision).toBe("deny")
+    expect(dd.capabilities.some((cap: any) => cap.class === "shell_hardline")).toBe(true)
   })
 
-  // Write-redirect targets on otherwise read-only commands are real writes:
-  // an external target must surface file_external_write (never a read).
-  test("write redirect to an external literal path is an external write", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
-    const result = gate.classify("bash", { command: "git status > /tmp/out", workdir: WORKSPACE })
-    const externalWrite = result.capabilities.find((c: any) => c.class === "file_external_write")
-    expect(externalWrite).toBeDefined()
-    expect(externalWrite?.paths).toContain("/tmp/out")
-    // The redirect target is a write, never a read capability.
-    expect(
-      result.capabilities.some((c: any) => c.class === "file_external_read" && c.paths?.includes("/tmp/out")),
-    ).toBe(false)
-    expect(gate.evaluate("bash", { command: "git status > /tmp/out", workdir: WORKSPACE }).decision).toBe("deny")
-  })
-
-  test("write redirect to a workspace path is a workspace write", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
-    const result = gate.classify("bash", { command: "git status > out.txt", workdir: WORKSPACE })
-    expect(result.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
-    expect(result.capabilities.some((c: any) => c.class === "file_write")).toBe(true)
-  })
-  test("echo separator in compound with external path reads stays allowed", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
+  test("external path separators in a compound stay path-free", async () => {
+    const gate = await autonomousGate()
     const envelope = gate.evaluate("bash", {
       command: 'ls /Users/test/other-project/ && echo --- && ls /Users/test/projects/ | grep -i -E "meme|lingo"',
       workdir: WORKSPACE,
     })
     expect(envelope.decision).toBe("allow")
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_read")).toBe(true)
+    expect(fileCapabilities(envelope)).toEqual([])
   })
 })

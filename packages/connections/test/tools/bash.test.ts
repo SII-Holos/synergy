@@ -398,13 +398,12 @@ describe("tool.bash permissions", () => {
         )
         expect(requests.length).toBe(1)
         expect(requests[0].permission).toBe("bash")
-        expect(requests[0].metadata.capability).toBe("shell_read")
         expect(requests[0].patterns).toContain("echo hello")
       },
     })
   })
 
-  test("marks read-only shell commands as low-risk shell_read", async () => {
+  test("asks for bash permission without predicting a capability", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -426,7 +425,9 @@ describe("tool.bash permissions", () => {
         )
         expect(requests.length).toBe(1)
         expect(requests[0].permission).toBe("bash")
-        expect(requests[0].metadata.capability).toBe("shell_read")
+        // The tool asks for the shell itself; the gate owns capability
+        // classification, so the ask carries no predicted capability.
+        expect(requests[0].metadata.capability).toBeUndefined()
       },
     })
   })
