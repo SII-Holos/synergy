@@ -197,7 +197,7 @@ export namespace SessionSegment {
           sourcePath(backup.sourceRoot, entry.relative),
           entry.hash,
           entry.size,
-          "Deferred legacy data changed during its import",
+          "Deferred legacy data changed after backup; it no longer matches its sealed backup",
           { tolerateMissing: locator.retiring },
         )
         const binary = legacyBinaryKey(entry.relative)
