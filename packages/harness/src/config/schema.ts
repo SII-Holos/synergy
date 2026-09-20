@@ -187,7 +187,7 @@ export const ObservabilityConfig = z
               .positive()
               .optional()
               .describe(
-                "Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.",
+                "Byte budget for authoritative storage (default: 40GB). Budgeted pruning only runs while the database exceeds it, and the operative retention window is derived from it and the measured ingress rate, so this value decides how much evidence can actually be retained.",
               ),
             retentionMs: z
               .number()
@@ -195,7 +195,7 @@ export const ObservabilityConfig = z
               .min(0)
               .optional()
               .describe(
-                "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.",
+                "Retain authoritative evidence for this long (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). This is a promise the byte budget may shorten, never lengthen: when retentionBytes holds less than this window at the measured ingress rate, pruning uses the shorter budget-derived window and reports it, and a budget that cannot hold even one day raises an unreachable-budget issue without pruning.",
               ),
             walCheckpointIntervalMs: z.number().int().positive().optional(),
           })
