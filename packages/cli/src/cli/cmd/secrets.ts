@@ -59,7 +59,8 @@ export const SecretsRotateCommand = cmd({
     try {
       const entry = await SecretVault.rotate(argv.id, value)
       UI.println(`Rotated to ${entry.id} (${fingerprintLabel(entry)}). New mask token: ⟦sec:${entry.id}⟧`)
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SecretVault.NotFoundError)) throw error
       UI.error(`Secret ${argv.id} does not exist.`)
       throw new UI.CancelledError()
     }
