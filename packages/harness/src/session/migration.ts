@@ -2219,6 +2219,12 @@ export const migrations: Migration[] = [
 
   {
     id: "20260907-snapshot-shared-store",
+    scope: "session",
+    execution: "session",
+    async upSession(owner) {
+      const { SnapshotMaintenance } = await import("./snapshot-maintenance")
+      await SnapshotMaintenance.registerLegacy(undefined, owner.scopeID, owner.sessionID)
+    },
     dependsOn: ["20260619-snapshot-per-session"],
     description: "Register legacy snapshot owners before enabling Scope-shared storage",
     async up(progress) {
@@ -2228,6 +2234,8 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260907-snapshot-release-orphan-owners",
+    scope: "global",
+    execution: "after-convergence",
     dependsOn: ["20260907-snapshot-shared-store"],
     description: "Release legacy owner records that the shared-store migration created for orphan directories",
     async up(progress) {

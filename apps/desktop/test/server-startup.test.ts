@@ -166,3 +166,25 @@ describe("managed startup progress", () => {
     expect(statuses).toHaveLength(2)
   })
 })
+
+test("maintenance uses its finite budget and a duplicate operation cannot renew it", () => {
+  let now = 0
+  const startup = new DesktopServerStartup({ now: () => now })
+  const progress = {
+    phase: "storage",
+    stage: "maintenance",
+    step: 1,
+    operation: 1,
+    current: 0,
+    total: 0,
+    bytes: 0,
+    timeoutMs: 900_000,
+  }
+  startup.receive(line(progress))
+  now = 400_000
+  expect(startup.remainingMs()).toBe(500_000)
+  startup.receive(line({ ...progress, step: 2 }))
+  expect(startup.remainingMs()).toBe(500_000)
+  startup.receive(line({ ...progress, step: 3, operation: 2 }))
+  expect(startup.remainingMs()).toBe(900_000)
+})

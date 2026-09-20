@@ -1,3 +1,4 @@
+import { MaintenanceProgress } from "../storage/maintenance-progress"
 import { SessionStaging } from "../session/staging"
 import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
@@ -174,32 +175,35 @@ export namespace RuntimeHandle {
       MigrationRegistry.lock()
       ConfigExtensions.lock()
       await Global.initialize({ configSchemaPath: options.services?.configSchemaPath })
-      if (options.storage) uninstallStorage = Storage.install(options.storage)
-      else {
-        storage = await StorageBootstrap.prepare({ root: Global.Path.root, progress: options.storageReporter })
-        uninstallStorage = Storage.install({ store: storage.store, artifactDirectory: Global.Path.data })
-      }
-      await SessionStaging.recover()
-      const migration = await ensureMigrations({
-        output: options.migrationOutput ?? "silent",
-        reporter: options.reporter,
-      })
-      await SessionCompat.prepareRecovery((current, total) =>
-        options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
-      )
-      if (storage && storage.manifest.phase !== "active")
-        await StorageRecovery.validate((current, timeoutMs) =>
-          options.storageReporter?.(
-            timeoutMs === undefined
-              ? { stage: "validate", current, total: 0, bytes: 0 }
-              : { stage: "validate-engine", current: 0, total: 0, bytes: 0, timeoutMs },
-          ),
+      const migration = await MaintenanceProgress.run(options.storageReporter, async () => {
+        if (options.storage) uninstallStorage = Storage.install(options.storage)
+        else {
+          storage = await StorageBootstrap.prepare({ root: Global.Path.root, progress: options.storageReporter })
+          uninstallStorage = Storage.install({ store: storage.store, artifactDirectory: Global.Path.data })
+        }
+        await SessionStaging.recover()
+        const migration = await ensureMigrations({
+          output: options.migrationOutput ?? "silent",
+          reporter: options.reporter,
+        })
+        await SessionCompat.prepareRecovery((current, total) =>
+          options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
         )
-      await storage?.activate()
-      await StorageRecovery.recoverOwners()
-      await StorageRecovery.load()
-      await StorageRecovery.reconcileNotifications()
-      options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
+        if (storage && storage.manifest.phase !== "active")
+          await StorageRecovery.validate((current, timeoutMs) =>
+            options.storageReporter?.(
+              timeoutMs === undefined
+                ? { stage: "validate", current, total: 0, bytes: 0 }
+                : { stage: "validate-engine", current: 0, total: 0, bytes: 0, timeoutMs },
+            ),
+          )
+        await storage?.activate()
+        await StorageRecovery.recoverOwners()
+        await StorageRecovery.load()
+        await StorageRecovery.reconcileNotifications()
+        options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
+        return migration
+      })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested, options.mode)
@@ -277,7 +281,10 @@ export namespace RuntimeHandle {
         residentStarted = true
         await services.resident.start(config)
       }
-      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
+      if (await SessionCompat.isActive())
+        stopCompat = SessionCompat.startBackgroundMigrator({
+          busy: () => SessionManager.runtimeStats().runningCount > 0,
+        })
       return { server, migration, config, shutdownTimeoutMs, closeAdmission, close, [Symbol.asyncDispose]: close }
     } catch (error) {
       try {

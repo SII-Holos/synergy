@@ -8825,8 +8825,64 @@ msgid "app.upgrade.attention"
 msgstr "{count} historical sessions need repair"
 
 #. js-lingui-explicit-id
+msgid "app.upgrade.backup"
+msgstr "Completing recovery backup: {done}/{total}"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.backupAttention"
+msgstr "Recovery backup needs attention"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.controlFailed"
+msgstr "Could not update preparation. Try again."
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.leave"
+msgstr "Back to workspace"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.pause"
+msgstr "Pause"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.paused"
+msgstr "History preparation paused"
+
+#. js-lingui-explicit-id
 msgid "app.upgrade.progress"
 msgstr "Preparing history: {done}/{total}"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.resume"
+msgstr "Resume"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionAttention"
+msgstr "This conversation needs attention"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionFiles"
+msgstr "{count} files prepared"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionPreparing"
+msgstr "Preparing this conversation"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionRepair"
+msgstr "Verification found a problem. Your original data and recovery files are preserved. Check storage diagnostics before retrying."
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionRetryHelp"
+msgstr "Preparation could not finish. Check the connection and available disk space, then retry."
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionWait"
+msgstr "Your history is being checked and upgraded. You can leave this page and continue with other conversations."
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.add.bottomPanel"

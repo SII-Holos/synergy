@@ -459,3 +459,7 @@ Library navigation and search controls remain outside content Suspense boundarie
 ## Historical upgrade status
 
 The status bar polls the generated `storage.upgradeStatus` method while historical owners remain unresolved. This progress snapshot is independent of session event watermarks and never triggers per-event data reloads. New work remains available; selecting old history waits for that owner’s migration and recovery. The separate paginated upgrade catalog exposes unresolved identities without rescanning legacy files.
+
+## Historical preparation
+
+The Session route gates message loading on the generated storage preparation API. Its component-owned controller polls only while pending/preparing, backs off while hidden and ignores disposed navigation responses. It does not synthesize message events or replace Scope watermarks. Returning to the workspace leaves durable preparation running. The status bar distinguishes historical convergence from independent backup completion and exposes background pause/resume; quarantined data remains blocked for repair.

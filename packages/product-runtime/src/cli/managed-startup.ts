@@ -55,7 +55,7 @@ export function createManagedStorageReporter(
   let emittedAt = -Infinity
   let previous: StorageStartupProgress | undefined
   return (progress: StorageStartupProgress) => {
-    const changed = stage !== progress.stage
+    const changed = stage !== progress.stage || previous?.operation !== progress.operation
     if (changed) {
       stage = progress.stage
       step++

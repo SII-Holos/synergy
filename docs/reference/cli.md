@@ -431,6 +431,7 @@ manage schema and data migrations
 
 | Option | Description |
 | --- | --- |
+| `--maintenance` (boolean) | include optional blocking database maintenance; requires an idle maintenance window |
 | `--dry-run` (boolean) | show what would run without executing |
 
 ## models [provider]

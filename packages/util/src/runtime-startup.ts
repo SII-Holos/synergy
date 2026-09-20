@@ -16,6 +16,7 @@ export const StorageStartupProgress = z.object({
     "archive-verify",
     "archive-import",
     "validate-engine",
+    "maintenance",
     "validate",
     "activate",
     "check",
@@ -24,6 +25,7 @@ export const StorageStartupProgress = z.object({
   current: count,
   total: count,
   bytes: count,
+  operation: count.positive().optional(),
   timeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
 })
 export type StorageStartupProgress = z.infer<typeof StorageStartupProgress>
@@ -34,10 +36,11 @@ export const RuntimeStartupProgress = z.discriminatedUnion("phase", [
     .strict()
     .refine((value) => value.total === 0 || value.current <= value.total)
     .refine((value) =>
-      value.stage === "validate-engine"
+      value.stage === "validate-engine" || value.stage === "maintenance"
         ? value.timeoutMs !== undefined && value.current === 0 && value.total === 0 && value.bytes === 0
         : value.timeoutMs === undefined,
-    ),
+    )
+    .refine((value) => (value.stage === "maintenance" ? value.operation !== undefined : value.operation === undefined)),
   z.object({ phase: z.literal("recovery"), current: count }).strict(),
   z
     .object({

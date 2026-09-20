@@ -3,7 +3,17 @@ import type { StorageUpgradeStatus } from "@ericsanchezok/synergy-sdk/client"
 import { createUpgradeStatusController } from "../../../src/components/status-bar/upgrade-status-controller"
 
 function status(pending: number, quarantined = 0): StorageUpgradeStatus {
-  return { ready: true, total: 3, pending, partial: 0, imported: 3 - pending - quarantined, quarantined }
+  return {
+    ready: true,
+    historyReady: !pending && !quarantined,
+    paused: false,
+    backup: { complete: true, sealed: 4, total: 4 },
+    total: 3,
+    pending,
+    partial: 0,
+    imported: 3 - pending - quarantined,
+    quarantined,
+  }
 }
 
 test("upgrade polling continues only while historical sessions remain pending", async () => {
@@ -68,6 +78,27 @@ test("transient errors retry, while an absent status finishes polling", async ()
   })
   await controller.refresh()
   fail = false
+  await controller.refresh()
+  expect(scheduled).toBe(1)
+  controller.dispose()
+})
+
+test("backup repair status keeps polling after history publication until recovery finishes", async () => {
+  const current = status(0)
+  current.backup.attention = true
+  let scheduled = 0
+  const controller = createUpgradeStatusController({
+    load: async () => current,
+    publish: () => {},
+    hidden: () => false,
+    schedule: () => {
+      scheduled++
+      return () => {}
+    },
+  })
+  await controller.refresh()
+  expect(scheduled).toBe(1)
+  current.backup.attention = false
   await controller.refresh()
   expect(scheduled).toBe(1)
   controller.dispose()

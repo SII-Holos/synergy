@@ -200,3 +200,26 @@ test("logical index verification stays inside bounded primary-key pages", async 
   expect(plans.length).toBeGreaterThan(2)
   expect(plans.every((plan) => /key_id>/.test(plan))).toBe(true)
 })
+
+test("physical maintenance announces distinct finite startup budgets outside ordinary queries", async () => {
+  const { MaintenanceProgress } = await import("../../src/storage/maintenance-progress")
+  const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "maintenance-progress-"))
+  const driver = await SqliteDriver.open(path.join(root, "agent.sqlite"))
+  const reports: Array<{ operation?: number; timeoutMs?: number }> = []
+  try {
+    await MaintenanceProgress.run(
+      (value) => reports.push(value),
+      async () => {
+        await driver.query("SELECT 1")
+        expect(reports).toEqual([])
+        await driver.query("PRAGMA integrity_check", [], { maintenance: true })
+        await driver.query("PRAGMA integrity_check", [], { maintenance: true })
+      },
+    )
+    expect(reports.map((value) => value.operation)).toEqual([1, 2])
+    expect(reports.every((value) => Number.isFinite(value.timeoutMs) && value.timeoutMs! >= 30_000)).toBe(true)
+  } finally {
+    await driver.close()
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})

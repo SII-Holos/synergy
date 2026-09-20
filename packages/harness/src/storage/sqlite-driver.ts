@@ -1,3 +1,4 @@
+import { MaintenanceProgress } from "./maintenance-progress"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { existsSync } from "node:fs"
@@ -204,7 +205,8 @@ export class SqliteDriver implements SqlDriver {
         throw new StorageIntegrityError("SQLite maintenance size is invalid")
       // Full integrity checks revisit every index entry (https://sqlite.org/pragma.html#pragma_integrity_check).
       deadline = Math.min(2_147_483_647, 600_000 + Math.ceil(bytes / 1024 ** 2) * 1000)
-      onMaintenanceBudget?.(deadline)
+      if (onMaintenanceBudget) onMaintenanceBudget(deadline)
+      else MaintenanceProgress.announce(deadline)
     }
     const bytes = sqlParameterBytes(request.values ?? [])
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
@@ -294,6 +296,15 @@ export class SqliteDriver implements SqlDriver {
       } catch (error) {
         this.settle(id, { error })
       }
+    })
+  }
+
+  async walPressure() {
+    return this.writerQueue.run(async () => {
+      const { rows } = await this.request({ action: "query", statement: "PRAGMA wal_checkpoint(PASSIVE)" })
+      const { rows: sizes } = await this.request({ action: "query", statement: "PRAGMA page_size" })
+      const pending = Math.max(0, Number(rows[0]?.log ?? 0) - Number(rows[0]?.checkpointed ?? 0))
+      return pending * Number(sizes[0]?.page_size ?? 4096)
     })
   }
 
