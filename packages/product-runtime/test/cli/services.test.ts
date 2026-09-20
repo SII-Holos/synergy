@@ -24,6 +24,7 @@ mock.module(import.meta.resolve("open"), () => ({
 }))
 const { ServerCommand } = await import("../../src/cli/server")
 const { WebCommand } = await import("../../src/cli/web")
+const { main: runDaemon } = await import("../../src/daemon-entry")
 
 afterEach(() =>
   runtime.run(() => {
@@ -81,6 +82,24 @@ test("server startup failures preserve a nonzero exit and actionable diagnostics
     expect(process.exitCode).toBe(1)
     expect(lines.join("\n")).toContain("fixture startup failure")
     expect(lines.join("\n")).toContain("--print-logs")
+  }))
+
+test("daemon starts a managed service without interactive presentation and resolves its network lazily", () =>
+  runtime.run(async () => {
+    await runDaemon()
+    expect(started).toHaveLength(1)
+    expect(started[0]).toMatchObject({
+      interactive: false,
+      printBanner: false,
+      printChannelStatus: false,
+      logging: { print: true },
+    })
+    const network = started[0]!.network
+    expect(typeof network).toBe("function")
+    expect(await (typeof network === "function" ? network() : network)).toMatchObject({
+      hostname: expect.any(String),
+      port: expect.any(Number),
+    })
   }))
 
 test("an existing server lock reports process health and ownership without starting another runtime", () =>

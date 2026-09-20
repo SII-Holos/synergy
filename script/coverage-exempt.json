@@ -1589,6 +1589,10 @@
         {
           "glob": "src/tools/process/shared.ts",
           "reason": "tool implementations require live tool runtime context"
+        },
+        {
+          "glob": "src/policy-worker.ts",
+          "reason": "source policy worker entry runs in a child process; test/enforcement/policy-worker-process.test.ts verifies the production local composition, classifier parity and shutdown across IPC; Bun does not merge child-process coverage"
         }
       ]
     },

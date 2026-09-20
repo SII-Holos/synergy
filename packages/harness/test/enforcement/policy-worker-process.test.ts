@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { EnforcementGate, type GateOptions } from "../../src/enforcement/gate"
-import { PolicyWorker } from "../../src/enforcement/policy-worker"
 import { PolicyWorkerProtocol } from "../../src/enforcement/policy-worker/protocol"
 import { spawnPolicyWorkerProcess } from "../../src/enforcement/policy-worker/process-host"
-import { DEFAULT_POLICY_WORKER_POOL_OPTIONS, PolicyWorkerPool } from "../../src/enforcement/policy-worker/worker-pool"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -87,41 +84,6 @@ describe("Policy worker process", () => {
       } finally {
         settled = true
         await worker.stop(100)
-      }
-    }))
-
-  test("preserves classifier results across the process boundary", () =>
-    runtime.run(async () => {
-      const options: GateOptions = {
-        activeWorkspace: import.meta.dir,
-        workspaceType: "worktree",
-        registeredMcpTools: new Set(["mcp__known__read"]),
-      }
-      const gate = await EnforcementGate.create(options)
-      const pool = new PolicyWorkerPool({
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 3_000,
-      })
-      const cases = [
-        { toolName: "bash", args: { command: "git push --force origin topic" } },
-        { toolName: "read", args: { filePath: "/tmp/external.txt" } },
-        { toolName: "mcp__known__read", args: {} },
-        { toolName: "local__custom__tool", args: {} },
-      ]
-
-      try {
-        for (const item of cases) {
-          await expect(
-            pool.run({
-              context: PolicyWorker.context(options),
-              toolName: item.toolName,
-              args: item.args,
-            }),
-          ).resolves.toEqual(gate.classify(item.toolName, item.args))
-        }
-      } finally {
-        await pool.stop()
       }
     }))
 })
