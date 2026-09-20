@@ -407,7 +407,9 @@ export namespace LatticeRunService {
     await LatticeModelCalls.flush(scopeID, run.sessionID)
     let cancelled = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.cancel(draft))
     const currentAfterPersistence = await LatticeStore.getOrUndefined(scopeID, run.sessionID)
-    if (currentAfterPersistence?.id === run.id) await SessionAbort.abort(run.sessionID)
+    // Cancelling the run is this domain withdrawing its own work, so the
+    // session must not end up holding a pause the user never asked for.
+    if (currentAfterPersistence?.id === run.id) await SessionAbort.abort(run.sessionID, { internalCancel: true })
     await removeRunInbox(cancelled)
     await cancelRunLoops(scopeID, cancelled, "Lattice Run cancelled")
     cancelled = await completeCreateCleanupEffect(scopeID, cancelled)
@@ -641,7 +643,8 @@ export namespace LatticeRunService {
       if (run.status === "cancelled") {
         if (isCurrent) {
           LatticeModelCalls.clear(run.sessionID)
-          await SessionAbort.abort(run.sessionID)
+          // Lattice owns this cancellation, so it must not latch a user pause.
+          await SessionAbort.abort(run.sessionID, { internalCancel: true })
         }
         await removeRunInbox(run)
         await cancelRunLoops(scopeID, run, "Lattice Run cancelled")
