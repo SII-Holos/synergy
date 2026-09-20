@@ -9,7 +9,7 @@ import {
   StorageUnavailableError,
 } from "./errors"
 import { ArtifactLocation } from "./artifact-location"
-import { RecordCodec } from "./record-codec"
+import { RecordCodec, type BodyContainer } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
@@ -247,6 +247,19 @@ export class StoreTransaction {
   private active = true
   private failure?: unknown
   private readonly connection: SqlConnection
+  /**
+   * The container a body may be written in.
+   *
+   * It follows the same recorded format as the key encoding, because a byte frame
+   * is only storable where the body column is a blob -- the format 3 layout. A
+   * `TEXT` column renders those bytes as hex text, which no reader accepts.
+   * Deriving it here rather than storing it separately keeps the two from
+   * disagreeing, and `adoptFormatV3` therefore flips both at once.
+   */
+  private get bodies(): BodyContainer {
+    return this.keys === "bytes" ? "frame" : "text"
+  }
+
   constructor(
     connection: SqlConnection,
     readonly namespace: string,
@@ -349,7 +362,7 @@ export class StoreTransaction {
       if (unique.has(id)) throw new StorageIntegrityError("A bulk write must contain distinct logical keys")
       unique.add(id)
       const text = JSON.stringify(key)
-      const body = RecordCodec.encode(value)
+      const body = RecordCodec.encode(value, this.bodies)
       const meta = metadata(key)
       const bytes = sqlParameterBytes([
         this.namespace,
@@ -483,7 +496,7 @@ export class StoreTransaction {
         this.namespace,
         keyParameter(this.keys, key),
         JSON.stringify(key),
-        RecordCodec.encode(value),
+        RecordCodec.encode(value, this.bodies),
         revision + 1n,
         meta.kind,
         meta.scope,
@@ -930,7 +943,7 @@ export class TransactionalStore {
         ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist)
         : await PostgresDriver.open(options.url, options.namespace, options.maxConnections, options.readonly)
     const store = new TransactionalStore(driver, options)
-    driver.onUnavailable?.((error) => {
+    driver.onUnavailable((error) => {
       store.unavailable = error
     })
     try {
@@ -1000,7 +1013,7 @@ export class TransactionalStore {
   /** Reports a store that failed terminally; the host must restart the Runtime
    *  because this instance cannot serve further work. */
   onUnavailable(listener: (error: Error) => void): () => void {
-    return this.driver.onUnavailable?.(listener) ?? (() => {})
+    return this.driver.onUnavailable(listener)
   }
 
   async snapshot<T>(

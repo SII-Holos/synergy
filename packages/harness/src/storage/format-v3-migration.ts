@@ -1,3 +1,5 @@
+import fs from "node:fs/promises"
+import path from "node:path"
 import { RecordCodec } from "./record-codec"
 import { StorageIntegrityError } from "./errors"
 import {
@@ -10,7 +12,7 @@ import {
   storageRecordsIndexes,
   type TransactionalStore,
 } from "./transactional-store"
-import type { SqlConnection, SqlValue } from "./sql-contract"
+import type { SqlConnection, SqlRow, SqlValue } from "./sql-contract"
 import { Log } from "../util/log"
 import { ObservabilityIssues } from "../observability/issues"
 
@@ -18,6 +20,10 @@ const recordsTable = "storage_records_v3"
 const nodesTable = "storage_nodes_v3"
 const artifactsTable = "storage_artifacts_v3"
 const BATCH = 256
+// Rows examined to size a table the copy has not written yet. The sample is the
+// lowest keys in the table's key order, which is a uniform slice of the namespace
+// because a format 3 key column holds a sha256 rather than a name.
+const PREFLIGHT_SAMPLE_ROWS = 256
 // A phase names work that is *not yet done*, so a cursor is cleared only when the
 // work it belongs to finishes. The state lives in its own table rather than in
 // `storage_records` for two reasons: the rewrite drops and renames that table, so
@@ -62,6 +68,42 @@ type RecordsRow = {
   message_id: string
   order_key: string
   updated: bigint | number
+}
+
+type RecordSizeRow = {
+  body: string | Uint8Array | null
+  key_text: string
+  kind: string
+  scope_id: string
+  session_id: string
+  message_id: string
+  order_key: string
+}
+type NodeSizeRow = { segment: string }
+type ArtifactSizeRow = { key_text: string; owner_key: string; location: string }
+
+function textBytes(value: string | null): number {
+  return value === null ? 0 : Buffer.byteLength(value)
+}
+
+/** The bytes a body occupies once the copy has re-encoded it. */
+function stagedBodyBytes(body: string | Uint8Array | null): number {
+  if (body === null) return 0
+  const encoded = RecordCodec.reencode(body)
+  return typeof encoded === "string" ? Buffer.byteLength(encoded) : encoded.byteLength
+}
+
+/**
+ * The index entry SQLite keeps beside a row of a non-integer `PRIMARY KEY`: the
+ * key columns again, plus the rowid the index points at.
+ */
+function keyEntryBytes(namespaceBytes: number, keyColumnBytes: number): number {
+  return namespaceBytes + keyColumnBytes + 8
+}
+
+/** Bytes as GiB to two decimals, so the shortfall reads as an operator can size it. */
+function gib(bytes: number | bigint): string {
+  return (Number(bytes) / 1024 ** 3).toFixed(2)
 }
 
 const emptyState = (): State => ({
@@ -120,11 +162,162 @@ export namespace StorageFormatV3Migration {
     if (!state && store.keyEncodedAs === "bytes") return
     if (state && state.version !== 3) throw new StorageIntegrityError("Unsupported storage format migration version")
     if (state?.phase === "complete") return
-    state = await copyRecords(store, state ?? emptyState(), progress)
+    state ??= emptyState()
+    // Only a run that still has copy work ahead of it needs the headroom: a run
+    // resumed at the swap or the reclaim has already finished building its second
+    // copy, and demanding the peak again would refuse to finish a rewrite that is
+    // mid-flight.
+    if (state.phase === "records" || state.phase === "nodes" || state.phase === "artifacts")
+      await preflightCapacity(store, state)
+    state = await copyRecords(store, state, progress)
     state = await copyNodes(store, state, progress)
     state = await copyArtifacts(store, state, progress)
     state = await swap(store, state, progress)
     await reclaim(store, state, progress)
+  }
+
+  /**
+   * Refuses to start the copy phases without room for the copy they build.
+   *
+   * The rewrite builds each replacement table beside the live one before the swap
+   * drops the original, so it transiently holds both. A volume that cannot hold
+   * both currently fails part way through with a bare `SQLITE_FULL` that names
+   * neither the cause nor the requirement; the legacy importers preflight the
+   * same way with `statfs` before they write.
+   *
+   * The figure is derived from what the remaining copy actually writes: the exact
+   * row count still to be stored in each table, scaled from a bounded sample of
+   * real rows sized the way the copy stores them -- key columns as their byte
+   * digest and bodies through `RecordCodec.reencode` -- plus the primary-key
+   * entry SQLite keeps beside every row, which stores the key columns a second
+   * time. Pages the swap has already freed are counted as room the run has. Page
+   * overhead, index fill and the WAL are deliberately left out, so the figure is
+   * a lower bound on the true peak, which is the direction that cannot refuse a
+   * store that had room.
+   */
+  async function preflightCapacity(store: TransactionalStore, state: State) {
+    const filename = store.sqliteFilename
+    if (!filename) return
+    const namespace = store.options.namespace
+    const [shell] = await store.snapshot(
+      (tx) =>
+        tx.raw.query<{ pageSize: number; freeBytes: number }>(
+          "SELECT (SELECT page_size FROM pragma_page_size()) AS pageSize, (SELECT freelist_count FROM pragma_freelist_count()) * (SELECT page_size FROM pragma_page_size()) AS freeBytes",
+        ),
+      { singleStatement: true },
+    )
+    const [counts] = await store.snapshot(
+      (tx) =>
+        tx.raw.query<{ records: number; nodes: number; artifacts: number }>(
+          "SELECT (SELECT COUNT(*) FROM storage_records WHERE namespace = ?) AS records, (SELECT COUNT(*) FROM storage_nodes WHERE namespace = ?) AS nodes, (SELECT COUNT(*) FROM storage_artifacts WHERE namespace = ?) AS artifacts",
+          [namespace, namespace, namespace],
+        ),
+      { singleStatement: true },
+    )
+    const records = Number(counts?.records ?? 0)
+    const nodes = Number(counts?.nodes ?? 0)
+    const artifacts = Number(counts?.artifacts ?? 0)
+    const namespaceBytes = Buffer.byteLength(namespace)
+
+    const averageRowBytes = async <Row extends SqlRow>(
+      table: string,
+      keyColumn: string,
+      columns: string,
+      sizeOf: (row: Row) => number,
+    ): Promise<number> => {
+      const sample = await store.snapshot(
+        (tx) =>
+          tx.raw.query<Row>(`SELECT ${columns} FROM ${table} WHERE namespace = ? ORDER BY ${keyColumn} LIMIT ?`, [
+            namespace,
+            PREFLIGHT_SAMPLE_ROWS,
+          ]),
+        { singleStatement: true },
+      )
+      if (!sample.length) return 0
+      return sample.reduce((total, row) => total + sizeOf(row), 0) / sample.length
+    }
+    const remainingRows = async (table: string, keyColumn: string, cursor: string) => {
+      if (!cursor) return 0
+      const [row] = await store.snapshot(
+        (tx) =>
+          tx.raw.query<{ rows: number }>(
+            `SELECT COUNT(*) AS rows FROM ${table} WHERE namespace = ? AND ${keyColumn} > ?`,
+            [namespace, cursor],
+          ),
+        { singleStatement: true },
+      )
+      return Number(row?.rows ?? 0)
+    }
+
+    // Only the tables this run still has to build count. Each phase re-derives
+    // nodes from empty, while the records and artifacts copies resume past the
+    // recorded cursor, so a resumed run demands only what it has left to write
+    // instead of the whole peak it has already partly paid for.
+    const recordsAhead =
+      state.phase === "records"
+        ? state.recordsCursor
+          ? await remainingRows("storage_records", "key_id", state.recordsCursor)
+          : records
+        : 0
+    const nodesAhead = state.phase === "records" || state.phase === "nodes" ? nodes : 0
+    const artifactsAhead =
+      state.phase === "artifacts"
+        ? state.artifactsCursor
+          ? await remainingRows("storage_artifacts", "key_text", state.artifactsCursor)
+          : artifacts
+        : 0
+
+    const staged =
+      Math.ceil(
+        (await averageRowBytes<RecordSizeRow>(
+          "storage_records",
+          "key_id",
+          "body, key_text, kind, scope_id, session_id, message_id, order_key",
+          (row) =>
+            namespaceBytes +
+            32 +
+            textBytes(row.key_text) +
+            stagedBodyBytes(row.body) +
+            8 +
+            textBytes(row.kind) +
+            textBytes(row.scope_id) +
+            textBytes(row.session_id) +
+            textBytes(row.message_id) +
+            textBytes(row.order_key) +
+            8 +
+            keyEntryBytes(namespaceBytes, 32),
+        )) * recordsAhead,
+      ) +
+      Math.ceil(
+        (await averageRowBytes<NodeSizeRow>(
+          "storage_nodes",
+          "key_id",
+          "segment",
+          (row) => namespaceBytes + 32 + 32 + textBytes(row.segment) + keyEntryBytes(namespaceBytes, 32),
+        )) * nodesAhead,
+      ) +
+      Math.ceil(
+        (await averageRowBytes<ArtifactSizeRow>(
+          "storage_artifacts",
+          "key_text",
+          "key_text, owner_key, location",
+          (row) =>
+            namespaceBytes +
+            textBytes(row.key_text) +
+            textBytes(row.owner_key) +
+            textBytes(row.location) +
+            keyEntryBytes(namespaceBytes, textBytes(row.key_text)),
+        )) * artifactsAhead,
+      )
+    if (!staged) return
+    const missing = staged - Number(shell?.freeBytes ?? 0)
+    if (missing <= 0) return
+    const disk = await fs.statfs(path.dirname(filename), { bigint: true })
+    const available = disk.bavail * disk.bsize
+    if (available >= BigInt(missing)) return
+    throw new StorageIntegrityError(
+      `The format 3 rewrite needs ${missing} bytes (${gib(missing)} GiB) of free space to hold its replacement records, nodes and artifact tables beside the live ones, but the volume holding the store has ${available} bytes (${gib(available)} GiB) available; free space and resume`,
+    )
   }
 
   /**
