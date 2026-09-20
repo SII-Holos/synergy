@@ -5,6 +5,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { SqliteDriver } from "../../src/storage/sqlite-driver"
+import { observeStorageMaintenance } from "../../src/storage/maintenance-progress"
 import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import type { SqlConnection, SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
 
@@ -63,20 +64,28 @@ test("SQLite maintenance budgets grow with the current database while ordinary d
       }),
     )
     const budgets: number[] = []
-    const maintenance = { maintenance: true, onMaintenanceBudget: (timeoutMs: number) => budgets.push(timeoutMs) }
-    expect(await driver.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
+    const maintenance = { maintenance: "integrity-check" as const }
+    const observe = <T>(operation: () => Promise<T>) =>
+      observeStorageMaintenance(operation, (event) => {
+        if (event.state === "started") budgets.push(event.timeoutMs)
+      })
+    expect(await observe(() => driver.query("PRAGMA integrity_check", [], maintenance))).toEqual([
+      { integrity_check: "ok" },
+    ])
     const initial = Math.max(...deadlines)
-    expect(budgets).toEqual([initial])
+    expect(budgets).toEqual([initial + 90_000])
     await driver.transaction((tx) => tx.query("INSERT INTO evidence VALUES (zeroblob(8388608))"))
     deadlines.length = 0
-    await driver.transaction(
-      async (tx) => {
-        expect(await tx.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
-      },
-      { readOnly: true },
+    await observe(() =>
+      driver.transaction(
+        async (tx) => {
+          expect(await tx.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
+        },
+        { readOnly: true },
+      ),
     )
     expect(Math.max(...deadlines)).toBeGreaterThan(initial)
-    expect(budgets).toEqual([initial, Math.max(...deadlines)])
+    expect(budgets).toEqual([initial + 90_000, Math.max(...deadlines) + 90_000])
     deadlines.length = 0
     expect(await driver.query("SELECT 1 AS value")).toEqual([{ value: 1n }])
     expect(deadlines).toEqual([30_000])
@@ -151,11 +160,17 @@ test("verification reports outside retried transactions and counts repeated scan
       }
     }
   })
-  const result = await data.store.verify((current, timeoutMs) => {
-    expect(context.getStore()).toBeUndefined()
-    progress.push(current)
-    if (timeoutMs !== undefined) budgets.push(timeoutMs)
-  })
+  const result = await observeStorageMaintenance(
+    () =>
+      data.store.verify((current) => {
+        expect(context.getStore()).toBeUndefined()
+        progress.push(current)
+      }),
+    (event) => {
+      expect(context.getStore()).toBeUndefined()
+      if (event.state === "started") budgets.push(event.timeoutMs)
+    },
+  )
   expect(result.records).toBe(600)
   expect(budgets).toHaveLength(2)
   expect(budgets.every((value) => value >= 600_000)).toBe(true)

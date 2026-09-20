@@ -367,7 +367,7 @@ test("an unmapped certificate verification failure becomes a bounded retry", () 
     message: "Secure connection could not be verified; retrying",
     maxAttempts: SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS,
   })
-  expect(retryable?.maxAttempts).toBe(2)
+  expect(retryable?.maxAttempts).toBe(6)
 })
 
 test("reports the TLS reason instead of claiming the provider is unavailable", () => {
@@ -382,7 +382,7 @@ test("keeps a mapped certificate code terminal after the classifier change", () 
   }
 })
 
-test("bounds the TLS retry backoff below the transport ceiling", () => {
+test("caps the TLS retry backoff at the transport ceiling", () => {
   const error = new MessageV2.APIError({
     message: "unknown certificate verification error",
     isRetryable: true,

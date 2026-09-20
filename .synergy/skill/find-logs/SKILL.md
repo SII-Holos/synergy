@@ -35,6 +35,8 @@ The root is `$INSTANCE_HOME/.synergy/`; `SYNERGY_HOME` names its parent. A lock 
 
 If the process was launched with `--print-logs`, logs go to its terminal instead of a normal log file. Locate the owning terminal or rerun only an isolated test instance without that flag; do not restart the runtime carrying the current task.
 
+For managed Desktop startup, first isolate the latest `starting`/exit interval in Electron's server log. Historical plugin, channel or login errors in an appended log do not establish the current failure. Correlate the current launch's structured maintenance begin/stage/terminal events with the backend failure: ordinary health timeout, item-progress inactivity and a fixed SQLite maintenance deadline are different contracts. A journal checkpoint or database rewrite can be active without increasing an item count. Record the operation, last stage, elapsed time and budget; do not infer the engine's exact stuck stage when older logs contain only a migration step.
+
 ## Read the Correct Evidence
 
 The CLI is the supported inspection entry point once the home is known:

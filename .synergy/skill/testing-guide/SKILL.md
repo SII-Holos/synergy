@@ -66,6 +66,8 @@ For inbox-to-transcript transitions, exercise settlement while a real inbox item
 
 Recovery migrations must also exercise startup with no newly queued task, failed wake attempts, and repeated startup. Persisting repaired state alone does not prove that startup can discover and execute the work. When adding migration imports, run the fresh-process migration registration and owner-ledger tests; a suite with preloaded session modules can hide a cold-import cycle.
 
+For startup maintenance, pair real SQLite lifecycle tests (opening DDL, VACUUM/checkpoints, verification and failed DDL) with a fake monotonic clock at the Desktop consumer. Cover overlapping operations, duplicate/stale events, phase changes during maintenance, completion returning to the underlying deadline, and failure/worker loss. Assert observers run in the caller context even after transaction retries. Exercise split stdout/stderr and reused log files through a real managed child, then validate indeterminate elapsed time and long error details in Electron. Never let small fixtures or pre-recorded progress alone certify producer-to-consumer coverage.
+
 ## Local Performance Experiments
 
 Benchmark adapters must pass the environment's `agent_process_env` to the agent invocation so restricted-network tasks retain the evaluator's inference egress. Test both proxy-enabled and ordinary environments while keeping provider credentials in temporary private files. Validate streamed requests through the proxy and recording path: a direct provider probe, an internet-enabled task, or a successful proxy HEAD request does not establish that the actual model transport works.

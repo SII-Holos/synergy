@@ -26,7 +26,7 @@ export namespace StorageRecovery {
     for (const recover of instanceState.owners.values()) await recover()
   }
 
-  export async function validate(progress?: (current: number, timeoutMs?: number) => void) {
+  export async function validate(progress?: (current: number) => void) {
     const report = await Storage.current().store.verify(progress)
     for (const issue of report.issues) {
       if (issue.key[0] !== "sessions" || !issue.key[2])

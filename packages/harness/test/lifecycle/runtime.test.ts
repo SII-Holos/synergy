@@ -1,3 +1,7 @@
+import { Storage } from "../../src/storage/storage"
+import { ServerProcessLock } from "../../src/util/server-process-lock"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
+import { RuntimeContext } from "../../src/lifecycle/context"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { RuntimeHandle, type RuntimeComposition } from "../../src/lifecycle/runtime"
@@ -226,3 +230,60 @@ test("a failing transport admission hook cannot prevent resource cleanup or owne
     await store.close()
   }
 }, 30_000)
+
+for (const failed of [false, true])
+  test(`maintenance reporting preserves lifecycle ownership (failure=${failed})`, async () => {
+    await using fixture = await runtimeHome()
+    const store = await TransactionalStore.open({
+      backend: "sqlite",
+      filename: path.join(fixture.host.root, "borrowed.sqlite"),
+      namespace: "borrowed",
+    })
+    const storage = {
+      kind: "borrowed" as const,
+      handle: { store, artifactDirectory: path.join(fixture.host.root, "data") },
+    }
+    const events: StorageMaintenanceEvent[] = []
+    let disposed = false
+    try {
+      const opening = RuntimeHandle.open({
+        host: fixture.host,
+        storage,
+        mode: "oneshot",
+        composition: {
+          register() {},
+          services: () => ({
+            initializeExtensions: () =>
+              Storage.current()
+                .store.verify()
+                .then(() => {}),
+            disposeExtensions: async () => {
+              disposed = true
+            },
+          }),
+        },
+        maintenanceReporter(event) {
+          events.push(event)
+          if (failed) throw new Error("report transport failed")
+        },
+      })
+      if (failed) await expect(opening).rejects.toThrow("report transport failed")
+      else {
+        const runtime = await opening
+        expect(events).toContainEqual(expect.objectContaining({ state: "started", operation: "integrity-check" }))
+        expect(events).toContainEqual(expect.objectContaining({ state: "completed" }))
+        await runtime.close()
+      }
+      expect(disposed).toBe(true)
+      const context = RuntimeContext.create(fixture.host)
+      try {
+        expect(await context.run(() => ServerProcessLock.read())).toBeUndefined()
+      } finally {
+        context.dispose()
+      }
+      const reopened = await RuntimeHandle.open({ host: fixture.host, storage, composition, mode: "oneshot" })
+      await reopened.close()
+    } finally {
+      await store.close()
+    }
+  }, 30_000)
