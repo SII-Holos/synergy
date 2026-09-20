@@ -160,20 +160,28 @@ export namespace ObservabilityConfig {
       // busy; it takes `hardCeilingMs` of sustained silence to mean a wedge.
       probeTimeoutMs: 30_000,
       probeAttempts: 3,
-      // This ceiling must exceed the longest *legitimate* statement, and two
+      // This ceiling must exceed the longest *legitimate* statement, because two
       // maintenance statements cannot be chunked or cancelled: SQLite has no
       // partial `CREATE INDEX`, and `PRAGMA integrity_check` is one engine call
-      // that `bun:sqlite` offers no progress callback for. Measured on the
-      // production schema, both grow with store size — at 15.1M records the
-      // index build projects to ~199 s and the integrity check to ~278 s, and
-      // that check runs during migration activation. A ceiling below them
-      // latches a healthy worker in the middle of a migration, which is the
-      // failure this whole budget exists to prevent, so the default holds a
-      // multiple of the measured cost instead of one ordinary-deadline decade.
-      // Erring high is the safe direction: an occupied worker already fails new
-      // work fast and keeps the runtime serving, so a late wedge declaration
-      // costs latency, while an early one costs the process.
-      hardCeilingMs: 1_800_000,
+      // that `bun:sqlite` offers no progress callback for.
+      //
+      // Both were measured on production-shaped fixtures, and the measurement is
+      // noisy enough that the ceiling has to be read as a range rather than a
+      // number. The physical check took 17-33 s at 920,000 records and 140-280 s
+      // at 2,760,000 records -- a 2x spread on the *same file*, because whether
+      // the store fits in page cache decides most of the cost. Extrapolating the
+      // slowest run to the 15.1M records of the store this work came from puts
+      // that one statement in the neighbourhood of 22 minutes, and the spread
+      // means the true figure is not pinned. A ceiling of half an hour would sit
+      // inside that spread, so it could kill a healthy worker finishing exactly
+      // this statement -- and it runs while a migration is activating.
+      //
+      // The ceiling's only cost is how long a genuinely wedged worker is given
+      // before the managed restart: while it is occupied, storage already fails
+      // new work fast and the runtime keeps serving everything else. Delaying a
+      // restart is recoverable; killing a healthy worker during a migration is
+      // not, so the default is deliberately generous.
+      hardCeilingMs: 3_600_000,
       // Every maintenance, DDL, delete and migration path must finish one
       // chunk inside this budget. Kept a full margin below the ceiling so a
       // chunk can never be what reaches the terminal path.

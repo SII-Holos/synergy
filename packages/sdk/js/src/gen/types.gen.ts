@@ -2731,7 +2731,7 @@ export type ObservabilityConfig = {
        */
       probeAttempts?: number
       /**
-       * Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 1800000 ms). Must exceed the longest legitimate statement, because two maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, and the physical integrity check is one engine call. Both grow with store size — measured at ~199 s and ~278 s respectively on a 15M-record store — so this default holds a multiple of the measured worst case. Raising it delays declaring a real wedge; lowering it risks latching a healthy worker mid-migration.
+       * Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 3600000 ms). Must exceed the longest legitimate statement, because two maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, and the physical integrity check is one engine call. Measured on production-shaped fixtures the check alone took 17-33 s at 920,000 records and 140-280 s at 2,760,000 records, and it runs while a migration activates, so the projection to a much larger store is a range rather than a point. Raising this only delays declaring a real wedge, during which storage already fails new work fast and the runtime keeps serving, so it is the safe direction to err; lower it only if a shorter recovery time matters more than the risk of interrupting a migration.
        */
       hardCeilingMs?: number
       /**
