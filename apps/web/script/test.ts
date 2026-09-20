@@ -76,6 +76,7 @@ await runBatchedTests({
     "test/components/terminal/dispose-reentrancy.test.ts",
     "test/components/workspace/builtin-workbench-panels.test.ts",
     "test/context/font-preference-provider.test.ts",
+    "test/context/layout/completion-notice.test.ts",
     "test/pages/fatal-error.test.tsx",
     "test/plugin/builtin-navigation.test.ts",
     "test/plugin/global-themes-registrar-lifecycle.test.tsx",
