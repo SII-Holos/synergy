@@ -39,7 +39,7 @@ async function waitForMarker(file: string, deadlineMs: number, stopped?: () => b
   while (Date.now() < deadline) {
     const text = await readFile(file, "utf8").catch(() => undefined)
     if (text !== undefined) return text
-    if (stopped?.()) return undefined
+    if (stopped?.()) return readFile(file, "utf8").catch(() => undefined)
     await Bun.sleep(50)
   }
   return undefined
@@ -69,8 +69,9 @@ test(
       })
       const mark = (file) => writeFile(file, "").catch(() => {})
       const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
-      Log.init({ print: false })
+      await Log.init({ print: false })
       const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
+      const { Observability } = await import("@ericsanchezok/synergy-harness/observability")
       const { getRuntimeEndpoint } = await import("@ericsanchezok/synergy-harness/util/runtime-endpoint")
       const { run } = await import("./src/server/runtime")
       let started = false
@@ -91,7 +92,13 @@ test(
       const readyDeadline = Date.now() + ${STARTUP_DEADLINE_MS}
       while (Date.now() < readyDeadline) {
         try {
-          if ((await fetch(getRuntimeEndpoint().url + "/global/health")).ok) { started = true; break }
+          // Transport listens before resident startup and shutdown registration finish.
+          // Kill storage only after the runtime has published its startup event.
+          if ((await fetch(getRuntimeEndpoint().url + "/global/health")).ok &&
+              (await Observability.query({ type: "server.start", limit: 1 })).length) {
+            started = true
+            break
+          }
         } catch {}
         await Bun.sleep(100)
       }
@@ -168,7 +175,8 @@ test(
       expect(exitStatus, `the escalation never reached process.exit: ${output}`).toBe("1")
       expect(observed, `the process did not exit with the escalated status: ${output}`).toBe(1)
     } finally {
-      child.kill()
+      child.kill("SIGKILL")
+      await child.exited
       await Promise.all([rm(root, { recursive: true, force: true }), isolated.dispose()])
     }
   },
