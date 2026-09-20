@@ -160,10 +160,20 @@ export namespace ObservabilityConfig {
       // busy; it takes `hardCeilingMs` of sustained silence to mean a wedge.
       probeTimeoutMs: 30_000,
       probeAttempts: 3,
-      // Ten times the ordinary deadline, the ratio etcd uses between its
-      // heartbeat and its election timeout: long enough that no legitimate
-      // statement reaches it, short enough to bound a real wedge.
-      hardCeilingMs: 300_000,
+      // This ceiling must exceed the longest *legitimate* statement, and two
+      // maintenance statements cannot be chunked or cancelled: SQLite has no
+      // partial `CREATE INDEX`, and `PRAGMA integrity_check` is one engine call
+      // that `bun:sqlite` offers no progress callback for. Measured on the
+      // production schema, both grow with store size — at 15.1M records the
+      // index build projects to ~199 s and the integrity check to ~278 s, and
+      // that check runs during migration activation. A ceiling below them
+      // latches a healthy worker in the middle of a migration, which is the
+      // failure this whole budget exists to prevent, so the default holds a
+      // multiple of the measured cost instead of one ordinary-deadline decade.
+      // Erring high is the safe direction: an occupied worker already fails new
+      // work fast and keeps the runtime serving, so a late wedge declaration
+      // costs latency, while an early one costs the process.
+      hardCeilingMs: 1_800_000,
       // Every maintenance, DDL, delete and migration path must finish one
       // chunk inside this budget. Kept a full margin below the ceiling so a
       // chunk can never be what reaches the terminal path.

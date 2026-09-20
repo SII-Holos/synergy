@@ -437,23 +437,28 @@ export class SqliteDriver implements SqlDriver {
 
   close(): Promise<void> {
     this.closing ??= (async () => {
-      // A drain must be bounded. An unbounded `await` here hung the whole
-      // shutdown when a statement could not be interrupted, which is what made
-      // the runtime watchdog exit before it could settle anything.
-      const ceilingMs = StorageBudgets.current().hardCeilingMs
+      // A drain must be bounded, and bounded well below the worker ceiling. The
+      // host that asked for this close is itself on a shutdown deadline and exits
+      // non-zero when cleanup outlasts it, discarding whatever is queued behind
+      // storage — including terminal writes that settle only during shutdown. So
+      // every step here draws from one small shared budget: bounding each step by
+      // the ceiling separately would let the sequence outlive the process that
+      // requested it, and the worker is killed once the budget runs out.
+      const deadlineAt = performance.now() + StorageBudgets.current().teardownBudgetMs
+      const remaining = () => Math.max(1, deadlineAt - performance.now())
       try {
-        await this.within(Promise.all([this.writerQueue.close(), this.readerQueue.close()]), ceilingMs, "queue drain")
-        if (!this.closed) await this.within(this.request({ action: "close" }), ceilingMs, "worker close")
+        await this.within(Promise.all([this.writerQueue.close(), this.readerQueue.close()]), remaining(), "queue drain")
+        if (!this.closed) await this.within(this.request({ action: "close" }), remaining(), "worker close")
       } catch (error) {
-        // Bounded teardown continues regardless: the worker is killed below, so
-        // a drain that ran out of budget is reported rather than propagated as
-        // a shutdown failure.
+        // Bounded teardown continues regardless: the worker is killed below, so a
+        // drain that ran out of budget is reported rather than propagated as a
+        // shutdown failure.
         log.warn("authoritative storage teardown exceeded its budget; killing the worker", { error })
       } finally {
         this.stopping = true
         this.closed = true
         this.worker.kill()
-        await this.within(this.worker.exited, ceilingMs, "worker exit").catch(() => {})
+        await this.within(this.worker.exited, remaining(), "worker exit").catch(() => {})
         await this.ownership?.release()
       }
     })()

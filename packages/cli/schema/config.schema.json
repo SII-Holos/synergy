@@ -963,7 +963,7 @@
                   "maximum": 9007199254740991
                 },
                 "hardCeilingMs": {
-                  "description": "Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 300000 ms, ten times the ordinary statement budget). Must stay above the longest legitimate statement: an index build grows with store size and cannot be split, so raise this if a store large enough to outlast it needs one.",
+                  "description": "Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 1800000 ms). Must exceed the longest legitimate statement, because two maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, and the physical integrity check is one engine call. Both grow with store size — measured at ~199 s and ~278 s respectively on a 15M-record store — so this default holds a multiple of the measured worst case. Raising it delays declaring a real wedge; lowering it risks latching a healthy worker mid-migration.",
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991

@@ -50,13 +50,16 @@ function interceptSend(
 
 // Compresses the wall-clock delays a suspended host would consume, so a test
 // reaches the deadline review in milliseconds instead of the production budget.
-function capWallClockDeadlines() {
+// `minimumMs` names the budget family being compressed: request, probe and
+// ceiling timers are tens of seconds, while teardown is a few seconds, and a
+// threshold above the budget under test would leave the test waiting it out.
+function capWallClockDeadlines(minimumMs = 30_000) {
   const realTimeout: typeof setTimeout = globalThis.setTimeout
   const armed: number[] = []
   const spy = spyOn(globalThis, "setTimeout").mockImplementation(
     new Proxy(realTimeout, {
       apply(target, receiver, args) {
-        if (typeof args[1] === "number" && args[1] >= 30_000) {
+        if (typeof args[1] === "number" && args[1] >= minimumMs) {
           armed.push(args[1])
           return Reflect.apply(target, receiver, [args[0], 10, ...args.slice(2)])
         }
@@ -185,7 +188,7 @@ describe("SQLite worker deadline across host suspension", () => {
     expect(worker.killed).toBe(true)
   })
   test("a worker that never finishes teardown cannot hold shutdown open", async () => {
-    using _deadlines = capWallClockDeadlines()
+    using _deadlines = capWallClockDeadlines(Math.ceil(budgets.teardownBudgetMs / 2))
     const driver = await openDriver()
     // Swallow the close request so the worker never confirms teardown. An
     // unbounded drain here is what let the runtime watchdog exit the process
