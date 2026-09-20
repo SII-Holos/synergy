@@ -68,11 +68,22 @@ test("maintenance statements keep a fixed chunk budget bounded below the worker 
     expect(await driver.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
     const initial = Math.max(...deadlines)
     expect(budgets).toEqual([initial])
-    // A statement can no longer buy itself a longer budget by growing the
-    // database: every maintenance statement shares one fixed chunk budget that
-    // leaves a margin below the ceiling the driver measures silence against.
-    await driver.transaction((tx) => tx.query("INSERT INTO evidence VALUES (zeroblob(8388608))"))
+    // A statement cannot buy itself a longer budget by growing the database: it
+    // shares one fixed chunk budget that leaves a margin below the ceiling the
+    // driver measures silence against. The statements that cannot be chunked are
+    // the exception and report the ceiling itself.
+    const unchunkable: number[] = []
+    expect(
+      await driver.query("PRAGMA integrity_check", [], {
+        maintenance: true,
+        unchunkable: true,
+        onMaintenanceBudget: (timeoutMs: number) => unchunkable.push(timeoutMs),
+      }),
+    ).toEqual([{ integrity_check: "ok" }])
+    expect(unchunkable).toEqual([StorageBudgets.current().hardCeilingMs])
+    expect(Math.max(...deadlines)).toBe(StorageBudgets.current().hardCeilingMs)
     deadlines.length = 0
+    await driver.transaction((tx) => tx.query("INSERT INTO evidence VALUES (zeroblob(8388608))"))
     await driver.transaction(
       async (tx) => {
         expect(await tx.query("PRAGMA integrity_check", [], maintenance)).toEqual([{ integrity_check: "ok" }])
@@ -167,7 +178,12 @@ test("verification reports outside retried transactions and counts repeated scan
   })
   expect(result.records).toBe(600)
   expect(budgets).toHaveLength(2)
-  expect(budgets.every((value) => value === StorageBudgets.current().chunkBudgetMs)).toBe(true)
+  // A physical check is one engine call with no progress callback, so it cannot
+  // be split and its cost grows with the store. The host waiting on this progress
+  // uses the reported budget as the deadline for the stage, so bounding it by the
+  // chunk budget would fail a healthy store's verification.
+  expect(budgets.every((value) => value === StorageBudgets.current().engineBudgetMs)).toBe(true)
+  expect(StorageBudgets.current().engineBudgetMs).toBe(StorageBudgets.current().hardCeilingMs)
   expect(progress.at(-1)).toBe(1200)
   expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true)
 })

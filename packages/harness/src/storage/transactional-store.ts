@@ -958,6 +958,7 @@ export class TransactionalStore {
                 // missing the next open repeats the same doomed build. `CREATE TABLE`
                 // stays on the ordinary deadline: it is a no-op once the table exists.
                 maintenance: statement.startsWith("CREATE INDEX"),
+                unchunkable: statement.startsWith("CREATE INDEX"),
               })
           const [existing] = await connection.query(
             "SELECT version, owner, state FROM storage_namespaces WHERE namespace = ?",
@@ -1167,7 +1168,7 @@ export class TransactionalStore {
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
-        await connection.query(statement, [], { maintenance: true })
+        await connection.query(statement, [], { maintenance: true, unchunkable: true })
       }),
     )
   }
@@ -1190,7 +1191,7 @@ export class TransactionalStore {
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
         for (const { statement, values } of statements)
-          await connection.query(statement, values ?? [], { maintenance: true })
+          await connection.query(statement, values ?? [], { maintenance: true, unchunkable: true })
       }),
     )
   }
@@ -1378,7 +1379,13 @@ export class TransactionalStore {
           async (connection) => {
             if (this.driver.backend === "sqlite") {
               const rows = await connection.query("PRAGMA integrity_check", [], {
+                // A physical check is one engine call with no progress callback, so
+                // it cannot be split and its cost grows with the store. Bounding it
+                // by the chunk budget would fail a healthy store's verification, and
+                // the host waiting on this progress uses the reported budget as the
+                // deadline for the stage.
                 maintenance: true,
+                unchunkable: true,
                 onMaintenanceBudget: (timeoutMs) => recordProgress({ current: work, timeoutMs }),
               })
               if (rows.length !== 1 || rows[0].integrity_check !== "ok")

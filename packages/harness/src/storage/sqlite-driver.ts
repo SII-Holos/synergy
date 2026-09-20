@@ -211,14 +211,23 @@ export class SqliteDriver implements SqlDriver {
     if (this.state === "busy")
       return Promise.reject(new StorageBusyError("Authoritative storage is busy; retry when the worker answers"))
     const budgets = StorageBudgets.current()
-    // Every statement gets a bounded budget. Maintenance used to scale its own
+    // Every statement gets a bounded budget, and which bound applies depends on
+    // whether the work could have been split. Maintenance used to scale its own
     // deadline by database size, which let one statement occupy the worker for
     // hours while the probe budget that actually decides this driver's fate
-    // stayed at a fraction of it. Chunking the work is what makes the budget
-    // enforceable, so every path now shares one fixed budget.
-    const deadline =
-      request.maintenance || request.action === "maintain" ? budgets.chunkBudgetMs : budgets.requestDeadlineMs
-    if (request.maintenance || request.action === "maintain") onMaintenanceBudget?.(deadline)
+    // stayed at a fraction of it; chunking the work is what makes a fixed budget
+    // enforceable. The statements that cannot be chunked are the exception, and
+    // they are what the ceiling itself governs: an index build or a physical
+    // check failed at a chunk deadline is rolled back and repeated on the next
+    // open, so bounding it there would prevent the one thing the ceiling exists
+    // to bound.
+    const maintenance = request.maintenance || request.action === "maintain"
+    const deadline = request.unchunkable
+      ? budgets.engineBudgetMs
+      : maintenance
+        ? budgets.chunkBudgetMs
+        : budgets.requestDeadlineMs
+    if (maintenance) onMaintenanceBudget?.(deadline)
     const bytes = sqlParameterBytes(request.values ?? [])
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
@@ -373,8 +382,12 @@ export class SqliteDriver implements SqlDriver {
   }
 
   async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
+    // Converting a store to incremental auto-vacuum rewrites every page with one
+    // `VACUUM`, which cannot be split, so it is bounded by the ceiling. Reclaim is
+    // the exception: it frees a bounded page count per call and stays chunked.
+    const unchunkable = request.operation === "enable-incremental-vacuum"
     const result = await this.writerQueue.run(() =>
-      this.request({ action: "maintain", maintain: request, maintenance: true }),
+      this.request({ action: "maintain", maintain: request, maintenance: true, unchunkable }),
     )
     if (!result.maintain) throw new StorageIntegrityError("SQLite maintenance returned no result")
     return result.maintain
@@ -387,7 +400,14 @@ export class SqliteDriver implements SqlDriver {
   ): Promise<Row[]> {
     const result = await this.readerQueue.run(() =>
       this.request(
-        { action: "query", reader: true, statement, values, maintenance: options?.maintenance },
+        {
+          action: "query",
+          reader: true,
+          statement,
+          values,
+          maintenance: options?.maintenance,
+          unchunkable: options?.unchunkable,
+        },
         options?.onMaintenanceBudget,
       ),
     )
@@ -410,6 +430,7 @@ export class SqliteDriver implements SqlDriver {
               statement,
               values,
               maintenance: queryOptions?.maintenance,
+              unchunkable: queryOptions?.unchunkable,
             },
             queryOptions?.onMaintenanceBudget,
           )

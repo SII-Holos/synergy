@@ -9,10 +9,19 @@ import { ObservabilityConfig } from "../observability/config"
  * The probe timeout is therefore a *busy* signal rather than a death signal, and
  * `hardCeilingMs` is what finally decides that a worker is wedged.
  *
- * `chunkBudgetMs` is the per-chunk budget every maintenance, DDL, delete and
- * migration path must stay inside. `CEILING_MARGIN` is the invariant that keeps
- * a legitimate chunk from ever reaching the ceiling, so raising a chunk budget
- * cannot silently reopen the window that let one statement kill a runtime.
+ * `chunkBudgetMs` is the per-chunk budget every *chunkable* maintenance, DDL,
+ * delete and migration path must stay inside. `CEILING_MARGIN` is the invariant
+ * that keeps a legitimate chunk from ever reaching the ceiling, so raising a
+ * chunk budget cannot silently reopen the window that let one statement kill a
+ * runtime.
+ *
+ * `engineBudgetMs` is for the statements that cannot be split at all: SQLite has
+ * no partial `CREATE INDEX`, `PRAGMA integrity_check` is one engine call, and
+ * `VACUUM` rewrites every page. Those grow with store size, so measuring them
+ * against a chunk budget would fail a statement that is merely large -- and an
+ * index build that is failed at its deadline is rolled back and rebuilt on every
+ * open. They are budgeted by the ceiling itself, which is what the ceiling
+ * exists to bound.
  *
  * `teardownBudgetMs` is deliberately not the ceiling, and deliberately not
  * configurable. The host that asks storage to close is itself on a deadline and
@@ -48,6 +57,12 @@ export namespace StorageBudgets {
     hardCeilingMs: number
     /** Budget for one maintenance, DDL, delete or migration chunk. */
     chunkBudgetMs: number
+    /**
+     * Budget for a statement that cannot be chunked, which is the ceiling
+     * itself: these grow with the store, so anything smaller would fail a
+     * statement that is merely large.
+     */
+    engineBudgetMs: number
     /** Total budget for the whole teardown sequence, shared across its steps. */
     teardownBudgetMs: number
   }
@@ -81,6 +96,7 @@ export namespace StorageBudgets {
       // Clamped rather than rejected: a configuration that would reopen the
       // terminal window must simply not take effect.
       chunkBudgetMs: Math.min(Math.max(1, storage.chunkBudgetMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
+      engineBudgetMs: hardCeilingMs,
       // Never allowed to grow past the margin, so a ceiling raised to cover a
       // long legitimate statement cannot also stretch teardown.
       teardownBudgetMs: Math.min(TEARDOWN_BUDGET_MS, Math.floor(hardCeilingMs / CEILING_MARGIN)),
