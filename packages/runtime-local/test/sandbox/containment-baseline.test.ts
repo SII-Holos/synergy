@@ -31,7 +31,14 @@ import { DEFAULT_SYSTEM_RUNTIME_READ_ROOTS, controlledTempRoot } from "@ericsanc
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+// Linux replaces /tmp in the sandbox; its execution probes need an owned Home outside that mount.
+const probeRoot = path.resolve(import.meta.dir, "../../.artifacts/sandbox-probes")
+if (process.platform === "linux") fs.mkdirSync(probeRoot, { recursive: true })
+const home = process.platform === "linux" ? fs.mkdtempSync(path.join(probeRoot, "home-")) : undefined
+const runtime = await testRuntime({ home }).catch((error) => {
+  if (home) fs.rmSync(home, { recursive: true, force: true })
+  throw error
+})
 
 interface Availability {
   available: boolean
@@ -572,4 +579,10 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
   )
 })
 
-afterRuntimeTests(() => runtime.close())
+afterRuntimeTests(async () => {
+  try {
+    await runtime.close()
+  } finally {
+    if (home) fs.rmSync(home, { recursive: true, force: true })
+  }
+})
