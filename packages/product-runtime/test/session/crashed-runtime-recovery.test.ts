@@ -131,7 +131,7 @@ async function readToolPart(sessionID: string, messageID: string, partID: string
 }
 
 describe("crashed-runtime recovery end to end", () => {
-  test("restores an honest, actionable session instead of a permanent recovering state", async () => {
+  test("restores an honest, actionable session instead of a permanent paused state", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
