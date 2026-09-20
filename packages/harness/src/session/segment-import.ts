@@ -170,7 +170,7 @@ export namespace SessionSegment {
     const { migrateDeferredSession } = await import("../migration")
     await migrateDeferredSession(owner, "canonical")
     const { RolloutRecovery } = await import("./rollout/recovery")
-    await RolloutRecovery.owner({ kind: "session", ...owner })
+    await RolloutRecovery.owner({ kind: "session", ...owner }, () => UpgradeWork.signal()?.throwIfAborted())
     try {
       await hooks.validate(await store.read(["sessions", owner.scopeID, owner.sessionID, "info"]))
     } catch (error) {
