@@ -30,6 +30,8 @@ Scope ID is the event and client ownership key. Runtime-wide events use a null S
 
 Hosts and tests must supply their environment, composition and storage owner explicitly. Tests exercising environment-dependent behavior construct an owner with that environment instead of mutating process variables after startup. Pure logic tests need no Runtime.
 
+Executable discovery and its cache belong to the Host, including benchmark preparation before product startup. Build-time helper digest tables contain artifact identities, without resolving Home during module evaluation. Conditional and platform-specific tests must construct their Runtime just as ordinary tests do; source imports on a developer machine alone cannot validate compiled entrypoints. Home-safe plugin templates explicitly declare that their tools do not require a workspace.
+
 Behavioral validation targets independent instances, startup failure and cancellation, resource drain, nullable workspaces, retained tool guards, preserved history and client identity. Real process and HTTP fixture tests exercise executable entrypoints, worker protocols and shutdown without paid model calls. Performance comparisons use isolated Homes and the same workload on the base and changed revisions; unit test counts are not evidence of startup or memory performance. The [validation report](../../../research/2026-09-21-runtime-instance-validation.md) records the workloads, observed results and evidence limits.
 
 The split changes generated API schemas and the Browser protocol because local paths are nullable and Scope ID is canonical. SDK generation, worker bootstrap, CLI and installed artifacts must stay aligned with their composition; import-time registration cannot be used as a compatibility path.

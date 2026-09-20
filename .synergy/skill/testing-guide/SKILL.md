@@ -58,6 +58,8 @@ For embedded Runtime lifecycle changes, repeat real open/task/close cycles in on
 
 Cold-cache tests construct a fresh Runtime and an unseeded isolated home. Module imports and the test preloader do not populate another instance’s caches. Use a subprocess when process startup, native callbacks, signals, installed artifacts or worker protocols are the contract. Never remove the positive test-home isolation marker.
 
+Exercise opt-in and platform-specific entrypoints with the same explicit ownership. A developer's PATH can hide an unowned executable lookup, and an undefined build-time digest can hide import-time Home access. Test isolated PATH/Home lookup and compiled constants without an active Runtime. Coverage failure summaries must retain the owning test file for unnamed setup/teardown failures so CI truncation does not discard their identity.
+
 Full runtime fixtures that exercise model execution must serve both chat and embedding protocols when Library is enabled; a fresh home must not silently turn an execution test into a Hugging Face model-download test. Keep Library retrieval/encoding enabled and assert the normal execution evidence; validate real embedding assets separately.
 
 Use a fake or local boundary only where the external system is not the subject of the test. Do not add Jest/Vitest mocks to the Bun suite without an established package-specific reason.

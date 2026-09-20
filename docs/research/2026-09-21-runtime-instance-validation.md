@@ -21,6 +21,8 @@
 
 Product Runtime 最终全量分片运行通过 1,490 项测试。其余包运行全量测试；发现问题后重跑受影响的拥有者。测试数量只用于说明执行范围，完成判定以上表中的可观察行为为准。跨平台结果以对应 PR 当前提交的 CI 为准。
 
+首轮跨平台 CI 另外暴露了编译摘要启用时的导入期 Home 访问、Linux sandbox 状态测试与长流 opt-in 测试缺少 Runtime fixture，以及 benchmark 准备入口依赖进程全局工具缓存的问题。修复将摘要保持为静态产物身份，将工具查找与缓存归属到 Host，并让这些入口显式创建上下文。新增回归验证无 Runtime 导入、helper 内容篡改拒绝、两个实例各自的工具路径与 Home/PATH 准备分支；已有三十 MiB 长流取消场景验证完整数据、摘要、计量和归档。Plugin Kit 的纯网络与问候模板也显式声明无需 Workspace，并通过实际打包、宿主加载与浏览器调用验收。
+
 ## 性能方法
 
 基线为 `7a5f1f606`，实现包含 `8b2528b7f` 以及本次资源关闭修复。两者使用同一 macOS arm64 主机、Bun 1.3.14、同一 HTTP fixture、独立 Home 和端口。每种条件运行五次，交替先运行基线与实现，使用中位数比较。分别测量 Product HTTP Runtime 的 `oneshot` 与常驻 `server` 模式；关闭外部模型目录刷新、默认 MCP、文件 watcher、Holos、Marketplace 预取和 Library 自主任务，并设置一个 Agent worker、空闲预热数量零。测量期间不并发运行本任务的构建或测试。
