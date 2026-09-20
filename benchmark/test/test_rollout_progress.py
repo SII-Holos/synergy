@@ -14,8 +14,13 @@ import pytest
 # The codec emits a frame only when it is smaller than the JSON it replaces, so
 # each value carries padding that pushes it past the 64-byte floor. Pinning the
 # real bytes is what makes this a check on the probe's decoder rather than on a
-# fixture that agrees with the probe by construction.
-FRAME_RESPONSE_BYTES = {
+# fixture that agrees with the probe by construction. Each row has its own
+# frame, because a frame decodes to the value it was captured from.
+FRAME_CALLS = (
+    "1a016c28b52ffd206c05020084037b22707572706f7365223a2273796e65726779222c22706164223a2270726f766964657220"
+    "726573706f6e73652070616464696e6720227d0100963e2714"
+)
+FRAME_ATTEMPTS = {
     0: "1a016f28b52ffd206fed010034037b22726573706f6e7365223a7b226279746573223a302c22706164223a2270726f766964657220"
     "2070616464696e6720227d7d0200e979ced1ab9e",
     64: "1a017028b52ffd2070f5010044037b22726573706f6e7365223a7b226279746573223a36342c22706164223a2270726f76696465"
@@ -26,10 +31,12 @@ FRAME_RESPONSE_BYTES = {
 def frame_encoding_available() -> bool:
     """Whether this host can decode a zstd frame, which the probe needs.
 
-    The probe runs through `docker exec` in a Debian-based task image, where
-    libzstd ships as a transitive dependency and this is always true. A macOS
-    development host often has no libzstd on its search path, so the frame case
-    reports itself as skipped instead of failing for a missing shared library.
+    The probe runs in a Debian-based task image, where libzstd is present as a
+    transitive dependency. A macOS development host usually has no libzstd on
+    its search path, so the frame case reports itself as skipped there instead
+    of failing for a missing shared library. That means the frame case is only
+    exercised on Linux; `uv run --project benchmark pytest` on a macOS host does
+    not prove it.
     """
     try:
         ctypes.CDLL(ctypes.util.find_library("zstd") or "libzstd.so.1")
@@ -50,12 +57,16 @@ def test_live_rollout_probe_reads_every_record_encoding(tmp_path: Path, encoding
     with sqlite3.connect(tmp_path / "agent.sqlite") as db:
         db.execute("CREATE TABLE storage_records (namespace TEXT, key_text TEXT, body BLOB, kind TEXT)")
         rows = [
-            (root + ["calls", "call"], {"purpose": "synergy"}),
-            (root + ["attempts", "call", "attempt"], {"response": {"bytes": response_bytes}}),
+            (root + ["calls", "call"], {"purpose": "synergy"}, FRAME_CALLS),
+            (
+                root + ["attempts", "call", "attempt"],
+                {"response": {"bytes": response_bytes}},
+                FRAME_ATTEMPTS[response_bytes],
+            ),
         ]
-        for key, value in rows:
+        for key, value, frame in rows:
             if encoding == "frame":
-                body: object = sqlite3.Binary(bytes.fromhex(FRAME_RESPONSE_BYTES[response_bytes]))
+                body: object = sqlite3.Binary(bytes.fromhex(frame))
             elif encoding == "legacy":
                 body = "z:" + base64.b64encode(zlib.compress(json.dumps(value).encode())).decode()
             else:
