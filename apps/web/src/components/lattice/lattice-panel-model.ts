@@ -79,7 +79,6 @@ const EVENT_DESCRIPTORS = {
 } satisfies Record<LatticeEvent["kind"], MessageDescriptor>
 
 const PAUSE_REASON_DESCRIPTORS: Record<string, MessageDescriptor> = {
-  user_paused: { id: "app.lattice.reason.userPause", message: "Paused by you" },
   user_exit: { id: "app.lattice.reason.userExit", message: "Exited by you" },
   turn_interrupted: { id: "app.lattice.reason.turnInterrupted", message: "Model turn interrupted" },
   model_turn_interrupted: { id: "app.lattice.reason.turnInterrupted", message: "Model turn interrupted" },

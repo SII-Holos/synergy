@@ -16,13 +16,6 @@ export function canSubmitPrompt(input: { text: string; working: boolean; hasBlue
   return resolvePromptSubmitIntent(input) !== "blocked"
 }
 
-/** Stopping is orthogonal to sending: a draft in the box must never take the
- *  stop control away. The primary button already stops an empty composer, so
- *  the dedicated control covers exactly the case text would otherwise hide. */
-export function showsStopControl(input: { text: string; working: boolean }): boolean {
-  return input.working && input.text.trim().length > 0
-}
-
 /** Sending must wait for every composer attachment upload to settle. Stopping
  *  the session stays available because it sends nothing. */
 export function shouldBlockSubmitForUploadingAttachments(input: { uploading: boolean; intent: PromptSubmitIntent }) {

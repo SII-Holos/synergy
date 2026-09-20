@@ -3437,10 +3437,6 @@ msgid "app.lattice.reason.userExit"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.reason.userPause"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.lattice.restart.cancel"
 msgstr ""
 

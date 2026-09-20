@@ -466,13 +466,13 @@ describe("SessionRecovery.recoverableStatuses", () => {
         await SessionLifecycle.pause({
           sessionID: session.id,
           reason: "workflow",
-          description: "BlueprintLoop active",
+          description: "Stopped by BlueprintLoop; continue or abandon",
         })
         const statuses = await SessionRecovery.recoverableStatuses(scopeID)
         expect(statuses[session.id]).toMatchObject({
           type: "paused",
           reason: "workflow",
-          description: "BlueprintLoop active",
+          description: "Stopped by BlueprintLoop; continue or abandon",
         })
       },
     })
@@ -521,12 +521,12 @@ describe("SessionRecovery.recoverableStatuses", () => {
         await SessionLifecycle.pause({
           sessionID: execSession.id,
           reason: "workflow",
-          description: "BlueprintLoop active",
+          description: "Stopped by BlueprintLoop; continue or abandon",
         })
         await SessionLifecycle.pause({
           sessionID: auditSession.id,
           reason: "workflow",
-          description: "BlueprintLoop active",
+          description: "Stopped by BlueprintLoop; continue or abandon",
         })
 
         // Both sides of an auditing loop are surfaced, because a pause on either

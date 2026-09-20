@@ -82,7 +82,6 @@ import {
   resolvePromptSubmitIntent,
   shouldAllowPromptSubmit,
   shouldBlockSubmitForUploadingAttachments,
-  showsStopControl,
 } from "@/components/prompt-input/submit-intent"
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import {

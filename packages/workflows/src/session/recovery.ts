@@ -19,6 +19,7 @@ import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { SessionWorkflowHold } from "@ericsanchezok/synergy-harness/session/workflow-hold"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 export namespace WorkflowRecovery {
@@ -106,7 +107,7 @@ export namespace WorkflowRecovery {
     const paused = await SessionLifecycle.pause({
       sessionID: loop.sessionID,
       reason: "workflow",
-      description: describeActiveLoop(),
+      description: SessionWorkflowHold.DESCRIPTION,
     }).catch((error) => {
       log.warn("orphaned BlueprintLoop session pause failed", {
         scopeID: input.scopeID,
@@ -377,13 +378,6 @@ export namespace WorkflowRecovery {
       await reconcileSessionBlueprintReference({ ...input, session, loops: loopsByID })
     }
     await reconcileNoteBlueprintReferences({ ...input, loops: loopsByID })
-  }
-
-  /** Readable cause for a session held by an active BlueprintLoop. The single
-   * source for the pause description, so a session held by a workflow is always
-   * named the same way. */
-  function describeActiveLoop(): string {
-    return "BlueprintLoop active"
   }
 
   /**

@@ -152,9 +152,13 @@ describe("crashed-runtime recovery end to end", () => {
         // something to act on instead of an unexplained stall.
         const paused = await SessionLifecycle.snapshot(session.id)
         expect(paused?.reason).toBe("workflow")
-        expect(paused?.description).toBe("BlueprintLoop active")
+        expect(paused?.description).toBe("Stopped by BlueprintLoop; continue or abandon")
         const status = (await SessionManager.listStatuses(ScopeContext.current.scope.id))[session.id]
-        expect(status).toMatchObject({ type: "paused", reason: "workflow", description: "BlueprintLoop active" })
+        expect(status).toMatchObject({
+          type: "paused",
+          reason: "workflow",
+          description: "Stopped by BlueprintLoop; continue or abandon",
+        })
         expect(await SessionWorking.resolve(session.id)).toMatchObject({ status: "paused", reason: "workflow" })
 
         // 2. The orphaned loop is preserved rather than terminalized. A restart

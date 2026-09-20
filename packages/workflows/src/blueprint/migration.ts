@@ -3,6 +3,7 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { SessionWorkflowHold } from "@ericsanchezok/synergy-harness/session/workflow-hold"
 import type { Info as BlueprintLoopInfo } from "./types"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration"
 
@@ -32,6 +33,79 @@ function isLiveLoopStatus(status: BlueprintLoopInfo["status"]) {
 
 function isActiveLoopStatus(status: unknown): status is BlueprintLoopInfo["status"] {
   return status === "armed" || status === "running" || status === "auditing"
+}
+
+/**
+ * Convert the retired loop `waiting` status.
+ *
+ * `waiting` was this domain's own pause authority: the `wait` route moved a
+ * running loop into it and the `resume` route moved it back. Pause authority now
+ * belongs to the session latch, so the status was deleted — and deleting it left
+ * every persisted `waiting` record inert rather than merely unrendered:
+ * `isActiveLoopStatus` no longer matches it, recovery therefore never
+ * adjudicates it and clears its session binding instead, and `TRANSITIONS` has
+ * no row for it, so `updateStatus` throws `InvalidTransition` for every later
+ * transition. The record could not be continued, cancelled, or abandoned.
+ *
+ * `running` is the faithful successor, because it is the status the resume route
+ * restored and the one the record held before the hold. The stop the user asked
+ * for is not dropped, it moves to the session latch, which is the surviving
+ * authority for exactly that fact; migration `20260920-session-blueprint-waiting-phase`
+ * converts the matching session phase.
+ *
+ * The persisted record is rewritten through storage rather than through
+ * `updateStatus`: the transition table is precisely what rejects `waiting`, so
+ * routing through it would re-throw the error this migration removes.
+ */
+async function migrateBlueprintLoopWaitingStatus(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["blueprint_loops"]).catch(() => [] as string[])
+  const loops: Array<{ scopeID: string; loopID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+    for (const loopID of loopIDs) loops.push({ scopeID, loopID })
+  }
+
+  if (loops.length === 0) return
+
+  let done = 0
+  let converted = 0
+  let latched = 0
+  for (const { scopeID, loopID } of loops) {
+    const scope = Identifier.asScopeID(scopeID)
+    const loopPath = StoragePath.blueprintLoop(scope, loopID)
+    try {
+      const loop = await Storage.read<Record<string, unknown>>(loopPath)
+      if (loop?.status === "waiting") {
+        const now = Date.now()
+        const time = asRecord(loop.time) ?? {}
+        // Mirrors the store's own entry into `running`: the first start is kept
+        // if the record already had one, and the update is stamped.
+        loop.time = { ...time, started: asNumber(time.started) ?? now, updated: now }
+        loop.status = "running"
+        await Storage.write(loopPath, loop)
+        converted++
+
+        // The hold moves to the session the loop drives. A Session still living
+        // in a deferred aggregate has no canonical record yet; its own deferred
+        // migration latches it when it imports.
+        const sessionID = asString(loop.sessionID)
+        if (sessionID && (await SessionWorkflowHold.latch(scopeID, sessionID))) latched++
+      }
+    } catch (err) {
+      log.warn("failed to convert the retired waiting BlueprintLoop status", {
+        scopeID,
+        loopID,
+        error: String(err),
+      })
+    }
+
+    done++
+    if (done % 10 === 0 || done === loops.length) progress(done, loops.length)
+  }
+
+  log.info("BlueprintLoop waiting status migration complete", { totalLoops: loops.length, converted, latched })
 }
 
 function loopUpdatedAt(loop: BlueprintLoopInfo) {
@@ -398,6 +472,15 @@ export const migrations: Migration[] = [
     dependsOn: ["20260704-blueprint-loop-user-prompt"],
     async up(progress) {
       await migrateBlueprintLoopSource(progress)
+    },
+  },
+  {
+    id: "20260920-blueprint-loop-retired-waiting-status",
+    description: "Convert the retired waiting BlueprintLoop status and move its hold onto the session pause latch",
+    domain: "blueprint_loop",
+    dependsOn: ["20260715-blueprint-loop-source-plugin"],
+    async up(progress) {
+      await migrateBlueprintLoopWaitingStatus(progress)
     },
   },
   {

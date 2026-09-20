@@ -20,6 +20,7 @@ import { SessionInteraction } from "./interaction"
 import { SnapshotSchema } from "./snapshot-schema"
 import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
+import { SessionWorkflowHold } from "./workflow-hold"
 
 import { MigrationRegistry } from "../migration/registry"
 import { work } from "../util/queue"
@@ -1016,6 +1017,63 @@ async function migratePendingReplyToPaused(progress: (current: number, total: nu
     progress(done, candidates.length)
   }
   log.info("pendingReply to pause conversion complete", { checked: candidates.length, paused })
+}
+
+/**
+ * Convert the retired Blueprint session phase.
+ *
+ * `waiting` was the workflow's own pause authority: a loop the user held sat in
+ * that status and the bound session rendered it as the matching phase. Pause
+ * authority now belongs to the session latch alone, so the phase enum dropped
+ * the member — and the enum is part of the composed `Session.Info`, which makes
+ * the whole session record unreadable rather than just that field. `safeParse`
+ * rejects it, and a rejected record is skipped by the navigation projection, so
+ * an upgrading store loses the session from the sidebar instead of upgrading it.
+ *
+ * `running` is the honest survivor: the phase only presents the binding, and
+ * the binding names a live loop either way. The hold the user asked for is not
+ * dropped with it, it moves to the session latch, which is the surviving
+ * authority for exactly that fact and the one thing that keeps the stopped turn
+ * from being silently resumed. `loopID` and `loopRole` stay untouched, which
+ * keeps continue, abandon and the review controls resolving the same loop.
+ */
+async function migrateBlueprintWaitingPhase(progress: (current: number, total: number) => void) {
+  const candidates: Array<{ key: string[]; scopeID: string; sessionID: string; info: Record<string, unknown> }> = []
+  for await (const record of SessionMigrationTarget.records<unknown>({ kind: "session" })) {
+    const info = asRecord(record.value)
+    if (asRecord(info?.blueprint)?.phase !== "waiting") continue
+    const scopeID = asString(record.key[1])
+    const sessionID = asString(record.key[2])
+    if (!info || !scopeID || !sessionID) continue
+    candidates.push({ key: record.key, scopeID, sessionID, info })
+  }
+  progress(0, candidates.length)
+  if (candidates.length === 0) return
+
+  let done = 0
+  let latched = 0
+  for (const { key, scopeID, sessionID, info } of candidates) {
+    try {
+      // The stored phase is exact evidence of the retired hold: only a bound
+      // loop in `waiting` ever wrote it, and a terminal loop cleared it. So the
+      // same stop is moved onto the latch here as well as from the loop record,
+      // which is what covers a Session that was still deferred when the loop
+      // domain ran. `latchFor` is one rule and the first pause wins, so the two
+      // sources cannot disagree and neither can churn `since`.
+      const paused = SessionWorkflowHold.latchFor(info)
+      await Storage.write(key, {
+        ...info,
+        blueprint: { ...asRecord(info.blueprint), phase: "running" },
+        ...(paused ? { paused } : {}),
+      })
+      if (paused) latched++
+    } catch (error) {
+      log.warn("failed to convert the retired waiting Blueprint phase", { scopeID, sessionID, error: String(error) })
+    }
+    done++
+    progress(done, candidates.length)
+  }
+  log.info("Blueprint waiting phase conversion complete", { checked: candidates.length, latched })
 }
 
 async function migrateActiveRevertState(progress: (current: number, total: number) => void) {
@@ -2301,6 +2359,33 @@ export const migrations: Migration[] = [
     description: "Convert the retired session pendingReply flag into the persisted pause latch",
     async up(progress) {
       await migratePendingReplyToPaused(progress)
+    },
+  },
+  {
+    id: "20260920-session-blueprint-waiting-phase",
+    scope: "session",
+    upSession(owner, progress) {
+      return SessionMigrationTarget.provide(owner, () => this.up(progress))
+    },
+    description: "Convert the retired waiting Blueprint session phase into running",
+    async up(progress) {
+      await migrateBlueprintWaitingPhase(progress)
+    },
+  },
+  {
+    id: "20260920-session-nav-blueprint-waiting-phase",
+    scope: "derived",
+    // The rebuild reads canonical records, so it must observe the converted
+    // phase: rebuilding first would re-derive indexes from a record that still
+    // fails `safeParse` and drop the session the migration exists to keep.
+    dependsOn: ["20260920-session-blueprint-waiting-phase"],
+    async upSession(owner) {
+      const { SessionCompat } = await import("./compat-import")
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    description: "Rebuild session nav indexes after converting the waiting Blueprint session phase",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
 ]

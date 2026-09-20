@@ -118,7 +118,7 @@ describe("orphaned BlueprintLoop adjudication on restart", () => {
         expect(statuses[session.id]).toMatchObject({
           type: "paused",
           reason: "workflow",
-          description: "BlueprintLoop active",
+          description: "Stopped by BlueprintLoop; continue or abandon",
         })
         expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("workflow")
       },

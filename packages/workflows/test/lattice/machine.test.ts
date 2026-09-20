@@ -436,14 +436,14 @@ describe("LatticeMachine", () => {
     expect(resumed.effect).toBeUndefined()
   })
 
-  test("keeps a user-paused Run paused when a late successful loop leaves more work", () => {
+  test("keeps a machine-paused Run paused when a late successful loop leaves more work", () => {
     const now = 1_700_000_000_000
     const stepID = Identifier.ascending("lattice_step")
     const nextID = Identifier.ascending("lattice_step")
     const loopID = Identifier.ascending("blueprint_loop")
     const paused = run({
       status: "paused",
-      statusReason: "user_paused",
+      statusReason: "blueprint_unavailable",
       state: "executing",
       stateRevision: 5,
       currentStepID: stepID,
@@ -477,7 +477,7 @@ describe("LatticeMachine", () => {
     const completed = LatticeMachine.onLoopTerminal(paused, { loopID, status: "completed" }, now + 1)
     expect(completed.state).toBe("reviewing_pathway")
     expect(completed.status).toBe("paused")
-    expect(completed.statusReason).toBe("user_paused")
+    expect(completed.statusReason).toBe("blueprint_unavailable")
   })
 
   test("rejects stale semantic actions", () => {

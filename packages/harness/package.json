@@ -59,6 +59,7 @@
     "./session/iteration-budget": "./src/session/iteration-budget.ts",
     "./util/identity": "./src/util/identity.ts",
     "./session/nav": "./src/session/nav.ts",
+    "./session/workflow-hold": "./src/session/workflow-hold.ts",
     "./agent/delegation": "./src/agent/delegation.ts",
     "./agent/config-crud": "./src/agent/config-crud.ts",
     "./observability/browser-metrics": "./src/observability/browser-metrics.ts",
