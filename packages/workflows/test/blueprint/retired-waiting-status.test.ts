@@ -181,12 +181,12 @@ describe("retired waiting BlueprintLoop upgrade", () => {
     expect((await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, completed.id))).status).toBe(
       "completed",
     )
-    expect((await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, archivedLoop.id))).status).toBe(
-      "running",
-    )
-    expect((await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, machineLoop.id))).status).toBe(
-      "running",
-    )
+    expect(
+      (await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, archivedLoop.id))).status,
+    ).toBe("running")
+    expect(
+      (await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, machineLoop.id))).status,
+    ).toBe("running")
 
     const liveStored = await Storage.read<Record<string, unknown>>(
       StoragePath.sessionInfo(scopeID, Identifier.asSessionID(live.id)),
