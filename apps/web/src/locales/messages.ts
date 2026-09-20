@@ -469,7 +469,6 @@ export const note = {
   // Blueprint status
   runQueued: { id: "app.note.blueprint.status.armed", message: "Run queued" },
   running: { id: "app.note.blueprint.status.running", message: "Running" },
-  needsInput: { id: "app.note.blueprint.status.waiting", message: "Needs input" },
   reviewing: { id: "app.note.blueprint.status.auditing", message: "Reviewing" },
   completed: { id: "app.note.blueprint.status.completed", message: "Completed" },
   failed: { id: "app.note.blueprint.status.failed", message: "Failed" },
