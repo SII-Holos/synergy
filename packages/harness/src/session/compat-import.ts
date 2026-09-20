@@ -413,7 +413,7 @@ export namespace SessionCompat {
     schedule(options.intervalMs ?? 25)
     return async () => {
       stopped = true
-      UpgradeWork.stop()
+      Storage.provide(handle, () => UpgradeWork.stop())
       clearTimeout(timer)
       await running
     }

@@ -13,6 +13,7 @@ import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { runMigrations } from "../../src/migration"
+import { UpgradeWork } from "../../src/storage/upgrade-work"
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "compat-integrity-"))
@@ -252,6 +253,31 @@ test("the background migrator retains its handle and its stop drains work before
   const cancel = untouched.run(() => SessionCompat.startBackgroundMigrator({ intervalMs: 100, budget: 1 }))
   await cancel()
   expect((await StorageCompat.readLocator(untouched.store, untouched.id))?.status).toBe("pending")
+})
+
+test("stopping a migrator cancels only its captured storage handle", async () => {
+  await using owner = await fixture()
+  await using caller = await fixture()
+  const stop = owner.run(() => SessionCompat.startBackgroundMigrator({ intervalMs: 10_000 }))
+  const ownedWork = owner.run(() => UpgradeWork.controller())
+  const unrelatedWork = caller.run(() => UpgradeWork.controller())
+  try {
+    await caller.run(stop)
+    expect(ownedWork.controller.signal.aborted).toBe(true)
+    expect(unrelatedWork.controller.signal.aborted).toBe(false)
+    const lateWork = owner.run(() => UpgradeWork.controller())
+    try {
+      expect(lateWork.controller.signal.aborted).toBe(true)
+    } finally {
+      lateWork.dispose()
+    }
+    await caller.run(() => SessionCompat.requireImported(caller.id))
+    expect((await StorageCompat.readLocator(caller.store, caller.id))?.status).toBe("imported")
+  } finally {
+    await stop()
+    ownedWork.dispose()
+    unrelatedWork.dispose()
+  }
 })
 
 test("archived retired endpoints stay in canonical history and are omitted from projections", async () => {
