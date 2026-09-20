@@ -17,6 +17,7 @@ import type {
   SqlConnection,
   SqlDriver,
   SqlQueryOptions,
+  SqlTransactionOptions,
   SqliteMaintenanceRequest,
   SqliteMaintenanceResult,
   SqliteRequest,
@@ -318,10 +319,7 @@ export class SqliteDriver implements SqlDriver {
     return result.rows as Row[]
   }
 
-  transaction<T>(
-    body: (connection: SqlConnection) => Promise<T>,
-    options: { readOnly?: boolean; operationID?: string } = {},
-  ): Promise<T> {
+  transaction<T>(body: (connection: SqlConnection) => Promise<T>, options: SqlTransactionOptions = {}): Promise<T> {
     const queue = options.readOnly ? this.readerQueue : this.writerQueue
     return queue.run(async () => {
       const query = async <Row extends SqlRow = SqlRow>(
@@ -341,6 +339,9 @@ export class SqliteDriver implements SqlDriver {
             queryOptions?.onMaintenanceBudget,
           )
         ).rows as Row[]
+      // A declared single statement is already atomic, so BEGIN/COMMIT would
+      // cost this worker two extra IPC round trips for no consistency gain.
+      if (options.readOnly && options.singleStatement) return body({ query })
       await query(options.readOnly ? "BEGIN" : "BEGIN IMMEDIATE")
       let committing = false
       try {

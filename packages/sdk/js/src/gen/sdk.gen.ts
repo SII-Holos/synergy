@@ -3834,7 +3834,7 @@ export class Global extends HeyApiClient {
   /**
    * Get global activity
    *
-   * Report whether any session or background job is currently working, across every scope. Non-idle session statuses (busy, retry, recovering) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
+   * Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, recovering) and in-flight loop background jobs both count; a session still queued for recovery after a restart counts once it begins executing. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
    */
   public activity<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalActivityResponses, GlobalActivityErrors, ThrowOnError>({

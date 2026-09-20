@@ -65,9 +65,12 @@ describe("EnforcementGate multi-root trustedRoots", () => {
       workdir: `${FOLDER_A}`,
     })
 
-    expect(result.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
-    expect(result.capabilities.some((c: any) => c.class === "file_write")).toBe(true)
+    // A shell command string predicts no path: the write is sandbox-owned. The
+    // structured write tool keeps owning trustedRoots classification.
+    expect(result.capabilities.map((c: any) => c.class).filter((n: string) => n.startsWith("file_"))).toEqual([])
     expect(result.capabilities.some((c: any) => c.class === "shell_destructive")).toBe(false)
+    const structured = gate.classify("write", { filePath: `${FOLDER_A}/src/generated.ts` })
+    expect(structured.capabilities.some((c: any) => c.class === "file_write")).toBe(true)
   })
 
   test("worktree session: executionRoots excludes the original checkout so it stays external", async () => {

@@ -106,19 +106,24 @@ function shellQuote(value: string): string {
  * executeAsync converts a failed command whose output matches a denial
  * pattern into a thrown SandboxBlocked.
  */
-async function runInSandbox(workspace: string, command: string, env?: Record<string, string>): Promise<ProbeResult> {
+async function runInSandbox(
+  workspace: string,
+  command: string,
+  opts: { env?: Record<string, string>; dataDenyRoots?: string[] } = {},
+): Promise<ProbeResult> {
   const wrapper = SandboxBackend.prepareWrapper({
     command: "/bin/sh",
     args: ["-c", command],
     workspace,
     sandboxMode: "workspace_write",
     networkMode: "restricted",
+    ...(opts.dataDenyRoots ? { dataDenyRoots: opts.dataDenyRoots } : {}),
   })
   try {
     const result = await SandboxBackend.executeAsync(wrapper, {
       fallbackPolicy: "deny",
       cwd: workspace,
-      env,
+      env: opts.env,
       timeoutMs: 30_000,
     })
     return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }
@@ -180,17 +185,26 @@ async function writeProbe(workspace: string, target: string) {
   }
 }
 
-async function readProbe(workspace: string, target: string) {
-  const result = await runInSandbox(
-    workspace,
-    `if cat ${shellQuote(target)} >/dev/null 2>&1; then echo LEAKED; else echo NOT_READABLE; fi`,
-  )
-  return {
-    ran: result.stdout.includes("LEAKED") || result.stdout.includes("NOT_READABLE"),
-    readable: result.stdout.includes("LEAKED"),
-    stdout: result.stdout,
-    stderr: result.stderr.trim(),
-  }
+/**
+ * Read a path inside the sandbox and return every output channel plus the exit
+ * status.
+ *
+ * A denial is asserted as the absence of the file's *body*, not as a failing
+ * `cat`. macOS refuses the read, while the Linux helper covers the path with an
+ * empty mount, so the same denial surfaces as an empty, successful read.
+ * Callers place a unique marker in the file and require that no channel of the
+ * run ever carried it, and that the probe reported its exit status at all —
+ * together those hold identically on both backends and cannot pass when the
+ * child failed to launch.
+ */
+async function readOutput(
+  workspace: string,
+  target: string,
+  opts: { dataDenyRoots?: string[] } = {},
+): Promise<{ output: string; ran: boolean }> {
+  const result = await runInSandbox(workspace, `cat ${shellQuote(target)} 2>&1; echo "EXIT:$?"`, opts)
+  const output = result.stdout + result.stderr
+  return { output, ran: output.includes("EXIT:") }
 }
 
 describe.skipIf(!availability.available)("OS sandbox containment baseline", () => {
@@ -262,6 +276,19 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
     const workspace = await probeWorkspace()
 
     const marker = `SYNERGY-CONTAINMENT-MARKER-${probeId()}`
+    // A synthetic credential root inside the OS home. Using an injected deny
+    // root keeps the probe end to end — the deny is decided by the same profile
+    // field production uses — without mutating the real user's credential
+    // stores. The sibling file outside the denied root is the control: if the
+    // sandbox could not see the OS home at all, both reads would be empty and
+    // the deny assertion below would pass vacuously.
+    const denyRoot = path.join(os.homedir(), `.harness-baseline-deny-${probeId()}`)
+    const deniedSecret = path.join(denyRoot, "id_rsa")
+    const allowedSibling = path.join(os.homedir(), `.harness-baseline-allow-${probeId()}`)
+    fs.mkdirSync(denyRoot, { recursive: true })
+    fs.writeFileSync(deniedSecret, `${marker}-denied\n`)
+    fs.writeFileSync(allowedSibling, `${marker}-allowed\n`)
+
     const synthetic = {
       "ssh private key": path.join(testHome, ".ssh", "id_rsa"),
       "aws credentials": path.join(testHome, ".aws", "credentials"),
@@ -271,35 +298,70 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
       fs.writeFileSync(target, `${marker}-${index}\n`)
     }
 
-    const recorded: Record<string, { ran: boolean; readable: boolean; hostFileExists: boolean }> = {}
-    const outputs: string[] = []
-    try {
-      for (const [label, target] of Object.entries(synthetic)) {
-        // Host baseline: the isolated test home is fully readable outside the
-        // sandbox, so a denial inside it is attributable to the sandbox.
-        expect(fs.readFileSync(target, "utf8")).toContain(marker)
-        const result = await readProbe(workspace.path, target)
-        outputs.push(result.stdout, result.stderr)
-        recorded[label] = { ran: result.ran, readable: result.readable, hostFileExists: fs.existsSync(target) }
-      }
-      expect(recorded).toEqual({
-        "ssh private key": { ran: true, readable: false, hostFileExists: true },
-        "aws credentials": { ran: true, readable: false, hostFileExists: true },
-      })
-      // Defense in depth: no channel of the run exposed the credential body.
-      expect(outputs.join("\n")).not.toContain(marker)
+    // The isolated test home lives under the host tmpdir, which the Linux helper
+    // replaces with the workspace controlled tmp. A credential there can be
+    // invisible inside that sandbox for reasons unrelated to the read deny, so a
+    // non-credential sibling decides whether those probes are meaningful.
+    const testHomeControl = path.join(testHome, `containment-control-${probeId()}`)
+    fs.writeFileSync(testHomeControl, `${marker}-control\n`)
 
-      // Real-home credential stores. Probed only when present so a missing
-      // directory is never mistaken for a containment success.
-      const homeStores = [path.join(os.homedir(), ".ssh"), path.join(os.homedir(), ".aws")]
-      for (const store of homeStores) {
-        if (!fs.existsSync(store)) continue
-        const result = await readProbe(workspace.path, store)
-        expect({ store, ran: result.ran, readable: result.readable }).toEqual({ store, ran: true, readable: false })
+    try {
+      // Host baselines: every probe target is readable outside the sandbox, so
+      // each denial below is attributable to the sandbox and not to host
+      // permissions or a missing file.
+      for (const target of [deniedSecret, allowedSibling]) {
+        expect(fs.readFileSync(target, "utf8")).toContain(marker)
       }
-      console.log(`[containment-baseline] credential reads denied: ${JSON.stringify(recorded)}`)
+
+      // Control: the OS home is visible and readable inside the sandbox.
+      const sibling = await readOutput(workspace.path, allowedSibling)
+      expect({ target: "home sibling", ran: sibling.ran, leaked: sibling.output.includes(marker) }).toEqual({
+        target: "home sibling",
+        ran: true,
+        leaked: true,
+      })
+
+      // The deny is enforced. This is the Linux half that the read-model
+      // convergence must not regress: the shell ran, the surrounding directory
+      // is readable, and the denied body never appears.
+      const denied = await readOutput(workspace.path, deniedSecret, { dataDenyRoots: [denyRoot] })
+      expect({ target: "denied secret", ran: denied.ran, leaked: denied.output.includes(marker) }).toEqual({
+        target: "denied secret",
+        ran: true,
+        leaked: false,
+      })
+
+      // Directory-level credential stores are deliberately not probed here: a
+      // `cat` of a directory fails on every backend whether or not it is
+      // denied, so the observation would prove nothing, and a real credential
+      // *file* probe could put live key material in a test's output. The deny
+      // list itself is asserted at profile level in linux-readable-roots.test.ts
+      // and macos-policy.test.ts; the functional evidence above is non-vacuous
+      // because the control sibling in the same home is read successfully.
+
+      const control = await readOutput(workspace.path, testHomeControl)
+      if (control.ran && control.output.includes(marker)) {
+        const recorded: Record<string, boolean> = {}
+        for (const [label, target] of Object.entries(synthetic)) {
+          expect(fs.readFileSync(target, "utf8")).toContain(marker)
+          const result = await readOutput(workspace.path, target)
+          expect({ label, ran: result.ran }).toEqual({ label, ran: true })
+          recorded[label] = result.output.includes(marker)
+        }
+        expect(recorded).toEqual({ "ssh private key": false, "aws credentials": false })
+        console.log(`[containment-baseline] isolated-home credential leaks: ${JSON.stringify(recorded)}`)
+      } else {
+        console.log(
+          "[containment-baseline] isolated test home is not visible inside this sandbox; " +
+            "credential evidence comes from the OS-home probes",
+        )
+      }
+      console.log("[containment-baseline] credential reads denied")
     } finally {
       for (const target of Object.values(synthetic)) fs.rmSync(target, { force: true })
+      fs.rmSync(testHomeControl, { force: true })
+      fs.rmSync(allowedSibling, { force: true })
+      fs.rmSync(denyRoot, { recursive: true, force: true })
       workspace.dispose()
     }
   })
@@ -307,34 +369,57 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
   test("ordinary external reads still work", async () => {
     const workspace = await probeWorkspace()
 
-    const systemRoot = DEFAULT_SYSTEM_RUNTIME_READ_ROOTS.find((root) => fs.existsSync(root))
-    expect(systemRoot).toBeDefined()
-    const listing = await runInSandbox(
-      workspace.path,
-      `if ls ${shellQuote(systemRoot!)} >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
-    )
-    expect(listing.stdout).toContain("READ_OK")
+    try {
+      // The read model is the credential deny list, not a granted-root list, so
+      // a path no enumeration would have covered must still be readable. On
+      // Linux this is the fact that lets the enforcement gate stop predicting
+      // which paths a shell command will touch: without it, removing that
+      // prediction turns ordinary external reads into sandbox failures.
+      const marker = `SYNERGY-READ-BASELINE-${probeId()}`
+      const externalRead = path.join(os.homedir(), `.harness-baseline-read-${probeId()}`)
+      fs.writeFileSync(externalRead, `${marker}\n`)
+      try {
+        expect(fs.readFileSync(externalRead, "utf8")).toContain(marker)
+        const probe = await readOutput(workspace.path, externalRead)
+        expect({ target: "os home file", ran: probe.ran, read: probe.output.includes(marker) }).toEqual({
+          target: "os home file",
+          ran: true,
+          read: true,
+        })
+      } finally {
+        fs.rmSync(externalRead, { force: true })
+      }
 
-    // /etc is deliberately outside the Linux restricted-mode read binds and
-    // host-readable on macOS through the global read allow.
-    if (process.platform === "darwin") {
-      const hosts = await runInSandbox(
-        workspace.path,
-        `if cat /etc/hosts >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
-      )
-      expect(hosts.stdout).toContain("READ_OK")
-    }
+      // /etc is outside the restricted-mode read binds the Linux enumeration
+      // produced and host-readable on macOS through the global read allow.
+      const hosts = await readOutput(workspace.path, "/etc/hosts")
+      expect({ target: "/etc/hosts", ran: hosts.ran, read: /EXIT:0/.test(hosts.output) }).toEqual({
+        target: "/etc/hosts",
+        ran: true,
+        read: true,
+      })
 
-    const gitconfig = path.join(os.homedir(), ".gitconfig")
-    if (fs.existsSync(gitconfig)) {
-      const git = await runInSandbox(
+      const gitconfig = path.join(os.homedir(), ".gitconfig")
+      if (fs.existsSync(gitconfig)) {
+        const config = await readOutput(workspace.path, gitconfig)
+        expect({ target: ".gitconfig", ran: config.ran, read: /EXIT:0/.test(config.output) }).toEqual({
+          target: ".gitconfig",
+          ran: true,
+          read: true,
+        })
+      }
+
+      const systemRoot = DEFAULT_SYSTEM_RUNTIME_READ_ROOTS.find((root) => fs.existsSync(root))
+      expect(systemRoot).toBeDefined()
+      const listing = await runInSandbox(
         workspace.path,
-        `if git config --get user.email >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
+        `if ls ${shellQuote(systemRoot!)} >/dev/null 2>&1; then echo READ_OK; else echo READ_BLOCKED; fi`,
       )
-      expect(git.stdout).toContain("READ_OK")
+      expect(listing.stdout).toContain("READ_OK")
+      console.log(`[containment-baseline] ordinary external reads permitted through ${systemRoot}`)
+    } finally {
+      workspace.dispose()
     }
-    console.log(`[containment-baseline] ordinary external reads permitted through ${systemRoot}`)
-    workspace.dispose()
   })
 
   test("workspace writes succeed", async () => {
@@ -358,7 +443,7 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
     const result = await runInSandbox(
       workspace.path,
       `echo payload > "$TMPDIR/tmp-probe.txt" && echo WROTE || echo BLOCKED`,
-      { TMPDIR: controlled, TMP: controlled, TEMP: controlled },
+      { env: { TMPDIR: controlled, TMP: controlled, TEMP: controlled } },
     )
     expect(result.stdout).toContain("WROTE")
     expect(fs.readFileSync(target, "utf8").trim()).toBe("payload")
@@ -369,7 +454,7 @@ describe.skipIf(!availability.available)("OS sandbox containment baseline", () =
     const created = await runInSandbox(
       workspace.path,
       `mkdir -p "$TMPDIR" && echo payload > "$TMPDIR/tmp-probe.txt" && echo WROTE || echo BLOCKED`,
-      { TMPDIR: nested, TMP: nested, TEMP: nested },
+      { env: { TMPDIR: nested, TMP: nested, TEMP: nested } },
     )
     expect(created.stdout).toContain("WROTE")
     expect(fs.readFileSync(path.join(nested, "tmp-probe.txt"), "utf8").trim()).toBe("payload")

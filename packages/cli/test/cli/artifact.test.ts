@@ -81,7 +81,15 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
                                 responseMode === "read"
                                   ? { filePath: inputFile }
                                   : {
-                                      command: `touch ${sideEffect}`,
+                                      // The permission outcome has to come from a
+                                      // capability the OS sandbox cannot express.
+                                      // A plain `touch` outside the workspace is
+                                      // filesystem reach the kernel contains, so the
+                                      // gate allows it and the sandbox refuses the
+                                      // write at execution time — an execution-time
+                                      // boundary, not a permission decision.
+                                      // Privilege escalation stays a gate decision.
+                                      command: `${responseMode === "permission" ? "sudo " : ""}touch ${sideEffect}`,
                                       description: "Create test marker",
                                     },
                               ),

@@ -27,7 +27,7 @@ import { SessionBounds } from "./bounds"
 import { SessionToolInput } from "./tool-input"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
-import { EnforcementGate, type Capability, type GateOptions } from "../enforcement/gate"
+import { EnforcementGate, type Capability, type GateOptions, type SandboxContainment } from "../enforcement/gate"
 import { SandboxHost } from "../sandbox/host"
 import { approvablePath, formatExplanationForModel } from "../sandbox/explain"
 import { SandboxSessionApproval } from "../sandbox/session-approval"
@@ -254,8 +254,7 @@ export namespace ToolResolver {
 
   function permissionForGateCapability(toolName: string, className: string): string {
     if (className === "file_external_read" || className === "file_external_write") return "external_directory"
-    if (className === "shell_read" || className === "shell_remote_publish" || className === "shell_remote_write")
-      return "bash"
+    if (className === "shell_remote_publish" || className === "shell_remote_write") return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request") return toolName === "webfetch" ? toolName : "network_request"
     return className
@@ -284,16 +283,47 @@ export namespace ToolResolver {
     ;(ctx.extra as any).shellBypassSandbox = true
   }
 
+  /** The resolver already decided this call's authorization. */
+  function markShellAuthorizationResolved(ctx: Tool.Context) {
+    ;(ctx.extra as any).shellAuthorizationResolved = true
+  }
+
+  /**
+   * Record a shell authorization outcome for the execution layer.
+   *
+   * Two separate questions used to share the `shellBypassSandbox` flag, which is
+   * what blocked authorization from following containment: the bash tool asked
+   * for its own approval unless the sandbox was bypassed, so the only way to
+   * stop it re-asking was to also switch the sandbox off.
+   *
+   * - `shellAuthorizationResolved` answers "may the tool ask again?" — never,
+   *   because the resolver already decided.
+   * - `shellBypassSandbox` answers "does this run without the sandbox?" — only
+   *   when the sandbox is not what justified the decision. A contained call
+   *   keeps its sandbox: the kernel is the boundary that authorized it.
+   */
+  function applyShellAuthorization(ctx: Tool.Context, profileId: string, containment?: SandboxContainment) {
+    markShellAuthorizationResolved(ctx)
+    if (containment?.contained === true) return
+    if (profileId !== "autonomous") markShellSandboxBypass(ctx)
+  }
+
+  /**
+   * A user or profile approval already crossed the shell boundary for this
+   * call, so the tool must not ask again and the historical behavior — an
+   * interactively approved shell command runs without the sandbox — is
+   * preserved.
+   */
   function rememberShellApproval(ctx: Tool.Context, permission: string, metadata: Record<string, unknown>) {
     const capability = String(metadata.capability ?? "")
     if (
       permission === "bash" ||
       capability === "shell" ||
-      capability === "shell_read" ||
       capability === "shell_remote_publish" ||
       capability === "shell_remote_write" ||
       capability === "shell_destructive"
     ) {
+      markShellAuthorizationResolved(ctx)
       markShellSandboxBypass(ctx)
     }
   }
@@ -302,6 +332,52 @@ export namespace ToolResolver {
     const roots = patterns.filter((pattern) => pattern.startsWith("/"))
     if (roots.length === 0) return
     ;(ctx.extra as any).approvedExternalRoots = [...new Set([...approvedExternalRoots(ctx), ...roots])]
+  }
+
+  interface ShellContainment {
+    verdict: SandboxContainment
+    release(): void
+  }
+
+  /**
+   * Ask the sandbox host whether it will contain this bash call, before the
+   * authorization decision is made.
+   *
+   * Authorization follows containment: the gate cannot decide a shell command
+   * while assuming containment it may not get. The verdict is therefore
+   * produced first, from the same host preparation execution uses, and handed
+   * to the gate. Only the containment verdict is needed here — the sandbox
+   * cannot be asked about the command's reach, and its availability is a
+   * property of the platform and helper, not of the command text or roots — so
+   * the prepared wrapper is released as soon as the decision is known and the
+   * execution path prepares its own with the materialized command.
+   *
+   * `release` uses the host's existing cleanup contract rather than a second
+   * one, which is what keeps a refused call from leaving its temporary profile
+   * behind.
+   */
+  function prepareShellContainment(input: {
+    gate: Awaited<ReturnType<typeof EnforcementGate.create>>
+    ctx: Tool.Context
+    workspace: string
+    command: string
+  }): ShellContainment | undefined {
+    const sandbox = input.gate.getSandbox()
+    if (sandbox.mode === "none" || shouldBypassShellSandbox(input.ctx)) return undefined
+    const wrapper = SandboxHost.prepareWrapper({
+      command: "/bin/sh",
+      args: ["-c", input.command],
+      workspace: input.workspace,
+      sandboxMode: sandbox.mode,
+      backend: sandbox.backend,
+    })
+    return {
+      verdict: {
+        contained: wrapper.sandboxed && !wrapper.skipReason,
+        ...(wrapper.skipReason ? { skipReason: wrapper.skipReason } : {}),
+      },
+      release: () => SandboxHost.cleanupWrapper(wrapper),
+    }
   }
 
   interface ToolTiming {
@@ -668,7 +744,7 @@ export namespace ToolResolver {
       // static classification cannot see (variable redirect targets) are still
       // contained at execution time. Guarded/full_access keep the historical
       // bypass for user-approved interactive work.
-      if (toolName === "bash" && profile.profileId !== "autonomous") markShellSandboxBypass(ctx)
+      if (toolName === "bash") applyShellAuthorization(ctx, profile.profileId, envelope.containment)
       return
     }
 
@@ -709,7 +785,7 @@ export namespace ToolResolver {
           source: "user",
           reason: `Allowed by user rule: ${ruleDecision.rule?.permission}(${ruleDecision.rule?.pattern})`,
         })
-        if (toolName === "bash") markShellSandboxBypass(ctx)
+        if (toolName === "bash") applyShellAuthorization(ctx, profile.profileId, envelope.containment)
         return
       }
       // ask → fall through to Smart allow / gateOwnedAsks; deny → Smart allow or policy denial.
@@ -737,7 +813,7 @@ export namespace ToolResolver {
             source: "smart_allow",
             reason: `Auto-allowed by Smart allow: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
           })
-          if (toolName === "bash") markShellSandboxBypass(ctx)
+          if (toolName === "bash") applyShellAuthorization(ctx, profile.profileId, envelope.containment)
           return
         }
         if (classification) {
@@ -792,7 +868,7 @@ export namespace ToolResolver {
         source: "provenance",
         reason: `Pre-authorized by system scheduling (session inherits trust from agenda wake)`,
       })
-      if (toolName === "bash") markShellSandboxBypass(ctx)
+      if (toolName === "bash") applyShellAuthorization(ctx, profile.profileId, envelope.containment)
       return
     }
 
@@ -1522,7 +1598,30 @@ export namespace ToolResolver {
                   workspaceType: workspaceInfo?.type ?? "scope",
                 })
 
-                const envelope = await gate.evaluateIsolated(item.id, args as Record<string, any>, ctx.abort)
+                // Containment is known before authorization: the wrapper is
+                // prepared first, its verdict decides the `shell` capability,
+                // and a call the sandbox refuses to wrap falls back to the
+                // ordinary capability flow instead of being allowed as if it
+                // were contained.
+                const containment =
+                  item.id === "bash"
+                    ? prepareShellContainment({ gate, ctx, workspace, command: String(args.command ?? "") })
+                    : undefined
+                let envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>
+                try {
+                  envelope = await gate.evaluateIsolated(
+                    item.id,
+                    args as Record<string, any>,
+                    ctx.abort,
+                    containment?.verdict,
+                  )
+                } finally {
+                  // The verdict is already carried by the envelope and the
+                  // execution path prepares the wrapper it actually runs, so
+                  // release here — on refusal and on success alike — through
+                  // the host's existing cleanup contract.
+                  containment?.release()
+                }
                 await RolloutTool.authorize({ stage: "evaluated", profile: gate.getProfileInfo(), envelope })
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
                   toolName: item.id,

@@ -3,21 +3,17 @@ const { EnforcementGate } = await import("../../src/enforcement/gate")
 const { ShellSafety } = await import("../../src/enforcement/shell-safety")
 
 // ---------------------------------------------------------------------------
-// Regression: autonomous-profile false denials of benign read-only bash
-// commands that use find/fd -exec with read-only utilities, assignment +
-// $(...) substitutions, slash-relative cd, and awk regex literals.
+// Regression: autonomous-profile bash commands that must stay allowed.
 //
-// Four root causes (all reproduced live against dev HEAD before this file):
-//   F1 shell-safety.ts ARGUMENT_INJECTION_PATTERNS blanket find/fd rules
-//      treat `-exec cat/wc {} +` as destructive without inspecting the tool.
-//   F2 shellWords has no $(...)/backtick depth, so `files=$(find "$d" ...)`
-//      mis-splits and the `"$d)"` fragment is read as a dynamic command name,
-//      producing a "sudo" tag and opaque directory-change risk.
-//   F3 cdpathDependentDirectoryTarget marks slash-relative cd (e.g.
-//      `cd packages/harness/src`) opaque although the execution environment
-//      allowlist never carries CDPATH.
-//   F4 gate extractAbsolutePaths surfaces awk regex literals such as
-//      /^\.\//) as external write path candidates.
+// Historically these were false denials produced by gate-side path
+// prediction (find/fd exec-target inspection, directory-change analysis,
+// absolute-path extraction). That machine is gone: a shell command string is
+// the imprecise input, so its filesystem reach belongs to the OS sandbox and
+// bash contributes only the capabilities the sandbox cannot express.
+//
+// What remains asserted here is (a) the released corpus stays allowed with no
+// destructive or external-write tag, and (b) the surviving anchors
+// (injection patterns, escalation, substitution handling) still hold.
 // ---------------------------------------------------------------------------
 
 const WORKSPACE = "/Users/test/synergy-control-profile"
@@ -73,67 +69,6 @@ describe("autonomous bash exec precision — R1 corpus allow", () => {
   )
 })
 
-describe("autonomous bash exec precision — R2 destructive exec stays blocked", () => {
-  test.each([
-    "find . -exec rm {} +",
-    "find . -exec rm {} \\;",
-    "find . -exec sh -c 'echo hi' {} \\;",
-    "find . -exec curl http://example.com -o /tmp/f {} \\;",
-    "find . -delete",
-    "find . -ok rm {} \\;",
-    "find . -okdir rm {} \\;",
-    "fd pattern -x rm",
-    "fd pattern --exec rm {}",
-    "fd pattern --exec-batch rm",
-    "find . -exec phantom-cmd {} +",
-    "find /tmp -exec rm {} \\;",
-    "find . -exec rm {} + -o -exec cat {} +",
-    // Wrapped destructive exec: quote-masked payload text must be rescanned
-    // after unwrapping shell re-parse payloads, or non-rm mutators and
-    // unknown utilities slip through the per-utility whitelist.
-    "sh -c 'find . -exec gzip {} +'",
-    'bash -c "find . -exec gzip {} +"',
-    "sh -c 'find . -exec rm {} +'",
-    "eval 'find . -exec gzip {} +'",
-    "eval 'find . -ok rm {} +'",
-    "eval 'find . -okdir cat {} +'",
-    "trap 'find . -exec gzip {} +' EXIT",
-    "xargs sh -c 'find . -exec chmod 777 {} +'",
-    "sh -c 'find . -exec phantom-cmd {} +'",
-    "sh -c 'find . -delete'",
-    "nohup sh -c 'find . -exec gzip {} +' &",
-    "f() { find . -exec gzip {} +; }; f",
-    "busybox find . -exec rm {} +",
-  ])("destructive find/fd form stays shell_destructive: %s", (command) => {
-    expect(ShellSafety.classifyBashRisk(command)).toBe("shell_destructive")
-  })
-
-  test("read-only find/fd exec tools are no longer blanket destructive", () => {
-    for (const command of [
-      "find . -exec cat {} +",
-      "find . -type f -name '*.ts' -exec wc -l {} +",
-      "find . -exec ls {} \\;",
-      "find . -execdir cat {}",
-      "find . -exec echo {} \\;",
-      "find . -exec cat {} \\;",
-      "fd pattern --exec echo {}",
-    ]) {
-      expect(ShellSafety.classifyBashRisk(command)).not.toBe("shell_destructive")
-    }
-  })
-
-  test("read-only find/fd exec wrapped in shell payloads stays allowed", () => {
-    for (const command of [
-      "sh -c 'find . -exec cat {} +'",
-      "bash -c 'find . -type f -name x -exec wc -l {} +'",
-      "eval 'find . -exec cat {} +'",
-      "xargs sh -c 'find . -exec cat {} +'",
-    ]) {
-      expect(ShellSafety.classifyBashRisk(command)).not.toBe("shell_destructive")
-    }
-  })
-})
-
 describe("autonomous bash exec precision — R3 other injection anchors unchanged", () => {
   test.each([
     "rg pattern --pre bash",
@@ -161,76 +96,10 @@ describe("autonomous bash exec precision — R4 assignment + substitution", () =
     ).toBe(false)
   })
 
-  test("directory analysis is not opaque when only an assignment+substitution supplies the dollar word", () => {
-    const analysis = ShellSafety.analyzeDirectoryChanges(
-      'for d in */; do x=$(find "$d" \\( -name x \\) | wc -l); echo done; done',
-    )
-    expect(analysis.opaque).toBe(false)
-  })
-
   test("whole corpus commands carry no sudo label", () => {
     for (const { command } of CORPUS) {
       expect(ShellSafety.hasSudoInvocation(command)).toBe(false)
     }
-  })
-})
-
-describe("autonomous bash exec precision — R5 slash-relative cd resolution", () => {
-  test("slash-relative cd resolves statically under resolveSlashRelativeCd", () => {
-    const analysis = ShellSafety.analyzeDirectoryChanges("cd packages/product-runtime/src && ls", {
-      resolveSlashRelativeCd: true,
-    })
-    expect(analysis).toEqual({ targets: ["packages/product-runtime/src"], opaque: false })
-  })
-
-  test("bare-name cd stays opaque (CDPATH ambiguity)", () => {
-    const analysis = ShellSafety.analyzeDirectoryChanges("cd node_modules && touch changed.txt", {
-      resolveSlashRelativeCd: true,
-    })
-    expect(analysis.opaque).toBe(true)
-  })
-
-  test("dynamic slash-relative cd targets stay opaque under resolveSlashRelativeCd", () => {
-    for (const command of [
-      "cd $DIR/x && touch changed.txt",
-      "cd $HOME/sub && touch changed.txt",
-      'cd "$d/src" && touch changed.txt',
-      "cd packages/$x && touch changed.txt",
-      "pushd $D/x && touch changed.txt",
-      "cd `echo a/b` && touch changed.txt",
-    ]) {
-      const analysis = ShellSafety.analyzeDirectoryChanges(command, { resolveSlashRelativeCd: true })
-      expect(analysis.opaque).toBe(true)
-      expect(analysis.targets).toEqual([])
-    }
-  })
-
-  test("commands defining CDPATH stay opaque even for slash-relative targets", () => {
-    for (const command of [
-      "CDPATH=/Users/test/synergy cd packages/x && touch changed.txt",
-      "export CDPATH=/x; cd packages/y && touch changed.txt",
-    ]) {
-      const analysis = ShellSafety.analyzeDirectoryChanges(command, { resolveSlashRelativeCd: true })
-      expect(analysis.opaque).toBe(true)
-    }
-  })
-
-  test("default (no options) keeps current conservative behavior for slash-relative cd", () => {
-    // Backward-compatible default: without the option nothing changes.
-    expect(ShellSafety.analyzeDirectoryChanges("cd packages/x && ls").opaque).toBe(true)
-  })
-
-  test("gate wires resolveSlashRelativeCd so workspace-relative cd plus touch stays inside", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: WORKSPACE,
-      workspaceType: "worktree",
-      profileId: "autonomous",
-    })
-    const envelope = gate.evaluate("bash", {
-      command: "cd packages/harness/src && touch changed.txt",
-      workdir: WORKSPACE,
-    })
-    expect(envelope.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
   })
 })
 
@@ -271,15 +140,23 @@ describe("autonomous bash exec precision — R6 awk regex literals are not paths
     }
   })
 
-  test("real absolute and protected paths still classify as before", async () => {
+  test("bash predicts no path at all, including for real external and protected paths", async () => {
+    // A shell command string is the imprecise input: which file it reaches is
+    // decided by the OS sandbox, never predicted here. Structured tools keep
+    // owning their literal path arguments (see ownership-inversion.test.ts).
     const gate = await EnforcementGate.create({
       activeWorkspace: WORKSPACE,
       workspaceType: "worktree",
       profileId: "autonomous",
     })
-    const read = gate.classify("bash", { command: "cat /etc/passwd", workdir: WORKSPACE })
-    expect(read.capabilities.some((c: any) => c.class === "file_external_read")).toBe(true)
-    const protectedPath = gate.classify("bash", { command: "cat /.env", workdir: WORKSPACE })
-    expect(protectedPath.capabilities.some((c: any) => c.class === "protected_op" || c.class === "secrets")).toBe(true)
+    for (const command of ["cat /etc/passwd", "cat /.env", "cat ~/.ssh/id_rsa"]) {
+      const result = gate.classify("bash", { command, workdir: WORKSPACE })
+      expect({
+        command,
+        file: result.capabilities
+          .map((c: any) => c.class)
+          .filter((name: string) => name.startsWith("file_") || name === "secrets" || name === "protected_op"),
+      }).toEqual({ command, file: [] })
+    }
   })
 })

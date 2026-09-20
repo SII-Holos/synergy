@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { StorageBusyError, StorageClosedError } from "./errors"
 
@@ -6,6 +7,40 @@ export const MAX_PENDING = 1024
 const WAIT_SAMPLE_RATE = 0.05
 const SLOW_WAIT_MS = 1_000
 const SLOW_HOLD_MS = 1_000
+
+interface AdmissionWait {
+  waitedMs: number
+  parent?: AdmissionWait
+}
+
+const admissionWait = new AsyncLocalStorage<AdmissionWait>()
+
+/**
+ * Runs `body` with a scope that accumulates the admission wait its own work
+ * paid, and hands back a reader for that total.
+ *
+ * A measured operation subtracts this from its duration, so
+ * `storage.queue.wait` and the operation's duration never describe the same
+ * interval twice. Each scope owns its total and hands it to its parent on exit,
+ * so a measured operation nested in another subtracts exactly the waits its own
+ * body paid for and concurrent operations never share one accumulator.
+ */
+export async function excludingQueueWait<T>(body: (queueWaitMs: () => number) => Promise<T>): Promise<T> {
+  const parent = admissionWait.getStore()
+  const scope: AdmissionWait = { waitedMs: 0, parent }
+  return admissionWait.run(scope, async () => {
+    try {
+      return await body(() => scope.waitedMs)
+    } finally {
+      if (parent) parent.waitedMs += scope.waitedMs
+    }
+  })
+}
+
+function recordQueueWait(waitedMs: number) {
+  const scope = admissionWait.getStore()
+  if (scope) scope.waitedMs += waitedMs
+}
 
 /**
  * Serializes work on one underlying resource.
@@ -49,6 +84,7 @@ export class StorageQueue {
     try {
       await previous
       const waitedMs = performance.now() - enqueuedAt
+      recordQueueWait(waitedMs)
       // A wait that reaches the deadline is the event that rejects a caller, so
       // it is never left to sampling; ordinary waits are sampled to keep the
       // series cheap on a hot path.

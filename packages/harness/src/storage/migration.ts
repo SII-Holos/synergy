@@ -2,6 +2,7 @@ import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration/types"
 import { Storage } from "./storage"
 import { StorageArtifactMigration } from "./artifact-migration"
+import { StorageDropScopeIndex } from "./drop-scope-index"
 import { StorageIncrementalVacuum } from "./incremental-vacuum"
 
 const migrations: Migration[] = [
@@ -37,6 +38,16 @@ const migrations: Migration[] = [
       progress(0, 0, 1)
       await StorageIncrementalVacuum.run(progress)
       progress(1, 1, 2)
+    },
+  },
+  {
+    id: StorageDropScopeIndex.id,
+    description: "Drop the retired storage_records_scope index",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageDropScopeIndex.run()
+      progress(1, 1, 1)
     },
   },
 ]

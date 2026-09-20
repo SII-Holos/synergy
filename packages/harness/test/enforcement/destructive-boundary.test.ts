@@ -75,7 +75,7 @@ describe("destructive boundary — host-level targets stay refused", () => {
 
   test("privilege escalation detection stays syntactically precise", () => {
     // Argument text that merely mentions sudo is not escalation.
-    expect(ShellSafety.classifyBashRisk('echo "use sudo carefully"')).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('echo "use sudo carefully"')).toBe("shell")
     expect(ShellSafety.hasSudoInvocation("echo sudo make install")).toBe(false)
     expect(ShellSafety.classifyBashRisk("sudo_command=make make install")).toBe("shell")
   })
@@ -128,7 +128,7 @@ describe("destructive boundary — ordinary development operations stay allowed"
   test("git clean without ignored-file removal is allowed", () => {
     expect(ShellSafety.classifyBashRisk("git clean -f")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("git clean -fd")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git clean -n")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("git clean -n")).toBe("shell")
   })
 
   test("read-only and help forms of host-level tools stay executable", () => {
@@ -343,5 +343,139 @@ describe("destructive boundary — network detection is token-aware", () => {
     })
     const envelope = gate.evaluate("bash", { command: 'echo "see https://example.com for docs"' })
     expect(envelope.capabilities.some((c: any) => c.class === "network_request")).toBe(false)
+  })
+})
+
+describe("destructive boundary — privilege escalation follows the payload", () => {
+  const { EnforcementGate } = require("../../src/enforcement/gate")
+
+  // Escalation is decided by what the wrapper *runs*, not by the wrapper name.
+  // A wrapper whose payload re-executes as another user (or as root) leaves the
+  // sandbox model, so it is destructive; the same wrapper around an inert
+  // payload is an ordinary local command. The shapes below mirror the negative
+  // list the classifier already carried, which asserted that `su -c 'echo
+  // sudo'`, `runuser -u root -- echo sudo`, and `pkexec echo sudo` are not
+  // escalation merely because the word appears in argument text.
+  const escalating = [
+    "sudo true",
+    "sudo -n true",
+    "sudo -S true",
+    "sudo -n ls",
+    "sudoedit /etc/hosts",
+    "doas true",
+    "su -c 'sudo make install'",
+    "runuser -u root -- sudo make install",
+    "pkexec sudo make install",
+    "sg wheel -c 'sudo make install'",
+    "nsenter -t 1 -m sudo make install",
+    "docker exec c sudo make install",
+    "podman run image sudo make install",
+    "docker run --entrypoint sudo c make install",
+  ]
+
+  const inert = [
+    "su -c 'echo sudo'",
+    "runuser -u root -- echo sudo",
+    "pkexec echo sudo",
+    "sg wheel -c 'echo sudo'",
+    "nsenter -t 1 -m ls",
+    "docker exec c ls",
+    "podman run image ls",
+    'echo "use sudo carefully"',
+  ]
+
+  test("a wrapper around an escalating payload is refused under autonomous", async () => {
+    for (const command of escalating) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+      const envelope = gate.evaluate("bash", { command })
+      expect({ command, decision: envelope.decision }).toEqual({ command, decision: "deny" })
+      expect({
+        command,
+        matched: envelope.refusal?.matchedPermission,
+      }).toEqual({ command, matched: "shell_destructive" })
+    }
+  })
+
+  // The wrapper tables exist so a wrapper's payload is re-parsed; the table is
+  // what makes `nsenter -t 1 -m sudo make install` destructive. The wrapper
+  // itself is not escalation, exactly like `runuser -u root -- echo sudo`:
+  // entering a namespace or naming a target user does not invoke an escalating
+  // binary, and the payload decides. Both sides are pinned here because the
+  // inert form previously asserted only the absence of the capability class —
+  // never the decision — so `nsenter -t 1 -m ls` could start refusing under
+  // `autonomous` without a single corpus failure.
+  test("a wrapper around an inert payload is allowed, not merely non-destructive", async () => {
+    for (const command of inert) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+      const envelope = gate.evaluate("bash", { command })
+      expect({
+        command,
+        destructive: envelope.capabilities.some((c: any) => c.class === "shell_destructive"),
+        decision: envelope.decision,
+      }).toEqual({ command, destructive: false, decision: "allow" })
+    }
+  })
+
+  test("nsenter decides by payload across its value-option forms", async () => {
+    // `nsenter` is a preserved privilege-escalation table: it re-parses the
+    // executable after `--target`/`--setuid`/`--setgid`/`--root`/`--wd`. An
+    // inert payload is an ordinary local command under both profiles; a payload
+    // that reaches an escalating binary stays refused.
+    const inertNsenter = [
+      "nsenter -t 1 -m ls",
+      "nsenter --target 1 --mount ls",
+      "nsenter -S root -t 1 -m ls",
+      "nsenter --setuid root -t 1 -m ls",
+      "nsenter -G root -t 1 -m ls",
+      "nsenter -r / -t 1 -m ls",
+      "nsenter -w / -t 1 -m ls",
+    ]
+    for (const command of inertNsenter) {
+      const autonomous = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+      expect({ command, decision: autonomous.evaluate("bash", { command }).decision }).toEqual({
+        command,
+        decision: "allow",
+      })
+
+      // `guarded` asks through the ordinary `shell` capability — this is not a
+      // refusal and not a separate nsenter rule.
+      const guarded = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
+      const guardedEnvelope = guarded.evaluate("bash", { command })
+      expect({ command, decision: guardedEnvelope.decision }).toEqual({ command, decision: "ask" })
+      expect({
+        command,
+        caps: guardedEnvelope.capabilities.map((c: any) => c.class),
+      }).toEqual({ command, caps: ["shell"] })
+    }
+
+    for (const command of ["nsenter -t 1 -m sudo make install", "nsenter -S root -t 1 -m sudo make install"]) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+      const envelope = gate.evaluate("bash", { command })
+      expect({ command, decision: envelope.decision }).toEqual({ command, decision: "deny" })
+      expect({ command, matched: envelope.refusal?.matchedPermission }).toEqual({
+        command,
+        matched: "shell_destructive",
+      })
+    }
   })
 })

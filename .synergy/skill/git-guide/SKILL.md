@@ -94,7 +94,8 @@ Project-relative source paths such as `packages/runtime-local/src/tools/read.ts`
 3. Open the pull request against `dev`.
 4. Use project-relative paths and redacted evidence in the PR body.
 5. State the summary and exact test commands. Do not claim checks that were not run.
-6. Use a reviewed Note as the file input when outbound content requires user editing:
+6. When the change implements a BlueprintLoop, state that loop's final status and audit conclusion in the body. An executor's own "done" is not an audit result: the loop counts as accepted only once `blueprint_loop_approve` settled it, and a loop left in `auditing`, failed, or rejected without a fresh audit is reported as unaccepted rather than described as complete.
+7. Use a reviewed Note as the file input when outbound content requires user editing:
 
 ```bash
 git commit -F /synergy/note/<note-id>
@@ -103,6 +104,8 @@ gh issue comment <number> --body-file /synergy/note/<note-id>
 ```
 
 Do not interpolate Note contents into a shell command or pass them to an option that executes the file as code.
+
+A required check can also fail for reasons that belong to the runner rather than the change: the local artifact build needs `docker`, and a hosted job can fail before it compiles anything. Distinguish the two before treating a red gate as evidence about the code, but do not merge past it either — re-run until green. A check that cannot be made green is a blocker to report to the user, not a condition to waive.
 
 The `autonomous` profile permits ordinary topic-branch and pull-request publication from either the primary checkout or a worktree. Protected-branch pushes and broader remote mutations remain `shell_remote_write` and are denied. This capability boundary does not replace the user's authorization to publish.
 

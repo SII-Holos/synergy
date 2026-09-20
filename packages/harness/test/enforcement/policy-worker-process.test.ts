@@ -78,7 +78,7 @@ describe("Policy worker process", () => {
       expect(workerPid).not.toBe(process.pid)
       expect(message).toMatchObject({
         type: "result",
-        result: { capabilities: [{ class: "shell_read", nonBypassable: false }] },
+        result: { capabilities: [{ class: "shell", nonBypassable: false }] },
       })
     } finally {
       settled = true
