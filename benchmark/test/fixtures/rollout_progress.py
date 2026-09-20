@@ -1,4 +1,6 @@
 import base64
+import ctypes
+import ctypes.util
 import json
 import sqlite3
 import sys
@@ -6,8 +8,85 @@ import zlib
 from contextlib import closing
 from pathlib import Path
 
+# The record body column has no affinity, so it holds three forms and a reader
+# that understands only one of them reports a recorded response as absent. This
+# probe is the only non-TypeScript reader of that column, so it decodes all three
+# rather than the two it was written against:
+#
+#   * `str` without a prefix: plain JSON.
+#   * `str` with `z:`: the retired base64 deflate form.
+#   * `bytes` whose first byte is 0x1A: the current frame, whose header carries
+#     the codec and the declared decoded length.
+#
+# The declaration is what bounds decompression here too: the output buffer is
+# allocated at exactly the declared size, and a result of any other length is
+# rejected instead of trusted.
+FRAME_MARKER = 0x1A
+CODEC_RAW = 0
+CODEC_ZSTD = 1
+MAX_BODY_BYTES = 128 * 1024 * 1024
+_LIBZSTD = None
 
-def decode(body: str):
+
+def _read_varint(body: bytes, offset: int) -> tuple[int, int]:
+    value = 0
+    shift = 1
+    index = offset
+    while index < len(body) and index - offset < 5:
+        byte = body[index]
+        value += (byte & 0x7F) * shift
+        index += 1
+        if not byte & 0x80:
+            return value, index
+        shift *= 128
+    raise ValueError("Invalid record length prefix")
+
+
+def _zstd_library():
+    # Resolved once: the probe re-reads every rollout row on each poll, so a
+    # dlopen per body would repeat this lookup thousands of times per second.
+    global _LIBZSTD
+    if _LIBZSTD is None:
+        lib = ctypes.CDLL(ctypes.util.find_library("zstd") or "libzstd.so.1")
+        lib.ZSTD_decompress.restype = ctypes.c_size_t
+        lib.ZSTD_decompress.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t]
+        lib.ZSTD_isError.restype = ctypes.c_uint
+        lib.ZSTD_isError.argtypes = [ctypes.c_size_t]
+        _LIBZSTD = lib
+    return _LIBZSTD
+
+
+def _zstd(payload: bytes, declared: int) -> bytes:
+    lib = _zstd_library()
+    source = ctypes.create_string_buffer(payload, len(payload))
+    # The declared length sizes the destination exactly, so a frame that decodes
+    # to more than it claims cannot make this allocate past the declared bound.
+    target = ctypes.create_string_buffer(declared)
+    written = lib.ZSTD_decompress(target, declared, source, len(payload))
+    if lib.ZSTD_isError(written):
+        raise ValueError("Stored record compression is invalid")
+    if written != declared:
+        raise ValueError("Stored record length disagrees with its header")
+    return target.raw[:written]
+
+
+def decode(body):
+    if isinstance(body, (bytes, bytearray, memoryview)):
+        frame = bytes(body)
+        if len(frame) < 3 or frame[0] != FRAME_MARKER:
+            raise ValueError("Stored record frame is invalid")
+        codec = frame[1]
+        declared, start = _read_varint(frame, 2)
+        if not 0 <= declared <= MAX_BODY_BYTES:
+            raise ValueError("Stored record length is out of range")
+        payload = frame[start:]
+        if codec == CODEC_ZSTD:
+            return json.loads(_zstd(payload, declared).decode("utf-8"))
+        if codec == CODEC_RAW:
+            if len(payload) != declared:
+                raise ValueError("Stored record length disagrees with its header")
+            return json.loads(payload.decode("utf-8"))
+        raise ValueError("Unknown record codec")
     if body.startswith("z:"):
         body = zlib.decompress(base64.b64decode(body[2:], validate=True)).decode()
     return json.loads(body)

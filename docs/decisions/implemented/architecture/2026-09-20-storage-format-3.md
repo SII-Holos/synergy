@@ -33,6 +33,8 @@ The constraint that makes this non-trivial is the upgrade path. A store cannot b
 
 **PostgreSQL keeps the format 2 layout.** PostgreSQL cannot mix `text` and `bytea` in one column, and `json_extract` is not available, so a PostgreSQL namespace keeps hex keys, the real `pack` column and the full message index. The DDL is defined per backend through `artifactsTableDdl`/`nodesTableDdl`/`recordsTableDdl`, and the migration returns immediately there.
 
+**Every reader of the body column decodes all three forms, including readers outside this repository.** The column has no affinity, so the same store holds plain JSON text, the retired `z:` base64 text and a byte frame, and a reader that understands only the text forms fails on a frame with a type error rather than a decode error. The container types are what surface this: `sqlite3` in Python hands a `BLOB` to the caller as `bytes`, so `body.startswith("z:")` raises `TypeError: startswith first arg must be bytes or a tuple of bytes, not str`. The benchmark's rollout probe is the only non-TypeScript reader of that column, and it decodes all three forms with the declared length as its decompression bound. Guarded by [`test_rollout_progress.py`](../../../../benchmark/test/test_rollout_progress.py), whose frame cases pin bytes captured from `RecordCodec` itself rather than a fixture the probe would agree with by construction.
+
 ## Alternatives considered
 
 **One `VACUUM` and no format change.** Reclaiming free pages does not shrink a table whose rows still carry a redundant 149-byte path column and six copies of every key. The measured attribution is structure and duplication, which only a rewrite returns.
