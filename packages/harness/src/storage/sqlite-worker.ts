@@ -82,17 +82,6 @@ process.on("message", (request: SqliteRequest) => {
         // which is what the scheduled reclaim used to force with a blocking
         // TRUNCATE checkpoint.
         writer.run("PRAGMA journal_size_limit = 67108864")
-        // Statistics are what the planner chooses indexes from for this store's
-        // scope/session/kind reads, and no other code path runs ANALYZE, so a
-        // production database has none. Opening is the moment SQLite documents
-        // for a long-lived connection to refresh them and the only moment this
-        // single-threaded worker is idle. The default mask (0xfffe) includes the
-        // 0x10 bit, which caps each ANALYZE with a temporary analysis_limit, so
-        // this samples every index that lacks statistics instead of walking a
-        // 32 GB store; the documented first-open mask 0x10002 clears that bit
-        // and would run an unbounded ANALYZE. It is a no-op once sqlite_stat1
-        // covers every index.
-        writer.run("PRAGMA optimize")
       }
       applySizePragmas(writer)
       reader = new Database(request.filename!, { readonly: true, strict: true, safeIntegers: true })

@@ -1,5 +1,4 @@
 import { afterEach, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { SqliteDriver } from "../../src/storage/sqlite-driver"
@@ -95,34 +94,5 @@ test("a store opened for the first time starts and serves reads and writes", asy
     expect(await store.read<{ started: boolean }>(["record"])).toEqual({ started: true })
   } finally {
     await store.close()
-  }
-})
-
-test("reopening a populated store refreshes the statistics its read path uses", async () => {
-  const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "sqlite-pragmas-optimize-"))
-  roots.push(root)
-  const filename = path.join(root, "agent.sqlite")
-
-  // A store is empty when the worker first opens it, so the statistics appear
-  // on a later open that finds indexed rows. PRAGMA optimize rewinds each table
-  // it considers and skips the empty ones, so the fixture must write records.
-  const seeded = await TransactionalStore.open({ backend: "sqlite", namespace: "optimize", filename })
-  for (let index = 0; index < 50; index++) await seeded.write(["record", String(index)], { index })
-  await seeded.close()
-
-  const reopened = await TransactionalStore.open({ backend: "sqlite", namespace: "optimize", filename })
-  expect(await reopened.read<{ index: number }>(["record", "7"])).toEqual({ index: 7 })
-  await reopened.close()
-
-  const probe = new Database(filename, { readonly: true, strict: true })
-  try {
-    const rows = probe.query("SELECT tbl, idx FROM sqlite_stat1").all() as Array<{ tbl: string; idx: string }>
-    const analyzed = new Set(rows.map((row) => `${row.tbl}.${row.idx}`))
-    // The authoritative read path filters on these columns, so the indexes that
-    // serve it are the ones whose statistics matter.
-    for (const idx of ["storage_records_session", "storage_records_kind", "storage_records_message"])
-      expect(analyzed.has(`storage_records.${idx}`)).toBe(true)
-  } finally {
-    probe.close(false)
   }
 })
