@@ -70,6 +70,18 @@ export namespace SandboxBackend {
   export const platformInfo = getPlatformInfo
   export const generateSeatbeltProfile = MacBackend.generateSeatbeltProfile
   export const cleanupTemp = MacBackend.cleanupTemp
+  /**
+   * Release the temporary resources a prepared wrapper owns.
+   *
+   * Authorization now follows containment, so a wrapper can be prepared for a
+   * call that is then refused. This is the same release the execution path
+   * performs in its `finally` block, exposed so the preparer can undo a
+   * preparation it did not execute. Backends stage their compiled profile in
+   * `tempPath`; a wrapper with no staged file has nothing to release.
+   */
+  export function cleanupWrapper(wrapper: SandboxExecutionWrapper): void {
+    if (wrapper.tempPath) cleanupTemp(wrapper.tempPath)
+  }
 
   /**
    * Check whether a given os.platform() string is supported.
@@ -117,6 +129,7 @@ export namespace SandboxBackend {
           extraReadRoots: opts.extraReadRoots,
           extraWritableRoots: opts.extraWritableRoots,
           protectedPaths: opts.protectedPaths,
+          dataDenyRoots: opts.dataDenyRoots,
           networkMode: opts.networkMode,
           forcePlatform: opts.forcePlatform,
           backend: opts.backend,
@@ -141,8 +154,8 @@ export namespace SandboxBackend {
    * Prepare a Linux bwrap (bubblewrap) sandbox wrapper.
    *
    * Key design:
-   * - NEVER --ro-bind / /  (full root filesystem exposure)
-   * - --ro-bind for platform and runtime read roots
+   * - Reads follow the deny-list model: the helper declares "/" readable so
+   *   the plan starts from `--ro-bind / /`, and credential paths are covered.
    * - Bind active workspace with --bind (read-write) or --ro-bind (read-only)
    * - Final args: bwrap <mounts> -- <command> <args...>
    */
@@ -253,6 +266,16 @@ export namespace SandboxBackend {
 
     const cmd: string[] = [wrapper.command, ...wrapper.args]
 
+    // ── macOS denial logger ──────────────────────────────────────
+    // Started before the child so the stream is live when the denial is
+    // emitted: a fast command's record is produced microseconds after spawn,
+    // so binding the pid afterwards loses the race. The pid is adopted once
+    // the child exists.
+    let denialSession: DenialLoggerSession | null = null
+    if (wrapper.sandboxed && detectPlatform() === "macos") {
+      denialSession = startDenialLogger()
+    }
+
     const child = Bun.spawn({
       cmd,
       cwd,
@@ -262,15 +285,7 @@ export namespace SandboxBackend {
       stdin: null,
       onExit: () => {},
     })
-
-    // ── macOS denial logger: capture sandboxd audit events ───────
-    let denialSession: DenialLoggerSession | null = null
-    if (wrapper.sandboxed) {
-      const platform = detectPlatform()
-      if (platform === "macos") {
-        denialSession = startDenialLogger(child.pid)
-      }
-    }
+    denialSession?.adoptPid(child.pid)
     // ── after_spawn hook: caller callback after child process created ─────
     if (opts.after_spawn) {
       try {
@@ -361,8 +376,10 @@ export namespace SandboxBackend {
     const stderr = Buffer.concat(stderrChunks).toString("utf-8")
 
     // ── Stop macOS denial logger ─────────────────────────────────
+    // Audit records trail the child by a short interval, so give them a
+    // bounded window before the stream is closed.
     if (denialSession) {
-      denialSession.stop()
+      await denialSession.flush()
     }
 
     // ── Sandbox denial detection ──────────────────────────────────

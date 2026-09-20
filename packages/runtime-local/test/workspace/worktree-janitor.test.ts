@@ -184,7 +184,7 @@ describe("worktree sweep", () => {
     })
   })
 
-  test("reclaims a stale Synergy lock above the cap", async () => {
+  test("keeps an unverified Synergy lock above the cap", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -198,11 +198,11 @@ describe("worktree sweep", () => {
 
         const report = await Worktree.sweep({ maxManaged: 0 })
 
-        expect(report.removed).toContain(created.id)
-        expect(report.skipped).toEqual([])
-        expect(await exists(created.path)).toBe(false)
-        expect(await Bun.file(registryFile(scope.worktree, created.id)).exists()).toBe(false)
-        expect((await porcelainLocks(scope.worktree)).get(path.basename(created.path))).toBeUndefined()
+        expect(report.removed).toEqual([])
+        expect(report.skipped).toContainEqual({ id: created.id, name: created.name, reason: "synergy_lock" })
+        expect(await exists(created.path)).toBe(true)
+        expect(await Bun.file(registryFile(scope.worktree, created.id)).exists()).toBe(true)
+        expect((await porcelainLocks(scope.worktree)).get(path.basename(created.path))).toContain("synergy:v1:")
       },
     })
   })
@@ -278,6 +278,7 @@ describe("worktree sweep", () => {
       fn: async () => {
         // Distinct, deterministic recency: creation alone can share a
         // millisecond, which would make the removal order arbitrary.
+        await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.worktree)
         const oldest = await Worktree.create({ name: "janitor-cap-oldest", bind: false, baseRef: "current" })
         const middle = await Worktree.create({ name: "janitor-cap-middle", bind: false, baseRef: "current" })
         const newest = await Worktree.create({ name: "janitor-cap-newest", bind: false, baseRef: "current" })
@@ -308,6 +309,7 @@ describe("worktree sweep", () => {
     await ScopeContext.provide({
       scope,
       fn: async () => {
+        await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.worktree)
         const blocked = await Worktree.create({ name: "janitor-budget-dirty", bind: false, baseRef: "current" })
         const reclaimable = await Worktree.create({ name: "janitor-budget-clean", bind: false, baseRef: "current" })
         await fs.writeFile(path.join(blocked.path, "wip.txt"), "uncommitted work\n")
@@ -383,7 +385,10 @@ describe("worktree sweep eligibility", () => {
 
   test("reclaims a clean, unlocked, idle worktree", () => {
     expect(Worktree.decide(managedInfo(), sweepEvidence())).toEqual({ eligible: true })
-    expect(Worktree.decide(managedInfo(), sweepEvidence({ lock: "synergy" }))).toEqual({ eligible: true })
+    expect(Worktree.decide(managedInfo(), sweepEvidence({ lock: "synergy" }))).toEqual({
+      eligible: false,
+      reason: "synergy_lock",
+    })
   })
 })
 

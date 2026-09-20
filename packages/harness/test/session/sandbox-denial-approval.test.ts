@@ -183,6 +183,7 @@ function sandboxHost(options: { sandboxed: boolean; skipReason?: string }) {
       sandboxed: options.sandboxed,
       ...(options.skipReason ? { skipReason: options.skipReason } : {}),
     }),
+    cleanupWrapper: () => {},
   }
 }
 

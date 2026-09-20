@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -47,6 +47,40 @@ async function pollUntil(predicate: () => Promise<boolean>, timeoutMs = 10_000) 
 }
 
 describe("worktree janitor wiring", () => {
+  test("scope disposal waits for the active sweep and rejects follow-up requests", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = asProject(await tmp.scope())
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let count = 0
+    using sweep = spyOn(Worktree, "sweep").mockImplementation(async () => {
+      count++
+      entered.resolve()
+      await release.promise
+      return { scanned: 0, maxManaged: 20, removed: [], skipped: [], reconciled: [] }
+    })
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await startWorktreeJanitor(scope)
+        requestScopeSweep(scope)
+        await entered.promise
+        let stopped = false
+        const stopping = Promise.resolve(stopWorktreeJanitor(scope.id)).then(() => {
+          stopped = true
+        })
+        try {
+          await Promise.resolve()
+          expect(stopped).toBe(false)
+          requestScopeSweep(scope)
+          expect(count).toBe(1)
+        } finally {
+          release.resolve()
+          await stopping
+        }
+      },
+    })
+  })
   test("does not sweep for a scope that never started a janitor", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = asProject(await tmp.scope())
@@ -83,7 +117,7 @@ describe("worktree janitor wiring", () => {
             await pollUntil(async () => !(await Bun.file(registryFile(scope.worktree, created.id)).exists())),
           ).toBe(true)
         } finally {
-          stopWorktreeJanitor(scope.id)
+          await stopWorktreeJanitor(scope.id)
         }
       },
     })
@@ -95,8 +129,8 @@ describe("worktree janitor wiring", () => {
 
     // Idempotent and safe for an unknown scope: disposal must not throw for a
     // scope whose startup never reached the janitor.
-    stopWorktreeJanitor(scope.id)
-    stopWorktreeJanitor(scope.id)
+    await stopWorktreeJanitor(scope.id)
+    await stopWorktreeJanitor(scope.id)
 
     await ScopeContext.provide({
       scope,

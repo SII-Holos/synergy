@@ -1,11 +1,20 @@
 import { expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
+import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { Storage } from "../../src/storage/storage"
 import { StorageIncrementalVacuum } from "../../src/storage/incremental-vacuum"
 import { SqliteMaintenance } from "../../src/storage/sqlite-maintenance"
+
+// Record bodies at or above 512 bytes are stored deflate-compressed when that
+// saves space, and a run of one repeated character compresses to almost
+// nothing. High-entropy padding keeps this fixture's records occupying the
+// pages the reclaim assertions are about.
+const INCOMPRESSIBLE_PADDING = Array.from({ length: 64 }, (_, index) =>
+  createHash("sha256").update(String(index)).digest("hex"),
+).join("")
 
 async function root() {
   return fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "incremental-vacuum-"))
@@ -73,7 +82,7 @@ test("reclaiming released pages keeps records readable and reports freed pages",
     for (let index = 0; index < 200; index++) {
       const key = ["sessions", "scope", `ses_${index}`, "info"]
       keys.push(key)
-      await store.write(key, { id: `ses_${index}`, padding: "y".repeat(4096) })
+      await store.write(key, { id: `ses_${index}`, padding: INCOMPRESSIBLE_PADDING })
     }
     for (let index = 0; index < 150; index++) await store.removeTree(keys[index])
 

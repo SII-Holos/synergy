@@ -8,3 +8,5 @@ Product Projects, statistics and performance read models, activity presentation 
 - Tests live under test/ and use isolated homes through the testing support package.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
+
+The managed-worktree janitor schedules per Scope and drains active sweeps during disposal. Run `bun test test/project/worktree-janitor.test.ts` for scheduler ownership changes.

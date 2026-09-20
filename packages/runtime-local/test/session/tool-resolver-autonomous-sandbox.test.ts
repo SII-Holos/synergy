@@ -13,6 +13,7 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { LocalBashBackend } from "@ericsanchezok/synergy-runtime-local/tools/bash/local"
 import { SandboxBackend } from "../../src/sandbox/backend"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
+import { SandboxSessionApproval } from "@ericsanchezok/synergy-harness/test/support/internals"
 
 SandboxHost.register(SandboxBackend)
 
@@ -132,7 +133,7 @@ test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs
     },
   })
 })
-test("autonomous gate-approved external read is forwarded into the sandbox wrapper read roots", async () => {
+test("a session-approved external read is forwarded into the sandbox wrapper read roots", async () => {
   if (!fs.existsSync("/etc/hosts")) return
   await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
   await ScopeContext.provide({
@@ -146,6 +147,12 @@ test("autonomous gate-approved external read is forwarded into the sandbox wrapp
         sandboxed: true,
       }))
       const session = await Session.create({ controlProfile: "autonomous" })
+      // A sandbox denial is an execution-time boundary: the denied path is not
+      // known when the call is authorized, so it is approved for the session
+      // and carried into the next wrapper through this store. bash predicts no
+      // path, so this store — not gate-side classification — is what forwards
+      // an external read into the sandbox roots.
+      SandboxSessionApproval.remember(session.id, "/etc/hosts", "read")
       try {
         const { processor, bash } = await resolveBashTool(session.id)
         try {
@@ -153,12 +160,11 @@ test("autonomous gate-approved external read is forwarded into the sandbox wrapp
             { command: "cat /etc/hosts", description: "probe" },
             { toolCallId: "call_bash_autonomous_ext_read" },
           )
-          // The gate auto-allowed the external read and the wrapper was
-          // prepared (auto-allow never bypasses the sandbox under autonomous).
+          // Auto-allow never bypasses the sandbox under autonomous.
           expect(result.metadata.exit).toBe(0)
           expect(prepare.mock.calls.length).toBeGreaterThan(0)
           const lastInput = prepare.mock.calls[prepare.mock.calls.length - 1][0]
-          // The gate-approved external read reaches the wrapper's read roots.
+          // The session-approved external read reaches the wrapper's read roots.
           expect(lastInput.extraReadRoots).toContain("/etc/hosts")
           // The workspace stays readable.
           expect(lastInput.extraReadRoots).toContain(tmp.path)
@@ -172,6 +178,7 @@ test("autonomous gate-approved external read is forwarded into the sandbox wrapp
           processor.dispose("test")
         }
       } finally {
+        SandboxSessionApproval.clear(session.id)
         await Session.remove(session.id)
         ;(ToolRegistry.tools as any) = originalRegistryTools
         prepare.mockRestore()

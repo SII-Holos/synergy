@@ -10,6 +10,7 @@ import {
 } from "./errors"
 import { ArtifactLocation } from "./artifact-location"
 import { RecordCodec } from "./record-codec"
+import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
 import { SqliteDriver } from "./sqlite-driver"
@@ -103,7 +104,6 @@ const schema = [
   "CREATE INDEX IF NOT EXISTS storage_nodes_parent ON storage_nodes(namespace, parent_id)",
   "CREATE TABLE IF NOT EXISTS storage_records (namespace TEXT NOT NULL, key_id TEXT NOT NULL, key_text TEXT NOT NULL, body TEXT, revision BIGINT NOT NULL, kind TEXT NOT NULL, scope_id TEXT NOT NULL, session_id TEXT NOT NULL, message_id TEXT NOT NULL, order_key TEXT NOT NULL, updated BIGINT NOT NULL, PRIMARY KEY(namespace, key_id))",
   "CREATE INDEX IF NOT EXISTS storage_records_session ON storage_records(namespace, session_id, kind, order_key, key_id)",
-  "CREATE INDEX IF NOT EXISTS storage_records_scope ON storage_records(namespace, scope_id, kind, updated, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_kind ON storage_records(namespace, kind, order_key, key_id)",
   "CREATE TABLE IF NOT EXISTS storage_receipts (namespace TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL, result TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY(namespace, operation_id))",
@@ -759,7 +759,10 @@ export class TransactionalStore {
     return this.driver.onUnavailable?.(listener) ?? (() => {})
   }
 
-  async snapshot<T>(body: (snapshot: StoreTransaction) => Promise<T>): Promise<T> {
+  async snapshot<T>(
+    body: (snapshot: StoreTransaction) => Promise<T>,
+    options: { singleStatement?: boolean } = {},
+  ): Promise<T> {
     this.check()
     return this.driver.transaction(
       async (connection) => {
@@ -772,7 +775,7 @@ export class TransactionalStore {
           snapshot.finish()
         }
       },
-      { readOnly: true },
+      { readOnly: true, singleStatement: options.singleStatement },
     )
   }
 
@@ -838,13 +841,16 @@ export class TransactionalStore {
   }
 
   read<T = unknown>(key: string[]) {
-    return this.snapshot((tx) => tx.read<T>(key))
+    return this.snapshot((tx) => tx.read<T>(key), { singleStatement: true })
   }
   versioned<T = unknown>(key: string[]) {
-    return this.snapshot((tx) => tx.versioned<T>(key))
+    return this.snapshot((tx) => tx.versioned<T>(key), { singleStatement: true })
   }
   readMany<T = unknown>(keys: string[][]) {
-    return this.snapshot((tx) => tx.readMany<T>(keys))
+    // Only a caller whose keys fit one batch issues one statement; a longer
+    // list issues several, and only an explicit transaction holds those on one
+    // snapshot.
+    return this.snapshot((tx) => tx.readMany<T>(keys), { singleStatement: keys.length <= 128 })
   }
   write<T>(key: string[], value: T) {
     return this.transaction((tx) => tx.write(key, value))
@@ -859,13 +865,13 @@ export class TransactionalStore {
     return this.transaction((tx) => tx.removeTree(prefix))
   }
   scan(prefix: string[]) {
-    return this.snapshot((tx) => tx.scan(prefix))
+    return this.snapshot((tx) => tx.scan(prefix), { singleStatement: true })
   }
   list(prefix: string[]) {
-    return this.snapshot((tx) => tx.list(prefix))
+    return this.snapshot((tx) => tx.list(prefix), { singleStatement: true })
   }
   query<T>(input: RecordQuery) {
-    return this.snapshot((tx) => tx.query<T>(input))
+    return this.snapshot((tx) => tx.query<T>(input), { singleStatement: true })
   }
 
   pruneTree(prefix: string[]) {
@@ -877,15 +883,34 @@ export class TransactionalStore {
   }
 
   /**
+   * Drops a retired index through the serialized writer.
+   *
+   * The identifier is interpolated into DDL, so it is validated rather than
+   * accepted as arbitrary input. `IF EXISTS` makes the statement a no-op on a
+   * store that never created the index, which is what keeps the owning
+   * migration safe to re-run.
+   */
+  async dropIndexIfExists(index: string): Promise<void> {
+    this.check()
+    if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
+    if (!/^[a-z_][a-z0-9_]*$/.test(index)) throw new StorageIntegrityError("Invalid storage index name")
+    await this.writes.run(() =>
+      this.driver.transaction(async (connection) => {
+        await connection.query(`DROP INDEX IF EXISTS ${index}`)
+      }),
+    )
+  }
+
+  /**
    * Evidence owners with the recency of their newest record. Only keys and
    * timestamps are read, so the scan stays bounded by owner count rather than
    * by how much evidence each owner holds.
    *
-   * Rollout records group by the indexed `scope_id`/`session_id` columns;
-   * extracting those segments from the key text per row made this the most
-   * expensive statement in a retention pass by an order of magnitude. Operation
-   * records store no such columns, but there are only thousands of them, so the
-   * key-text form stays bounded there.
+   * Rollout records group by the `scope_id`/`session_id` columns under the
+   * indexed `kind` prefix; extracting those segments from the key text per row
+   * made this the most expensive statement in a retention pass by an order of
+   * magnitude. Operation records store no such columns, but there are only
+   * thousands of them, so the key-text form stays bounded there.
    */
   async evidenceOwners(): Promise<
     Array<{ keyPrefix: string[]; kind: string; scopeID: string; ownerID: string; newest: number; records: number }>
@@ -894,27 +919,29 @@ export class TransactionalStore {
     // PostgreSQL has no in-file freelist and no incremental reclaim, so it has
     // no budget for retention to defend; pruning is SQLite-only.
     if (this.driver.backend !== "sqlite") return []
-    const rows = await this.driver.query(
-      `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL GROUP BY scope_id, session_id`,
-      [this.options.namespace],
-    )
-    const operations = await this.driver.query(
-      `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'operations' AND body IS NOT NULL GROUP BY json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
-      [this.options.namespace],
-    )
-    return [...rows, ...operations].flatMap((row) => {
-      const key = JSON.parse(String(row.key_text)) as string[]
-      if (key.length < 4) return []
-      return [
-        {
-          keyPrefix: key.slice(0, 4),
-          kind: key[0] === "operations" ? "operation" : "session",
-          scopeID: key[1]!,
-          ownerID: key[2]!,
-          newest: Number(row.newest),
-          records: Number(row.records),
-        },
-      ]
+    return measureStorageOperation("evidenceOwners", "storage_records", async () => {
+      const rows = await this.driver.query(
+        `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL GROUP BY scope_id, session_id`,
+        [this.options.namespace],
+      )
+      const operations = await this.driver.query(
+        `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'operations' AND body IS NOT NULL GROUP BY json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
+        [this.options.namespace],
+      )
+      return [...rows, ...operations].flatMap((row) => {
+        const key = JSON.parse(String(row.key_text)) as string[]
+        if (key.length < 4) return []
+        return [
+          {
+            keyPrefix: key.slice(0, 4),
+            kind: key[0] === "operations" ? "operation" : "session",
+            scopeID: key[1]!,
+            ownerID: key[2]!,
+            newest: Number(row.newest),
+            records: Number(row.records),
+          },
+        ]
+      })
     })
   }
 
@@ -938,9 +965,11 @@ export class TransactionalStore {
 
   async operationReceipt(operationID: string) {
     this.check()
-    const [receipt] = await this.driver.query(
-      "SELECT request_hash, result FROM storage_receipts WHERE namespace = ? AND operation_id = ?",
-      [this.options.namespace, operationID],
+    const [receipt] = await measureStorageOperation("operationReceipt", "storage_receipts", () =>
+      this.driver.query("SELECT request_hash, result FROM storage_receipts WHERE namespace = ? AND operation_id = ?", [
+        this.options.namespace,
+        operationID,
+      ]),
     )
     return receipt
       ? { requestHash: String(receipt.request_hash), result: JSON.parse(String(receipt.result)) as unknown }
@@ -949,17 +978,19 @@ export class TransactionalStore {
 
   async pendingEventCount(): Promise<number> {
     this.check()
-    const [row] = await this.driver.query("SELECT COUNT(*) AS count FROM storage_events WHERE namespace = ?", [
-      this.options.namespace,
-    ])
+    const [row] = await measureStorageOperation("pendingEventCount", "storage_events", () =>
+      this.driver.query("SELECT COUNT(*) AS count FROM storage_events WHERE namespace = ?", [this.options.namespace]),
+    )
     return Number(row.count)
   }
 
   async pendingEvents(limit = 100): Promise<StoredEvent[]> {
     this.check()
-    const rows = await this.driver.query(
-      "SELECT id, scope_id, type, payload FROM storage_events WHERE namespace = ? ORDER BY position LIMIT ?",
-      [this.options.namespace, limit],
+    const rows = await measureStorageOperation("pendingEvents", "storage_events", () =>
+      this.driver.query(
+        "SELECT id, scope_id, type, payload FROM storage_events WHERE namespace = ? ORDER BY position LIMIT ?",
+        [this.options.namespace, limit],
+      ),
     )
     return rows.map((row) => ({
       id: String(row.id),

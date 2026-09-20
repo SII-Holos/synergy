@@ -123,7 +123,7 @@ describe("worktree lock provenance", () => {
     })
   })
 
-  test("reclaims a stale Synergy lock and refuses a foreign one", async () => {
+  test("only releases a Synergy lock acquired by this process", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -136,7 +136,11 @@ describe("worktree lock provenance", () => {
         await $`git worktree lock --reason synergy:v1:session=ses_stale00000000000 ${created.path}`
           .quiet()
           .cwd(scope.worktree)
+        expect(await Worktree.releaseLockForRemoval(created.path)).toBe(false)
+        await $`git worktree unlock ${created.path}`.quiet().cwd(scope.worktree)
+        await Worktree.lock(created.path)
         expect(await Worktree.releaseLockForRemoval(created.path)).toBe(true)
+        await Worktree.unlock(created.path)
         expect((await porcelain(scope.worktree)).get(key)).toBeUndefined()
 
         await $`git worktree lock ${created.path}`.quiet().cwd(scope.worktree)

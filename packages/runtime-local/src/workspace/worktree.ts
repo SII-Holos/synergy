@@ -233,8 +233,9 @@ export namespace Worktree {
   interface LockState {
     count: number
     synergyAcquired: boolean
-    /** A lock already on disk that this repository provably wrote, so it stays reclaimable. */
+    /** A Synergy marker is provenance, not proof this process owns the lock. */
     markerOwner: boolean
+    reason?: string
   }
 
   interface UseState {
@@ -318,7 +319,9 @@ export namespace Worktree {
     // A removal issued from the caller's own turn must not be blocked by the
     // use token that turn itself holds, while every other user still must.
     // Anonymous uses carry no session, so they always remain blockers.
-    const others = Array.from(current.state.active.values()).filter((value) => value !== excludeSessionID)
+    const others = Array.from(current.state.active.values()).filter(
+      (value) => excludeSessionID === undefined || value !== excludeSessionID,
+    )
     if (others.length > 0) {
       const sessionID = others.find((value) => value !== undefined)
       if (sessionID) {
@@ -1027,6 +1030,8 @@ export namespace Worktree {
    * is the one step here that can lose work.
    */
   async function branchLanded(repoRoot: string, branch: string, target: string): Promise<boolean> {
+    const ancestor = await $`git merge-base --is-ancestor ${branch} ${target}`.quiet().nothrow().cwd(repoRoot)
+    if (ancestor.exitCode === 0) return true
     const identical = await $`git diff --quiet ${branch} ${target}`.quiet().nothrow().cwd(repoRoot)
     if (identical.exitCode === 0) return true
 
@@ -1047,6 +1052,8 @@ export namespace Worktree {
       }
     }
 
+    const merges = await $`git rev-list --merges ${target}..${branch}`.quiet().nothrow().cwd(repoRoot)
+    if (merges.exitCode !== 0 || outputText(merges.stdout)) return false
     const cherry = await $`git cherry -v ${target} ${branch}`.quiet().nothrow().cwd(repoRoot).text()
     const lines = cherry
       .split("\n")
@@ -1129,10 +1136,8 @@ export namespace Worktree {
     state.count += 1
     if (state.count > 1) return { acquired: false, existing: false, markerOwner: state.markerOwner }
     const { repoRoot } = ensureGitScope()
-    const result = await $`git worktree lock --reason ${lockMarker(sessionID)} ${resolved}`
-      .quiet()
-      .nothrow()
-      .cwd(repoRoot)
+    const reason = lockMarker(sessionID)
+    const result = await $`git worktree lock --reason ${reason} ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) {
       // "Already locked" is decided from porcelain, never from stderr: git
       // localizes that message, so a text match only holds under an English
@@ -1149,6 +1154,7 @@ export namespace Worktree {
     }
     state.synergyAcquired = true
     state.markerOwner = true
+    state.reason = reason
     return { acquired: true, existing: false, markerOwner: true }
   }
 
@@ -1163,8 +1169,9 @@ export namespace Worktree {
     activeLocks.delete(resolved)
     // A lock this repository did not write is never cleared, so a user's own
     // `git worktree lock` survives a session that merely ran in the worktree.
-    if (!state.synergyAcquired && !state.markerOwner) return
+    if (!state.synergyAcquired) return
     const { repoRoot } = ensureGitScope()
+    if ((await readLockReason(resolved, repoRoot)) !== state.reason) return
     const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) {
       throw new LockFailedError({ message: errorText(result) || `Failed to unlock worktree: ${resolved}` })
@@ -1181,14 +1188,14 @@ export namespace Worktree {
     const { repoRoot } = ensureGitScope()
     const existingReason = await readLockReason(resolved, repoRoot)
     if (existingReason === undefined) return true
-    if (!ownsLockMarker(existingReason)) return false
+    const state = activeLocks.get(resolved)
+    if (!ownsLockMarker(existingReason) || !state?.synergyAcquired || state.reason !== existingReason) return false
     const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) return false
     // Both flags must clear. The turn's own finally still calls unlock(), and
     // leaving the marker recorded would make it run `git worktree unlock` on a
     // path that is no longer a working tree, throwing out of that finally and
     // failing an otherwise successful turn.
-    const state = activeLocks.get(resolved)
     if (state) {
       state.synergyAcquired = false
       state.markerOwner = false
@@ -1221,17 +1228,19 @@ export namespace Worktree {
     lock: "none" | "synergy" | "foreign"
     dirty?: boolean
     running: boolean
-    localOnlyCommits: number
+    localOnlyCommits?: number
   }
 
   export type SweepKeepReason =
     | "external"
     | "main"
     | "foreign_lock"
+    | "synergy_lock"
     | "running"
     | "dirty"
     | "unknown_dirty"
     | "local_only_commits"
+    | "unknown_commits"
     | "removal_failed"
 
   export type SweepDecision = { eligible: true } | { eligible: false; reason: SweepKeepReason }
@@ -1247,9 +1256,11 @@ export namespace Worktree {
     if (!info.managed) return { eligible: false, reason: "external" }
     if (info.isMain) return { eligible: false, reason: "main" }
     if (evidence.lock === "foreign") return { eligible: false, reason: "foreign_lock" }
+    if (evidence.lock === "synergy") return { eligible: false, reason: "synergy_lock" }
     if (evidence.running) return { eligible: false, reason: "running" }
     if (evidence.dirty === true) return { eligible: false, reason: "dirty" }
     if (evidence.dirty === undefined) return { eligible: false, reason: "unknown_dirty" }
+    if (evidence.localOnlyCommits === undefined) return { eligible: false, reason: "unknown_commits" }
     if (evidence.localOnlyCommits > 0) return { eligible: false, reason: "local_only_commits" }
     return { eligible: true }
   }
@@ -1264,13 +1275,12 @@ export namespace Worktree {
 
   /** Local commits with no remote-tracking counterpart, i.e. work only this checkout holds. */
   export async function localOnlyCommitCount(directory: string): Promise<number> {
-    // With no remote-tracking refs this count degenerates to the whole local
-    // history, so confirm a remote exists before trusting it.
-    const remotes = await $`git for-each-ref --count=1 refs/remotes/`.quiet().nothrow().cwd(directory).text()
-    if (!remotes.trim()) return 0
     const result = await $`git rev-list --count HEAD --not --remotes`.quiet().nothrow().cwd(directory)
     const count = Number.parseInt(outputText(result.stdout), 10)
-    return result.exitCode === 0 && Number.isFinite(count) && count > 0 ? count : 0
+    if (result.exitCode !== 0 || !Number.isSafeInteger(count) || count < 0) {
+      throw new CreateFailedError({ message: "Cannot verify whether the worktree has local-only commits." })
+    }
+    return count
   }
 
   function lockOwner(locked: string | undefined): SweepEvidence["lock"] {
@@ -1295,59 +1305,88 @@ export namespace Worktree {
     const { items } = await inventory()
     const report: SweepReport = { scanned: items.length, maxManaged, removed: [], skipped: [], reconciled: [] }
 
-    // Stale registrations first: nothing is left to lose, and they would
-    // otherwise occupy cap slots that no usable worktree can free. A record is
-    // reconcilable as soon as git stops listing it (`stale`) or reports its
-    // gitdir gone (`prunable`); the directory check makes the filesystem agree
-    // before `-f -f` is used, so a path is only ever removed with nothing left
-    // in it. Both cases require a Synergy-managed record.
+    async function running(info: Info) {
+      for (const sessionID of info.bindings ?? []) {
+        if (await isSessionRunning(sessionID)) return true
+      }
+      return false
+    }
+
+    async function probe(info: Info) {
+      const lock = lockOwner(info.locked)
+      const busy = await running(info)
+      const dirty = lock !== "none" || busy ? undefined : await isDirty(info.path).catch(() => undefined)
+      const localOnlyCommits =
+        dirty === false ? await localOnlyCommitCount(info.path).catch(() => undefined) : undefined
+      return decide(info, { lock, dirty, running: busy, localOnlyCommits })
+    }
+
     const reconciled = new Set<string>()
     for (const item of items) {
-      if (!item.managed || item.isMain) continue
-      if (!item.stale && item.prunable !== true) continue
-      if (await exists(item.path)) continue
-      await $`git worktree remove -f -f ${item.path}`.quiet().nothrow().cwd(repoRoot)
-      await removeRegistry(item.id, repoRoot)
-      reconciled.add(item.id)
-      report.reconciled.push(item.id)
-      log.info("sweep reconciled stale worktree", { id: item.id, name: item.name, prunable: item.prunable === true })
+      if (!item.managed || item.isMain || (!item.stale && item.prunable !== true)) continue
+      let finishRemoval: (() => void) | undefined
+      try {
+        finishRemoval = beginRemoval(item)
+        const current = await find(item.id)
+        const lock = lockOwner(current.locked)
+        if (lock !== "none" || (await running(current))) {
+          report.skipped.push({
+            id: item.id,
+            name: item.name,
+            reason: lock === "foreign" ? "foreign_lock" : lock === "synergy" ? "synergy_lock" : "running",
+          })
+          continue
+        }
+        const missing = await fs.lstat(current.path).then(
+          () => false,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return true
+            throw error
+          },
+        )
+        if (!missing) continue
+        await leaveBoundSessions(current)
+        if (!current.stale) {
+          const removed = await $`git worktree remove --force ${current.path}`.quiet().nothrow().cwd(repoRoot)
+          if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
+        }
+        await removeRegistry(current.id, repoRoot)
+        reconciled.add(current.id)
+        report.reconciled.push(current.id)
+      } catch (error) {
+        log.warn("sweep reconciliation failed", { id: item.id, error })
+        report.skipped.push({ id: item.id, name: item.name, reason: "removal_failed" })
+      } finally {
+        finishRemoval?.()
+      }
     }
 
     const managed = items.filter((item) => !reconciled.has(item.id) && !item.stale && item.managed && !item.isMain)
     const oldestFirst = [...managed].sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0))
-    const eligible: Info[] = []
-
-    for (const item of oldestFirst) {
-      const lock = lockOwner(item.locked)
-      let running = false
-      for (const sessionID of item.bindings ?? []) {
-        if (await isSessionRunning(sessionID)) {
-          running = true
-          break
-        }
-      }
-      // A foreign lock already decides this item, so leave the dirty probe
-      // unanswered rather than asserting a fact that was never measured.
-      const dirty = lock === "foreign" ? undefined : await isDirty(item.path).catch(() => undefined)
-      const localOnlyCommits = dirty === false ? await localOnlyCommitCount(item.path) : 0
-      const decision = decide(item, { lock, dirty, running, localOnlyCommits })
-      if (decision.eligible) eligible.push(item)
-      else report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
-    }
-
     const excess = Math.max(managed.length - maxManaged, 0)
-    for (const item of eligible.slice(0, excess)) {
+    for (const item of oldestFirst) {
+      let finishRemoval: (() => void) | undefined
       try {
-        await removeWorktree(item, { force: false, reason: "managed cap" })
-        report.removed.push(item.id)
+        finishRemoval = beginRemoval(item)
+        const current = await find(item.id)
+        const decision = await probe(current)
+        if (!decision.eligible) {
+          report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
+          continue
+        }
+        if (report.removed.length >= excess) continue
+        await leaveBoundSessions(current)
+        await removeWorktree(current, { force: false, reason: "managed cap" })
+        report.removed.push(current.id)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         log.warn("sweep failed to remove worktree", { id: item.id, name: item.name, error: message })
         report.skipped.push({ id: item.id, name: item.name, reason: "removal_failed" })
+      } finally {
+        finishRemoval?.()
       }
     }
 
-    await $`git worktree prune --expire=now`.quiet().nothrow().cwd(repoRoot)
     log.info("sweep complete", {
       scanned: report.scanned,
       removed: report.removed.length,

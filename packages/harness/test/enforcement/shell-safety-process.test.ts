@@ -38,6 +38,6 @@ describe("ShellSafety process liveness", () => {
     expect(result.timedOut).toBe(false)
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe("")
-    expect(result.stdout).toBe("shell_read")
+    expect(result.stdout).toBe("shell")
   })
 })

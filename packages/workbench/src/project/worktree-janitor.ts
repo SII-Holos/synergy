@@ -14,7 +14,7 @@ interface Schedule {
 }
 
 const schedules = new Map<string, Schedule>()
-const sweeping = new Set<string>()
+const sweeping = new Map<string, Promise<void>>()
 const rerunRequested = new Set<string>()
 
 /**
@@ -37,7 +37,7 @@ export async function startWorktreeJanitor(scope: Scope.Project) {
     return
   }
   const intervalMs = (config?.sweepIntervalHours ?? DEFAULT_SWEEP_INTERVAL_HOURS) * 60 * 60 * 1000
-  const trigger = () => void sweep(scope)
+  const trigger = () => requestScopeSweep(scope)
   const first = setTimeout(trigger, 0)
   first.unref()
   const interval = setInterval(trigger, intervalMs)
@@ -46,14 +46,15 @@ export async function startWorktreeJanitor(scope: Scope.Project) {
   log.info("worktree janitor scheduled", { scopeID: scope.id, intervalMs })
 }
 
-export function stopWorktreeJanitor(scopeID: string) {
+export async function stopWorktreeJanitor(scopeID: string) {
   const schedule = schedules.get(scopeID)
-  if (!schedule) return
-  clearTimeout(schedule.first)
-  clearInterval(schedule.interval)
+  if (schedule) {
+    clearTimeout(schedule.first)
+    clearInterval(schedule.interval)
+  }
   schedules.delete(scopeID)
-  sweeping.delete(scopeID)
   rerunRequested.delete(scopeID)
+  await sweeping.get(scopeID)
 }
 
 /**
@@ -78,14 +79,24 @@ export function requestScopeSweep(scope: Scope.Project) {
   void sweep(scope)
 }
 
-async function sweep(scope: Scope.Project) {
-  if (sweeping.has(scope.id)) return
-  sweeping.add(scope.id)
+function sweep(scope: Scope.Project): Promise<void> {
+  const current = sweeping.get(scope.id)
+  if (current) return current
+  if (!schedules.has(scope.id)) return Promise.resolve()
+  const task = runSweep(scope).finally(() => {
+    if (sweeping.get(scope.id) === task) sweeping.delete(scope.id)
+    if (rerunRequested.delete(scope.id) && schedules.has(scope.id)) void sweep(scope)
+  })
+  sweeping.set(scope.id, task)
+  return task
+}
+
+async function runSweep(scope: Scope.Project) {
   try {
     // Resolved per sweep so a config reload takes effect without a restart, and
     // so a read failure falls back to the cap default rather than skipping.
     const config = await readWorktreeConfig().catch(() => undefined)
-    if (config?.janitor === false) return
+    if (config?.janitor === false || !schedules.has(scope.id)) return
     const report = await ScopeContext.provide({ scope, fn: () => Worktree.sweep({ maxManaged: config?.maxManaged }) })
     // Reasons are reported rather than swallowed: a cap that cannot converge is
     // the signal that worktrees are blocked on unpushed work, not a silent
@@ -101,8 +112,5 @@ async function sweep(scope: Scope.Project) {
     })
   } catch (error) {
     log.warn("worktree sweep failed", { scopeID: scope.id, error })
-  } finally {
-    sweeping.delete(scope.id)
-    if (rerunRequested.delete(scope.id)) void sweep(scope)
   }
 }
