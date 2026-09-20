@@ -13,6 +13,7 @@ import { RecordCodec } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
+import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/runtime-startup"
 import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
@@ -741,7 +742,7 @@ export class TransactionalStore {
                 // that deadline is rolled back, and because the index is then still
                 // missing the next open repeats the same doomed build. `CREATE TABLE`
                 // stays on the ordinary deadline: it is a no-op once the table exists.
-                maintenance: statement.startsWith("CREATE INDEX"),
+                maintenance: statement.startsWith("CREATE INDEX") ? "create-index" : undefined,
               })
           const [existing] = await connection.query(
             "SELECT version, owner, state FROM storage_namespaces WHERE namespace = ?",
@@ -921,12 +922,15 @@ export class TransactionalStore {
    * owns the statement text, so any interpolated identifier is its
    * responsibility to validate.
    */
-  async maintainDdl(statement: string): Promise<void> {
+  async maintainDdl(
+    statement: string,
+    operation: Extract<StorageMaintenanceOperation, "create-index" | "drop-index">,
+  ): Promise<void> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
-        await connection.query(statement, [], { maintenance: true })
+        await connection.query(statement, [], { maintenance: operation })
       }),
     )
   }
@@ -940,7 +944,7 @@ export class TransactionalStore {
   async dropIndexIfExists(index: string): Promise<void> {
     this.check()
     if (!/^[a-z_][a-z0-9_]*$/.test(index)) throw new StorageIntegrityError("Invalid storage index name")
-    await this.maintainDdl(`DROP INDEX IF EXISTS ${index}`)
+    await this.maintainDdl(`DROP INDEX IF EXISTS ${index}`, "drop-index")
   }
 
   /**
@@ -1087,7 +1091,7 @@ export class TransactionalStore {
     )
   }
 
-  async verify(progress?: (current: number, timeoutMs?: number) => void) {
+  async verify(progress?: (current: number) => void) {
     this.check()
     progress?.(0)
     let work = 0
@@ -1097,8 +1101,7 @@ export class TransactionalStore {
           async (connection) => {
             if (this.driver.backend === "sqlite") {
               const rows = await connection.query("PRAGMA integrity_check", [], {
-                maintenance: true,
-                onMaintenanceBudget: (timeoutMs) => recordProgress({ current: work, timeoutMs }),
+                maintenance: "integrity-check",
               })
               if (rows.length !== 1 || rows[0].integrity_check !== "ok")
                 throw new StorageIntegrityError("SQLite integrity verification failed")
@@ -1142,7 +1145,7 @@ export class TransactionalStore {
                   }
                 }
                 work += batch.length
-                recordProgress({ current: work })
+                recordProgress(work)
                 batch = []
               }
               for await (const record of tx.records<Record<string, unknown>>()) {
@@ -1150,7 +1153,7 @@ export class TransactionalStore {
                 if (batch.length === 256) await verifyBatch()
               }
               if (batch.length) await verifyBatch()
-              recordProgress({ current: work })
+              recordProgress(work)
               return { backend: this.driver.backend, namespace: this.options.namespace, records, kinds, issues }
             } finally {
               tx.finish()
@@ -1158,9 +1161,7 @@ export class TransactionalStore {
           },
           { readOnly: true },
         ),
-      progress
-        ? (value: { current: number; timeoutMs?: number }) => progress(value.current, value.timeoutMs)
-        : undefined,
+      progress,
     )
   }
 

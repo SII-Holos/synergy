@@ -6,6 +6,26 @@ import {
   runtimeStartupLine,
 } from "../src/runtime-startup"
 
+test("maintenance records carry bounded lifecycle facts without arbitrary payloads", () => {
+  const begin = { phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 690_000 } as const
+  for (const value of [
+    begin,
+    { phase: "maintenance", id: 1, state: "stage", stage: "rewrite" },
+    { phase: "maintenance", id: 1, state: "completed", elapsedMs: 400_000 },
+    { phase: "maintenance", id: 1, state: "failed", elapsedMs: 400_000 },
+  ] as const)
+    expect(RuntimeStartupProgress.parse(value)).toEqual(value)
+  for (const value of [
+    { ...begin, id: 0 },
+    { ...begin, timeoutMs: Infinity },
+    { ...begin, operation: "raw SQL" },
+    { ...begin, path: "private" },
+    { ...begin, timeoutMs: 0 },
+    { phase: "maintenance", id: 1, state: "completed", elapsedMs: -1 },
+  ])
+    expect(RuntimeStartupProgress.safeParse(value).success).toBe(false)
+})
+
 test("startup records round trip without accepting unbounded or private fields", () => {
   const progress = { phase: "migration", step: 1, current: 358, total: 8494 } as const
   const line = runtimeStartupLine(progress)

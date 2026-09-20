@@ -10,6 +10,7 @@ import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
 import { loadServerPort, saveServerPort } from "./server-port-state.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
+import { ManagedServerOutput } from "./server-output.js"
 import { DesktopServerStartup } from "./server-startup.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
 
@@ -49,7 +50,6 @@ const HEALTH_POLL_INTERVAL_MS = 250
 const WINDOWS_TASKKILL_TIMEOUT_MS = 2_000
 const MANAGED_SERVER_PORT_SCAN_LENGTH = 4
 const DEFAULT_MANAGED_SERVER_PORT = 4096
-const MANAGED_SERVER_STDERR_LIMIT = 8_192
 const MANAGED_SERVER_STDERR_DRAIN_MS = 1_000
 const SYNERGY_DESKTOP_SERVER_PORT_ENV = "SYNERGY_DESKTOP_SERVER_PORT"
 
@@ -207,12 +207,9 @@ export class DesktopServerManager {
     })
     this.child = child
     const startup = new DesktopServerStartup({ onStatus: this.options.onStartupStatus })
-    const onOutput = (chunk: Buffer) => startup.receive(chunk.toString("utf8"))
-    let stderr = ""
-    const onStderr = (chunk: Buffer) => {
-      if (stderr.length >= MANAGED_SERVER_STDERR_LIMIT) return
-      stderr += chunk.toString("utf8").slice(0, MANAGED_SERVER_STDERR_LIMIT - stderr.length)
-    }
+    const output = new ManagedServerOutput((text) => startup.receive(text))
+    const onOutput = (chunk: Buffer) => output.receive("stdout", chunk)
+    const onStderr = (chunk: Buffer) => output.receive("stderr", chunk)
     child.stdout?.on("data", onOutput)
     child.stderr?.on("data", onStderr)
     child.stdout?.pipe(logStream, { end: false })
@@ -230,14 +227,13 @@ export class DesktopServerManager {
       return { ok: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      const logTail = await readLogTail(logFile)
-      const detail = logTail ? `${message}\n\nServer log tail:\n${logTail}` : message
-      // `waitForHealth` can reject on the child's exit event before piped stderr is delivered.
-      if (child.exitCode !== null || child.signalCode !== null) {
-        await waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS)
-      }
-      const portConflict = isPortBindFailure(stderr)
       await this.stop()
+      await Promise.all([
+        waitForStreamEnd(child.stdout, MANAGED_SERVER_STDERR_DRAIN_MS),
+        waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS),
+      ])
+      const portConflict = output.portConflict
+      const detail = output.details ? `${message}\n\nCurrent launch output:\n${output.details}` : message
       return { ok: false, portConflict, detail, error }
     } finally {
       child.stdout?.off("data", onOutput)
@@ -395,12 +391,9 @@ function isAssignablePort(port: number | undefined): port is number {
   return port !== undefined && Number.isInteger(port) && port >= 1024 && port <= 65_535
 }
 
-function isPortBindFailure(stderr: string): boolean {
-  return stderr.includes("Failed to start server on port")
-}
-
 function waitForStreamEnd(stream: NodeJS.ReadableStream | null, timeoutMs: number): Promise<void> {
-  if (!stream) return Promise.resolve()
+  if (!stream || ("readableEnded" in stream && stream.readableEnded) || ("destroyed" in stream && stream.destroyed))
+    return Promise.resolve()
   return new Promise((resolve) => {
     let settled = false
     const finish = () => {
@@ -427,8 +420,8 @@ export async function waitForHealth(
   pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
   startup?: DesktopServerStartup,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  const remaining = () => startup?.remainingMs() ?? deadline - Date.now()
+  const deadline = performance.now() + timeoutMs
+  const remaining = () => startup?.remainingMs() ?? deadline - performance.now()
   let lastError: unknown
   const childFailure = watchChildFailure(child)
   try {
@@ -443,7 +436,7 @@ export async function waitForHealth(
           () => lastError,
           () => requestController.abort(),
         )
-        if (response.ok) return
+        if (response.ok && remaining() > 0) return
         lastError = new Error(`health responded ${response.status}`)
       } catch (error) {
         if (error instanceof ChildProcessHealthError) throw error
@@ -730,21 +723,4 @@ function packagedServerBinary(resourcesPath: string): string | null {
 export function sourceProductRoot(directory = dirname): string | null {
   const candidate = path.resolve(directory, "../../../packages/product-runtime")
   return fs.existsSync(path.join(candidate, "src/index.ts")) ? candidate : null
-}
-
-async function readLogTail(logFile: string | null): Promise<string | null> {
-  if (!logFile) return null
-  try {
-    const stat = await fsp.stat(logFile)
-    if (stat.size === 0) return "(empty)"
-    const fd = await fsp.open(logFile, "r")
-    const maxBytes = 8192
-    const start = Math.max(0, stat.size - maxBytes)
-    const buf = Buffer.alloc(maxBytes)
-    const { bytesRead } = await fd.read(buf, 0, maxBytes, start)
-    await fd.close()
-    return buf.subarray(0, bytesRead).toString("utf-8")
-  } catch {
-    return null
-  }
 }

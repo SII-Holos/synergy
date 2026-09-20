@@ -5,6 +5,8 @@ import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
 import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
+import { observeStorageMaintenance } from "../storage/maintenance-progress"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -64,7 +66,7 @@ export interface RuntimeServices {
 export namespace RuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
-  export async function open(options: {
+  export interface OpenOptions {
     experiment?: Experiment.File
     storage?: Storage.Handle
     mode: "server" | "oneshot"
@@ -72,9 +74,28 @@ export namespace RuntimeHandle {
     services?: RuntimeServices
     reporter?: MigrationReporter
     storageReporter?: (progress: ImportProgress) => void
+    maintenanceReporter?: (event: StorageMaintenanceEvent) => void
     migrationOutput?: RunOptions["output"]
     recoveryReporter?: { progress(current: number): void; completed(): void }
-  }) {
+  }
+
+  export async function open(options: OpenOptions) {
+    let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
+    try {
+      return await observeStorageMaintenance(
+        async () => (runtime = await openRuntime(options)),
+        (event) => {
+          log.info("storage maintenance", event)
+          options.maintenanceReporter?.(event)
+        },
+      )
+    } catch (error) {
+      await runtime?.close().catch(() => {})
+      throw error
+    }
+  }
+
+  async function openRuntime(options: OpenOptions) {
     const services = options.services ?? {}
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
     let storage: StorageBootstrap.Prepared | undefined
@@ -188,12 +209,8 @@ export namespace RuntimeHandle {
         options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
       )
       if (storage && storage.manifest.phase !== "active")
-        await StorageRecovery.validate((current, timeoutMs) =>
-          options.storageReporter?.(
-            timeoutMs === undefined
-              ? { stage: "validate", current, total: 0, bytes: 0 }
-              : { stage: "validate-engine", current: 0, total: 0, bytes: 0, timeoutMs },
-          ),
+        await StorageRecovery.validate((current) =>
+          options.storageReporter?.({ stage: "validate", current, total: 0, bytes: 0 }),
         )
       await storage?.activate()
       await StorageRecovery.recoverOwners()
