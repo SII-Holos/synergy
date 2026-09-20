@@ -71,6 +71,26 @@ test("synergy-flash defers orchestration tools via deferredTools", async () => {
   })
 })
 
+test("config prompt override survives the native prompt builders", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        "synergy-flash": {
+          prompt: "CUSTOM_CORE_PROMPT_MARKER — you are a terminal-only coding agent.",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const flash = await Agent.get("synergy-flash")
+      expect(flash?.prompt?.startsWith("CUSTOM_CORE_PROMPT_MARKER")).toBe(true)
+      expect(flash?.prompt?.includes("You are synergy-flash")).toBe(false)
+    },
+  })
+})
+
 test("legacy subagents are delegatable by synergy-flash", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({

@@ -234,6 +234,8 @@ export namespace Agent {
       item.source ??= "builtin"
     }
 
+    const configPromptOverrides = new Set<string>()
+
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
       if (value.disable) {
         delete result[key]
@@ -259,6 +261,7 @@ export namespace Agent {
         item.modelSource = "explicit"
       }
       item.prompt = value.prompt ?? item.prompt
+      if (value.prompt) configPromptOverrides.add(key)
       item.description = value.description ?? item.description
       item.temperature = value.temperature ?? item.temperature
       item.topP = value.top_p ?? item.topP
@@ -390,11 +393,19 @@ export namespace Agent {
       visibleTo: agent.visibleTo,
       delegationGroups: agent.delegationGroups,
     }))
-    if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
-    if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
-    if (result["synergy-flash"]) result["synergy-flash"].prompt = buildSynergyFlashPrompt()
-    if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
-    if (result["lightloop-reviewer"]) {
+    // Config prompt overrides win over the native builders: the merge loop
+    // records them explicitly, because silently replacing a user-provided
+    // prompt makes agent prompt customization impossible for built-ins.
+    if (result.synergy && !configPromptOverrides.has("synergy")) result.synergy.prompt = buildSynergyPrompt(agentInfos)
+    if (result["synergy-max"] && !configPromptOverrides.has("synergy-max")) {
+      result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
+    }
+    if (result["synergy-flash"] && !configPromptOverrides.has("synergy-flash")) {
+      result["synergy-flash"].prompt = buildSynergyFlashPrompt()
+    }
+    if (result.supervisor && !configPromptOverrides.has("supervisor"))
+      result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
+    if (result["lightloop-reviewer"] && !configPromptOverrides.has("lightloop-reviewer")) {
       result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
     }
 
