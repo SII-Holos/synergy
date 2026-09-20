@@ -3,28 +3,15 @@ import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
-import os from "os"
-import { Filesystem } from "../util/filesystem"
-import { assertIsolatedTestHome } from "./test-home-guard"
-
-const app = "synergy"
+import { RuntimeContext } from "../lifecycle/context"
 
 function homeDir() {
-  return Filesystem.sanitizePath(process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME || os.homedir())
+  return RuntimeContext.current().host.home
 }
 
 function root() {
-  if (process.argv.includes("__storage-maintenance-runner") && process.env.SYNERGY_MAINTENANCE_ROOT)
-    return path.resolve(process.env.SYNERGY_MAINTENANCE_ROOT)
-  return path.join(homeDir(), "." + app)
+  return RuntimeContext.current().host.root
 }
-
-// Test processes must never resolve the Synergy home into a real instance:
-// Bun does not propagate test/preload.ts environment into --parallel workers,
-// so an unguarded run writes fixtures into ~/.synergy/data. The guard requires
-// the SYNERGY_TEST_HOME isolation marker and blocks real-home roots; it is pure
-// (no filesystem side effects) and throws before any directory creation below.
-assertIsolatedTestHome(root(), Bun.main, process.argv, process.env)
 
 export namespace Global {
   export const Path = {

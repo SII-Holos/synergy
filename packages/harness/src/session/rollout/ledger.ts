@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import { RolloutProvenance } from "./provenance"
 import { RolloutJournal } from "./journal"
 import { RolloutAccounting } from "./accounting"
@@ -13,16 +14,20 @@ export namespace RolloutLedger {
   type Owner = RolloutSchema.Owner
   type Terminal = Exclude<RolloutSchema.CallRecord["status"], "running">
   const Segment = z.string().regex(/^[a-zA-Z0-9_-]+$/)
-  const recordingFailures = new Map<string, InstanceType<typeof RolloutRecordingError>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    recordingFailures: new Map<string, InstanceType<typeof RolloutRecordingError>>(),
+  }))
 
   export async function failRecording(owner: Owner, runID: string, error: InstanceType<typeof RolloutRecordingError>) {
+    const instanceState = runtimeState()
+
     const key = lockKey(owner, runID)
-    recordingFailures.set(key, error)
+    instanceState.recordingFailures.set(key, error)
     using lock = await Lock.write(key)
     try {
       const current = await getRun(owner, runID)
       await RolloutJournal.write(owner, [...root(owner, runID), "info"], { ...current, recording: "failed" })
-      recordingFailures.delete(key)
+      instanceState.recordingFailures.delete(key)
     } catch {
       // Keep admission closed in memory when even the failure marker cannot be written.
     }
@@ -256,7 +261,9 @@ export namespace RolloutLedger {
   }
 
   async function requireRunning(owner: Owner, runID: string) {
-    const failure = recordingFailures.get(lockKey(owner, runID))
+    const instanceState = runtimeState()
+
+    const failure = instanceState.recordingFailures.get(lockKey(owner, runID))
     if (failure) throw failure
     let run: RolloutSchema.RunRecord
     try {
@@ -323,6 +330,8 @@ export namespace RolloutLedger {
     tool: string
     args: z.infer<ReturnType<typeof z.json>>
   }) {
+    const instanceState = runtimeState()
+
     using lock = await Lock.write(lockKey(input.owner, input.runID))
     await requireRunning(input.owner, input.runID)
     const artifact = await RolloutArtifact.writeText(input.owner, JSON.stringify(input.args), "application/json")
@@ -339,7 +348,7 @@ export namespace RolloutLedger {
       input: artifact,
     })
     await writeTool(tool)
-    const failure = recordingFailures.get(lockKey(input.owner, input.runID))
+    const failure = instanceState.recordingFailures.get(lockKey(input.owner, input.runID))
     if (failure) throw failure
     return tool
   }
@@ -360,6 +369,8 @@ export namespace RolloutLedger {
     model: z.infer<typeof RolloutSchema.Model>
     request: z.infer<ReturnType<typeof z.json>>
   }) {
+    const instanceState = runtimeState()
+
     using lock = await Lock.write(lockKey(input.owner, input.runID))
     await requireRunning(input.owner, input.runID)
     const request = await RolloutArtifact.writeText(input.owner, JSON.stringify(input.request), "application/json")
@@ -381,7 +392,7 @@ export namespace RolloutLedger {
       transportCaptured: false,
     })
     await record(() => RolloutJournal.write(input.owner, [...root(input.owner, input.runID), "calls", call.id], call))
-    const interrupted = recordingFailures.get(lockKey(input.owner, input.runID))
+    const interrupted = instanceState.recordingFailures.get(lockKey(input.owner, input.runID))
     if (interrupted) throw interrupted
     return call
   }
@@ -431,9 +442,11 @@ export namespace RolloutLedger {
   }
 
   export async function finishRun(owner: Owner, runID: string, status: Terminal) {
+    const instanceState = runtimeState()
+
     using lock = await Lock.write(lockKey(owner, runID))
     const current = await getRun(owner, runID)
-    const recordingFailed = current.recording === "failed" || recordingFailures.has(lockKey(owner, runID))
+    const recordingFailed = current.recording === "failed" || instanceState.recordingFailures.has(lockKey(owner, runID))
     if (recordingFailed && status === "completed") {
       throw new RolloutRecordingError({ message: "Cannot complete a rollout whose recording failed" })
     }
@@ -463,7 +476,7 @@ export namespace RolloutLedger {
           : "partial",
     }
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], completed))
-    recordingFailures.delete(lockKey(owner, runID))
+    instanceState.recordingFailures.delete(lockKey(owner, runID))
     return completed
   }
 }

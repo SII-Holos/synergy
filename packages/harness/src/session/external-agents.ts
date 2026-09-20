@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9c source inversion: the L1 session invoke loop drives external-agent
  * adapters (Codex, Claude Code, ...) through this registry instead of
@@ -38,21 +39,34 @@ export namespace SessionExternalAgents {
     process(input: ProcessInput): Promise<unknown>
   }
 
-  let provider: Provider | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    provider: undefined as Provider | undefined,
+  }))
 
   export function register(value: Provider): void {
-    provider = value
+    const instanceState = runtimeState()
+
+    if (instanceState.provider === value) return
+    RuntimeContext.assertCompositionOpen("session/external-agents")
+    if (instanceState.provider && value) throw new Error("session/external-agents is already registered")
+    instanceState.provider = value
   }
 
   export function get(): Provider | undefined {
-    return provider
+    const instanceState = runtimeState()
+
+    return instanceState.provider
   }
 
   export function getAdapter(name: string, sessionID?: string): Adapter | undefined {
-    return provider?.getAdapter(name, sessionID)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.getAdapter(name, sessionID)
   }
 
   export function process(input: ProcessInput): Promise<unknown> | undefined {
-    return provider?.process(input)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.process(input)
   }
 }

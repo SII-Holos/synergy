@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as LibraryConfigSchema from "@ericsanchezok/synergy-library/config-schema"
 import { randomUUID } from "crypto"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -47,14 +48,17 @@ export namespace ExperienceReencode {
     updatedAt: number
   }
 
-  const controllers = new Map<string, AbortController>()
-  const running = new Map<string, Promise<void>>()
-  const cancelling = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    controllers: new Map<string, AbortController>(),
+    running: new Map<string, Promise<void>>(),
+    cancelling: new Set<string>(),
+  }))
+
   const log = Log.create({ service: "library.reencode" })
   const DEFAULT_PRESSURE_POLL_MS = 30_000
 
   function pressurePollMs() {
-    const configured = Number(process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS)
+    const configured = Number(RuntimeContext.current().host.env.SYNERGY_REENCODE_PRESSURE_POLL_MS)
     return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PRESSURE_POLL_MS
   }
 
@@ -146,25 +150,31 @@ export namespace ExperienceReencode {
   }
 
   export async function cancel(id: string): Promise<JobSummary> {
+    const instanceState = runtimeState()
+
     const row = LibraryDB.ReencodeJob.get(id)
     if (!row) throw new Error(`Experience reencode job not found: ${id}`)
     if (row.status !== "running") throw new Error(`Experience reencode job is not running: ${id}`)
-    cancelling.add(id)
-    controllers.get(id)?.abort()
+    instanceState.cancelling.add(id)
+    instanceState.controllers.get(id)?.abort()
     try {
-      await running.get(id)
+      await instanceState.running.get(id)
       LibraryDB.ReencodeJob.cancel(id)
       return getSummary(id)!
     } finally {
-      cancelling.delete(id)
+      instanceState.cancelling.delete(id)
     }
   }
 
   function launch(jobID: string) {
+    const instanceState = runtimeState()
+
     const pending = run(jobID)
-    running.set(jobID, pending)
+    instanceState.running.set(jobID, pending)
     void pending.finally(() => {
-      if (running.get(jobID) === pending) running.delete(jobID)
+      const instanceState = runtimeState()
+
+      if (instanceState.running.get(jobID) === pending) instanceState.running.delete(jobID)
     })
   }
 
@@ -186,7 +196,7 @@ export namespace ExperienceReencode {
   }
 
   function isCritical(snapshot: SessionMemoryPressure.Snapshot) {
-    const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
+    const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, snapshot)
     return SessionMemoryPressure.pressureLevel(snapshot, thresholds) === "critical"
   }
 
@@ -196,7 +206,7 @@ export namespace ExperienceReencode {
     let paused = false
     return async () => {
       const snapshot = await SessionMemoryPressure.currentSnapshotWithCgroup()
-      const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
+      const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, snapshot)
       const critical = SessionMemoryPressure.pressureLevel(snapshot, thresholds) === "critical"
       if (paused !== critical) {
         paused = critical
@@ -395,10 +405,12 @@ export namespace ExperienceReencode {
   }
 
   async function run(jobID: string) {
+    const instanceState = runtimeState()
+
     const job = LibraryDB.ReencodeJob.get(jobID)
     if (!job || job.status !== "running") return
     const controller = new AbortController()
-    controllers.set(jobID, controller)
+    instanceState.controllers.set(jobID, controller)
     try {
       const learning = await ExperienceEncoder.loadLearning()
       const { direct, sessions } = partitionItems(job, LibraryDB.ReencodeJob.pendingItems(jobID))
@@ -437,16 +449,16 @@ export namespace ExperienceReencode {
         }
       }
       const latest = LibraryDB.ReencodeJob.get(jobID)
-      if (latest?.status === "running" && !cancelling.has(jobID)) {
+      if (latest?.status === "running" && !instanceState.cancelling.has(jobID)) {
         LibraryDB.ReencodeJob.finish(jobID, "completed")
       }
     } catch (error) {
       const latest = LibraryDB.ReencodeJob.get(jobID)
-      if (latest?.status === "running" && !cancelling.has(jobID)) {
+      if (latest?.status === "running" && !instanceState.cancelling.has(jobID)) {
         LibraryDB.ReencodeJob.finish(jobID, "failed", error instanceof Error ? error.message : String(error))
       }
     } finally {
-      controllers.delete(jobID)
+      instanceState.controllers.delete(jobID)
     }
   }
 

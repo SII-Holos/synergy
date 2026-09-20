@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 /**
  * Session-scoped hashline snapshot store adapter.
  * Wraps InMemorySnapshotStore with ScopedState + Bus SessionEvent.Deleted cleanup.
@@ -11,11 +12,15 @@ import { InMemorySnapshotStore, type SnapshotStore } from "./snapshots"
 export namespace SessionSnapshotStore {
   const state = ScopedState.create(() => new Map<string, InMemorySnapshotStore>())
 
-  let cleanupSubscribed = false
+  const runtimeState = RuntimeContext.state(() => ({
+    cleanupSubscribed: false,
+  }))
 
   function ensureCleanupSubscription(): void {
-    if (cleanupSubscribed) return
-    cleanupSubscribed = true
+    const instanceState = runtimeState()
+
+    if (instanceState.cleanupSubscribed) return
+    instanceState.cleanupSubscribed = true
     Bus.subscribe(SessionEvent.Deleted, (event) => {
       clear(event.properties.info.id)
     })

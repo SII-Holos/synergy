@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Flag } from "../flag/flag"
 import { parseModelID } from "./model-id"
 import { ProviderPricing } from "./pricing"
@@ -467,24 +468,15 @@ export namespace Provider {
     }
   }
 
-  const workerState = {
-    models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
-    providers: {} as Record<string, Info>,
-    // Unfiltered, redacted config snapshot for client visibility only; runtime code must use providers.
-    configuredForClient: {} as Record<string, Info>,
-    sdk: new Map<number, { instance: SDK; createdAt: number }>(),
-    modelLoaders: {} as Record<string, CustomModelLoader>,
-    runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
-    timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
-  }
-
   function credentialFingerprint(key: string | undefined): string | undefined {
     if (key === undefined) return undefined
     return new Bun.CryptoHasher("sha256").update(key).digest("hex")
   }
 
   export async function configureWorkerProvider(model: Model, plan: WorkerPlan): Promise<void> {
-    if (process.env.SYNERGY_AGENT_WORKER !== "1") {
+    const instanceState = runtimeState()
+
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER !== "1") {
       throw new Error("Worker provider plans can only be installed inside an Agent worker")
     }
     const { registerBuiltinProviderProfiles } = await import("./builtin")
@@ -514,15 +506,15 @@ export namespace Provider {
         ? mergeDeep(mergeDeep(plan.baseOptions, dynamicOptions), plan.explicitOptions)
         : mergeDeep(dynamicOptions, plan.options)
     if (profile) {
-      workerState.runtimeProfileStates[model.providerID] = {
+      instanceState.workerState.runtimeProfileStates[model.providerID] = {
         profile,
         baseOptions: plan.baseOptions ?? {},
         explicitOptions: plan.explicitOptions ?? plan.options,
       }
     } else {
-      delete workerState.runtimeProfileStates[model.providerID]
+      delete instanceState.workerState.runtimeProfileStates[model.providerID]
     }
-    workerState.providers[model.providerID] = {
+    instanceState.workerState.providers[model.providerID] = {
       id: model.providerID,
       profileID: plan.profileID,
       name: model.providerID,
@@ -532,9 +524,9 @@ export namespace Provider {
       options,
       models: { [model.id]: model },
     }
-    workerState.timeouts[model.providerID] = plan.timeouts
+    instanceState.workerState.timeouts[model.providerID] = plan.timeouts
     if (profile?.getModel || profile?.modelFactory) {
-      workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
+      instanceState.workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
         if (profile.getModel) return profile.getModel({ sdk, modelID, options: providerOptions })
         return ProviderProfile.defaultModelFactory(profile.modelFactory, {
           sdk,
@@ -543,14 +535,28 @@ export namespace Provider {
         })
       }
     } else {
-      delete workerState.modelLoaders[model.providerID]
+      delete instanceState.workerState.modelLoaders[model.providerID]
     }
   }
 
-  let lastSettledProviders: Record<string, Info> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    lastSettledProviders: undefined as Record<string, Info> | undefined,
+    workerState: {
+      models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+      providers: {} as Record<string, Info>,
+      // Unfiltered, redacted config snapshot for client visibility only; runtime code must use providers.
+      configuredForClient: {} as Record<string, Info>,
+      sdk: new Map<number, { instance: SDK; createdAt: number }>(),
+      modelLoaders: {} as Record<string, CustomModelLoader>,
+      runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
+      timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
+    },
+  }))
 
   const state = ScopedState.create(async () => {
-    if (process.env.SYNERGY_AGENT_WORKER === "1") return workerState
+    const instanceState = runtimeState()
+
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") return instanceState.workerState
     using _ = log.time("state")
     const [{ Config }, { ProviderCatalog }] = await Promise.all([import("../config/config"), import("./catalog")])
     const config = await Config.current()
@@ -948,12 +954,16 @@ export namespace Provider {
    * settled state when a state build exceeds its bounded wait window.
    */
   export function listSettled(): Record<string, Info> {
-    return lastSettledProviders ?? {}
+    const instanceState = runtimeState()
+
+    return instanceState.lastSettledProviders ?? {}
   }
 
   export async function list() {
+    const instanceState = runtimeState()
+
     return state().then((state) => {
-      lastSettledProviders = state.providers
+      instanceState.lastSettledProviders = state.providers
       return state.providers
     })
   }
@@ -1074,6 +1084,8 @@ export namespace Provider {
   }
 
   export async function getSDK(model: Model, resolvedOptions?: Record<string, any>) {
+    const instanceState = runtimeState()
+
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
@@ -1121,11 +1133,11 @@ export namespace Provider {
       delete options["proxy"]
       delete options["noProxy"]
       const timeoutCfg =
-        process.env.SYNERGY_AGENT_WORKER === "1"
+        RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1"
           ? {
-              providerTtfbMs: workerState.timeouts[model.providerID].ttfbMs,
-              providerIdleMs: workerState.timeouts[model.providerID].idleMs,
-              providerWallMs: workerState.timeouts[model.providerID].wallMs,
+              providerTtfbMs: instanceState.workerState.timeouts[model.providerID].ttfbMs,
+              providerIdleMs: instanceState.workerState.timeouts[model.providerID].idleMs,
+              providerWallMs: instanceState.workerState.timeouts[model.providerID].wallMs,
             }
           : await import("../util/timeout-config").then(({ TimeoutConfig }) => TimeoutConfig.resolve())
       const DEFAULT_TIMEOUT_MS = 900_000

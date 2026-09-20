@@ -1,21 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { Scope } from "../../src/scope"
-import { Log } from "../../src/util/log"
 import { $ } from "bun"
 import { tmpdir } from "../support/fixture"
-
-Log.init({ print: false })
 
 function projectScope(input: { worktree: string; sandboxes?: string[] }): Scope {
   return {
     type: "project",
     id: "d_test",
-    directory: input.worktree,
-    worktree: input.worktree,
-    vcs: "git",
-    sandboxes: input.sandboxes ?? [],
     time: { created: 0, updated: 0 },
+    local: { directory: input.worktree, worktree: input.worktree, vcs: "git", sandboxes: input.sandboxes ?? [] },
   }
 }
 
@@ -123,11 +117,11 @@ describe("Scope.Root.trustRoots", () => {
   })
 })
 
-describe("Scope.contains home fallback", () => {
-  test("home scope keeps legacy single-directory containment", () => {
+describe("Scope.contains Home", () => {
+  test("Home owns no filesystem paths", () => {
     const home = Scope.home()
-    expect(Scope.contains(home, home.directory)).toBe(true)
-    expect(Scope.contains(home, path.join(home.directory, "Documents", "notes.txt"))).toBe(true)
+    expect(home.local).toBeNull()
+    expect(Scope.contains(home, "/tmp/Documents/notes.txt")).toBe(false)
     expect(Scope.contains(home, "/definitely-not-home-xyz")).toBe(false)
   })
 })

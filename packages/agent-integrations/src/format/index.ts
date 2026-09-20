@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "@ericsanchezok/synergy-runtime-local/file"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -122,7 +123,7 @@ export namespace Format {
               const proc = Bun.spawn({
                 cmd: item.command.map((x) => x.replace("$FILE", file)),
                 cwd: ScopeContext.current.directory,
-                env: { ...process.env, ...item.environment },
+                env: { ...RuntimeContext.current().host.env, ...item.environment },
                 stdout: "ignore",
                 stderr: "ignore",
               })

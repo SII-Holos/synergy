@@ -38,12 +38,12 @@ export namespace ConfigExport {
     const parsed = Query.parse(input)
     const includeSecrets = parsed.includeSecrets ?? false
     const target = resolveTarget(parsed.scope ?? "global")
-    const selected = new Set(parsed.only ?? ConfigDomain.definitions.map((domain) => domain.id))
+    const selected = new Set(parsed.only ?? ConfigDomain.definitions().map((domain) => domain.id))
 
     const aggregate: Record<string, unknown> = {}
     const exported: ConfigDomain.Id[] = []
     const warnings: string[] = []
-    for (const definition of ConfigDomain.definitions) {
+    for (const definition of ConfigDomain.definitions()) {
       if (!selected.has(definition.id)) continue
       const fragment = await Config.domainReadForExport(definition.id, target.root)
       if (fragment.error) {
@@ -101,11 +101,11 @@ export namespace ConfigExport {
   function resolveTarget(scope: z.infer<typeof ConfigImport.Scope>): Target {
     if (scope === "global") return { scope, scopeID: "home", root: Global.Path.config }
     const active = ScopeContext.tryScope()
-    if (!active || active.type !== "project") {
+    if (!active || active.type !== "project" || !active.local) {
       throw new ConfigImport.ProjectScopeRequiredError({
         message: "PROJECT_SCOPE_REQUIRED: Project config export requires an explicitly selected project scope.",
       })
     }
-    return { scope, scopeID: active.id, root: path.join(active.directory, ".synergy") }
+    return { scope, scopeID: active.id, root: path.join(active.local.directory, ".synergy") }
   }
 }

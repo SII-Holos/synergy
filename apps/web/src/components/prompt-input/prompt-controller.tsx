@@ -262,14 +262,8 @@ export function createPromptInputController(props: PromptInputProps) {
     const workflow = activeWorkflow()
     return workflow?.kind === "boss" && workflow.role === "boss"
   })
-  const sessionScopeDirectory = createMemo(() => {
-    const scope = info()?.scope
-    if (!scope || typeof scope !== "object") return undefined
-    if (!("directory" in scope) || typeof scope.directory !== "string") return undefined
-    return scope.directory
-  })
-  const blueprintLoopRequest = (loopID: string, directory = sessionScopeDirectory()) =>
-    directory ? { id: loopID, directory } : { id: loopID }
+  const sessionScopeID = createMemo(() => info()?.scope.id)
+  const blueprintLoopRequest = (loopID: string, scopeID = sessionScopeID()) => ({ id: loopID, scopeID })
 
   createEffect(
     on(
@@ -290,7 +284,7 @@ export function createPromptInputController(props: PromptInputProps) {
     if (!loopID) return null
     // Track reconnectVersion so the loop refetches after a backend restart,
     // whose in-memory state the server cannot replay via events (issue #331).
-    return { loopID, directory: sessionScopeDirectory(), reconnect: globalSync.reconnectVersion() }
+    return { loopID, directory: sessionScopeID(), reconnect: globalSync.reconnectVersion() }
   })
 
   const [sessionLoop, { mutate: mutateSessionLoop }] = createResource(

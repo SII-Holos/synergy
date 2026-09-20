@@ -8,26 +8,13 @@ import type { Scope } from "../scope/types"
 import { SnapshotSchema } from "./snapshot-schema"
 import { PermissionNext } from "../permission/next"
 import { SessionInteraction } from "./interaction"
-import { opaque } from "../util/schema"
+import { Runtime as ScopeRuntime } from "../scope/types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionCortexContract as CortexTypes } from "./cortex-contract"
 import { Workspace } from "./workspace-schema"
 
 export { Workspace }
-const ScopeField = opaque<Scope>(
-  z.object({
-    id: z.string(),
-    type: z.string().optional(),
-    directory: z.string().optional(),
-    worktree: z.string().optional(),
-    vcs: z.literal("git").optional(),
-    name: z.string().optional(),
-    icon: z.object({ url: z.string().optional(), color: z.string().optional() }).optional(),
-    time: z.object({ created: z.number(), updated: z.number(), initialized: z.number().optional() }).optional(),
-    sandboxes: z.array(z.string()).optional(),
-  }),
-  { ref: "SessionScope" },
-)
+const ScopeField = ScopeRuntime.meta({ ref: "SessionScope" })
 
 const CortexDelegationInfoInner = z.object({
   taskID: z.string(),
@@ -213,7 +200,7 @@ const BaseInfo = z.preprocess(
     rollbackAck: RollbackAck.optional(),
     cortex: CortexDelegationInfo.optional(),
     working: WorkingInfo.optional(),
-    workspace: Workspace.optional(),
+    workspace: Workspace.nullable(),
     workflow: z
       .object({
         kind: z.string(),

@@ -13,19 +13,28 @@ export async function runCoreWorker(): Promise<boolean> {
     await new Promise(() => {})
     return true
   }
-  const { Global } = await import("@ericsanchezok/synergy-harness/global")
-  await Global.initialize({ cache: false })
-  if (worker === "__observability-worker-runner")
-    await import("@ericsanchezok/synergy-harness/observability/telemetry-worker")
-  if (worker === "__agent-turn-runner") {
-    const { registerLocalRuntime } = await import("@ericsanchezok/synergy-runtime-local/register")
-    registerLocalRuntime()
-    await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
-  }
-  if (worker === "__policy-worker-runner")
-    await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
-  await new Promise(() => {})
-  return true
+  const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
+  const { createLocalHost } = await import("@ericsanchezok/synergy-runtime-local/host")
+  return RuntimeContext.create(createLocalHost()).run(async () => {
+    const { Global } = await import("@ericsanchezok/synergy-harness/global")
+    await Global.initialize({ cache: false })
+    if (worker === "__observability-worker-runner")
+      await import("@ericsanchezok/synergy-harness/observability/telemetry-worker")
+    if (worker === "__agent-turn-runner") {
+      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-runtime-local/register")
+      registerLocalRuntime()
+      const { startAgentWorker } = await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
+      startAgentWorker()
+    }
+    if (worker === "__policy-worker-runner") {
+      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-runtime-local/register")
+      registerLocalRuntime()
+      const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
+      startPolicyWorker()
+    }
+    await new Promise(() => {})
+    return true
+  })
 }
 
 export async function main() {

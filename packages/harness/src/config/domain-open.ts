@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
 import { readableStreamToText } from "bun"
@@ -61,7 +62,7 @@ export namespace ConfigDomainOpen {
     }
 
     if (platform === "win32") {
-      return [process.env.COMSPEC || "cmd.exe", "/c", "start", "", filepath]
+      return [RuntimeContext.current().host.env.COMSPEC || "cmd.exe", "/c", "start", "", filepath]
     }
 
     throw new UnsupportedPlatformError(filepath, platform)

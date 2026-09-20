@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import { Database } from "bun:sqlite"
 import fsSync from "fs"
@@ -14,50 +15,59 @@ export namespace ObservabilityStore {
   export const schemaVersion = ObservabilityDbSchema.schemaVersion
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
-  let db: Database | undefined
-  let readonlyDb: Database | undefined
-  let clientActive = false
-  let checkpointTimer: ReturnType<typeof setInterval> | undefined
-  let compactTimer: ReturnType<typeof setInterval> | undefined
-  let retentionTimer: ReturnType<typeof setInterval> | undefined
-  let flushTimer: ReturnType<typeof setTimeout> | undefined
-  let retentionQueued = false
-  let droppedJobs = 0
-  let lastOpenError: string | undefined
-  let openFailed = false
-  let capExceededBytes = 0
-  let maintenanceDeferred = false
-  let checkpointIntervalMs: number | undefined
-  let retentionIntervalMs: number | undefined
-  const pending: Array<() => void> = []
-  const beforeFlushHooks = new Set<() => void>()
-  let dataVersionCounter = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    stopped: false,
+    db: undefined as Database | undefined,
+    readonlyDb: undefined as Database | undefined,
+    clientActive: false,
+    checkpointTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    compactTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    retentionTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    flushTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    retentionQueued: false,
+    droppedJobs: 0,
+    lastOpenError: undefined as string | undefined,
+    openFailed: false,
+    capExceededBytes: 0,
+    maintenanceDeferred: false,
+    checkpointIntervalMs: undefined as number | undefined,
+    retentionIntervalMs: undefined as number | undefined,
+    pending: [] as Array<() => void>,
+    beforeFlushHooks: new Set<() => void>(),
+    dataVersionCounter: 0,
+    runtimeReady: false,
+  }))
 
   // Monotonic write counter so read-side caches (e.g. the dashboard summary)
   // can invalidate when new telemetry lands instead of serving stale rows.
   export function dataVersion() {
-    return dataVersionCounter
+    const instanceState = runtimeState()
+
+    return instanceState.dataVersionCounter
   }
 
   function inlineMode() {
-    return process.env.SYNERGY_OBSERVABILITY_INLINE === "1"
+    return RuntimeContext.current().host.env.SYNERGY_OBSERVABILITY_INLINE === "1"
   }
 
   // Set once migrations complete. Before that, runtime reconfiguration must
   // not start the telemetry worker: the migration window still needs the
   // inline write connection, and a second write connection would race it.
-  let runtimeReady = false
 
   export function markRuntimeReady() {
-    runtimeReady = true
+    const instanceState = runtimeState()
+
+    instanceState.runtimeReady = true
   }
 
   // In worker mode the migration window is the only time the Control Plane
   // writes directly; release that connection before the worker takes over.
   export function releaseMigrationConnection() {
-    if (!inlineMode() && db) {
-      db.close(false)
-      db = undefined
+    const instanceState = runtimeState()
+
+    if (!inlineMode() && instanceState.db) {
+      instanceState.db.close(false)
+      instanceState.db = undefined
     }
   }
 
@@ -75,36 +85,40 @@ export namespace ObservabilityStore {
   // enqueue: telemetry produced while observability is disabled is dropped,
   // not buffered for a later re-enable.
   function workerEnqueue(row: TelemetryProtocol.BatchRow) {
-    if (!ObservabilityConfig.current().enabled) return
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
     ObservabilityTelemetryClient.enqueue(row)
   }
 
   function queryConnection(): Database | undefined {
+    const instanceState = runtimeState()
+
     if (!inlineMode()) {
-      if (!readonlyDb) {
+      if (!instanceState.readonlyDb) {
         try {
           initializeSqliteEngine()
           const conn = new Database(pathName(), { readonly: true })
           conn.exec("PRAGMA busy_timeout=5000")
-          readonlyDb = conn
+          instanceState.readonlyDb = conn
         } catch {
           return undefined
         }
       }
-      return readonlyDb
+      return instanceState.readonlyDb
     }
     return open()
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     if (!inlineMode()) {
       const client = ObservabilityTelemetryClient.stats()
       const config = ObservabilityConfig.current()
       return {
         pending: client.pending,
-        dropped: droppedJobs + client.dropped,
+        dropped: instanceState.droppedJobs + client.dropped,
         available: queryConnection() !== undefined,
-        lastOpenError,
+        lastOpenError: instanceState.lastOpenError,
         capExceededBytes: client.capExceededBytes,
         maintenanceDeferred: client.maintenanceDeferred,
         checkpointIntervalMs: config.storage.walCheckpointIntervalMs,
@@ -112,20 +126,22 @@ export namespace ObservabilityStore {
       }
     }
     return {
-      pending: pending.length,
-      dropped: droppedJobs,
-      available: !!db,
-      lastOpenError,
-      capExceededBytes,
-      maintenanceDeferred,
-      checkpointIntervalMs,
-      retentionIntervalMs,
+      pending: instanceState.pending.length,
+      dropped: instanceState.droppedJobs,
+      available: !!instanceState.db,
+      lastOpenError: instanceState.lastOpenError,
+      capExceededBytes: instanceState.capExceededBytes,
+      maintenanceDeferred: instanceState.maintenanceDeferred,
+      checkpointIntervalMs: instanceState.checkpointIntervalMs,
+      retentionIntervalMs: instanceState.retentionIntervalMs,
     }
   }
 
   export function beforeFlush(hook: () => void) {
-    beforeFlushHooks.add(hook)
-    return () => beforeFlushHooks.delete(hook)
+    const instanceState = runtimeState()
+
+    instanceState.beforeFlushHooks.add(hook)
+    return () => instanceState.beforeFlushHooks.delete(hook)
   }
 
   export function dir() {
@@ -141,107 +157,126 @@ export namespace ObservabilityStore {
   }
 
   export function open(): Database | undefined {
+    const instanceState = runtimeState()
+    if (instanceState.stopped) return
+
     if (!inlineMode()) {
       const config = ObservabilityConfig.current()
       if (!config.enabled || !config.storage.sqliteEnabled) return undefined
-      if (!runtimeReady) return undefined
-      if (!clientActive) {
+      if (!instanceState.runtimeReady) return undefined
+      if (!instanceState.clientActive) {
         ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
-        clientActive = true
+        instanceState.clientActive = true
       }
       return queryConnection()
     }
-    if (db) return db
+    if (instanceState.db) return instanceState.db
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) return undefined
-    if (openFailed) return undefined
+    if (instanceState.openFailed) return undefined
     try {
-      db = createConnection()
-      lastOpenError = undefined
+      instanceState.db = createConnection()
+      instanceState.lastOpenError = undefined
     } catch (error) {
-      openFailed = true
-      lastOpenError = error instanceof Error ? error.message : String(error)
+      instanceState.openFailed = true
+      instanceState.lastOpenError = error instanceof Error ? error.message : String(error)
       return undefined
     }
     scheduleTimers(config)
     queueRetention()
-    return db
+    return instanceState.db
   }
 
   export function reconfigure() {
+    const instanceState = runtimeState()
+
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) {
       close()
       return
     }
     if (!inlineMode()) {
-      if (!runtimeReady) return
-      if (!clientActive) {
+      if (!instanceState.runtimeReady) return
+      if (!instanceState.clientActive) {
         ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
-        clientActive = true
+        instanceState.clientActive = true
       } else {
         ObservabilityTelemetryClient.sendReconfigure(workerConfigFrom(config))
       }
       return
     }
     clearTimers()
-    if (!db) {
-      openFailed = false
+    if (!instanceState.db) {
+      instanceState.openFailed = false
       open()
       return
     }
     scheduleTimers(config)
-    enforceMaxSize(db, config.storage.maxSqliteBytes)
+    enforceMaxSize(instanceState.db, config.storage.maxSqliteBytes)
   }
 
   function scheduleTimers(config: ReturnType<typeof ObservabilityConfig.current>) {
-    checkpointIntervalMs = config.storage.walCheckpointIntervalMs
-    retentionIntervalMs = Math.max(config.metricRetentionMs / 4, 60_000)
-    checkpointTimer = setInterval(checkpointSafely, config.storage.walCheckpointIntervalMs)
-    checkpointTimer.unref()
-    compactTimer = setInterval(maintainSizeSafely, Math.min(config.storage.walCheckpointIntervalMs * 10, 600_000))
-    compactTimer.unref()
-    retentionTimer = setInterval(() => retain(), retentionIntervalMs)
-    retentionTimer.unref()
+    const instanceState = runtimeState()
+
+    instanceState.checkpointIntervalMs = config.storage.walCheckpointIntervalMs
+    instanceState.retentionIntervalMs = Math.max(config.metricRetentionMs / 4, 60_000)
+    instanceState.checkpointTimer = setInterval(checkpointSafely, config.storage.walCheckpointIntervalMs)
+    instanceState.checkpointTimer.unref()
+    instanceState.compactTimer = setInterval(
+      maintainSizeSafely,
+      Math.min(config.storage.walCheckpointIntervalMs * 10, 600_000),
+    )
+    instanceState.compactTimer.unref()
+    instanceState.retentionTimer = setInterval(() => retain(), instanceState.retentionIntervalMs)
+    instanceState.retentionTimer.unref()
+  }
+
+  export function stop() {
+    flush()
+    runtimeState().stopped = true
+    return close()
   }
 
   export function close() {
+    const instanceState = runtimeState()
+
     if (!inlineMode()) {
       clearTimers()
       flush()
-      readonlyDb?.close(false)
-      readonlyDb = undefined
-      void ObservabilityTelemetryClient.stop()
-      clientActive = false
-      return
+      instanceState.readonlyDb?.close(false)
+      instanceState.readonlyDb = undefined
+      instanceState.clientActive = false
+      return ObservabilityTelemetryClient.stop()
     }
     // Stop every producer before draining the queue. A timer firing between
     // flush() and close() can otherwise retain a statement and make SQLite's
     // strict close report SQLITE_BUSY during shutdown.
     clearTimers()
     flush()
-    if (db) checkpointConnectionSafely(db)
+    if (instanceState.db) checkpointConnectionSafely(instanceState.db)
     // All queued writes have been committed above. Non-throwing close uses
     // sqlite3_close_v2 semantics, so outstanding cached statements can finish
     // without turning an otherwise clean server shutdown into an exception.
-    db?.close(false)
-    db = undefined
-    openFailed = false
+    instanceState.db?.close(false)
+    instanceState.db = undefined
+    instanceState.openFailed = false
   }
 
   function clearTimers() {
-    if (checkpointTimer) clearInterval(checkpointTimer)
-    if (retentionTimer) clearInterval(retentionTimer)
-    if (flushTimer) clearTimeout(flushTimer)
-    checkpointTimer = undefined
-    if (compactTimer) {
-      clearInterval(compactTimer)
-      compactTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.checkpointTimer) clearInterval(instanceState.checkpointTimer)
+    if (instanceState.retentionTimer) clearInterval(instanceState.retentionTimer)
+    if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+    instanceState.checkpointTimer = undefined
+    if (instanceState.compactTimer) {
+      clearInterval(instanceState.compactTimer)
+      instanceState.compactTimer = undefined
     }
-    retentionTimer = undefined
-    flushTimer = undefined
-    checkpointIntervalMs = undefined
-    retentionIntervalMs = undefined
+    instanceState.retentionTimer = undefined
+    instanceState.flushTimer = undefined
+    instanceState.checkpointIntervalMs = undefined
+    instanceState.retentionIntervalMs = undefined
   }
 
   export function checkpoint() {
@@ -255,11 +290,13 @@ export namespace ObservabilityStore {
   }
 
   export function insertMetric(metric: ObservabilitySchema.Metric) {
+    const instanceState = runtimeState()
+
     // Data version must stay frozen while disabled: the dashboard summary
     // cache keys on it, so an increment that never persists would still
     // defeat the cache.
-    if (!ObservabilityConfig.current().enabled) return
-    dataVersionCounter++
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "metric", row: metric })
       return
@@ -271,8 +308,10 @@ export namespace ObservabilityStore {
   }
 
   export function insertSpan(span: ObservabilitySchema.Span) {
-    if (!ObservabilityConfig.current().enabled) return
-    dataVersionCounter++
+    const instanceState = runtimeState()
+
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "span", row: span })
       return
@@ -288,8 +327,10 @@ export namespace ObservabilityStore {
   }
 
   export function insertEvent(event: ObservabilitySchema.Event) {
-    if (!ObservabilityConfig.current().enabled) return
-    dataVersionCounter++
+    const instanceState = runtimeState()
+
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "event", row: event })
       return
@@ -301,8 +342,10 @@ export namespace ObservabilityStore {
   }
 
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
-    if (!ObservabilityConfig.current().enabled) return
-    dataVersionCounter++
+    const instanceState = runtimeState()
+
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "resource", row: sample })
       return
@@ -314,8 +357,10 @@ export namespace ObservabilityStore {
   }
 
   export function insertIssue(issue: ObservabilitySchema.Issue) {
-    if (!ObservabilityConfig.current().enabled) return
-    dataVersionCounter++
+    const instanceState = runtimeState()
+
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "issue", row: issue })
       return
@@ -334,8 +379,10 @@ export namespace ObservabilityStore {
     rejected: number
     page: Record<string, unknown>
   }) {
-    if (!ObservabilityConfig.current().enabled) return
-    dataVersionCounter++
+    const instanceState = runtimeState()
+
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "browser-batch", row: input })
       return
@@ -821,33 +868,35 @@ export namespace ObservabilityStore {
   }
 
   export function flush() {
-    for (const hook of beforeFlushHooks) hook()
+    const instanceState = runtimeState()
+
+    for (const hook of instanceState.beforeFlushHooks) hook()
     if (!inlineMode()) {
-      if (flushTimer) clearTimeout(flushTimer)
-      flushTimer = undefined
+      if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+      instanceState.flushTimer = undefined
       ObservabilityTelemetryClient.flushPending()
       return
     }
-    if (flushTimer) clearTimeout(flushTimer)
-    flushTimer = undefined
-    if (!pending.length) return
+    if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+    instanceState.flushTimer = undefined
+    if (!instanceState.pending.length) return
     const conn = open()
     if (!conn) {
-      droppedJobs += pending.length
-      pending.length = 0
+      instanceState.droppedJobs += instanceState.pending.length
+      instanceState.pending.length = 0
       return
     }
-    const jobs = pending.splice(0, pending.length)
+    const jobs = instanceState.pending.splice(0, instanceState.pending.length)
     try {
       conn.transaction(() => {
         for (const job of jobs) job()
       })()
     } catch {
-      droppedJobs += jobs.length
+      instanceState.droppedJobs += jobs.length
       return
     }
-    if (retentionQueued) {
-      retentionQueued = false
+    if (instanceState.retentionQueued) {
+      instanceState.retentionQueued = false
       retain()
     } else {
       enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
@@ -860,11 +909,13 @@ export namespace ObservabilityStore {
   }
 
   export function initializeForMigration() {
+    const instanceState = runtimeState()
+
     // Migration runs before the worker starts, so it always uses the inline
     // write connection regardless of the runtime mode.
-    if (db) return db
+    if (instanceState.db) return instanceState.db
     const conn = createConnection()
-    db = conn
+    instanceState.db = conn
     return conn
   }
 
@@ -907,28 +958,35 @@ export namespace ObservabilityStore {
   }
 
   function enqueue(job: () => void) {
-    if (!ObservabilityConfig.current().enabled) return
-    if (pending.length >= MAX_PENDING) {
+    const instanceState = runtimeState()
+
+    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (instanceState.pending.length >= MAX_PENDING) {
       const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
-      pending.splice(0, dropCount)
-      droppedJobs += dropCount
+      instanceState.pending.splice(0, dropCount)
+      instanceState.droppedJobs += dropCount
     }
-    pending.push(job)
-    if (!flushTimer) {
-      flushTimer = setTimeout(flush, FLUSH_MS)
-      flushTimer.unref()
+    instanceState.pending.push(job)
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
+      instanceState.flushTimer.unref()
     }
   }
 
   function queueRetention() {
-    retentionQueued = true
-    if (!flushTimer) {
-      flushTimer = setTimeout(flush, FLUSH_MS)
-      flushTimer.unref()
+    const instanceState = runtimeState()
+
+    if (instanceState.stopped) return
+    instanceState.retentionQueued = true
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
+      instanceState.flushTimer.unref()
     }
   }
 
   function enforceMaxSize(conn: Database, maxBytes: number) {
+    const instanceState = runtimeState()
+
     try {
       const result = SqliteMaintenance.enforce({
         db: conn,
@@ -937,8 +995,8 @@ export namespace ObservabilityStore {
         tables: ObservabilityDbSchema.SIZE_CAP_TABLES,
         budgetMs: 500,
       })
-      capExceededBytes = result.capExceededBytes
-      maintenanceDeferred = result.deferred ?? false
+      instanceState.capExceededBytes = result.capExceededBytes
+      instanceState.maintenanceDeferred = result.deferred ?? false
     } catch {}
   }
 

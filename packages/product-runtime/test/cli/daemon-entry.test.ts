@@ -1,29 +1,55 @@
-import { expect, mock, test } from "bun:test"
-import path from "path"
+import { expect, test } from "bun:test"
+import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 
-// daemon/entry.ts awaits a real server runtime; swap only the run entry so the
-// entry module completes its startup lines in-process. Keep every other export
-// (pluginStatusRow, startupScopeLabel, ...) intact: under --shard and in the
-// single-process coverage run the mock leaks into sibling test files, and a
-// stub that drops named exports breaks their imports.
-const runtimeModuleURL = path.resolve(import.meta.dir, "../../../product-runtime/src/server/runtime.ts")
-const runtimeExports = await import(runtimeModuleURL)
-mock.module(runtimeModuleURL, () => ({
-  ...runtimeExports,
-  run: async () => {},
-}))
-
-test("daemon entry completes startup against the isolated test home", async () => {
-  process.argv = [process.execPath, "synergy-daemon"]
-  const originalExit = process.exit
-  process.exit = ((code?: number) => {
-    throw new Error(`exit called: ${code}`)
-  }) as never
+test("daemon entry stays healthy and drains on SIGTERM in an isolated home", async () => {
+  const isolated = await createIsolatedTestEnv()
+  const script = `
+    import { ProductRuntimeHandle } from "./src/server/runtime-handle"
+    const open = ProductRuntimeHandle.open
+    ProductRuntimeHandle.open = async (options) => {
+      const handle = await open({ ...options, network: { hostname: "127.0.0.1", port: 0 } })
+      console.log("READY " + handle.server.port)
+      return handle
+    }
+    await import("./src/daemon-entry")
+  `
+  const child = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: isolated.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const errors = new Response(child.stderr).text()
+  let output = ""
+  const ready = (async () => {
+    const reader = child.stdout.getReader()
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      output += new TextDecoder().decode(value)
+      const match = output.match(/READY (\d+)/)
+      if (match) return Number(match[1])
+    }
+    throw new Error(`Daemon exited before readiness: ${await errors}`)
+  })()
   try {
-    await expect(import("../../src/daemon-entry")).resolves.toBeTruthy()
-  } catch (error) {
-    expect((error as Error).message).toMatch(/^exit called/)
+    const port = await Promise.race([
+      ready,
+      Bun.sleep(15_000).then(() => {
+        throw new Error("Daemon startup timed out")
+      }),
+    ])
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect((await fetch(`http://127.0.0.1:${port}/global/health`)).status).toBe(200)
+      await Bun.sleep(50)
+    }
+    child.kill("SIGTERM")
+    const code = await Promise.race([child.exited, Bun.sleep(15_000).then(() => null)])
+    if (code === null) child.kill("SIGKILL")
+    expect(code, await errors).toBe(0)
   } finally {
-    process.exit = originalExit
+    if (child.exitCode === null) child.kill("SIGKILL")
+    await child.exited
+    await isolated.dispose()
   }
-})
+}, 35_000)

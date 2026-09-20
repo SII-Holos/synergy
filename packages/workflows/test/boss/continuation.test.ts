@@ -9,6 +9,9 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { WorkflowSessionService } from "../../src/session/workflow"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const model = { providerID: "test-provider", modelID: "test-model" }
 const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
@@ -111,85 +114,92 @@ async function gateFor(sessionID: string, terminalMessageID: string) {
 }
 
 describe("BossContinuationPolicy", () => {
-  test("worker with an unreported assigned task gets an inbox proposal", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
-      const assistantID = await terminalAssistant(worker.id, taskUserID)
-
-      const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, assistantID))
-      expect(proposal?.kind).toBe("inbox")
-      if (proposal?.kind !== "inbox") return
-      expect(proposal.mode).toBe("steer")
-      expect(proposal.message.role).toBe("user")
-      expect(proposal.message.metadata?.source).toBe("boss_continuation")
-      const text = proposal.message.parts.find((part) => part.type === "text")
-      expect(text?.type === "text" ? (text as { text: string }).text : "").toContain("boss_report")
-    })
-  })
-
-  test("child reports do not restart a worker that already reported its own task", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      // The fixture materializes both inboxes; background wakes must not consume them.
-      const workerLease = SessionManager.acquire(worker.id)
-      if (!workerLease) throw new Error("expected worker loop lease")
-      const leases = [workerLease]
-      try {
+  test("worker with an unreported assigned task gets an inbox proposal", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
         const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
-        const reportedAssistantID = await terminalAssistant(worker.id, taskUserID)
-        await completedBossReport(worker.id, reportedAssistantID)
+        const assistantID = await terminalAssistant(worker.id, taskUserID)
 
-        const child = await BossService.spawn(worker.id, { role: "test" })
-        const childLease = SessionManager.acquire(child.id)
-        if (!childLease) throw new Error("expected child loop lease")
-        leases.push(childLease)
-        await BossService.assign(worker.id, {
-          sessionID: child.id,
-          taskID: "child-task",
-          task: "Check the widget",
-        })
-        await materializeFirstInboxItem(child.id)
-        await BossService.report(child.id, { summary: "Widget checked", status: "completed" })
-        await materializeFirstInboxItem(worker.id, taskUserID)
-        const terminalMessageID = await terminalAssistant(worker.id, taskUserID)
+        const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, assistantID))
+        expect(proposal?.kind).toBe("inbox")
+        if (proposal?.kind !== "inbox") return
+        expect(proposal.mode).toBe("steer")
+        expect(proposal.message.role).toBe("user")
+        expect(proposal.message.metadata?.source).toBe("boss_continuation")
+        const text = proposal.message.parts.find((part) => part.type === "text")
+        expect(text?.type === "text" ? (text as { text: string }).text : "").toContain("boss_report")
+      })
+    }))
 
-        const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, terminalMessageID))
-        expect(proposal).toBeUndefined()
-      } finally {
-        for (const lease of leases.reverse()) {
-          await SessionInbox.removeByModes(lease.sessionID, ["task", "steer"])
-          await SessionManager.finish(lease, { requestNextWork: false })
+  test("child reports do not restart a worker that already reported its own task", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
+        // The fixture materializes both inboxes; background wakes must not consume them.
+        const workerLease = SessionManager.acquire(worker.id)
+        if (!workerLease) throw new Error("expected worker loop lease")
+        const leases = [workerLease]
+        try {
+          const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
+          const reportedAssistantID = await terminalAssistant(worker.id, taskUserID)
+          await completedBossReport(worker.id, reportedAssistantID)
+
+          const child = await BossService.spawn(worker.id, { role: "test" })
+          const childLease = SessionManager.acquire(child.id)
+          if (!childLease) throw new Error("expected child loop lease")
+          leases.push(childLease)
+          await BossService.assign(worker.id, {
+            sessionID: child.id,
+            taskID: "child-task",
+            task: "Check the widget",
+          })
+          await materializeFirstInboxItem(child.id)
+          await BossService.report(child.id, { summary: "Widget checked", status: "completed" })
+          await materializeFirstInboxItem(worker.id, taskUserID)
+          const terminalMessageID = await terminalAssistant(worker.id, taskUserID)
+
+          const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, terminalMessageID))
+          expect(proposal).toBeUndefined()
+        } finally {
+          for (const lease of leases.reverse()) {
+            await SessionInbox.removeByModes(lease.sessionID, ["task", "steer"])
+            await SessionManager.finish(lease, { requestNextWork: false })
+          }
         }
-      }
-    })
-  })
+      })
+    }))
 
-  test("worker without any task yields no proposal", async () => {
-    await withScope(async () => {
-      const { worker } = await bossAndWorker()
-      const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, "msg_unused"))
-      expect(proposal).toBeUndefined()
-    })
-  })
+  test("worker without any task yields no proposal", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { worker } = await bossAndWorker()
+        const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, "msg_unused"))
+        expect(proposal).toBeUndefined()
+      })
+    }))
 
-  test("boss session never gets a continuation proposal", async () => {
-    await withScope(async () => {
-      const { boss } = await bossAndWorker()
-      const proposal = await BossContinuationPolicy.handle(await gateFor(boss.id, "msg_unused"))
-      expect(proposal).toBeUndefined()
-    })
-  })
+  test("boss session never gets a continuation proposal", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss } = await bossAndWorker()
+        const proposal = await BossContinuationPolicy.handle(await gateFor(boss.id, "msg_unused"))
+        expect(proposal).toBeUndefined()
+      })
+    }))
 
-  test("worker falls dormant when the root is no longer boss", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
-      const assistantID = await terminalAssistant(worker.id, taskUserID)
-      await WorkflowSessionService.setNone(boss.id)
+  test("worker falls dormant when the root is no longer boss", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
+        const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
+        const assistantID = await terminalAssistant(worker.id, taskUserID)
+        await WorkflowSessionService.setNone(boss.id)
 
-      const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, assistantID))
-      expect(proposal).toBeUndefined()
-    })
-  })
+        const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, assistantID))
+        expect(proposal).toBeUndefined()
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

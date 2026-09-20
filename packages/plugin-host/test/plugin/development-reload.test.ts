@@ -6,6 +6,9 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { createApprovalRecord, saveApproval, removeApproval } from "../../src/plugin/consent/approval-store"
 import { getPlugin, reloadDevelopmentGeneration, resetAllPluginState } from "../../src/plugin/loader"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const manifest = (generation: string, capabilities: string[] = []) =>
   compilePluginManifest(
@@ -19,28 +22,31 @@ const manifest = (generation: string, capabilities: string[] = []) =>
     { generation },
   )
 
-test("development reload rejects broader grants and keeps the currently approved generation", async () => {
-  await using first = await tmpdir()
-  await using second = await tmpdir()
-  const initial = manifest("first")
-  await Bun.write(path.join(first.path, "plugin.json"), JSON.stringify(initial))
-  await Bun.write(path.join(second.path, "plugin.json"), JSON.stringify(manifest("second", ["ui.commands"])))
-  await using workspace = await tmpdir({ git: true, config: { plugin: [pathToFileURL(first.path).href] } })
-  await saveApproval(createApprovalRecord({ pluginId: initial.id, source: "local", manifest: initial }))
-  try {
-    await ScopeContext.provide({
-      scope: await workspace.scope(),
-      fn: async () => {
-        await resetAllPluginState()
-        expect((await getPlugin(initial.id))?.manifest.artifacts.generation).toBe("first")
-        await expect(
-          reloadDevelopmentGeneration({ pluginId: initial.id, generation: "second", artifactDir: second.path }),
-        ).rejects.toThrow("approval")
-        expect((await getPlugin(initial.id))?.manifest.artifacts.generation).toBe("first")
-      },
-    })
-  } finally {
-    await resetAllPluginState()
-    await removeApproval(initial.id)
-  }
-})
+test("development reload rejects broader grants and keeps the currently approved generation", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir()
+    await using second = await tmpdir()
+    const initial = manifest("first")
+    await Bun.write(path.join(first.path, "plugin.json"), JSON.stringify(initial))
+    await Bun.write(path.join(second.path, "plugin.json"), JSON.stringify(manifest("second", ["ui.commands"])))
+    await using workspace = await tmpdir({ git: true, config: { plugin: [pathToFileURL(first.path).href] } })
+    await saveApproval(createApprovalRecord({ pluginId: initial.id, source: "local", manifest: initial }))
+    try {
+      await ScopeContext.provide({
+        scope: await workspace.scope(),
+        fn: async () => {
+          await resetAllPluginState()
+          expect((await getPlugin(initial.id))?.manifest.artifacts.generation).toBe("first")
+          await expect(
+            reloadDevelopmentGeneration({ pluginId: initial.id, generation: "second", artifactDir: second.path }),
+          ).rejects.toThrow("approval")
+          expect((await getPlugin(initial.id))?.manifest.artifacts.generation).toBe("first")
+        },
+      })
+    } finally {
+      await resetAllPluginState()
+      await removeApproval(initial.id)
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import z from "zod"
 import { Log } from "../util/log"
@@ -16,13 +18,15 @@ export namespace Bus {
     started: number
     lastLogged: number
   }
-  const streamingPublishStats = new Map<string, StreamingPublishStats>()
+  const runtimeState = RuntimeContext.state(() => ({
+    streamingPublishStats: new Map<string, StreamingPublishStats>(),
+    globalSubscriptions: new Map<string, Subscription[]>(),
+  }))
 
   // Cross-scope subscriptions. The scoped Bus above is keyed by the current
   // scope, so subscribers that must observe events published from sessions
   // running in OTHER scopes (e.g. the Channel outbound bridge watching
   // terminal assistant messages in per-thread checkout scopes) register here.
-  const globalSubscriptions = new Map<string, Subscription[]>()
 
   export const ScopeRuntimeDisposed = BusEvent.define(
     "scope.runtime.disposed",
@@ -51,7 +55,7 @@ export namespace Bus {
         type: ScopeRuntimeDisposed.type,
         properties: {
           scopeID: ScopeContext.current.scope.id,
-          directory: ScopeContext.current.directory,
+          directory: ScopeContext.current.scope.local?.directory,
         },
       }
       for (const sub of [...wildcard]) {
@@ -64,6 +68,8 @@ export namespace Bus {
     def: Definition,
     properties: z.output<Definition["properties"]>,
   ): Promise<void> {
+    const instanceState = runtimeState()
+
     if (Storage.inTransaction()) {
       const scope = ScopeContext.current.scope
       const value = structuredClone(properties)
@@ -121,16 +127,13 @@ export namespace Bus {
     // Cross-scope subscribers receive every published event regardless of the
     // scope it was published from.
     for (const key of [def.type, "*"]) {
-      const match = globalSubscriptions.get(key)
+      const match = instanceState.globalSubscriptions.get(key)
       for (const sub of match ?? []) {
         dispatch(sub)
       }
     }
-    GlobalBus.emit("event", {
-      // Route UI/session events to the scope directory, not the execution cwd.
-      // A session may execute from a worktree workspace while still belonging to
-      // the original scope store that the frontend subscribed to.
-      directory: ScopeContext.current.scope.type === "home" ? "home" : ScopeContext.current.scope.directory,
+    GlobalBus().emit("event", {
+      scopeID: ScopeContext.current.scope.id,
       payload,
     })
     if (def.streaming) return
@@ -138,10 +141,12 @@ export namespace Bus {
   }
 
   function recordStreamingPublish(type: string) {
+    const instanceState = runtimeState()
+
     const now = Date.now()
-    const stats = streamingPublishStats.get(type)
+    const stats = instanceState.streamingPublishStats.get(type)
     if (!stats) {
-      streamingPublishStats.set(type, {
+      instanceState.streamingPublishStats.set(type, {
         count: 1,
         started: now,
         lastLogged: now,
@@ -181,20 +186,22 @@ export namespace Bus {
     def: Definition,
     callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
   ) {
+    const instanceState = runtimeState()
+
     const type = def.type
     log.debug("subscribing globally", { type })
-    const match = globalSubscriptions.get(type) ?? []
+    const match = instanceState.globalSubscriptions.get(type) ?? []
     match.push(callback as Subscription)
-    globalSubscriptions.set(type, match)
-    return () => {
+    instanceState.globalSubscriptions.set(type, match)
+    return AsyncLocalStorage.bind(() => {
       log.debug("unsubscribing globally", { type })
-      const current = globalSubscriptions.get(type)
+      const current = instanceState.globalSubscriptions.get(type)
       if (!current) return
       const index = current.indexOf(callback as Subscription)
       if (index === -1) return
       current.splice(index, 1)
-      if (current.length === 0) globalSubscriptions.delete(type)
-    }
+      if (current.length === 0) instanceState.globalSubscriptions.delete(type)
+    })
   }
 
   export function once<Definition extends BusEvent.Definition>(
@@ -235,13 +242,13 @@ export namespace Bus {
     match.push(callback)
     subscriptions.set(type, match)
 
-    return () => {
+    return AsyncLocalStorage.bind(() => {
       log.debug("unsubscribing", { type })
       const match = subscriptions.get(type)
       if (!match) return
       const index = match.indexOf(callback)
       if (index === -1) return
       match.splice(index, 1)
-    }
+    })
   }
 }

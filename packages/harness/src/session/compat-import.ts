@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "node:fs/promises"
 import { createReadStream } from "node:fs"
 import path from "node:path"
@@ -23,7 +24,9 @@ import type { ScopeNavIndex } from "./nav"
 import type { Session } from "."
 
 const log = Log.create({ service: "session.compat-import" })
-const inFlight = new WeakMap<object, Map<string, Promise<StorageCompat.Locator>>>()
+const runtimeState = RuntimeContext.state(() => ({
+  inFlight: new WeakMap<object, Map<string, Promise<StorageCompat.Locator>>>(),
+}))
 const migrationKey = ["compat_import", "migration"]
 const backups = Storage.state(() => new Map<string, SegmentedBackup>())
 const foreground = Storage.state(() => ({ count: 0 }))
@@ -85,11 +88,15 @@ export namespace SessionCompat {
   }
 
   export async function drain() {
-    const flights = inFlight.get(Storage.current().store)
+    const instanceState = runtimeState()
+
+    const flights = instanceState.inFlight.get(Storage.current().store)
     while (flights?.size) await Promise.allSettled([...flights.values()])
   }
 
   async function importSession(sessionID: string): Promise<StorageCompat.Locator> {
+    const instanceState = runtimeState()
+
     const store = Storage.current().store
     if (Storage.inTransaction()) {
       const [locator] = await Storage.readMany<StorageCompat.Locator>([StorageCompat.locatorKey(sessionID)])
@@ -97,10 +104,10 @@ export namespace SessionCompat {
       if (locator.status === "imported" || locator.status === "quarantined") return locator
       throw new StorageIntegrityError("Import the deferred Session before opening a business transaction")
     }
-    let flights = inFlight.get(store)
+    let flights = instanceState.inFlight.get(store)
     if (!flights) {
       flights = new Map()
-      inFlight.set(store, flights)
+      instanceState.inFlight.set(store, flights)
     }
     const pending = flights.get(sessionID)
     if (pending) return pending
@@ -278,7 +285,11 @@ export namespace SessionCompat {
       .object({ endpoint: z.unknown().optional(), time: z.object({ archived: z.number().optional() }).passthrough() })
       .passthrough()
       .parse(value)
-    return Info.parse({ ...record, endpoint: Session.indexEndpoint(record.endpoint, record.time.archived) })
+    const { normalizeSessionWorkspaceInfo } = await import("./migration")
+    return Info.parse({
+      ...normalizeSessionWorkspaceInfo(record),
+      endpoint: Session.indexEndpoint(record.endpoint, record.time.archived),
+    })
   }
 
   export async function pendingInfo(scopeID: string, sessionID: string): Promise<Info | undefined> {
@@ -346,8 +357,9 @@ export namespace SessionCompat {
     const lock = { directory: path.join(dataRoot(), "storage", ".locks"), key: "artifact-packs" }
     const staged = await withFileLock(lock, () => importAggregateLocked(locator, true, backup, backedUp))
     if (stageOnly || staged.status === "quarantined" || staged.status === "imported") return staged
-    const { migrateDeferredSession } = await import("../migration")
+    const { migrateDeferredSession, upgradeSessionRecords } = await import("../migration")
     await migrateDeferredSession(staged, "canonical")
+    await upgradeSessionRecords([staged])
     const { RolloutRecovery } = await import("./rollout/recovery")
     await RolloutRecovery.owner({ kind: "session", scopeID: staged.scopeID, sessionID: staged.sessionID })
     return withFileLock(lock, () => importAggregateLocked(staged, false, backup, backedUp))

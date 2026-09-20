@@ -197,7 +197,7 @@ export function StoragePanel(props: {
 
   function scopeDisplayName(scopeID: string): string {
     const match = scopes.latest?.find((entry) => entry.id === scopeID)
-    return match?.name || match?.worktree || scopeID
+    return match?.name || match?.local?.worktree || scopeID
   }
 
   async function reclaimUnowned() {

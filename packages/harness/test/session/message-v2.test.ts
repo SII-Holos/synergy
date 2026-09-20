@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test"
 import type { ModelMessage } from "ai"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Asset } from "../../src/asset/asset"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const sessionID = "session"
 
@@ -50,1017 +53,1039 @@ function basePart(messageID: string, id: string) {
 }
 
 describe("session.message-v2.compareStorageOrder", () => {
-  test("orders current-format message IDs by creation time with an ID tie-break", () => {
-    const preallocated = { ...userInfo("msg_000000000001AAAAAAAAAAAAAA"), time: { created: 300 } }
-    const direct = { ...userInfo("msg_000000000002BBBBBBBBBBBBBB"), time: { created: 200 } }
-    const sameTime = { ...userInfo("msg_000000000003CCCCCCCCCCCCCC"), time: { created: 300 } }
+  test("orders current-format message IDs by creation time with an ID tie-break", () =>
+    runtime.run(() => {
+      const preallocated = { ...userInfo("msg_000000000001AAAAAAAAAAAAAA"), time: { created: 300 } }
+      const direct = { ...userInfo("msg_000000000002BBBBBBBBBBBBBB"), time: { created: 200 } }
+      const sameTime = { ...userInfo("msg_000000000003CCCCCCCCCCCCCC"), time: { created: 300 } }
 
-    expect([preallocated, sameTime, direct].toSorted(MessageV2.compareStorageOrder).map((info) => info.id)).toEqual([
-      direct.id,
-      preallocated.id,
-      sameTime.id,
-    ])
-  })
+      expect([preallocated, sameTime, direct].toSorted(MessageV2.compareStorageOrder).map((info) => info.id)).toEqual([
+        direct.id,
+        preallocated.id,
+        sameTime.id,
+      ])
+    }))
 
-  test("orders legacy stable-delivery IDs by the same creation-time invariant", () => {
-    const preallocated = { ...userInfo(`msg_${"a".repeat(26)}`), time: { created: 300 } }
-    const direct = { ...userInfo(`msg_${"f".repeat(26)}`), time: { created: 200 } }
-    const sameTime = { ...userInfo(`msg_${"b".repeat(26)}`), time: { created: 300 } }
+  test("orders legacy stable-delivery IDs by the same creation-time invariant", () =>
+    runtime.run(() => {
+      const preallocated = { ...userInfo(`msg_${"a".repeat(26)}`), time: { created: 300 } }
+      const direct = { ...userInfo(`msg_${"f".repeat(26)}`), time: { created: 200 } }
+      const sameTime = { ...userInfo(`msg_${"b".repeat(26)}`), time: { created: 300 } }
 
-    expect([preallocated, sameTime, direct].toSorted(MessageV2.compareStorageOrder).map((info) => info.id)).toEqual([
-      direct.id,
-      preallocated.id,
-      sameTime.id,
-    ])
-  })
+      expect([preallocated, sameTime, direct].toSorted(MessageV2.compareStorageOrder).map((info) => info.id)).toEqual([
+        direct.id,
+        preallocated.id,
+        sameTime.id,
+      ])
+    }))
 })
 
 describe("session.message-v2.toModelMessage", () => {
-  test("filters out messages with no parts", () => {
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo("m-empty"),
-        parts: [],
-      },
-      {
-        info: userInfo("m-user"),
-        parts: [
-          {
-            ...basePart("m-user", "p1"),
-            type: "text",
-            text: "hello",
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("filters out messages with no parts", () =>
+    runtime.run(() => {
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo("m-empty"),
+          parts: [],
+        },
+        {
+          info: userInfo("m-user"),
+          parts: [
+            {
+              ...basePart("m-user", "p1"),
+              type: "text",
+              text: "hello",
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "hello" }],
-      },
-    ])
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+        },
+      ])
+    }))
 
-  test("excludes messages marked includeInContext: false", () => {
-    // Part-level model exclusion was removed (issue #281 §4.4); the only
-    // model-context switch is the message-level includeInContext flag.
-    const input: MessageV2.WithParts[] = [
-      {
-        info: { ...userInfo("m-user"), includeInContext: false },
-        parts: [
-          {
-            ...basePart("m-user", "p1"),
-            type: "text",
-            text: "hidden from model",
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("excludes messages marked includeInContext: false", () =>
+    runtime.run(() => {
+      // Part-level model exclusion was removed (issue #281 §4.4); the only
+      // model-context switch is the message-level includeInContext flag.
+      const input: MessageV2.WithParts[] = [
+        {
+          info: { ...userInfo("m-user"), includeInContext: false },
+          parts: [
+            {
+              ...basePart("m-user", "p1"),
+              type: "text",
+              text: "hidden from model",
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([])
-    const projection = MessageV2.projectModelMessages(input)
-    expect(projection.messages).toStrictEqual([])
-    expect(projection.provenance.categories.conversation).toStrictEqual([])
-    expect(projection.provenance.items.conversation).toBe(0)
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+      const projection = MessageV2.projectModelMessages(input)
+      expect(projection.messages).toStrictEqual([])
+      expect(projection.provenance.categories.conversation).toStrictEqual([])
+      expect(projection.provenance.items.conversation).toBe(0)
+    }))
 
-  test("includes synthetic text parts", () => {
-    const messageID = "m-user"
+  test("includes synthetic text parts", () =>
+    runtime.run(() => {
+      const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "p1"),
-            type: "text",
-            text: "hello",
-            synthetic: true,
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo("m-assistant", messageID),
-        parts: [
-          {
-            ...basePart("m-assistant", "a1"),
-            type: "text",
-            text: "assistant",
-            synthetic: true,
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "p1"),
+              type: "text",
+              text: "hello",
+              synthetic: true,
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo("m-assistant", messageID),
+          parts: [
+            {
+              ...basePart("m-assistant", "a1"),
+              type: "text",
+              text: "assistant",
+              synthetic: true,
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "hello" }],
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "assistant" }],
-      },
-    ])
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "assistant" }],
+        },
+      ])
+    }))
 
-  test("converts user text/attachment parts and filters special parts", () => {
-    const messageID = "m-user"
+  test("converts user text/attachment parts and filters special parts", () =>
+    runtime.run(() => {
+      const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "p1"),
-            type: "text",
-            text: "hello",
-          },
-          {
-            ...basePart(messageID, "p3"),
-            type: "attachment",
-            mime: "image/png",
-            filename: "img.png",
-            url: "https://example.com/img.png",
-            model: { mode: "provider-file", summary: "img.png (image/png)" },
-          },
-          {
-            ...basePart(messageID, "p4"),
-            type: "attachment",
-            mime: "text/plain",
-            filename: "note.txt",
-            url: "https://example.com/note.txt",
-            model: { mode: "provider-file", summary: "note.txt (text/plain)" },
-          },
-          {
-            ...basePart(messageID, "p5"),
-            type: "attachment",
-            mime: "application/x-directory",
-            filename: "dir",
-            url: "https://example.com/dir",
-            model: { mode: "summary", summary: "dir (application/x-directory)" },
-          },
-          {
-            ...basePart(messageID, "p6"),
-            type: "compaction",
-            auto: true,
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "p1"),
+              type: "text",
+              text: "hello",
+            },
+            {
+              ...basePart(messageID, "p3"),
+              type: "attachment",
+              mime: "image/png",
+              filename: "img.png",
+              url: "https://example.com/img.png",
+              model: { mode: "provider-file", summary: "img.png (image/png)" },
+            },
+            {
+              ...basePart(messageID, "p4"),
+              type: "attachment",
+              mime: "text/plain",
+              filename: "note.txt",
+              url: "https://example.com/note.txt",
+              model: { mode: "provider-file", summary: "note.txt (text/plain)" },
+            },
+            {
+              ...basePart(messageID, "p5"),
+              type: "attachment",
+              mime: "application/x-directory",
+              filename: "dir",
+              url: "https://example.com/dir",
+              model: { mode: "summary", summary: "dir (application/x-directory)" },
+            },
+            {
+              ...basePart(messageID, "p6"),
+              type: "compaction",
+              auto: true,
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "hello" },
-          {
-            type: "file",
-            mediaType: "image/png",
-            filename: "img.png",
-            data: "https://example.com/img.png",
-          },
-          {
-            type: "file",
-            mediaType: "text/plain",
-            filename: "note.txt",
-            data: "https://example.com/note.txt",
-          },
-          {
-            type: "text",
-            text: "[Attachment: dir (application/x-directory)]",
-          },
-        ],
-      },
-    ])
-  })
-  test("uses explicit content instead of sending data text attachments", () => {
-    const messageID = "m-user"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "p1"),
-            type: "text",
-            text: "this is the note content",
-            synthetic: true,
-          },
-          {
-            ...basePart(messageID, "p2"),
-            type: "attachment",
-            mime: "text/plain",
-            filename: "note.xml",
-            url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
-            model: { mode: "none" },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "hello" },
+            {
+              type: "file",
+              mediaType: "image/png",
+              filename: "img.png",
+              data: "https://example.com/img.png",
+            },
+            {
+              type: "file",
+              mediaType: "text/plain",
+              filename: "note.txt",
+              data: "https://example.com/note.txt",
+            },
+            {
+              type: "text",
+              text: "[Attachment: dir (application/x-directory)]",
+            },
+          ],
+        },
+      ])
+    }))
+  test("uses explicit content instead of sending data text attachments", () =>
+    runtime.run(() => {
+      const messageID = "m-user"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "p1"),
+              type: "text",
+              text: "this is the note content",
+              synthetic: true,
+            },
+            {
+              ...basePart(messageID, "p2"),
+              type: "attachment",
+              mime: "text/plain",
+              filename: "note.xml",
+              url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+              model: { mode: "none" },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "this is the note content" }],
-      },
-    ])
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "this is the note content" }],
+        },
+      ])
+    }))
 
-  test("passes through provider-file text attachments with https URLs", () => {
-    const messageID = "m-user"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "p1"),
-            type: "attachment",
-            mime: "text/plain",
-            filename: "doc.txt",
-            url: "https://example.com/doc.txt",
-            model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("passes through provider-file text attachments with https URLs", () =>
+    runtime.run(() => {
+      const messageID = "m-user"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "p1"),
+              type: "attachment",
+              mime: "text/plain",
+              filename: "doc.txt",
+              url: "https://example.com/doc.txt",
+              model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [
-          {
-            type: "file",
-            mediaType: "text/plain",
-            filename: "doc.txt",
-            data: "https://example.com/doc.txt",
-          },
-        ],
-      },
-    ])
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [
+            {
+              type: "file",
+              mediaType: "text/plain",
+              filename: "doc.txt",
+              data: "https://example.com/doc.txt",
+            },
+          ],
+        },
+      ])
+    }))
 
-  test("summarizes asset attachments instead of passing asset URLs to the provider", () => {
-    const messageID = "m-user"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "p1"),
-            type: "attachment",
-            mime: "text/plain",
-            filename: "file.ts",
-            url: "asset://abc123/file.ts",
-            model: { mode: "provider-file", summary: "file.ts (text/plain)" },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("summarizes asset attachments instead of passing asset URLs to the provider", () =>
+    runtime.run(() => {
+      const messageID = "m-user"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "p1"),
+              type: "attachment",
+              mime: "text/plain",
+              filename: "file.ts",
+              url: "asset://abc123/file.ts",
+              model: { mode: "provider-file", summary: "file.ts (text/plain)" },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "[Attachment: file.ts (text/plain)]" }],
-      },
-    ])
-    const projection = MessageV2.projectModelMessages(input)
-    expect(projection.provenance.categories.filesReferences).toStrictEqual([
-      { text: "[Attachment: file.ts (text/plain)]" },
-    ])
-    expect(projection.provenance.items.filesReferences).toBe(1)
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "[Attachment: file.ts (text/plain)]" }],
+        },
+      ])
+      const projection = MessageV2.projectModelMessages(input)
+      expect(projection.provenance.categories.filesReferences).toStrictEqual([
+        { text: "[Attachment: file.ts (text/plain)]" },
+      ])
+      expect(projection.provenance.items.filesReferences).toBe(1)
+    }))
 
-  test("uses attachment model policy for data text, https text, and images", () => {
-    const messageID = "m-user"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "p1"),
-            type: "text",
-            text: "hello",
-          },
-          {
-            ...basePart(messageID, "p2"),
-            type: "attachment",
-            mime: "text/plain",
-            filename: "note.xml",
-            url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
-            model: { mode: "none" },
-          },
-          {
-            ...basePart(messageID, "p3"),
-            type: "attachment",
-            mime: "text/plain",
-            filename: "doc.txt",
-            url: "https://example.com/doc.txt",
-            model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
-          },
-          {
-            ...basePart(messageID, "p4"),
-            type: "attachment",
-            mime: "image/png",
-            filename: "photo.png",
-            url: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
-            model: { mode: "provider-file", summary: "photo.png (image/png)" },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("uses attachment model policy for data text, https text, and images", () =>
+    runtime.run(() => {
+      const messageID = "m-user"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "p1"),
+              type: "text",
+              text: "hello",
+            },
+            {
+              ...basePart(messageID, "p2"),
+              type: "attachment",
+              mime: "text/plain",
+              filename: "note.xml",
+              url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+              model: { mode: "none" },
+            },
+            {
+              ...basePart(messageID, "p3"),
+              type: "attachment",
+              mime: "text/plain",
+              filename: "doc.txt",
+              url: "https://example.com/doc.txt",
+              model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
+            },
+            {
+              ...basePart(messageID, "p4"),
+              type: "attachment",
+              mime: "image/png",
+              filename: "photo.png",
+              url: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+              model: { mode: "provider-file", summary: "photo.png (image/png)" },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "hello" },
-          {
-            type: "file",
-            mediaType: "text/plain",
-            filename: "doc.txt",
-            data: "https://example.com/doc.txt",
-          },
-          {
-            type: "file",
-            mediaType: "image/png",
-            filename: "photo.png",
-            data: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
-          },
-        ],
-      },
-    ])
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "hello" },
+            {
+              type: "file",
+              mediaType: "text/plain",
+              filename: "doc.txt",
+              data: "https://example.com/doc.txt",
+            },
+            {
+              type: "file",
+              mediaType: "image/png",
+              filename: "photo.png",
+              data: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+            },
+          ],
+        },
+      ])
+    }))
 
-  test("converts assistant tool completion into tool-call + tool-result messages and emits attachment message", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
+  test("converts assistant tool completion into tool-call + tool-result messages and emits attachment message", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "run tool",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "text",
-            text: "done",
-            metadata: { openai: { assistant: "meta" } },
-          },
-          {
-            ...basePart(assistantID, "a2"),
-            type: "tool",
-            callID: "call-1",
-            tool: "bash",
-            state: {
-              status: "completed",
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "run tool",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "text",
+              text: "done",
+              metadata: { openai: { assistant: "meta" } },
+            },
+            {
+              ...basePart(assistantID, "a2"),
+              type: "tool",
+              callID: "call-1",
+              tool: "bash",
+              state: {
+                status: "completed",
+                input: { cmd: "ls" },
+                output: "ok",
+                title: "Bash",
+                metadata: {},
+                time: { start: 0, end: 1 },
+                attachments: [
+                  {
+                    ...basePart(assistantID, "file-1"),
+                    type: "attachment",
+                    mime: "image/png",
+                    filename: "attachment.png",
+                    url: "https://example.com/attachment.png",
+                    model: { mode: "summary", summary: "attachment.png (image/png)" },
+                  },
+                ],
+              },
+              metadata: { openai: { tool: "meta" } },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "run tool" }],
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Tool bash returned attachment results:" },
+            { type: "text", text: "[Attachment: attachment.png (image/png)]" },
+          ],
+        },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "done", providerOptions: { openai: { assistant: "meta" } } },
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "bash",
               input: { cmd: "ls" },
-              output: "ok",
-              title: "Bash",
-              metadata: {},
-              time: { start: 0, end: 1 },
-              attachments: [
-                {
-                  ...basePart(assistantID, "file-1"),
-                  type: "attachment",
-                  mime: "image/png",
-                  filename: "attachment.png",
-                  url: "https://example.com/attachment.png",
-                  model: { mode: "summary", summary: "attachment.png (image/png)" },
+              providerExecuted: undefined,
+              providerOptions: { openai: { tool: "meta" } },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "bash",
+              output: { type: "text", value: "ok" },
+              providerOptions: { openai: { tool: "meta" } },
+            },
+          ],
+        },
+      ])
+    }))
+
+  test("replaces compacted tool output with placeholder", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "run tool",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "bash",
+              state: {
+                status: "completed",
+                input: { cmd: "ls" },
+                output: "this should be cleared",
+                title: "Bash",
+                metadata: {},
+                time: { start: 0, end: 1, compacted: 1 },
+              },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "run tool" }],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "bash",
+              input: { cmd: "ls" },
+              providerExecuted: undefined,
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "bash",
+              output: { type: "text", value: "[Old tool result content cleared]" },
+            },
+          ],
+        },
+      ])
+    }))
+
+  test("converts assistant tool error into error-text tool result", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "run tool",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "bash",
+              state: {
+                status: "error",
+                input: { cmd: "ls" },
+                error: "nope",
+                time: { start: 0, end: 1 },
+                metadata: {},
+              },
+              metadata: { openai: { tool: "meta" } },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "run tool" }],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "bash",
+              input: { cmd: "ls" },
+              providerExecuted: undefined,
+              providerOptions: { openai: { tool: "meta" } },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "bash",
+              output: { type: "error-text", value: "nope" },
+              providerOptions: { openai: { tool: "meta" } },
+            },
+          ],
+        },
+      ])
+    }))
+
+  test("deduplicates terminal tool parts by call ID and prefers the execution outcome", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "read file",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "view_file",
+              state: {
+                status: "error",
+                input: { path: "missing.txt" },
+                error: "AI SDK tool error",
+                time: { start: 1, end: 2 },
+                metadata: {
+                  toolDiagnostic: {
+                    code: "invalid_arguments",
+                    toolName: "view_file",
+                    message: "AI SDK tool error",
+                    metadata: { source: "ai_sdk_tool_error" },
+                  },
                 },
-              ],
+              },
             },
-            metadata: { openai: { tool: "meta" } },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "run tool" }],
-      },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Tool bash returned attachment results:" },
-          { type: "text", text: "[Attachment: attachment.png (image/png)]" },
-        ],
-      },
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "done", providerOptions: { openai: { assistant: "meta" } } },
-          {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "bash",
-            input: { cmd: "ls" },
-            providerExecuted: undefined,
-            providerOptions: { openai: { tool: "meta" } },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call-1",
-            toolName: "bash",
-            output: { type: "text", value: "ok" },
-            providerOptions: { openai: { tool: "meta" } },
-          },
-        ],
-      },
-    ])
-  })
-
-  test("replaces compacted tool output with placeholder", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "run tool",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "bash",
-            state: {
-              status: "completed",
-              input: { cmd: "ls" },
-              output: "this should be cleared",
-              title: "Bash",
-              metadata: {},
-              time: { start: 0, end: 1, compacted: 1 },
+            {
+              ...basePart(assistantID, "a2"),
+              type: "tool",
+              callID: "call-1",
+              tool: "view_file",
+              state: {
+                status: "error",
+                input: { path: "missing.txt" },
+                error: "file not found",
+                time: { start: 0, end: 1 },
+                metadata: { source: "execution" },
+              },
             },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "run tool" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "bash",
-            input: { cmd: "ls" },
-            providerExecuted: undefined,
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call-1",
-            toolName: "bash",
-            output: { type: "text", value: "[Old tool result content cleared]" },
-          },
-        ],
-      },
-    ])
-  })
-
-  test("converts assistant tool error into error-text tool result", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "run tool",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "bash",
-            state: {
-              status: "error",
-              input: { cmd: "ls" },
-              error: "nope",
-              time: { start: 0, end: 1 },
-              metadata: {},
-            },
-            metadata: { openai: { tool: "meta" } },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "run tool" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "bash",
-            input: { cmd: "ls" },
-            providerExecuted: undefined,
-            providerOptions: { openai: { tool: "meta" } },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call-1",
-            toolName: "bash",
-            output: { type: "error-text", value: "nope" },
-            providerOptions: { openai: { tool: "meta" } },
-          },
-        ],
-      },
-    ])
-  })
-
-  test("deduplicates terminal tool parts by call ID and prefers the execution outcome", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "read file",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "view_file",
-            state: {
-              status: "error",
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "read file" }],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "view_file",
               input: { path: "missing.txt" },
-              error: "AI SDK tool error",
-              time: { start: 1, end: 2 },
+              providerExecuted: undefined,
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "view_file",
+              output: { type: "error-text", value: "file not found" },
+            },
+          ],
+        },
+      ])
+      const projection = MessageV2.projectModelMessages(input)
+      expect(projection.provenance.categories.toolActivity).toStrictEqual([
+        { text: JSON.stringify({ path: "missing.txt" }) },
+        { text: "file not found" },
+      ])
+      expect(projection.provenance.items.toolActivity).toBe(2)
+    }))
+
+  test("removes OpenAI response item references from model provider metadata", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "continue",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "text",
+              text: "answer",
               metadata: {
-                toolDiagnostic: {
-                  code: "invalid_arguments",
-                  toolName: "view_file",
-                  message: "AI SDK tool error",
-                  metadata: { source: "ai_sdk_tool_error" },
+                openai: {
+                  itemId: "rs_05cc53d0d93cbe50016a46668417b4819186ef05beefb099a1",
+                  reasoningEncryptedContent: "encrypted",
+                  retained: "ok",
+                },
+                custom: { keep: true },
+              },
+            },
+            {
+              ...basePart(assistantID, "a2"),
+              type: "reasoning",
+              text: "summary",
+              time: { start: 0 },
+              metadata: {
+                openai: {
+                  itemId: "rs_reasoning",
+                  reasoningEncryptedContent: "encrypted",
                 },
               },
             },
-          },
-          {
-            ...basePart(assistantID, "a2"),
-            type: "tool",
-            callID: "call-1",
-            tool: "view_file",
-            state: {
-              status: "error",
-              input: { path: "missing.txt" },
-              error: "file not found",
-              time: { start: 0, end: 1 },
-              metadata: { source: "execution" },
-            },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "read file" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "view_file",
-            input: { path: "missing.txt" },
-            providerExecuted: undefined,
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call-1",
-            toolName: "view_file",
-            output: { type: "error-text", value: "file not found" },
-          },
-        ],
-      },
-    ])
-    const projection = MessageV2.projectModelMessages(input)
-    expect(projection.provenance.categories.toolActivity).toStrictEqual([
-      { text: JSON.stringify({ path: "missing.txt" }) },
-      { text: "file not found" },
-    ])
-    expect(projection.provenance.items.toolActivity).toBe(2)
-  })
-
-  test("removes OpenAI response item references from model provider metadata", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "continue",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "text",
-            text: "answer",
-            metadata: {
-              openai: {
-                itemId: "rs_05cc53d0d93cbe50016a46668417b4819186ef05beefb099a1",
-                reasoningEncryptedContent: "encrypted",
-                retained: "ok",
+            {
+              ...basePart(assistantID, "a3"),
+              type: "tool",
+              callID: "call-1",
+              tool: "bash",
+              state: {
+                status: "completed",
+                input: { cmd: "pwd" },
+                output: "ok",
+                title: "Bash",
+                metadata: {},
+                time: { start: 0, end: 1 },
               },
-              custom: { keep: true },
-            },
-          },
-          {
-            ...basePart(assistantID, "a2"),
-            type: "reasoning",
-            text: "summary",
-            time: { start: 0 },
-            metadata: {
-              openai: {
-                itemId: "rs_reasoning",
-                reasoningEncryptedContent: "encrypted",
+              metadata: {
+                openai: {
+                  itemId: "rs_tool",
+                  retained: "tool",
+                },
               },
             },
-          },
-          {
-            ...basePart(assistantID, "a3"),
-            type: "tool",
-            callID: "call-1",
-            tool: "bash",
-            state: {
-              status: "completed",
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "user",
+          content: [{ type: "text", text: "continue" }],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "answer",
+              providerOptions: {
+                openai: { retained: "ok" },
+                custom: { keep: true },
+              },
+            },
+            {
+              type: "reasoning",
+              text: "summary",
+              providerOptions: undefined,
+            },
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "bash",
               input: { cmd: "pwd" },
-              output: "ok",
-              title: "Bash",
-              metadata: {},
-              time: { start: 0, end: 1 },
-            },
-            metadata: {
-              openai: {
-                itemId: "rs_tool",
-                retained: "tool",
+              providerExecuted: undefined,
+              providerOptions: {
+                openai: { retained: "tool" },
               },
             },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "continue" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "text",
-            text: "answer",
-            providerOptions: {
-              openai: { retained: "ok" },
-              custom: { keep: true },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "bash",
+              output: { type: "text", value: "ok" },
+              providerOptions: { openai: { retained: "tool" } },
             },
-          },
-          {
-            type: "reasoning",
-            text: "summary",
-            providerOptions: undefined,
-          },
-          {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "bash",
-            input: { cmd: "pwd" },
-            providerExecuted: undefined,
-            providerOptions: {
-              openai: { retained: "tool" },
+          ],
+        },
+      ])
+    }))
+
+  test("filters assistant messages with non-abort errors", () =>
+    runtime.run(() => {
+      const assistantID = "m-assistant"
+
+      const input: MessageV2.WithParts[] = [
+        {
+          info: assistantInfo(
+            assistantID,
+            "m-parent",
+            new MessageV2.APIError({ message: "boom", isRetryable: true }).toObject() as MessageV2.APIError,
+          ),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "text",
+              text: "should not render",
             },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call-1",
-            toolName: "bash",
-            output: { type: "text", value: "ok" },
-            providerOptions: { openai: { retained: "tool" } },
-          },
-        ],
-      },
-    ])
-  })
+          ] as MessageV2.Part[],
+        },
+      ]
 
-  test("filters assistant messages with non-abort errors", () => {
-    const assistantID = "m-assistant"
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+      const projection = MessageV2.projectModelMessages(input)
+      expect(projection.messages).toStrictEqual([])
+      expect(projection.provenance.categories.conversation).toStrictEqual([])
+      expect(projection.provenance.items.conversation).toBe(0)
+    }))
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: assistantInfo(
-          assistantID,
-          "m-parent",
-          new MessageV2.APIError({ message: "boom", isRetryable: true }).toObject() as MessageV2.APIError,
-        ),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "text",
-            text: "should not render",
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("includes aborted assistant messages only when they have non-step-start/reasoning content", () =>
+    runtime.run(() => {
+      const assistantID1 = "m-assistant-1"
+      const assistantID2 = "m-assistant-2"
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([])
-    const projection = MessageV2.projectModelMessages(input)
-    expect(projection.messages).toStrictEqual([])
-    expect(projection.provenance.categories.conversation).toStrictEqual([])
-    expect(projection.provenance.items.conversation).toBe(0)
-  })
+      const aborted = new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"]
 
-  test("includes aborted assistant messages only when they have non-step-start/reasoning content", () => {
-    const assistantID1 = "m-assistant-1"
-    const assistantID2 = "m-assistant-2"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: assistantInfo(assistantID1, "m-parent", aborted),
+          parts: [
+            {
+              ...basePart(assistantID1, "a1"),
+              type: "reasoning",
+              text: "thinking",
+              time: { start: 0 },
+            },
+            {
+              ...basePart(assistantID1, "a2"),
+              type: "text",
+              text: "partial answer",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID2, "m-parent", aborted),
+          parts: [
+            {
+              ...basePart(assistantID2, "b1"),
+              type: "step-start",
+            },
+            {
+              ...basePart(assistantID2, "b2"),
+              type: "reasoning",
+              text: "thinking",
+              time: { start: 0 },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    const aborted = new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"]
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "thinking", providerOptions: undefined },
+            { type: "text", text: "partial answer" },
+          ],
+        },
+      ])
+    }))
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: assistantInfo(assistantID1, "m-parent", aborted),
-        parts: [
-          {
-            ...basePart(assistantID1, "a1"),
-            type: "reasoning",
-            text: "thinking",
-            time: { start: 0 },
-          },
-          {
-            ...basePart(assistantID1, "a2"),
-            type: "text",
-            text: "partial answer",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID2, "m-parent", aborted),
-        parts: [
-          {
-            ...basePart(assistantID2, "b1"),
-            type: "step-start",
-          },
-          {
-            ...basePart(assistantID2, "b2"),
-            type: "reasoning",
-            text: "thinking",
-            time: { start: 0 },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("splits assistant messages on step-start boundaries", () =>
+    runtime.run(() => {
+      const assistantID = "m-assistant"
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "assistant",
-        content: [
-          { type: "reasoning", text: "thinking", providerOptions: undefined },
-          { type: "text", text: "partial answer" },
-        ],
-      },
-    ])
-  })
+      const input: MessageV2.WithParts[] = [
+        {
+          info: assistantInfo(assistantID, "m-parent"),
+          parts: [
+            {
+              ...basePart(assistantID, "p1"),
+              type: "text",
+              text: "first",
+            },
+            {
+              ...basePart(assistantID, "p2"),
+              type: "step-start",
+            },
+            {
+              ...basePart(assistantID, "p3"),
+              type: "text",
+              text: "second",
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-  test("splits assistant messages on step-start boundaries", () => {
-    const assistantID = "m-assistant"
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "first" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "second" }],
+        },
+      ])
+    }))
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: assistantInfo(assistantID, "m-parent"),
-        parts: [
-          {
-            ...basePart(assistantID, "p1"),
-            type: "text",
-            text: "first",
-          },
-          {
-            ...basePart(assistantID, "p2"),
-            type: "step-start",
-          },
-          {
-            ...basePart(assistantID, "p3"),
-            type: "text",
-            text: "second",
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("drops messages that only contain step-start parts", () =>
+    runtime.run(() => {
+      const assistantID = "m-assistant"
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "first" }],
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "second" }],
-      },
-    ])
-  })
+      const input: MessageV2.WithParts[] = [
+        {
+          info: assistantInfo(assistantID, "m-parent"),
+          parts: [
+            {
+              ...basePart(assistantID, "p1"),
+              type: "step-start",
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-  test("drops messages that only contain step-start parts", () => {
-    const assistantID = "m-assistant"
+      expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+    }))
 
-    const input: MessageV2.WithParts[] = [
-      {
-        info: assistantInfo(assistantID, "m-parent"),
-        parts: [
-          {
-            ...basePart(assistantID, "p1"),
-            type: "step-start",
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("projects durable and provider-managed attachment paths", () =>
+    runtime.run(() => {
+      const messageID = "m-attachments"
+      const assetID = "0123456789abcdef.bin"
+      const assetPath = Asset.resolvePath(assetID)!
+      const staleSourcePath = "/temporary/upload/trace.bin"
+      const providerPath = "/workspace/reference.pdf"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "asset"),
+              type: "attachment",
+              url: `asset://${assetID}`,
+              mime: "application/octet-stream",
+              filename: "trace.bin",
+              localPath: staleSourcePath,
+              model: { mode: "summary", summary: "trace.bin (application/octet-stream)" },
+            },
+            {
+              ...basePart(messageID, "provider"),
+              type: "attachment",
+              url: "data:application/pdf;base64,JVBERi0xLjQ=",
+              mime: "application/pdf",
+              filename: "reference.pdf",
+              localPath: providerPath,
+              model: { mode: "provider-file", summary: "reference.pdf (application/pdf)" },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(MessageV2.toModelMessage(input)).toStrictEqual([])
-  })
+      const projection = MessageV2.projectModelMessages(input)
+      const serialized = JSON.stringify(projection.messages)
 
-  test("projects durable and provider-managed attachment paths", () => {
-    const messageID = "m-attachments"
-    const assetID = "0123456789abcdef.bin"
-    const assetPath = Asset.resolvePath(assetID)!
-    const staleSourcePath = "/temporary/upload/trace.bin"
-    const providerPath = "/workspace/reference.pdf"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "asset"),
-            type: "attachment",
-            url: `asset://${assetID}`,
-            mime: "application/octet-stream",
-            filename: "trace.bin",
-            localPath: staleSourcePath,
-            model: { mode: "summary", summary: "trace.bin (application/octet-stream)" },
-          },
-          {
-            ...basePart(messageID, "provider"),
-            type: "attachment",
-            url: "data:application/pdf;base64,JVBERi0xLjQ=",
-            mime: "application/pdf",
-            filename: "reference.pdf",
-            localPath: providerPath,
-            model: { mode: "provider-file", summary: "reference.pdf (application/pdf)" },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+      expect(serialized).toContain(
+        `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+      )
+      expect(serialized).toContain(
+        `[The user attached a file: reference.pdf (application/pdf). Local path: ${providerPath}]`,
+      )
+      expect(serialized).toContain("data:application/pdf;base64,JVBERi0xLjQ=")
+      expect(serialized).not.toContain(staleSourcePath)
+      expect(projection.provenance.categories.filesReferences).toContainEqual({
+        text: `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+      })
+    }))
 
-    const projection = MessageV2.projectModelMessages(input)
-    const serialized = JSON.stringify(projection.messages)
+  test("does not duplicate a fallback attachment path", () =>
+    runtime.run(() => {
+      const messageID = "m-fallback-attachment"
+      const assetID = "fedcba9876543210.bin"
+      const assetPath = Asset.resolvePath(assetID)!
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(messageID),
+          parts: [
+            {
+              ...basePart(messageID, "asset"),
+              type: "attachment",
+              url: `asset://${assetID}`,
+              mime: "application/octet-stream",
+              filename: "trace.bin",
+              model: { mode: "summary" },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(serialized).toContain(
-      `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
-    )
-    expect(serialized).toContain(
-      `[The user attached a file: reference.pdf (application/pdf). Local path: ${providerPath}]`,
-    )
-    expect(serialized).toContain("data:application/pdf;base64,JVBERi0xLjQ=")
-    expect(serialized).not.toContain(staleSourcePath)
-    expect(projection.provenance.categories.filesReferences).toContainEqual({
-      text: `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
-    })
-  })
+      expect(JSON.stringify(MessageV2.projectModelMessages(input).messages)).toContain(
+        `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+      )
+    }))
 
-  test("does not duplicate a fallback attachment path", () => {
-    const messageID = "m-fallback-attachment"
-    const assetID = "fedcba9876543210.bin"
-    const assetPath = Asset.resolvePath(assetID)!
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(messageID),
-        parts: [
-          {
-            ...basePart(messageID, "asset"),
-            type: "attachment",
-            url: `asset://${assetID}`,
-            mime: "application/octet-stream",
-            filename: "trace.bin",
-            model: { mode: "summary" },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+  test("keeps the compatibility wrapper equivalent to canonical projection", () =>
+    runtime.run(() => {
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo("m-user"),
+          parts: [
+            {
+              ...basePart("m-user", "p1"),
+              type: "text",
+              text: "hello",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo("m-assistant", "m-user"),
+          parts: [
+            {
+              ...basePart("m-assistant", "p2"),
+              type: "text",
+              text: "world",
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(JSON.stringify(MessageV2.projectModelMessages(input).messages)).toContain(
-      `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
-    )
-  })
-
-  test("keeps the compatibility wrapper equivalent to canonical projection", () => {
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo("m-user"),
-        parts: [
-          {
-            ...basePart("m-user", "p1"),
-            type: "text",
-            text: "hello",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo("m-assistant", "m-user"),
-        parts: [
-          {
-            ...basePart("m-assistant", "p2"),
-            type: "text",
-            text: "world",
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    expect(MessageV2.toModelMessage(input)).toStrictEqual(MessageV2.projectModelMessages(input).messages)
-  })
+      expect(MessageV2.toModelMessage(input)).toStrictEqual(MessageV2.projectModelMessages(input).messages)
+    }))
 })
 
 describe("session.message-v2.model prompt metadata sanitization", () => {
@@ -1129,325 +1154,334 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
     return assistant.content.find((part) => part.type === "tool-call") as Record<string, any>
   }
 
-  test("drops undefined-valued metadata keys that break model prompt validation", () => {
-    const messages = MessageV2.toModelMessage(pollutedTurn())
+  test("drops undefined-valued metadata keys that break model prompt validation", () =>
+    runtime.run(() => {
+      const messages = MessageV2.toModelMessage(pollutedTurn())
 
-    const reasoningDetail = { type: "reasoning.text", text: ".", format: "unknown", index: 0 }
-    const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
-    const reasoning = assistant.content.find((part) => part.type === "reasoning") as Record<string, any>
-    const toolResult = (messages.find((msg) => msg.role === "tool") as { content: Array<Record<string, any>> })
-      .content[0]
-    const toolCall = firstToolCall(messages)
+      const reasoningDetail = { type: "reasoning.text", text: ".", format: "unknown", index: 0 }
+      const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
+      const reasoning = assistant.content.find((part) => part.type === "reasoning") as Record<string, any>
+      const toolResult = (messages.find((msg) => msg.role === "tool") as { content: Array<Record<string, any>> })
+        .content[0]
+      const toolCall = firstToolCall(messages)
 
-    expect(toolCall.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
-    expect(reasoning.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
-    expect(toolResult.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
+      expect(toolCall.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
+      expect(reasoning.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
+      expect(toolResult.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
 
-    for (const options of [toolCall.providerOptions, reasoning.providerOptions, toolResult.providerOptions]) {
-      expect(options).toStrictEqual(JSON.parse(JSON.stringify(options)))
-    }
-  })
+      for (const options of [toolCall.providerOptions, reasoning.providerOptions, toolResult.providerOptions]) {
+        expect(options).toStrictEqual(JSON.parse(JSON.stringify(options)))
+      }
+    }))
 
-  test("pins sanitization semantics for non-JSON-safe metadata values", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "hi",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "example",
-            state: {
-              status: "completed",
-              input: {},
-              output: "ok",
-              title: "Example",
-              metadata: {},
-              time: { start: 0, end: 1 },
+  test("pins sanitization semantics for non-JSON-safe metadata values", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "hi",
             },
-            metadata: {
-              provider: {
-                nan: NaN,
-                infinity: Infinity,
-                negativeInfinity: -Infinity,
-                bigintValue: BigInt(42),
-                omitted: undefined,
-                kept: "string",
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "example",
+              state: {
+                status: "completed",
+                input: {},
+                output: "ok",
+                title: "Example",
+                metadata: {},
+                time: { start: 0, end: 1 },
               },
-              nested: { list: [NaN, undefined, "tail"] },
+              metadata: {
+                provider: {
+                  nan: NaN,
+                  infinity: Infinity,
+                  negativeInfinity: -Infinity,
+                  bigintValue: BigInt(42),
+                  omitted: undefined,
+                  kept: "string",
+                },
+                nested: { list: [NaN, undefined, "tail"] },
+              },
             },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    expect(firstToolCall(MessageV2.toModelMessage(input)).providerOptions).toStrictEqual({
-      provider: {
-        nan: null,
-        infinity: null,
-        negativeInfinity: null,
-        bigintValue: "42",
-        kept: "string",
-      },
-      nested: { list: [null, null, "tail"] },
-    })
-  })
+      expect(firstToolCall(MessageV2.toModelMessage(input)).providerOptions).toStrictEqual({
+        provider: {
+          nan: null,
+          infinity: null,
+          negativeInfinity: null,
+          bigintValue: "42",
+          kept: "string",
+        },
+        nested: { list: [null, null, "tail"] },
+      })
+    }))
 
-  test("leaves clean metadata unchanged", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-    const cleanMetadata = {
-      openrouter: {
-        reasoning_details: [{ type: "reasoning.text", text: ".", format: "unknown", index: 0 }],
-      },
-      custom: { keep: [1, "two", { three: true }] },
-    }
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "hi",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "example",
-            state: {
-              status: "completed",
-              input: {},
-              output: "ok",
-              title: "Example",
-              metadata: {},
-              time: { start: 0, end: 1 },
+  test("leaves clean metadata unchanged", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const cleanMetadata = {
+        openrouter: {
+          reasoning_details: [{ type: "reasoning.text", text: ".", format: "unknown", index: 0 }],
+        },
+        custom: { keep: [1, "two", { three: true }] },
+      }
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "hi",
             },
-            metadata: cleanMetadata,
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    expect(JSON.stringify(firstToolCall(MessageV2.toModelMessage(input)).providerOptions)).toBe(
-      JSON.stringify(cleanMetadata),
-    )
-  })
-
-  test("keeps absent metadata absent", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "hi",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "reasoning",
-            text: "thinking",
-            time: { start: 0 },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
-
-    const messages = MessageV2.toModelMessage(input)
-    const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
-    const reasoning = assistant.content[0]
-    expect(reasoning.providerOptions).toBeUndefined()
-  })
-
-  test("strips provider metadata that cannot be serialized instead of throwing", () => {
-    const circular: Record<string, any> = { openrouter: { detail: {} } }
-    circular.openrouter.detail.self = circular
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "hi",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "example",
-            state: {
-              status: "completed",
-              input: {},
-              output: "ok",
-              title: "Example",
-              metadata: {},
-              time: { start: 0, end: 1 },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "example",
+              state: {
+                status: "completed",
+                input: {},
+                output: "ok",
+                title: "Example",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+              metadata: cleanMetadata,
             },
-            metadata: circular,
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    let messages: ModelMessage[]
-    expect(() => {
-      messages = MessageV2.toModelMessage(input)
-    }).not.toThrow()
-    expect(firstToolCall(messages!).providerOptions).toBeUndefined()
-  })
+      expect(JSON.stringify(firstToolCall(MessageV2.toModelMessage(input)).providerOptions)).toBe(
+        JSON.stringify(cleanMetadata),
+      )
+    }))
 
-  test("does not throw when tool input itself is non-JSON-safe", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-    const circularInput: Record<string, any> = { url: "https://example.com" }
-    circularInput.self = circularInput
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "hi",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "example",
-            state: {
-              status: "completed",
-              input: { count: BigInt(42) },
-              output: "ok",
-              title: "Example",
-              metadata: {},
-              time: { start: 0, end: 1 },
+  test("keeps absent metadata absent", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "hi",
             },
-          },
-          {
-            ...basePart(assistantID, "a2"),
-            type: "tool",
-            callID: "call-2",
-            tool: "example",
-            state: {
-              status: "error",
-              input: circularInput,
-              error: "boom",
-              metadata: {},
-              time: { start: 0, end: 1 },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "reasoning",
+              text: "thinking",
+              time: { start: 0 },
             },
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    let projection: ReturnType<typeof MessageV2.projectModelMessages>
-    expect(() => {
-      projection = MessageV2.projectModelMessages(input)
-    }).not.toThrow()
+      const messages = MessageV2.toModelMessage(input)
+      const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
+      const reasoning = assistant.content[0]
+      expect(reasoning.providerOptions).toBeUndefined()
+    }))
 
-    const assistant = projection!.messages.find((msg) => msg.role === "assistant") as {
-      content: Array<Record<string, any>>
-    }
-    const toolCalls = assistant.content.filter((part) => part.type === "tool-call")
-    expect(toolCalls[0].input).toStrictEqual({ count: "42" })
-    expect(toolCalls[1].input).toBeUndefined()
-    expect(projection!.provenance.categories.toolActivity).toContainEqual({ text: '{"count":"42"}' })
-    expect(projection!.provenance.categories.toolActivity).not.toContainEqual({ text: expect.stringContaining("self") })
-    expect(projection!.sanitization.converted).toBe(1)
-    expect(projection!.sanitization.failed).toBe(1)
-  })
-
-  test("reports sanitization counts for observability", () => {
-    const userID = "m-user"
-    const assistantID = "m-assistant"
-    const circularMetadata: Record<string, any> = { self: {} }
-    circularMetadata.self.back = circularMetadata
-    const input: MessageV2.WithParts[] = [
-      {
-        info: userInfo(userID),
-        parts: [
-          {
-            ...basePart(userID, "u1"),
-            type: "text",
-            text: "hi",
-          },
-        ] as MessageV2.Part[],
-      },
-      {
-        info: assistantInfo(assistantID, userID),
-        parts: [
-          {
-            ...basePart(assistantID, "a1"),
-            type: "tool",
-            callID: "call-1",
-            tool: "example",
-            state: {
-              status: "completed",
-              input: {},
-              output: "ok",
-              title: "Example",
-              metadata: {},
-              time: { start: 0, end: 1 },
+  test("strips provider metadata that cannot be serialized instead of throwing", () =>
+    runtime.run(() => {
+      const circular: Record<string, any> = { openrouter: { detail: {} } }
+      circular.openrouter.detail.self = circular
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "hi",
             },
-            metadata: {
-              provider: { nan: NaN, big: BigInt(1), omitted: undefined, kept: "value" },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "example",
+              state: {
+                status: "completed",
+                input: {},
+                output: "ok",
+                title: "Example",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+              metadata: circular,
             },
-          },
-          {
-            ...basePart(assistantID, "a2"),
-            type: "reasoning",
-            text: "thinking",
-            time: { start: 0 },
-            metadata: circularMetadata,
-          },
-        ] as MessageV2.Part[],
-      },
-    ]
+          ] as MessageV2.Part[],
+        },
+      ]
 
-    const projection = MessageV2.projectModelMessages(input)
-    expect(projection.sanitization).toStrictEqual({ converted: 2, dropped: 1, failed: 1 })
-  })
+      let messages: ModelMessage[]
+      expect(() => {
+        messages = MessageV2.toModelMessage(input)
+      }).not.toThrow()
+      expect(firstToolCall(messages!).providerOptions).toBeUndefined()
+    }))
+
+  test("does not throw when tool input itself is non-JSON-safe", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const circularInput: Record<string, any> = { url: "https://example.com" }
+      circularInput.self = circularInput
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "hi",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "example",
+              state: {
+                status: "completed",
+                input: { count: BigInt(42) },
+                output: "ok",
+                title: "Example",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+            },
+            {
+              ...basePart(assistantID, "a2"),
+              type: "tool",
+              callID: "call-2",
+              tool: "example",
+              state: {
+                status: "error",
+                input: circularInput,
+                error: "boom",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      let projection: ReturnType<typeof MessageV2.projectModelMessages>
+      expect(() => {
+        projection = MessageV2.projectModelMessages(input)
+      }).not.toThrow()
+
+      const assistant = projection!.messages.find((msg) => msg.role === "assistant") as {
+        content: Array<Record<string, any>>
+      }
+      const toolCalls = assistant.content.filter((part) => part.type === "tool-call")
+      expect(toolCalls[0].input).toStrictEqual({ count: "42" })
+      expect(toolCalls[1].input).toBeUndefined()
+      expect(projection!.provenance.categories.toolActivity).toContainEqual({ text: '{"count":"42"}' })
+      expect(projection!.provenance.categories.toolActivity).not.toContainEqual({
+        text: expect.stringContaining("self"),
+      })
+      expect(projection!.sanitization.converted).toBe(1)
+      expect(projection!.sanitization.failed).toBe(1)
+    }))
+
+  test("reports sanitization counts for observability", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const circularMetadata: Record<string, any> = { self: {} }
+      circularMetadata.self.back = circularMetadata
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u1"),
+              type: "text",
+              text: "hi",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a1"),
+              type: "tool",
+              callID: "call-1",
+              tool: "example",
+              state: {
+                status: "completed",
+                input: {},
+                output: "ok",
+                title: "Example",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+              metadata: {
+                provider: { nan: NaN, big: BigInt(1), omitted: undefined, kept: "value" },
+              },
+            },
+            {
+              ...basePart(assistantID, "a2"),
+              type: "reasoning",
+              text: "thinking",
+              time: { start: 0 },
+              metadata: circularMetadata,
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      const projection = MessageV2.projectModelMessages(input)
+      expect(projection.sanitization).toStrictEqual({ converted: 2, dropped: 1, failed: 1 })
+    }))
 })
 
 describe("session.message-v2 context usage schema", () => {
@@ -1470,19 +1504,24 @@ describe("session.message-v2 context usage schema", () => {
     capturedAt: 123,
   }
 
-  test("round-trips optional assistant context usage", () => {
-    const assistant = { ...assistantInfo("m-assistant", "m-parent"), contextUsage }
-    expect(MessageV2.Assistant.parse(assistant)).toEqual(assistant)
-  })
+  test("round-trips optional assistant context usage", () =>
+    runtime.run(() => {
+      const assistant = { ...assistantInfo("m-assistant", "m-parent"), contextUsage }
+      expect(MessageV2.Assistant.parse(assistant)).toEqual(assistant)
+    }))
 
-  test("continues to parse legacy assistants without context usage", () => {
-    const assistant = assistantInfo("m-assistant", "m-parent")
-    expect(MessageV2.Assistant.parse(assistant)).not.toHaveProperty("contextUsage")
-  })
+  test("continues to parse legacy assistants without context usage", () =>
+    runtime.run(() => {
+      const assistant = assistantInfo("m-assistant", "m-parent")
+      expect(MessageV2.Assistant.parse(assistant)).not.toHaveProperty("contextUsage")
+    }))
 
-  test("older assistant schemas ignore the additive field on rollback", () => {
-    const legacyAssistant = MessageV2.Assistant.omit({ contextUsage: true })
-    const parsed = legacyAssistant.parse({ ...assistantInfo("m-assistant", "m-parent"), contextUsage })
-    expect(parsed).not.toHaveProperty("contextUsage")
-  })
+  test("older assistant schemas ignore the additive field on rollback", () =>
+    runtime.run(() => {
+      const legacyAssistant = MessageV2.Assistant.omit({ contextUsage: true })
+      const parsed = legacyAssistant.parse({ ...assistantInfo("m-assistant", "m-parent"), contextUsage })
+      expect(parsed).not.toHaveProperty("contextUsage")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

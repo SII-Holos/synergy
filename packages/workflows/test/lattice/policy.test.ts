@@ -5,6 +5,9 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 setDefaultTimeout(30_000)
 
@@ -20,47 +23,52 @@ async function gateFor(sessionID: string) {
 }
 
 describe("LatticeContinuationPolicy", () => {
-  test("does not handle a session outside Lattice mode", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
-    })
-  })
-
-  test("derives ordinary continuation from state and terminal message without persisting an effect", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const run = await LatticeStore.create({ sessionID: session.id, mode: "auto" })
-      await Session.update(session.id, (draft) => {
-        draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+  test("does not handle a session outside Lattice mode", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
       })
+    }))
 
-      const proposal = await LatticeContinuationPolicy.handle(await gateFor(session.id))
-      const stored = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
+  test("derives ordinary continuation from state and terminal message without persisting an effect", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const run = await LatticeStore.create({ sessionID: session.id, mode: "auto" })
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+        })
 
-      expect(proposal?.kind).toBe("inbox")
-      expect(proposal?.kind === "inbox" ? proposal.deliveryKey : undefined).toBe(
-        `lattice:${run.id}:continue:msg_terminal`,
-      )
-      expect(stored.effect).toBeUndefined()
-    })
-  })
+        const proposal = await LatticeContinuationPolicy.handle(await gateFor(session.id))
+        const stored = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
 
-  test("pure budget convergence pauses and returns undefined instead of empty handled", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const run = await LatticeStore.create({ sessionID: session.id, mode: "auto", maxModelCalls: 1 })
-      await Session.update(session.id, (draft) => {
-        draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+        expect(proposal?.kind).toBe("inbox")
+        expect(proposal?.kind === "inbox" ? proposal.deliveryKey : undefined).toBe(
+          `lattice:${run.id}:continue:msg_terminal`,
+        )
+        expect(stored.effect).toBeUndefined()
       })
-      await LatticeStore.update(ScopeContext.current.scope.id, session.id, (draft) => {
-        draft.modelCallCount = 1
-      })
+    }))
 
-      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
-      expect((await LatticeStore.get(ScopeContext.current.scope.id, session.id)).statusReason).toBe(
-        "model_call_budget_exhausted",
-      )
-    })
-  })
+  test("pure budget convergence pauses and returns undefined instead of empty handled", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const run = await LatticeStore.create({ sessionID: session.id, mode: "auto", maxModelCalls: 1 })
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+        })
+        await LatticeStore.update(ScopeContext.current.scope.id, session.id, (draft) => {
+          draft.modelCallCount = 1
+        })
+
+        expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
+        expect((await LatticeStore.get(ScopeContext.current.scope.id, session.id)).statusReason).toBe(
+          "model_call_budget_exhausted",
+        )
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

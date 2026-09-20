@@ -13,6 +13,7 @@ import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 export interface SessionRowProps {
   session: Session
+  hasDraft: boolean
   isActive: boolean
   isWorking: boolean
   hasPermission: boolean
@@ -208,7 +209,7 @@ export function SessionRow(props: SessionRowProps) {
   const actionVisibility = createMemo(() =>
     sessionActionVisibility({
       sessionID: props.session.id,
-      scopeKey: props.session.scope.type === "home" ? HOME_SCOPE_KEY : (props.session.scope.directory ?? ""),
+      scopeKey: props.session.scope.type === "home" ? HOME_SCOPE_KEY : (props.session.scope.id ?? ""),
     }),
   )
 
@@ -249,6 +250,7 @@ export function SessionRow(props: SessionRowProps) {
         <StatusDot {...props} />
         <SessionDraftBadge
           sessionID={props.session.id}
+          dirty={props.hasDraft}
           label={i18n._(sidebar.draftBadge.id)}
           class="shrink-0 translate-y-px text-10-medium text-text-error"
         />

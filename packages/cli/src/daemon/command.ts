@@ -11,10 +11,15 @@ export namespace DaemonCommand {
     env: Record<string, string>
   }
 
-  export function resolve(input: { hostname: string; port: number }): Spec {
-    const baseEnv = buildServiceEnv()
+  export function resolve(input: {
+    hostname: string
+    port: number
+    env?: Readonly<Record<string, string | undefined>>
+  }): Spec {
+    const environment = input.env ?? process.env
+    const baseEnv = buildServiceEnv(environment)
 
-    const explicit = process.env.SYNERGY_BIN_PATH
+    const explicit = environment.SYNERGY_BIN_PATH
     if (explicit) {
       return {
         cmd: [
@@ -29,7 +34,7 @@ export namespace DaemonCommand {
           "--port",
           String(input.port),
         ],
-        cwd: serviceWorkingDirectory(),
+        cwd: serviceWorkingDirectory(environment),
         env: baseEnv,
       }
     }
@@ -51,7 +56,7 @@ export namespace DaemonCommand {
           "--port",
           String(input.port),
         ],
-        cwd: serviceWorkingDirectory(),
+        cwd: serviceWorkingDirectory(environment),
         env: baseEnv,
       }
     }
@@ -81,7 +86,7 @@ export namespace DaemonCommand {
           "--port",
           String(input.port),
         ],
-        cwd: serviceWorkingDirectory(),
+        cwd: serviceWorkingDirectory(environment),
         env: baseEnv,
       }
     }
@@ -105,7 +110,7 @@ export namespace DaemonCommand {
         "--port",
         String(input.port),
       ],
-      cwd: serviceWorkingDirectory(),
+      cwd: serviceWorkingDirectory(environment),
       env: baseEnv,
     }
   }
@@ -130,12 +135,11 @@ export namespace DaemonCommand {
     return DaemonPaths.logFile()
   }
 
-  function serviceWorkingDirectory() {
-    return process.env.SYNERGY_CWD || process.env.HOME || process.env.USERPROFILE || homedir() || process.cwd()
+  function serviceWorkingDirectory(environment: Readonly<Record<string, string | undefined>>) {
+    return environment.SYNERGY_CWD || environment.HOME || environment.USERPROFILE || homedir() || process.cwd()
   }
 
-  function buildServiceEnv(): Record<string, string> {
-    const source = process.env
+  function buildServiceEnv(source: Readonly<Record<string, string | undefined>>): Record<string, string> {
     const env: Record<string, string> = {}
     for (const key of Object.keys(source)) {
       const value = source[key]

@@ -19,6 +19,12 @@ test.each([true, false])(
     import { Scope } from ${JSON.stringify(path.join(harness, "scope/index.ts"))};
     import { ScopeContext } from ${JSON.stringify(path.join(harness, "scope/context.ts"))};
     import { Identifier } from ${JSON.stringify(path.join(harness, "id/id.ts"))};
+    import { RuntimeContext } from ${JSON.stringify(path.join(harness, "lifecycle/context.ts"))};
+    import { registerHarness } from ${JSON.stringify(path.join(harness, "lifecycle/register.ts"))};
+    const home = process.env.SYNERGY_HOME;
+    const runtime = RuntimeContext.create({ home, root: path.join(home, ".synergy"), env: { ...process.env } });
+    await runtime.run(async () => {
+    registerHarness();
     const id = Identifier.ascending("session");
     async function write(key, value) {
       const file = path.join(Global.Path.data, ...key) + ".json";
@@ -35,12 +41,14 @@ test.each([true, false])(
       await write(StoragePath.metaMigrationLogDomain(domain), Object.fromEntries(migrations.filter(m => m.id !== "20260919-settle-orphaned-tool-parts").map(m => [m.id, 1])));
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Not active");
-    if ((await SessionCompat.stats()).pending !== 1) throw new Error("Cold cohort did not remain deferred");
+    if ((await SessionCompat.stats()).pending !== 1) throw new Error("Cold cohort did not remain deferred: " + JSON.stringify(await SessionCompat.stats()));
     const created = await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({ title: "new work before history" }) });
     if (!created.id || (await SessionCompat.stats()).pending !== 1) throw new Error("New work waited for old history");
     await SessionCompat.requireImported(id);
     if ((await SessionCompat.stats()).imported !== 1) throw new Error("Touch did not converge");
     if ((await handle.store.verify()).issues.length) throw new Error("Imported store is inconsistent");
+    });
+    runtime.dispose();
   `
     const env: Record<string, string | undefined> = { ...process.env, SYNERGY_HOME: tmp.path }
     delete env.SYNERGY_STORAGE_COMPAT_DEFER

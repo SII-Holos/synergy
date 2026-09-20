@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 export namespace ToolExposure {
   export type Info =
     | {
@@ -47,7 +48,7 @@ export namespace ToolExposure {
 
   export const RESIDENT: Info = { mode: "resident" }
 
-  export const BUILTIN_GROUPS: GroupInfo[] = [
+  const builtinGroups: GroupInfo[] = [
     {
       id: "session",
       title: "Session",
@@ -59,25 +60,27 @@ export namespace ToolExposure {
     },
   ]
 
-  const BUILTIN_GROUP_BY_ID = new Map(BUILTIN_GROUPS.map((group) => [group.id, group]))
-  const BUILTIN_GROUP_BY_TOOL = new Map<string, GroupInfo>()
-  for (const group of BUILTIN_GROUPS) {
-    for (const tool of group.tools) {
-      BUILTIN_GROUP_BY_TOOL.set(tool, group)
-    }
+  const groupState = RuntimeContext.state(() => {
+    const groups = structuredClone(builtinGroups)
+    const byID = new Map(groups.map((group) => [group.id, group]))
+    const byTool = new Map(groups.flatMap((group) => group.tools.map((tool) => [tool, group] as const)))
+    return { groups, byID, byTool }
+  })
+  export function groups(): readonly GroupInfo[] {
+    return groupState().groups
   }
 
   export function registerGroups(owner: string, groups: GroupInfo[]) {
     for (const group of groups) {
-      const existing = BUILTIN_GROUP_BY_ID.get(group.id)
+      const existing = groupState().byID.get(group.id)
       if (existing) {
         if (JSON.stringify(existing) !== JSON.stringify(group))
           throw new Error(`Conflicting tool group ${group.id} from ${owner}`)
         continue
       }
-      BUILTIN_GROUPS.push(group)
-      BUILTIN_GROUP_BY_ID.set(group.id, group)
-      for (const tool of group.tools) BUILTIN_GROUP_BY_TOOL.set(tool, group)
+      groupState().groups.push(group)
+      groupState().byID.set(group.id, group)
+      for (const tool of group.tools) groupState().byTool.set(tool, group)
     }
   }
 
@@ -130,11 +133,11 @@ export namespace ToolExposure {
   }
 
   export function builtinGroup(id: string): GroupInfo | undefined {
-    return BUILTIN_GROUP_BY_ID.get(id)
+    return groupState().byID.get(id)
   }
 
   export function builtinGroupForTool(toolID: string): GroupInfo | undefined {
-    return BUILTIN_GROUP_BY_TOOL.get(toolID)
+    return groupState().byTool.get(toolID)
   }
   /**
    * Stable group id for orchestration tools (task delegation, DAG planning)
@@ -207,7 +210,7 @@ export namespace ToolExposure {
     return userTools["*"] !== false
   }
 
-  export function groupTable(groups: GroupInfo[] = BUILTIN_GROUPS): string {
+  export function groupTable(groups: GroupInfo[] = groupState().groups): string {
     return [
       "| Group | What it does | When to expand |",
       "| --- | --- | --- |",

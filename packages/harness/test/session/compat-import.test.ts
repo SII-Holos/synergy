@@ -7,6 +7,9 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { StorageCompat } from "../../src/storage/compat"
 import { SessionCompat } from "../../src/session/compat-import"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const scopeID = Identifier.asScopeID("home")
 const VALID = "ses_test000000000000000valid"
@@ -49,32 +52,35 @@ async function compatFixture() {
   await StorageCompat.seedLocators(Storage.current().store, Global.Path.data)
 }
 
-test("a deferred aggregate imports on touch, and leaves no JSON", async () => {
-  await compatFixture()
+test("a deferred aggregate imports on touch, and leaves no JSON", () =>
+  runtime.run(async () => {
+    await compatFixture()
 
-  const before = await StorageCompat.pendingLocators(Storage.current().store)
-  expect(before.map((locator) => locator.sessionID).sort()).toEqual([CORRUPT, VALID].sort())
+    const before = await StorageCompat.pendingLocators(Storage.current().store)
+    expect(before.map((locator) => locator.sessionID).sort()).toEqual([CORRUPT, VALID].sort())
 
-  const locator = await SessionCompat.requireImported(VALID)
-  expect(locator.status).toBe("imported")
+    const locator = await SessionCompat.requireImported(VALID)
+    expect(locator.status).toBe("imported")
 
-  expect(await Storage.read(StoragePath.sessionInfo(scopeID, sid))).toMatchObject({ title: "legacy session" })
-  expect(await Storage.read(StoragePath.sessionIndex(sid))).toMatchObject({ scopeID: "home" })
-  expect(await Storage.read(StoragePath.messageInfo(scopeID, sid, Identifier.asMessageID("msg_legacy")))).toMatchObject(
-    { role: "user" },
-  )
-  expect(await Bun.file(path.join(Global.Path.data, `sessions/home/${VALID}/info.json`)).exists()).toBe(false)
+    expect(await Storage.read(StoragePath.sessionInfo(scopeID, sid))).toMatchObject({ title: "legacy session" })
+    expect(await Storage.read(StoragePath.sessionIndex(sid))).toMatchObject({ scopeID: "home" })
+    expect(
+      await Storage.read(StoragePath.messageInfo(scopeID, sid, Identifier.asMessageID("msg_legacy"))),
+    ).toMatchObject({ role: "user" })
+    expect(await Bun.file(path.join(Global.Path.data, `sessions/home/${VALID}/info.json`)).exists()).toBe(false)
 
-  // The unreadable corrupt aggregate stays invisible to listings until a touch quarantines it.
-  const page = await SessionCompat.mergePageIndex("home", { entries: [] })
-  expect(page.entries).toEqual([])
+    // The unreadable corrupt aggregate stays invisible to listings until a touch quarantines it.
+    const page = await SessionCompat.mergePageIndex("home", { entries: [] })
+    expect(page.entries).toEqual([])
 
-  await expect(SessionCompat.requireImported(CORRUPT)).rejects.toThrow("quarantined historical data")
-  const [recovery] = await Storage.readMany<{ blocked: boolean }>([["storage_recovery", "sessions", CORRUPT, "info"]])
-  expect(recovery?.blocked).toBe(true)
+    await expect(SessionCompat.requireImported(CORRUPT)).rejects.toThrow("quarantined historical data")
+    const [recovery] = await Storage.readMany<{ blocked: boolean }>([["storage_recovery", "sessions", CORRUPT, "info"]])
+    expect(recovery?.blocked).toBe(true)
 
-  const stats = await SessionCompat.stats()
-  expect(stats).toMatchObject({ imported: 1, quarantined: 1, pending: 0, partial: 0 })
+    const stats = await SessionCompat.stats()
+    expect(stats).toMatchObject({ imported: 1, quarantined: 1, pending: 0, partial: 0 })
 
-  await StorageCompat.rejectForeignWriters(Global.Path.data, Storage.current().store)
-})
+    await StorageCompat.rejectForeignWriters(Global.Path.data, Storage.current().store)
+  }))
+
+afterRuntimeTests(() => runtime.close())

@@ -9,7 +9,7 @@ The Browser runtime separates ownership, canonical page state, host control, and
 - session-owned: `<scopeID>:session:<sessionID>`
 - scope-owned: `<scopeID>:scope`
 
-Tool execution derives a session owner from the current `Scope` and tool session ID. Routes carry directory, Scope, optional session ID, and ownership mode explicitly. Session ownership requires a session ID.
+Tool execution derives a session owner from the current `Scope` and tool session ID. Routes carry Scope identity, a nullable directory, optional session ID, and ownership mode explicitly. Home sessions have no filesystem workspace and still own Browser state. Session ownership requires a session ID.
 
 The server derives the canonical owner key and includes it in every session-state payload. Clients use that value for native presentation leases, event validation, Desktop profiles, and view attachment; route directories are routing inputs and are never alternate owner identities.
 
@@ -17,7 +17,7 @@ The server derives the canonical owner key and includes it in every session-stat
 
 Browser execution is owned by `packages/browser-runtime`; the harness has no Browser driver or presentation dependency. The reaper consumes the shared session terminal-event contract, so archive, deletion, and child-task termination preserve the same cleanup behavior without importing product task orchestration. A host registers the Browser routes explicitly with its server composition.
 
-Chromium and Playwright start lazily when Browser is first used. The process-wide runtime holds one `BrowserSession` per owner. Each Browser session holds zero or one page plus annotations and observers.
+Chromium and Playwright start lazily when Browser is first used. Each Runtime instance holds one `BrowserSession` per owner. Browser protocol version 3 and native presentation lease version 2 preserve the nullable directory contract; host and client must agree on these versions. Each Browser session holds zero or one page plus annotations and observers.
 
 Browser execution belongs to the Control Plane/tool-runtime layer, not the Agent worker. The model receives only the serializable Browser tool definitions. Browser callbacks, canonical sessions, Playwright, Chromium discovery, host signaling, native views, and WebRTC state must not enter the Agent worker runner's static dependency graph. A proposed Browser call is authorized and scheduled only after the provider turn has released its Agent worker.
 

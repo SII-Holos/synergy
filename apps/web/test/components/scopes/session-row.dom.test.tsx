@@ -72,6 +72,7 @@ beforeAll(async () => {
           return (
             <div data-row={props.id}>
               <SessionRow
+                hasDraft={false}
                 session={props.session}
                 isActive={false}
                 isWorking={false}

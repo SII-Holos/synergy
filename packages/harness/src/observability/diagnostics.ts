@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
 import { tmpdir } from "os"
@@ -384,19 +385,25 @@ export namespace Diagnostics {
     }
   }
 
-  let pendingSessionsCache: { at: number; root: string; value: Summary["sessions"]["pendingReply"] } | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    pendingSessionsCache: undefined as
+      | { at: number; root: string; value: Summary["sessions"]["pendingReply"] }
+      | undefined,
+  }))
   const PENDING_SESSIONS_CACHE_MS = 15_000
 
   async function pendingSessions(fresh = false) {
+    const instanceState = runtimeState()
+
     const now = Date.now()
     const root = path.join(Global.Path.data, "sessions")
     if (
       !fresh &&
-      pendingSessionsCache &&
-      pendingSessionsCache.root === root &&
-      now - pendingSessionsCache.at < PENDING_SESSIONS_CACHE_MS
+      instanceState.pendingSessionsCache &&
+      instanceState.pendingSessionsCache.root === root &&
+      now - instanceState.pendingSessionsCache.at < PENDING_SESSIONS_CACHE_MS
     ) {
-      return pendingSessionsCache.value
+      return instanceState.pendingSessionsCache.value
     }
     const result: Summary["sessions"]["pendingReply"] = []
     // Only session-level info.json files carry pendingReply; message-level
@@ -413,7 +420,7 @@ export namespace Diagnostics {
       result.push({ sessionID: json.id, path: file, updated: json.time?.updated })
     })
     const value = result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
-    pendingSessionsCache = { at: now, root, value }
+    instanceState.pendingSessionsCache = { at: now, root, value }
     return value
   }
 

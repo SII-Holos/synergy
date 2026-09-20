@@ -12,6 +12,9 @@ import { mcpDeclarations } from "../../src/plugin/lifecycle"
 import type { LoadedPlugin } from "../../src/plugin/loader"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function manifest(pluginId: string): PluginManifestType {
   return compilePluginManifest(
@@ -61,50 +64,54 @@ function loadedPlugin(pluginManifest: PluginManifestType): LoadedPlugin {
 }
 
 describe("settings-conditioned MCP contributions", () => {
-  test("uses schema defaults as the effective plugin config", async () => {
-    await using tmp = await tmpdir({ config: {} })
-    const pluginManifest = manifest("settings-defaults-test")
+  test("uses schema defaults as the effective plugin config", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      const pluginManifest = manifest("settings-defaults-test")
 
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        expect(await getPluginConfig(pluginManifest.id, { manifest: pluginManifest })).toEqual({
-          componentsEnabled: true,
-        })
-
-        await replacePluginConfig(pluginManifest.id, { componentsEnabled: false }, { manifest: pluginManifest })
-        expect(await getPluginConfig(pluginManifest.id, { manifest: pluginManifest })).toEqual({
-          componentsEnabled: false,
-        })
-
-        await replacePluginConfig(pluginManifest.id, { legacy: { componentsEnabled: false } })
-        expect(await getPluginConfig(pluginManifest.id, { manifest: pluginManifest })).toEqual({
-          componentsEnabled: true,
-        })
-      },
-    })
-  })
-
-  test("includes eager MCP servers by default and removes them when disabled", async () => {
-    await using tmp = await tmpdir({ config: {} })
-    const pluginManifest = manifest("settings-mcp-filter-test")
-    const plugin = loadedPlugin(pluginManifest)
-    pluginContributionAdapters.registerPlugin(plugin.id, pluginManifest)
-
-    try {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await mcpDeclarations(plugin)).toEqual({
-            components: expect.objectContaining({ startup: "eager" }),
+          expect(await getPluginConfig(pluginManifest.id, { manifest: pluginManifest })).toEqual({
+            componentsEnabled: true,
           })
 
-          await replacePluginConfig(plugin.id, { componentsEnabled: false }, { manifest: pluginManifest })
-          expect(await mcpDeclarations(plugin)).toEqual({})
+          await replacePluginConfig(pluginManifest.id, { componentsEnabled: false }, { manifest: pluginManifest })
+          expect(await getPluginConfig(pluginManifest.id, { manifest: pluginManifest })).toEqual({
+            componentsEnabled: false,
+          })
+
+          await replacePluginConfig(pluginManifest.id, { legacy: { componentsEnabled: false } })
+          expect(await getPluginConfig(pluginManifest.id, { manifest: pluginManifest })).toEqual({
+            componentsEnabled: true,
+          })
         },
       })
-    } finally {
-      pluginContributionAdapters.unregisterPlugin(plugin.id)
-    }
-  })
+    }))
+
+  test("includes eager MCP servers by default and removes them when disabled", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      const pluginManifest = manifest("settings-mcp-filter-test")
+      const plugin = loadedPlugin(pluginManifest)
+      pluginContributionAdapters().registerPlugin(plugin.id, pluginManifest)
+
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            expect(await mcpDeclarations(plugin)).toEqual({
+              components: expect.objectContaining({ startup: "eager" }),
+            })
+
+            await replacePluginConfig(plugin.id, { componentsEnabled: false }, { manifest: pluginManifest })
+            expect(await mcpDeclarations(plugin)).toEqual({})
+          },
+        })
+      } finally {
+        pluginContributionAdapters().unregisterPlugin(plugin.id)
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

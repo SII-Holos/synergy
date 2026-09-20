@@ -62,6 +62,8 @@ UI artifacts declare their independent API version and explicit resource path/ha
 | `lifecycle.upgrade`     | yes        | handler identity                                                             |
 | `lifecycle.uninstall`   | yes        | handler identity                                                             |
 
+Tool contributions may declare `requiresWorkspace: false` for operations that use only network or managed data. Omission defaults to requiring a workspace. MCP server declarations carry the same optional field and apply it to their tools. The host enforces this during discovery and execution, independently of capability approval; `full_access` cannot create a missing workspace.
+
 Contribution IDs are unique within a contribution kind. This permits a command operation and its declarative UI action to share one meaningful local ID while their kind-qualified identities remain distinct. Every `requires` entry must name a top-level capability. Executable declarations require a runtime artifact. A trusted component requires a UI artifact.
 
 ## Schemas and Handlers

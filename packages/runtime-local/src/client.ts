@@ -1,3 +1,4 @@
+import type { RuntimeHandle } from "@ericsanchezok/synergy-harness/lifecycle"
 import { z } from "zod"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -55,68 +56,92 @@ async function subscribe(signal?: AbortSignal) {
   return { stream: stream() }
 }
 
-export function createLocalClient() {
+export type ScopeSelector = { scopeID: string } | { directory: string }
+
+export function createLocalClient(runtime: RuntimeHandle.Handle, selector: ScopeSelector) {
+  function inScope<A extends unknown[], R>(body: (...args: A) => Promise<R>) {
+    return (...args: A): Promise<R> =>
+      runtime.run(async () => {
+        const scope = await Scope.resolve(selector)
+        return await ScopeContext.provide({ scope, fn: () => body(...args) })
+      })
+  }
   return {
-    scope: { current: async () => success(Scope.Info.parse(ScopeContext.current.scope)) },
+    scope: { current: inScope(async () => success(Scope.Runtime.parse(ScopeContext.current.scope))) },
     controlProfile: {
-      effective: async () =>
+      effective: inScope(async () =>
         success({ profileId: String(ControlProfileCompiler.normalize((await Config.current()).controlProfile)) }),
+      ),
     },
-    app: { agents: async (_input?: unknown, _options?: RequestOptions) => success(await Agent.list()) },
-    event: { subscribe: async (_input?: unknown, options?: { signal?: AbortSignal }) => subscribe(options?.signal) },
+    app: { agents: inScope(async (_input?: unknown, _options?: RequestOptions) => success(await Agent.list())) },
+    event: {
+      subscribe: inScope(async (_input?: unknown, options?: { signal?: AbortSignal }) =>
+        subscribe(options?.signal ? AbortSignal.any([runtime.signal, options.signal]) : runtime.signal),
+      ),
+    },
     permission: {
-      respond: async (
-        input: { sessionID: string; permissionID: string; response: "once" | "always" | "reject" },
-        _options?: RequestOptions,
-      ) => {
-        await PermissionNext.reply({ requestID: input.permissionID, reply: input.response })
-        return success(true)
-      },
+      respond: inScope(
+        async (
+          input: { sessionID: string; permissionID: string; response: "once" | "always" | "reject" },
+          _options?: RequestOptions,
+        ) => {
+          await PermissionNext.reply({ requestID: input.permissionID, reply: input.response })
+          return success(true)
+        },
+      ),
     },
     question: {
-      reject: async (input: { requestID: string }, _options?: RequestOptions) => {
+      reject: inScope(async (input: { requestID: string }, _options?: RequestOptions) => {
         await Question.reject(input.requestID)
         return success(true)
-      },
-      reply: async (input: { requestID: string; answers: string[][] }, _options?: RequestOptions) => {
+      }),
+      reply: inScope(async (input: { requestID: string; answers: string[][] }, _options?: RequestOptions) => {
         await Question.reply(input)
         return success(true)
-      },
+      }),
     },
     workflow: {
       session: {
-        set: async (
-          input: { id: string; workflowSetInput: { kind: "lightloop"; instructions: string } },
-          _options?: RequestOptions,
-        ) => success(await SessionWorkflowService.set(input.id, input.workflowSetInput)),
+        set: inScope(
+          async (
+            input: { id: string; workflowSetInput: { kind: "lightloop"; instructions: string } },
+            _options?: RequestOptions,
+          ) => success(await SessionWorkflowService.set(input.id, input.workflowSetInput)),
+        ),
       },
     },
     session: {
-      create: async (input: Parameters<typeof createSession>[0]) =>
+      create: inScope(async (input: Parameters<typeof createSession>[0]) =>
         success(Session.Info.parse(await createSession(input))),
-      list: async () => success(await Session.list()),
-      message: async (input: { sessionID: string; messageID: string }, _options?: RequestOptions) =>
+      ),
+      list: inScope(async () => success(await Session.list())),
+      message: inScope(async (input: { sessionID: string; messageID: string }, _options?: RequestOptions) =>
         success(await MessageV2.get(input)),
-      run: async (input: { sessionID: string; runID: string }, _options?: RequestOptions) =>
+      ),
+      run: inScope(async (input: { sessionID: string; runID: string }, _options?: RequestOptions) =>
         success(await RolloutLedger.getRun(RolloutLifecycle.owner(await Session.get(input.sessionID)), input.runID)),
-      runResult: async (input: { sessionID: string; runID: string }, _options?: RequestOptions) =>
+      ),
+      runResult: inScope(async (input: { sessionID: string; runID: string }, _options?: RequestOptions) =>
         success(await RolloutQuery.tree(RolloutLifecycle.owner(await Session.get(input.sessionID)), input.runID)),
-      cancelRun: async (input: {
-        sessionID: string
-        runID: string
-      }): Promise<{ data: unknown; error: unknown; response: { status: number } }> => {
-        try {
-          return success(await RolloutLifecycle.cancel(input.sessionID, input.runID))
-        } catch (error) {
-          if (!(error instanceof Storage.NotFoundError)) throw error
-          return { data: undefined, error, response: { status: 404 } }
-        }
-      },
-      input: async (input: InvokeInput, _options?: RequestOptions) => success(await submitInput(input)),
-      command: async (input: Parameters<typeof SessionInvoke.command>[0], _options?: RequestOptions) => {
+      ),
+      cancelRun: inScope(
+        async (input: {
+          sessionID: string
+          runID: string
+        }): Promise<{ data: unknown; error: unknown; response: { status: number } }> => {
+          try {
+            return success(await RolloutLifecycle.cancel(input.sessionID, input.runID))
+          } catch (error) {
+            if (!(error instanceof Storage.NotFoundError)) throw error
+            return { data: undefined, error, response: { status: 404 } }
+          }
+        },
+      ),
+      input: inScope(async (input: InvokeInput, _options?: RequestOptions) => success(await submitInput(input))),
+      command: inScope(async (input: Parameters<typeof SessionInvoke.command>[0], _options?: RequestOptions) => {
         await submitCommand(input)
         return success(undefined)
-      },
+      }),
     },
   }
 }

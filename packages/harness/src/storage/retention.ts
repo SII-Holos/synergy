@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "./storage"
 import { Log } from "../util/log"
 import { SqliteMaintenance } from "./sqlite-maintenance"
@@ -52,10 +53,12 @@ export namespace StorageRetention {
   // a permanently running deletion loop.
   const BACKOFF_BASE_MS = 15 * 60_000
   const BACKOFF_MAX_STEPS = 4
-  let timer: ReturnType<typeof setInterval> | undefined
-  let running: Promise<Report> | undefined
-  let consecutiveCapped = 0
-  let cooldownUntil = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    timer: undefined as ReturnType<typeof setInterval> | undefined,
+    running: undefined as Promise<Report> | undefined,
+    consecutiveCapped: 0,
+    cooldownUntil: 0,
+  }))
 
   export function isEnabled(retentionMs: number | undefined): retentionMs is number {
     return typeof retentionMs === "number" && Number.isFinite(retentionMs) && retentionMs > 0
@@ -70,17 +73,19 @@ export namespace StorageRetention {
     current(): { retentionMs: number; maxBytes: number }
     liveSessionIDs(): string[]
   }) {
+    const instanceState = runtimeState()
+
     stop()
-    timer = setInterval(() => {
-      if (running) return
-      if (Date.now() < cooldownUntil) return
+    instanceState.timer = setInterval(() => {
+      if (instanceState.running) return
+      if (Date.now() < instanceState.cooldownUntil) return
       const config = input.current()
       if (!isEnabled(config.retentionMs)) return
-      running = run({ ...config, liveSessionIDs: input.liveSessionIDs() })
+      instanceState.running = run({ ...config, liveSessionIDs: input.liveSessionIDs() })
         .then((report) => {
-          consecutiveCapped = report.capped ? consecutiveCapped + 1 : 0
-          cooldownUntil = report.capped
-            ? Date.now() + BACKOFF_BASE_MS * 2 ** Math.min(consecutiveCapped - 1, BACKOFF_MAX_STEPS)
+          instanceState.consecutiveCapped = report.capped ? instanceState.consecutiveCapped + 1 : 0
+          instanceState.cooldownUntil = report.capped
+            ? Date.now() + BACKOFF_BASE_MS * 2 ** Math.min(instanceState.consecutiveCapped - 1, BACKOFF_MAX_STEPS)
             : 0
           return report
         })
@@ -102,17 +107,19 @@ export namespace StorageRetention {
           return undefined as unknown as Report
         })
         .finally(() => {
-          running = undefined
+          instanceState.running = undefined
         }) as Promise<Report>
     }, SWEEP_INTERVAL_MS)
-    timer.unref()
+    instanceState.timer.unref()
   }
 
   export function stop() {
-    if (timer) clearInterval(timer)
-    timer = undefined
-    consecutiveCapped = 0
-    cooldownUntil = 0
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) clearInterval(instanceState.timer)
+    instanceState.timer = undefined
+    instanceState.consecutiveCapped = 0
+    instanceState.cooldownUntil = 0
   }
 
   export function protectedOwners(input: {

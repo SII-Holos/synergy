@@ -124,12 +124,12 @@ describe("BrowserWebRTCClient", () => {
     expect(ws.sent).toEqual([])
 
     ws.emit("message", {
-      data: JSON.stringify({ type: "webrtc.host.pending", protocolVersion: 2, pageId: "page_1" }),
+      data: JSON.stringify({ type: "webrtc.host.pending", protocolVersion: 3, pageId: "page_1" }),
     })
     expect(ws.sent).toEqual([])
 
     ws.emit("message", {
-      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 3, pageId: "page_1" }),
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -137,7 +137,7 @@ describe("BrowserWebRTCClient", () => {
     expect(ws.sent).toContainEqual(
       expect.objectContaining({
         type: "webrtc.offer",
-        protocolVersion: 2,
+        protocolVersion: 3,
         pageId: "page_1",
         generation: 1,
         sdp: "fake-offer",
@@ -158,7 +158,7 @@ describe("BrowserWebRTCClient", () => {
     const ws = FakeWebSocket.instances[0]!
     ws.emit("open", {})
     ws.emit("message", {
-      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 3, pageId: "page_1" }),
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -169,7 +169,7 @@ describe("BrowserWebRTCClient", () => {
     ws.emit("message", {
       data: JSON.stringify({
         type: "webrtc.answer",
-        protocolVersion: 2,
+        protocolVersion: 3,
         pageId: "page_1",
         connectionId: firstOffer.connectionId,
         generation: firstOffer.generation,
@@ -186,7 +186,7 @@ describe("BrowserWebRTCClient", () => {
     const retrySocket = FakeWebSocket.instances[1]!
     retrySocket.emit("open", {})
     retrySocket.emit("message", {
-      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 3, pageId: "page_1" }),
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -211,7 +211,7 @@ describe("BrowserWebRTCClient", () => {
     const ws = FakeWebSocket.instances[0]!
     ws.emit("open", {})
     ws.emit("message", {
-      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 3, pageId: "page_1" }),
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -222,7 +222,7 @@ describe("BrowserWebRTCClient", () => {
     ws.emit("message", {
       data: JSON.stringify({
         type: "webrtc.error",
-        protocolVersion: 2,
+        protocolVersion: 3,
         pageId: "page_1",
         connectionId: offer.connectionId,
         generation: offer.generation,

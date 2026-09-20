@@ -6170,6 +6170,7 @@ export class Pty extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
+      sessionID?: string
       command?: string
       args?: Array<string>
       cwd?: string
@@ -6187,6 +6188,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "sessionID" },
             { in: "body", key: "command" },
             { in: "body", key: "args" },
             { in: "body", key: "cwd" },
@@ -6507,15 +6509,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6557,15 +6559,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6614,15 +6616,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6872,15 +6874,15 @@ export class Config extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
         | Array<
             | "general"
@@ -6891,15 +6893,15 @@ export class Config extends HeyApiClient {
             | "permissions"
             | "runtime"
             | "storage"
-            | "plugins"
+            | "skills"
+            | "worktree"
+            | "mcp"
+            | "library"
             | "channels"
             | "holos"
             | "email"
             | "github"
-            | "library"
-            | "mcp"
-            | "skills"
-            | "worktree"
+            | "plugins"
             | "voice"
           >
       includeSecrets?: string

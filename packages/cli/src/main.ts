@@ -1,3 +1,13 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import {
+  ObservabilityMetrics,
+  ObservabilityStore,
+  ObservabilityWriter,
+} from "@ericsanchezok/synergy-harness/observability"
+import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
+import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
+import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { coreCommands, type CommandEntry } from "./cli/commands"
 import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
@@ -45,11 +55,41 @@ export interface CliOptions {
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
+  const host = createLocalHost()
+  const context = RuntimeContext.create(host)
   try {
-    await runCliImplementation(options)
+    await context.run(async () => {
+      registerLocalRuntime()
+      try {
+        await runCliImplementation({
+          ...options,
+          runtimeFactory: (input) => options.runtimeFactory({ ...input, host }),
+        })
+      } finally {
+        const errors: unknown[] = []
+        for (const close of [
+          () => ModelsCatalog.stop(),
+          () => ProviderCatalog.stop(),
+          () => ScopeRuntime.stop(),
+          () => ObservabilityWriter.stop(),
+          () => ObservabilityMetrics.stop(),
+          () => ObservabilityStore.stop(),
+          () => Log.close(),
+        ]) {
+          try {
+            await close()
+          } catch (error) {
+            errors.push(error)
+          }
+        }
+        if (errors.length) throw new AggregateError(errors, "CLI resources cleanup failed")
+      }
+    })
   } catch (error) {
     console.error(error instanceof Error ? (error.stack ?? error.message) : error)
     process.exitCode = 1
+  } finally {
+    context.dispose()
   }
 }
 
@@ -126,9 +166,6 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
           return "INFO"
         })(),
       })
-
-      process.env.AGENT = "1"
-      process.env.SYNERGY = "1"
 
       Log.Default.info("synergy", {
         version: Installation.VERSION,

@@ -62,7 +62,7 @@ export function createSessionCommandParts(input: {
         metadata: {
           kind: "session",
           sessionId: attachment.sessionId,
-          directory: attachment.directory,
+          scopeID: attachment.scopeID,
           title: attachment.title || "Untitled",
           updatedAt: attachment.updatedAt,
         },

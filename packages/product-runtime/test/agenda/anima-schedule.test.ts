@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { beforeEach, afterEach, expect, test } from "bun:test"
 import { Cron } from "croner"
 import fs from "fs/promises"
 import path from "path"
@@ -11,61 +11,55 @@ import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-
-const originalTestHome = process.env.SYNERGY_TEST_HOME
-
-afterEach(async () => {
-  const currentHome = process.env.SYNERGY_TEST_HOME
-  const rootToClean = currentHome !== originalTestHome ? Global.Path.root : undefined
-
-  if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
-  else process.env.SYNERGY_TEST_HOME = originalTestHome
-
-  if (rootToClean) await fs.rm(rootToClean, { recursive: true, force: true }).catch(() => {})
+import { testRuntime } from "../support/runtime"
+let runtime: Awaited<ReturnType<typeof testRuntime>>
+beforeEach(async () => {
+  runtime = await testRuntime()
 })
+afterEach(() => runtime.close())
 
 function withAnima(autonomy: boolean, fn: () => Promise<void>) {
-  return async () => {
-    await using tmp = await tmpdir()
-    process.env.SYNERGY_TEST_HOME = path.join(tmp.path, "home")
-    await fs.mkdir(Global.Path.config, { recursive: true })
-    await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ library: { autonomy } }))
+  return () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await fs.mkdir(Global.Path.config, { recursive: true })
+      await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ library: { autonomy } }))
 
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        await AgendaStore.create(
-          {
-            title: "Anima daily wake",
-            prompt: "你醒了。",
-            triggers: [{ type: "cron", expr: "0 3 * * *", tz: "Asia/Shanghai" }],
-            agent: "anima",
-            silent: true,
-            wake: false,
-            global: true,
-            tags: ["system"],
-            createdBy: "user",
-          },
-          "anima-daily",
-        )
-        await fn()
-      },
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await AgendaStore.create(
+            {
+              title: "Anima daily wake",
+              prompt: "你醒了。",
+              triggers: [{ type: "cron", expr: "0 3 * * *", tz: "Asia/Shanghai" }],
+              agent: "anima",
+              silent: true,
+              wake: false,
+              global: true,
+              tags: ["system"],
+              createdBy: "user",
+            },
+            "anima-daily",
+          )
+          await fn()
+        },
+      })
     })
-  }
 }
 
-test("seed creates anima item on startup when missing", async () => {
-  await using tmp = await tmpdir()
-  process.env.SYNERGY_TEST_HOME = path.join(tmp.path, "home")
-  await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ library: { autonomy: true } }))
+test("seed creates anima item on startup when missing", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ library: { autonomy: true } }))
 
-  await AnimaSchedule.seed()
+    await AnimaSchedule.seed()
 
-  const created = await AgendaStore.get("home", "anima-daily")
-  expect(created.id).toBe("anima-daily")
-  expect(created.status).toBe("active")
-  expect(created.agent).toBe("anima")
-})
+    const created = await AgendaStore.get("home", "anima-daily")
+    expect(created.id).toBe("anima-daily")
+    expect(created.status).toBe("active")
+    expect(created.agent).toBe("anima")
+  }))
 
 test(
   "seed does not reactivate a user-paused anima item on startup",

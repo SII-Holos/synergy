@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { createReadStream } from "node:fs"
@@ -19,7 +20,8 @@ import type { StoreOptions } from "./sql-contract"
 import { MigrationRegistry } from "../migration/registry"
 
 async function canDefer(root: string) {
-  if (process.env.SYNERGY_STORAGE_COMPAT_DEFER !== undefined) return process.env.SYNERGY_STORAGE_COMPAT_DEFER === "1"
+  if (RuntimeContext.current().host.env.SYNERGY_STORAGE_COMPAT_DEFER !== undefined)
+    return RuntimeContext.current().host.env.SYNERGY_STORAGE_COMPAT_DEFER === "1"
   if (MigrationRegistry.list().size === 0) return false
   const logs = new Map<string, Record<string, unknown>>()
   for (const [owner, migrations] of MigrationRegistry.list()) {

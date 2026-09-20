@@ -289,7 +289,6 @@ export function managedProjectLocalScope(
   return {
     ...metadata,
     id: entry.scopeID,
-    worktree: entry.directory,
     name: entry.name ?? metadata?.name,
     icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
     expanded,
@@ -331,7 +330,7 @@ export interface ChannelAccount {
   projects: ScopeNavEntry[]
   status?: ChannelAccountStatus
 }
-export function managedProjectScopesByWorktree(
+export function managedProjectScopesByID(
   accounts: readonly ChannelAccount[],
   metadataByID: ReadonlyMap<string, Partial<LocalScope>>,
   expandedWorktrees: ReadonlySet<string>,
@@ -339,8 +338,8 @@ export function managedProjectScopesByWorktree(
   return new Map(
     accounts.flatMap((account) =>
       account.projects.map((entry) => [
-        entry.directory,
-        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.directory)),
+        entry.scopeID,
+        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.scopeID)),
       ]),
     ),
   )

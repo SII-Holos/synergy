@@ -14,16 +14,21 @@ import { StoragePath } from "../../src/storage/path"
 import { tmpdir } from "../support/fixture"
 import { SecretMask } from "../../src/secrets/mask"
 import { SecretVault } from "../../src/secrets/vault"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-afterAll(async () => {
-  // executeToolCall dispatches through the module-level ToolScheduler
-  // singleton; stop and re-arm it so sibling suites in this shard process are
-  // neither rejected with "Tool scheduler is stopping" nor blocked by
-  // "cannot be reconfigured after it has started", even if a test above
-  // failed mid-execution.
-  await ToolScheduler.stop()
-  ToolScheduler.configure()
-})
+afterAll(() =>
+  runtime.run(async () => {
+    // executeToolCall dispatches through the module-level ToolScheduler
+    // singleton; stop and re-arm it so sibling suites in this shard process are
+    // neither rejected with "Tool scheduler is stopping" nor blocked by
+    // "cannot be reconfigured after it has started", even if a test above
+    // failed mid-execution.
+    await ToolScheduler.stop()
+    ToolScheduler.configure()
+  }),
+)
 
 function testModel(): Provider.Model {
   return {
@@ -141,255 +146,264 @@ async function pumpMacrotasks(turns: number) {
   for (let i = 0; i < turns; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0))
 }
 describe("tool settlement vs late state flushes", () => {
-  afterEach(() => {
-    mock.restore()
-  })
+  afterEach(() =>
+    runtime.run(() => {
+      mock.restore()
+    }),
+  )
 
-  test("a completed settlement is not overwritten by an in-flight running write", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { processor, readDurableToolPart } = await createTurn()
-        const callID = Identifier.ascending("part")
-        const gate = gateUpdatePart(callID)
-        const execution = processor
-          .executeToolCall({
-            callID,
-            toolName: "probe",
-            args: { command: "printf ok" },
-            tool: {
-              async execute(args: unknown) {
-                gate.arm()
-                // Mirrors Bash flushMetadata(): a fire-and-forget metadata
-                // write still in flight when the tool result settles.
-                void processor
-                  .updateToolCallState(callID, {
-                    input: args as Record<string, any>,
-                    metadata: { output: "streamed" },
-                  })
-                  .catch(() => {})
-                processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
-                return { title: "probe", output: "done", metadata: {} }
-              },
-            } as unknown as AITool,
-          })
-          .then(
-            (result) => ({ ok: true as const, result }),
-            (error: unknown) => ({ ok: false as const, error }),
-          )
-
-        await gate.flushWriteHeld
-        // The terminal settlement must serialize behind the in-flight flush.
-        // A fixed number of macrotask turns is a deterministic barrier: an
-        // unqueued terminal write would have started long before they run
-        // out, so its absence here is not a timing accident.
-        await pumpMacrotasks(20)
-        try {
-          expect(gate.events).not.toContain("terminal:enter")
-        } finally {
-          gate.release()
-        }
-        const outcome = await execution
-        expect(outcome.ok).toBe(true)
-        expect(gate.events.indexOf("flush:commit")).toBeGreaterThanOrEqual(0)
-        expect(gate.events.indexOf("terminal:enter")).toBeGreaterThan(gate.events.indexOf("flush:commit"))
-
-        const durable = await readDurableToolPart(callID)
-        const state = durable.state
-        if (state.status !== "completed") throw new Error(`expected completed, got ${state.status}`)
-        expect(state.output).toBe("done")
-        expect(state.time.end).toBeNumber()
-      },
-    })
-  })
-
-  test("an error settlement is not overwritten by an in-flight running write", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { processor, readDurableToolPart } = await createTurn()
-        const callID = Identifier.ascending("part")
-        const gate = gateUpdatePart(callID)
-        const execution = processor
-          .executeToolCall({
-            callID,
-            toolName: "probe",
-            args: { command: "printf ok" },
-            tool: {
-              async execute(args: unknown) {
-                gate.arm()
-                void processor
-                  .updateToolCallState(callID, {
-                    input: args as Record<string, any>,
-                    metadata: { output: "streamed" },
-                  })
-                  .catch(() => {})
-                throw new Error("tool boom")
-              },
-            } as unknown as AITool,
-          })
-          .then(
-            (result) => ({ ok: true as const, result }),
-            (error: unknown) => ({ ok: false as const, error }),
-          )
-
-        await gate.flushWriteHeld
-        await pumpMacrotasks(20)
-        try {
-          expect(gate.events).not.toContain("terminal:enter")
-        } finally {
-          gate.release()
-        }
-        const outcome = await execution
-        expect(outcome.ok).toBe(false)
-        expect(gate.events.indexOf("flush:commit")).toBeGreaterThanOrEqual(0)
-        expect(gate.events.indexOf("terminal:enter")).toBeGreaterThan(gate.events.indexOf("flush:commit"))
-
-        const durable = await readDurableToolPart(callID)
-        const state = durable.state
-        if (state.status !== "error") throw new Error(`expected error, got ${state.status}`)
-        expect(state.time.end).toBeNumber()
-      },
-    })
-  })
-
-  test("state updates queued after settlement leave the terminal part untouched", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { processor, readDurableToolPart } = await createTurn()
-        const callID = Identifier.ascending("part")
-        const outcome = await processor.executeToolCall({
-          callID,
-          toolName: "probe",
-          args: { command: "printf ok" },
-          tool: {
-            async execute(args: unknown) {
-              processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
-              return { title: "probe", output: "done", metadata: {} }
-            },
-          } as unknown as AITool,
-        })
-        expect(outcome.output).toBe("done")
-
-        await processor.updateToolCallState(callID, {
-          input: { command: "printf ok" },
-          metadata: { output: "late arrival" },
-        })
-
-        const durable = await readDurableToolPart(callID)
-        const state = durable.state
-        if (state.status !== "completed") throw new Error(`expected completed, got ${state.status}`)
-        expect(state.output).toBe("done")
-      },
-    })
-  })
-
-  test("a genuine running tool still persists metadata flushes while executing", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { processor, readDurableToolPart } = await createTurn()
-        const callID = Identifier.ascending("part")
-        let finishTool!: () => void
-        const toolMayFinish = new Promise<void>((resolve) => {
-          finishTool = resolve
-        })
-        let metadataApplied!: () => void
-        const metadataWriteResolved = new Promise<void>((resolve) => {
-          metadataApplied = resolve
-        })
-
-        const execution = processor
-          .executeToolCall({
-            callID,
-            toolName: "probe",
-            args: { command: "sleep" },
-            tool: {
-              async execute(args: unknown) {
-                await processor.updateToolCallState(callID, {
-                  input: args as Record<string, any>,
-                  metadata: { output: "progress" },
-                })
-                metadataApplied()
-                await toolMayFinish
-                processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
-                return { title: "probe", output: "done", metadata: {} }
-              },
-            } as unknown as AITool,
-          })
-          .then(
-            (result) => ({ ok: true as const, result }),
-            (error: unknown) => ({ ok: false as const, error }),
-          )
-
-        await metadataWriteResolved
-        const running = await readDurableToolPart(callID)
-        const runningState = running.state
-        if (runningState.status !== "running") throw new Error(`expected running, got ${runningState.status}`)
-        expect(runningState.metadata?.output).toBe("progress")
-
-        finishTool()
-        const outcome = await execution
-        expect(outcome.ok).toBe(true)
-        const durable = await readDurableToolPart(callID)
-        const state = durable.state
-        if (state.status !== "completed") throw new Error(`expected completed, got ${state.status}`)
-        expect(state.output).toBe("done")
-      },
-    })
-  })
-
-  test("running metadata captures credentials before durable progress is published", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const value = `sk-progress-${crypto.randomUUID()}`
-    const id = SecretVault.idOf(value)
-    try {
+  test("a completed settlement is not overwritten by an in-flight running write", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { processor, readDurableToolPart } = await createTurn()
           const callID = Identifier.ascending("part")
-          const ready = Promise.withResolvers<void>()
-          const finish = Promise.withResolvers<void>()
-          const execution = processor.executeToolCall({
+          const gate = gateUpdatePart(callID)
+          const execution = processor
+            .executeToolCall({
+              callID,
+              toolName: "probe",
+              args: { command: "printf ok" },
+              tool: {
+                async execute(args: unknown) {
+                  gate.arm()
+                  // Mirrors Bash flushMetadata(): a fire-and-forget metadata
+                  // write still in flight when the tool result settles.
+                  void processor
+                    .updateToolCallState(callID, {
+                      input: args as Record<string, any>,
+                      metadata: { output: "streamed" },
+                    })
+                    .catch(() => {})
+                  processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
+                  return { title: "probe", output: "done", metadata: {} }
+                },
+              } as unknown as AITool,
+            })
+            .then(
+              (result) => ({ ok: true as const, result }),
+              (error: unknown) => ({ ok: false as const, error }),
+            )
+
+          await gate.flushWriteHeld
+          // The terminal settlement must serialize behind the in-flight flush.
+          // A fixed number of macrotask turns is a deterministic barrier: an
+          // unqueued terminal write would have started long before they run
+          // out, so its absence here is not a timing accident.
+          await pumpMacrotasks(20)
+          try {
+            expect(gate.events).not.toContain("terminal:enter")
+          } finally {
+            gate.release()
+          }
+          const outcome = await execution
+          expect(outcome.ok).toBe(true)
+          expect(gate.events.indexOf("flush:commit")).toBeGreaterThanOrEqual(0)
+          expect(gate.events.indexOf("terminal:enter")).toBeGreaterThan(gate.events.indexOf("flush:commit"))
+
+          const durable = await readDurableToolPart(callID)
+          const state = durable.state
+          if (state.status !== "completed") throw new Error(`expected completed, got ${state.status}`)
+          expect(state.output).toBe("done")
+          expect(state.time.end).toBeNumber()
+        },
+      })
+    }))
+
+  test("an error settlement is not overwritten by an in-flight running write", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { processor, readDurableToolPart } = await createTurn()
+          const callID = Identifier.ascending("part")
+          const gate = gateUpdatePart(callID)
+          const execution = processor
+            .executeToolCall({
+              callID,
+              toolName: "probe",
+              args: { command: "printf ok" },
+              tool: {
+                async execute(args: unknown) {
+                  gate.arm()
+                  void processor
+                    .updateToolCallState(callID, {
+                      input: args as Record<string, any>,
+                      metadata: { output: "streamed" },
+                    })
+                    .catch(() => {})
+                  throw new Error("tool boom")
+                },
+              } as unknown as AITool,
+            })
+            .then(
+              (result) => ({ ok: true as const, result }),
+              (error: unknown) => ({ ok: false as const, error }),
+            )
+
+          await gate.flushWriteHeld
+          await pumpMacrotasks(20)
+          try {
+            expect(gate.events).not.toContain("terminal:enter")
+          } finally {
+            gate.release()
+          }
+          const outcome = await execution
+          expect(outcome.ok).toBe(false)
+          expect(gate.events.indexOf("flush:commit")).toBeGreaterThanOrEqual(0)
+          expect(gate.events.indexOf("terminal:enter")).toBeGreaterThan(gate.events.indexOf("flush:commit"))
+
+          const durable = await readDurableToolPart(callID)
+          const state = durable.state
+          if (state.status !== "error") throw new Error(`expected error, got ${state.status}`)
+          expect(state.time.end).toBeNumber()
+        },
+      })
+    }))
+
+  test("state updates queued after settlement leave the terminal part untouched", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { processor, readDurableToolPart } = await createTurn()
+          const callID = Identifier.ascending("part")
+          const outcome = await processor.executeToolCall({
             callID,
             toolName: "probe",
-            args: {},
+            args: { command: "printf ok" },
             tool: {
               async execute(args: unknown) {
-                await processor.updateToolCallState(callID, {
-                  input: {},
-                  title: value,
-                  metadata: { output: `progress ${value}`, values: [value] },
-                })
-                ready.resolve()
-                await finish.promise
                 processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
                 return { title: "probe", output: "done", metadata: {} }
               },
             } as unknown as AITool,
           })
-          void execution.catch(ready.reject)
-          try {
-            await ready.promise
-            const part = await readDurableToolPart(callID)
-            if (part.state.status !== "running") throw new Error("Expected running tool")
-            expect(part.state.title).toBe(SecretMask.token(id))
-            expect(part.state.metadata?.output).toBe(`progress ${SecretMask.token(id)}`)
-            expect(part.state.metadata?.values).toEqual([SecretMask.token(id)])
-          } finally {
-            finish.resolve()
-            await execution
-          }
+          expect(outcome.output).toBe("done")
+
+          await processor.updateToolCallState(callID, {
+            input: { command: "printf ok" },
+            metadata: { output: "late arrival" },
+          })
+
+          const durable = await readDurableToolPart(callID)
+          const state = durable.state
+          if (state.status !== "completed") throw new Error(`expected completed, got ${state.status}`)
+          expect(state.output).toBe("done")
         },
       })
-    } finally {
-      await SecretVault.remove(id)
-    }
-  })
+    }))
+
+  test("a genuine running tool still persists metadata flushes while executing", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { processor, readDurableToolPart } = await createTurn()
+          const callID = Identifier.ascending("part")
+          let finishTool!: () => void
+          const toolMayFinish = new Promise<void>((resolve) => {
+            finishTool = resolve
+          })
+          let metadataApplied!: () => void
+          const metadataWriteResolved = new Promise<void>((resolve) => {
+            metadataApplied = resolve
+          })
+
+          const execution = processor
+            .executeToolCall({
+              callID,
+              toolName: "probe",
+              args: { command: "sleep" },
+              tool: {
+                async execute(args: unknown) {
+                  await processor.updateToolCallState(callID, {
+                    input: args as Record<string, any>,
+                    metadata: { output: "progress" },
+                  })
+                  metadataApplied()
+                  await toolMayFinish
+                  processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
+                  return { title: "probe", output: "done", metadata: {} }
+                },
+              } as unknown as AITool,
+            })
+            .then(
+              (result) => ({ ok: true as const, result }),
+              (error: unknown) => ({ ok: false as const, error }),
+            )
+
+          await metadataWriteResolved
+          const running = await readDurableToolPart(callID)
+          const runningState = running.state
+          if (runningState.status !== "running") throw new Error(`expected running, got ${runningState.status}`)
+          expect(runningState.metadata?.output).toBe("progress")
+
+          finishTool()
+          const outcome = await execution
+          expect(outcome.ok).toBe(true)
+          const durable = await readDurableToolPart(callID)
+          const state = durable.state
+          if (state.status !== "completed") throw new Error(`expected completed, got ${state.status}`)
+          expect(state.output).toBe("done")
+        },
+      })
+    }))
+
+  test("running metadata captures credentials before durable progress is published", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const value = `sk-progress-${crypto.randomUUID()}`
+      const id = SecretVault.idOf(value)
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const { processor, readDurableToolPart } = await createTurn()
+            const callID = Identifier.ascending("part")
+            const ready = Promise.withResolvers<void>()
+            const finish = Promise.withResolvers<void>()
+            const execution = processor.executeToolCall({
+              callID,
+              toolName: "probe",
+              args: {},
+              tool: {
+                async execute(args: unknown) {
+                  await processor.updateToolCallState(callID, {
+                    input: {},
+                    title: value,
+                    metadata: { output: `progress ${value}`, values: [value] },
+                  })
+                  ready.resolve()
+                  await finish.promise
+                  processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
+                  return { title: "probe", output: "done", metadata: {} }
+                },
+              } as unknown as AITool,
+            })
+            void execution.catch(ready.reject)
+            try {
+              await ready.promise
+              const part = await readDurableToolPart(callID)
+              if (part.state.status !== "running") throw new Error("Expected running tool")
+              expect(part.state.title).toBe(SecretMask.token(id))
+              expect(part.state.metadata?.output).toBe(`progress ${SecretMask.token(id)}`)
+              expect(part.state.metadata?.values).toEqual([SecretMask.token(id)])
+            } finally {
+              finish.resolve()
+              await execution
+            }
+          },
+        })
+      } finally {
+        await SecretVault.remove(id)
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

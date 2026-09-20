@@ -1,6 +1,6 @@
 import z from "zod"
 
-export const BROWSER_PROTOCOL_VERSION = 2 as const
+export const BROWSER_PROTOCOL_VERSION = 3 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -1510,7 +1510,7 @@ export const BrowserHostMessageSchema = z
           .object({
             mode: z.enum(["session", "scope"]),
             scopeID: z.string().min(1).max(1_000),
-            directory: z.string().max(20_000),
+            directory: z.string().max(20_000).nullable(),
             sessionID: z.string().max(1_000).optional(),
           })
           .strict(),

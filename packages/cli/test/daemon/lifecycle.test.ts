@@ -1,3 +1,5 @@
+import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
 import { expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { DaemonState } from "@ericsanchezok/synergy-harness/util/daemon-state"
@@ -29,83 +31,82 @@ async function fixture(
   }) => Promise<void>,
 ) {
   await using tmp = await tmpdir()
-  const previousHome = process.env.SYNERGY_HOME
-  const previousExitCode = process.exitCode
-  process.env.SYNERGY_HOME = tmp.path
-  const state = { installed: false, running: false, healthy: true, rejectStart: false, refuseStop: false }
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch: () => Response.json({ healthy: state.healthy, version: "test", modelReady: false }),
-  })
-  const calls: string[] = [],
-    output: string[] = []
-  const spec: Daemon.Spec = {
-    label: "test.synergy.daemon",
-    hostname: "127.0.0.1",
-    connectHostname: "127.0.0.1",
-    port: server.port!,
-    url: server.url.origin,
-    command: ["fixture-synergy", "server"],
-    cwd: tmp.path,
-    env: { SYNERGY_DAEMON: "1" },
-    logFile: DaemonPaths.logFile(),
-    mdns: false,
-    cors: [],
-  }
-  const service: DaemonService.Service = {
-    manager: "systemd-user",
-    async install() {
-      calls.push("install")
-      state.installed = true
-    },
-    async uninstall() {
-      calls.push("uninstall")
-      state.installed = false
-    },
-    async start() {
-      calls.push("start")
-      if (state.rejectStart) throw new Error("fixture service refused start")
-      state.running = true
-    },
-    async restart() {
-      calls.push("restart")
-      state.running = true
-    },
-    async stop() {
-      calls.push("stop")
-      if (state.refuseStop) return
-      state.running = false
+  await using runtime = await migrationFixture({ home: tmp.path, register: registerLocalRuntime })
+  await runtime.run(async () => {
+    const previousExitCode = process.exitCode
+    const state = { installed: false, running: false, healthy: true, rejectStart: false, refuseStop: false }
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ healthy: state.healthy, version: "test", modelReady: false }),
+    })
+    const calls: string[] = [],
+      output: string[] = []
+    const spec: Daemon.Spec = {
+      label: "test.synergy.daemon",
+      hostname: "127.0.0.1",
+      connectHostname: "127.0.0.1",
+      port: server.port!,
+      url: server.url.origin,
+      command: ["fixture-synergy", "server"],
+      cwd: tmp.path,
+      env: { SYNERGY_DAEMON: "1" },
+      logFile: DaemonPaths.logFile(),
+      mdns: false,
+      cors: [],
+    }
+    const service: DaemonService.Service = {
+      manager: "systemd-user",
+      async install() {
+        calls.push("install")
+        state.installed = true
+      },
+      async uninstall() {
+        calls.push("uninstall")
+        state.installed = false
+      },
+      async start() {
+        calls.push("start")
+        if (state.rejectStart) throw new Error("fixture service refused start")
+        state.running = true
+      },
+      async restart() {
+        calls.push("restart")
+        state.running = true
+      },
+      async stop() {
+        calls.push("stop")
+        if (state.refuseStop) return
+        state.running = false
+        await server.stop(true)
+      },
+      async status() {
+        return { installed: state.installed, running: state.running }
+      },
+    }
+    const mocks = [
+      spyOn(process.stderr, "write").mockImplementation((chunk) => {
+        output.push(String(chunk))
+        return true
+      }),
+      spyOn(DaemonService, "resolve").mockResolvedValue(service),
+      spyOn(DaemonSpec, "resolve").mockImplementation(async () => ({ ...spec })),
+      spyOn(UI, "println").mockImplementation((...args) => {
+        output.push(args.join(""))
+      }),
+      spyOn(process, "exit").mockImplementation((code) => {
+        throw new RequestedExit(Number(code ?? 0))
+      }),
+    ]
+    try {
+      await Bun.write(ConfigDomain.filepath("general"), "{}")
+      await run({ spec, service, calls, output, state })
+    } finally {
       await server.stop(true)
-    },
-    async status() {
-      return { installed: state.installed, running: state.running }
-    },
-  }
-  const mocks = [
-    spyOn(process.stderr, "write").mockImplementation((chunk) => {
-      output.push(String(chunk))
-      return true
-    }),
-    spyOn(DaemonService, "resolve").mockResolvedValue(service),
-    spyOn(DaemonSpec, "resolve").mockImplementation(async () => ({ ...spec })),
-    spyOn(UI, "println").mockImplementation((...args) => {
-      output.push(args.join(""))
-    }),
-    spyOn(process, "exit").mockImplementation((code) => {
-      throw new RequestedExit(Number(code ?? 0))
-    }),
-  ]
-  try {
-    await Bun.write(ConfigDomain.filepath("general"), "{}")
-    await run({ spec, service, calls, output, state })
-  } finally {
-    await server.stop(true)
-    for (const mock of mocks.reverse()) mock.mockRestore()
-    process.exitCode = previousExitCode ?? 0
-    if (previousHome === undefined) delete process.env.SYNERGY_HOME
-    else process.env.SYNERGY_HOME = previousHome
-  }
+      for (const mock of mocks.reverse()) mock.mockRestore()
+      process.exitCode = previousExitCode ?? 0
+    }
+  })
 }
 
 const startArgs = {

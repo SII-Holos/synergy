@@ -200,7 +200,7 @@ export namespace ConfigImport {
     const parsed = PlanInput.parse(input)
     assertConfigSize(parsed.config, parsed.source ?? "direct")
     const target = resolveTarget(parsed.scope ?? "global")
-    const selected = new Set(parsed.only ?? ConfigDomain.definitions.map((domain) => domain.id))
+    const selected = new Set(parsed.only ?? ConfigDomain.definitions().map((domain) => domain.id))
     const split = ConfigDomain.split(parsed.config)
     const domains: DomainPlan[] = []
     const revisionIntent: Array<{
@@ -210,7 +210,7 @@ export namespace ConfigImport {
       mode: ConfigDomain.MergeMode
     }> = []
 
-    for (const definition of ConfigDomain.definitions) {
+    for (const definition of ConfigDomain.definitions()) {
       const fragment = split.get(definition.id)
       if (!fragment || !selected.has(definition.id) || !definition.importable) continue
       const current = await Config.domainGet(definition.id, target.root)
@@ -286,12 +286,12 @@ export namespace ConfigImport {
   function resolveTarget(scope: Scope): Target {
     if (scope === "global") return { scope, scopeID: "home", root: Global.Path.config }
     const active = ScopeContext.tryScope()
-    if (!active || active.type !== "project") {
+    if (!active || active.type !== "project" || !active.local) {
       throw new ProjectScopeRequiredError({
         message: "PROJECT_SCOPE_REQUIRED: Project config import requires an explicitly selected project scope.",
       })
     }
-    return { scope, scopeID: active.id, root: path.join(active.directory, ".synergy") }
+    return { scope, scopeID: active.id, root: path.join(active.local.directory, ".synergy") }
   }
 
   async function withTargetScope<T>(target: Target, fn: () => Promise<T>): Promise<T> {
@@ -328,7 +328,7 @@ export namespace ConfigImport {
 
   async function prevalidate(root: string, nextByDomain: Map<ConfigDomain.Id, Schema.Info>) {
     const aggregate: Record<string, unknown> = {}
-    for (const definition of ConfigDomain.definitions) {
+    for (const definition of ConfigDomain.definitions()) {
       const config = nextByDomain.get(definition.id) ?? (await Config.domainGet(definition.id, root))
       Object.assign(aggregate, config)
     }

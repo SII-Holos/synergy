@@ -4,6 +4,9 @@ import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function writeStructuredResult(sessionID: string, input: Record<string, unknown>) {
   const parentID = Identifier.ascending("message")
@@ -85,81 +88,88 @@ async function writeAssistantText(sessionID: string, text: string) {
 }
 
 describe("CortexOutput", () => {
-  test("transportSchema wraps object, array, and union schemas with value", () => {
-    const objectWrapped = CortexOutput.transportSchema({ type: "object", properties: { ok: { type: "boolean" } } })
-    expect(objectWrapped).toMatchObject({ type: "object", required: ["value"], additionalProperties: false })
-    expect((objectWrapped.properties as any).value.type).toBe("object")
+  test("transportSchema wraps object, array, and union schemas with value", () =>
+    runtime.run(() => {
+      const objectWrapped = CortexOutput.transportSchema({ type: "object", properties: { ok: { type: "boolean" } } })
+      expect(objectWrapped).toMatchObject({ type: "object", required: ["value"], additionalProperties: false })
+      expect((objectWrapped.properties as any).value.type).toBe("object")
 
-    const arrayWrapped = CortexOutput.transportSchema({ type: "array", items: { type: "string" } })
-    expect((arrayWrapped.properties as any).value.type).toBe("array")
+      const arrayWrapped = CortexOutput.transportSchema({ type: "array", items: { type: "string" } })
+      expect((arrayWrapped.properties as any).value.type).toBe("array")
 
-    const anyOfWrapped = CortexOutput.transportSchema({ anyOf: [{ type: "string" }, { type: "number" }] })
-    expect((anyOfWrapped.properties as any).value.anyOf).toHaveLength(2)
-  })
+      const anyOfWrapped = CortexOutput.transportSchema({ anyOf: [{ type: "string" }, { type: "number" }] })
+      expect((anyOfWrapped.properties as any).value.anyOf).toHaveLength(2)
+    }))
 
-  test("initial prompt describes value transport", () => {
-    const prompt = CortexOutput.initialPrompt("Do work", {
-      mode: "structured",
-      schema: { type: "array", items: { type: "string" } },
-    })
-    expect(prompt).toContain("one field named value")
-    expect(prompt).toContain("structured_task_result")
-    expect(prompt).toContain('"type": "array"')
-  })
+  test("initial prompt describes value transport", () =>
+    runtime.run(() => {
+      const prompt = CortexOutput.initialPrompt("Do work", {
+        mode: "structured",
+        schema: { type: "array", items: { type: "string" } },
+      })
+      expect(prompt).toContain("one field named value")
+      expect(prompt).toContain("structured_task_result")
+      expect(prompt).toContain('"type": "array"')
+    }))
 
-  test("resolve validates tool value and ignores stale roots", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const stale = await writeStructuredResult(session.id, { value: ["old"] })
-        const current = await writeStructuredResult(session.id, { value: ["new"] })
+  test("resolve validates tool value and ignores stale roots", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const stale = await writeStructuredResult(session.id, { value: ["old"] })
+          const current = await writeStructuredResult(session.id, { value: ["new"] })
 
-        const output = {
-          mode: "structured" as const,
-          schema: { type: "array", items: { type: "string" } },
-        }
-        const staleResult = await CortexOutput.resolve({
-          sessionID: session.id,
-          output,
-          rootMessageID: stale.rootID!,
-        })
-        const currentResult = await CortexOutput.resolve({
-          sessionID: session.id,
-          output,
-          rootMessageID: current.rootID!,
-        })
-
-        expect(staleResult).toEqual({ ok: true, output: { mode: "structured", value: ["old"] } })
-        expect(currentResult).toEqual({ ok: true, output: { mode: "structured", value: ["new"] } })
-      },
-    })
-  })
-
-  test("resolve validates final response JSON against caller schema", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const message = await writeAssistantText(session.id, '["a", "b"]')
-        const result = await CortexOutput.resolve({
-          sessionID: session.id,
-          rootMessageID: message.rootID!,
-          output: {
-            mode: "structured",
+          const output = {
+            mode: "structured" as const,
             schema: { type: "array", items: { type: "string" } },
-          },
-        })
-        expect(result).toEqual({ ok: true, output: { mode: "structured", value: ["a", "b"] } })
-      },
-    })
-  })
+          }
+          const staleResult = await CortexOutput.resolve({
+            sessionID: session.id,
+            output,
+            rootMessageID: stale.rootID!,
+          })
+          const currentResult = await CortexOutput.resolve({
+            sessionID: session.id,
+            output,
+            rootMessageID: current.rootID!,
+          })
 
-  test("renderTaskOutput renders structured JSON once", () => {
-    expect(CortexOutput.renderTaskOutput({ mode: "structured", value: { choice: "yes" } })).toBe(
-      'Structured output:\n{\n  "choice": "yes"\n}',
-    )
-  })
+          expect(staleResult).toEqual({ ok: true, output: { mode: "structured", value: ["old"] } })
+          expect(currentResult).toEqual({ ok: true, output: { mode: "structured", value: ["new"] } })
+        },
+      })
+    }))
+
+  test("resolve validates final response JSON against caller schema", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const message = await writeAssistantText(session.id, '["a", "b"]')
+          const result = await CortexOutput.resolve({
+            sessionID: session.id,
+            rootMessageID: message.rootID!,
+            output: {
+              mode: "structured",
+              schema: { type: "array", items: { type: "string" } },
+            },
+          })
+          expect(result).toEqual({ ok: true, output: { mode: "structured", value: ["a", "b"] } })
+        },
+      })
+    }))
+
+  test("renderTaskOutput renders structured JSON once", () =>
+    runtime.run(() => {
+      expect(CortexOutput.renderTaskOutput({ mode: "structured", value: { choice: "yes" } })).toBe(
+        'Structured output:\n{\n  "choice": "yes"\n}',
+      )
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

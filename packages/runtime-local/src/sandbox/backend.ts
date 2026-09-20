@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 // ---------------------------------------------------------------------------
 // SandboxBackend — unified dispatch layer
 //
@@ -205,7 +206,7 @@ export namespace SandboxBackend {
     networkMode?: SandboxNetworkMode,
   ): Record<string, string> {
     const env: Record<string, string> = {}
-    const processEnv = process.env
+    const processEnv = RuntimeContext.current().host.env
 
     for (const key of SANDBOX_ENV_ALLOWLIST) {
       const val = processEnv[key]

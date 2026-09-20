@@ -8,12 +8,7 @@ import type {
 import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
 import type { JSX } from "solid-js"
 
-export type DroppedSessionData = {
-  id: string
-  directory: string
-  title?: string
-  updatedAt?: number
-}
+export type { SessionDragData as DroppedSessionData } from "@/utils/session-drag"
 
 export type BlueprintSlot =
   | {

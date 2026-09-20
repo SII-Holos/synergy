@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "async_hooks"
+import { RuntimeContext } from "../lifecycle/context"
 
 export namespace Context {
   export class NotFound extends Error {
@@ -9,6 +10,7 @@ export namespace Context {
 
   interface Store<T> {
     value: T
+    owner?: RuntimeContext.Instance
     overlay?: T
   }
 
@@ -17,22 +19,22 @@ export namespace Context {
     return {
       use() {
         const store = storage.getStore()
-        if (!store) {
+        if (!store || store.owner !== RuntimeContext.tryCurrent()) {
           throw new NotFound(name)
         }
-        return store.overlay ?? store.value
+        return "overlay" in store ? store.overlay! : store.value
       },
       tryUse() {
         const store = storage.getStore()
-        if (!store) return undefined
-        return store.overlay ?? store.value
+        if (!store || store.owner !== RuntimeContext.tryCurrent()) return undefined
+        return "overlay" in store ? store.overlay! : store.value
       },
       provide<R>(value: T, fn: () => R) {
-        return storage.run({ value }, fn)
+        return storage.run({ value, owner: RuntimeContext.tryCurrent() }, fn)
       },
       update(overlay: T) {
         const store = storage.getStore()
-        if (!store) {
+        if (!store || store.owner !== RuntimeContext.tryCurrent()) {
           throw new NotFound(name)
         }
         store.overlay = overlay

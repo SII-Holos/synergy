@@ -3023,11 +3023,36 @@
                                 "type": "string",
                                 "enum": ["home", "project"]
                               },
-                              "directory": {
-                                "type": "string"
-                              },
-                              "worktree": {
-                                "type": "string"
+                              "local": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "directory": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "worktree": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "vcs": {
+                                        "type": "string",
+                                        "const": "git"
+                                      },
+                                      "sandboxes": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "required": ["directory", "worktree", "sandboxes"]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               },
                               "name": {
                                 "type": "string"
@@ -3044,7 +3069,7 @@
                                 }
                               }
                             },
-                            "required": ["id", "type", "directory", "worktree"]
+                            "required": ["id", "type", "local"]
                           },
                           "time": {
                             "type": "object",
@@ -3570,7 +3595,104 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Scope"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "home"
+                        },
+                        "id": {
+                          "type": "string",
+                          "const": "home"
+                        },
+                        "local": {
+                          "type": "null"
+                        }
+                      },
+                      "required": ["type", "id", "local"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "project"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "local": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "directory": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "worktree": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "vcs": {
+                                  "type": "string",
+                                  "const": "git"
+                                },
+                                "sandboxes": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": ["directory", "worktree", "sandboxes"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "icon": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "color": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "pinned": {
+                          "type": "number"
+                        },
+                        "time": {
+                          "type": "object",
+                          "properties": {
+                            "created": {
+                              "type": "number"
+                            },
+                            "updated": {
+                              "type": "number"
+                            },
+                            "initialized": {
+                              "type": "number"
+                            },
+                            "archived": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["created", "updated"]
+                        }
+                      },
+                      "required": ["type", "id", "local", "time"]
+                    }
+                  ]
                 }
               }
             }
@@ -4043,6 +4165,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses.*"
+                  },
                   "command": {
                     "type": "string"
                   },
@@ -4859,15 +4985,15 @@
                 "permissions",
                 "runtime",
                 "storage",
-                "plugins",
+                "skills",
+                "worktree",
+                "mcp",
+                "library",
                 "channels",
                 "holos",
                 "email",
                 "github",
-                "library",
-                "mcp",
-                "skills",
-                "worktree",
+                "plugins",
                 "voice"
               ]
             },
@@ -4946,15 +5072,15 @@
                 "permissions",
                 "runtime",
                 "storage",
-                "plugins",
+                "skills",
+                "worktree",
+                "mcp",
+                "library",
                 "channels",
                 "holos",
                 "email",
                 "github",
-                "library",
-                "mcp",
-                "skills",
-                "worktree",
+                "plugins",
                 "voice"
               ]
             },
@@ -5044,15 +5170,15 @@
                 "permissions",
                 "runtime",
                 "storage",
-                "plugins",
+                "skills",
+                "worktree",
+                "mcp",
+                "library",
                 "channels",
                 "holos",
                 "email",
                 "github",
-                "library",
-                "mcp",
-                "skills",
-                "worktree",
+                "plugins",
                 "voice"
               ]
             },
@@ -5152,15 +5278,15 @@
                     "permissions",
                     "runtime",
                     "storage",
-                    "plugins",
+                    "skills",
+                    "worktree",
+                    "mcp",
+                    "library",
                     "channels",
                     "holos",
                     "email",
                     "github",
-                    "library",
-                    "mcp",
-                    "skills",
-                    "worktree",
+                    "plugins",
                     "voice"
                   ]
                 },
@@ -5177,15 +5303,15 @@
                       "permissions",
                       "runtime",
                       "storage",
-                      "plugins",
+                      "skills",
+                      "worktree",
+                      "mcp",
+                      "library",
                       "channels",
                       "holos",
                       "email",
                       "github",
-                      "library",
-                      "mcp",
-                      "skills",
-                      "worktree",
+                      "plugins",
                       "voice"
                     ]
                   }
@@ -22194,7 +22320,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 2,
+              "default": 3,
               "type": "number"
             }
           },
@@ -22345,7 +22471,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 2,
+              "default": 3,
               "type": "number"
             }
           },
@@ -22496,7 +22622,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 2,
+              "default": 3,
               "type": "number"
             }
           },
@@ -22647,7 +22773,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 2,
+              "default": 3,
               "type": "number"
             }
           },
@@ -22779,7 +22905,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 2,
+              "default": 3,
               "type": "number"
             }
           },
@@ -33160,22 +33286,43 @@
       "Scope": {
         "type": "object",
         "properties": {
+          "type": {
+            "type": "string",
+            "const": "project"
+          },
           "id": {
             "type": "string"
           },
-          "type": {
-            "type": "string",
-            "enum": ["home", "project"]
-          },
-          "directory": {
-            "type": "string"
-          },
-          "worktree": {
-            "type": "string"
-          },
-          "vcs": {
-            "type": "string",
-            "const": "git"
+          "local": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "directory": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "worktree": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "vcs": {
+                    "type": "string",
+                    "const": "git"
+                  },
+                  "sandboxes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["directory", "worktree", "sandboxes"]
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "type": "string"
@@ -33211,15 +33358,9 @@
               }
             },
             "required": ["created", "updated"]
-          },
-          "sandboxes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
-        "required": ["id", "type", "directory", "worktree", "time", "sandboxes"]
+        "required": ["type", "id", "local", "time"]
       },
       "ScopeNavEntry": {
         "type": "object",
@@ -33235,7 +33376,14 @@
             "type": "string"
           },
           "directory": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "latestActivityAt": {
             "type": "number"
@@ -35374,608 +35522,441 @@
         },
         "additionalProperties": false
       },
-      "PluginRuntimeLimitsConfig": {
-        "description": "Default plugin runtime resource and request limits",
-        "default": {
-          "startupTimeoutMs": 5000,
-          "toolInvocationTimeoutMs": 120000,
-          "hostServiceRequestTimeoutMs": 120000,
-          "taskRunTimeoutMs": 120000,
-          "shutdownGraceMs": 1500,
-          "heartbeatIntervalMs": 5000,
-          "maxMemoryMb": 512,
-          "memorySampleIntervalMs": 5000,
-          "agentCallMaxRuntimeMs": 120000,
-          "hookTimeoutMs": 120000,
-          "contributionInvokeTimeoutMs": 120000,
-          "shellRunTimeoutMs": 120000,
-          "taskRunWaitTimeoutMs": 120000
-        },
+      "SkillsCompatibilityConfig": {
+        "description": "Per-source compatibility toggles for discovering Skills from other agent tools",
         "type": "object",
         "properties": {
-          "startupTimeoutMs": {
-            "description": "Maximum milliseconds for plugin runtime startup",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "agents": {
+            "description": "Load Agent Skills from .agents/skills directories (default: true)",
+            "type": "boolean"
           },
-          "toolInvocationTimeoutMs": {
-            "description": "Maximum milliseconds for a plugin tool invocation",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "claude": {
+            "description": "Load Claude Code Skills from .claude/skills directories (default: true)",
+            "type": "boolean"
           },
-          "hostServiceRequestTimeoutMs": {
-            "description": "Maximum milliseconds for one plugin Host Service request",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "codex": {
+            "description": "Load Codex Skills from .codex/skills directories (default: true)",
+            "type": "boolean"
           },
-          "taskRunTimeoutMs": {
-            "description": "Default maximum milliseconds for plugin delegated task runs",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "shutdownGraceMs": {
-            "description": "Graceful shutdown window before force kill",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "heartbeatIntervalMs": {
-            "description": "Heartbeat interval in milliseconds",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "maxMemoryMb": {
-            "description": "External plugin runtime RSS limit in megabytes",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "memorySampleIntervalMs": {
-            "description": "External plugin runtime RSS sampling interval in milliseconds",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "agentCallMaxRuntimeMs": {
-            "description": "Maximum milliseconds for a plugin agent.call/agent.start model invocation",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "hookTimeoutMs": {
-            "description": "Maximum milliseconds for one plugin hook handler invocation",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "contributionInvokeTimeoutMs": {
-            "description": "Default maximum milliseconds for a plugin contribution invocation without a declared timeout",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "shellRunTimeoutMs": {
-            "description": "Default maximum milliseconds for plugin shell.run commands",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "taskRunWaitTimeoutMs": {
-            "description": "Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "openclaw": {
+            "description": "Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)",
+            "type": "boolean"
           }
         },
         "additionalProperties": false
       },
-      "PluginRuntimePolicyConfig": {
-        "description": "Plugin runtime isolation policy configuration",
+      "SkillsConfig": {
         "type": "object",
         "properties": {
-          "limits": {
-            "$ref": "#/components/schemas/PluginRuntimeLimitsConfig"
+          "compatibility": {
+            "$ref": "#/components/schemas/SkillsCompatibilityConfig"
           }
         },
         "additionalProperties": false
       },
-      "PluginMarketplaceConfig": {
-        "description": "Public plugin marketplace registry configuration",
+      "WorktreeConfig": {
         "type": "object",
         "properties": {
-          "enabled": {
-            "description": "Enable the public GitHub-backed plugin marketplace",
-            "default": true,
+          "maxManaged": {
+            "description": "Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sweepIntervalHours": {
+            "description": "Hours between managed-worktree janitor sweeps",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "janitor": {
+            "description": "Run the managed-worktree janitor at all (default: true)",
             "type": "boolean"
-          },
-          "registryUrl": {
-            "description": "URL of the official plugin registry.json index",
-            "default": "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
-            "type": "string",
-            "format": "uri"
-          },
-          "includeLocalRegistry": {
-            "description": "Include the local development registry in marketplace search and detail routes",
-            "default": true,
-            "type": "boolean"
-          },
-          "cacheTtlMs": {
-            "description": "Remote marketplace cache TTL in milliseconds",
-            "default": 3600000,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "offlineCache": {
-            "description": "Use stale marketplace cache for browsing when the remote registry cannot be reached",
-            "default": true,
-            "type": "boolean"
-          },
-          "requestTimeoutMs": {
-            "description": "Timeout in milliseconds for registry and entry metadata requests",
-            "default": 10000,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "artifactDownloadTimeoutMs": {
-            "description": "Timeout in milliseconds for plugin artifact and signature downloads",
-            "default": 60000,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "cliRequestTimeoutMs": {
-            "description": "Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server",
-            "default": 120000,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
           }
         },
         "additionalProperties": false
       },
-      "ChannelFeishuAccountConfig": {
+      "McpRetryConfig": {
+        "description": "Retry policy for connecting to this server",
         "type": "object",
         "properties": {
-          "enabled": {
-            "default": true,
-            "type": "boolean"
-          },
-          "appId": {
-            "description": "Feishu app ID",
-            "type": "string"
-          },
-          "appSecret": {
-            "description": "Feishu app secret",
-            "type": "string"
-          },
-          "domain": {
-            "description": "Feishu domain (feishu for China, lark for international)",
-            "type": "string",
-            "enum": ["feishu", "lark"]
-          },
-          "allowDM": {
-            "description": "Allow direct messages",
-            "default": true,
-            "type": "boolean"
-          },
-          "allowGroup": {
-            "description": "Allow group messages",
-            "default": true,
-            "type": "boolean"
-          },
-          "requireMention": {
-            "description": "Require @mention in group chats",
-            "default": true,
-            "type": "boolean"
-          },
-          "botOpenId": {
-            "description": "Bot open_id used to verify real @mentions in group chats",
-            "type": "string"
-          },
-          "projectDir": {
-            "description": "Project directory whose Scope owns sessions for this Feishu account",
-            "type": "string",
-            "minLength": 1
-          },
-          "streaming": {
-            "description": "Enable streaming card updates",
-            "type": "boolean"
-          },
-          "responseFormat": {
-            "description": "Format for ordinary outbound text messages (markdown renders through a CardKit card)",
-            "type": "string",
-            "enum": ["text", "markdown"]
-          },
-          "streamingThrottleMs": {
-            "description": "Minimum interval between streaming card updates in ms",
-            "default": 100,
+          "maxAttempts": {
+            "description": "Maximum connection attempts before giving up",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "groupSessionScope": {
-            "description": "Session scoping strategy for group chats",
-            "default": "group",
-            "type": "string",
-            "enum": ["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"]
+          "backoffMs": {
+            "description": "Initial backoff delay in ms between retries",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
-          "inboundDebounceMs": {
-            "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
-            "default": 0,
+          "backoffMultiplier": {
+            "description": "Multiplier applied to backoff on each retry",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "cooldownMs": {
+            "description": "Cooldown period in ms before a retry cycle resets",
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
-          },
-          "model": {
-            "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
-            "type": "string"
-          },
-          "variant": {
-            "description": "Model variant to use with this account model (e.g. low, high, max)",
-            "type": "string"
-          },
-          "resolveSenderNames": {
-            "description": "Resolve sender display names via Feishu contact API",
-            "default": true,
-            "type": "boolean"
-          },
-          "replyInThread": {
-            "description": "Reply in thread when message is part of a topic",
-            "default": false,
-            "type": "boolean"
           }
         },
-        "required": ["appId", "appSecret"],
         "additionalProperties": false
       },
-      "ChannelFeishuConfig": {
+      "McpToolFilterConfig": {
+        "description": "Filter which tools are exposed from this server",
         "type": "object",
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "feishu"
-          },
-          "accounts": {
-            "type": "object",
-            "propertyNames": {
+          "include": {
+            "description": "Tool names to include (allowlist)",
+            "type": "array",
+            "items": {
               "type": "string"
-            },
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ChannelFeishuAccountConfig"
             }
           },
-          "domain": {
-            "description": "Default domain for all accounts",
-            "type": "string",
-            "enum": ["feishu", "lark"]
-          },
-          "streaming": {
-            "description": "Default streaming setting for all accounts",
-            "default": true,
-            "type": "boolean"
-          },
-          "responseFormat": {
-            "description": "Default outbound text format for all accounts",
-            "default": "markdown",
-            "type": "string",
-            "enum": ["text", "markdown"]
-          }
-        },
-        "required": ["type", "accounts"],
-        "additionalProperties": false
-      },
-      "ChannelClarusAccountConfig": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "default": false,
-            "type": "boolean"
-          },
-          "apiUrl": {
-            "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
-            "type": "string"
-          },
-          "agent": {
-            "description": "Primary Synergy agent for project and assignment Sessions",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "ChannelClarusConfig": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "clarus"
-          },
-          "accounts": {
-            "type": "object",
-            "propertyNames": {
+          "exclude": {
+            "description": "Tool names to exclude (blocklist)",
+            "type": "array",
+            "items": {
               "type": "string"
-            },
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ChannelClarusAccountConfig"
             }
           }
         },
-        "required": ["type", "accounts"],
         "additionalProperties": false
       },
-      "ChannelGithubAccountConfig": {
+      "McpToolsConfig": {
+        "description": "Tool execution behavior config",
         "type": "object",
         "properties": {
-          "enabled": {
-            "default": true,
-            "type": "boolean"
+          "approval": {
+            "description": "Tool approval mode",
+            "type": "string",
+            "enum": ["auto", "always", "per_session"]
           },
-          "repositories": {
-            "description": "GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later",
-            "default": [],
+          "maxOutputBytes": {
+            "description": "Maximum tool output size in bytes",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolCacheConfig": {
+        "description": "Tool list caching behavior",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "Tool list caching mode",
+            "type": "string",
+            "enum": ["disabled", "session", "persistent"]
+          },
+          "ttlMs": {
+            "description": "Time-to-live for cached tool list in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpLocalConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Type of MCP server connection",
+            "type": "string",
+            "const": "local"
+          },
+          "command": {
+            "description": "Command and arguments to run the MCP server",
+            "minItems": 1,
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+              "minLength": 1
             }
           },
-          "workspaceDir": {
-            "description": "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
-            "type": "string",
-            "minLength": 1
-          },
-          "workspaceTtlHours": {
-            "description": "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
-            "default": 24,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "pollingIntervalMs": {
-            "description": "Interval between GitHub API polls in milliseconds (default 5 minutes)",
-            "default": 300000,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "autoReview": {
-            "description": "Automatically review newly opened and updated pull requests",
-            "default": true,
-            "type": "boolean"
-          },
-          "autoRespond": {
-            "description": "Respond to @mentions of the bot handle and questions in issues and pull requests",
-            "default": true,
-            "type": "boolean"
-          },
-          "agent": {
-            "description": "Agent used for GitHub channel sessions (defaults to github-channel-agent)",
+          "cwd": {
+            "description": "Working directory for local MCP servers",
             "type": "string"
           },
-          "mention": {
-            "description": "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
-            "type": "string"
-          },
-          "model": {
-            "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
-            "type": "string"
-          },
-          "variant": {
-            "description": "Model variant to use with this account model (e.g. low, high, max)",
-            "type": "string"
-          }
-        },
-        "required": ["workspaceDir"],
-        "additionalProperties": false
-      },
-      "ChannelGithubConfig": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "github"
-          },
-          "accounts": {
+          "environment": {
+            "description": "Environment variables to set when running the MCP server",
             "type": "object",
             "propertyNames": {
               "type": "string"
             },
             "additionalProperties": {
-              "$ref": "#/components/schemas/ChannelGithubAccountConfig"
+              "type": "string"
             }
-          }
-        },
-        "required": ["type", "accounts"],
-        "additionalProperties": false
-      },
-      "HolosConfig": {
-        "description": "Holos platform configuration",
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "description": "Enable the Holos runtime connection",
-            "default": true,
+          },
+          "requiresWorkspace": {
+            "description": "Whether tools require a session workspace; defaults to true",
             "type": "boolean"
           },
-          "apiUrl": {
-            "description": "Holos API base URL",
-            "default": "https://api.holosai.io",
-            "type": "string"
-          },
-          "wsUrl": {
-            "description": "Holos WebSocket base URL",
-            "default": "wss://api.holosai.io",
-            "type": "string"
-          },
-          "portalUrl": {
-            "description": "Holos portal URL for browser-facing pages (bind/start)",
-            "default": "https://www.holosai.io",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "EmailFromConfig": {
-        "description": "Sender identity for outgoing emails",
-        "type": "object",
-        "properties": {
-          "address": {
-            "description": "Sender email address",
-            "type": "string"
-          },
-          "name": {
-            "description": "Sender display name",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "EmailSmtpConfig": {
-        "description": "SMTP transport settings for outgoing emails",
-        "type": "object",
-        "properties": {
-          "host": {
-            "description": "SMTP server hostname",
-            "type": "string"
-          },
-          "port": {
-            "description": "SMTP server port",
+          "timeout": {
+            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "secure": {
-            "description": "Use TLS/SSL for the SMTP connection",
+          "startup": {
+            "description": "MCP startup mode",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, this MCP server is required for the configured workflow",
             "type": "boolean"
           },
-          "username": {
-            "description": "SMTP username",
-            "type": "string"
-          },
-          "password": {
-            "description": "SMTP password or app token",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "EmailImapConfig": {
-        "description": "IMAP settings for reading emails",
-        "type": "object",
-        "properties": {
-          "host": {
-            "description": "IMAP server hostname",
-            "type": "string"
-          },
-          "port": {
-            "description": "IMAP server port",
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "secure": {
-            "description": "Use TLS/SSL for the IMAP connection",
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "expandByDefault": {
+            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
             "type": "boolean"
           },
-          "username": {
-            "description": "IMAP username",
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
+          }
+        },
+        "required": ["type", "command"],
+        "additionalProperties": false
+      },
+      "McpOAuthConfig": {
+        "type": "object",
+        "properties": {
+          "clientId": {
+            "description": "OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.",
             "type": "string"
           },
-          "password": {
-            "description": "IMAP password or app token",
+          "clientSecret": {
+            "description": "OAuth client secret (if required by the authorization server)",
+            "type": "string"
+          },
+          "scope": {
+            "description": "OAuth scopes to request during authorization",
             "type": "string"
           }
         },
         "additionalProperties": false
       },
-      "EmailConfig": {
-        "description": "Outgoing email configuration",
+      "McpRemoteConfig": {
         "type": "object",
         "properties": {
-          "enabled": {
-            "description": "Enable email features",
-            "type": "boolean"
+          "type": {
+            "description": "Type of MCP server connection",
+            "type": "string",
+            "const": "remote"
           },
-          "from": {
-            "$ref": "#/components/schemas/EmailFromConfig"
+          "url": {
+            "description": "URL of the remote MCP server",
+            "type": "string",
+            "format": "uri"
           },
-          "smtp": {
-            "$ref": "#/components/schemas/EmailSmtpConfig"
+          "headers": {
+            "description": "Headers to send with the request",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
           },
-          "imap": {
-            "$ref": "#/components/schemas/EmailImapConfig"
-          }
-        },
-        "additionalProperties": false
-      },
-      "GithubIdentitySyncConfig": {
-        "description": "Git identity sync settings",
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "description": "Sync git user.name/user.email from the connected GitHub account",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Optional git user.name override (defaults to the GitHub account login). null clears the override",
+          "oauth": {
+            "description": "OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.",
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/McpOAuthConfig"
               },
               {
-                "type": "null"
+                "type": "boolean",
+                "const": false
               }
             ]
           },
-          "email": {
-            "description": "Optional git user.email override (defaults to the GitHub noreply email). null clears the override",
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "GithubWatchConfig": {
-        "description": "GitHub agenda trigger settings",
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "description": "Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true",
+          "requiresWorkspace": {
+            "description": "Whether tools require a session workspace; defaults to true",
             "type": "boolean"
           },
-          "defaultIntervalMs": {
-            "description": "Default poll interval for GitHub agenda triggers in milliseconds (default 300000)",
+          "timeout": {
+            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "startup": {
+            "description": "MCP startup mode",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, this MCP server is required for the configured workflow",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "expandByDefault": {
+            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+            "type": "boolean"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
+          }
+        },
+        "required": ["type", "url"],
+        "additionalProperties": false
+      },
+      "McpDefaultsConfig": {
+        "description": "Default settings applied to all MCP servers that don't override them",
+        "type": "object",
+        "properties": {
+          "startup": {
+            "description": "MCP startup mode",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, this MCP server is required for the configured workflow",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "expandByDefault": {
+            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+            "type": "boolean"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
           }
         },
         "additionalProperties": false
       },
-      "GithubConfig": {
-        "description": "GitHub integration settings (git identity sync, agenda watch)",
+      "ExternalAgentConfig": {
         "type": "object",
         "properties": {
-          "identitySync": {
-            "$ref": "#/components/schemas/GithubIdentitySyncConfig"
+          "disabled": {
+            "description": "Disable this external agent",
+            "type": "boolean"
           },
-          "watch": {
-            "$ref": "#/components/schemas/GithubWatchConfig"
+          "path": {
+            "description": "Override path to the external agent binary",
+            "type": "string"
+          },
+          "model": {
+            "description": "Default model for this external agent",
+            "type": "string"
+          },
+          "auto_discover": {
+            "description": "Whether to auto-discover this agent on startup (default: true)",
+            "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": {}
       },
       "MemoryConfig": {
         "type": "object",
@@ -36661,430 +36642,605 @@
         },
         "additionalProperties": false
       },
-      "McpRetryConfig": {
-        "description": "Retry policy for connecting to this server",
+      "ChannelFeishuAccountConfig": {
         "type": "object",
         "properties": {
-          "maxAttempts": {
-            "description": "Maximum connection attempts before giving up",
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "appId": {
+            "description": "Feishu app ID",
+            "type": "string"
+          },
+          "appSecret": {
+            "description": "Feishu app secret",
+            "type": "string"
+          },
+          "domain": {
+            "description": "Feishu domain (feishu for China, lark for international)",
+            "type": "string",
+            "enum": ["feishu", "lark"]
+          },
+          "allowDM": {
+            "description": "Allow direct messages",
+            "default": true,
+            "type": "boolean"
+          },
+          "allowGroup": {
+            "description": "Allow group messages",
+            "default": true,
+            "type": "boolean"
+          },
+          "requireMention": {
+            "description": "Require @mention in group chats",
+            "default": true,
+            "type": "boolean"
+          },
+          "botOpenId": {
+            "description": "Bot open_id used to verify real @mentions in group chats",
+            "type": "string"
+          },
+          "projectDir": {
+            "description": "Project directory whose Scope owns sessions for this Feishu account",
+            "type": "string",
+            "minLength": 1
+          },
+          "streaming": {
+            "description": "Enable streaming card updates",
+            "type": "boolean"
+          },
+          "responseFormat": {
+            "description": "Format for ordinary outbound text messages (markdown renders through a CardKit card)",
+            "type": "string",
+            "enum": ["text", "markdown"]
+          },
+          "streamingThrottleMs": {
+            "description": "Minimum interval between streaming card updates in ms",
+            "default": 100,
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "backoffMs": {
-            "description": "Initial backoff delay in ms between retries",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "groupSessionScope": {
+            "description": "Session scoping strategy for group chats",
+            "default": "group",
+            "type": "string",
+            "enum": ["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"]
           },
-          "backoffMultiplier": {
-            "description": "Multiplier applied to backoff on each retry",
-            "type": "number",
-            "exclusiveMinimum": 0
-          },
-          "cooldownMs": {
-            "description": "Cooldown period in ms before a retry cycle resets",
+          "inboundDebounceMs": {
+            "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
+            "default": 0,
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
-          }
-        },
-        "additionalProperties": false
-      },
-      "McpToolFilterConfig": {
-        "description": "Filter which tools are exposed from this server",
-        "type": "object",
-        "properties": {
-          "include": {
-            "description": "Tool names to include (allowlist)",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           },
-          "exclude": {
-            "description": "Tool names to exclude (blocklist)",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "additionalProperties": false
-      },
-      "McpToolsConfig": {
-        "description": "Tool execution behavior config",
-        "type": "object",
-        "properties": {
-          "approval": {
-            "description": "Tool approval mode",
-            "type": "string",
-            "enum": ["auto", "always", "per_session"]
+          "model": {
+            "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+            "type": "string"
           },
-          "maxOutputBytes": {
-            "description": "Maximum tool output size in bytes",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "additionalProperties": false
-      },
-      "McpToolCacheConfig": {
-        "description": "Tool list caching behavior",
-        "type": "object",
-        "properties": {
-          "mode": {
-            "description": "Tool list caching mode",
-            "type": "string",
-            "enum": ["disabled", "session", "persistent"]
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
+            "type": "string"
           },
-          "ttlMs": {
-            "description": "Time-to-live for cached tool list in ms",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "resolveSenderNames": {
+            "description": "Resolve sender display names via Feishu contact API",
+            "default": true,
+            "type": "boolean"
+          },
+          "replyInThread": {
+            "description": "Reply in thread when message is part of a topic",
+            "default": false,
+            "type": "boolean"
           }
         },
+        "required": ["appId", "appSecret"],
         "additionalProperties": false
       },
-      "McpLocalConfig": {
+      "ChannelFeishuConfig": {
         "type": "object",
         "properties": {
           "type": {
-            "description": "Type of MCP server connection",
             "type": "string",
-            "const": "local"
+            "const": "feishu"
           },
-          "command": {
-            "description": "Command and arguments to run the MCP server",
-            "minItems": 1,
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChannelFeishuAccountConfig"
+            }
+          },
+          "domain": {
+            "description": "Default domain for all accounts",
+            "type": "string",
+            "enum": ["feishu", "lark"]
+          },
+          "streaming": {
+            "description": "Default streaming setting for all accounts",
+            "default": true,
+            "type": "boolean"
+          },
+          "responseFormat": {
+            "description": "Default outbound text format for all accounts",
+            "default": "markdown",
+            "type": "string",
+            "enum": ["text", "markdown"]
+          }
+        },
+        "required": ["type", "accounts"],
+        "additionalProperties": false
+      },
+      "ChannelClarusAccountConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "apiUrl": {
+            "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
+            "type": "string"
+          },
+          "agent": {
+            "description": "Primary Synergy agent for project and assignment Sessions",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChannelClarusConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "clarus"
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChannelClarusAccountConfig"
+            }
+          }
+        },
+        "required": ["type", "accounts"],
+        "additionalProperties": false
+      },
+      "ChannelGithubAccountConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "repositories": {
+            "description": "GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later",
+            "default": [],
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1
+              "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
             }
           },
-          "cwd": {
-            "description": "Working directory for local MCP servers",
+          "workspaceDir": {
+            "description": "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
+            "type": "string",
+            "minLength": 1
+          },
+          "workspaceTtlHours": {
+            "description": "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+            "default": 24,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pollingIntervalMs": {
+            "description": "Interval between GitHub API polls in milliseconds (default 5 minutes)",
+            "default": 300000,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "autoReview": {
+            "description": "Automatically review newly opened and updated pull requests",
+            "default": true,
+            "type": "boolean"
+          },
+          "autoRespond": {
+            "description": "Respond to @mentions of the bot handle and questions in issues and pull requests",
+            "default": true,
+            "type": "boolean"
+          },
+          "agent": {
+            "description": "Agent used for GitHub channel sessions (defaults to github-channel-agent)",
             "type": "string"
           },
-          "environment": {
-            "description": "Environment variables to set when running the MCP server",
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "timeout": {
-            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "startup": {
-            "description": "MCP startup mode",
-            "type": "string",
-            "enum": ["eager", "lazy", "manual"]
-          },
-          "required": {
-            "description": "If true, this MCP server is required for the configured workflow",
-            "type": "boolean"
-          },
-          "connectTimeout": {
-            "description": "Timeout in ms for initial connection handshake",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "listTimeout": {
-            "description": "Timeout in ms for listing tools",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "callTimeout": {
-            "description": "Timeout in ms for tool call execution",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "retry": {
-            "$ref": "#/components/schemas/McpRetryConfig"
-          },
-          "idleShutdownMs": {
-            "description": "Idle time in ms after which the server is shut down",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "toolFilter": {
-            "$ref": "#/components/schemas/McpToolFilterConfig"
-          },
-          "expandByDefault": {
-            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
-            "type": "boolean"
-          },
-          "tools": {
-            "$ref": "#/components/schemas/McpToolsConfig"
-          },
-          "toolCache": {
-            "$ref": "#/components/schemas/McpToolCacheConfig"
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
-          }
-        },
-        "required": ["type", "command"],
-        "additionalProperties": false
-      },
-      "McpOAuthConfig": {
-        "type": "object",
-        "properties": {
-          "clientId": {
-            "description": "OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.",
-            "type": "string"
-          },
-          "clientSecret": {
-            "description": "OAuth client secret (if required by the authorization server)",
-            "type": "string"
-          },
-          "scope": {
-            "description": "OAuth scopes to request during authorization",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "McpRemoteConfig": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "description": "Type of MCP server connection",
-            "type": "string",
-            "const": "remote"
-          },
-          "url": {
-            "description": "URL of the remote MCP server",
-            "type": "string",
-            "format": "uri"
-          },
-          "headers": {
-            "description": "Headers to send with the request",
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "oauth": {
-            "description": "OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/McpOAuthConfig"
-              },
-              {
-                "type": "boolean",
-                "const": false
-              }
-            ]
-          },
-          "timeout": {
-            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "startup": {
-            "description": "MCP startup mode",
-            "type": "string",
-            "enum": ["eager", "lazy", "manual"]
-          },
-          "required": {
-            "description": "If true, this MCP server is required for the configured workflow",
-            "type": "boolean"
-          },
-          "connectTimeout": {
-            "description": "Timeout in ms for initial connection handshake",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "listTimeout": {
-            "description": "Timeout in ms for listing tools",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "callTimeout": {
-            "description": "Timeout in ms for tool call execution",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "retry": {
-            "$ref": "#/components/schemas/McpRetryConfig"
-          },
-          "idleShutdownMs": {
-            "description": "Idle time in ms after which the server is shut down",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "toolFilter": {
-            "$ref": "#/components/schemas/McpToolFilterConfig"
-          },
-          "expandByDefault": {
-            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
-            "type": "boolean"
-          },
-          "tools": {
-            "$ref": "#/components/schemas/McpToolsConfig"
-          },
-          "toolCache": {
-            "$ref": "#/components/schemas/McpToolCacheConfig"
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
-          }
-        },
-        "required": ["type", "url"],
-        "additionalProperties": false
-      },
-      "McpDefaultsConfig": {
-        "description": "Default settings applied to all MCP servers that don't override them",
-        "type": "object",
-        "properties": {
-          "startup": {
-            "description": "MCP startup mode",
-            "type": "string",
-            "enum": ["eager", "lazy", "manual"]
-          },
-          "required": {
-            "description": "If true, this MCP server is required for the configured workflow",
-            "type": "boolean"
-          },
-          "connectTimeout": {
-            "description": "Timeout in ms for initial connection handshake",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "listTimeout": {
-            "description": "Timeout in ms for listing tools",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "callTimeout": {
-            "description": "Timeout in ms for tool call execution",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "retry": {
-            "$ref": "#/components/schemas/McpRetryConfig"
-          },
-          "idleShutdownMs": {
-            "description": "Idle time in ms after which the server is shut down",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "toolFilter": {
-            "$ref": "#/components/schemas/McpToolFilterConfig"
-          },
-          "expandByDefault": {
-            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
-            "type": "boolean"
-          },
-          "tools": {
-            "$ref": "#/components/schemas/McpToolsConfig"
-          },
-          "toolCache": {
-            "$ref": "#/components/schemas/McpToolCacheConfig"
-          }
-        },
-        "additionalProperties": false
-      },
-      "ExternalAgentConfig": {
-        "type": "object",
-        "properties": {
-          "disabled": {
-            "description": "Disable this external agent",
-            "type": "boolean"
-          },
-          "path": {
-            "description": "Override path to the external agent binary",
+          "mention": {
+            "description": "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
             "type": "string"
           },
           "model": {
-            "description": "Default model for this external agent",
+            "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
             "type": "string"
           },
-          "auto_discover": {
-            "description": "Whether to auto-discover this agent on startup (default: true)",
-            "type": "boolean"
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
+            "type": "string"
           }
         },
-        "additionalProperties": {}
+        "required": ["workspaceDir"],
+        "additionalProperties": false
       },
-      "SkillsCompatibilityConfig": {
-        "description": "Per-source compatibility toggles for discovering Skills from other agent tools",
+      "ChannelGithubConfig": {
         "type": "object",
         "properties": {
-          "agents": {
-            "description": "Load Agent Skills from .agents/skills directories (default: true)",
+          "type": {
+            "type": "string",
+            "const": "github"
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChannelGithubAccountConfig"
+            }
+          }
+        },
+        "required": ["type", "accounts"],
+        "additionalProperties": false
+      },
+      "HolosConfig": {
+        "description": "Holos platform configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable the Holos runtime connection",
+            "default": true,
             "type": "boolean"
           },
-          "claude": {
-            "description": "Load Claude Code Skills from .claude/skills directories (default: true)",
-            "type": "boolean"
+          "apiUrl": {
+            "description": "Holos API base URL",
+            "default": "https://api.holosai.io",
+            "type": "string"
           },
-          "codex": {
-            "description": "Load Codex Skills from .codex/skills directories (default: true)",
-            "type": "boolean"
+          "wsUrl": {
+            "description": "Holos WebSocket base URL",
+            "default": "wss://api.holosai.io",
+            "type": "string"
           },
-          "openclaw": {
-            "description": "Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)",
-            "type": "boolean"
+          "portalUrl": {
+            "description": "Holos portal URL for browser-facing pages (bind/start)",
+            "default": "https://www.holosai.io",
+            "type": "string"
           }
         },
         "additionalProperties": false
       },
-      "SkillsConfig": {
+      "EmailFromConfig": {
+        "description": "Sender identity for outgoing emails",
         "type": "object",
         "properties": {
-          "compatibility": {
-            "$ref": "#/components/schemas/SkillsCompatibilityConfig"
+          "address": {
+            "description": "Sender email address",
+            "type": "string"
+          },
+          "name": {
+            "description": "Sender display name",
+            "type": "string"
           }
         },
         "additionalProperties": false
       },
-      "WorktreeConfig": {
+      "EmailSmtpConfig": {
+        "description": "SMTP transport settings for outgoing emails",
         "type": "object",
         "properties": {
-          "maxManaged": {
-            "description": "Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones",
+          "host": {
+            "description": "SMTP server hostname",
+            "type": "string"
+          },
+          "port": {
+            "description": "SMTP server port",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "sweepIntervalHours": {
-            "description": "Hours between managed-worktree janitor sweeps",
-            "type": "number",
-            "exclusiveMinimum": 0
-          },
-          "janitor": {
-            "description": "Run the managed-worktree janitor at all (default: true)",
+          "secure": {
+            "description": "Use TLS/SSL for the SMTP connection",
             "type": "boolean"
+          },
+          "username": {
+            "description": "SMTP username",
+            "type": "string"
+          },
+          "password": {
+            "description": "SMTP password or app token",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmailImapConfig": {
+        "description": "IMAP settings for reading emails",
+        "type": "object",
+        "properties": {
+          "host": {
+            "description": "IMAP server hostname",
+            "type": "string"
+          },
+          "port": {
+            "description": "IMAP server port",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "secure": {
+            "description": "Use TLS/SSL for the IMAP connection",
+            "type": "boolean"
+          },
+          "username": {
+            "description": "IMAP username",
+            "type": "string"
+          },
+          "password": {
+            "description": "IMAP password or app token",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmailConfig": {
+        "description": "Outgoing email configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable email features",
+            "type": "boolean"
+          },
+          "from": {
+            "$ref": "#/components/schemas/EmailFromConfig"
+          },
+          "smtp": {
+            "$ref": "#/components/schemas/EmailSmtpConfig"
+          },
+          "imap": {
+            "$ref": "#/components/schemas/EmailImapConfig"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GithubIdentitySyncConfig": {
+        "description": "Git identity sync settings",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Sync git user.name/user.email from the connected GitHub account",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Optional git user.name override (defaults to the GitHub account login). null clears the override",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "description": "Optional git user.email override (defaults to the GitHub noreply email). null clears the override",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "GithubWatchConfig": {
+        "description": "GitHub agenda trigger settings",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true",
+            "type": "boolean"
+          },
+          "defaultIntervalMs": {
+            "description": "Default poll interval for GitHub agenda triggers in milliseconds (default 300000)",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "GithubConfig": {
+        "description": "GitHub integration settings (git identity sync, agenda watch)",
+        "type": "object",
+        "properties": {
+          "identitySync": {
+            "$ref": "#/components/schemas/GithubIdentitySyncConfig"
+          },
+          "watch": {
+            "$ref": "#/components/schemas/GithubWatchConfig"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PluginRuntimeLimitsConfig": {
+        "description": "Default plugin runtime resource and request limits",
+        "default": {
+          "startupTimeoutMs": 5000,
+          "toolInvocationTimeoutMs": 120000,
+          "hostServiceRequestTimeoutMs": 120000,
+          "taskRunTimeoutMs": 120000,
+          "shutdownGraceMs": 1500,
+          "heartbeatIntervalMs": 5000,
+          "maxMemoryMb": 512,
+          "memorySampleIntervalMs": 5000,
+          "agentCallMaxRuntimeMs": 120000,
+          "hookTimeoutMs": 120000,
+          "contributionInvokeTimeoutMs": 120000,
+          "shellRunTimeoutMs": 120000,
+          "taskRunWaitTimeoutMs": 120000
+        },
+        "type": "object",
+        "properties": {
+          "startupTimeoutMs": {
+            "description": "Maximum milliseconds for plugin runtime startup",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolInvocationTimeoutMs": {
+            "description": "Maximum milliseconds for a plugin tool invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hostServiceRequestTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin Host Service request",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "taskRunTimeoutMs": {
+            "description": "Default maximum milliseconds for plugin delegated task runs",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "shutdownGraceMs": {
+            "description": "Graceful shutdown window before force kill",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "heartbeatIntervalMs": {
+            "description": "Heartbeat interval in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxMemoryMb": {
+            "description": "External plugin runtime RSS limit in megabytes",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "memorySampleIntervalMs": {
+            "description": "External plugin runtime RSS sampling interval in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "agentCallMaxRuntimeMs": {
+            "description": "Maximum milliseconds for a plugin agent.call/agent.start model invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hookTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin hook handler invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "contributionInvokeTimeoutMs": {
+            "description": "Default maximum milliseconds for a plugin contribution invocation without a declared timeout",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "shellRunTimeoutMs": {
+            "description": "Default maximum milliseconds for plugin shell.run commands",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "taskRunWaitTimeoutMs": {
+            "description": "Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "PluginRuntimePolicyConfig": {
+        "description": "Plugin runtime isolation policy configuration",
+        "type": "object",
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/PluginRuntimeLimitsConfig"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PluginMarketplaceConfig": {
+        "description": "Public plugin marketplace registry configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable the public GitHub-backed plugin marketplace",
+            "default": true,
+            "type": "boolean"
+          },
+          "registryUrl": {
+            "description": "URL of the official plugin registry.json index",
+            "default": "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
+            "type": "string",
+            "format": "uri"
+          },
+          "includeLocalRegistry": {
+            "description": "Include the local development registry in marketplace search and detail routes",
+            "default": true,
+            "type": "boolean"
+          },
+          "cacheTtlMs": {
+            "description": "Remote marketplace cache TTL in milliseconds",
+            "default": 3600000,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "offlineCache": {
+            "description": "Use stale marketplace cache for browsing when the remote registry cannot be reached",
+            "default": true,
+            "type": "boolean"
+          },
+          "requestTimeoutMs": {
+            "description": "Timeout in milliseconds for registry and entry metadata requests",
+            "default": 10000,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "artifactDownloadTimeoutMs": {
+            "description": "Timeout in milliseconds for plugin artifact and signature downloads",
+            "default": 60000,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cliRequestTimeoutMs": {
+            "description": "Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server",
+            "default": 120000,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "additionalProperties": false
@@ -38633,174 +38789,11 @@
               "$ref": "#/components/schemas/CategoryConfig"
             }
           },
-          "plugin": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "skills": {
+            "$ref": "#/components/schemas/SkillsConfig"
           },
-          "pluginRuntimePolicy": {
-            "$ref": "#/components/schemas/PluginRuntimePolicyConfig"
-          },
-          "pluginMarketplace": {
-            "$ref": "#/components/schemas/PluginMarketplaceConfig"
-          },
-          "pluginConfig": {
-            "description": "Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.",
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            }
-          },
-          "channel": {
-            "description": "Channel configurations for messaging platform integrations",
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ChannelFeishuConfig"
-                },
-                {
-                  "$ref": "#/components/schemas/ChannelClarusConfig"
-                },
-                {
-                  "$ref": "#/components/schemas/ChannelGithubConfig"
-                }
-              ]
-            }
-          },
-          "holos": {
-            "$ref": "#/components/schemas/HolosConfig"
-          },
-          "email": {
-            "$ref": "#/components/schemas/EmailConfig"
-          },
-          "github": {
-            "$ref": "#/components/schemas/GithubConfig"
-          },
-          "enterprise": {
-            "type": "object",
-            "properties": {
-              "url": {
-                "description": "Enterprise URL",
-                "type": "string"
-              }
-            }
-          },
-          "boss": {
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "description": "Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it",
-                "type": "boolean"
-              },
-              "identityText": {
-                "description": "Optional colleague identity description injected into the runtime boss session",
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "briefingIntervalDays": {
-                "description": "Re-inject the versioned world-overview briefing every N days (default: disabled)",
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "persona": {
-                "description": "Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.",
-                "anyOf": [
-                  {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "preset": {
-                            "type": "string",
-                            "const": "project_manager"
-                          }
-                        },
-                        "required": ["preset"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "preset": {
-                            "type": "string",
-                            "const": "ops_assistant"
-                          }
-                        },
-                        "required": ["preset"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "preset": {
-                            "type": "string",
-                            "const": "custom"
-                          },
-                          "formality": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          },
-                          "conciseness": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          },
-                          "proactiveness": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          },
-                          "warmth": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          }
-                        },
-                        "required": ["preset", "formality", "conciseness", "proactiveness", "warmth"]
-                      }
-                    ]
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "library": {
-            "$ref": "#/components/schemas/LibraryConfig"
-          },
-          "embedding": {
-            "$ref": "#/components/schemas/EmbeddingConfig"
-          },
-          "rerank": {
-            "$ref": "#/components/schemas/RerankConfig"
+          "worktree": {
+            "$ref": "#/components/schemas/WorktreeConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -38988,11 +38981,78 @@
             },
             "additionalProperties": false
           },
-          "skills": {
-            "$ref": "#/components/schemas/SkillsConfig"
+          "library": {
+            "$ref": "#/components/schemas/LibraryConfig"
           },
-          "worktree": {
-            "$ref": "#/components/schemas/WorktreeConfig"
+          "embedding": {
+            "$ref": "#/components/schemas/EmbeddingConfig"
+          },
+          "rerank": {
+            "$ref": "#/components/schemas/RerankConfig"
+          },
+          "channel": {
+            "description": "Channel configurations for messaging platform integrations",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChannelFeishuConfig"
+                },
+                {
+                  "$ref": "#/components/schemas/ChannelClarusConfig"
+                },
+                {
+                  "$ref": "#/components/schemas/ChannelGithubConfig"
+                }
+              ]
+            }
+          },
+          "holos": {
+            "$ref": "#/components/schemas/HolosConfig"
+          },
+          "email": {
+            "$ref": "#/components/schemas/EmailConfig"
+          },
+          "github": {
+            "$ref": "#/components/schemas/GithubConfig"
+          },
+          "enterprise": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "description": "Enterprise URL",
+                "type": "string"
+              }
+            }
+          },
+          "plugin": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pluginRuntimePolicy": {
+            "$ref": "#/components/schemas/PluginRuntimePolicyConfig"
+          },
+          "pluginMarketplace": {
+            "$ref": "#/components/schemas/PluginMarketplaceConfig"
+          },
+          "pluginConfig": {
+            "description": "Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
           },
           "voice": {
             "$ref": "#/components/schemas/VoiceConfig"
@@ -39056,6 +39116,102 @@
               }
             },
             "additionalProperties": false
+          },
+          "boss": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "description": "Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it",
+                "type": "boolean"
+              },
+              "identityText": {
+                "description": "Optional colleague identity description injected into the runtime boss session",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "briefingIntervalDays": {
+                "description": "Re-inject the versioned world-overview briefing every N days (default: disabled)",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "persona": {
+                "description": "Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.",
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "const": "project_manager"
+                          }
+                        },
+                        "required": ["preset"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "const": "ops_assistant"
+                          }
+                        },
+                        "required": ["preset"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "const": "custom"
+                          },
+                          "formality": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "conciseness": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "proactiveness": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "warmth": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": ["preset", "formality", "conciseness", "proactiveness", "warmth"]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -39073,10 +39229,24 @@
             "type": "string"
           },
           "worktree": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "directory": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": ["home", "state", "config", "worktree", "directory"]
@@ -39143,61 +39313,104 @@
         "required": ["name", "hints"]
       },
       "SessionScope": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          },
-          "directory": {
-            "type": "string"
-          },
-          "worktree": {
-            "type": "string"
-          },
-          "vcs": {
-            "type": "string",
-            "const": "git"
-          },
-          "name": {
-            "type": "string"
-          },
-          "icon": {
+        "anyOf": [
+          {
             "type": "object",
             "properties": {
-              "url": {
-                "type": "string"
+              "type": {
+                "type": "string",
+                "const": "home"
               },
-              "color": {
-                "type": "string"
-              }
-            }
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "created": {
-                "type": "number"
+              "id": {
+                "type": "string",
+                "const": "home"
               },
-              "updated": {
-                "type": "number"
-              },
-              "initialized": {
-                "type": "number"
+              "local": {
+                "type": "null"
               }
             },
-            "required": ["created", "updated"]
+            "required": ["type", "id", "local"]
           },
-          "sandboxes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "project"
+              },
+              "id": {
+                "type": "string"
+              },
+              "local": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "directory": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "worktree": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "vcs": {
+                        "type": "string",
+                        "const": "git"
+                      },
+                      "sandboxes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": ["directory", "worktree", "sandboxes"]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "type": "string"
+                  }
+                }
+              },
+              "pinned": {
+                "type": "number"
+              },
+              "time": {
+                "type": "object",
+                "properties": {
+                  "created": {
+                    "type": "number"
+                  },
+                  "updated": {
+                    "type": "number"
+                  },
+                  "initialized": {
+                    "type": "number"
+                  },
+                  "archived": {
+                    "type": "number"
+                  }
+                },
+                "required": ["created", "updated"]
+              }
+            },
+            "required": ["type", "id", "local", "time"]
           }
-        },
-        "required": ["id"]
+        ]
       },
       "FileDiff": {
         "type": "object",
@@ -39646,13 +39859,16 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "scopeID": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": ["type", "path", "scopeID"],
@@ -40073,7 +40289,14 @@
             "$ref": "#/components/schemas/SessionWorkingInfo"
           },
           "workspace": {
-            "$ref": "#/components/schemas/SessionWorkspace"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionWorkspace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "workflow": {
             "$ref": "#/components/schemas/SessionWorkflowInfo"
@@ -40107,7 +40330,7 @@
             }
           }
         },
-        "required": ["id", "scope", "title", "version", "time"]
+        "required": ["id", "scope", "title", "version", "time", "workspace"]
       },
       "ScopeBootstrapSessions": {
         "type": "object",
@@ -40732,6 +40955,10 @@
             "type": "string",
             "pattern": "^pty.*"
           },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
           "title": {
             "type": "string"
           },
@@ -40869,15 +41096,15 @@
               "permissions",
               "runtime",
               "storage",
-              "plugins",
+              "skills",
+              "worktree",
+              "mcp",
+              "library",
               "channels",
               "holos",
               "email",
               "github",
-              "library",
-              "mcp",
-              "skills",
-              "worktree",
+              "plugins",
               "voice"
             ]
           },
@@ -41017,15 +41244,15 @@
                 "permissions",
                 "runtime",
                 "storage",
-                "plugins",
+                "skills",
+                "worktree",
+                "mcp",
+                "library",
                 "channels",
                 "holos",
                 "email",
                 "github",
-                "library",
-                "mcp",
-                "skills",
-                "worktree",
+                "plugins",
                 "voice"
               ]
             }
@@ -41150,15 +41377,15 @@
               "permissions",
               "runtime",
               "storage",
-              "plugins",
+              "skills",
+              "worktree",
+              "mcp",
+              "library",
               "channels",
               "holos",
               "email",
               "github",
-              "library",
-              "mcp",
-              "skills",
-              "worktree",
+              "plugins",
               "voice"
             ]
           },
@@ -41284,15 +41511,15 @@
                 "permissions",
                 "runtime",
                 "storage",
-                "plugins",
+                "skills",
+                "worktree",
+                "mcp",
+                "library",
                 "channels",
                 "holos",
                 "email",
                 "github",
-                "library",
-                "mcp",
-                "skills",
-                "worktree",
+                "plugins",
                 "voice"
               ]
             }
@@ -41506,15 +41733,15 @@
                     "permissions",
                     "runtime",
                     "storage",
-                    "plugins",
+                    "skills",
+                    "worktree",
+                    "mcp",
+                    "library",
                     "channels",
                     "holos",
                     "email",
                     "github",
-                    "library",
-                    "mcp",
-                    "skills",
-                    "worktree",
+                    "plugins",
                     "voice"
                   ]
                 }
@@ -41566,15 +41793,15 @@
                 "permissions",
                 "runtime",
                 "storage",
-                "plugins",
+                "skills",
+                "worktree",
+                "mcp",
+                "library",
                 "channels",
                 "holos",
                 "email",
                 "github",
-                "library",
-                "mcp",
-                "skills",
-                "worktree",
+                "plugins",
                 "voice"
               ]
             }
@@ -41909,10 +42136,24 @@
             "type": "string"
           },
           "worktree": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "directory": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": ["home", "state", "config", "worktree", "directory"]
@@ -44604,6 +44845,16 @@
             "properties": {
               "mode": {
                 "type": "string",
+                "const": "none"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
                 "const": "current"
               }
             },
@@ -45802,10 +46053,24 @@
             "type": "object",
             "properties": {
               "cwd": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "root": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": ["cwd", "root"]
@@ -51755,7 +52020,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "ticket": {
             "type": "string",
@@ -52004,7 +52269,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "pageId": {
             "type": "string",
@@ -52021,7 +52286,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "annotation": {
             "type": "object",
@@ -52081,7 +52346,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "pageId": {
             "type": "string",
@@ -52120,7 +52385,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "pageId": {
             "type": "string",
@@ -52142,7 +52407,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "pageId": {
             "type": "string",
@@ -52178,7 +52443,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "ownerKey": {
             "type": "string",
@@ -52239,7 +52504,7 @@
                 "properties": {
                   "protocolVersion": {
                     "type": "number",
-                    "const": 2
+                    "const": 3
                   },
                   "kind": {
                     "type": "string",
@@ -52321,7 +52586,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "result": {
             "anyOf": [
@@ -52725,7 +52990,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 2
+            "const": 3
           },
           "command": {
             "anyOf": [
@@ -54618,183 +54883,6 @@
           }
         ]
       },
-      "Event.installation.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.installation.update-available": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.update-available"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loop": {
-                "$ref": "#/components/schemas/BlueprintLoopInfo"
-              }
-            },
-            "required": ["loop"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loop": {
-                "$ref": "#/components/schemas/BlueprintLoopInfo"
-              }
-            },
-            "required": ["loop"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.completed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.completed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.failed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.failed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID", "error"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.cancelled": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.cancelled"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.auditing": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.auditing"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.rejected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.rejected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID", "reason"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.scope.updated": {
         "type": "object",
         "properties": {
@@ -54852,143 +54940,59 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.note.created": {
+      "Event.provider.auth.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "note.created"
+            "const": "provider.auth.updated"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              "meta": {
-                "$ref": "#/components/schemas/NoteMetaInfo"
+              "health": {
+                "$ref": "#/components/schemas/ProviderAuthHealth"
               }
             },
-            "required": ["scopeID", "note", "meta"]
+            "required": ["health"]
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.note.updated": {
+      "Event.installation.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "note.updated"
+            "const": "installation.updated"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "scopeID": {
+              "version": {
                 "type": "string"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              "meta": {
-                "$ref": "#/components/schemas/NoteMetaInfo"
-              },
-              "changed": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
-                }
               }
             },
-            "required": ["scopeID", "note", "meta", "changed"]
+            "required": ["version"]
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.note.deleted": {
+      "Event.installation.update-available": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "note.deleted"
+            "const": "installation.update-available"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
+              "version": {
                 "type": "string"
               }
             },
-            "required": ["id", "scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.archived": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.archived"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "scopeID": {
-                "type": "string"
-              },
-              "metas": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NoteMetaInfo"
-                }
-              }
-            },
-            "required": ["ids", "scopeID", "metas"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.unarchived": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.unarchived"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "scopeID": {
-                "type": "string"
-              },
-              "metas": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NoteMetaInfo"
-                }
-              }
-            },
-            "required": ["ids", "scopeID", "metas"]
+            "required": ["version"]
           }
         },
         "required": ["type", "properties"]
@@ -55081,51 +55085,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.provider.auth.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "provider.auth.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "health": {
-                "$ref": "#/components/schemas/ProviderAuthHealth"
-              }
-            },
-            "required": ["health"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.permission.asked": {
         "type": "object",
         "properties": {
@@ -55161,6 +55120,63 @@
               }
             },
             "required": ["sessionID", "requestID", "reply"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.dag.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dag.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DagNode"
+                }
+              },
+              "ready": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["sessionID", "nodes", "ready"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -55394,6 +55410,765 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.compacted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.compacted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "arguments": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["name", "sessionID", "arguments", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string",
+                "enum": ["added", "changed", "deleted", "renamed"]
+              },
+              "absolute": {
+                "type": "string"
+              },
+              "oldPath": {
+                "type": "string"
+              },
+              "oldAbsolute": {
+                "type": "string"
+              },
+              "parent": {
+                "type": "string"
+              },
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
+            },
+            "required": ["file", "event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.todo.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "todo.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Todo"
+                }
+              }
+            },
+            "required": ["sessionID", "todos"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Pty"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Pty"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.exited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.exited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^pty.*"
+              },
+              "exitCode": {
+                "type": "number"
+              }
+            },
+            "required": ["id", "exitCode"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^pty.*"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.question.asked": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.asked"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/QuestionRequest"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.question.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              },
+              "answers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QuestionAnswer"
+                }
+              }
+            },
+            "required": ["sessionID", "requestID", "answers"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.question.rejected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.rejected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "requestID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.question.timed_out": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.timed_out"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "requestID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.task.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.task.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/CortexTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.task.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.task.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/CortexTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.tasks.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.tasks.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CortexTask"
+                }
+              }
+            },
+            "required": ["tasks"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.added": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.added"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              }
+            },
+            "required": ["peerId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connection.status_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connection.status_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.presence": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.presence"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["online", "offline"]
+              }
+            },
+            "required": ["peerId", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.cancelled": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.cancelled"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.auditing": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.auditing"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.rejected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.rejected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "reason"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              }
+            },
+            "required": ["scopeID", "note", "meta"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
+                }
+              }
+            },
+            "required": ["scopeID", "note", "meta", "changed"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.archived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.archived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
+              }
+            },
+            "required": ["ids", "scopeID", "metas"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.unarchived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.unarchived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
+              }
+            },
+            "required": ["ids", "scopeID", "metas"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.plugin.ui.updated": {
         "type": "object",
         "properties": {
@@ -55463,116 +56238,6 @@
               "timestamp",
               "payload"
             ]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.session.compacted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.compacted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.dag.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "dag.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "nodes": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DagNode"
-                }
-              },
-              "ready": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["sessionID", "nodes", "ready"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.cortex.task.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "cortex.task.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "task": {
-                "$ref": "#/components/schemas/CortexTask"
-              }
-            },
-            "required": ["task"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.cortex.task.completed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "cortex.task.completed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "task": {
-                "$ref": "#/components/schemas/CortexTask"
-              }
-            },
-            "required": ["task"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.cortex.tasks.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "cortex.tasks.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "tasks": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CortexTask"
-                }
-              }
-            },
-            "required": ["tasks"]
           }
         },
         "required": ["type", "properties"]
@@ -55726,204 +56391,6 @@
               }
             },
             "required": ["server", "error"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.watcher.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.watcher.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              },
-              "event": {
-                "type": "string",
-                "enum": ["added", "changed", "deleted", "renamed"]
-              },
-              "absolute": {
-                "type": "string"
-              },
-              "oldPath": {
-                "type": "string"
-              },
-              "oldAbsolute": {
-                "type": "string"
-              },
-              "parent": {
-                "type": "string"
-              },
-              "node": {},
-              "resync": {
-                "type": "boolean"
-              }
-            },
-            "required": ["file", "event"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.edited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.edited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              }
-            },
-            "required": ["file"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.todo.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "todo.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "todos": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Todo"
-                }
-              }
-            },
-            "required": ["sessionID", "todos"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "command.executed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "sessionID": {
-                "type": "string",
-                "pattern": "^ses.*"
-              },
-              "arguments": {
-                "type": "string"
-              },
-              "messageID": {
-                "type": "string",
-                "pattern": "^msg.*"
-              }
-            },
-            "required": ["name", "sessionID", "arguments", "messageID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.question.asked": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.asked"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/QuestionRequest"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.question.replied": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.replied"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              },
-              "answers": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/QuestionAnswer"
-                }
-              }
-            },
-            "required": ["sessionID", "requestID", "answers"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.question.rejected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.rejected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID", "requestID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.question.timed_out": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.timed_out"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID", "requestID"]
           }
         },
         "required": ["type", "properties"]
@@ -56100,127 +56567,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.holos.contact.added": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.added"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              }
-            },
-            "required": ["peerId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connection.status_changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connection.status_changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.presence": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.presence"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": ["online", "offline"]
-              }
-            },
-            "required": ["peerId", "status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.lsp.client.diagnostics": {
         "type": "object",
         "properties": {
@@ -56333,87 +56679,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.pty.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Pty"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Pty"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.exited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.exited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^pty.*"
-              },
-              "exitCode": {
-                "type": "number"
-              }
-            },
-            "required": ["id", "exitCode"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^pty.*"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.server.connected": {
         "type": "object",
         "properties": {
@@ -56445,33 +56710,6 @@
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.rejected"
-          },
-          {
             "$ref": "#/components/schemas/Event.scope.updated"
           },
           {
@@ -56481,19 +56719,13 @@
             "$ref": "#/components/schemas/Event.scope.runtime.disposed"
           },
           {
-            "$ref": "#/components/schemas/Event.note.created"
+            "$ref": "#/components/schemas/Event.provider.auth.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.note.updated"
+            "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.note.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.archived"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.unarchived"
+            "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
             "$ref": "#/components/schemas/Event.message.updated"
@@ -56508,16 +56740,16 @@
             "$ref": "#/components/schemas/Event.message.part.removed"
           },
           {
-            "$ref": "#/components/schemas/Event.provider.auth.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.permission.asked"
           },
           {
             "$ref": "#/components/schemas/Event.permission.replied"
+          },
+          {
+            "$ref": "#/components/schemas/Event.dag.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"
@@ -56550,16 +56782,43 @@
             "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.plugin.ui.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.plugin.event"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
-            "$ref": "#/components/schemas/Event.dag.updated"
+            "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.exited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.asked"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.replied"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.rejected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.timed_out"
           },
           {
             "$ref": "#/components/schemas/Event.cortex.task.created"
@@ -56569,6 +56828,66 @@
           },
           {
             "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.added"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.presence"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.rejected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.archived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.unarchived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.ui.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.event"
           },
           {
             "$ref": "#/components/schemas/Event.agenda.item.created"
@@ -56595,30 +56914,6 @@
             "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.edited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.todo.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.command.executed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.question.asked"
-          },
-          {
-            "$ref": "#/components/schemas/Event.question.replied"
-          },
-          {
-            "$ref": "#/components/schemas/Event.question.rejected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.question.timed_out"
-          },
-          {
             "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
@@ -56640,24 +56935,6 @@
             "$ref": "#/components/schemas/Event.channel.disconnected"
           },
           {
-            "$ref": "#/components/schemas/Event.holos.contact.added"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.presence"
-          },
-          {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
@@ -56674,18 +56951,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.exited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"

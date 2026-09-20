@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Capability } from "../enforcement/gate"
 import type { Info } from "./types"
 import type { ToolDiagnostic } from "../tool/diagnostic"
@@ -23,35 +24,55 @@ export namespace SessionModePolicy {
     forcedGroups?(session?: Info): Iterable<string>
     availability?(input: { session?: Info; agent: string }): Promise<Map<string, ToolDiagnostic>>
   }
-  const contributions = new Map<string, Contribution>()
+  const runtimeState = RuntimeContext.state(() => ({
+    contributions: new Map<string, Contribution>(),
+  }))
   export function register(contribution: Contribution) {
-    contributions.set(contribution.id, contribution)
+    const instanceState = runtimeState()
+
+    const existing = instanceState.contributions.get(contribution.id)
+    if (existing === contribution) return
+    RuntimeContext.assertCompositionOpen("session tool policy")
+    if (existing) throw new Error(`Session tool policy ${contribution.id} is already registered`)
+    instanceState.contributions.set(contribution.id, contribution)
   }
   export function visibility(input: VisibilityInput) {
-    for (const source of contributions.values()) {
+    const instanceState = runtimeState()
+
+    for (const source of instanceState.contributions.values()) {
       const result = source.visibility?.(input)
       if (result) return result
     }
   }
   export function evaluateCall(input: CallInput) {
-    for (const source of contributions.values()) {
+    const instanceState = runtimeState()
+
+    for (const source of instanceState.contributions.values()) {
       const result = source.evaluateCall?.(input)
       if (result) return result
     }
   }
   export function forcedGroups(session?: Info) {
-    return new Set([...contributions.values()].flatMap((source) => [...(source.forcedGroups?.(session) ?? [])]))
+    const instanceState = runtimeState()
+
+    return new Set(
+      [...instanceState.contributions.values()].flatMap((source) => [...(source.forcedGroups?.(session) ?? [])]),
+    )
   }
   export async function availability(input: { session?: Info; agent: string }) {
+    const instanceState = runtimeState()
+
     const result = new Map<string, ToolDiagnostic>()
-    for (const source of contributions.values())
+    for (const source of instanceState.contributions.values())
       for (const [id, diagnostic] of (await source.availability?.(input)) ?? []) {
         if (!result.has(id)) result.set(id, diagnostic)
       }
     return result
   }
   export function unavailable(input: UnavailableInput): ToolDiagnostic {
-    for (const source of contributions.values()) {
+    const instanceState = runtimeState()
+
+    for (const source of instanceState.contributions.values()) {
       const result = source.unavailable?.(input)
       if (result) return result
     }

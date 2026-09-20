@@ -86,7 +86,8 @@
     "./workspace-file/status": "./src/workspace-file/status.ts",
     "./workspace-file/symbol-source": "./src/workspace-file/symbol-source.ts",
     "./workspace-file/indexer": "./src/workspace-file/indexer.ts",
-    "./conflict/detect": "./src/conflict/detect.ts"
+    "./conflict/detect": "./src/conflict/detect.ts",
+    "./host": "./src/host.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

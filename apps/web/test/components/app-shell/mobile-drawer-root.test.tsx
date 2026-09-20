@@ -102,6 +102,7 @@ beforeAll(async () => {
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
               draftLabel: "Draft",
+              hasDraft: () => false,
               entries: [entry("ses_recent", "Recent session", true), entry("ses_other", "Other session")],
               currentSessionID: "ses_recent",
               visualFor: (value) =>
@@ -121,6 +122,7 @@ beforeAll(async () => {
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
               draftLabel: "Draft",
+              hasDraft: () => false,
               entries: [entry("ses_wt", "Worktree session")],
               visualFor: () => worktreeVisual("Worktree session"),
               hasMore: false,
@@ -138,6 +140,7 @@ beforeAll(async () => {
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
               draftLabel: "Draft",
+              hasDraft: () => false,
               entries: [],
               visualFor: () => worktreeVisual(""),
               hasMore: false,

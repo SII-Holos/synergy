@@ -18,8 +18,11 @@ import os from "node:os"
 import { $ } from "bun"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 // ---------------------------------------------------------------------------
 // Dynamic import — GitHealth module
@@ -27,17 +30,21 @@ Log.init({ print: false })
 type GitHealthModule = typeof import("../../src/project/git-health")
 let GitHealth: GitHealthModule["GitHealth"]
 
-beforeAll(async () => {
-  const mod = await import("../../src/project/git-health")
-  GitHealth = mod.GitHealth
-})
+beforeAll(() =>
+  runtime.run(async () => {
+    const mod = await import("../../src/project/git-health")
+    GitHealth = mod.GitHealth
+  }),
+)
 
 // ---------------------------------------------------------------------------
 // Register the git_health_cache_invalidator job (and other loop signals)
 // ---------------------------------------------------------------------------
-beforeAll(async () => {
-  await import("@ericsanchezok/synergy-harness/test/internal/session/loop-signals")
-})
+beforeAll(() =>
+  runtime.run(async () => {
+    await import("@ericsanchezok/synergy-harness/test/internal/session/loop-signals")
+  }),
+)
 
 // ---------------------------------------------------------------------------
 // Local Issue interface
@@ -206,56 +213,58 @@ function makeCtx(messages: any[]): any {
 // ===========================================================================
 
 describe("GitHealth.invalidate() — cache clearing via inject()", () => {
-  test("invalidate clears lastReport after inject() populated it", async () => {
-    const repo = makeRepo()
-    try {
-      await gitInit(repo.path)
-      await gitEmptyCommit(repo.path)
+  test("invalidate clears lastReport after inject() populated it", () =>
+    runtime.run(async () => {
+      const repo = makeRepo()
+      try {
+        await gitInit(repo.path)
+        await gitEmptyCommit(repo.path)
 
-      // Detach HEAD to create an issue
-      await $`git checkout --detach`.cwd(repo.path).quiet()
+        // Detach HEAD to create an issue
+        await $`git checkout --detach`.cwd(repo.path).quiet()
 
-      // inject() populates cache, lastReport is available
-      await GitHealth.inject(repo.path)
-      const before = GitHealth.lastReport()
-      expect(before).toBeArray()
-      expect(before!.length).toBeGreaterThan(0)
+        // inject() populates cache, lastReport is available
+        await GitHealth.inject(repo.path)
+        const before = GitHealth.lastReport()
+        expect(before).toBeArray()
+        expect(before!.length).toBeGreaterThan(0)
 
-      // invalidate() clears the cache
-      GitHealth.invalidate()
-      const after = GitHealth.lastReport()
-      expect(after).toBeUndefined()
-    } finally {
-      repo.cleanup()
-    }
-  })
-
-  test("after invalidate, next inject re-scans instead of returning stale cache", async () => {
-    const repo = makeRepo()
-    try {
-      await gitInit(repo.path)
-      await gitEmptyCommit(repo.path)
-
-      // First inject on clean repo — no issues
-      const first = await GitHealth.inject(repo.path)
-      expect(first).toBeUndefined()
-
-      // Pollute the repo with many untracked files
-      for (let i = 1; i <= 50; i++) {
-        writeFileSync(join(repo.path, `untracked-${i}.tmp`), `temp ${i}`)
+        // invalidate() clears the cache
+        GitHealth.invalidate()
+        const after = GitHealth.lastReport()
+        expect(after).toBeUndefined()
+      } finally {
+        repo.cleanup()
       }
+    }))
 
-      // Invalidate to clear the stale clean cache
-      GitHealth.invalidate()
+  test("after invalidate, next inject re-scans instead of returning stale cache", () =>
+    runtime.run(async () => {
+      const repo = makeRepo()
+      try {
+        await gitInit(repo.path)
+        await gitEmptyCommit(repo.path)
 
-      // Second inject — must re-scan and find the untracked issue
-      const second = await GitHealth.inject(repo.path)
-      expect(second).toBeString()
-      expect(second).toMatch(/untracked/i)
-    } finally {
-      repo.cleanup()
-    }
-  })
+        // First inject on clean repo — no issues
+        const first = await GitHealth.inject(repo.path)
+        expect(first).toBeUndefined()
+
+        // Pollute the repo with many untracked files
+        for (let i = 1; i <= 50; i++) {
+          writeFileSync(join(repo.path, `untracked-${i}.tmp`), `temp ${i}`)
+        }
+
+        // Invalidate to clear the stale clean cache
+        GitHealth.invalidate()
+
+        // Second inject — must re-scan and find the untracked issue
+        const second = await GitHealth.inject(repo.path)
+        expect(second).toBeString()
+        expect(second).toMatch(/untracked/i)
+      } finally {
+        repo.cleanup()
+      }
+    }))
 })
 
 // ===========================================================================
@@ -263,83 +272,97 @@ describe("GitHealth.invalidate() — cache clearing via inject()", () => {
 // ===========================================================================
 
 describe("git_health_cache_invalidator collect()", () => {
-  test("returns empty when last message is a user (no assistant)", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeUserWrapper()])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeUndefined()
-  })
+  test("returns empty when last message is a user (no assistant)", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([makeUserWrapper(), makeUserWrapper()])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeUndefined()
+    }))
 
-  test("returns empty when assistant has no tool parts", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTextPart("hello")])])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeUndefined()
-  })
+  test("returns empty when assistant has no tool parts", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTextPart("hello")])])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeUndefined()
+    }))
 
-  test("returns empty when assistant has only non-bash tool parts", () => {
-    const ctx = makeCtx([
-      makeUserWrapper(),
-      makeAssistant([
-        makeTool("Read", { path: "/tmp/foo" }, "completed"),
-        makeTool("Grep", { pattern: "foo", path: "/tmp" }, "completed"),
-      ]),
-    ])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeUndefined()
-  })
+  test("returns empty when assistant has only non-bash tool parts", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([
+        makeUserWrapper(),
+        makeAssistant([
+          makeTool("Read", { path: "/tmp/foo" }, "completed"),
+          makeTool("Grep", { pattern: "foo", path: "/tmp" }, "completed"),
+        ]),
+      ])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeUndefined()
+    }))
 
-  test("returns empty when bash tool call is still pending", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "git status" }, "pending")])])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeUndefined()
-  })
+  test("returns empty when bash tool call is still pending", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "git status" }, "pending")])])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeUndefined()
+    }))
 
-  test("returns instance when bash tool call completed", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "git status" }, "completed")])])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeDefined()
-    expect(inv!.type).toBe("git_health_cache_invalidator")
-  })
+  test("returns instance when bash tool call completed", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([
+        makeUserWrapper(),
+        makeAssistant([makeTool("bash", { command: "git status" }, "completed")]),
+      ])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeDefined()
+      expect(inv!.type).toBe("git_health_cache_invalidator")
+    }))
 
-  test("returns instance when bash tool call errored", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "rm -rf /" }, "error")])])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeDefined()
-    expect(inv!.type).toBe("git_health_cache_invalidator")
-  })
+  test("returns instance when bash tool call errored", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "rm -rf /" }, "error")])])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeDefined()
+      expect(inv!.type).toBe("git_health_cache_invalidator")
+    }))
 
-  test("returns instance when bash tool is running (not pending)", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "sleep 10" }, "running")])])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeDefined()
-    expect(inv!.type).toBe("git_health_cache_invalidator")
-  })
+  test("returns instance when bash tool is running (not pending)", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([makeUserWrapper(), makeAssistant([makeTool("bash", { command: "sleep 10" }, "running")])])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeDefined()
+      expect(inv!.type).toBe("git_health_cache_invalidator")
+    }))
 
-  test("returns instance when assistant has mixed tools including bash", () => {
-    const ctx = makeCtx([
-      makeUserWrapper(),
-      makeAssistant([
-        makeTool("Read", { path: "/tmp/foo" }, "completed"),
-        makeTool("bash", { command: "npm install" }, "completed"),
-        makeTool("Grep", { pattern: "test" }, "completed"),
-      ]),
-    ])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeDefined()
-    expect(inv!.type).toBe("git_health_cache_invalidator")
-  })
+  test("returns instance when assistant has mixed tools including bash", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([
+        makeUserWrapper(),
+        makeAssistant([
+          makeTool("Read", { path: "/tmp/foo" }, "completed"),
+          makeTool("bash", { command: "npm install" }, "completed"),
+          makeTool("Grep", { pattern: "test" }, "completed"),
+        ]),
+      ])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeDefined()
+      expect(inv!.type).toBe("git_health_cache_invalidator")
+    }))
 
-  test("returns empty when assistant parts array is empty", () => {
-    const ctx = makeCtx([makeUserWrapper(), makeAssistant([])])
-    const instances = LoopJob.collect("post", ctx)
-    const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
-    expect(inv).toBeUndefined()
-  })
+  test("returns empty when assistant parts array is empty", () =>
+    runtime.run(() => {
+      const ctx = makeCtx([makeUserWrapper(), makeAssistant([])])
+      const instances = LoopJob.collect("post", ctx)
+      const inv = instances.find((i: any) => i.type === "git_health_cache_invalidator")
+      expect(inv).toBeUndefined()
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

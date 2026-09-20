@@ -5,11 +5,16 @@ import os from "node:os"
 import path from "node:path"
 import { BlobWriter, TextReader, ZipWriter } from "@zip.js/zip.js"
 import { BrowserInstall } from "../src/install"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "./support/runtime"
+const runtime = await testRuntime()
 
 const tempDirs: string[] = []
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
-})
+afterEach(() =>
+  runtime.run(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
+  }),
+)
 
 async function fixture(options: { artifact?: Buffer; signatureValid?: boolean; entryName?: string } = {}) {
   const version = "9.9.9"
@@ -22,7 +27,7 @@ async function fixture(options: { artifact?: Buffer; signatureValid?: boolean; e
   const manifest = `${JSON.stringify(
     {
       version,
-      protocolVersion: 2,
+      protocolVersion: 3,
       platform,
       arch,
       name,
@@ -60,25 +65,10 @@ async function fixture(options: { artifact?: Buffer; signatureValid?: boolean; e
 }
 
 describe("Browser Host artifact installation", () => {
-  test("verifies signature and digest before atomically installing the exact artifact", async () => {
-    const input = await fixture()
-    const executable = await BrowserInstall.installHost({
-      fetch: input.fetchMock,
-      publicKey: input.publicKey,
-      manifestBaseUrl: "https://release.test",
-      version: input.version,
-      platform: input.platform,
-      arch: input.arch,
-      destination: input.destination,
-    })
-    expect(await Bun.file(executable).text()).toContain("exit 0")
-    expect(executable.startsWith(input.destination)).toBe(true)
-  })
-
-  test("rejects a manifest with an invalid signature", async () => {
-    const input = await fixture({ signatureValid: false })
-    await expect(
-      BrowserInstall.installHost({
+  test("verifies signature and digest before atomically installing the exact artifact", () =>
+    runtime.run(async () => {
+      const input = await fixture()
+      const executable = await BrowserInstall.installHost({
         fetch: input.fetchMock,
         publicKey: input.publicKey,
         manifestBaseUrl: "https://release.test",
@@ -86,60 +76,79 @@ describe("Browser Host artifact installation", () => {
         platform: input.platform,
         arch: input.arch,
         destination: input.destination,
-      }),
-    ).rejects.toThrow(/signature/i)
-  })
+      })
+      expect(await Bun.file(executable).text()).toContain("exit 0")
+      expect(executable.startsWith(input.destination)).toBe(true)
+    }))
 
-  test("rejects artifact tampering and archive path traversal", async () => {
-    const tampered = await fixture()
-    tampered.responses.set(
-      `https://release.test/synergy-browser-host-${tampered.platform}-${tampered.arch}-${tampered.version}.zip`,
-      Uint8Array.from(Buffer.concat([tampered.artifact, Buffer.from("tampered")])),
-    )
-    await expect(
-      BrowserInstall.installHost({
-        fetch: tampered.fetchMock,
-        publicKey: tampered.publicKey,
-        manifestBaseUrl: "https://release.test",
-        version: tampered.version,
-        platform: tampered.platform,
-        arch: tampered.arch,
-        destination: tampered.destination,
-      }),
-    ).rejects.toThrow(/size|digest/i)
+  test("rejects a manifest with an invalid signature", () =>
+    runtime.run(async () => {
+      const input = await fixture({ signatureValid: false })
+      await expect(
+        BrowserInstall.installHost({
+          fetch: input.fetchMock,
+          publicKey: input.publicKey,
+          manifestBaseUrl: "https://release.test",
+          version: input.version,
+          platform: input.platform,
+          arch: input.arch,
+          destination: input.destination,
+        }),
+      ).rejects.toThrow(/signature/i)
+    }))
 
-    const traversal = await fixture({ entryName: "../host" })
-    await expect(
-      BrowserInstall.installHost({
-        fetch: traversal.fetchMock,
-        publicKey: traversal.publicKey,
-        manifestBaseUrl: "https://release.test",
-        version: traversal.version,
-        platform: traversal.platform,
-        arch: traversal.arch,
-        destination: traversal.destination,
-      }),
-    ).rejects.toThrow(/unsafe path|escapes/i)
-  })
+  test("rejects artifact tampering and archive path traversal", () =>
+    runtime.run(async () => {
+      const tampered = await fixture()
+      tampered.responses.set(
+        `https://release.test/synergy-browser-host-${tampered.platform}-${tampered.arch}-${tampered.version}.zip`,
+        Uint8Array.from(Buffer.concat([tampered.artifact, Buffer.from("tampered")])),
+      )
+      await expect(
+        BrowserInstall.installHost({
+          fetch: tampered.fetchMock,
+          publicKey: tampered.publicKey,
+          manifestBaseUrl: "https://release.test",
+          version: tampered.version,
+          platform: tampered.platform,
+          arch: tampered.arch,
+          destination: tampered.destination,
+        }),
+      ).rejects.toThrow(/size|digest/i)
+
+      const traversal = await fixture({ entryName: "../host" })
+      await expect(
+        BrowserInstall.installHost({
+          fetch: traversal.fetchMock,
+          publicKey: traversal.publicKey,
+          manifestBaseUrl: "https://release.test",
+          version: traversal.version,
+          platform: traversal.platform,
+          arch: traversal.arch,
+          destination: traversal.destination,
+        }),
+      ).rejects.toThrow(/unsafe path|escapes/i)
+    }))
 })
 
 describe("Chromium discovery", () => {
-  test("finds current Playwright Chromium layouts in the Windows local cache", async () => {
-    const localAppData = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-playwright-windows-"))
-    tempDirs.push(localAppData)
-    const executable = path.join(localAppData, "ms-playwright", "chromium-1234", "chrome-win64", "chrome.exe")
-    await fs.mkdir(path.dirname(executable), { recursive: true })
-    await fs.writeFile(executable, "browser")
+  test("finds current Playwright Chromium layouts in the Windows local cache", () =>
+    runtime.run(async () => {
+      const localAppData = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-playwright-windows-"))
+      tempDirs.push(localAppData)
+      const executable = path.join(localAppData, "ms-playwright", "chromium-1234", "chrome-win64", "chrome.exe")
+      await fs.mkdir(path.dirname(executable), { recursive: true })
+      await fs.writeFile(executable, "browser")
 
-    await expect(
-      BrowserInstall.discoverChromium({
-        platform: "win32",
-        arch: "x64",
-        home: localAppData,
-        env: { LOCALAPPDATA: localAppData },
-      }),
-    ).resolves.toBe(executable)
-  })
+      await expect(
+        BrowserInstall.discoverChromium({
+          platform: "win32",
+          arch: "x64",
+          home: localAppData,
+          env: { LOCALAPPDATA: localAppData },
+        }),
+      ).resolves.toBe(executable)
+    }))
 })
 
 async function zip(name: string, content: string): Promise<Buffer> {
@@ -149,3 +158,5 @@ async function zip(name: string, content: string): Promise<Buffer> {
   const blob = await zipWriter.close()
   return Buffer.from(await blob.arrayBuffer())
 }
+
+afterRuntimeTests(() => runtime.close())

@@ -424,7 +424,9 @@ export namespace Installation {
   export const COMMIT = typeof SYNERGY_COMMIT === "string" && SYNERGY_COMMIT ? SYNERGY_COMMIT : null
   export const VERSION = typeof SYNERGY_VERSION === "string" ? SYNERGY_VERSION : "local"
   export const CHANNEL = typeof SYNERGY_CHANNEL === "string" ? SYNERGY_CHANNEL : "local"
-  export const USER_AGENT = `synergy/${CHANNEL}/${VERSION}/${Flag.SYNERGY_CLIENT}`
+  export function userAgent() {
+    return `synergy/${CHANNEL}/${VERSION}/${Flag.SYNERGY_CLIENT}`
+  }
 
   export async function latest(installMethod?: Method) {
     const detectedMethod = installMethod || (await method())

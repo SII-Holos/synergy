@@ -48,7 +48,7 @@ export function buildLightLoopInstructions(input: {
     context.push(`Note: ${note.title || "Untitled"} (${note.noteId})`)
   }
   for (const session of input.sessions) {
-    context.push(`Session: ${session.title || "Untitled"} (${session.sessionId}, ${session.directory})`)
+    context.push(`Session: ${session.title || "Untitled"} (${session.sessionId}, ${session.scopeID})`)
   }
 
   const uniqueContext = Array.from(new Set(context)).slice(0, MAX_CONTEXT_LINES)

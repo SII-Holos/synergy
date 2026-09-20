@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 import { SessionInvoke } from "./invoke"
 import { SessionCortexRuntime } from "./cortex-runtime"
@@ -5,7 +6,9 @@ import { SessionManager } from "./manager"
 type AbortHook = (sessionID: string) => void | Promise<void>
 
 export namespace SessionAbort {
-  const hooks = new Set<AbortHook>()
+  const runtimeState = RuntimeContext.state(() => ({
+    hooks: new Set<AbortHook>(),
+  }))
 
   const AbortOutcomeSchema = z.enum(["not_found", "idle", "signaled", "already_stopping", "not_owner"])
 
@@ -32,11 +35,15 @@ export namespace SessionAbort {
   export type Result = z.infer<typeof Result>
 
   export function registerHook(hook: AbortHook): () => void {
-    hooks.add(hook)
-    return () => hooks.delete(hook)
+    const instanceState = runtimeState()
+
+    instanceState.hooks.add(hook)
+    return () => instanceState.hooks.delete(hook)
   }
 
   export async function abort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): Promise<Result> {
+    const instanceState = runtimeState()
+
     // Sample liveness *before* the signal. The signal ends the turn, which
     // releases the runtime, so a later sample cannot distinguish a loop that was
     // healthily driving this turn from one orphaned by a dead runtime.
@@ -44,7 +51,7 @@ export namespace SessionAbort {
     const outcome = SessionInvoke.cancel(sessionID, options)
     await SessionCortexRuntime.cancelAllForParent(sessionID)
     const state = await SessionInvoke.repairAbortState(sessionID, { turnWasRunning })
-    await Promise.all([...hooks].map((hook) => hook(sessionID)))
+    await Promise.all([...instanceState.hooks].map((hook) => hook(sessionID)))
     return { outcome, repaired: state.repaired, abandoned: state.abandoned, settled: state.settled }
   }
 

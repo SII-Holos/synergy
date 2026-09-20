@@ -1,13 +1,22 @@
-import "@ericsanchezok/synergy-runtime-local/config-schema"
-import "@ericsanchezok/synergy-agent-integrations/config-schema"
-import "@ericsanchezok/synergy-library/config-schema"
-import "@ericsanchezok/synergy-connections/config-schema"
-import "@ericsanchezok/synergy-plugin-host/config-schema"
-import "@ericsanchezok/synergy-media/config-schema"
-import "@ericsanchezok/synergy-workbench/config-schema"
-import "@ericsanchezok/synergy-workflows/config-schema"
-import "@ericsanchezok/synergy-workflows/session-schema"
-
+import { registerConfig as registerLocalConfig } from "@ericsanchezok/synergy-runtime-local/config-schema"
+import { registerConfig as registerIntegrationsConfig } from "@ericsanchezok/synergy-agent-integrations/config-schema"
+import { registerConfig as registerLibraryConfig } from "@ericsanchezok/synergy-library/config-schema"
+import { registerConfig as registerConnectionsConfig } from "@ericsanchezok/synergy-connections/config-schema"
+import { registerConfig as registerPluginConfig } from "@ericsanchezok/synergy-plugin-host/config-schema"
+import { registerConfig as registerMediaConfig } from "@ericsanchezok/synergy-media/config-schema"
+import { registerConfig as registerWorkbenchConfig } from "@ericsanchezok/synergy-workbench/config-schema"
+import { registerConfig as registerWorkflowsConfig } from "@ericsanchezok/synergy-workflows/config-schema"
+import { registerSessionSchema } from "@ericsanchezok/synergy-workflows/session-schema"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
-
-ConfigExtensions.completeRegistration()
+export function registerProductConfiguration() {
+  registerLocalConfig()
+  registerIntegrationsConfig()
+  registerLibraryConfig()
+  registerConnectionsConfig()
+  registerPluginConfig()
+  registerMediaConfig()
+  registerWorkbenchConfig()
+  registerWorkflowsConfig()
+  registerSessionSchema()
+  ConfigExtensions.completeRegistration()
+}

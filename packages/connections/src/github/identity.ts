@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -56,7 +57,7 @@ export namespace GithubIdentity {
       cmd: ["git", ...args],
       stdout: "pipe",
       stderr: "pipe",
-      env: process.env,
+      env: RuntimeContext.current().host.env,
     })
     return Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]).then(
       ([code, stdout, stderr]) => ({ code, stdout, stderr }),

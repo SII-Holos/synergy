@@ -1135,6 +1135,10 @@
                     "propertyNames": { "type": "string" },
                     "additionalProperties": { "type": "string" }
                   },
+                  "requiresWorkspace": {
+                    "description": "Whether tools require a session workspace; defaults to true",
+                    "type": "boolean"
+                  },
                   "timeout": {
                     "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
                     "type": "integer",
@@ -1303,6 +1307,10 @@
                       },
                       { "type": "boolean", "const": false }
                     ]
+                  },
+                  "requiresWorkspace": {
+                    "description": "Whether tools require a session workspace; defaults to true",
+                    "type": "boolean"
                   },
                   "timeout": {
                     "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",

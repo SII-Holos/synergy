@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
@@ -22,7 +23,10 @@ export namespace PermissionRules {
   export const Ruleset = Rule.array()
   export type Ruleset = z.infer<typeof Ruleset>
 
-  const sessionRules = new Map<string, Rule[]>()
+  const runtimeState = RuntimeContext.state(() => ({
+    sessionRules: new Map<string, Rule[]>(),
+    userRulesCache: undefined as Ruleset | undefined,
+  }))
 
   function firstStringPath(value: unknown): string | undefined {
     if (typeof value === "string") return value.length > 0 ? value : undefined
@@ -85,40 +89,48 @@ export namespace PermissionRules {
   }
 
   export function addSessionRule(sessionID: string, rule: Omit<Rule, "scope">) {
-    const rules = sessionRules.get(sessionID) ?? []
+    const instanceState = runtimeState()
+
+    const rules = instanceState.sessionRules.get(sessionID) ?? []
     rules.push({ ...rule, scope: "session" })
-    sessionRules.set(sessionID, rules)
+    instanceState.sessionRules.set(sessionID, rules)
     log.info("added session rule", { sessionID, ...rule })
   }
 
   export function clearSessionRules(sessionID?: string) {
+    const instanceState = runtimeState()
+
     if (sessionID) {
-      sessionRules.delete(sessionID)
+      instanceState.sessionRules.delete(sessionID)
       return
     }
-    sessionRules.clear()
+    instanceState.sessionRules.clear()
   }
 
   export function sessionRuleset(sessionID?: string): Ruleset {
+    const instanceState = runtimeState()
+
     if (!sessionID) return []
-    return [...(sessionRules.get(sessionID) ?? [])]
+    return [...(instanceState.sessionRules.get(sessionID) ?? [])]
   }
 
-  let userRulesCache: Ruleset | undefined
-
   async function loadUserRules(): Promise<Ruleset> {
-    if (userRulesCache) return userRulesCache
+    const instanceState = runtimeState()
+
+    if (instanceState.userRulesCache) return instanceState.userRulesCache
     try {
       const data = await Storage.read<Ruleset>(StoragePath.permissionRules())
-      userRulesCache = Array.isArray(data) ? data : []
+      instanceState.userRulesCache = Array.isArray(data) ? data : []
     } catch {
-      userRulesCache = []
+      instanceState.userRulesCache = []
     }
-    return userRulesCache
+    return instanceState.userRulesCache
   }
 
   async function saveUserRules(rules: Ruleset) {
-    userRulesCache = rules
+    const instanceState = runtimeState()
+
+    instanceState.userRulesCache = rules
     await Storage.write(StoragePath.permissionRules(), rules)
     log.info("saved user rules", { count: rules.length })
   }
@@ -143,6 +155,8 @@ export namespace PermissionRules {
   }
 
   export async function listAllRules(): Promise<Ruleset> {
-    return [...(await loadUserRules()), ...[...sessionRules.values()].flat()]
+    const instanceState = runtimeState()
+
+    return [...(await loadUserRules()), ...[...instanceState.sessionRules.values()].flat()]
   }
 }

@@ -284,7 +284,7 @@ export function KanbanPane(props: {
             <DataProvider
               data={props.data}
               runtime={runtime}
-              directory={props.directory}
+              directory={liveSession()?.workspace?.path ?? null}
               serverUrl={props.serverUrl}
               onNavigateToSession={props.onOpen}
             >

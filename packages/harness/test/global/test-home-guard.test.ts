@@ -8,6 +8,9 @@ import {
   assertIsolatedTestHome,
   normalizeGuardPath,
 } from "../../src/global/test-home-guard"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const REAL_HOME_ROOT = path.join(os.homedir(), ".synergy")
 
@@ -20,123 +23,140 @@ function marker(extra: Record<string, string | undefined> = {}): Record<string, 
 }
 
 describe("normalizeGuardPath", () => {
-  test("lowercases paths on win32 for case-insensitive containment", () => {
-    expect(normalizeGuardPath("C:\\Users\\Foo\\.SYNERGY\\Data", "win32")).toBe("c:\\users\\foo\\.synergy\\data")
-    expect(normalizeGuardPath("C:\\Users\\Foo\\.synergy", "win32")).toBe("c:\\users\\foo\\.synergy")
-  })
+  test("lowercases paths on win32 for case-insensitive containment", () =>
+    runtime.run(() => {
+      expect(normalizeGuardPath("C:\\Users\\Foo\\.SYNERGY\\Data", "win32")).toBe("c:\\users\\foo\\.synergy\\data")
+      expect(normalizeGuardPath("C:\\Users\\Foo\\.synergy", "win32")).toBe("c:\\users\\foo\\.synergy")
+    }))
 
-  test("leaves non-Windows paths unchanged", () => {
-    expect(normalizeGuardPath("/Users/Foo/.synergy", "darwin")).toBe("/Users/Foo/.synergy")
-    expect(normalizeGuardPath("/Users/Foo/.synergy", "linux")).toBe("/Users/Foo/.synergy")
-  })
+  test("leaves non-Windows paths unchanged", () =>
+    runtime.run(() => {
+      expect(normalizeGuardPath("/Users/Foo/.synergy", "darwin")).toBe("/Users/Foo/.synergy")
+      expect(normalizeGuardPath("/Users/Foo/.synergy", "linux")).toBe("/Users/Foo/.synergy")
+    }))
 })
 
 describe("isTestEntryPath", () => {
-  test("detects a .test.ts entry path (Bun.main shape)", () => {
-    expect(isTestEntryPath(testEntry(), [], {})).toBe(true)
-  })
+  test("detects a .test.ts entry path (Bun.main shape)", () =>
+    runtime.run(() => {
+      expect(isTestEntryPath(testEntry(), [], {})).toBe(true)
+    }))
 
-  test("detects .test.tsx/.test.js/.test.jsx/.test.cjs/.test.mjs entries", () => {
-    for (const ext of [".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".test.cjs", ".test.mjs"]) {
-      expect(isTestEntryPath(`/repo/x/spec${ext}`, [], {})).toBe(true)
-    }
-  })
+  test("detects .test.tsx/.test.js/.test.jsx/.test.cjs/.test.mjs entries", () =>
+    runtime.run(() => {
+      for (const ext of [".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".test.cjs", ".test.mjs"]) {
+        expect(isTestEntryPath(`/repo/x/spec${ext}`, [], {})).toBe(true)
+      }
+    }))
 
-  test("detects .spec.* entries as test processes", () => {
-    for (const ext of [".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx", ".spec.cjs", ".spec.mjs"]) {
-      expect(isTestEntryPath(`/repo/x/thing${ext}`, [], {})).toBe(true)
-    }
-  })
+  test("detects .spec.* entries as test processes", () =>
+    runtime.run(() => {
+      for (const ext of [".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx", ".spec.cjs", ".spec.mjs"]) {
+        expect(isTestEntryPath(`/repo/x/thing${ext}`, [], {})).toBe(true)
+      }
+    }))
 
-  test("detects a test file passed as argv[1] when Bun.main is unavailable", () => {
-    expect(isTestEntryPath(undefined, ["bun", "/repo/test/thing.test.ts"], {})).toBe(true)
-  })
+  test("detects a test file passed as argv[1] when Bun.main is unavailable", () =>
+    runtime.run(() => {
+      expect(isTestEntryPath(undefined, ["bun", "/repo/test/thing.test.ts"], {})).toBe(true)
+    }))
 
-  test("detects parallel workers via BUN_TEST_WORKER_ID / JEST_WORKER_ID", () => {
-    expect(isTestEntryPath(undefined, ["bun", "test"], { BUN_TEST_WORKER_ID: "1" })).toBe(true)
-    expect(isTestEntryPath(undefined, ["bun", "test"], { JEST_WORKER_ID: "3" })).toBe(true)
-  })
+  test("detects parallel workers via BUN_TEST_WORKER_ID / JEST_WORKER_ID", () =>
+    runtime.run(() => {
+      expect(isTestEntryPath(undefined, ["bun", "test"], { BUN_TEST_WORKER_ID: "1" })).toBe(true)
+      expect(isTestEntryPath(undefined, ["bun", "test"], { JEST_WORKER_ID: "3" })).toBe(true)
+    }))
 
-  test("rejects non-test entries (CLI, dev server, scripts)", () => {
-    expect(
-      isTestEntryPath("/repo/packages/harness/src/index.ts", ["bun", "/repo/packages/harness/src/index.ts"], {}),
-    ).toBe(false)
-    expect(isTestEntryPath("/repo/script/build.ts", [], {})).toBe(false)
-    expect(isTestEntryPath(undefined, ["bun", "/repo/script/dev.ts"], {})).toBe(false)
-  })
+  test("rejects non-test entries (CLI, dev server, scripts)", () =>
+    runtime.run(() => {
+      expect(
+        isTestEntryPath("/repo/packages/harness/src/index.ts", ["bun", "/repo/packages/harness/src/index.ts"], {}),
+      ).toBe(false)
+      expect(isTestEntryPath("/repo/script/build.ts", [], {})).toBe(false)
+      expect(isTestEntryPath(undefined, ["bun", "/repo/script/dev.ts"], {})).toBe(false)
+    }))
 })
 
 describe("assertIsolatedTestHome", () => {
-  test("throws TestHomeGuardError when a test entry resolves to the real home root", () => {
-    expect(() => assertIsolatedTestHome(REAL_HOME_ROOT, testEntry(), ["bun", testEntry()], {})).toThrow(
-      TestHomeGuardError,
-    )
-  })
+  test("throws TestHomeGuardError when a test entry resolves to the real home root", () =>
+    runtime.run(() => {
+      expect(() => assertIsolatedTestHome(REAL_HOME_ROOT, testEntry(), ["bun", testEntry()], {})).toThrow(
+        TestHomeGuardError,
+      )
+    }))
 
-  test("does not throw for a non-test entry against the real home root", () => {
-    expect(() =>
-      assertIsolatedTestHome(
-        REAL_HOME_ROOT,
-        "/repo/packages/harness/src/index.ts",
-        ["bun", "/repo/packages/harness/src/index.ts"],
-        {},
-      ),
-    ).not.toThrow()
-  })
+  test("does not throw for a non-test entry against the real home root", () =>
+    runtime.run(() => {
+      expect(() =>
+        assertIsolatedTestHome(
+          REAL_HOME_ROOT,
+          "/repo/packages/harness/src/index.ts",
+          ["bun", "/repo/packages/harness/src/index.ts"],
+          {},
+        ),
+      ).not.toThrow()
+    }))
 
-  test("does not throw for a test entry with the isolation marker against an isolated temp home", () => {
-    expect(() =>
-      assertIsolatedTestHome("/tmp/synergy-test-home", testEntry(), ["bun", testEntry()], marker()),
-    ).not.toThrow()
-  })
+  test("does not throw for a test entry with the isolation marker against an isolated temp home", () =>
+    runtime.run(() => {
+      expect(() =>
+        assertIsolatedTestHome("/tmp/synergy-test-home", testEntry(), ["bun", testEntry()], marker()),
+      ).not.toThrow()
+    }))
 
-  test("throws for a test entry without the isolation marker even outside the real root", () => {
-    expect(() => assertIsolatedTestHome("/tmp/synergy-test-home", testEntry(), ["bun", testEntry()], {})).toThrow(
-      TestHomeGuardError,
-    )
-  })
+  test("throws for a test entry without the isolation marker even outside the real root", () =>
+    runtime.run(() => {
+      expect(() => assertIsolatedTestHome("/tmp/synergy-test-home", testEntry(), ["bun", testEntry()], {})).toThrow(
+        TestHomeGuardError,
+      )
+    }))
 
-  test("throws when the root is the real config dir itself even with the marker (~/.synergy/.synergy)", () => {
-    expect(() =>
-      assertIsolatedTestHome(path.join(REAL_HOME_ROOT, ".synergy"), testEntry(), ["bun", testEntry()], marker()),
-    ).toThrow(TestHomeGuardError)
-  })
+  test("throws when the root is the real config dir itself even with the marker (~/.synergy/.synergy)", () =>
+    runtime.run(() => {
+      expect(() =>
+        assertIsolatedTestHome(path.join(REAL_HOME_ROOT, ".synergy"), testEntry(), ["bun", testEntry()], marker()),
+      ).toThrow(TestHomeGuardError)
+    }))
 
-  test("throws for any root inside the real ~/.synergy tree even with the marker", () => {
-    expect(() =>
-      assertIsolatedTestHome(path.join(REAL_HOME_ROOT, "data"), testEntry(), ["bun", testEntry()], marker()),
-    ).toThrow(TestHomeGuardError)
-  })
+  test("throws for any root inside the real ~/.synergy tree even with the marker", () =>
+    runtime.run(() => {
+      expect(() =>
+        assertIsolatedTestHome(path.join(REAL_HOME_ROOT, "data"), testEntry(), ["bun", testEntry()], marker()),
+      ).toThrow(TestHomeGuardError)
+    }))
 
-  test("does not throw for a dedicated test home outside the real root with the marker", () => {
-    expect(() =>
-      assertIsolatedTestHome(
-        path.join(os.homedir(), "synergy-test-home", ".synergy"),
-        testEntry(),
-        ["bun", testEntry()],
-        marker(),
-      ),
-    ).not.toThrow()
-  })
+  test("does not throw for a dedicated test home outside the real root with the marker", () =>
+    runtime.run(() => {
+      expect(() =>
+        assertIsolatedTestHome(
+          path.join(os.homedir(), "synergy-test-home", ".synergy"),
+          testEntry(),
+          ["bun", testEntry()],
+          marker(),
+        ),
+      ).not.toThrow()
+    }))
 
-  test("honors SYNERGY_ALLOW_REAL_HOME=1 as an explicit opt-in", () => {
-    expect(() =>
-      assertIsolatedTestHome(REAL_HOME_ROOT, testEntry(), ["bun", testEntry()], { SYNERGY_ALLOW_REAL_HOME: "1" }),
-    ).not.toThrow()
-  })
+  test("honors SYNERGY_ALLOW_REAL_HOME=1 as an explicit opt-in", () =>
+    runtime.run(() => {
+      expect(() =>
+        assertIsolatedTestHome(REAL_HOME_ROOT, testEntry(), ["bun", testEntry()], { SYNERGY_ALLOW_REAL_HOME: "1" }),
+      ).not.toThrow()
+    }))
 
-  test("error message names the entry and the supported fixes", () => {
-    try {
-      assertIsolatedTestHome(REAL_HOME_ROOT, testEntry(), ["bun", testEntry()], {})
-      expect.unreachable()
-    } catch (error) {
-      expect(error).toBeInstanceOf(TestHomeGuardError)
-      const message = (error as Error).message
-      expect(message).toContain(".test.ts")
-      expect(message).toContain("SYNERGY_TEST_HOME")
-      expect(message).toContain("SYNERGY_ALLOW_REAL_HOME")
-    }
-  })
+  test("error message names the entry and the supported fixes", () =>
+    runtime.run(() => {
+      try {
+        assertIsolatedTestHome(REAL_HOME_ROOT, testEntry(), ["bun", testEntry()], {})
+        expect.unreachable()
+      } catch (error) {
+        expect(error).toBeInstanceOf(TestHomeGuardError)
+        const message = (error as Error).message
+        expect(message).toContain(".test.ts")
+        expect(message).toContain("SYNERGY_TEST_HOME")
+        expect(message).toContain("SYNERGY_ALLOW_REAL_HOME")
+      }
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -158,12 +178,14 @@ describe("assertIsolatedTestHome", () => {
 // ---------------------------------------------------------------------------
 
 let fixtureRoot: string | undefined
-afterEach(async () => {
-  if (fixtureRoot) {
-    await fs.rm(fixtureRoot, { recursive: true, force: true })
-    fixtureRoot = undefined
-  }
-})
+afterEach(() =>
+  runtime.run(async () => {
+    if (fixtureRoot) {
+      await fs.rm(fixtureRoot, { recursive: true, force: true })
+      fixtureRoot = undefined
+    }
+  }),
+)
 
 async function writeFixture(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-fixture-"))
@@ -173,10 +195,15 @@ async function writeFixture(): Promise<string> {
   const body = [
     'import { test, expect } from "bun:test"',
     `import { Global } from ${JSON.stringify(path.join(harnessRoot, "src/global/index.ts"))}`,
+    `import { RuntimeContext } from ${JSON.stringify(path.join(harnessRoot, "src/lifecycle/context.ts"))}`,
+    'import os from "node:os"',
+    'import path from "node:path"',
     "test('guard contract', async () => {",
-    "  // Referencing Global retains the import so the guard runs at module eval.",
+    "  const home = process.env.SYNERGY_HOME ?? process.env.SYNERGY_TEST_HOME ?? os.homedir()",
+    "  await RuntimeContext.create({ home, root: path.join(home, '.synergy'), env: process.env }).run(async () => {",
     "  expect(Global.Path.root).toBeTruthy()",
     "  await Global.initialize({ cache: false })",
+    "  })",
     "})",
     "",
   ].join("\n")
@@ -215,88 +242,94 @@ async function runBunTestSpawn(
 }
 
 describe("incident-shape subprocess contract", () => {
-  test("stripped env + --parallel worker with a temp process home fails before creating anything", async () => {
-    const fixture = await writeFixture()
-    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-home-"))
-    try {
-      const synergyRoot = path.join(tempHome, ".synergy")
-      // Snapshot before spawn: if the guard regresses, module init creates the
-      // tree under the throwaway home and this assertion catches it.
-      expect(await fs.stat(synergyRoot).catch(() => null)).toBeNull()
-      const result = await runBunTestSpawn(
-        ["--parallel=2", "--config", "/dev/null", fixture],
-        strippedEnv({ HOME: tempHome, USERPROFILE: tempHome }),
-      )
-      expect(result.exitCode).not.toBe(0)
-      expect(result.stderr).toContain("Refusing to run a test process")
-      expect(await fs.stat(synergyRoot).catch(() => null)).toBeNull()
-    } finally {
-      await fs.rm(tempHome, { recursive: true, force: true })
-    }
-  })
+  test("stripped env + --parallel worker with a temp process home fails before creating anything", () =>
+    runtime.run(async () => {
+      const fixture = await writeFixture()
+      const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-home-"))
+      try {
+        const synergyRoot = path.join(tempHome, ".synergy")
+        // Snapshot before spawn: if the guard regresses, module init creates the
+        // tree under the throwaway home and this assertion catches it.
+        expect(await fs.stat(synergyRoot).catch(() => null)).toBeNull()
+        const result = await runBunTestSpawn(
+          ["--parallel=2", "--config", "/dev/null", fixture],
+          strippedEnv({ HOME: tempHome, USERPROFILE: tempHome }),
+        )
+        expect(result.exitCode).not.toBe(0)
+        expect(result.stderr).toContain("Refusing to run a test process")
+        expect(await fs.stat(synergyRoot).catch(() => null)).toBeNull()
+      } finally {
+        await fs.rm(tempHome, { recursive: true, force: true })
+      }
+    }))
 
-  test("marker present but root equals the process home's .synergy is still blocked", async () => {
-    const fixture = await writeFixture()
-    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-contain-"))
-    try {
-      const synergyRoot = path.join(tempHome, ".synergy")
-      const result = await runBunTestSpawn(
-        ["--parallel=2", "--config", "/dev/null", fixture],
-        strippedEnv({ HOME: tempHome, USERPROFILE: tempHome, SYNERGY_TEST_HOME: tempHome }),
-      )
-      expect(result.exitCode).not.toBe(0)
-      expect(result.stderr).toContain("Refusing to run a test process")
-      expect(await fs.stat(synergyRoot).catch(() => null)).toBeNull()
-    } finally {
-      await fs.rm(tempHome, { recursive: true, force: true })
-    }
-  })
+  test("marker present but root equals the process home's .synergy is still blocked", () =>
+    runtime.run(async () => {
+      const fixture = await writeFixture()
+      const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-contain-"))
+      try {
+        const synergyRoot = path.join(tempHome, ".synergy")
+        const result = await runBunTestSpawn(
+          ["--parallel=2", "--config", "/dev/null", fixture],
+          strippedEnv({ HOME: tempHome, USERPROFILE: tempHome, SYNERGY_TEST_HOME: tempHome }),
+        )
+        expect(result.exitCode).not.toBe(0)
+        expect(result.stderr).toContain("Refusing to run a test process")
+        expect(await fs.stat(synergyRoot).catch(() => null)).toBeNull()
+      } finally {
+        await fs.rm(tempHome, { recursive: true, force: true })
+      }
+    }))
 
-  test("injected SYNERGY_TEST_HOME (orchestrator shape) keeps the same run isolated", async () => {
-    const fixture = await writeFixture()
-    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-inject-"))
-    const procHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-prochome-"))
-    try {
-      const result = await runBunTestSpawn(
-        ["--parallel=2", "--config", "/dev/null", fixture],
-        strippedEnv({
-          HOME: procHome,
-          USERPROFILE: procHome,
-          SYNERGY_TEST_HOME: tempHome,
-          SYNERGY_TEST_ROOT: path.join(tempHome, "fixtures"),
-        }),
-      )
-      expect(result.exitCode).toBe(0)
-      // global/index.ts ran and created the isolated root.
-      expect(await fs.stat(path.join(tempHome, ".synergy")).catch(() => null)).not.toBeNull()
-      // The process home must not receive a .synergy tree.
-      expect(await fs.stat(path.join(procHome, ".synergy")).catch(() => null)).toBeNull()
-    } finally {
-      await fs.rm(tempHome, { recursive: true, force: true })
-      await fs.rm(procHome, { recursive: true, force: true })
-    }
-  })
+  test("injected SYNERGY_TEST_HOME (orchestrator shape) keeps the same run isolated", () =>
+    runtime.run(async () => {
+      const fixture = await writeFixture()
+      const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-inject-"))
+      const procHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-prochome-"))
+      try {
+        const result = await runBunTestSpawn(
+          ["--parallel=2", "--config", "/dev/null", fixture],
+          strippedEnv({
+            HOME: procHome,
+            USERPROFILE: procHome,
+            SYNERGY_TEST_HOME: tempHome,
+            SYNERGY_TEST_ROOT: path.join(tempHome, "fixtures"),
+          }),
+        )
+        expect(result.exitCode).toBe(0)
+        // global/index.ts ran and created the isolated root.
+        expect(await fs.stat(path.join(tempHome, ".synergy")).catch(() => null)).not.toBeNull()
+        // The process home must not receive a .synergy tree.
+        expect(await fs.stat(path.join(procHome, ".synergy")).catch(() => null)).toBeNull()
+      } finally {
+        await fs.rm(tempHome, { recursive: true, force: true })
+        await fs.rm(procHome, { recursive: true, force: true })
+      }
+    }))
 
-  test("SYNERGY_ALLOW_REAL_HOME=1 opts out of the guard", async () => {
-    const fixture = await writeFixture()
-    const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-optin-"))
-    const procHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-prochome2-"))
-    try {
-      const result = await runBunTestSpawn(
-        ["--parallel=2", "--config", "/dev/null", fixture],
-        strippedEnv({
-          HOME: procHome,
-          USERPROFILE: procHome,
-          SYNERGY_ALLOW_REAL_HOME: "1",
-          SYNERGY_HOME: fakeHome, // points homeDir at a temp dir: proves the opt-in path without touching real data
-        }),
-      )
-      expect(result.exitCode).toBe(0)
-      expect(result.stderr).not.toContain("Refusing to run a test process")
-      expect(await fs.stat(path.join(fakeHome, ".synergy")).catch(() => null)).not.toBeNull()
-    } finally {
-      await fs.rm(fakeHome, { recursive: true, force: true })
-      await fs.rm(procHome, { recursive: true, force: true })
-    }
-  })
+  test("SYNERGY_ALLOW_REAL_HOME=1 opts out of the guard", () =>
+    runtime.run(async () => {
+      const fixture = await writeFixture()
+      const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-optin-"))
+      const procHome = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-prochome2-"))
+      try {
+        const result = await runBunTestSpawn(
+          ["--parallel=2", "--config", "/dev/null", fixture],
+          strippedEnv({
+            HOME: procHome,
+            USERPROFILE: procHome,
+            SYNERGY_ALLOW_REAL_HOME: "1",
+            SYNERGY_HOME: fakeHome, // points homeDir at a temp dir: proves the opt-in path without touching real data
+          }),
+        )
+        expect(result.exitCode).toBe(0)
+        expect(result.stderr).not.toContain("Refusing to run a test process")
+        expect(await fs.stat(path.join(fakeHome, ".synergy")).catch(() => null)).not.toBeNull()
+      } finally {
+        await fs.rm(fakeHome, { recursive: true, force: true })
+        await fs.rm(procHome, { recursive: true, force: true })
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

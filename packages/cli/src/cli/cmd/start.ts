@@ -55,7 +55,7 @@ export const StartCommand = cmd({
 
     // Check if this is a first-run with no config — launch wizard
     const configExists = await Promise.any(
-      ConfigDomain.definitions.map((domain) =>
+      ConfigDomain.definitions().map((domain) =>
         Bun.file(ConfigDomain.filepath(domain.id))
           .exists()
           .then((exists) => {

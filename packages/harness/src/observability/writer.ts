@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import { ObservabilityConfig } from "./config"
 import { ObservabilityIssues } from "./issues"
@@ -12,23 +13,28 @@ export namespace ObservabilityWriter {
   const MAX_QUEUE = 5000
   const FLUSH_INTERVAL_MS = 250
   const FLUSH_BATCH = 500
-  let queue: Entry[] = []
-  let flushTimer: ReturnType<typeof setTimeout> | undefined
-  let flushing: Promise<void> | undefined
-  let dropped = 0
-  let lastDepthMetricAt = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    stopped: false,
+    queue: [] as Entry[],
+    flushTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    flushing: undefined as Promise<void> | undefined,
+    dropped: 0,
+    lastDepthMetricAt: 0,
+  }))
 
   export function append(file: string, line: string) {
-    if (!ObservabilityConfig.current().storage.jsonlMirrorEnabled) return
-    if (queue.length >= MAX_QUEUE) {
-      dropped++
-      queue.shift()
+    const instanceState = runtimeState()
+
+    if (instanceState.stopped || !ObservabilityConfig.current().storage.jsonlMirrorEnabled) return
+    if (instanceState.queue.length >= MAX_QUEUE) {
+      instanceState.dropped++
+      instanceState.queue.shift()
       ObservabilityMetrics.record({
         name: "observability.writer.dropped",
         value: 1,
         unit: "count",
         module: "observability",
-        labels: { reason: "queue_full", dropped },
+        labels: { reason: "queue_full", dropped: instanceState.dropped },
       })
       ObservabilityIssues.raise({
         code: "PERF_OBSERVABILITY_WRITER_BACKPRESSURE",
@@ -36,16 +42,16 @@ export namespace ObservabilityWriter {
         module: "observability",
         title: "Observability writer queue is dropping entries",
         message: "Observability writer queue is full and oldest mirror entries are being dropped",
-        evidence: { queueDepth: queue.length, dropped },
+        evidence: { queueDepth: instanceState.queue.length, dropped: instanceState.dropped },
       })
     }
-    queue.push({ file, line })
+    instanceState.queue.push({ file, line })
     const now = Date.now()
-    if (now - lastDepthMetricAt >= 1000) {
-      lastDepthMetricAt = now
+    if (now - instanceState.lastDepthMetricAt >= 1000) {
+      instanceState.lastDepthMetricAt = now
       ObservabilityMetrics.record({
         name: "observability.writer.queue_depth",
-        value: queue.length,
+        value: instanceState.queue.length,
         unit: "count",
         module: "observability",
       })
@@ -53,25 +59,36 @@ export namespace ObservabilityWriter {
     scheduleFlush()
   }
 
+  export async function stop() {
+    runtimeState().stopped = true
+    await flush()
+  }
+
   export async function flush() {
-    if (flushTimer) clearTimeout(flushTimer)
-    flushTimer = undefined
-    if (flushing) return flushing
-    flushing = flushAll().finally(() => {
-      flushing = undefined
-      if (queue.length > 0) scheduleFlush()
+    const instanceState = runtimeState()
+
+    if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+    instanceState.flushTimer = undefined
+    if (instanceState.flushing) return instanceState.flushing
+    instanceState.flushing = flushAll().finally(() => {
+      instanceState.flushing = undefined
+      if (instanceState.queue.length > 0) scheduleFlush()
     })
-    return flushing
+    return instanceState.flushing
   }
 
   export function stats() {
-    return { queueDepth: queue.length, dropped }
+    const instanceState = runtimeState()
+
+    return { queueDepth: instanceState.queue.length, dropped: instanceState.dropped }
   }
 
   async function flushAll() {
-    while (queue.length > 0) {
+    const instanceState = runtimeState()
+
+    while (instanceState.queue.length > 0) {
       const start = performance.now()
-      const batch = queue.splice(0, FLUSH_BATCH)
+      const batch = instanceState.queue.splice(0, FLUSH_BATCH)
       const grouped = new Map<string, string[]>()
       for (const entry of batch) {
         const lines = grouped.get(entry.file) ?? []
@@ -81,7 +98,7 @@ export namespace ObservabilityWriter {
       for (const [file, lines] of grouped) {
         await fs.mkdir(file.replace(/[\\/][^\\/]+$/, ""), { recursive: true }).catch(() => {})
         await fs.appendFile(file, lines.join(""), "utf8").catch(() => {
-          dropped += lines.length
+          instanceState.dropped += lines.length
           ObservabilityMetrics.record({
             name: "observability.writer.dropped",
             value: lines.length,
@@ -104,21 +121,19 @@ export namespace ObservabilityWriter {
         value: performance.now() - start,
         unit: "ms",
         module: "observability",
-        labels: { batchSize: batch.length, remaining: queue.length },
+        labels: { batchSize: batch.length, remaining: instanceState.queue.length },
       })
     }
   }
 
   function scheduleFlush() {
-    if (flushTimer) return
-    flushTimer = setTimeout(() => {
-      flushTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.flushTimer) return
+    instanceState.flushTimer = setTimeout(() => {
+      instanceState.flushTimer = undefined
       void flush()
     }, FLUSH_INTERVAL_MS)
-    flushTimer.unref?.()
+    instanceState.flushTimer.unref?.()
   }
 }
-
-process.once("beforeExit", () => {
-  void ObservabilityWriter.flush()
-})

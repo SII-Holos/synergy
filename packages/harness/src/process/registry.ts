@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { ChildProcess } from "child_process"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
@@ -215,24 +216,27 @@ export namespace ProcessRegistry {
 
   export type ProcessInspector = (pid: number, proc: Process) => ProcessInspection
 
-  const running = new Map<string, Process>()
-  const finished = new Map<string, FinishedProcess>()
-  const outputBuffers = new WeakMap<Process, BoundedTextBuffer>()
-  const terminators = new WeakMap<Process, () => void | Promise<void>>()
-  let sweeper: Timer | null = null
-  let ttlMs = DEFAULT_TTL_MS
-  let processInspector: ProcessInspector = defaultProcessInspector
-  let lastRecovery:
-    | {
-        action: "close"
-        reason: "process_exit"
-        at: number
-        beforeBytes?: number
-        afterBytes: number
-        reclaimedBytes?: number
-        timedOut: boolean
-      }
-    | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    running: new Map<string, Process>(),
+    finished: new Map<string, FinishedProcess>(),
+    outputBuffers: new WeakMap<Process, BoundedTextBuffer>(),
+    terminators: new WeakMap<Process, () => void | Promise<void>>(),
+    closing: new Map<Process, Promise<unknown>>(),
+    sweeper: null as Timer | null,
+    ttlMs: DEFAULT_TTL_MS,
+    processInspector: defaultProcessInspector as ProcessInspector,
+    lastRecovery: undefined as
+      | {
+          action: "close"
+          reason: "process_exit"
+          at: number
+          beforeBytes?: number
+          afterBytes: number
+          reclaimedBytes?: number
+          timedOut: boolean
+        }
+      | undefined,
+  }))
 
   export function create(opts: {
     command: string
@@ -241,6 +245,8 @@ export namespace ProcessRegistry {
     child?: ChildProcess
     stdin?: Stdin
   }): Process {
+    const instanceState = runtimeState()
+
     const id = Identifier.short("process")
     const outputBuffer = new BoundedTextBuffer()
     const proc: Process = {
@@ -264,8 +270,8 @@ export namespace ProcessRegistry {
       backgrounded: false,
       stdioState: "open",
     }
-    outputBuffers.set(proc, outputBuffer)
-    running.set(id, proc)
+    instanceState.outputBuffers.set(proc, outputBuffer)
+    instanceState.running.set(id, proc)
     startSweeper()
     log.info("process created", { id, commandFamily: ObservabilityRedaction.commandFamily(opts.command) })
     void Observability.emit("process.created", {
@@ -281,20 +287,46 @@ export namespace ProcessRegistry {
   }
 
   export function get(id: string): Process | undefined {
-    return running.get(id)
+    const instanceState = runtimeState()
+
+    return instanceState.running.get(id)
   }
 
   export function getFinished(id: string): FinishedProcess | undefined {
-    return finished.get(id)
+    const instanceState = runtimeState()
+
+    return instanceState.finished.get(id)
   }
 
   export function setTerminator(proc: Process, terminate: (() => void | Promise<void>) | undefined) {
-    if (terminate) terminators.set(proc, terminate)
-    else terminators.delete(proc)
+    const instanceState = runtimeState()
+
+    if (terminate) instanceState.terminators.set(proc, terminate)
+    else instanceState.terminators.delete(proc)
+  }
+
+  export function trackClosure(proc: Process, completion: Promise<unknown>) {
+    const state = runtimeState()
+    state.closing.set(proc, completion)
+    const release = () => state.closing.delete(proc)
+    void completion.then(release, release)
+  }
+
+  export async function stop() {
+    const state = runtimeState()
+    try {
+      await killAllRunning()
+      await Promise.all(state.closing.values())
+    } finally {
+      if (state.sweeper) clearInterval(state.sweeper)
+      state.sweeper = null
+    }
   }
 
   export async function terminate(proc: Process, opts?: { allowExitedParent?: boolean }) {
-    const terminate = terminators.get(proc)
+    const instanceState = runtimeState()
+
+    const terminate = instanceState.terminators.get(proc)
     if (terminate) {
       await terminate()
       return
@@ -307,7 +339,9 @@ export namespace ProcessRegistry {
     })
   }
   export function appendOutput(proc: Process, chunk: string) {
-    const outputBuffer = outputBuffers.get(proc)
+    const instanceState = runtimeState()
+
+    const outputBuffer = instanceState.outputBuffers.get(proc)
     if (!outputBuffer) throw new Error(`Process output buffer is unavailable: ${proc.id}`)
     proc.truncated = outputBuffer.append(chunk, proc.maxOutputChars) || proc.truncated
     proc.lastOutputAt = Date.now()
@@ -350,10 +384,12 @@ export namespace ProcessRegistry {
   }
 
   export function markExited(proc: Process, exitCode: number | null, exitSignal: NodeJS.Signals | number | null) {
+    const instanceState = runtimeState()
+
     proc.exited = true
     proc.exitCode = exitCode
     proc.exitSignal = exitSignal
-    terminators.delete(proc)
+    instanceState.terminators.delete(proc)
 
     const status: Status =
       exitSignal === "SIGKILL" || exitSignal === "SIGTERM" ? "killed" : exitCode === 0 ? "completed" : "failed"
@@ -361,8 +397,8 @@ export namespace ProcessRegistry {
     // A fast-exiting process may finish before the auto-background timer fires.
     // Always persist the completed process in the finished registry so callers
     // scanning both registries can find it even without the backgrounded flag.
-    running.delete(proc.id)
-    finished.set(proc.id, {
+    instanceState.running.delete(proc.id)
+    instanceState.finished.set(proc.id, {
       id: proc.id,
       command: proc.command,
       description: proc.description,
@@ -384,7 +420,7 @@ export namespace ProcessRegistry {
       baselineRssBytes: proc.baselineRssBytes,
       peakRssBytes: proc.peakRssBytes,
     })
-    lastRecovery = {
+    instanceState.lastRecovery = {
       action: "close",
       reason: "process_exit",
       at: Date.now(),
@@ -421,10 +457,12 @@ export namespace ProcessRegistry {
   }
 
   export function remove(id: string) {
-    const proc = running.get(id)
-    running.delete(id)
-    if (proc) terminators.delete(proc)
-    finished.delete(id)
+    const instanceState = runtimeState()
+
+    const proc = instanceState.running.get(id)
+    instanceState.running.delete(id)
+    if (proc) instanceState.terminators.delete(proc)
+    instanceState.finished.delete(id)
     if (proc) {
       void Observability.emit("process.removed", {
         processId: proc.id,
@@ -439,15 +477,21 @@ export namespace ProcessRegistry {
   }
 
   export function listRunning(): Process[] {
-    return Array.from(running.values()).filter((s) => s.backgrounded)
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.running.values()).filter((s) => s.backgrounded)
   }
 
   export function listActive(): Process[] {
-    return Array.from(running.values()).sort((a, b) => b.startedAt - a.startedAt)
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.running.values()).sort((a, b) => b.startedAt - a.startedAt)
   }
 
   export function listFinished(): FinishedProcess[] {
-    return Array.from(finished.values())
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.finished.values())
   }
 
   export function listAll(): Array<Process | FinishedProcess> {
@@ -455,9 +499,11 @@ export namespace ProcessRegistry {
   }
 
   export function resourceSnapshot(opts: { now?: number; settleStale?: boolean } = {}): ResourceSnapshot[] {
+    const instanceState = runtimeState()
+
     const now = opts.now ?? Date.now()
     const result: ResourceSnapshot[] = []
-    for (const proc of Array.from(running.values())) {
+    for (const proc of Array.from(instanceState.running.values())) {
       if (proc.exited) continue
       const inspection = inspect(proc)
       if (inspection.rssBytes !== undefined) {
@@ -502,9 +548,11 @@ export namespace ProcessRegistry {
   }
 
   export function resourceStats() {
+    const instanceState = runtimeState()
+
     const processes = resourceSnapshot()
     const measured = processes.filter((entry) => entry.rssBytes !== undefined)
-    const owned = [...running.values()].filter((entry) => !entry.exited)
+    const owned = [...instanceState.running.values()].filter((entry) => !entry.exited)
     return {
       processCount: processes.length,
       measuredProcessCount: measured.length,
@@ -524,63 +572,81 @@ export namespace ProcessRegistry {
         drainTimedOut: owned.filter((entry) => entry.drainTimedOut).length,
         descendantPipeGraceMs: Math.max(0, ...owned.map((entry) => entry.drainGraceMs ?? 0)),
       },
-      lastRecovery,
+      lastRecovery: instanceState.lastRecovery,
     }
   }
 
   export function setProcessInspector(inspector: ProcessInspector) {
-    const previous = processInspector
-    processInspector = inspector
+    const instanceState = runtimeState()
+
+    const previous = instanceState.processInspector
+    instanceState.processInspector = inspector
     return () => {
-      processInspector = previous
+      instanceState.processInspector = previous
     }
   }
 
   function pruneExpired() {
-    const cutoff = Date.now() - ttlMs
-    for (const [id, proc] of finished.entries()) {
+    const instanceState = runtimeState()
+
+    const cutoff = Date.now() - instanceState.ttlMs
+    for (const [id, proc] of instanceState.finished.entries()) {
       if (proc.endedAt < cutoff) {
-        finished.delete(id)
+        instanceState.finished.delete(id)
         log.info("process pruned", { id })
       }
     }
   }
 
   function startSweeper() {
-    if (sweeper) return
-    sweeper = setInterval(pruneExpired, Math.max(30_000, ttlMs / 6))
-    if (typeof sweeper === "object" && "unref" in sweeper) {
-      sweeper.unref()
+    const instanceState = runtimeState()
+
+    if (instanceState.sweeper) return
+    instanceState.sweeper = setInterval(pruneExpired, Math.max(30_000, instanceState.ttlMs / 6))
+    if (typeof instanceState.sweeper === "object" && "unref" in instanceState.sweeper) {
+      instanceState.sweeper.unref()
     }
   }
 
   export function setTtl(ms: number) {
-    ttlMs = Math.max(60_000, Math.min(ms, 3 * 60 * 60 * 1000))
+    const instanceState = runtimeState()
+
+    instanceState.ttlMs = Math.max(60_000, Math.min(ms, 3 * 60 * 60 * 1000))
   }
 
   export function outputChars(proc: Process) {
-    return outputBuffers.get(proc)?.length ?? 0
+    const instanceState = runtimeState()
+
+    return instanceState.outputBuffers.get(proc)?.length ?? 0
   }
 
   export function outputBufferStats(proc: Process) {
-    const outputBuffer = outputBuffers.get(proc)
+    const instanceState = runtimeState()
+
+    const outputBuffer = instanceState.outputBuffers.get(proc)
     if (!outputBuffer) return { segments: 0, allocatedSegments: 0 }
     return outputBuffer.stats()
   }
 
   // For testing
   export function reset() {
-    running.clear()
-    finished.clear()
-    lastRecovery = undefined
-    if (sweeper) {
-      clearInterval(sweeper)
-      sweeper = null
+    const instanceState = runtimeState()
+
+    instanceState.running.clear()
+    instanceState.finished.clear()
+    instanceState.lastRecovery = undefined
+    if (instanceState.sweeper) {
+      clearInterval(instanceState.sweeper)
+      instanceState.sweeper = null
     }
   }
 
   export async function killAllRunning() {
-    const procs = Array.from(running.values()).filter((proc) => !proc.exited && (proc.child || terminators.has(proc)))
+    const instanceState = runtimeState()
+
+    const procs = Array.from(new Set([...instanceState.running.values(), ...instanceState.closing.keys()])).filter(
+      (proc) => !proc.exited && (proc.child || instanceState.terminators.has(proc)),
+    )
     if (procs.length === 0) return
     log.info("killing all running processes", { count: procs.length })
     void Observability.emit("process.kill_all.start", {
@@ -623,9 +689,11 @@ export namespace ProcessRegistry {
   }
 
   function inspect(proc: Process): ProcessInspection {
+    const instanceState = runtimeState()
+
     if (proc.pid === undefined) return {}
     try {
-      return processInspector(proc.pid, proc)
+      return instanceState.processInspector(proc.pid, proc)
     } catch (error) {
       log.warn("failed to inspect process", { id: proc.id, pid: proc.pid, error })
       return {}

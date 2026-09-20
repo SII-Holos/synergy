@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { createSign } from "node:crypto"
 
 const GITHUB_API_VERSION = "2022-11-28"
@@ -158,13 +159,17 @@ export namespace GitHubChannelAuth {
     }
   }
 
-  const installationTokens = new TokenCache()
-  let appSlugCache: { slug: string; fetchedAt: number } | undefined
+  const installationTokens = RuntimeContext.state(() => new TokenCache())
+  const runtimeState = RuntimeContext.state(() => ({
+    appSlugCache: undefined as { slug: string; fetchedAt: number } | undefined,
+  }))
   const APP_SLUG_CACHE_TTL_MS = 10 * 60 * 1_000
 
   export function reset() {
-    installationTokens.clear()
-    appSlugCache = undefined
+    const instanceState = runtimeState()
+
+    installationTokens().clear()
+    instanceState.appSlugCache = undefined
   }
 
   /**
@@ -174,11 +179,13 @@ export namespace GitHubChannelAuth {
    * mention name must equal the slug. The value is cached per process.
    */
   export async function getAppSlug(signal?: AbortSignal): Promise<string> {
-    if (appSlugCache && Date.now() - appSlugCache.fetchedAt < APP_SLUG_CACHE_TTL_MS) {
-      return appSlugCache.slug
+    const instanceState = runtimeState()
+
+    if (instanceState.appSlugCache && Date.now() - instanceState.appSlugCache.fetchedAt < APP_SLUG_CACHE_TTL_MS) {
+      return instanceState.appSlugCache.slug
     }
-    const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
-    const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+    const appId = Number(RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_ID)
+    const privateKey = RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
     const jwt = generateJWT({ appId, privateKey })
     const descriptor = appRequest({ path: "/app", jwt })
     const response = await execute<{ slug?: unknown }>(descriptor, signal)
@@ -186,16 +193,16 @@ export namespace GitHubChannelAuth {
       throw new Error("GitHub App metadata response has no valid slug")
     }
     const slug = response.slug.trim()
-    appSlugCache = { slug, fetchedAt: Date.now() }
+    instanceState.appSlugCache = { slug, fetchedAt: Date.now() }
     return slug
   }
 
   export async function getInstallationToken(installationId: number, signal?: AbortSignal): Promise<string> {
-    const cached = installationTokens.get(installationId)
+    const cached = installationTokens().get(installationId)
     if (cached) return cached.token
 
-    const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
-    const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+    const appId = Number(RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_ID)
+    const privateKey = RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
     const jwt = generateJWT({ appId, privateKey })
     const descriptor = appRequest({ path: `/app/installations/${installationId}/access_tokens`, method: "POST", jwt })
     const response = await execute<{ token?: unknown; expires_at?: unknown }>(descriptor, signal)
@@ -203,7 +210,7 @@ export namespace GitHubChannelAuth {
       throw new Error("GitHub installation token response is invalid")
     }
     const token = { token: response.token, expiresAt: response.expires_at }
-    installationTokens.set(installationId, token)
+    installationTokens().set(installationId, token)
     return token.token
   }
 
@@ -397,7 +404,7 @@ export function buildCredentialCommand(input: { token: string; args: string[] })
     // Bun's shell .env() replaces the child environment instead of merging,
     // so carry the parent process environment through (HOME, PATH, proxy
     // settings, TLS/SSH config) and overlay only the installation token.
-    env: { ...process.env, SYNERGY_GITHUB_INSTALLATION_TOKEN: input.token },
+    env: { ...RuntimeContext.current().host.env, SYNERGY_GITHUB_INSTALLATION_TOKEN: input.token },
     args: ["-c", `credential.helper=${credentialHelper}`, ...input.args],
   }
 }

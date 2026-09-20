@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { z } from "zod"
 import path from "node:path"
 import webpush from "web-push"
@@ -76,8 +77,10 @@ export namespace PushStore {
   // callers must observe the same key pair (otherwise one subscribes with a
   // public key the persisted private key no longer backs), and a different
   // home (isolated test fixture) must not inherit another home's keys.
-  let vapidInitHome: string | undefined
-  let vapidInit: Promise<{ publicKey: string; privateKey: string }> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    vapidInitHome: undefined as string | undefined,
+    vapidInit: undefined as Promise<{ publicKey: string; privateKey: string }> | undefined,
+  }))
 
   /**
    * VAPID server keys. Generated once on first use and persisted owner-only;
@@ -85,10 +88,12 @@ export namespace PushStore {
    * any route.
    */
   export function vapidKeys(): Promise<{ publicKey: string; privateKey: string }> {
+    const instanceState = runtimeState()
+
     const home = Global.Path.data
-    if (vapidInit && vapidInitHome === home) return vapidInit
-    vapidInitHome = home
-    vapidInit = (async () => {
+    if (instanceState.vapidInit && instanceState.vapidInitHome === home) return instanceState.vapidInit
+    instanceState.vapidInitHome = home
+    instanceState.vapidInit = (async () => {
       const filename = credentialFile(StoragePath.pushVapid())
       const existing = await Bun.file(filename)
         .json()
@@ -103,11 +108,13 @@ export namespace PushStore {
       log.info("generated VAPID key pair")
       return generated
     })().catch((error) => {
+      const instanceState = runtimeState()
+
       // Allow a later caller to retry generation after a transient failure.
-      vapidInit = undefined
-      vapidInitHome = undefined
+      instanceState.vapidInit = undefined
+      instanceState.vapidInitHome = undefined
       throw error
     })
-    return vapidInit
+    return instanceState.vapidInit
   }
 }

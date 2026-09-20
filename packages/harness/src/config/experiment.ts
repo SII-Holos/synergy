@@ -1,12 +1,13 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ConfigExtensions } from "./extensions"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash } from "node:crypto"
 import z from "zod"
-import { Info as ConfigSchema } from "./schema"
+import { CoreInfo, Info as ConfigSchema } from "./schema"
 
 export namespace Experiment {
-  const Execution = ConfigSchema.shape.execution.unwrap()
-  const Cortex = ConfigSchema.shape.cortex.unwrap()
+  const Execution = CoreInfo.shape.execution.unwrap()
+  const Cortex = CoreInfo.shape.cortex.unwrap()
   const taskKeys = [
     "compaction",
     "prompt",
@@ -23,7 +24,7 @@ export namespace Experiment {
     "vision_model",
     "role_variant",
   ] as const
-  export const Overrides = ConfigSchema.pick({
+  export const Overrides = CoreInfo.pick({
     compaction: true,
     prompt: true,
 
@@ -92,8 +93,12 @@ export namespace Experiment {
     .meta({ ref: "ExperimentSnapshot" })
   export type Snapshot = z.infer<typeof Snapshot>
   const storage = new AsyncLocalStorage<Snapshot>()
-  let runtimeConfig: z.infer<typeof Runtime> | undefined
-  let runtimeOverrides: z.infer<typeof Runtime> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    runtimeConfig: undefined as z.infer<typeof Runtime> | undefined,
+    runtimeOverrides: undefined as z.infer<typeof Runtime> | undefined,
+    applied: new WeakMap<Config, WeakMap<object, WeakMap<object, Config>>>(),
+  }))
+
   type Config = z.infer<typeof ConfigSchema>
 
   function object(value: unknown): value is Record<string, unknown> {
@@ -157,7 +162,7 @@ export namespace Experiment {
     if (origins) for (const key of Object.keys(sources)) sources[key] = origins[key] ?? "default"
     source(overrides, "experiment")
     source(explicit, "explicit_command")
-    const runtime = runtimeConfig ?? runtimeFrom(config)
+    const runtime = runtimeState().runtimeConfig ?? runtimeFrom(config)
     return Snapshot.parse({
       version: 1,
       label: file?.label ?? "default",
@@ -204,18 +209,19 @@ export namespace Experiment {
   // in use.
   const NO_RUNTIME_OVERRIDES = {}
   const NO_SNAPSHOT = {}
-  const applied = new WeakMap<Config, WeakMap<object, WeakMap<object, Config>>>()
 
   export function apply(live: Config): Config {
-    const overrides = runtimeOverrides
+    const instanceState = runtimeState()
+
+    const overrides = instanceState.runtimeOverrides
     const snapshot = current()
     if (!overrides && !snapshot) return live
 
     const overridesKey: object = overrides ?? NO_RUNTIME_OVERRIDES
-    let byOverrides = applied.get(live)
+    let byOverrides = instanceState.applied.get(live)
     if (!byOverrides) {
       byOverrides = new WeakMap()
-      applied.set(live, byOverrides)
+      instanceState.applied.set(live, byOverrides)
     }
     let bySnapshot = byOverrides.get(overridesKey)
     if (!bySnapshot) {
@@ -253,15 +259,25 @@ export namespace Experiment {
     })
   }
   export function configureRuntime(config?: Config, overrides?: z.infer<typeof Runtime>) {
-    runtimeConfig = config ? runtimeFrom(config) : undefined
-    runtimeOverrides = overrides
+    const instanceState = runtimeState()
+
+    instanceState.runtimeConfig = config ? runtimeFrom(config) : undefined
+    instanceState.runtimeOverrides = overrides
   }
   export function updateRuntime(patch: z.infer<typeof Runtime>) {
-    if (runtimeConfig) runtimeConfig = Runtime.parse(merge(runtimeConfig, patch))
+    const instanceState = runtimeState()
+
+    if (instanceState.runtimeConfig)
+      instanceState.runtimeConfig = Runtime.parse(merge(instanceState.runtimeConfig, patch))
   }
   export function assertRuntime(expected: z.infer<typeof Runtime>) {
+    const instanceState = runtimeState()
+
     if (!Object.keys(expected).length) return
-    if (!runtimeConfig || fingerprint(merge(runtimeConfig, expected)) !== fingerprint(runtimeConfig))
+    if (
+      !instanceState.runtimeConfig ||
+      fingerprint(merge(instanceState.runtimeConfig, expected)) !== fingerprint(instanceState.runtimeConfig)
+    )
       throw new Error("Experiment runtime settings differ from the running server; use a separately configured runtime")
   }
 }

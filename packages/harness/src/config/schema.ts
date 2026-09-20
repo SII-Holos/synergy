@@ -516,7 +516,7 @@ export const Provider = ModelsDev.Provider.partial()
   })
 export type Provider = z.infer<typeof Provider>
 
-const CoreInfo = z
+export const CoreInfo = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
     logLevel: Log.Level.optional().describe("Log level"),

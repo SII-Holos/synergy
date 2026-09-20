@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import z from "zod"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -170,7 +171,9 @@ async function settleFailure(input: {
   })
 }
 
-const activeSessions = new Set<string>()
+const runtimeState = RuntimeContext.state(() => ({
+  activeSessions: new Set<string>(),
+}))
 
 export namespace ClarusExtensionOutbox {
   export async function submit(input: {
@@ -178,12 +181,14 @@ export namespace ClarusExtensionOutbox {
     payload: ClarusExtendPayload
     send: ClarusExtensionSend
   }): Promise<{ requestID: string }> {
-    if (activeSessions.has(input.sessionID)) {
+    const instanceState = runtimeState()
+
+    if (instanceState.activeSessions.has(input.sessionID)) {
       throw Object.assign(new Error("A Clarus extension request is already in progress for this assignment"), {
         code: "CLARUS_TOOL_EXTENSION_IN_PROGRESS",
       })
     }
-    activeSessions.add(input.sessionID)
+    instanceState.activeSessions.add(input.sessionID)
     try {
       const located = await ClarusAssignmentStore.findBySessionID(input.sessionID)
       if (!located) {
@@ -227,7 +232,7 @@ export namespace ClarusExtensionOutbox {
         throw error
       }
     } finally {
-      activeSessions.delete(input.sessionID)
+      instanceState.activeSessions.delete(input.sessionID)
     }
   }
 
@@ -268,6 +273,8 @@ export namespace ClarusExtensionOutbox {
     input: string | { accountHash: string; send?: ClarusExtensionSend },
     legacySend?: ClarusExtensionSend,
   ): Promise<string[]> {
+    const instanceState = runtimeState()
+
     const accountHash = typeof input === "string" ? input : input.accountHash
     const send = typeof input === "string" ? legacySend : input.send
     using _ = await Lock.write(lockKey(accountHash))
@@ -308,8 +315,8 @@ export namespace ClarusExtensionOutbox {
       if (record.state !== "not_dispatched" || located.assignment.extensionState !== "not_dispatched" || !send) {
         continue
       }
-      if (activeSessions.has(record.sessionID)) continue
-      activeSessions.add(record.sessionID)
+      if (instanceState.activeSessions.has(record.sessionID)) continue
+      instanceState.activeSessions.add(record.sessionID)
       try {
         const requestID = crypto.randomUUID()
         const retried = ExtensionRecord.parse({
@@ -347,7 +354,7 @@ export namespace ClarusExtensionOutbox {
           })
         }
       } finally {
-        activeSessions.delete(record.sessionID)
+        instanceState.activeSessions.delete(record.sessionID)
       }
     }
     return recoveredSessions

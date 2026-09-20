@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import {
@@ -24,13 +25,18 @@ export type TerminalHookDeliverer = (
   input: unknown,
 ) => Promise<TerminalHookDeliveryResult>
 
-let terminalHookDeliverer: TerminalHookDeliverer | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  terminalHookDeliverer: undefined as TerminalHookDeliverer | undefined,
+  activeTimers: new Map<string, Timer>(),
+}))
 
 /** L4 product registration injects Plugin.deliverHookForPlugin here; without
  * it, plugin-owned terminal hooks record a durable delivery error instead of
  * silently vanishing. */
 export function setTerminalHookDeliverer(deliverer: TerminalHookDeliverer): void {
-  terminalHookDeliverer = deliverer
+  const instanceState = runtimeState()
+
+  instanceState.terminalHookDeliverer = deliverer
 }
 
 function errorText(error: unknown): string {
@@ -44,8 +50,6 @@ function errorText(error: unknown): string {
   }
   return "Light Loop execution failed"
 }
-
-const activeTimers = new Map<string, Timer>()
 
 function timerKey(executionSessionID: string): string {
   return `lightloop_deadline:${executionSessionID}`
@@ -68,6 +72,8 @@ function samePluginOwner(
 }
 
 async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.get>>, record: LightLoopTerminalRecord) {
+  const instanceState = runtimeState()
+
   if (record.hookDeliveredAt !== undefined) return
   if (!record.pluginOwner) {
     // Ordinary (non-plugin) loops have no lightloop.after hook. The record
@@ -76,31 +82,28 @@ async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.ge
     await LightLoopTerminalStore.acknowledge(session)
     return
   }
-  if (!terminalHookDeliverer) {
+  if (!instanceState.terminalHookDeliverer) {
     await LightLoopTerminalStore.recordHookError(
       session,
       "Hook lightloop.after delivery unavailable: plugin registration not loaded",
     )
     return
   }
-  const delivery = await terminalHookDeliverer(
-    record.pluginOwner.pluginId,
-    record.pluginOwner.pluginGeneration,
-    "lightloop.after",
-    {
+  const delivery = await instanceState
+    .terminalHookDeliverer(record.pluginOwner.pluginId, record.pluginOwner.pluginGeneration, "lightloop.after", {
       loop: {
         sessionID: record.sessionID,
         status: record.status,
         instructions: record.instructions,
         ...(record.error ? { error: record.error } : {}),
       },
-    },
-  ).catch((hookError: unknown) => ({
-    status: "failed" as const,
-    handlerCount: 0,
-    succeededHandlerCount: 0,
-    error: `Hook lightloop.after delivery failed: ${hookError instanceof Error ? hookError.message : String(hookError)}`,
-  }))
+    })
+    .catch((hookError: unknown) => ({
+      status: "failed" as const,
+      handlerCount: 0,
+      succeededHandlerCount: 0,
+      error: `Hook lightloop.after delivery failed: ${hookError instanceof Error ? hookError.message : String(hookError)}`,
+    }))
 
   if (delivery.status === "delivered" && delivery.handlerCount > 0) {
     await LightLoopTerminalStore.acknowledge(session)
@@ -114,6 +117,8 @@ async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.ge
 }
 
 function setDeadlineTimer(executionSessionID: string, deadlineAt: number, onExpire: () => void) {
+  const instanceState = runtimeState()
+
   clearDeadlineTimer(executionSessionID)
   const delayMs = Math.max(0, deadlineAt - Date.now())
   if (delayMs <= 0) {
@@ -122,14 +127,16 @@ function setDeadlineTimer(executionSessionID: string, deadlineAt: number, onExpi
   }
   const timer = setTimeout(onExpire, delayMs)
   timer.unref()
-  activeTimers.set(timerKey(executionSessionID), timer)
+  instanceState.activeTimers.set(timerKey(executionSessionID), timer)
 }
 
 function clearDeadlineTimer(executionSessionID: string) {
-  const existing = activeTimers.get(timerKey(executionSessionID))
+  const instanceState = runtimeState()
+
+  const existing = instanceState.activeTimers.get(timerKey(executionSessionID))
   if (existing) {
     clearTimeout(existing)
-    activeTimers.delete(timerKey(executionSessionID))
+    instanceState.activeTimers.delete(timerKey(executionSessionID))
   }
 }
 
@@ -139,6 +146,8 @@ export namespace LightLoopRuntime {
    * Called during runtime init/reload after sessions are loaded from storage.
    */
   export async function reattachPluginTimers(): Promise<void> {
+    const instanceState = runtimeState()
+
     for await (const session of Session.listAll()) {
       const terminal = await LightLoopTerminalStore.get(session)
       if (terminal) {
@@ -165,7 +174,7 @@ export namespace LightLoopRuntime {
       }
 
       if (workflow?.kind !== "lightloop" || !workflow.pluginOwner || !workflow.deadlineAt) continue
-      if (activeTimers.has(timerKey(session.id))) continue
+      if (instanceState.activeTimers.has(timerKey(session.id))) continue
       scheduleDeadline(session.id, workflow.deadlineAt)
     }
   }

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
@@ -25,17 +26,18 @@ export namespace Storage {
     artifactDirectory: string
   }
   interface Context extends Handle {
+    owner?: RuntimeContext.Instance
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
     pending?: Promise<unknown>[]
   }
   const context = new AsyncLocalStorage<Context>()
-  let installed: Handle | undefined
 
   export function state<T>(create: () => T): () => T {
-    const values = new WeakMap<TransactionalStore, T>()
+    const runtimeValues = RuntimeContext.state(() => new WeakMap<TransactionalStore, T>())
     return () => {
       const store = current().store
+      const values = runtimeValues()
       let value = values.get(store)
       if (value === undefined) {
         value = create()
@@ -45,36 +47,32 @@ export namespace Storage {
     }
   }
 
-  export function install(handle: Handle) {
-    if (installed === handle) return () => {}
-    if (installed && installed !== handle) throw new StorageConflictError("A storage Handle is already installed")
-    installed = handle
-    return () => {
-      if (installed === handle) installed = undefined
-    }
-  }
-
   export function current(): Context {
-    const value = context.getStore() ?? installed
+    const owner = RuntimeContext.tryCurrent()
+    const active = context.getStore()
+    const value = active?.owner === owner ? (active ?? owner?.storage) : owner?.storage
     if (!value) throw new StorageClosedError()
     return value
   }
 
   export function available() {
-    return Boolean(context.getStore() ?? installed)
+    const owner = RuntimeContext.tryCurrent()
+    return Boolean((context.getStore()?.owner === owner && context.getStore()) || owner?.storage)
   }
 
   /** Reports a terminally failed store; the host must restart the Runtime
    *  because the installed Handle cannot serve further work. Safe to call
    *  before any Handle is installed. */
   export function onUnavailable(listener: (error: Error) => void): () => void {
-    const handle = context.getStore() ?? installed
+    const handle = available() ? current() : undefined
     if (!handle) return () => {}
     return handle.store.onUnavailable(listener)
   }
 
   export function provide<T>(handle: Handle, body: () => T): T {
-    return context.run(handle, body)
+    if (inTransaction() && current().store !== handle.store)
+      throw new StorageConflictError("Cannot replace storage inside a transaction")
+    return context.run({ ...handle, owner: RuntimeContext.current() }, body)
   }
 
   export async function transaction<T>(
@@ -90,15 +88,17 @@ export namespace Storage {
     const result = await parent.store.transaction(async (tx) => {
       effects = []
       const pending: Promise<unknown>[] = []
-      return context.run({ ...parent, transaction: tx, effects, pending }, async () => {
-        const result = await body(tx)
-        for (let offset = 0; offset < pending.length; ) {
-          const batch = pending.slice(offset)
-          offset += batch.length
-          await Promise.all(batch)
-        }
-        return result
-      })
+      return RuntimeContext.transaction(() =>
+        context.run({ ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending }, async () => {
+          const result = await body(tx)
+          for (let offset = 0; offset < pending.length; ) {
+            const batch = pending.slice(offset)
+            offset += batch.length
+            await Promise.all(batch)
+          }
+          return result
+        }),
+      )
     }, options)
     for (const effect of effects) {
       try {
@@ -123,11 +123,18 @@ export namespace Storage {
   ): Promise<T> {
     const parent = current()
     if (parent.transaction) return body(parent.transaction)
-    return parent.store.snapshot((tx) => context.run({ ...parent, transaction: tx }, () => body(tx)), options)
+    return parent.store.snapshot(
+      (tx) =>
+        RuntimeContext.transaction(() =>
+          context.run({ ...parent, owner: RuntimeContext.current(), transaction: tx }, () => body(tx)),
+        ),
+      options,
+    )
   }
 
   export function inTransaction() {
-    return Boolean(context.getStore()?.transaction)
+    const active = context.getStore()
+    return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction)
   }
 
   export function afterCommit(effect: () => Promise<unknown> | void): void {
@@ -207,11 +214,14 @@ export namespace Storage {
     }
   }
 
-  const artifactPacks = new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue }>()
+  const runtimePacks = RuntimeContext.state(
+    () => new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue }>(),
+  )
   function artifactPack(key: string[]) {
     if (!key.length || key.some((part) => !part || part === "." || part === ".." || /[\\/\0]/.test(part)))
       throw new StorageConflictError("Invalid artifact key")
     const handle = current()
+    const artifactPacks = runtimePacks()
     let pack = artifactPacks.get(handle.store)
     if (!pack) {
       pack = {

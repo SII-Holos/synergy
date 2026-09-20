@@ -9,120 +9,131 @@ import {
   type BrowserProxyDescriptor,
 } from "../src/network-gateway"
 import type { BrowserOwner } from "../src/owner"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "./support/runtime"
+const runtime = await testRuntime()
 
-afterEach(() => BrowserNetworkGateway.stop())
+afterEach(() => runtime.run(() => BrowserNetworkGateway.stop()))
 
 describe("BrowserNetworkGateway", () => {
-  test("uses a short CONNECT establishment timeout before the long tunnel idle timeout", () => {
-    class SocketFixture extends EventEmitter {
-      timeouts: number[] = []
-      destroyed = false
-      setTimeout(milliseconds: number) {
-        this.timeouts.push(milliseconds)
-        return this
+  test("uses a short CONNECT establishment timeout before the long tunnel idle timeout", () =>
+    runtime.run(() => {
+      class SocketFixture extends EventEmitter {
+        timeouts: number[] = []
+        destroyed = false
+        setTimeout(milliseconds: number) {
+          this.timeouts.push(milliseconds)
+          return this
+        }
+        destroy() {
+          this.destroyed = true
+          return this
+        }
       }
-      destroy() {
-        this.destroyed = true
-        return this
-      }
-    }
-    const socket = new SocketFixture()
-    configureBrowserTunnelTimeouts(socket as unknown as net.Socket, true)
-    socket.emit("connect")
+      const socket = new SocketFixture()
+      configureBrowserTunnelTimeouts(socket as unknown as net.Socket, true)
+      socket.emit("connect")
 
-    expect(socket.timeouts).toEqual([BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS, BROWSER_TUNNEL_IDLE_TIMEOUT_MS])
-    socket.emit("timeout")
-    expect(socket.destroyed).toBe(true)
-  })
+      expect(socket.timeouts).toEqual([BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS, BROWSER_TUNNEL_IDLE_TIMEOUT_MS])
+      socket.emit("timeout")
+      expect(socket.destroyed).toBe(true)
+    }))
 
-  test("forwards arbitrary loopback ports without classifying destination addresses", async () => {
-    const target = net.createServer()
-    const port = await listen(target)
-    const proxy = await BrowserNetworkGateway.proxyFor(owner("first"))
-    const socket = await connectTunnel(proxy, port)
-    expect(socket.response).toContain("200 Connection Established")
-    socket.client.destroy()
-    await close(target)
-  })
+  test("forwards arbitrary loopback ports without classifying destination addresses", () =>
+    runtime.run(async () => {
+      const target = net.createServer()
+      const port = await listen(target)
+      const proxy = await BrowserNetworkGateway.proxyFor(owner("first"))
+      const socket = await connectTunnel(proxy, port)
+      expect(socket.response).toContain("200 Connection Established")
+      socket.client.destroy()
+      await close(target)
+    }))
 
-  test("requires one owner's complete credentials", async () => {
-    const target = net.createServer()
-    const port = await listen(target)
-    const first = await BrowserNetworkGateway.proxyFor(owner("first"))
-    const second = await BrowserNetworkGateway.proxyFor(owner("second"))
+  test("requires one owner's complete credentials", () =>
+    runtime.run(async () => {
+      const target = net.createServer()
+      const port = await listen(target)
+      const first = await BrowserNetworkGateway.proxyFor(owner("first"))
+      const second = await BrowserNetworkGateway.proxyFor(owner("second"))
 
-    const missing = await connectTunnel(first, port, { authorization: null })
-    expect(missing.response).toContain("407 Proxy Authentication Required")
-    expect(missing.response).toContain('Proxy-Authenticate: Basic realm="Synergy Browser"')
-    const crossed = await connectTunnel(first, port, {
-      authorization: Buffer.from(`${first.username}:${second.password}`).toString("base64"),
-    })
-    expect(crossed.response).toContain("407 Proxy Authentication Required")
+      const missing = await connectTunnel(first, port, { authorization: null })
+      expect(missing.response).toContain("407 Proxy Authentication Required")
+      expect(missing.response).toContain('Proxy-Authenticate: Basic realm="Synergy Browser"')
+      const crossed = await connectTunnel(first, port, {
+        authorization: Buffer.from(`${first.username}:${second.password}`).toString("base64"),
+      })
+      expect(crossed.response).toContain("407 Proxy Authentication Required")
 
-    missing.client.destroy()
-    crossed.client.destroy()
-    await close(target)
-  })
+      missing.client.destroy()
+      crossed.client.destroy()
+      await close(target)
+    }))
 
-  test("revoking an owner closes its authenticated CONNECT tunnels", async () => {
-    const target = net.createServer()
-    const port = await listen(target)
-    const targetOwner = owner("revoked")
-    const proxy = await BrowserNetworkGateway.proxyFor(targetOwner)
-    const tunnel = await connectTunnel(proxy, port)
-    const closed = new Promise<void>((resolve) => tunnel.client.once("close", () => resolve()))
-    BrowserNetworkGateway.revoke(targetOwner)
-    await withTimeout(closed, "Revoked Browser tunnel remained open.")
-    await close(target)
-  })
+  test("revoking an owner closes its authenticated CONNECT tunnels", () =>
+    runtime.run(async () => {
+      const target = net.createServer()
+      const port = await listen(target)
+      const targetOwner = owner("revoked")
+      const proxy = await BrowserNetworkGateway.proxyFor(targetOwner)
+      const tunnel = await connectTunnel(proxy, port)
+      const closed = new Promise<void>((resolve) => tunnel.client.once("close", () => resolve()))
+      BrowserNetworkGateway.revoke(targetOwner)
+      await withTimeout(closed, "Revoked Browser tunnel remained open.")
+      await close(target)
+    }))
 
-  test("enforces the per-owner connection limit", async () => {
-    const target = net.createServer()
-    const port = await listen(target)
-    const proxy = await BrowserNetworkGateway.proxyFor(owner("limited"))
-    const tunnels = await Promise.all(Array.from({ length: 64 }, () => connectTunnel(proxy, port)))
-    const rejected = await connectTunnel(proxy, port)
-    expect(rejected.response).toContain("403 Forbidden")
-    rejected.client.destroy()
-    for (const tunnel of tunnels) tunnel.client.destroy()
-    await close(target)
-  })
-  test("shares one gateway across concurrent owner grants", async () => {
-    const proxies = await Promise.all(
-      Array.from({ length: 8 }, (_value, index) => BrowserNetworkGateway.proxyFor(owner(`concurrent-${index}`))),
-    )
+  test("enforces the per-owner connection limit", () =>
+    runtime.run(async () => {
+      const target = net.createServer()
+      const port = await listen(target)
+      const proxy = await BrowserNetworkGateway.proxyFor(owner("limited"))
+      const tunnels = await Promise.all(Array.from({ length: 64 }, () => connectTunnel(proxy, port)))
+      const rejected = await connectTunnel(proxy, port)
+      expect(rejected.response).toContain("403 Forbidden")
+      rejected.client.destroy()
+      for (const tunnel of tunnels) tunnel.client.destroy()
+      await close(target)
+    }))
+  test("shares one gateway across concurrent owner grants", () =>
+    runtime.run(async () => {
+      const proxies = await Promise.all(
+        Array.from({ length: 8 }, (_value, index) => BrowserNetworkGateway.proxyFor(owner(`concurrent-${index}`))),
+      )
 
-    expect(new Set(proxies.map((proxy) => proxy.server))).toEqual(new Set([proxies[0].server]))
-  })
+      expect(new Set(proxies.map((proxy) => proxy.server))).toEqual(new Set([proxies[0].server]))
+    }))
 
-  test("returns a live gateway when stop overlaps startup", async () => {
-    const target = net.createServer()
-    const port = await listen(target)
-    const [proxy] = await Promise.all([
-      BrowserNetworkGateway.proxyFor(owner("start-stop")),
-      BrowserNetworkGateway.stop(),
-    ])
+  test("returns a live gateway when stop overlaps startup", () =>
+    runtime.run(async () => {
+      const target = net.createServer()
+      const port = await listen(target)
+      const [proxy] = await Promise.all([
+        BrowserNetworkGateway.proxyFor(owner("start-stop")),
+        BrowserNetworkGateway.stop(),
+      ])
 
-    const tunnel = await connectTunnel(proxy, port)
-    expect(tunnel.response).toContain("200 Connection Established")
-    tunnel.client.destroy()
-    await close(target)
-  })
+      const tunnel = await connectTunnel(proxy, port)
+      expect(tunnel.response).toContain("200 Connection Established")
+      tunnel.client.destroy()
+      await close(target)
+    }))
 
-  test("returns a live gateway when stop overlaps an existing gateway", async () => {
-    const target = net.createServer()
-    const port = await listen(target)
-    await BrowserNetworkGateway.proxyFor(owner("existing"))
-    const [proxy] = await Promise.all([
-      BrowserNetworkGateway.proxyFor(owner("existing-stop")),
-      BrowserNetworkGateway.stop(),
-    ])
+  test("returns a live gateway when stop overlaps an existing gateway", () =>
+    runtime.run(async () => {
+      const target = net.createServer()
+      const port = await listen(target)
+      await BrowserNetworkGateway.proxyFor(owner("existing"))
+      const [proxy] = await Promise.all([
+        BrowserNetworkGateway.proxyFor(owner("existing-stop")),
+        BrowserNetworkGateway.stop(),
+      ])
 
-    const tunnel = await connectTunnel(proxy, port)
-    expect(tunnel.response).toContain("200 Connection Established")
-    tunnel.client.destroy()
-    await close(target)
-  })
+      const tunnel = await connectTunnel(proxy, port)
+      expect(tunnel.response).toContain("200 Connection Established")
+      tunnel.client.destroy()
+      await close(target)
+    }))
 })
 
 function owner(id: string): BrowserOwner.Info {
@@ -170,3 +181,5 @@ function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
     new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(message)), 2_000)),
   ])
 }
+
+afterRuntimeTests(() => runtime.close())

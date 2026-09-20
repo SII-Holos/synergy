@@ -5,16 +5,15 @@ import path from "node:path"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { HolosAccounts } from "../../src/holos/accounts"
-// Side-effect import: registers the holos migration domain under test
-import "../../src/holos/migration"
+import { registerHolosMigrations } from "../../src/holos/migration"
 import { ensureMigrations, getMigrationStatus, resetMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
+import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
+let runtime: Awaited<ReturnType<typeof migrationFixture>>
 
 const migrationId = "20260728-provision-clarus-channel-account"
-const originalHome = process.env["SYNERGY_TEST_HOME"]
-const originalSynergyHome = process.env["SYNERGY_HOME"]
-let home: string
-
 function migration() {
   const result = MigrationRegistry.list()
     .get("holos")
@@ -61,174 +60,175 @@ function expectFeishuChannel(config: Config.Info) {
 
 describe.serial("Holos Clarus Channel account migration", () => {
   beforeEach(async () => {
-    home = await fs.mkdtemp(path.join(process.env["SYNERGY_TEST_ROOT"]!, "holos-clarus-migration-"))
-    delete process.env["SYNERGY_HOME"]
-    process.env["SYNERGY_TEST_HOME"] = home
-    await resetConfig()
-  })
-
-  afterEach(async () => {
-    resetMigrations()
-    if (originalSynergyHome === undefined) delete process.env["SYNERGY_HOME"]
-    else process.env["SYNERGY_HOME"] = originalSynergyHome
-    if (originalHome === undefined) delete process.env["SYNERGY_TEST_HOME"]
-    else process.env["SYNERGY_TEST_HOME"] = originalHome
-    await resetConfig()
-    await fs.rm(home, { recursive: true, force: true })
-  })
-
-  test("provisions a disabled Clarus account for an existing active Holos identity", async () => {
-    await seedFeishuChannel()
-    await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
-
-    await runMigration()
-
-    const config = await Config.globalResolved()
-    expect(config.channel?.clarus).toEqual({
-      type: "clarus",
-      accounts: {
-        agent_existing: { enabled: false },
+    runtime = await migrationFixture({
+      register() {
+        registerHarness()
+        ConnectionsConfigSchema.registerConfig()
+        registerHolosMigrations()
       },
     })
-    expectFeishuChannel(config)
-    expect(config.holos).toBeUndefined()
   })
+  afterEach(() => runtime.close())
 
-  test("does not persist resolved Channel config from nonlocal sources", async () => {
-    const externalFeishu = ConnectionsConfigSchema.ChannelFeishu.parse({
-      type: "feishu",
-      accounts: {
-        external: {
-          appId: "external-app",
-          appSecret: "external-secret",
+  test("provisions a disabled Clarus account for an existing active Holos identity", () =>
+    runtime.run(async () => {
+      await seedFeishuChannel()
+      await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
+
+      await runMigration()
+
+      const config = await Config.globalResolved()
+      expect(config.channel?.clarus).toEqual({
+        type: "clarus",
+        accounts: {
+          agent_existing: { enabled: false },
         },
-      },
-    })
-    const originalGlobalResolved = Config.globalResolved
-    Config.globalResolved = async () =>
-      ({
-        channel: { feishu: externalFeishu },
-      }) as Config.Info
+      })
+      expectFeishuChannel(config)
+      expect(config.holos).toBeUndefined()
+    }))
 
-    try {
-      const { HolosAuth } = await import("../../src/holos/auth")
-      expect(await HolosAuth.ensureClarusChannelAccount("agent_external")).toBe(true)
-    } finally {
-      Config.globalResolved = originalGlobalResolved
-    }
-
-    expect(await Config.domainGet("channels")).toEqual({
-      channel: {
-        clarus: {
-          type: "clarus",
-          accounts: {
-            agent_external: { enabled: false },
+  test("does not persist resolved Channel config from nonlocal sources", () =>
+    runtime.run(async () => {
+      const externalFeishu = ConnectionsConfigSchema.ChannelFeishu.parse({
+        type: "feishu",
+        accounts: {
+          external: {
+            appId: "external-app",
+            appSecret: "external-secret",
           },
         },
-      },
-    })
-  })
+      })
+      const originalGlobalResolved = Config.globalResolved
+      Config.globalResolved = async () =>
+        ({
+          channel: { feishu: externalFeishu },
+        }) as Config.Info
 
-  test("leaves fresh state unchanged when there is no active Holos identity", async () => {
-    await seedFeishuChannel()
+      try {
+        const { HolosAuth } = await import("../../src/holos/auth")
+        expect(await HolosAuth.ensureClarusChannelAccount("agent_external")).toBe(true)
+      } finally {
+        Config.globalResolved = originalGlobalResolved
+      }
 
-    await runMigration()
-
-    const config = await Config.globalResolved()
-    expect(config.channel?.clarus).toBeUndefined()
-    expectFeishuChannel(config)
-  })
-
-  test("preserves explicit Clarus settings and is idempotent", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
-    await Config.domainUpdate(
-      "channels",
-      {
+      expect(await Config.domainGet("channels")).toEqual({
         channel: {
           clarus: {
             type: "clarus",
             accounts: {
-              agent_existing: {
-                enabled: true,
-                apiUrl: "https://clarus.example.com",
-                agent: "synergy-max",
-              },
-              agent_other: { enabled: false },
+              agent_external: { enabled: false },
             },
           },
         },
-      },
-      { mode: "replace-domain" },
-    )
+      })
+    }))
 
-    await runMigration()
-    const first = await Bun.file(path.join(Global.Path.config, "synergy.d", "90-channels.jsonc")).text()
-    await runMigration()
-    const second = await Bun.file(path.join(Global.Path.config, "synergy.d", "90-channels.jsonc")).text()
+  test("leaves fresh state unchanged when there is no active Holos identity", () =>
+    runtime.run(async () => {
+      await seedFeishuChannel()
 
-    expect(second).toBe(first)
-    expect((await Config.globalResolved()).channel?.clarus).toEqual({
-      type: "clarus",
-      accounts: {
-        agent_existing: {
-          enabled: true,
-          apiUrl: "https://clarus.example.com",
-          agent: "synergy-max",
+      await runMigration()
+
+      const config = await Config.globalResolved()
+      expect(config.channel?.clarus).toBeUndefined()
+      expectFeishuChannel(config)
+    }))
+
+  test("preserves explicit Clarus settings and is idempotent", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
+      await Config.domainUpdate(
+        "channels",
+        {
+          channel: {
+            clarus: {
+              type: "clarus",
+              accounts: {
+                agent_existing: {
+                  enabled: true,
+                  apiUrl: "https://clarus.example.com",
+                  agent: "synergy-max",
+                },
+                agent_other: { enabled: false },
+              },
+            },
+          },
         },
-        agent_other: { enabled: false },
-      },
-    })
-  })
+        { mode: "replace-domain" },
+      )
 
-  test("does not provision from a malformed Holos account store", async () => {
-    await seedFeishuChannel()
-    await fs.mkdir(path.dirname(Global.Path.authHolosAccounts), { recursive: true })
-    await Bun.write(Global.Path.authHolosAccounts, '{"activeAccountId":"agent_broken","accounts":[]}')
+      await runMigration()
+      const first = await Bun.file(path.join(Global.Path.config, "synergy.d", "90-channels.jsonc")).text()
+      await runMigration()
+      const second = await Bun.file(path.join(Global.Path.config, "synergy.d", "90-channels.jsonc")).text()
 
-    await runMigration()
+      expect(second).toBe(first)
+      expect((await Config.globalResolved()).channel?.clarus).toEqual({
+        type: "clarus",
+        accounts: {
+          agent_existing: {
+            enabled: true,
+            apiUrl: "https://clarus.example.com",
+            agent: "synergy-max",
+          },
+          agent_other: { enabled: false },
+        },
+      })
+    }))
 
-    const config = await Config.globalResolved()
-    expect(config.channel?.clarus).toBeUndefined()
-    expectFeishuChannel(config)
-  })
+  test("does not provision from a malformed Holos account store", () =>
+    runtime.run(async () => {
+      await seedFeishuChannel()
+      await fs.mkdir(path.dirname(Global.Path.authHolosAccounts), { recursive: true })
+      await Bun.write(Global.Path.authHolosAccounts, '{"activeAccountId":"agent_broken","accounts":[]}')
 
-  test("runs after credential migration and is tracked by the startup migration runner", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
-    resetMigrations()
+      await runMigration()
 
-    const first = await ensureMigrations({ output: "silent", targetDomain: "holos" })
-    const status = (await getMigrationStatus("holos")).holos
-    const completedIds = status.completed.map((entry) => entry.id)
-    resetMigrations()
-    const second = await ensureMigrations({ output: "silent", targetDomain: "holos" })
+      const config = await Config.globalResolved()
+      expect(config.channel?.clarus).toBeUndefined()
+      expectFeishuChannel(config)
+    }))
 
-    expect(first.completed).toBeGreaterThan(0)
-    expect(completedIds).toContain(migrationId)
-    expect(completedIds.indexOf("20260620-migrate-holos-legacy-credentials")).toBeLessThan(
-      completedIds.indexOf(migrationId),
-    )
-    expect(status.pending).toEqual([])
-    expect(second.upToDateDomains).toBe(1)
-    expect((await Config.globalResolved()).channel?.clarus?.accounts.agent_existing).toEqual({ enabled: false })
-  })
+  test("runs after credential migration and is tracked by the startup migration runner", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
+      resetMigrations()
 
-  test("skips provisioning when the Holos account store is temporarily unavailable", async () => {
-    await seedFeishuChannel()
-    await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
+      const first = await ensureMigrations({ output: "silent", targetDomain: "holos" })
+      const status = (await getMigrationStatus("holos")).holos
+      const completedIds = status.completed.map((entry) => entry.id)
+      resetMigrations()
+      const second = await ensureMigrations({ output: "silent", targetDomain: "holos" })
 
-    const accountsPath = Global.Path.authHolosAccounts
-    const realReadFile = fs.readFile
-    using _read = spyOn(fs, "readFile").mockImplementation((async (file: string) => {
-      if (file === accountsPath) {
-        throw Object.assign(new Error("injected EPERM"), { code: "EPERM" })
-      }
-      return realReadFile(file)
-    }) as unknown as typeof fs.readFile)
+      expect(first.completed).toBeGreaterThan(0)
+      expect(completedIds).toContain(migrationId)
+      expect(completedIds.indexOf("20260620-migrate-holos-legacy-credentials")).toBeLessThan(
+        completedIds.indexOf(migrationId),
+      )
+      expect(status.pending).toEqual([])
+      expect(second.upToDateDomains).toBe(1)
+      expect((await Config.globalResolved()).channel?.clarus?.accounts.agent_existing).toEqual({ enabled: false })
+    }))
 
-    await runMigration()
+  test("skips provisioning when the Holos account store is temporarily unavailable", () =>
+    runtime.run(async () => {
+      await seedFeishuChannel()
+      await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
 
-    const config = await Config.globalResolved()
-    expect(config.channel?.clarus).toBeUndefined()
-    expectFeishuChannel(config)
-  })
+      const accountsPath = Global.Path.authHolosAccounts
+      const realReadFile = fs.readFile
+      using _read = spyOn(fs, "readFile").mockImplementation((async (file: string) => {
+        if (file === accountsPath) {
+          throw Object.assign(new Error("injected EPERM"), { code: "EPERM" })
+        }
+        return realReadFile(file)
+      }) as unknown as typeof fs.readFile)
+
+      await runMigration()
+
+      const config = await Config.globalResolved()
+      expect(config.channel?.clarus).toBeUndefined()
+      expectFeishuChannel(config)
+    }))
 })

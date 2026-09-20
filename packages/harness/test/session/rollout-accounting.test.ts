@@ -4,6 +4,9 @@ import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutTransportRecorder } from "../../src/session/rollout/transport-recorder"
 import { ProviderPricing } from "../../src/provider/pricing"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function record(providerID = "openai") {
   const owner = { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
@@ -55,50 +58,57 @@ const usage = {
   output_tokens_details: { reasoning_tokens: 100 },
 }
 
-test("accounts for each actual attempt once and treats reasoning as an output subset", async () => {
-  const fixture = await record()
-  await fixture.attempt(usage)
-  const snapshot = await RolloutSnapshot.read(fixture.owner)
-  const summary = RolloutAccounting.summarize(snapshot)
-  expect(summary.attempts).toBe(1)
-  expect(summary.tokens.total.known).toBe(1500)
-  expect(summary.tokens.reasoning.known).toBe(100)
-  expect(summary.apiEstimate.total).toBeCloseTo(0.0105)
-  expect(summary.apiEstimate.unknown).toBe(0)
-})
+test("accounts for each actual attempt once and treats reasoning as an output subset", () =>
+  runtime.run(async () => {
+    const fixture = await record()
+    await fixture.attempt(usage)
+    const snapshot = await RolloutSnapshot.read(fixture.owner)
+    const summary = RolloutAccounting.summarize(snapshot)
+    expect(summary.attempts).toBe(1)
+    expect(summary.tokens.total.known).toBe(1500)
+    expect(summary.tokens.reasoning.known).toBe(100)
+    expect(summary.apiEstimate.total).toBeCloseTo(0.0105)
+    expect(summary.apiEstimate.unknown).toBe(0)
+  }))
 
-test("a retry without usage leaves total unknown while preserving the known subtotal", async () => {
-  const fixture = await record()
-  await fixture.attempt(null)
-  await fixture.attempt(usage)
-  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
-  expect(summary.attempts).toBe(2)
-  expect(summary.apiEstimate).toMatchObject({ total: null, known: 0.0105, unknown: 1 })
-  expect(summary.tokens.total).toEqual({ known: 1500, unknown: 1, total: null })
-})
+test("a retry without usage leaves total unknown while preserving the known subtotal", () =>
+  runtime.run(async () => {
+    const fixture = await record()
+    await fixture.attempt(null)
+    await fixture.attempt(usage)
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.attempts).toBe(2)
+    expect(summary.apiEstimate).toMatchObject({ total: null, known: 0.0105, unknown: 1 })
+    expect(summary.tokens.total).toEqual({ known: 1500, unknown: 1, total: null })
+  }))
 
-test("subscription API equivalents never increase API spending estimates", async () => {
-  const fixture = await record("openai-codex")
-  await fixture.attempt(usage)
-  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
-  expect(summary.apiEstimate.known).toBe(0)
-  expect(summary.subscriptionEquivalent.total).toBeCloseTo(0.0105)
-})
+test("subscription API equivalents never increase API spending estimates", () =>
+  runtime.run(async () => {
+    const fixture = await record("openai-codex")
+    await fixture.attempt(usage)
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.apiEstimate.known).toBe(0)
+    expect(summary.subscriptionEquivalent.total).toBeCloseTo(0.0105)
+  }))
 
-test("calls without observable transport are explicit unknowns", async () => {
-  const fixture = await record()
-  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
-  expect(summary.unobservedCalls).toBe(1)
-  expect(summary.apiEstimate.total).toBeNull()
-  expect(summary.apiEstimate.unknown).toBe(1)
-})
+test("calls without observable transport are explicit unknowns", () =>
+  runtime.run(async () => {
+    const fixture = await record()
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.unobservedCalls).toBe(1)
+    expect(summary.apiEstimate.total).toBeNull()
+    expect(summary.apiEstimate.unknown).toBe(1)
+  }))
 
-test("reported charges stay independent of token estimates, retries and aggregate currency", async () => {
-  const fixture = await record("openrouter")
-  await fixture.attempt({ ...usage, cost: 0.02, cost_details: { upstream_inference_cost: 0.5 } })
-  await fixture.attempt(null)
-  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
-  expect(summary.reported).toEqual({ currencies: { USD: 0.02 }, unreported: 1 })
-  expect(summary.apiEstimate.known).toBe(0.0105)
-  expect(RolloutAccounting.merge([summary, summary]).reported).toEqual({ currencies: { USD: 0.04 }, unreported: 2 })
-})
+test("reported charges stay independent of token estimates, retries and aggregate currency", () =>
+  runtime.run(async () => {
+    const fixture = await record("openrouter")
+    await fixture.attempt({ ...usage, cost: 0.02, cost_details: { upstream_inference_cost: 0.5 } })
+    await fixture.attempt(null)
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.reported).toEqual({ currencies: { USD: 0.02 }, unreported: 1 })
+    expect(summary.apiEstimate.known).toBe(0.0105)
+    expect(RolloutAccounting.merge([summary, summary]).reported).toEqual({ currencies: { USD: 0.04 }, unreported: 2 })
+  }))
+
+afterRuntimeTests(() => runtime.close())

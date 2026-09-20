@@ -1,3 +1,4 @@
+import { useGlobalSDK } from "@/context/global-sdk"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
@@ -140,10 +141,11 @@ const handoff = {
 }
 
 export default function Page() {
+  const sdk = useGlobalSDK()
   return (
     <TerminalProvider>
       <ResourceOpenProvider>
-        <PromptProvider>
+        <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
           <BuiltinWorkbenchPanelsProvider>
             <SessionPageContent />
           </BuiltinWorkbenchPanelsProvider>
@@ -302,7 +304,7 @@ function SessionPageContent() {
     const run = async () => {
       try {
         if (request.operation === "leave") {
-          await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
+          await sdk.client.worktree.leave({ scopeID: request.directory, sessionID: request.sessionID })
           refreshWorkspaceTransition({
             request,
             success: createWorkspaceTransitionSuccessProgress({ operation: "leave" }),
@@ -315,7 +317,7 @@ function SessionPageContent() {
         }
 
         const result = await sdk.client.worktree.create({
-          directory: request.directory,
+          scopeID: request.directory,
           worktreeCreateInput: {
             sessionID: request.sessionID,
             bind: true,
@@ -325,7 +327,7 @@ function SessionPageContent() {
         const setupFailure = worktreeSetupFailureMessage(result.data)
         if (setupFailure) {
           await sdk.client.worktree
-            .leave({ directory: request.directory, sessionID: request.sessionID })
+            .leave({ scopeID: request.directory, sessionID: request.sessionID })
             .catch(() => undefined)
           await sync.session
             .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
@@ -842,19 +844,19 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
+  const scopeRoot = createMemo(() => sync.scope?.local?.worktree ?? sync.data.path.directory)
   const newSessionWorkspacePreference = createMemo<NewSessionWorkspacePreference>(() =>
-    sync.scope?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
+    sync.scope?.local?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
   )
   const newSessionWorkspaceSelection = createMemo(() =>
     defaultNewSessionWorkspaceSelection({
       selected: store.newSessionWorkspaceSelection,
-      currentDirectory: sync.data.path.directory,
-      canonicalDirectory: scopeRoot(),
+      currentDirectory: sync.data.path.directory ?? undefined,
+      canonicalDirectory: scopeRoot() ?? undefined,
       preference: newSessionWorkspacePreference(),
     }),
   )
-  const scopeName = createMemo(() => getFilename(scopeRoot()))
+  const scopeName = createMemo(() => getFilename(scopeRoot() ?? ""))
   const branch = createMemo(() => sync.data.vcs?.branch)
   const lastModified = createMemo(() => {
     const scope = sync.scope
@@ -1011,7 +1013,7 @@ function SessionPageContent() {
     const id = params.id
     if (!session || !id) return
     const routeScope = sdk.scopeKey
-    const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
+    const sessionScope = session.scope.id
     if (!sessionScope) return
     if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
     navigate(`/${base64Encode(sessionScope)}/session/${id}`, sessionRouteReplaceOptions(location.state))
@@ -1532,13 +1534,13 @@ function SessionPageContent() {
               return newSessionWorkspaceSelection()
             },
             get newSessionCanonicalDirectory() {
-              return scopeRoot()
+              return scopeRoot() ?? undefined
             },
             get newSessionCurrentDirectory() {
-              return sync.data.path.directory
+              return sync.data.path.directory ?? undefined
             },
             get newSessionCanCreateWorktree() {
-              return !isHomeScope(sdk.scopeKey)
+              return sync.scope?.local?.vcs === "git"
             },
             onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),
             onNewSessionWorkspaceSelectionReset: () => setStore("newSessionWorkspaceSelection", undefined),

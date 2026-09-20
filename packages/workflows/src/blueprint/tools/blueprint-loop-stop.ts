@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import z from "zod"
 import { BlueprintLoopStore, LoopError } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -17,10 +18,14 @@ export type BlueprintAgendaAssertClear = (input: {
   operation: "BlueprintLoop audit"
 }) => Promise<void>
 
-let agendaAssertClear: BlueprintAgendaAssertClear | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  agendaAssertClear: undefined as BlueprintAgendaAssertClear | undefined,
+}))
 
 export function setBlueprintAgendaAssertClear(fn: BlueprintAgendaAssertClear): void {
-  agendaAssertClear = fn
+  const instanceState = runtimeState()
+
+  instanceState.agendaAssertClear = fn
 }
 
 const parameters = z.object({
@@ -101,6 +106,8 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    const instanceState = runtimeState()
+
     const session = await Session.get(ctx.sessionID)
     const loopID = session.blueprint?.loopID
     if (!loopID || session.blueprint?.loopRole !== "execution") {
@@ -127,10 +134,10 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
 
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
-    if (!agendaAssertClear) {
+    if (!instanceState.agendaAssertClear) {
       throw new Error("BlueprintLoop stop guard is not wired (load src/product-registration)")
     }
-    await agendaAssertClear({
+    await instanceState.agendaAssertClear({
       sessionID: ctx.sessionID,
       scopeID,
       operation: "BlueprintLoop audit",

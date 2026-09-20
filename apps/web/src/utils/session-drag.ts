@@ -1,22 +1,9 @@
-/**
- * Drag-and-drop contract for session rows.
- *
- * The canonical writer is `setSessionDragData`: the sidebar (and any other
- * session list) populates `application/x-synergy-session` with
- * `{ id, directory, title, updatedAt? }`, which the prompt-input attachment
- * drop handler consumes directly.
- *
- * The Kanban board consumes the same MIME type but needs the scope/session
- * split, so `parseSessionDragPayload` maps the canonical shape to
- * `{ scopeKey, sessionID }` (tolerant of both the canonical fields and the
- * older `{ scopeKey, sessionID }` shape).
- */
-
 export const SESSION_DRAG_MIME = "application/x-synergy-session"
 
 export type SessionDragData = {
   id: string
-  directory: string
+  scopeID: string
+  connection: string
   title: string
   updatedAt?: number
 }
@@ -32,7 +19,8 @@ export function setSessionDragData(event: DragEvent, data: SessionDragData): voi
   if (!event.dataTransfer) return
   const payload = JSON.stringify({
     id: data.id,
-    directory: data.directory,
+    scopeID: data.scopeID,
+    connection: data.connection,
     title: data.title,
     ...(data.updatedAt !== undefined ? { updatedAt: data.updatedAt } : {}),
   })
@@ -47,7 +35,7 @@ export function setSessionDragData(event: DragEvent, data: SessionDragData): voi
   dragImage.textContent = data.title
   document.body.appendChild(dragImage)
   event.dataTransfer.setDragImage(dragImage, 0, 16)
-  setTimeout(() => document.body.removeChild(dragImage), 0)
+  setTimeout(() => dragImage.remove(), 0)
 }
 
 export type SessionDragPayload = {
@@ -55,24 +43,29 @@ export type SessionDragPayload = {
   sessionID: string
 }
 
-/** Parse a `application/x-synergy-session` payload into scope/session parts. */
-export function parseSessionDragPayload(raw: string): SessionDragPayload | undefined {
+export function parseSessionDragData(raw: string, connection: string): SessionDragData | undefined {
   try {
-    const parsed = JSON.parse(raw) as {
-      scopeKey?: unknown
-      sessionID?: unknown
-      directory?: unknown
-      id?: unknown
-    }
-    const scopeKey = typeof parsed.scopeKey === "string" ? parsed.scopeKey : parsed.directory
-    const sessionID = typeof parsed.sessionID === "string" ? parsed.sessionID : parsed.id
-    if (typeof scopeKey === "string" && scopeKey.length > 0 && typeof sessionID === "string" && sessionID.length > 0) {
-      return { scopeKey, sessionID }
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object" || !("connection" in parsed) || parsed.connection !== connection) return
+    if (!("id" in parsed) || typeof parsed.id !== "string" || !parsed.id) return
+    if (!("scopeID" in parsed) || typeof parsed.scopeID !== "string" || !parsed.scopeID) return
+    return {
+      id: parsed.id,
+      scopeID: parsed.scopeID,
+      connection,
+      title: "title" in parsed && typeof parsed.title === "string" ? parsed.title : "",
+      ...("updatedAt" in parsed && typeof parsed.updatedAt === "number" && Number.isFinite(parsed.updatedAt)
+        ? { updatedAt: parsed.updatedAt }
+        : {}),
     }
   } catch {
-    // Malformed or foreign drag payloads are ignored.
+    return
   }
-  return undefined
+}
+
+export function parseSessionDragPayload(raw: string, connection: string): SessionDragPayload | undefined {
+  const data = parseSessionDragData(raw, connection)
+  return data ? { scopeKey: data.scopeID, sessionID: data.id } : undefined
 }
 
 /**

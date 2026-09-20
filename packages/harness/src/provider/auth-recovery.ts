@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { retryAfterMs } from "@ericsanchezok/synergy-util/retry"
 import { ScopeContext } from "../scope/context"
 import { ProviderAuthRecoveryError } from "./auth-recovery-error"
@@ -148,7 +149,7 @@ export namespace ProviderAuthRecovery {
 
   function runtimeCredential(providerID: string, profileID?: string, environment?: string[]) {
     const profile = ProviderProfile.resolve(providerID, profileID)
-    const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+    const environmentValues = ScopeContext.tryScope() ? Env.all() : RuntimeContext.current().host.env
     const usesEnvironment = (environment ?? profile?.env ?? []).some((name) => !!environmentValues[name]?.trim())
     return {
       source: usesEnvironment ? "env" : profile?.origin === "plugin" ? "plugin" : "runtime",
@@ -486,7 +487,7 @@ export namespace ProviderAuthRecovery {
     const wrapped: FetchLike = async (input, init) => {
       const template = new Request(input, init)
       const selected = await Auth.select(providerID)
-      const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+      const environmentValues = ScopeContext.tryScope() ? Env.all() : RuntimeContext.current().host.env
       const environmentKey = options?.environment
         ?.map((name) => environmentValues[name]?.trim())
         .find((value): value is string => !!value)

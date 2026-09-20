@@ -47,7 +47,7 @@ export namespace RuntimeReloadPath {
     const domain = ConfigDomain.domainForFile(filePath)
     if (domain || process.platform !== "win32") return domain
     const basename = pathApi().basename(filePath).toLowerCase()
-    return ConfigDomain.definitions.find((candidate) => candidate.filename.toLowerCase() === basename)
+    return ConfigDomain.definitions().find((candidate) => candidate.filename.toLowerCase() === basename)
   }
 
   function globalConfigRoots() {

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { SessionExecutionContributions } from "../session/execution-contributions"
 import { SessionUsage } from "../session/usage"
 import { RolloutLifecycle } from "../session/rollout/lifecycle"
@@ -35,17 +36,23 @@ import { Lock } from "../util/lock"
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
 
-  const tasks: Map<string, CortexTypes.Task> = new Map()
-  const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
-  const taskRuns: Map<string, Promise<void>> = new Map()
-  const taskBudgets = new Map<string, { maxOutputTokens?: number; maxCost?: number }>()
-  const acquiredTasks = new Set<string>()
-  const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
-  const finalizingTasks = new Set<string>()
-  const cancellationRequests = new Set<string>()
-  const timeoutRequests = new Set<string>()
-  const timeoutErrors = new Map<string, string>()
-  let progressUpdateTimer: Timer | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    stopped: false,
+    background: new Map<Promise<void>, string>(),
+    backgroundErrors: [] as unknown[],
+    retentionTimers: new Set<ReturnType<typeof setTimeout>>(),
+    tasks: new Map() as Map<string, CortexTypes.Task>,
+    taskWaiters: new Map() as Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>>,
+    taskRuns: new Map() as Map<string, Promise<void>>,
+    taskBudgets: new Map<string, { maxOutputTokens?: number; maxCost?: number }>(),
+    acquiredTasks: new Set<string>(),
+    taskTimeouts: new Map<string, ReturnType<typeof setTimeout>>(),
+    finalizingTasks: new Set<string>(),
+    cancellationRequests: new Set<string>(),
+    timeoutRequests: new Set<string>(),
+    timeoutErrors: new Map<string, string>(),
+    progressUpdateTimer: undefined as Timer | undefined,
+  }))
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
   const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
@@ -98,11 +105,14 @@ export namespace Cortex {
   }
 
   export const prepare = fn(CortexTypes.LaunchInput, async (input) => {
+    const instanceState = runtimeState()
+
+    if (instanceState.stopped) throw new Error("Cortex is stopping")
     using _ = input.reuseInterrupted
       ? await Lock.write(`cortex-task-prepare:${input.parentSessionID}:${input.agent}:${input.parentMessageID}`)
       : undefined
     if (input.reuseInterrupted) {
-      const active = Array.from(tasks.values()).find(
+      const active = Array.from(instanceState.tasks.values()).find(
         (task) =>
           task.parentSessionID === input.parentSessionID &&
           task.parentMessageID === input.parentMessageID &&
@@ -273,12 +283,12 @@ export namespace Cortex {
       draft.cortex.visibility = input.visibility
       draft.completionNotice.silent = input.visibility === "hidden"
     })
-    taskBudgets.set(taskID, {
+    instanceState.taskBudgets.set(taskID, {
       maxOutputTokens: input.maxOutputTokens,
       maxCost: input.maxCost,
     })
 
-    tasks.set(taskID, task)
+    instanceState.tasks.set(taskID, task)
     emitPluginTaskObservability(task, "started")
     emitPluginTaskObservability(task, "queued")
     SessionManager.registerChildRuntime(session.id)
@@ -291,64 +301,73 @@ export namespace Cortex {
   })
 
   export async function start(taskID: string): Promise<CortexTypes.Task> {
+    const instanceState = runtimeState()
+    if (instanceState.stopped) throw new Error("Cortex is stopping")
+
     using _ = await Lock.write(`cortex-task-start:${taskID}`)
-    const task = tasks.get(taskID)
+    const task = instanceState.tasks.get(taskID)
     if (!task) throw new Error(`Cortex task ${taskID} not found`)
     if (task.status !== "queued") return task
 
     await CortexConcurrency.acquire(task.agent)
-    acquiredTasks.add(taskID)
+    instanceState.acquiredTasks.add(taskID)
 
-    const current = tasks.get(taskID)
+    const current = instanceState.tasks.get(taskID)
     if (!current || current.status === "cancelled") {
-      taskBudgets.delete(taskID)
-      acquiredTasks.delete(taskID)
+      instanceState.taskBudgets.delete(taskID)
+      instanceState.acquiredTasks.delete(taskID)
       CortexConcurrency.release(task.agent)
       return current ?? task
     }
 
-    setTaskStatus(taskID, "running")
+    await setTaskStatus(taskID, "running")
 
-    const budget = taskBudgets.get(taskID)
-    taskBudgets.delete(taskID)
+    const budget = instanceState.taskBudgets.get(taskID)
+    instanceState.taskBudgets.delete(taskID)
     const run = runTask(current, current.model, budget?.maxOutputTokens, budget?.maxCost)
       .catch(async (error) => {
         log.error("task error", { taskID, error })
         await updateTaskStatus(taskID, "error", String(error), undefined, { launchFailure: true })
       })
       .finally(() => {
-        taskRuns.delete(taskID)
+        instanceState.taskRuns.delete(taskID)
       })
-    taskRuns.set(taskID, run)
+    instanceState.taskRuns.set(taskID, run)
 
     if (current.timeoutMs) {
       const timeout = setTimeout(() => {
-        void (async () => {
-          const active = tasks.get(taskID)
-          if (!active || isTerminal(active.status)) return
-          // Claim the deadline before any await so a concurrently settling run
-          // cannot publish completed first; updateTaskStatus converts the claim.
-          if (timeoutRequests.has(taskID)) return
-          timeoutRequests.add(taskID)
-          if (isTerminal(tasks.get(taskID)?.status ?? "queued")) {
-            timeoutRequests.delete(taskID)
-            return
-          }
-          const message = `Task exceeded its ${current.timeoutMs}ms runtime limit.`
-          timeoutErrors.set(taskID, message)
-          try {
-            await SessionInbox.fenceQueuedWork(active.sessionID, (fenceQueuedBefore) => {
-              SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
-            })
-          } catch (error) {
-            SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true })
-            log.error("failed to discard queued follow-ups on timeout", { taskID, error })
-            timeoutErrors.set(taskID, `${message} Queued follow-up cleanup failed; they may still be queued.`)
-          }
-          await updateTaskStatus(taskID, "error", timeoutErrors.get(taskID))
-        })()
+        track(
+          taskID,
+          (async () => {
+            const active = instanceState.tasks.get(taskID)
+            if (!active || isTerminal(active.status)) return
+            // Claim the deadline before any await so a concurrently settling run
+            // cannot publish completed first; updateTaskStatus converts the claim.
+            if (instanceState.timeoutRequests.has(taskID)) return
+            instanceState.timeoutRequests.add(taskID)
+            if (isTerminal(instanceState.tasks.get(taskID)?.status ?? "queued")) {
+              instanceState.timeoutRequests.delete(taskID)
+              return
+            }
+            const message = `Task exceeded its ${current.timeoutMs}ms runtime limit.`
+            instanceState.timeoutErrors.set(taskID, message)
+            try {
+              await SessionInbox.fenceQueuedWork(active.sessionID, (fenceQueuedBefore) => {
+                SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
+              })
+            } catch (error) {
+              SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true })
+              log.error("failed to discard queued follow-ups on timeout", { taskID, error })
+              instanceState.timeoutErrors.set(
+                taskID,
+                `${message} Queued follow-up cleanup failed; they may still be queued.`,
+              )
+            }
+            await updateTaskStatus(taskID, "error", instanceState.timeoutErrors.get(taskID))
+          })(),
+        )
       }, current.timeoutMs)
-      taskTimeouts.set(taskID, timeout)
+      instanceState.taskTimeouts.set(taskID, timeout)
     }
 
     return current
@@ -359,16 +378,18 @@ export namespace Cortex {
     return start(task.id)
   })
 
-  function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): void {
-    const task = tasks.get(taskID)
+  async function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): Promise<void> {
+    const instanceState = runtimeState()
+
+    const task = instanceState.tasks.get(taskID)
     if (!task) return
 
     task.status = status
-    tasks.set(taskID, task)
+    instanceState.tasks.set(taskID, task)
     log.info("task status updated", { taskID, status })
     emitPluginTaskObservability(task, status)
 
-    void Session.update(task.sessionID, (draft) => {
+    await Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
         draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
       }
@@ -381,36 +402,41 @@ export namespace Cortex {
 
   function emitPluginTaskObservability(task: CortexTypes.Task, phase: string): void {
     if (!task.owner) return
-    void Observability.emit(`plugin.task.${phase}`, {
-      traceId: task.owner.correlationId,
-      sessionID: task.sessionID,
-      scopeID: task.owner.scopeId,
-      level: phase === "error" || phase === "interrupted" ? "error" : "info",
-      data: {
-        pluginId: task.owner.pluginId,
-        pluginGeneration: task.owner.pluginGeneration,
-        correlationId: task.owner.correlationId,
-        taskId: task.id,
-        status: task.status,
-        agent: task.agent,
-        model: task.model,
-        startedAt: task.startedAt,
-        completedAt: task.completedAt,
-        durationMs: task.completedAt ? task.completedAt - task.startedAt : undefined,
-        usage: task.usage,
-      },
-    })
+    track(
+      task.id,
+      Observability.emit(`plugin.task.${phase}`, {
+        traceId: task.owner.correlationId,
+        sessionID: task.sessionID,
+        scopeID: task.owner.scopeId,
+        level: phase === "error" || phase === "interrupted" ? "error" : "info",
+        data: {
+          pluginId: task.owner.pluginId,
+          pluginGeneration: task.owner.pluginGeneration,
+          correlationId: task.owner.correlationId,
+          taskId: task.id,
+          status: task.status,
+          agent: task.agent,
+          model: task.model,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          durationMs: task.completedAt ? task.completedAt - task.startedAt : undefined,
+          usage: task.usage,
+        },
+      }),
+    )
   }
 
   function publishVisibleTasksUpdate(): void {
-    void Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
+    track("", Bus.publish(Event.TasksUpdated, { tasks: listVisible() }))
   }
 
   function scheduleProgressUpdate(task: CortexTypes.Task): void {
+    const instanceState = runtimeState()
+
     if (task.visibility === "hidden") return
-    if (progressUpdateTimer) return
-    progressUpdateTimer = setTimeout(() => {
-      progressUpdateTimer = undefined
+    if (instanceState.progressUpdateTimer) return
+    instanceState.progressUpdateTimer = setTimeout(() => {
+      instanceState.progressUpdateTimer = undefined
       publishVisibleTasksUpdate()
     }, PROGRESS_UPDATE_EVENT_DELAY_MS)
   }
@@ -421,9 +447,11 @@ export namespace Cortex {
     maxOutputTokens?: number,
     maxCost?: number,
   ): Promise<void> {
+    const instanceState = runtimeState()
+
     log.info("running task", { taskID: task.id, sessionID: task.sessionID })
 
-    const initial = tasks.get(task.id)
+    const initial = instanceState.tasks.get(task.id)
     if (!initial || initial.status === "cancelled") return
 
     const agent = await Agent.get(task.agent)
@@ -438,13 +466,13 @@ export namespace Cortex {
       throw new Error("Structured Cortex output is not supported for external agents")
     }
     CortexOutput.assertValidStructuredSchema(outputConfig)
-    const currentTask = tasks.get(task.id)
+    const currentTask = instanceState.tasks.get(task.id)
     if (currentTask) {
       currentTask.model = resolvedModel
-      tasks.set(task.id, currentTask)
+      instanceState.tasks.set(task.id, currentTask)
     }
     // Persist resolved model to session metadata
-    void Session.update(task.sessionID, (draft) => {
+    await Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
         draft.cortex.model = { providerID: resolvedModel.providerID, modelID: resolvedModel.modelID }
       }
@@ -455,7 +483,7 @@ export namespace Cortex {
     try {
       unsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
         if (evt.properties.part.sessionID !== task.sessionID) return
-        const current = tasks.get(task.id)
+        const current = instanceState.tasks.get(task.id)
         if (!current || current.status !== "running") return
 
         const now = Date.now()
@@ -482,7 +510,7 @@ export namespace Cortex {
             lastUpdate: now,
             recentTools: [entry, ...(progress.recentTools ?? []).filter((item) => item.id !== part.id)].slice(0, 8),
           }
-          tasks.set(task.id, current)
+          instanceState.tasks.set(task.id, current)
           scheduleProgressUpdate(current)
           return
         }
@@ -495,7 +523,7 @@ export namespace Cortex {
             lastPartId: part.id,
             lastUpdate: now,
           }
-          tasks.set(task.id, current)
+          instanceState.tasks.set(task.id, current)
           scheduleProgressUpdate(current)
         }
       })
@@ -624,16 +652,18 @@ export namespace Cortex {
     output?: CortexTypes.TaskOutput,
     options?: { launchFailure?: boolean },
   ): Promise<void> {
-    const task = tasks.get(taskID)
+    const instanceState = runtimeState()
+
+    const task = instanceState.tasks.get(taskID)
     if (!task) return
 
-    if (cancellationRequests.has(taskID)) {
+    if (instanceState.cancellationRequests.has(taskID)) {
       status = "cancelled"
       error = undefined
       output = undefined
       options = undefined
     }
-    const timeoutMessage = timeoutErrors.get(taskID)
+    const timeoutMessage = instanceState.timeoutErrors.get(taskID)
     if (timeoutMessage !== undefined) {
       status = "error"
       error = timeoutMessage
@@ -645,13 +675,13 @@ export namespace Cortex {
       log.info("ignoring task status update for terminal task", { taskID, current: task.status, next: status })
       return
     }
-    if (finalizingTasks.has(taskID)) {
+    if (instanceState.finalizingTasks.has(taskID)) {
       if (status === "cancelled") {
         task.status = "cancelled"
         task.completedAt ??= Date.now()
         task.error = undefined
         task.output = undefined
-        tasks.set(taskID, task)
+        instanceState.tasks.set(taskID, task)
         await record(() =>
           Session.update(task.sessionID, (draft) => {
             if (!draft.cortex) return
@@ -665,11 +695,11 @@ export namespace Cortex {
         log.info("published cancellation during concurrent task finalization", { taskID })
         return
       }
-      if (timeoutErrors.has(taskID)) {
+      if (instanceState.timeoutErrors.has(taskID)) {
         task.status = "error"
         task.completedAt ??= Date.now()
-        task.error = timeoutErrors.get(taskID)
-        tasks.set(taskID, task)
+        task.error = instanceState.timeoutErrors.get(taskID)
+        instanceState.tasks.set(taskID, task)
         await record(() =>
           Session.update(task.sessionID, (draft) => {
             if (!draft.cortex) return
@@ -685,7 +715,7 @@ export namespace Cortex {
       log.info("ignoring concurrent task finalization", { taskID, next: status })
       return
     }
-    finalizingTasks.add(taskID)
+    instanceState.finalizingTasks.add(taskID)
 
     try {
       const terminalTask: CortexTypes.Task = {
@@ -697,14 +727,14 @@ export namespace Cortex {
       if (error) terminalTask.error = error
       if (output) terminalTask.output = output
       if (options?.launchFailure) terminalTask.launchFailure = true
-      const waiters = taskWaiters.get(taskID)
+      const waiters = instanceState.taskWaiters.get(taskID)
       const shouldNotifyParent = !waiters?.size && terminalTask.notifyParentOnComplete !== false
       terminalTask.notifyParentOnComplete = shouldNotifyParent
 
-      const timeout = taskTimeouts.get(taskID)
+      const timeout = instanceState.taskTimeouts.get(taskID)
       if (timeout) {
         clearTimeout(timeout)
-        taskTimeouts.delete(taskID)
+        instanceState.taskTimeouts.delete(taskID)
       }
 
       await record(() =>
@@ -726,14 +756,14 @@ export namespace Cortex {
       // session metadata are being persisted. Reconcile once more immediately
       // before the synchronous publication boundary so an accepted cancel or
       // timeout cannot surface as completed.
-      const forcedStatus = cancellationRequests.has(taskID)
+      const forcedStatus = instanceState.cancellationRequests.has(taskID)
         ? "cancelled"
-        : timeoutErrors.has(taskID)
+        : instanceState.timeoutErrors.has(taskID)
           ? "error"
           : undefined
       if (forcedStatus && terminalTask.status !== forcedStatus) {
         terminalTask.status = forcedStatus
-        terminalTask.error = forcedStatus === "error" ? timeoutErrors.get(taskID) : undefined
+        terminalTask.error = forcedStatus === "error" ? instanceState.timeoutErrors.get(taskID) : undefined
         terminalTask.output = undefined
         terminalTask.launchFailure = undefined
         await record(() =>
@@ -747,7 +777,7 @@ export namespace Cortex {
         )
       }
 
-      if (acquiredTasks.delete(taskID)) {
+      if (instanceState.acquiredTasks.delete(taskID)) {
         CortexConcurrency.release(terminalTask.agent)
       }
 
@@ -762,7 +792,7 @@ export namespace Cortex {
       // Keep the task handle returned by launch() live while still publishing
       // the terminal transition at this single, ordered boundary.
       Object.assign(task, terminalTask)
-      tasks.set(taskID, task)
+      instanceState.tasks.set(taskID, task)
       log.info("task status updated", { taskID, status: terminalTask.status })
       emitPluginTaskObservability(terminalTask, terminalTask.status)
       publishVisibleTasksUpdate()
@@ -844,12 +874,12 @@ export namespace Cortex {
           clearTimeout(waiter.timeout)
           waiter.resolve(terminalTask)
         }
-        taskWaiters.delete(taskID)
+        instanceState.taskWaiters.delete(taskID)
         log.info("task result delivered to waiters", { taskID, waiterCount: waiters.size })
       }
 
-      setTimeout(() => {
-        const task = tasks.get(taskID)
+      retain(() => {
+        const task = instanceState.tasks.get(taskID)
         if (task) {
           task.prompt = truncate(task.prompt, 4096)
           task.progress = undefined
@@ -857,20 +887,20 @@ export namespace Cortex {
         }
       }, PROMPT_COMPACT_DELAY_MS)
 
-      setTimeout(() => {
-        tasks.delete(taskID)
-        taskBudgets.delete(taskID)
-        acquiredTasks.delete(taskID)
+      retain(() => {
+        instanceState.tasks.delete(taskID)
+        instanceState.taskBudgets.delete(taskID)
+        instanceState.acquiredTasks.delete(taskID)
         SessionManager.unregisterRuntime(terminalTask.sessionID)
         log.info("task cleaned up", { taskID })
       }, TASK_CLEANUP_DELAY_MS)
     } finally {
       // Once the terminal state is published, isTerminal() is the durable race
       // guard. Keeping task IDs here would turn this lock into a lifetime leak.
-      finalizingTasks.delete(taskID)
-      cancellationRequests.delete(taskID)
-      timeoutRequests.delete(taskID)
-      timeoutErrors.delete(taskID)
+      instanceState.finalizingTasks.delete(taskID)
+      instanceState.cancellationRequests.delete(taskID)
+      instanceState.timeoutRequests.delete(taskID)
+      instanceState.timeoutErrors.delete(taskID)
     }
   }
 
@@ -904,7 +934,9 @@ export namespace Cortex {
     taskID: string
     parentSessionID: string
   }): Promise<boolean> {
-    const task = tasks.get(input.taskID)
+    const instanceState = runtimeState()
+
+    const task = instanceState.tasks.get(input.taskID)
     if (task && (task.parentSessionID !== input.parentSessionID || !isTerminal(task.status))) return false
 
     using _ = await Lock.write(parentNotificationLock(input.taskID))
@@ -1183,15 +1215,21 @@ export namespace Cortex {
   }
 
   export function get(taskID: string): CortexTypes.Task | undefined {
-    return tasks.get(taskID)
+    const instanceState = runtimeState()
+
+    return instanceState.tasks.get(taskID)
   }
 
   export function list(): CortexTypes.Task[] {
-    return Array.from(tasks.values())
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.tasks.values())
   }
 
   export function listVisible(): CortexTypes.Task[] {
-    return Array.from(tasks.values()).filter((task) => task.visibility !== "hidden")
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.tasks.values()).filter((task) => task.visibility !== "hidden")
   }
 
   export function getRunningTasks(): CortexTypes.Task[] {
@@ -1205,7 +1243,9 @@ export namespace Cortex {
   }
 
   export function getTasksForSession(sessionID: string): CortexTypes.Task[] {
-    return Array.from(tasks.values()).filter((t) => t.parentSessionID === sessionID)
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.tasks.values()).filter((t) => t.parentSessionID === sessionID)
   }
 
   export function getVisibleTasks(sessionID: string): CortexTypes.Task[] {
@@ -1264,13 +1304,15 @@ export namespace Cortex {
   }
 
   function getDescendantTasks(parentSessionID: string): CortexTypes.Task[] {
+    const instanceState = runtimeState()
+
     const pending = [parentSessionID]
     const seen = new Set<string>()
     const result: CortexTypes.Task[] = []
 
     while (pending.length > 0) {
       const currentSessionID = pending.shift()!
-      for (const task of Array.from(tasks.values())) {
+      for (const task of Array.from(instanceState.tasks.values())) {
         if (task.parentSessionID !== currentSessionID) continue
         if (seen.has(task.id)) continue
         seen.add(task.id)
@@ -1283,12 +1325,14 @@ export namespace Cortex {
   }
 
   export async function cancel(taskID: string): Promise<void> {
-    const task = tasks.get(taskID)
+    const instanceState = runtimeState()
+
+    const task = instanceState.tasks.get(taskID)
     if (!task) return
     if (isTerminal(task.status)) return
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
-    cancellationRequests.add(taskID)
+    instanceState.cancellationRequests.add(taskID)
     try {
       await SessionInbox.fenceQueuedWork(task.sessionID, (fenceQueuedBefore) => {
         SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
@@ -1297,7 +1341,7 @@ export namespace Cortex {
       SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true })
       log.error("failed to discard queued follow-ups on cancel", { taskID, error })
       // Do not acknowledge: retained items could restart the cancelled work.
-      cancellationRequests.delete(taskID)
+      instanceState.cancellationRequests.delete(taskID)
       throw new Error(
         `Task ${taskID} cancellation could not discard its queued follow-ups; they may still restart the session.`,
       )
@@ -1305,14 +1349,57 @@ export namespace Cortex {
     await updateTaskStatus(taskID, "cancelled")
   }
 
+  function track(taskID: string, operation: Promise<unknown>) {
+    const state = runtimeState()
+    const tracked = operation
+      .then(
+        () => {},
+        (error) => {
+          state.backgroundErrors.push(error)
+          log.error("Cortex background task failed", { taskID, error })
+        },
+      )
+      .finally(() => state.background.delete(tracked))
+    state.background.set(tracked, taskID)
+  }
+
+  function retain(action: () => void, delay: number) {
+    const state = runtimeState()
+    if (state.stopped) return
+    const timer = setTimeout(() => {
+      state.retentionTimers.delete(timer)
+      action()
+    }, delay)
+    timer.unref()
+    state.retentionTimers.add(timer)
+  }
+
   export async function drain(taskID?: string): Promise<void> {
-    if (!taskID) {
-      while (taskRuns.size) await Promise.all([...taskRuns.values()])
-      return
+    const state = runtimeState()
+    const task = taskID ? state.tasks.get(taskID) : undefined
+    const selected = taskID
+      ? new Set([taskID, ...getDescendantTasks(task?.sessionID ?? "").map((child) => child.id)])
+      : undefined
+    while (true) {
+      const operations = [
+        ...[...state.taskRuns].filter(([id]) => !selected || selected.has(id)).map(([, operation]) => operation),
+        ...[...state.background].filter(([, id]) => !selected || selected.has(id)).map(([operation]) => operation),
+      ]
+      if (!operations.length) break
+      await Promise.all(operations)
     }
-    const task = tasks.get(taskID)
-    const descendants = task ? getDescendantTasks(task.sessionID) : []
-    await Promise.all([taskRuns.get(taskID), ...descendants.map((child) => taskRuns.get(child.id))])
+    if (!selected && state.backgroundErrors.length)
+      throw new AggregateError(state.backgroundErrors.splice(0), "Cortex background tasks failed")
+  }
+
+  export async function stop() {
+    const state = runtimeState()
+    state.stopped = true
+    try {
+      await drain()
+    } finally {
+      reset()
+    }
   }
 
   export async function cancelAll(parentSessionID: string): Promise<number> {
@@ -1344,8 +1431,11 @@ export namespace Cortex {
     mode: "summary" | "progress" | "tail" | "full" = "full",
     parentSessionID?: string,
   ): Promise<string> {
+    const instanceState = runtimeState()
+
     const task =
-      tasks.get(taskID) ?? (parentSessionID ? await getVisibleTaskForOutput(parentSessionID, taskID) : undefined)
+      instanceState.tasks.get(taskID) ??
+      (parentSessionID ? await getVisibleTaskForOutput(parentSessionID, taskID) : undefined)
     if (!task) {
       return `Task ${taskID} not found. It may have expired or been cancelled.`
     }
@@ -1363,7 +1453,9 @@ export namespace Cortex {
   }
 
   export function outputView(taskID: string) {
-    const task = tasks.get(taskID)
+    const instanceState = runtimeState()
+
+    const task = instanceState.tasks.get(taskID)
     if (!task) {
       return {
         taskID,
@@ -1430,7 +1522,9 @@ export namespace Cortex {
   }
 
   export async function waitFor(taskID: string, timeoutSeconds: number): Promise<CortexTypes.Task | undefined> {
-    const task = tasks.get(taskID)
+    const instanceState = runtimeState()
+
+    const task = instanceState.tasks.get(taskID)
     if (!task || (task.status !== "running" && task.status !== "queued")) return task
 
     return new Promise((resolve) => {
@@ -1446,41 +1540,45 @@ export namespace Cortex {
           if (resolved) return
           resolved = true
           // Unregister this waiter — if the task completes later with no waiters, mail will be sent
-          const waiters = taskWaiters.get(taskID)
+          const waiters = instanceState.taskWaiters.get(taskID)
           if (waiters) {
             waiters.delete(waiter)
-            if (waiters.size === 0) taskWaiters.delete(taskID)
+            if (waiters.size === 0) instanceState.taskWaiters.delete(taskID)
           }
-          resolve(tasks.get(taskID))
+          resolve(instanceState.tasks.get(taskID))
         }, timeoutSeconds * 1000),
       }
 
-      if (!taskWaiters.has(taskID)) taskWaiters.set(taskID, new Set())
-      taskWaiters.get(taskID)!.add(waiter)
+      if (!instanceState.taskWaiters.has(taskID)) instanceState.taskWaiters.set(taskID, new Set())
+      instanceState.taskWaiters.get(taskID)!.add(waiter)
     })
   }
 
   export function reset(): void {
-    tasks.clear()
-    taskRuns.clear()
-    taskBudgets.clear()
-    acquiredTasks.clear()
-    finalizingTasks.clear()
-    cancellationRequests.clear()
-    timeoutRequests.clear()
-    timeoutErrors.clear()
-    for (const timeout of taskTimeouts.values()) clearTimeout(timeout)
-    taskTimeouts.clear()
-    if (progressUpdateTimer) {
-      clearTimeout(progressUpdateTimer)
-      progressUpdateTimer = undefined
+    const instanceState = runtimeState()
+
+    for (const timer of instanceState.retentionTimers) clearTimeout(timer)
+    instanceState.retentionTimers.clear()
+    instanceState.tasks.clear()
+    instanceState.taskRuns.clear()
+    instanceState.taskBudgets.clear()
+    instanceState.acquiredTasks.clear()
+    instanceState.finalizingTasks.clear()
+    instanceState.cancellationRequests.clear()
+    instanceState.timeoutRequests.clear()
+    instanceState.timeoutErrors.clear()
+    for (const timeout of instanceState.taskTimeouts.values()) clearTimeout(timeout)
+    instanceState.taskTimeouts.clear()
+    if (instanceState.progressUpdateTimer) {
+      clearTimeout(instanceState.progressUpdateTimer)
+      instanceState.progressUpdateTimer = undefined
     }
-    for (const waiters of taskWaiters.values()) {
+    for (const waiters of instanceState.taskWaiters.values()) {
       for (const waiter of waiters) {
         clearTimeout(waiter.timeout)
       }
     }
-    taskWaiters.clear()
+    instanceState.taskWaiters.clear()
     CortexConcurrency.reset()
   }
 

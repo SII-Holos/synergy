@@ -41,7 +41,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
     data: Data
-    directory: string
+    directory: string | null
     serverUrl: string
     /**
      * Session runtime state (status, pending permissions, pending questions,

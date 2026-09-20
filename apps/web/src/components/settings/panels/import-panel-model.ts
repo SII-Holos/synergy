@@ -63,7 +63,7 @@ export async function loadImportUrl(url: string, fetcher: Fetcher = fetch) {
 }
 
 export function projectImportScopes(scopes: Scope[]) {
-  return scopes.filter((scope) => scope.type === "project")
+  return scopes.filter((scope) => scope.type === "project" && !!scope.local)
 }
 
 export function buildImportPlanParameters(input: PlanParametersInput) {
@@ -122,7 +122,7 @@ export function formatImportValue(value: unknown) {
 function targetParameters(target: ImportTarget) {
   if (target.scope === "global") return { scopeID: "home" as const }
   if (!target.project) throw new Error("Select a project before planning a project config import")
-  return { directory: target.project.directory }
+  return { scopeID: target.project.id }
 }
 
 async function readBoundedResponse(response: Response, source: string) {

@@ -70,7 +70,7 @@ export const ScopeNavEntry = z
     scopeID: z.string(),
     scopeType: z.enum(["home", "project"]),
     name: z.string().optional(),
-    directory: z.string(),
+    directory: z.string().nullable(),
     latestActivityAt: z.number(),
     sessionCount: z.number(),
     icon: z
@@ -142,7 +142,7 @@ export interface ScopeNavEntry {
   scopeID: string
   scopeType: "home" | "project"
   name?: string
-  directory: string
+  directory: string | null
   latestActivityAt: number
   sessionCount: number
   icon?: { url?: string; color?: string }
@@ -444,8 +444,7 @@ export namespace SessionNav {
         | {
             name?: string
             icon?: { url?: string; color?: string }
-            directory?: string
-            worktree?: string
+            local?: import("../scope/types").Local | null
             time?: { created?: number; archived?: number }
           }
         | undefined
@@ -462,7 +461,7 @@ export namespace SessionNav {
         scopeID: sid,
         scopeType: sid === "home" ? "home" : "project",
         name: scopeInfo?.name,
-        directory: sid === "home" ? home.directory : (scopeInfo?.worktree ?? scopeInfo?.directory ?? ""),
+        directory: scopeInfo?.local?.directory ?? null,
         latestActivityAt,
         sessionCount: activeEntries.length,
         icon: scopeInfo?.icon,

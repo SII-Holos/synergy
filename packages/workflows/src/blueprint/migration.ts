@@ -427,4 +427,6 @@ export const migrations: Migration[] = [
   },
 ]
 
-MigrationRegistry.register("blueprint_loop", migrations)
+export function registerBlueprintMigrations() {
+  MigrationRegistry.register("blueprint_loop", migrations)
+}

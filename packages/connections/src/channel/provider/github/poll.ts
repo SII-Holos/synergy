@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { SessionRetry } from "@ericsanchezok/synergy-harness/session/retry"
 import { GitHubChannelAuth, GitHubApiError, type RequestDescriptor } from "./api"
@@ -92,8 +93,8 @@ export async function pollRepository(input: {
 }): Promise<void> {
   const { owner, repo } = splitRepository(input.repository)
 
-  const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
-  const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+  const appId = Number(RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_ID)
+  const privateKey = RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
   const jwt = GitHubChannelAuth.generateJWT({ appId, privateKey })
   const installation = await GitHubChannelAuth.GitHubClient.send<unknown>(
     GitHubChannelAuth.GitHubClient.resolveInstallation({ owner, repo, jwt: jwt as string }),

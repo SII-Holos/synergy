@@ -1,3 +1,5 @@
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserProtocolError,
@@ -43,7 +45,9 @@ const MAX_TICKET_BYTES = 16 * 1024
 const MAX_ANNOTATION_BYTES = 256 * 1024
 const MAX_DIAGNOSTICS_BYTES = 64 * 1024
 
-let browserViewerOrigins = new Set<string>()
+const runtimeState = RuntimeContext.state(() => ({
+  browserViewerOrigins: new Set<string>(),
+}))
 const payloadTooLargeResponse = {
   description: "Browser request payload is too large",
   content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
@@ -82,14 +86,18 @@ interface RouteState {
   nativePresentation: boolean
 }
 
-function routeState(c: {
+async function routeState(c: {
   req: { url: string; param(name: string): string; query(name: string): string | undefined }
-}): RouteState {
+}): Promise<RouteState> {
   const directory = c.req.param("directory")
   if (!directory) throw new Error("Missing directory")
   const mode = (c.req.query("mode") ?? "session") as BrowserOwner.Mode
+  const session =
+    mode === "session" && c.req.query("sessionID") ? await Session.get(c.req.query("sessionID")!) : undefined
+  if (session && session.scope.id !== ScopeContext.current.scope.id)
+    throw new Error("Browser session belongs to another Scope")
   const owner = BrowserOwner.fromRoute({
-    directory: ScopeContext.current.directory,
+    directory: session ? (session.workspace?.path ?? null) : (ScopeContext.current.workspace?.path ?? null),
     scopeID: ScopeContext.current.scope.id,
     sessionID: c.req.query("sessionID"),
     mode,
@@ -130,366 +138,369 @@ function send(ws: BrowserWS, payload: unknown): void {
   } catch {}
 }
 
-export const BrowserRoute = new Hono()
-  .get(
-    "/browser/host/broker",
-    upgradeWebSocket((c) => {
-      try {
-        assertWebSocketRequest(c, "host")
-      } catch (error) {
-        return rejectedSocket(error)
-      }
-      let registered = false
-      let brokerSocket: BrowserWS | null = null
-      return {
-        onOpen() {},
-        onMessage(event: any, ws: BrowserWS) {
-          const raw = String(event.data ?? "")
-          if (Buffer.byteLength(raw, "utf8") > MAX_BROKER_BYTES) {
-            ws.close(1009, "Browser Host message is too large")
-            return
-          }
-          try {
-            const message = JSON.parse(raw)
-            if (!registered) {
-              BrowserBroker.attach(ws, message)
-              registered = true
-              brokerSocket = ws
-            } else {
-              BrowserBroker.handle(brokerSocket!, message)
+export const BrowserRoute = () =>
+  new Hono()
+    .get(
+      "/browser/host/broker",
+      upgradeWebSocket(async (c) => {
+        try {
+          assertWebSocketRequest(c, "host")
+        } catch (error) {
+          return rejectedSocket(error)
+        }
+        let registered = false
+        let brokerSocket: BrowserWS | null = null
+        return {
+          onOpen() {},
+          onMessage(event: any, ws: BrowserWS) {
+            const raw = String(event.data ?? "")
+            if (Buffer.byteLength(raw, "utf8") > MAX_BROKER_BYTES) {
+              ws.close(1009, "Browser Host message is too large")
+              return
             }
-          } catch (error) {
-            log.warn("browser host broker rejected message", {
-              error: error instanceof Error ? error.message : String(error),
+            try {
+              const message = JSON.parse(raw)
+              if (!registered) {
+                BrowserBroker.attach(ws, message)
+                registered = true
+                brokerSocket = ws
+              } else {
+                BrowserBroker.handle(brokerSocket!, message)
+              }
+            } catch (error) {
+              log.warn("browser host broker rejected message", {
+                error: error instanceof Error ? error.message : String(error),
+              })
+              ws.close(1008, "Invalid Browser Host message")
+            }
+          },
+          onClose(_event: unknown, ws: BrowserWS) {
+            BrowserBroker.detach(brokerSocket ?? ws)
+            brokerSocket = null
+          },
+        }
+      }),
+    )
+    .post(
+      "/:directory/browser/webrtc/ticket",
+      describeRoute({
+        summary: "Create a Browser viewer ticket",
+        description: "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
+        operationId: "browser.createViewerTicket",
+        responses: {
+          200: {
+            description: "Browser viewer ticket",
+            content: { "application/json": { schema: resolver(BrowserViewerTicketResponseSchema) } },
+          },
+          400: {
+            description: "Ticket request rejected",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+          413: payloadTooLargeResponse,
+        },
+      }),
+      limitBrowserBody(MAX_TICKET_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator("json", BrowserViewerTicketRequestSchema),
+      async (c) => {
+        try {
+          const state = await routeState(c)
+          const body = c.req.valid("json")
+          const session = await BrowserWorkspace.sessionState(state)
+          if (
+            session.status !== "active" ||
+            !session.page ||
+            session.page.id !== body.pageId ||
+            !BrowserBroker.hasPage(state.owner, body.pageId)
+          ) {
+            throw new BrowserProtocolError({
+              code: "browser_ticket_page_unavailable",
+              message: "The requested Browser page is not active.",
+              retryable: true,
+              pageId: body.pageId,
             })
-            ws.close(1008, "Invalid Browser Host message")
           }
-        },
-        onClose(_event: unknown, ws: BrowserWS) {
-          BrowserBroker.detach(brokerSocket ?? ws)
-          brokerSocket = null
-        },
-      }
-    }),
-  )
-  .post(
-    "/:directory/browser/webrtc/ticket",
-    describeRoute({
-      summary: "Create a Browser viewer ticket",
-      description: "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
-      operationId: "browser.createViewerTicket",
-      responses: {
-        200: {
-          description: "Browser viewer ticket",
-          content: { "application/json": { schema: resolver(BrowserViewerTicketResponseSchema) } },
-        },
-        400: {
-          description: "Ticket request rejected",
-          content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
-        },
-        413: payloadTooLargeResponse,
-      },
-    }),
-    limitBrowserBody(MAX_TICKET_BYTES),
-    validator("query", BrowserRouteQuery),
-    validator("json", BrowserViewerTicketRequestSchema),
-    async (c) => {
-      try {
-        const state = routeState(c)
-        const body = c.req.valid("json")
-        const session = await BrowserWorkspace.sessionState(state)
-        if (
-          session.status !== "active" ||
-          !session.page ||
-          session.page.id !== body.pageId ||
-          !BrowserBroker.hasPage(state.owner, body.pageId)
-        ) {
-          throw new BrowserProtocolError({
-            code: "browser_ticket_page_unavailable",
-            message: "The requested Browser page is not active.",
-            retryable: true,
-            pageId: body.pageId,
+          if (!BrowserBroker.ready("webrtc")) {
+            throw new BrowserProtocolError({
+              code: "browser_host_unavailable",
+              message: "The WebRTC Browser Host is not ready.",
+              retryable: true,
+              pageId: body.pageId,
+            })
+          }
+          if (!BrowserWebRTCSignaling.hasHost(state.owner, body.pageId)) {
+            BrowserBroker.renewHostTicket(state.owner, body.pageId)
+          }
+          const issued = BrowserTicket.issue(state.owner, body.pageId, "viewer")
+          return c.json({
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            ...issued,
+            iceServers: browserIceServers(),
           })
+        } catch (error) {
+          return c.json(protocolError(error, "browser_ticket_failed"), 400)
         }
-        if (!BrowserBroker.ready("webrtc")) {
-          throw new BrowserProtocolError({
-            code: "browser_host_unavailable",
-            message: "The WebRTC Browser Host is not ready.",
-            retryable: true,
-            pageId: body.pageId,
+      },
+    )
+    .post(
+      "/:directory/browser/annotations",
+      describeRoute({
+        summary: "Create a Browser annotation",
+        description: "Attach user feedback to a coordinate on the active Browser page.",
+        operationId: "browser.createAnnotation",
+        responses: {
+          200: {
+            description: "Created Browser annotation",
+            content: { "application/json": { schema: resolver(BrowserAnnotationResponseSchema) } },
+          },
+          400: {
+            description: "Annotation request rejected",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+          413: payloadTooLargeResponse,
+        },
+      }),
+      limitBrowserBody(MAX_ANNOTATION_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator("json", BrowserAnnotationRequestSchema),
+      async (c) => {
+        try {
+          const state = await routeState(c)
+          const body = c.req.valid("json")
+          const session = await BrowserWorkspace.ensureSession(state.owner)
+          const page = session.page
+          if (!page || page.id !== body.pageId) {
+            throw new BrowserProtocolError({
+              code: "browser_annotation_page_unavailable",
+              message: "The annotated Browser page is not active.",
+              retryable: true,
+              pageId: body.pageId,
+            })
+          }
+          const annotation = await session.addAnnotation({
+            pageID: page.id,
+            pageURL: page.url,
+            element: `point(${Math.round(body.x)},${Math.round(body.y)})`,
+            comment: body.comment,
+            styleFeedback: body.styleFeedback,
+            createdBy: "user",
           })
+          return c.json({ protocolVersion: BROWSER_PROTOCOL_VERSION, annotation })
+        } catch (error) {
+          return c.json(protocolError(error, "browser_annotation_failed"), 400)
         }
-        if (!BrowserWebRTCSignaling.hasHost(state.owner, body.pageId)) {
-          BrowserBroker.renewHostTicket(state.owner, body.pageId)
-        }
-        const issued = BrowserTicket.issue(state.owner, body.pageId, "viewer")
-        return c.json({
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          ...issued,
-          iceServers: browserIceServers(),
-        })
-      } catch (error) {
-        return c.json(protocolError(error, "browser_ticket_failed"), 400)
-      }
-    },
-  )
-  .post(
-    "/:directory/browser/annotations",
-    describeRoute({
-      summary: "Create a Browser annotation",
-      description: "Attach user feedback to a coordinate on the active Browser page.",
-      operationId: "browser.createAnnotation",
-      responses: {
-        200: {
-          description: "Created Browser annotation",
-          content: { "application/json": { schema: resolver(BrowserAnnotationResponseSchema) } },
-        },
-        400: {
-          description: "Annotation request rejected",
-          content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
-        },
-        413: payloadTooLargeResponse,
       },
-    }),
-    limitBrowserBody(MAX_ANNOTATION_BYTES),
-    validator("query", BrowserRouteQuery),
-    validator("json", BrowserAnnotationRequestSchema),
-    async (c) => {
-      try {
-        const state = routeState(c)
-        const body = c.req.valid("json")
-        const session = await BrowserWorkspace.ensureSession(state.owner)
-        const page = session.page
-        if (!page || page.id !== body.pageId) {
-          throw new BrowserProtocolError({
-            code: "browser_annotation_page_unavailable",
-            message: "The annotated Browser page is not active.",
-            retryable: true,
+    )
+    .post(
+      "/:directory/browser/diagnostics",
+      describeRoute({
+        summary: "Read Browser diagnostics",
+        description: "Read bounded console, network, element, asset, or download diagnostics for the active page.",
+        operationId: "browser.diagnostics",
+        responses: {
+          200: {
+            description: "Browser diagnostics result",
+            content: { "application/json": { schema: resolver(BrowserDiagnosticsResponseSchema) } },
+          },
+          400: {
+            description: "Diagnostics request rejected",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+          413: payloadTooLargeResponse,
+        },
+      }),
+      limitBrowserBody(MAX_DIAGNOSTICS_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator("json", BrowserDiagnosticsRequestSchema),
+      async (c) => {
+        let commandId: string | undefined
+        try {
+          const state = await routeState(c)
+          const body = c.req.valid("json")
+          commandId = body.commandId
+          const session = await BrowserWorkspace.ensureSession(state.owner)
+          if (!session.page || session.page.id !== body.pageId) {
+            throw new BrowserProtocolError({
+              code: "browser_diagnostics_page_unavailable",
+              message: "The requested Browser page is not active.",
+              retryable: true,
+              pageId: body.pageId,
+              commandId,
+            })
+          }
+          const data = await diagnosticsData(state.owner, body)
+          return c.json({
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
             pageId: body.pageId,
+            action: body.action,
+            data,
           })
+        } catch (error) {
+          return c.json(protocolError(error, "browser_diagnostics_failed", commandId), 400)
         }
-        const annotation = await session.addAnnotation({
-          pageID: page.id,
-          pageURL: page.url,
-          element: `point(${Math.round(body.x)},${Math.round(body.y)})`,
-          comment: body.comment,
-          styleFeedback: body.styleFeedback,
-          createdBy: "user",
-        })
-        return c.json({ protocolVersion: BROWSER_PROTOCOL_VERSION, annotation })
-      } catch (error) {
-        return c.json(protocolError(error, "browser_annotation_failed"), 400)
-      }
-    },
-  )
-  .post(
-    "/:directory/browser/diagnostics",
-    describeRoute({
-      summary: "Read Browser diagnostics",
-      description: "Read bounded console, network, element, asset, or download diagnostics for the active page.",
-      operationId: "browser.diagnostics",
-      responses: {
-        200: {
-          description: "Browser diagnostics result",
-          content: { "application/json": { schema: resolver(BrowserDiagnosticsResponseSchema) } },
-        },
-        400: {
-          description: "Diagnostics request rejected",
-          content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
-        },
-        413: payloadTooLargeResponse,
       },
-    }),
-    limitBrowserBody(MAX_DIAGNOSTICS_BYTES),
-    validator("query", BrowserRouteQuery),
-    validator("json", BrowserDiagnosticsRequestSchema),
-    async (c) => {
-      let commandId: string | undefined
-      try {
-        const state = routeState(c)
-        const body = c.req.valid("json")
-        commandId = body.commandId
-        const session = await BrowserWorkspace.ensureSession(state.owner)
-        if (!session.page || session.page.id !== body.pageId) {
-          throw new BrowserProtocolError({
-            code: "browser_diagnostics_page_unavailable",
-            message: "The requested Browser page is not active.",
-            retryable: true,
-            pageId: body.pageId,
-            commandId,
-          })
+    )
+    .get(
+      "/:directory/browser/session",
+      describeRoute({
+        summary: "Get Browser session state",
+        description: "Read the browser session descriptor without creating, resuming, or navigating a page.",
+        operationId: "browser.session",
+        responses: {
+          200: {
+            description: "Browser session state",
+            content: { "application/json": { schema: resolver(BrowserAPISessionStateSchema) } },
+          },
+          500: {
+            description: "Browser session error",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+        },
+      }),
+      validator("query", BrowserRouteQuery),
+      async (c) => {
+        try {
+          const state = await routeState(c)
+          const session = await BrowserWorkspace.sessionState(state)
+          const payload = BrowserWorkspace.sessionStatePayload(state.owner, session, state.presentation)
+          c.header("x-synergy-seq", String(payload.seq))
+          c.header("x-synergy-epoch", payload.epoch)
+          return c.json(payload)
+        } catch (error) {
+          return c.json(protocolError(error, "browser_session_failed"), 500)
         }
-        const data = await diagnosticsData(state.owner, body)
-        return c.json({
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          pageId: body.pageId,
-          action: body.action,
-          data,
-        })
-      } catch (error) {
-        return c.json(protocolError(error, "browser_diagnostics_failed", commandId), 400)
-      }
-    },
-  )
-  .get(
-    "/:directory/browser/session",
-    describeRoute({
-      summary: "Get Browser session state",
-      description: "Read the browser session descriptor without creating, resuming, or navigating a page.",
-      operationId: "browser.session",
-      responses: {
-        200: {
-          description: "Browser session state",
-          content: { "application/json": { schema: resolver(BrowserAPISessionStateSchema) } },
-        },
-        500: {
-          description: "Browser session error",
-          content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
-        },
       },
-    }),
-    validator("query", BrowserRouteQuery),
-    async (c) => {
-      try {
-        const state = routeState(c)
-        const session = await BrowserWorkspace.sessionState(state)
-        const payload = BrowserWorkspace.sessionStatePayload(state.owner, session, state.presentation)
-        c.header("x-synergy-seq", String(payload.seq))
-        c.header("x-synergy-epoch", payload.epoch)
-        return c.json(payload)
-      } catch (error) {
-        return c.json(protocolError(error, "browser_session_failed"), 500)
-      }
-    },
-  )
-  .post(
-    "/:directory/browser/control",
-    describeRoute({
-      summary: "Control the Browser workspace",
-      description: "Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.",
-      operationId: "browser.control",
-      responses: {
-        200: {
-          description: "Browser control result",
-          content: { "application/json": { schema: resolver(BrowserControlResponseSchema) } },
+    )
+    .post(
+      "/:directory/browser/control",
+      describeRoute({
+        summary: "Control the Browser workspace",
+        description: "Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.",
+        operationId: "browser.control",
+        responses: {
+          200: {
+            description: "Browser control result",
+            content: { "application/json": { schema: resolver(BrowserControlResponseSchema) } },
+          },
+          400: {
+            description: "Invalid browser command",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+          409: {
+            description: "Retryable browser error",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+          413: payloadTooLargeResponse,
         },
-        400: {
-          description: "Invalid browser command",
-          content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
-        },
-        409: {
-          description: "Retryable browser error",
-          content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
-        },
-        413: payloadTooLargeResponse,
+      }),
+      limitBrowserBody(MAX_CONTROL_BYTES),
+      async (c, next) => {
+        const input = await c.req.json().catch(() => null)
+        if (!input || typeof input !== "object" || typeof (input as Record<string, unknown>).commandId !== "string") {
+          return c.json(
+            new BrowserProtocolError({
+              code: "browser_command_id_required",
+              message: "commandId is required.",
+              retryable: false,
+            }).toJSON(),
+            400,
+          )
+        }
+        await next()
       },
-    }),
-    limitBrowserBody(MAX_CONTROL_BYTES),
-    async (c, next) => {
-      const input = await c.req.json().catch(() => null)
-      if (!input || typeof input !== "object" || typeof (input as Record<string, unknown>).commandId !== "string") {
+      validator("query", BrowserRouteQuery),
+      validator("json", BrowserControlRequestSchema, (result, c) => {
+        if (result.success) return
+        const validationError = result.error as
+          | Array<{ path?: PropertyKey[]; message?: string }>
+          | { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
+        const issues = Array.isArray(validationError) ? validationError : (validationError.issues ?? [])
+        const missingCommandId = issues.some((issue) => issue.path?.[0] === "commandId")
         return c.json(
           new BrowserProtocolError({
-            code: "browser_command_id_required",
-            message: "commandId is required.",
+            code: missingCommandId ? "browser_command_id_required" : "browser_invalid_command",
+            message: missingCommandId
+              ? "commandId is required."
+              : issues
+                  .map((issue) => `${issue.path?.join(".") || "command"}: ${issue.message ?? "invalid"}`)
+                  .join("; "),
             retryable: false,
           }).toJSON(),
           400,
         )
-      }
-      await next()
-    },
-    validator("query", BrowserRouteQuery),
-    validator("json", BrowserControlRequestSchema, (result, c) => {
-      if (result.success) return
-      const validationError = result.error as
-        | Array<{ path?: PropertyKey[]; message?: string }>
-        | { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
-      const issues = Array.isArray(validationError) ? validationError : (validationError.issues ?? [])
-      const missingCommandId = issues.some((issue) => issue.path?.[0] === "commandId")
-      return c.json(
-        new BrowserProtocolError({
-          code: missingCommandId ? "browser_command_id_required" : "browser_invalid_command",
-          message: missingCommandId
-            ? "commandId is required."
-            : issues.map((issue) => `${issue.path?.join(".") || "command"}: ${issue.message ?? "invalid"}`).join("; "),
-          retryable: false,
-        }).toJSON(),
-        400,
-      )
-    }),
-    async (c) => {
-      let commandId: string | undefined
-      try {
-        const state = routeState(c)
-        const body = c.req.valid("json")
-        commandId = body.commandId
-        const command = body.command
-        const result = await BrowserWorkspace.executeControl(
-          state,
-          { command, commandId, traceId: body.traceId },
-          new URL(c.req.url).origin,
-        )
-        return c.json(result.payload, result.status as 200)
-      } catch (error) {
-        const normalized = protocolError(error, "browser_control_failed", commandId)
-        return c.json(normalized, normalized.retryable ? 409 : 400)
-      }
-    },
-  )
-  .get(
-    "/:directory/browser/events",
-    upgradeWebSocket((c) => {
-      let state: RouteState
-      try {
-        assertWebSocketRequest(c, "viewer")
-        state = routeState(c)
-      } catch (error) {
-        return rejectedSocket(error)
-      }
-      let unsubscribe: (() => void) | undefined
-      return {
-        async onOpen(_event: unknown, ws: BrowserWS) {
-          try {
-            const session = await BrowserWorkspace.ensureSession(state.owner)
-            unsubscribe = BrowserEvent.subscribe(state.owner, (event) => send(ws, event))
-            const sinceSeq = Number(c.req.query("sinceSeq") ?? 0)
-            const replay = BrowserEvent.replay(state.owner, sinceSeq, c.req.query("epoch"))
-            if (replay) for (const event of replay) send(ws, event)
-            send(
-              ws,
-              BrowserWorkspace.sessionStatePayload(
-                state.owner,
-                BrowserControl.sessionState(session),
-                state.presentation,
-              ),
-            )
-          } catch (error) {
-            send(ws, protocolError(error, "browser_events_open_failed"))
-            ws.close(1011, "Browser events failed")
-          }
-        },
-        onMessage(event: any, ws: BrowserWS) {
-          if (Buffer.byteLength(String(event.data ?? ""), "utf8") > 4 * 1024) {
-            ws.close(1009, "Browser events message is too large")
-            return
-          }
-          send(ws, protocolError(new Error("Browser events socket is read-only."), "browser_events_read_only"))
-        },
-        onClose() {
-          unsubscribe?.()
-        },
-      }
-    }),
-  )
-  .get(
-    "/:directory/browser/webrtc/connect",
-    upgradeWebSocket((c) => createBrowserSignalingSocket(c, "viewer")),
-  )
-  .get(
-    "/:directory/browser/webrtc/host",
-    upgradeWebSocket((c) => createBrowserSignalingSocket(c, "host")),
-  )
+      }),
+      async (c) => {
+        let commandId: string | undefined
+        try {
+          const state = await routeState(c)
+          const body = c.req.valid("json")
+          commandId = body.commandId
+          const command = body.command
+          const result = await BrowserWorkspace.executeControl(
+            state,
+            { command, commandId, traceId: body.traceId },
+            new URL(c.req.url).origin,
+          )
+          return c.json(result.payload, result.status as 200)
+        } catch (error) {
+          const normalized = protocolError(error, "browser_control_failed", commandId)
+          return c.json(normalized, normalized.retryable ? 409 : 400)
+        }
+      },
+    )
+    .get(
+      "/:directory/browser/events",
+      upgradeWebSocket(async (c) => {
+        let state: RouteState
+        try {
+          assertWebSocketRequest(c, "viewer")
+          state = await routeState(c)
+        } catch (error) {
+          return rejectedSocket(error)
+        }
+        let unsubscribe: (() => void) | undefined
+        return {
+          async onOpen(_event: unknown, ws: BrowserWS) {
+            try {
+              const session = await BrowserWorkspace.ensureSession(state.owner)
+              unsubscribe = BrowserEvent.subscribe(state.owner, (event) => send(ws, event))
+              const sinceSeq = Number(c.req.query("sinceSeq") ?? 0)
+              const replay = BrowserEvent.replay(state.owner, sinceSeq, c.req.query("epoch"))
+              if (replay) for (const event of replay) send(ws, event)
+              send(
+                ws,
+                BrowserWorkspace.sessionStatePayload(
+                  state.owner,
+                  BrowserControl.sessionState(session),
+                  state.presentation,
+                ),
+              )
+            } catch (error) {
+              send(ws, protocolError(error, "browser_events_open_failed"))
+              ws.close(1011, "Browser events failed")
+            }
+          },
+          onMessage(event: any, ws: BrowserWS) {
+            if (Buffer.byteLength(String(event.data ?? ""), "utf8") > 4 * 1024) {
+              ws.close(1009, "Browser events message is too large")
+              return
+            }
+            send(ws, protocolError(new Error("Browser events socket is read-only."), "browser_events_read_only"))
+          },
+          onClose() {
+            unsubscribe?.()
+          },
+        }
+      }),
+    )
+    .get(
+      "/:directory/browser/webrtc/connect",
+      upgradeWebSocket((c) => createBrowserSignalingSocket(c, "viewer")),
+    )
+    .get(
+      "/:directory/browser/webrtc/host",
+      upgradeWebSocket((c) => createBrowserSignalingSocket(c, "host")),
+    )
 
 export function browserSignalingPageAvailable(
   role: "viewer" | "host",
@@ -509,11 +520,11 @@ export function browserSignalingEventSocket(
   return registered
 }
 
-export function createBrowserSignalingSocket(c: any, role: "viewer" | "host") {
+export async function createBrowserSignalingSocket(c: any, role: "viewer" | "host") {
   let state: RouteState
   try {
     assertWebSocketRequest(c, role)
-    state = routeState(c)
+    state = await routeState(c)
   } catch (error) {
     return rejectedSocket(error)
   }
@@ -640,21 +651,27 @@ function assertWebSocketRequest(c: any, role: "viewer" | "host"): void {
 }
 
 export function configureBrowserViewerOrigins(origins: Iterable<string>): void {
-  const compatibilityOrigins = (process.env.SYNERGY_ALLOWED_ORIGINS ?? "")
+  const instanceState = runtimeState()
+
+  const compatibilityOrigins = (RuntimeContext.current().host.env.SYNERGY_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean)
-  browserViewerOrigins = new Set([...origins, ...compatibilityOrigins].map((origin) => origin.trim()).filter(Boolean))
+  instanceState.browserViewerOrigins = new Set(
+    [...origins, ...compatibilityOrigins].map((origin) => origin.trim()).filter(Boolean),
+  )
 }
 
 export function browserViewerOriginAllowed(input: { origin: string; requestURL: string }): boolean {
+  const instanceState = runtimeState()
+
   if (input.origin === "file://") return true
   const origin = httpOrigin(input.origin)
   const request = httpOrigin(input.requestURL)
   if (!origin || !request) return false
   if (origin.origin === request.origin) return true
   if (isLoopback(origin.hostname) && isLoopback(request.hostname)) return true
-  return browserViewerOrigins.has(origin.origin)
+  return instanceState.browserViewerOrigins.has(origin.origin)
 }
 
 function httpOrigin(value: string): URL | undefined {
@@ -676,7 +693,7 @@ function isLoopback(hostname: string): boolean {
 }
 
 function browserIceServers() {
-  const value = process.env.SYNERGY_BROWSER_ICE_SERVERS
+  const value = RuntimeContext.current().host.env.SYNERGY_BROWSER_ICE_SERVERS
   if (!value) return []
   try {
     const parsed = JSON.parse(value)

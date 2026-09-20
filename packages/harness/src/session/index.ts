@@ -1,3 +1,7 @@
+import fs from "node:fs/promises"
+import { Workspace } from "./workspace-schema"
+import { SessionRecords } from "./records"
+import { RuntimeContext } from "../lifecycle/context"
 import type { StoreTransaction } from "../storage/transactional-store"
 import { StorageIntegrityError } from "../storage/errors"
 import { SessionStaging } from "./staging"
@@ -61,7 +65,7 @@ import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SessionMutation } from "./mutation"
-import { SessionProjectHealth } from "./project-health"
+import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
 
 export namespace Session {
@@ -115,7 +119,7 @@ export namespace Session {
     return {
       sessionID: session.id,
       scopeID: scope.id,
-      directory: scope.directory,
+      directory: scope.local?.directory,
       parentID: session.parentID,
       endpoint: session.endpoint,
       endpointKey: session.endpoint ? SessionEndpoint.toKey(session.endpoint) : undefined,
@@ -251,6 +255,7 @@ export namespace Session {
 
   export const WorkspaceSelection = z
     .discriminatedUnion("mode", [
+      z.object({ mode: z.literal("none") }),
       z.object({
         mode: z.literal("current"),
       }),
@@ -460,7 +465,10 @@ export namespace Session {
   // Dedup redundant session.updated publishes: a diff limited to time.updated
   // (or a byte-identical payload) is throttled to a heartbeat, while any real
   // field change publishes immediately (issue #319, defense in depth).
-  const lastPublish = new Map<string, { key: string; at: number }>()
+  const runtimeState = RuntimeContext.state(() => ({
+    lastPublish: new Map<string, { key: string; at: number }>(),
+    rollbackInvalidationPending: new Set<string>(),
+  }))
   const PUBLISH_DEDUP_THROTTLE_MS = 1000
 
   async function publishInfo(
@@ -469,10 +477,12 @@ export namespace Session {
     navEntry?: SessionNavEntry,
     options?: { force?: boolean },
   ) {
+    const instanceState = runtimeState()
+
     const info = await withRuntimeInfo(session)
     const key = publishCompareKey(info)
     const now = Date.now()
-    const prev = lastPublish.get(session.id)
+    const prev = instanceState.lastPublish.get(session.id)
     if (
       options?.force !== true &&
       !decideSessionPublish({
@@ -486,8 +496,8 @@ export namespace Session {
       return
     }
     const remember = () => {
-      if (info.time.archived) lastPublish.delete(session.id)
-      else lastPublish.set(session.id, { key, at: now })
+      if (info.time.archived) instanceState.lastPublish.delete(session.id)
+      else instanceState.lastPublish.set(session.id, { key, at: now })
     }
     if (Storage.inTransaction()) Storage.afterCommit(remember)
     else remember()
@@ -509,21 +519,25 @@ export namespace Session {
       interaction?: SessionInteraction.Info
       cortex?: CortexDelegationInfoType
       workflow?: Info["workflow"]
-      workspace?: import("./types").Workspace
+      workspace?: import("./types").Workspace | null
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
       }
     },
   ) {
-    const scope = input?.scope ?? ScopeContext.current.scope
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
-    const workspace: import("./types").Workspace = input?.workspace ??
-      parent?.workspace ?? {
-        type: "main" as const,
-        path: scope.directory,
-        scopeID: scope.id,
-      }
+    const scope = input?.scope ?? parent?.scope ?? ScopeContext.current.scope
+    const workspace =
+      input?.workspace !== undefined
+        ? input.workspace
+        : parent?.scope.id === scope.id
+          ? parent.workspace
+          : ScopeContext.defaultWorkspace(scope)
+    if (workspace) {
+      Workspace.parse(workspace)
+      if (workspace.scopeID !== scope.id) throw new Error("Workspace belongs to a different Scope")
+    }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
     const controlProfile = input?.parentID ? undefined : input?.controlProfile
     const completionNotice = {
@@ -600,10 +614,21 @@ export namespace Session {
     sessionID: string,
     selection?: WorkspaceSelection,
   ): Promise<Info & { working?: WorkingInfoType }> {
-    if (!selection || selection.mode === "current") return get(sessionID)
+    const session = await get(sessionID)
+    if (!selection || (selection.mode === "current" && session.workspace)) return session
+    if (selection.mode === "none" || selection.mode === "current") {
+      SessionManager.assertIdle(sessionID)
+      const workspace = selection.mode === "none" ? null : ScopeContext.defaultWorkspace(session.scope)
+      if (selection.mode === "current" && !workspace)
+        throw new Scope.WorkspaceRequiredError({
+          message: "This Scope has no local workspace.",
+          scopeID: session.scope.id,
+        })
+      return updateWorkspace(sessionID, workspace, { requireIdle: true })
+    }
 
     if (selection.mode === "create") {
-      await SessionProjectHealth.createWorktree({
+      await SessionWorkspaceRuntime.get().createWorktree({
         sessionID,
         name: selection.name,
         baseRef: selection.baseRef ?? "current",
@@ -612,7 +637,7 @@ export namespace Session {
       })
       return get(sessionID)
     }
-    await SessionProjectHealth.enterWorktree({
+    await SessionWorkspaceRuntime.get().enterWorktree({
       sessionID,
       target: selection.target,
       force: selection.force ?? false,
@@ -683,7 +708,6 @@ export namespace Session {
           scopeID: source.scope.id,
           sourceSessionID: source.id,
           targetSessionID: sessionID,
-          workspace: source.workspace?.path ?? ScopeContext.current.directory,
           hashes: selected.flatMap((msg) => msg.parts.flatMap(SnapshotRecords.partRoots)),
         })
         const messageMap = new Map(selected.map((msg) => [msg.info.id, Identifier.ascending("message")]))
@@ -759,8 +783,31 @@ export namespace Session {
     })
   })
 
-  export async function updateWorkspace(sessionID: string, workspace: import("./types").Workspace): Promise<Info> {
+  export async function assertWorkspaceAvailable(sessionID: string) {
+    const { workspace } = await get(sessionID)
+    if (!workspace) return
+    const available = await fs.stat(workspace.path).then(
+      (stat) => stat.isDirectory(),
+      () => false,
+    )
+    if (!available)
+      throw new Scope.WorkspaceUnavailableError({
+        message: "The workspace for this session is no longer available.",
+        path: workspace.path,
+      })
+  }
+
+  export async function updateWorkspace(
+    sessionID: string,
+    workspace: import("./types").Workspace | null,
+    options?: { requireIdle?: boolean },
+  ): Promise<Info> {
     return update(sessionID, (draft) => {
+      if (options?.requireIdle) SessionManager.assertIdle(sessionID)
+      if (workspace) {
+        Workspace.parse(workspace)
+        if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+      }
       draft.workspace = workspace
     })
   }
@@ -822,7 +869,7 @@ export namespace Session {
       const session = await SessionManager.requireSession(currentID)
       const scope = session.scope as Scope
       const info =
-        (await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
+        (await SessionRecords.read(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
       if (info.controlProfile) return { controlProfile: info.controlProfile, root: info }
       if (!info.parentID) return { root: info }
       currentID = info.parentID
@@ -888,7 +935,7 @@ export namespace Session {
   export const get = fn(Identifier.schema("session"), async (id) => {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
-    const read = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
+    const read = await SessionRecords.read(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
     const info = read as Info
     return withClientInfo(info)
   })
@@ -1078,8 +1125,13 @@ export namespace Session {
         await writeEndpointIndex(result)
       }
 
-      if (!before.time.archived && result.time.archived) {
-        Storage.afterCommit(() => SessionProjectHealth.detachWorktreeSession(result.id))
+      if (
+        (!before.time.archived && result.time.archived) ||
+        before.workspace?.path !== result.workspace?.path ||
+        before.workspace?.type !== result.workspace?.type
+      ) {
+        const previous = before
+        Storage.afterCommit(() => SessionWorkspaceRuntime.releaseSession(previous))
       }
       await publishInfo(SessionEvent.Updated, result, navEntry, { force: options?.forcePublish })
       return withRuntimeInfo(result)
@@ -1138,7 +1190,7 @@ export namespace Session {
   async function readListInfos(scopeID: string, ids: string[]) {
     const sid = asScopeID(scopeID)
     const keys = ids.map((id) => StoragePath.sessionInfo(sid, asSessionID(id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await SessionRecords.readMany(keys)
     for (const [index, id] of ids.entries()) {
       const info = await SessionCompat.pendingInfo(scopeID, id)
       if (info) sessions[index] = info
@@ -1202,7 +1254,7 @@ export namespace Session {
     const scopeID = asScopeID(ScopeContext.current.scope.id)
     const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
     const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, asSessionID(id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await SessionRecords.readMany(keys)
     for (const session of sessions) {
       if (session && session.scope) yield session as Info
     }
@@ -1245,7 +1297,7 @@ export namespace Session {
     const nextCursor = hasMore && last ? { lastActivityAt: last.updated, id: last.id } : null
 
     const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await SessionRecords.readMany(keys)
     const items = await Promise.all(
       sessions
         .filter((session): session is Info => session != null && !!session.scope)
@@ -1315,7 +1367,7 @@ export namespace Session {
       await removeTree(sessionID)
     })
     for (const session of removed) {
-      await SessionProjectHealth.detachWorktreeSession(session.id)
+      await SessionWorkspaceRuntime.releaseSession(session)
       await SnapshotLifecycle.completeDelete(session.scope.id, session.id)
     }
   })
@@ -1352,16 +1404,17 @@ export namespace Session {
   // A root user message written after a rollback invalidates redo, but that
   // derived state lives in the persisted session projection. Publish the flip
   // once so the frontend stops prefix-hiding the replacement branch.
-  const rollbackInvalidationPending = new Set<string>()
 
   async function publishRollbackInvalidation(canonical: MessageV2.Info, history: Info["history"]) {
+    const instanceState = runtimeState()
+
     if (canonical.role !== "user") return
     if ((canonical as MessageV2.User).isRoot === false) return
     const rollback = history?.rollback
     if (!rollback?.canUnrollback) return
     if (canonical.time.created <= rollback.created) return
-    if (rollbackInvalidationPending.has(canonical.sessionID)) return
-    rollbackInvalidationPending.add(canonical.sessionID)
+    if (instanceState.rollbackInvalidationPending.has(canonical.sessionID)) return
+    instanceState.rollbackInvalidationPending.add(canonical.sessionID)
     try {
       await update(canonical.sessionID, (draft) => {
         if (draft.history?.rollback?.id !== rollback.id) return
@@ -1370,7 +1423,7 @@ export namespace Session {
     } catch (error) {
       log.warn("failed to publish rollback invalidation", { sessionID: canonical.sessionID, error })
     } finally {
-      rollbackInvalidationPending.delete(canonical.sessionID)
+      instanceState.rollbackInvalidationPending.delete(canonical.sessionID)
     }
   }
 
@@ -1897,4 +1950,6 @@ export namespace Session {
   }
 }
 
-MessageV2.installSessionResolver((sessionID) => SessionManager.requireSession(sessionID))
+export function registerSessionResolver() {
+  MessageV2.installSessionResolver((sessionID) => SessionManager.requireSession(sessionID))
+}

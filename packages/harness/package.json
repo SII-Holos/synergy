@@ -180,6 +180,7 @@
     "./config/reload-executor": "./src/config/reload-executor.ts",
     "./cortex/tools": "./src/cortex/tools.ts",
     "./cortex/session-runtime": "./src/cortex/session-runtime.ts",
+    "./session/workspace-runtime": "./src/session/workspace-runtime.ts",
     "./session/project-health": "./src/session/project-health.ts",
     "./session/title": "./src/session/title.ts",
     "./util/fn": "./src/util/fn.ts",
@@ -325,7 +326,12 @@
     "./secrets/detector-source": "./src/secrets/detector-source.ts",
     "./secrets/mask": "./src/secrets/mask.ts",
     "./secrets/resolve": "./src/secrets/resolve.ts",
-    "./secrets/vault": "./src/secrets/vault.ts"
+    "./secrets/vault": "./src/secrets/vault.ts",
+    "./lifecycle/context": "./src/lifecycle/context.ts",
+    "./test/migration/fixture": "./test/migration/fixture.ts",
+    "./test/support/runtime": "./test/support/runtime.ts",
+    "./test/support/runtime-home": "./test/support/runtime-home.ts",
+    "./enforcement/policy-worker/process-host": "./src/enforcement/policy-worker/process-host.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

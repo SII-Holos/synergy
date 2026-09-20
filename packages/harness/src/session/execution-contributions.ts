@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Info } from "./types"
 import type { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 
@@ -22,27 +23,43 @@ export namespace SessionExecutionContributions {
     ): Promise<string[]> | string[]
     archive?(session: Info): Promise<Record<string, unknown>>
   }
-  const contributions = new Map<string, Contribution>()
+  const runtimeState = RuntimeContext.state(() => ({
+    contributions: new Map<string, Contribution>(),
+  }))
   export function register(contribution: Contribution) {
-    contributions.set(contribution.id, contribution)
+    const instanceState = runtimeState()
+
+    const existing = instanceState.contributions.get(contribution.id)
+    if (existing === contribution) return
+    RuntimeContext.assertCompositionOpen("session execution")
+    if (existing) throw new Error(`Session execution ${contribution.id} is already registered`)
+    instanceState.contributions.set(contribution.id, contribution)
   }
   export function ownsPendingReply(session: Info) {
-    return [...contributions.values()].some((entry) => entry.ownsPendingReply?.(session) === true)
+    const instanceState = runtimeState()
+
+    return [...instanceState.contributions.values()].some((entry) => entry.ownsPendingReply?.(session) === true)
   }
   export async function advisory(sessionID: string, scopeID: string, signal: AbortSignal) {
+    const instanceState = runtimeState()
+
     const parts: string[] = []
-    for (const entry of contributions.values()) {
+    for (const entry of instanceState.contributions.values()) {
       signal.throwIfAborted()
       parts.push(...((await entry.advisory?.(sessionID, scopeID, signal)) ?? []))
     }
     return parts
   }
   export async function isActive(session: Info) {
-    for (const entry of contributions.values()) if (await entry.isActive?.(session)) return true
+    const instanceState = runtimeState()
+
+    for (const entry of instanceState.contributions.values()) if (await entry.isActive?.(session)) return true
     return false
   }
   export async function recoveringDescription(session: Info) {
-    for (const entry of contributions.values()) {
+    const instanceState = runtimeState()
+
+    for (const entry of instanceState.contributions.values()) {
       const description = await entry.recoveringDescription?.(session)
       if (description) return description
     }
@@ -52,26 +69,37 @@ export namespace SessionExecutionContributions {
    * driver. Only meaningful once the caller has established that no live
    * runtime owns the session. */
   export async function abandonPhantom(session: Info) {
+    const instanceState = runtimeState()
+
     let abandoned = false
-    for (const entry of contributions.values()) {
+    for (const entry of instanceState.contributions.values()) {
       if (await entry.abandonPhantom?.(session)) abandoned = true
     }
     return abandoned
   }
   export function hasContinuation(session: Info) {
-    return [...contributions.values()].some((entry) => entry.hasContinuation?.(session) === true)
+    const instanceState = runtimeState()
+
+    return [...instanceState.contributions.values()].some((entry) => entry.hasContinuation?.(session) === true)
   }
   export async function assertWorkflowAllowed(session: Info, kind: string) {
-    for (const entry of contributions.values()) await entry.assertWorkflowAllowed?.(session, kind)
+    const instanceState = runtimeState()
+
+    for (const entry of instanceState.contributions.values()) await entry.assertWorkflowAllowed?.(session, kind)
   }
   export async function system(session: Info, context: WorkflowPromptRegistry.PromptContext & { agentName: string }) {
+    const instanceState = runtimeState()
+
     const parts: string[] = []
-    for (const entry of contributions.values()) parts.push(...((await entry.system?.(session, context)) ?? []))
+    for (const entry of instanceState.contributions.values())
+      parts.push(...((await entry.system?.(session, context)) ?? []))
     return parts
   }
   export async function archive(session: Info) {
+    const instanceState = runtimeState()
+
     const result: Record<string, unknown> = {}
-    for (const entry of contributions.values()) Object.assign(result, await entry.archive?.(session))
+    for (const entry of instanceState.contributions.values()) Object.assign(result, await entry.archive?.(session))
     return result
   }
 }

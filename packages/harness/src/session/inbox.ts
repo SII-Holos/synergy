@@ -617,6 +617,7 @@ export namespace SessionInbox {
   }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
+    await Session.assertWorkspaceAvailable(input.sessionID)
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
@@ -1037,7 +1038,7 @@ export namespace SessionInbox {
       finish: "stop",
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+      path: { cwd: ScopeContext.current.workspace?.path ?? null, root: ScopeContext.current.workspace?.path ?? null },
       modelID: assistantModel.modelID,
       providerID: assistantModel.providerID,
       visible: payload.visible,

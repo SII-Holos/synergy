@@ -208,22 +208,24 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const contribution: ConfigExtensions.Contribution = {
+  shape: ConfigShape,
+  references(raw, providerID) {
+    const config = raw as ConfigValues
+    return (config.quick_switcher?.models ?? []).flatMap((model, index) =>
+      model.providerID === providerID ? [`quick_switcher.models[${index}]`] : [],
+    )
+  },
+  normalize(raw) {
+    const result = raw as ConfigValues
+    if (result.activityDisplay === undefined) result.activityDisplay = "balanced"
+    if (result.compactReasoning === undefined) result.compactReasoning = true
+    if (!result.keybinds) result.keybinds = Keybinds.parse({})
+  },
+}
+
 export function registerConfig() {
-  ConfigExtensions.register("workbench", {
-    shape: ConfigShape,
-    references(raw, providerID) {
-      const config = raw as ConfigValues
-      return (config.quick_switcher?.models ?? []).flatMap((model, index) =>
-        model.providerID === providerID ? [`quick_switcher.models[${index}]`] : [],
-      )
-    },
-    normalize(raw) {
-      const result = raw as ConfigValues
-      if (result.activityDisplay === undefined) result.activityDisplay = "balanced"
-      if (result.compactReasoning === undefined) result.compactReasoning = true
-      if (!result.keybinds) result.keybinds = Keybinds.parse({})
-    },
-  })
+  ConfigExtensions.register("workbench", contribution)
   for (const domain of [
     {
       id: "general",
@@ -257,7 +259,6 @@ export function registerConfig() {
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
-registerConfig()
 
 export async function readConfig(): Promise<ConfigValues> {
   const { Config } = await import("@ericsanchezok/synergy-harness/config/config")

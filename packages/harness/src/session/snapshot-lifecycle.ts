@@ -29,7 +29,6 @@ export namespace SnapshotLifecycle {
     scopeID: string
     sourceSessionID: string
     targetSessionID: string
-    workspace: string
     hashes: string[]
     allowMissing?: boolean
   }) {
@@ -63,7 +62,7 @@ export namespace SnapshotLifecycle {
       if (missing.length && !input.allowMissing)
         throw new SnapshotStore.StorageError("Fork source has missing snapshot history")
       if (!retained.length) return { missing }
-      const target = await SnapshotStore.resolve(input.scopeID, input.targetSessionID, input.workspace)
+      const target = await SnapshotStore.resolveRepository(input.scopeID, input.targetSessionID)
       await SnapshotStore.initialize(target)
       if (target.backend !== "shared") throw new SnapshotStore.StorageError("Snapshot adoption requires a new session")
       if (sourceOwner?.backend === "legacy") {

@@ -241,10 +241,15 @@ describe("util.log", () => {
       const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-log-bootstrap-"))
       const script = `
         import { Log } from "./src/util/log.ts"
+        import { RuntimeContext } from "./src/lifecycle/context.ts"
+        const home = process.env.SYNERGY_TEST_HOME
+        await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
         const log = Log.create({ service: "bootstrap-test" })
         log.info("before init")
         await Log.init({ print: true, dev: true, level: "INFO" })
         log.info("after init")
+        await Log.close()
+        })
       `
       const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
         cwd: path.resolve(import.meta.dir, "../.."),
@@ -293,9 +298,14 @@ describe("util.log", () => {
       const result = await runScript(
         `
         import { Log } from "./src/util/log.ts"
+        import { RuntimeContext } from "./src/lifecycle/context.ts"
+        const home = process.env.SYNERGY_TEST_HOME
+        await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
         await Log.init({ print: false, dev: true, level: "INFO" })
         const log = Log.create({ service: "buffer-test" })
         for (let index = 0; index < 200; index++) log.info("buffered-line-" + index)
+        await Log.close()
+        })
       `,
         home,
       )
@@ -318,9 +328,14 @@ describe("util.log", () => {
       const result = await runScript(
         `
         import { Log } from "./src/util/log.ts"
+        import { RuntimeContext } from "./src/lifecycle/context.ts"
+        const home = process.env.SYNERGY_TEST_HOME
+        await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
         await Log.init({ print: false, dev: true, level: "INFO" })
         Log.create({ service: "error-test" }).info("error-path-line")
         Log.flush()
+        await Log.close()
+        })
       `,
         home,
       )

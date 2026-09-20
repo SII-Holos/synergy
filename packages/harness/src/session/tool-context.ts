@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { GateOptions } from "../enforcement/gate"
 
 /**
@@ -22,13 +23,19 @@ export namespace SessionToolContext {
     markToolSchemaDegraded(pluginId: string, toolId: string, error: unknown): Promise<void>
   }
 
-  let pluginSource: PluginSource | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    pluginSource: undefined as PluginSource | undefined,
+  }))
 
   export function registerPluginSource(source: PluginSource): void {
-    pluginSource = source
+    const instanceState = runtimeState()
+
+    instanceState.pluginSource = source
   }
 
   export function plugin(): PluginSource | undefined {
-    return pluginSource
+    const instanceState = runtimeState()
+
+    return instanceState.pluginSource
   }
 }

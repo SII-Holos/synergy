@@ -165,10 +165,10 @@ export function SessionTopBar(props: {
 
   const projectScope = createMemo(() => resolveProjectScope(directory() || undefined, sync.scope, layout.scopes.list()))
   const projectLabel = createMemo(() => getScopeLabel(projectScope(), directory()))
-  const projectPath = createMemo(() => directory())
+  const projectPath = createMemo(() => projectScope()?.local?.directory)
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
+  const sessionDirectory = createMemo(() => sessionInfo()?.scope.id ?? directory())
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({

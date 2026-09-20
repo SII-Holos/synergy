@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Config } from "../config/config"
 
 export namespace TimeoutConfig {
@@ -21,10 +22,14 @@ export namespace TimeoutConfig {
     permissionAskMs: 3_600_000,
   }
 
-  let cached: Resolved | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    cached: undefined as Resolved | undefined,
+  }))
 
   export async function resolve(): Promise<Resolved> {
-    if (cached) return cached
+    const instanceState = runtimeState()
+
+    if (instanceState.cached) return instanceState.cached
 
     const cfg = await Config.current()
     const timeout = (cfg as any).timeout as
@@ -54,7 +59,7 @@ export namespace TimeoutConfig {
           ? providerWallRaw * 1000
           : DEFAULTS.providerWallMs
 
-    cached = {
+    instanceState.cached = {
       invokeMs: secToMs(timeout?.invoke_sec, DEFAULTS.invokeMs),
       providerTtfbMs: secToMs(timeout?.provider?.ttfb_sec, DEFAULTS.providerTtfbMs),
       providerIdleMs,
@@ -66,10 +71,12 @@ export namespace TimeoutConfig {
       permissionAskMs: secToMs(timeout?.permission?.ask_sec, DEFAULTS.permissionAskMs),
     }
 
-    return cached
+    return instanceState.cached
   }
 
   export function invalidate(): void {
-    cached = undefined
+    const instanceState = runtimeState()
+
+    instanceState.cached = undefined
   }
 }

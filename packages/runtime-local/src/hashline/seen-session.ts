@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 /**
  * Session-scoped seen-lines store adapter.
  * Wraps SeenStore with ScopedState + Bus SessionEvent.Deleted cleanup.
@@ -55,11 +56,15 @@ export class SeenStore {
 export namespace SessionSeenStore {
   const state = ScopedState.create(() => new Map<string, SeenStore>())
 
-  let cleanupSubscribed = false
+  const runtimeState = RuntimeContext.state(() => ({
+    cleanupSubscribed: false,
+  }))
 
   function ensureCleanupSubscription(): void {
-    if (cleanupSubscribed) return
-    cleanupSubscribed = true
+    const instanceState = runtimeState()
+
+    if (instanceState.cleanupSubscribed) return
+    instanceState.cleanupSubscribed = true
     Bus.subscribe(SessionEvent.Deleted, (event) => {
       clear(event.properties.info.id)
     })

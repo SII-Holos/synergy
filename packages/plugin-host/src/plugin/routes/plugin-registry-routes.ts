@@ -320,379 +320,381 @@ async function requireLocalRegistryPublish(c: Context, next: Next) {
 
 // ── Route group ──
 
-export const RegistryRoute = new Hono()
+export const RegistryRoute = () =>
+  new Hono()
 
-  .use("/publish", requireLocalRegistryPublish)
+    .use("/publish", requireLocalRegistryPublish)
 
-  // GET /search — Search plugins by keyword
-  .get(
-    "/search",
-    describeRoute({
-      summary: "Search plugin registry",
-      description: "Search plugins by keyword in name, description, and keywords with pagination.",
-      operationId: "registry.plugins.search",
-      responses: {
-        200: {
-          description: "Search results with pagination metadata",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  plugins: z.array(RegistryPluginSummary),
-                  total: z.number(),
-                  offset: z.number(),
-                  limit: z.number(),
-                }),
-              ),
+    // GET /search — Search plugins by keyword
+    .get(
+      "/search",
+      describeRoute({
+        summary: "Search plugin registry",
+        description: "Search plugins by keyword in name, description, and keywords with pagination.",
+        operationId: "registry.plugins.search",
+        responses: {
+          200: {
+            description: "Search results with pagination metadata",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    plugins: z.array(RegistryPluginSummary),
+                    total: z.number(),
+                    offset: z.number(),
+                    limit: z.number(),
+                  }),
+                ),
+              },
             },
           },
+          ...errors(400, 503),
         },
-        ...errors(400, 503),
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        q: z.string().optional().default(""),
-        offset: z.coerce.number().int().min(0).optional().default(0),
-        limit: z.coerce.number().int().min(1).max(100).optional().default(20),
-        source: PluginMarketplaceRegistry.Source.optional(),
       }),
-    ),
-    async (c) => {
-      const { q, offset, limit, source } = c.req.valid("query")
-      const localEnabled = (await PluginMarketplaceRegistry.currentConfig()).includeLocalRegistry
-      let official: PluginMarketplaceRegistry.NormalizedSummary[] = []
-      let local: RegistryPluginSummary[] = []
+      validator(
+        "query",
+        z.object({
+          q: z.string().optional().default(""),
+          offset: z.coerce.number().int().min(0).optional().default(0),
+          limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+          source: PluginMarketplaceRegistry.Source.optional(),
+        }),
+      ),
+      async (c) => {
+        const { q, offset, limit, source } = c.req.valid("query")
+        const localEnabled = (await PluginMarketplaceRegistry.currentConfig()).includeLocalRegistry
+        let official: PluginMarketplaceRegistry.NormalizedSummary[] = []
+        let local: RegistryPluginSummary[] = []
 
-      if (source !== "local") {
-        try {
-          official = (await PluginMarketplaceRegistry.searchOfficial({ q, offset: 0, limit: 1000 })).plugins
-        } catch (error) {
-          log.warn("official plugin registry search failed", { error })
-          if (source === "official") {
-            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+        if (source !== "local") {
+          try {
+            official = (await PluginMarketplaceRegistry.searchOfficial({ q, offset: 0, limit: 1000 })).plugins
+          } catch (error) {
+            log.warn("official plugin registry search failed", { error })
+            if (source === "official") {
+              return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+            }
           }
         }
-      }
 
-      if (source !== "official" && localEnabled) {
-        local = await searchLocal(q)
-      }
+        if (source !== "official" && localEnabled) {
+          local = await searchLocal(q)
+        }
 
-      const results = mergeSummaries(official, local)
-      const total = results.length
-      const summaries = results.slice(offset, offset + limit)
-      return c.json({ plugins: summaries, total, offset, limit })
-    },
-  )
+        const results = mergeSummaries(official, local)
+        const total = results.length
+        const summaries = results.slice(offset, offset + limit)
+        return c.json({ plugins: summaries, total, offset, limit })
+      },
+    )
 
-  // POST /refresh — Force-refresh the official registry cache immediately
-  .post(
-    "/refresh",
-    describeRoute({
-      summary: "Force refresh the official plugin registry cache",
-      description: "Re-fetch the official plugin registry index immediately, bypassing the cache TTL.",
-      operationId: "registry.refresh",
-      responses: {
-        200: {
-          description: "Registry refreshed",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ refreshedAt: z.string().nullable() })),
+    // POST /refresh — Force-refresh the official registry cache immediately
+    .post(
+      "/refresh",
+      describeRoute({
+        summary: "Force refresh the official plugin registry cache",
+        description: "Re-fetch the official plugin registry index immediately, bypassing the cache TTL.",
+        operationId: "registry.refresh",
+        responses: {
+          200: {
+            description: "Registry refreshed",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ refreshedAt: z.string().nullable() })),
+              },
             },
           },
+          ...errors(503),
         },
-        ...errors(503),
-      },
-    }),
-    async (c) => {
-      try {
-        const result = await PluginMarketplaceRegistry.refreshNow()
-        return c.json(result)
-      } catch (error) {
-        log.warn("official plugin registry refresh failed", { error })
-        return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
-      }
-    },
-  )
-
-  // GET /:id — Get full plugin entry with latest version
-  .get(
-    "/:id",
-    describeRoute({
-      summary: "Get plugin entry",
-      description: "Return the full registry entry for a plugin, including its latest version.",
-      operationId: "registry.plugins.get",
-      responses: {
-        200: {
-          description: "Plugin registry entry",
-          content: {
-            "application/json": { schema: resolver(RegistryPluginEntry) },
-          },
-        },
-        ...errors(404, 503),
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        source: PluginMarketplaceRegistry.Source.optional(),
       }),
-    ),
-    async (c) => {
-      const id = c.req.param("id")
-      const { source } = c.req.valid("query")
-      const config = await PluginMarketplaceRegistry.currentConfig()
-
-      if (source !== "local") {
+      async (c) => {
         try {
-          const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
-          if (official) return c.json(official)
+          const result = await PluginMarketplaceRegistry.refreshNow()
+          return c.json(result)
         } catch (error) {
-          log.warn("official plugin registry detail failed", { error, pluginId: id })
-          if (source === "official") {
-            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+          log.warn("official plugin registry refresh failed", { error })
+          return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+        }
+      },
+    )
+
+    // GET /:id — Get full plugin entry with latest version
+    .get(
+      "/:id",
+      describeRoute({
+        summary: "Get plugin entry",
+        description: "Return the full registry entry for a plugin, including its latest version.",
+        operationId: "registry.plugins.get",
+        responses: {
+          200: {
+            description: "Plugin registry entry",
+            content: {
+              "application/json": { schema: resolver(RegistryPluginEntry) },
+            },
+          },
+          ...errors(404, 503),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          source: PluginMarketplaceRegistry.Source.optional(),
+        }),
+      ),
+      async (c) => {
+        const id = c.req.param("id")
+        const { source } = c.req.valid("query")
+        const config = await PluginMarketplaceRegistry.currentConfig()
+
+        if (source !== "local") {
+          try {
+            const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
+            if (official) return c.json(official)
+          } catch (error) {
+            log.warn("official plugin registry detail failed", { error, pluginId: id })
+            if (source === "official") {
+              return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+            }
           }
         }
-      }
 
-      if (source !== "official" && config.includeLocalRegistry) {
-        const plugins = await loadRegistry()
-        const entry = plugins.find((p) => p.id === id)
-        if (entry) return c.json(localEntry(entry))
-      }
+        if (source !== "official" && config.includeLocalRegistry) {
+          const plugins = await loadRegistry()
+          const entry = plugins.find((p) => p.id === id)
+          if (entry) return c.json(localEntry(entry))
+        }
 
-      return c.json({ message: `Registry plugin not found: ${id}` }, 404)
-    },
-  )
-
-  // GET /:id/versions — List all versions for a plugin
-  .get(
-    "/:id/versions",
-    describeRoute({
-      summary: "List plugin versions",
-      description: "Return all published versions for a plugin.",
-      operationId: "registry.plugins.versions",
-      responses: {
-        200: {
-          description: "Plugin version list",
-          content: {
-            "application/json": { schema: resolver(z.array(RegistryPluginVersion)) },
-          },
-        },
-        ...errors(404, 503),
+        return c.json({ message: `Registry plugin not found: ${id}` }, 404)
       },
-    }),
-    validator(
-      "query",
-      z.object({
-        source: PluginMarketplaceRegistry.Source.optional(),
-      }),
-    ),
-    async (c) => {
-      const id = c.req.param("id")
-      const { source } = c.req.valid("query")
-      const config = await PluginMarketplaceRegistry.currentConfig()
+    )
 
-      if (source !== "local") {
-        try {
-          const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
-          if (official) return c.json(official.versions)
-        } catch (error) {
-          log.warn("official plugin registry versions failed", { error, pluginId: id })
-          if (source === "official") {
-            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+    // GET /:id/versions — List all versions for a plugin
+    .get(
+      "/:id/versions",
+      describeRoute({
+        summary: "List plugin versions",
+        description: "Return all published versions for a plugin.",
+        operationId: "registry.plugins.versions",
+        responses: {
+          200: {
+            description: "Plugin version list",
+            content: {
+              "application/json": { schema: resolver(z.array(RegistryPluginVersion)) },
+            },
+          },
+          ...errors(404, 503),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          source: PluginMarketplaceRegistry.Source.optional(),
+        }),
+      ),
+      async (c) => {
+        const id = c.req.param("id")
+        const { source } = c.req.valid("query")
+        const config = await PluginMarketplaceRegistry.currentConfig()
+
+        if (source !== "local") {
+          try {
+            const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
+            if (official) return c.json(official.versions)
+          } catch (error) {
+            log.warn("official plugin registry versions failed", { error, pluginId: id })
+            if (source === "official") {
+              return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+            }
           }
         }
-      }
 
-      if (source !== "official" && config.includeLocalRegistry) {
-        const plugins = await loadRegistry()
-        const entry = plugins.find((p) => p.id === id)
-        if (entry) return c.json(localEntry(entry).versions)
-      }
+        if (source !== "official" && config.includeLocalRegistry) {
+          const plugins = await loadRegistry()
+          const entry = plugins.find((p) => p.id === id)
+          if (entry) return c.json(localEntry(entry).versions)
+        }
 
-      return c.json({ message: `Registry plugin not found: ${id}` }, 404)
-    },
-  )
-
-  // GET /:id/versions/:version — Get a specific version
-  .get(
-    "/:id/versions/:version",
-    describeRoute({
-      summary: "Get plugin version",
-      description: "Return details for a specific version of a plugin.",
-      operationId: "registry.plugins.version",
-      responses: {
-        200: {
-          description: "Plugin version details",
-          content: {
-            "application/json": { schema: resolver(RegistryPluginVersion) },
-          },
-        },
-        ...errors(404, 503),
+        return c.json({ message: `Registry plugin not found: ${id}` }, 404)
       },
-    }),
-    validator(
-      "query",
-      z.object({
-        source: PluginMarketplaceRegistry.Source.optional(),
-      }),
-    ),
-    async (c) => {
-      const id = c.req.param("id")
-      const version = c.req.param("version")
-      const { source } = c.req.valid("query")
-      const config = await PluginMarketplaceRegistry.currentConfig()
+    )
 
-      if (source !== "local") {
-        try {
-          const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
-          const ver = official?.versions.find((item) => item.version === version)
-          if (ver) return c.json(ver)
-        } catch (error) {
-          log.warn("official plugin registry version failed", { error, pluginId: id, version })
-          if (source === "official") {
-            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+    // GET /:id/versions/:version — Get a specific version
+    .get(
+      "/:id/versions/:version",
+      describeRoute({
+        summary: "Get plugin version",
+        description: "Return details for a specific version of a plugin.",
+        operationId: "registry.plugins.version",
+        responses: {
+          200: {
+            description: "Plugin version details",
+            content: {
+              "application/json": { schema: resolver(RegistryPluginVersion) },
+            },
+          },
+          ...errors(404, 503),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          source: PluginMarketplaceRegistry.Source.optional(),
+        }),
+      ),
+      async (c) => {
+        const id = c.req.param("id")
+        const version = c.req.param("version")
+        const { source } = c.req.valid("query")
+        const config = await PluginMarketplaceRegistry.currentConfig()
+
+        if (source !== "local") {
+          try {
+            const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
+            const ver = official?.versions.find((item) => item.version === version)
+            if (ver) return c.json(ver)
+          } catch (error) {
+            log.warn("official plugin registry version failed", { error, pluginId: id, version })
+            if (source === "official") {
+              return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+            }
           }
         }
-      }
 
-      if (source !== "official" && config.includeLocalRegistry) {
+        if (source !== "official" && config.includeLocalRegistry) {
+          const plugins = await loadRegistry()
+          const entry = plugins.find((p) => p.id === id)
+          if (entry) {
+            const ver = localEntry(entry).versions.find((v) => v.version === version)
+            if (ver) return c.json(ver)
+          }
+        }
+
+        return c.json({ message: `Version not found: ${id}@${version}` }, 404)
+      },
+    )
+
+    // GET /:id/download/:version — Download a plugin version archive
+    .get(
+      "/:id/download/:version",
+      describeRoute({
+        summary: "Download plugin version",
+        description:
+          "Download a plugin version archive. If downloadUrl is a file:// path within the registry store, streams the file. Otherwise returns 501.",
+        operationId: "registry.plugins.download",
+        responses: {
+          200: { description: "Plugin archive binary" },
+          ...errors(404),
+          501: { description: "Download not yet implemented for this entry" },
+        },
+      }),
+      async (c) => {
+        const id = c.req.param("id")
+        const version = c.req.param("version")
         const plugins = await loadRegistry()
         const entry = plugins.find((p) => p.id === id)
-        if (entry) {
-          const ver = localEntry(entry).versions.find((v) => v.version === version)
-          if (ver) return c.json(ver)
-        }
-      }
+        if (!entry) return c.json({ message: `Registry plugin not found: ${id}` }, 404)
+        const ver = entry.versions.find((v) => v.version === version)
+        if (!ver) return c.json({ message: `Version not found: ${id}@${version}` }, 404)
 
-      return c.json({ message: `Version not found: ${id}@${version}` }, 404)
-    },
-  )
-
-  // GET /:id/download/:version — Download a plugin version archive
-  .get(
-    "/:id/download/:version",
-    describeRoute({
-      summary: "Download plugin version",
-      description:
-        "Download a plugin version archive. If downloadUrl is a file:// path within the registry store, streams the file. Otherwise returns 501.",
-      operationId: "registry.plugins.download",
-      responses: {
-        200: { description: "Plugin archive binary" },
-        ...errors(404),
-        501: { description: "Download not yet implemented for this entry" },
-      },
-    }),
-    async (c) => {
-      const id = c.req.param("id")
-      const version = c.req.param("version")
-      const plugins = await loadRegistry()
-      const entry = plugins.find((p) => p.id === id)
-      if (!entry) return c.json({ message: `Registry plugin not found: ${id}` }, 404)
-      const ver = entry.versions.find((v) => v.version === version)
-      if (!ver) return c.json({ message: `Version not found: ${id}@${version}` }, 404)
-
-      const downloadUrl = ver.downloadUrl
-      if (!downloadUrl) {
-        return c.json({ message: "No download URL for this version" }, 501)
-      }
-
-      // If it's a file:// URL within the registry store, stream it
-      if (downloadUrl.startsWith("file://")) {
-        let filePath: string
-        try {
-          filePath = fileURLToPath(new URL(downloadUrl))
-        } catch {
-          return c.json({ message: "Invalid download URL" }, 400)
+        const downloadUrl = ver.downloadUrl
+        if (!downloadUrl) {
+          return c.json({ message: "No download URL for this version" }, 501)
         }
 
-        const registryStore = localRegistryStoreDir()
-        const resolved = checkPathContainment(registryStore, filePath)
-        if (!resolved) {
-          return c.json({ message: "Path traversal denied" }, 403)
-        }
+        // If it's a file:// URL within the registry store, stream it
+        if (downloadUrl.startsWith("file://")) {
+          let filePath: string
+          try {
+            filePath = fileURLToPath(new URL(downloadUrl))
+          } catch {
+            return c.json({ message: "Invalid download URL" }, 400)
+          }
 
-        const file = Bun.file(resolved)
-        let exists: boolean
-        try {
-          exists = await file.exists()
-        } catch (err) {
-          if (missingFileError(err)) {
+          const registryStore = localRegistryStoreDir()
+          const resolved = checkPathContainment(registryStore, filePath)
+          if (!resolved) {
+            return c.json({ message: "Path traversal denied" }, 403)
+          }
+
+          const file = Bun.file(resolved)
+          let exists: boolean
+          try {
+            exists = await file.exists()
+          } catch (err) {
+            if (missingFileError(err)) {
+              return c.json({ message: "Download file not found" }, 404)
+            }
+            throw err
+          }
+          if (!exists) {
             return c.json({ message: "Download file not found" }, 404)
           }
-          throw err
+
+          // Increment download counter
+          entry.downloads += 1
+          await saveRegistry(plugins)
+
+          c.header("Content-Disposition", `attachment; filename="${id}-${version}.tar.gz"`)
+          c.header("Content-Type", "application/gzip")
+          return c.body(file.stream())
         }
-        if (!exists) {
-          return c.json({ message: "Download file not found" }, 404)
-        }
 
-        // Increment download counter
-        entry.downloads += 1
-        await saveRegistry(plugins)
-
-        c.header("Content-Disposition", `attachment; filename="${id}-${version}.tar.gz"`)
-        c.header("Content-Type", "application/gzip")
-        return c.body(file.stream())
-      }
-
-      // Other URLs not yet implemented
-      return c.json({ message: "Download not yet implemented" }, 501)
-    },
-  )
-
-  // POST /publish — Publish a plugin entry
-  .post(
-    "/publish",
-    describeRoute({
-      summary: "Publish plugin entry",
-      description: "Publish a new plugin entry or update an existing one. Local registry publishing is localhost-only.",
-      operationId: "registry.plugins.publish",
-      responses: {
-        200: {
-          description: "Published plugin entry",
-          content: {
-            "application/json": { schema: resolver(RegistryPluginEntry) },
-          },
-        },
-        ...errors(400),
+        // Other URLs not yet implemented
+        return c.json({ message: "Download not yet implemented" }, 501)
       },
-    }),
-    validator("json", PublishInput),
-    async (c) => {
-      const input = c.req.valid("json")
-      const now = Date.now()
-      const plugins = await loadRegistry()
-      const existing = plugins.findIndex((p) => p.id === input.id)
+    )
 
-      if (existing >= 0) {
-        // Update existing entry
-        const prev = plugins[existing]
-        const updated: RegistryPluginEntry = {
+    // POST /publish — Publish a plugin entry
+    .post(
+      "/publish",
+      describeRoute({
+        summary: "Publish plugin entry",
+        description:
+          "Publish a new plugin entry or update an existing one. Local registry publishing is localhost-only.",
+        operationId: "registry.plugins.publish",
+        responses: {
+          200: {
+            description: "Published plugin entry",
+            content: {
+              "application/json": { schema: resolver(RegistryPluginEntry) },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", PublishInput),
+      async (c) => {
+        const input = c.req.valid("json")
+        const now = Date.now()
+        const plugins = await loadRegistry()
+        const existing = plugins.findIndex((p) => p.id === input.id)
+
+        if (existing >= 0) {
+          // Update existing entry
+          const prev = plugins[existing]
+          const updated: RegistryPluginEntry = {
+            ...input,
+            createdAt: prev.createdAt,
+            updatedAt: now,
+            versions: input.versions.map((v) => ({ ...v })),
+          }
+          plugins[existing] = updated
+          await saveRegistry(plugins)
+          return c.json(updated)
+        }
+
+        // New entry
+        const created: RegistryPluginEntry = {
           ...input,
-          createdAt: prev.createdAt,
+          createdAt: now,
           updatedAt: now,
           versions: input.versions.map((v) => ({ ...v })),
         }
-        plugins[existing] = updated
+        plugins.push(created)
         await saveRegistry(plugins)
-        return c.json(updated)
-      }
-
-      // New entry
-      const created: RegistryPluginEntry = {
-        ...input,
-        createdAt: now,
-        updatedAt: now,
-        versions: input.versions.map((v) => ({ ...v })),
-      }
-      plugins.push(created)
-      await saveRegistry(plugins)
-      return c.json(created)
-    },
-  )
+        return c.json(created)
+      },
+    )
 
 function missingFileError(error: unknown) {
   return error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT"

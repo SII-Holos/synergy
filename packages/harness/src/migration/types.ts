@@ -7,6 +7,7 @@ export interface Migration {
   version?: string
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
+  onAccess?: true
   upSession?(
     owner: { scopeID: string; sessionID: string },
     progress: (current: number, total: number) => void,

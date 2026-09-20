@@ -62,9 +62,9 @@ describe("AgentTurnProtocol", () => {
       scope: {
         type: "home" as const,
         id: "home",
-        directory: "/tmp/home",
-        worktree: "/tmp/home",
+        local: null,
       },
+      workspace: null,
       input: {
         sessionID: "ses_test",
         messages: [],
@@ -216,9 +216,9 @@ describe("AgentTurnProtocol", () => {
       scope: {
         type: "home" as const,
         id: "home" as const,
-        directory: "/tmp/home",
-        worktree: "/tmp/home",
+        local: null,
       },
+      workspace: null,
       input: {
         user: { id: "msg_user" },
         sessionID: "ses_test",
@@ -267,9 +267,9 @@ describe("AgentTurnProtocol", () => {
       scope: {
         type: "home" as const,
         id: "home" as const,
-        directory: "/tmp/home",
-        worktree: "/tmp/home",
+        local: null,
       },
+      workspace: null,
       input: {
         user: { id: "msg_user" },
         sessionID: "ses_test",
@@ -356,7 +356,8 @@ describe("AgentTurnProtocol", () => {
 
     expect(
       AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
-        scope: { type: "home", id: "home", directory: "/tmp/home", worktree: "/tmp/home" },
+        scope: { type: "home", id: "home", local: null },
+        workspace: null,
         input,
       }).success,
     ).toBe(true)
@@ -365,17 +366,17 @@ describe("AgentTurnProtocol", () => {
         scope: {
           type: "project",
           id: "scope_test",
-          directory: "/tmp/project",
-          worktree: "/tmp/project",
-          sandboxes: [],
+          local: { directory: "/tmp/project", worktree: "/tmp/project", sandboxes: [] },
           time: { created: 1, updated: 2 },
         },
+        workspace: null,
         input,
       }).success,
     ).toBe(true)
     expect(
       AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
         scope: { type: "project", id: "scope_test", directory: "/tmp/project", worktree: "/tmp/project" },
+        workspace: null,
         input,
       }).success,
     ).toBe(false)

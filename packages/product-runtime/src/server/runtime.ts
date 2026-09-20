@@ -1,5 +1,4 @@
-// L4 assembly: load built-in product registrations before any core registry use
-import "../product-registration"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ProductRuntimeHandle } from "./runtime-handle"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
@@ -28,6 +27,7 @@ const STATUS_POLL_INTERVAL = 320
 type Network = import("@ericsanchezok/synergy-harness/lifecycle").RuntimeNetwork
 
 export interface RuntimeOptions {
+  logging?: Log.Options
   storageReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["storageReporter"]
   migrationReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["reporter"]
   migrationOutput?: Parameters<typeof ProductRuntimeHandle.open>[0]["migrationOutput"]
@@ -42,6 +42,7 @@ export async function run(options: RuntimeOptions) {
   const reporter = options.printBanner ? StartupReporter.create() : undefined
   await using handle = await ProductRuntimeHandle.open({
     mode: "server",
+    logging: options.logging,
     network: async () => {
       network = typeof options.network === "function" ? await options.network() : options.network
       return network
@@ -52,75 +53,77 @@ export async function run(options: RuntimeOptions) {
     recoveryReporter: options.recoveryReporter,
     storageReporter: options.storageReporter,
   })
-  const server = handle.server
-  reporter?.migration(handle.migration)
-  registerShutdown(handle)
-  await Observability.cleanup().catch(() => {})
-  await Observability.emit("server.start", {
-    data: {
-      pid: process.pid,
-      cwd: process.cwd(),
-      launchCwd: startupScopeLabel(),
-      mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
-      network,
-    },
-  })
+  return await handle.run(async () => {
+    const server = handle.server
+    reporter?.migration(handle.migration)
+    registerShutdown(handle)
+    await Observability.cleanup().catch(() => {})
+    await Observability.emit("server.start", {
+      data: {
+        pid: process.pid,
+        cwd: process.cwd(),
+        launchCwd: startupScopeLabel(),
+        mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
+        network,
+      },
+    })
 
-  const statuses: StartupReporter.StatusRow[] = []
+    const statuses: StartupReporter.StatusRow[] = []
 
-  // Deliver install lifecycles queued by CLI installs that ran outside a host process.
-  // Runs after the plugin catalog is loaded and before the runtime.started broadcast so the
-  // broadcast itself serves as the catch-up notification for plugins delivered here.
-  await ScopeContext.provide({
-    scope: Scope.home(),
-    fn: async () => {
-      await Plugin.runPendingInstallLifecycles()
-    },
-  }).catch((error) => log.warn("pending plugin install lifecycles failed", { error }))
-  const endpointGeneration = peekRuntimeEndpointGeneration()
-  if (endpointGeneration) {
-    void ScopeContext.provide({
-      scope: Scope.home(),
-      fn: () => Plugin.trigger("runtime.started", { endpointGeneration }, {}),
-    }).catch((error) => log.warn("plugin runtime.started hooks failed", { error }))
-  }
-  statuses.push(
+    // Deliver install lifecycles queued by CLI installs that ran outside a host process.
+    // Runs after the plugin catalog is loaded and before the runtime.started broadcast so the
+    // broadcast itself serves as the catch-up notification for plugins delivered here.
     await ScopeContext.provide({
       scope: Scope.home(),
-      fn: async () => pluginStatusRow(await Plugin.getLoaded(), await Plugin.getDisabled()),
-    }),
-  )
-  if (options.printChannelStatus) {
-    statuses.push(
-      ...(await ScopeContext.provide({
+      fn: async () => {
+        await Plugin.runPendingInstallLifecycles()
+      },
+    }).catch((error) => log.warn("pending plugin install lifecycles failed", { error }))
+    const endpointGeneration = peekRuntimeEndpointGeneration()
+    if (endpointGeneration) {
+      void ScopeContext.provide({
         scope: Scope.home(),
-        fn: connectionStatusRows,
-      })),
-    )
-  }
-
-  if (options.printBanner) {
-    if (
+        fn: () => Plugin.trigger("runtime.started", { endpointGeneration }, {}),
+      }).catch((error) => log.warn("plugin runtime.started hooks failed", { error }))
+    }
+    statuses.push(
       await ScopeContext.provide({
         scope: Scope.home(),
-        fn: hasNoModelConfigured,
-      })
-    ) {
-      reporter?.warning("No AI model configured — run synergy config before sending messages.")
+        fn: async () => pluginStatusRow(await Plugin.getLoaded(), await Plugin.getDisabled()),
+      }),
+    )
+    if (options.printChannelStatus) {
+      statuses.push(
+        ...(await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: connectionStatusRows,
+        })),
+      )
     }
-    const issues = Config.diagnostics()
-    for (const issue of issues) {
-      const location = issue.quarantinedPath ?? issue.path
-      reporter?.warning(`Configuration issue (${issue.code}): ${issue.error}${location ? ` — ${location}` : ""}`)
+
+    if (options.printBanner) {
+      if (
+        await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: hasNoModelConfigured,
+        })
+      ) {
+        reporter?.warning("No AI model configured — run synergy config before sending messages.")
+      }
+      const issues = Config.diagnostics()
+      for (const issue of issues) {
+        const location = issue.quarantinedPath ?? issue.path
+        reporter?.warning(`Configuration issue (${issue.code}): ${issue.error}${location ? ` — ${location}` : ""}`)
+      }
+      renderBanner({ server, network, reporter: reporter ?? StartupReporter.create(), statuses })
     }
-    renderBanner({ server, network, reporter: reporter ?? StartupReporter.create(), statuses })
-  }
 
-  if (process.env.SYNERGY_DAEMON === "1") {
-    DaemonLogRotate.start()
-  }
+    if (process.env.SYNERGY_DAEMON === "1") {
+      DaemonLogRotate.start()
+    }
 
-  await new Promise(() => {})
+    await new Promise(() => {})
+  })
 }
 
 function renderBanner(input: {
@@ -337,7 +340,8 @@ function registerShutdown(handle: ProductRuntimeHandle.Handle) {
   // (systemd Restart=on-failure, launchd KeepAlive, the Desktop manager) restarts.
   let stopWatchingStorage = () => {}
   let escalated = false
-  const gracefulShutdown = async (signal: string, exitCode = 0) => {
+  const owner = RuntimeContext.current()
+  const gracefulShutdown = owner.bind(async (signal: string, exitCode: number = 0) => {
     if (shuttingDown) {
       Log.flush()
       process.exit(1)
@@ -359,13 +363,12 @@ function registerShutdown(handle: ProductRuntimeHandle.Handle) {
       await handle.close()
     } catch (error) {
       code = 1
-      log.error("runtime cleanup failed", { error })
+      console.error("Runtime cleanup failed", error)
     } finally {
       clearTimeout(deadline)
-      Log.flush()
     }
     process.exit(code)
-  }
+  })
   process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"))
   process.on("SIGINT", () => void gracefulShutdown("SIGINT"))
   stopWatchingStorage = Storage.onUnavailable((error) => {

@@ -4,7 +4,8 @@ export function buildWorkspaceFileBrowserUrl(
   scope?: { scopeID?: string; directory?: string },
 ): string {
   const normalizedBase = baseUrl.replace(/\/$/, "")
-  const token = scope?.scopeID === "home" || !scope?.directory ? "home" : base64UrlEncode(scope.directory)
+  if (!scope?.scopeID && !scope?.directory) throw new Error("A Scope is required to open a workspace file")
+  const token = scope.scopeID === "home" ? "home" : base64UrlEncode(scope.scopeID ?? scope.directory!)
   const encodedPath = path.split("/").map(encodeURIComponent).join("/")
   return `${normalizedBase}/workspace/files/raw/${token}/${encodedPath}`
 }

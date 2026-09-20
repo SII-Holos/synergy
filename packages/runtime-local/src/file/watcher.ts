@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
@@ -123,7 +124,10 @@ export namespace FileWatcher {
   // Scope IDs whose watcher state is live. FileWatcher.reload() tears down and
   // re-creates exactly these so the advertised remediation actually restores
   // live file events.
-  const liveWatcherScopeIDs = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    liveWatcherScopeIDs: new Set<string>(),
+    reportedMissingBinding: false,
+  }))
 
   type SubscriptionRecovery = {
     start(): Promise<void>
@@ -284,8 +288,10 @@ export namespace FileWatcher {
 
   const state = ScopedState.create(
     async () => {
+      const instanceState = runtimeState()
+
       log.info("init", { scopeType: ScopeContext.current.scope.type })
-      liveWatcherScopeIDs.add(ScopeContext.current.scope.id)
+      instanceState.liveWatcherScopeIDs.add(ScopeContext.current.scope.id)
       const cfg = await Config.current().catch(() => null)
       const backend = (() => {
         if (process.platform === "win32") return "windows"
@@ -300,7 +306,7 @@ export namespace FileWatcher {
 
       const subs: SubscriptionRecovery[] = []
 
-      // Home context in GlobalRuntime watches global config and emits via GlobalBus.
+      // Home context in GlobalRuntime watches global config and emits via GlobalBus().
       if (ScopeContext.current.scope.type === "home") {
         const globalConfigDir = Global.Path.config
         const globalRecovery = await subscribeWithRecovery({
@@ -326,8 +332,8 @@ export namespace FileWatcher {
                       : null
               if (!eventType) continue
               log.info("global config file event", { file: evt.path, event: eventType })
-              GlobalBus.emit("event", {
-                directory: "global",
+              GlobalBus().emit("event", {
+                scopeID: null,
                 payload: {
                   type: "global.config.file.changed",
                   properties: { file: evt.path, event: eventType },
@@ -382,8 +388,8 @@ export namespace FileWatcher {
                       : null
               if (!eventType || !FileWatcherEvents.isProjectRuntimeInput(evt.path)) continue
               log.info("project .synergy file event", { file: evt.path, event: eventType })
-              GlobalBus.emit("event", {
-                directory: ScopeContext.current.directory,
+              GlobalBus().emit("event", {
+                scopeID: ScopeContext.current.scope.id,
                 payload: {
                   type: "global.config.file.changed",
                   properties: { file: evt.path, event: eventType },
@@ -408,7 +414,7 @@ export namespace FileWatcher {
       subs.push(workspaceRecovery)
 
       const vcsDir =
-        ScopeContext.current.scope.vcs === "git"
+        ScopeContext.current.scope.local?.vcs === "git"
           ? await $`git rev-parse --git-dir`
               .quiet()
               .nothrow()
@@ -445,13 +451,17 @@ export namespace FileWatcher {
       return { subs, drain, scopeID: ScopeContext.current.scope.id }
     },
     async (state) => {
-      liveWatcherScopeIDs.delete(state.scopeID)
+      const instanceState = runtimeState()
+
+      instanceState.liveWatcherScopeIDs.delete(state.scopeID)
       await Promise.all(state.subs.map((sub) => sub.dispose()))
       if ("drain" in state) await state.drain?.dispose()
     },
   )
 
   export async function reload() {
+    const instanceState = runtimeState()
+
     if (!bindingAvailable()) return
     log.info("reloading file watcher state")
     // A capacity trip is process-wide but operator-fixable: reloading watcher
@@ -463,7 +473,7 @@ export namespace FileWatcher {
     // bounded (that scope's subscriptions) and is cleared by the next reload
     // or process restart; reload is an operator-triggered action, so the
     // window is accepted.
-    const scopeIDs = [...liveWatcherScopeIDs]
+    const scopeIDs = [...instanceState.liveWatcherScopeIDs]
     await state.resetAll()
     // resetAll() disposed every watcher state; re-create the live ones so the
     // advertised remediation actually restores live file events instead of
@@ -487,12 +497,12 @@ export namespace FileWatcher {
     await state()
   }
 
-  let reportedMissingBinding = false
-
   function bindingAvailable(): boolean {
+    const instanceState = runtimeState()
+
     if (FileWatcherBinding.available()) return true
-    if (!reportedMissingBinding) {
-      reportedMissingBinding = true
+    if (!instanceState.reportedMissingBinding) {
+      instanceState.reportedMissingBinding = true
       log.error("file watcher binding unavailable; file watching disabled", {
         package: FileWatcherBinding.packageName(),
         packaged: FileWatcherBinding.packagedPath(),

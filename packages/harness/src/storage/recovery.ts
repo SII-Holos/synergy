@@ -1,22 +1,30 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { createHash } from "node:crypto"
 import { Storage } from "./storage"
 import { StorageIntegrityError } from "./errors"
 
 export namespace StorageRecovery {
-  const owners = new Map<string, () => Promise<void>>()
-  let sealed = false
+  const runtimeState = RuntimeContext.state(() => ({
+    owners: new Map<string, () => Promise<void>>(),
+    sealed: false,
+    blocked: new WeakMap<object, Set<string>>(),
+  }))
+
   export function register(name: string, recover: () => Promise<void>) {
-    if (owners.get(name) === recover) return
-    if (sealed) throw new StorageIntegrityError("Register storage recovery owners before opening the Runtime")
-    owners.set(name, recover)
+    const instanceState = runtimeState()
+
+    if (instanceState.owners.get(name) === recover) return
+    if (instanceState.sealed)
+      throw new StorageIntegrityError("Register storage recovery owners before opening the Runtime")
+    instanceState.owners.set(name, recover)
   }
   export async function recoverOwners() {
-    sealed = true
-    await Storage.collectArtifactGarbage({ scanOrphans: true })
-    for (const recover of owners.values()) await recover()
-  }
+    const instanceState = runtimeState()
 
-  const blocked = new WeakMap<object, Set<string>>()
+    instanceState.sealed = true
+    await Storage.collectArtifactGarbage({ scanOrphans: true })
+    for (const recover of instanceState.owners.values()) await recover()
+  }
 
   export async function validate(progress?: (current: number, timeoutMs?: number) => void) {
     const report = await Storage.current().store.verify(progress)
@@ -38,6 +46,8 @@ export namespace StorageRecovery {
   }
 
   export async function load() {
+    const instanceState = runtimeState()
+
     const sessions = new Set<string>()
     for (const sessionID of await Storage.scan(["storage_recovery", "sessions"])) {
       const [state] = await Storage.readMany<{ blocked: boolean }>([
@@ -45,11 +55,13 @@ export namespace StorageRecovery {
       ])
       if (state?.blocked) sessions.add(sessionID)
     }
-    blocked.set(Storage.current().store, sessions)
+    instanceState.blocked.set(Storage.current().store, sessions)
   }
 
   export function assertRunnable(sessionID: string) {
-    if (Storage.available() && blocked.get(Storage.current().store)?.has(sessionID))
+    const instanceState = runtimeState()
+
+    if (Storage.available() && instanceState.blocked.get(Storage.current().store)?.has(sessionID))
       throw new StorageIntegrityError(
         "This session contains quarantined historical data; inspect and repair it before continuing execution",
       )

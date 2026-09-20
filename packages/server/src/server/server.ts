@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
@@ -24,7 +25,6 @@ import { Global } from "@ericsanchezok/synergy-harness/global"
 import { createScopeRoute } from "./scope"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { zodToJsonSchema } from "zod-to-json-schema"
-import { lazy } from "@ericsanchezok/synergy-harness/util/lazy"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket, websocket } from "hono/bun"
@@ -150,20 +150,31 @@ export namespace Server {
     }
   }
 
-  let _url: URL | undefined
-  let _corsWhitelist = new Set<string>()
-  let _appMounted = false
-  let _globalEventBroadcastOff: (() => void) | undefined
-  let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
-  let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
-  let _shuttingDown = false
+  const runtimeState = RuntimeContext.state(() => ({
+    _url: undefined as URL | undefined,
+    _corsWhitelist: new Set<string>(),
+    _appMounted: false,
+    _globalEventBroadcastOff: undefined as (() => void) | undefined,
+    _globalEventHeartbeatInterval: undefined as ReturnType<typeof setInterval> | undefined,
+    _globalEventClients: undefined as ReturnType<typeof GlobalEventClients.createRegistry> | undefined,
+    _shuttingDown: false,
+    requests: new Set<Promise<unknown>>(),
+    contributions: undefined as Contributions | undefined,
+    appInitialized: false,
+    app: new Hono(),
+    _openapiSpecs: undefined as Promise<OpenAPISpecs> | undefined,
+  }))
 
   export function beginShutdown(): void {
-    _shuttingDown = true
+    const instanceState = runtimeState()
+
+    instanceState._shuttingDown = true
   }
 
   export function resumeRequests(): void {
-    _shuttingDown = false
+    const instanceState = runtimeState()
+
+    instanceState._shuttingDown = false
   }
 
   function isLoopbackOrigin(input: string) {
@@ -209,8 +220,10 @@ export namespace Server {
   export function globalEventOriginAllowed(
     origin: string | undefined,
     requestURL: string,
-    extraAllows: readonly string[] = [..._corsWhitelist],
+    extraAllows: readonly string[] = [...runtimeState()._corsWhitelist],
   ): boolean {
+    const instanceState = runtimeState()
+
     if (!origin) return false
     try {
       const parsed = new URL(origin)
@@ -241,8 +254,10 @@ export namespace Server {
   }
 
   function isGlobalRoute(pathname: string) {
+    const instanceState = runtimeState()
+
     return (
-      contributions.isGlobalRoute?.(pathname) === true ||
+      instanceState.contributions?.isGlobalRoute?.(pathname) === true ||
       pathname === "/" ||
       pathname === "/doc" ||
       pathname === "/log" ||
@@ -259,8 +274,10 @@ export namespace Server {
   }
 
   function isScopeRequiredRoute(pathname: string) {
+    const instanceState = runtimeState()
+
     return (
-      contributions.isScopeRequiredRoute?.(pathname) === true ||
+      instanceState.contributions?.isScopeRequiredRoute?.(pathname) === true ||
       pathname === "/git" ||
       pathname.startsWith("/git/") ||
       pathname === "/pty" ||
@@ -285,7 +302,9 @@ export namespace Server {
   }
 
   function requestScopeID(c: Context) {
-    const scopeID = c.req.query("scopeID") || c.req.header("x-synergy-scope-id")
+    const target =
+      c.req.method === "PATCH" || c.req.method === "DELETE" ? /^\/scope\/([^/]+)\/?$/.exec(c.req.path)?.[1] : undefined
+    const scopeID = target || c.req.query("scopeID") || c.req.header("x-synergy-scope-id")
     if (!scopeID) return undefined
     try {
       return decodeURIComponent(scopeID)
@@ -302,7 +321,8 @@ export namespace Server {
     if (token === "home") return { scopeID: "home" }
     try {
       const directory = Buffer.from(token, "base64url").toString("utf-8").trim()
-      return directory ? { directory } : undefined
+      if (!directory) return undefined
+      return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(directory) ? { directory } : { scopeID: directory }
     } catch {
       return undefined
     }
@@ -331,40 +351,6 @@ export namespace Server {
     })
   }
 
-  async function resolveScopedRequestScope(
-    c: Context,
-    input: { scopeID?: string; directory?: string },
-  ): Promise<Scope | Response> {
-    if (!input.scopeID && !input.directory) {
-      return c.json(
-        {
-          name: "ScopeRequired",
-          data: {
-            message:
-              "This route requires an explicit scopeID, directory, x-synergy-scope-id, or x-synergy-directory header.",
-          },
-        },
-        400,
-      )
-    }
-    if (input.scopeID) {
-      const scope = await Scope.fromID(input.scopeID)
-      if (!scope) {
-        return c.json(
-          {
-            name: "ScopeNotFound",
-            data: {
-              message: `Scope not found: ${input.scopeID}`,
-            },
-          },
-          404,
-        )
-      }
-      return scope
-    }
-    return (await Scope.fromDirectory(input.directory!)).scope
-  }
-
   async function provideRequestScope(c: Context, next: Next) {
     const directory = requestDirectory(c)
     const scopeID = requestScopeID(c)
@@ -372,11 +358,10 @@ export namespace Server {
     const scope =
       isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
         ? Scope.home()
-        : await resolveScopedRequestScope(c, {
+        : await Scope.resolve({
             scopeID: scopeID ?? rawScope?.scopeID,
             directory: directory ?? rawScope?.directory,
           })
-    if (scope instanceof Response) return scope
     return ScopeContext.provide({
       scope,
       async fn() {
@@ -396,7 +381,9 @@ export namespace Server {
   }
 
   export function url(): URL {
-    return _url ?? new URL(DEFAULT_URL)
+    const instanceState = runtimeState()
+
+    return instanceState._url ?? new URL(DEFAULT_URL)
   }
 
   export const Event = {
@@ -427,23 +414,45 @@ export namespace Server {
     listening?: (url: URL) => void
   }
 
-  let contributions: Contributions = {}
-  let appInitialized = false
-
   export function registerContributions(value: Contributions) {
-    if (appInitialized) throw new Error("Server contributions must be registered before constructing the application")
-    contributions = value
+    const instanceState = runtimeState()
+
+    if (instanceState.contributions === value) return
+    RuntimeContext.assertCompositionOpen("Server contributions")
+    if (instanceState.contributions) throw new Error("Server contributions are already registered")
+    if (instanceState.appInitialized)
+      throw new Error("Server contributions must be registered before constructing the application")
+    instanceState.contributions = value
   }
 
   function contributionRoutes(stage: RouteStage): Hono {
-    return contributions.routes?.[stage] ?? new Hono()
+    const instanceState = runtimeState()
+
+    return instanceState.contributions?.routes?.[stage] ?? new Hono()
   }
 
-  const app = new Hono()
-  export const App: () => Hono = lazy((): Hono => {
-    appInitialized = true
-    return app
+  export function App(): Hono {
+    const instanceState = runtimeState()
+
+    const owner = RuntimeContext.current()
+    if (instanceState.appInitialized) return instanceState.app
+    instanceState.appInitialized = true
+    return instanceState.app
+      .use("*", (c, next) =>
+        owner.run(async () => {
+          const task = next()
+          instanceState.requests.add(task)
+          try {
+            await task
+          } finally {
+            instanceState.requests.delete(task)
+          }
+        }),
+      )
       .onError((err, c) => {
+        const instanceState = runtimeState()
+
+        if (err instanceof Scope.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
           return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })
@@ -455,17 +464,20 @@ export namespace Server {
         })
         if (err instanceof NamedError) {
           let status: ContentfulStatusCode
-          const contributedStatus = contributions.errorStatus?.(err)
+          const contributedStatus = instanceState.contributions?.errorStatus?.(err)
           if (contributedStatus !== undefined) status = contributedStatus
           else if (
             err instanceof ConfigImport.RevisionConflictError ||
             err instanceof ConfigImport.LockedError ||
             err instanceof Worktree.UnavailableError ||
+            err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError
           )
             status = 409
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
           else if (
+            err instanceof Scope.RequiredError ||
+            err instanceof Scope.WorkspaceRequiredError ||
             err instanceof ConfigImport.ProjectScopeRequiredError ||
             err instanceof ConfigImport.SourceParseError ||
             err instanceof ConfigImport.SourceFetchError ||
@@ -481,6 +493,36 @@ export namespace Server {
         return c.json(new NamedError.Unknown({ message: "Internal server error" }).toObject(), {
           status: 500,
         })
+      })
+      .use(
+        cors({
+          origin(input) {
+            const instanceState = runtimeState()
+
+            if (!input) return
+
+            if (isLoopbackOrigin(input)) return input
+
+            // *.holosai.io (https only)
+            if (/^https:\/\/([a-z0-9-]+\.)*holosai\.io$/.test(input)) {
+              return input
+            }
+            if (instanceState._corsWhitelist.has(input)) {
+              return input
+            }
+
+            return
+          },
+          // Expose the snapshot sync watermark so the client apply-gate can
+          // read it cross-origin (frontend sync redesign).
+          exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
+          maxAge: 600,
+        }),
+      )
+      .use(async (c, next) => {
+        if (instanceState._shuttingDown)
+          return c.json({ name: "RuntimeShuttingDown", data: { message: "Synergy runtime is shutting down" } }, 503)
+        await next()
       })
       .use(async (c, next) => {
         const reqPath = c.req.path
@@ -600,40 +642,7 @@ export namespace Server {
           },
         )
       })
-      .use(
-        cors({
-          origin(input) {
-            if (!input) return
-
-            if (isLoopbackOrigin(input)) return input
-
-            // *.holosai.io (https only)
-            if (/^https:\/\/([a-z0-9-]+\.)*holosai\.io$/.test(input)) {
-              return input
-            }
-            if (_corsWhitelist.has(input)) {
-              return input
-            }
-
-            return
-          },
-          // Expose the snapshot sync watermark so the client apply-gate can
-          // read it cross-origin (frontend sync redesign).
-          exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
-          maxAge: 600,
-        }),
-      )
       .use(compress({ encoding: "gzip" }))
-      .use(async (c, next) => {
-        if (!_shuttingDown) return next()
-        return c.json(
-          {
-            name: "RuntimeShuttingDown",
-            data: { message: "Synergy runtime is shutting down" },
-          },
-          503,
-        )
-      })
       .use(provideRequestScope)
       .use(cspMiddleware())
       .get(
@@ -753,13 +762,15 @@ export namespace Server {
         },
       )
       .route("", contributionRoutes("global-tools"))
-      .route("/global/update", UpdateRoute)
-      .route("/global", ObservabilityRoute)
+      .route("/global/update", UpdateRoute())
+      .route("/global", ObservabilityRoute())
       .route("", contributionRoutes("global-performance"))
-      .route("/global/storage", GlobalStorageRoute)
+      .route("/global/storage", GlobalStorageRoute())
       .get(
         "/global/event/ws",
         (() => {
+          const instanceState = runtimeState()
+
           // Track clients by stable raw socket identity. Hono's Bun adapter
           // constructs a fresh WSContext wrapper per callback, so Map keys based
           // on the wrapper leak across reconnects (#551). The registry also
@@ -775,7 +786,7 @@ export namespace Server {
               const dp = wire.deltaPayload(event.payload)
               return dp === event.payload
                 ? JSON.stringify(event)
-                : JSON.stringify({ directory: event.directory, payload: dp })
+                : JSON.stringify({ scopeID: event.scopeID, payload: dp })
             })
             const payload = event?.payload
             const part = payload?.properties?.part
@@ -793,9 +804,10 @@ export namespace Server {
               })
             }
           }
-          GlobalBus.on("event", broadcastHandler)
-          _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
+          GlobalBus().on("event", broadcastHandler)
+          instanceState._globalEventBroadcastOff = () => GlobalBus().off("event", broadcastHandler)
           const heartbeatData = JSON.stringify({
+            scopeID: null,
             payload: {
               type: "server.heartbeat",
               properties: {},
@@ -804,10 +816,12 @@ export namespace Server {
           const heartbeat = setInterval(() => {
             globalEventClients.heartbeat(heartbeatData)
           }, 30000)
-          _globalEventHeartbeatInterval = heartbeat
-          _globalEventClients = globalEventClients
+          instanceState._globalEventHeartbeatInterval = heartbeat
+          instanceState._globalEventClients = globalEventClients
           return upgradeWebSocket((c) => {
-            if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url, [..._corsWhitelist])) {
+            const instanceState = runtimeState()
+
+            if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url, [...instanceState._corsWhitelist])) {
               log.warn("global event ws rejected", { origin: c.req.header("origin") })
               return {
                 onOpen(_event, ws) {
@@ -826,6 +840,7 @@ export namespace Server {
                 globalEventClients.reply(
                   ws,
                   JSON.stringify({
+                    scopeID: null,
                     payload: {
                       type: "server.connected",
                       properties: {},
@@ -848,6 +863,7 @@ export namespace Server {
                     globalEventClients.reply(
                       ws,
                       JSON.stringify({
+                        scopeID: null,
                         payload: {
                           type: "server.pong",
                           properties: {},
@@ -880,8 +896,8 @@ export namespace Server {
         }),
         async (c) => {
           await ScopeRuntime.disposeAll()
-          GlobalBus.emit("event", {
-            directory: "global",
+          GlobalBus().emit("event", {
+            scopeID: null,
             payload: {
               type: Event.Disposed.type,
               properties: {},
@@ -891,20 +907,20 @@ export namespace Server {
         },
       )
       .route("", contributionRoutes("global-services"))
-      .route("/global/activity", GlobalActivityRoute)
-      .route("/global/session", GlobalSessionRoute)
+      .route("/global/activity", GlobalActivityRoute())
+      .route("/global/session", GlobalSessionRoute())
       .route("", contributionRoutes("global-navigation"))
       .get("/doc", async (c) => c.json(await openapi()))
       .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
-      .route("/scope", createScopeRoute(contributions.scopeConflictSchema))
-      .route("/scope", createScopeBootstrapRoute(contributions.bootstrap))
-      .route("/pty", PtyRoute)
-      .route("/config", ConfigRoute)
-      .route("/secrets", SecretsRoute)
-      .route("/runtime", RuntimeRoute)
-      .route("", ControlProfileRoute)
-      .route("", SandboxReadinessRoute)
+      .route("/scope", createScopeRoute(instanceState.contributions?.scopeConflictSchema))
+      .route("/scope", createScopeBootstrapRoute(instanceState.contributions?.bootstrap))
+      .route("/pty", PtyRoute())
+      .route("/config", ConfigRoute())
+      .route("/secrets", SecretsRoute())
+      .route("/runtime", RuntimeRoute())
+      .route("", ControlProfileRoute())
+      .route("", SandboxReadinessRoute())
       .get(
         "/experimental/tool/ids",
         describeRoute({
@@ -1019,8 +1035,8 @@ export namespace Server {
                         home: z.string(),
                         state: z.string(),
                         config: z.string(),
-                        worktree: z.string(),
-                        directory: z.string(),
+                        worktree: z.string().nullable(),
+                        directory: z.string().nullable(),
                       })
                       .meta({
                         ref: "Path",
@@ -1036,8 +1052,8 @@ export namespace Server {
             home: Global.Path.home,
             state: Global.Path.state,
             config: Global.Path.config,
-            worktree: ScopeContext.current.worktree,
-            directory: ScopeContext.current.directory,
+            worktree: ScopeContext.current.scope.local?.worktree ?? null,
+            directory: ScopeContext.current.workspace?.path ?? null,
           })
         },
       )
@@ -1193,13 +1209,13 @@ export namespace Server {
         },
       )
       .route("", contributionRoutes("scoped-version-control"))
-      .route("/session", SessionNavRoute)
-      .route("/session", SessionRoute)
-      .route("/session", SessionVolatileBatchRoute)
-      .route("", PermissionRoute)
-      .route("/question", QuestionRoute)
-      .route("/session", SessionExportRoute)
-      .route("/cortex/tasks", CortexRoute)
+      .route("/session", SessionNavRoute())
+      .route("/session", SessionRoute())
+      .route("/session", SessionVolatileBatchRoute())
+      .route("", PermissionRoute())
+      .route("/question", QuestionRoute())
+      .route("/session", SessionExportRoute())
+      .route("/cortex/tasks", CortexRoute())
 
       .get(
         "/command",
@@ -1224,11 +1240,11 @@ export namespace Server {
         },
       )
 
-      .route("/provider", createProviderRoute(contributions.providerRoutes))
-      .route("/skill", SkillRoute)
-      .route("/workspace/files", WorkspaceFilesRoute)
+      .route("/provider", createProviderRoute(instanceState.contributions?.providerRoutes))
+      .route("/skill", SkillRoute())
+      .route("/workspace/files", WorkspaceFilesRoute())
       .route("", contributionRoutes("scoped-before-assets"))
-      .route("/asset", AssetRoute)
+      .route("/asset", AssetRoute())
       .route("", contributionRoutes("scoped-after-assets"))
       .post(
         "/log",
@@ -1468,16 +1484,18 @@ export namespace Server {
           })
         },
       ) as unknown as Hono
-  })
+  }
 
   export function mountApp() {
-    if (_appMounted) return
+    const instanceState = runtimeState()
+
+    if (instanceState._appMounted) return
     // Ensure API routes are registered before SPA fallback routes.
     App()
 
-    if (!contributions.mountApp) return
-    contributions.mountApp(app)
-    _appMounted = true
+    if (!instanceState.contributions?.mountApp) return
+    instanceState.contributions?.mountApp(instanceState.app)
+    instanceState._appMounted = true
   }
 
   // Spec generation consumes describeRoute resolvers in one pass (hono-openapi
@@ -1485,11 +1503,12 @@ export namespace Server {
   // would emit $refs without components. Both /doc and the CLI share this
   // singleton to make once-per-process the public invariant.
   type OpenAPISpecs = Awaited<ReturnType<typeof generateSpecs>>
-  let _openapiSpecs: Promise<OpenAPISpecs> | undefined
 
   export function openapi(): Promise<OpenAPISpecs> {
-    _openapiSpecs ??= buildOpenAPISpecs()
-    return _openapiSpecs
+    const instanceState = runtimeState()
+
+    instanceState._openapiSpecs ??= buildOpenAPISpecs()
+    return instanceState._openapiSpecs
   }
 
   async function buildOpenAPISpecs() {
@@ -1555,19 +1574,35 @@ export namespace Server {
     cors?: string[]
     preferDefaultPort?: boolean
   }) {
+    const instanceState = runtimeState()
+
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
     const configuredOrigins = (opts.cors ?? []).flatMap((origin) => {
       const normalized = normalizeCorsOrigin(origin)
       return normalized ? [normalized] : []
     })
-    _corsWhitelist = new Set([...configuredOrigins, ...(isExternalHost ? lanOrigins() : [])])
-    contributions.configureOrigins?.(configuredOrigins)
+    instanceState._corsWhitelist = new Set([...configuredOrigins, ...(isExternalHost ? lanOrigins() : [])])
+    instanceState.contributions?.configureOrigins?.(configuredOrigins)
 
+    const owner = RuntimeContext.current()
+    type Socket = Bun.ServerWebSocket<Parameters<typeof websocket.message>[0]["data"]>
+    const sockets = new Set<Socket>()
     const args = {
       hostname: opts.hostname,
       idleTimeout: 0,
-      fetch: App().fetch,
-      websocket: websocket,
+      fetch: owner.bind(App().fetch),
+      websocket: {
+        ...websocket,
+        open: owner.bind((socket: Socket) => {
+          sockets.add(socket)
+          websocket.open?.(socket)
+        }),
+        message: owner.bind(websocket.message),
+        close: owner.bind((socket: Socket, code: number, reason: string) => {
+          sockets.delete(socket)
+          websocket.close?.(socket, code, reason)
+        }),
+      },
     } as const
     const tryServe = (port: number) => {
       try {
@@ -1582,11 +1617,11 @@ export namespace Server {
         : tryServe(opts.port)
     if (!server) throw new Error(`Failed to start server on port ${opts.port}`)
 
-    _url = server.url
-    contributions.listening?.(server.url)
+    instanceState._url = server.url
+    instanceState.contributions?.listening?.(server.url)
 
-    if (isExternalHost && _corsWhitelist.size > 0) {
-      log.info("cors auto-detected LAN origins", { origins: _corsWhitelist })
+    if (isExternalHost && instanceState._corsWhitelist.size > 0) {
+      log.info("cors auto-detected LAN origins", { origins: instanceState._corsWhitelist })
     }
 
     const shouldPublishMDNS =
@@ -1603,11 +1638,18 @@ export namespace Server {
 
     const originalStop = server.stop.bind(server)
     server.stop = async (closeActiveConnections?: boolean) => {
+      const instanceState = runtimeState()
+
       if (shouldPublishMDNS) MDNS.unpublish()
-      _globalEventBroadcastOff?.()
-      if (_globalEventHeartbeatInterval) clearInterval(_globalEventHeartbeatInterval)
-      _globalEventClients?.clear()
-      return originalStop(closeActiveConnections)
+      instanceState._globalEventBroadcastOff?.()
+      if (instanceState._globalEventHeartbeatInterval) clearInterval(instanceState._globalEventHeartbeatInterval)
+      // Bun must enter its stopping state before terminating sockets, or its
+      // pending WebSocket count can remain nonzero after synchronous close callbacks.
+      const stopped = originalStop(closeActiveConnections)
+      instanceState._globalEventClients?.clear()
+      if (closeActiveConnections) for (const socket of sockets) socket.terminate()
+      await stopped
+      await Promise.allSettled(instanceState.requests)
     }
 
     return server

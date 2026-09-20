@@ -6,8 +6,11 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { Server } from "../../src/server/server"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 async function writeTurn(sessionID: string, cwd: string, userText: string, assistantText: string) {
   const info = await Session.updateMessage({
@@ -50,113 +53,119 @@ async function writeTurn(sessionID: string, cwd: string, userText: string, assis
 }
 
 describe("rollback acknowledge route", () => {
-  test("POST /session/:sessionID/rollback/ack acknowledges current rollback", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const app = Server.App()
-        const session = await Session.create({})
-        await writeTurn(session.id, tmp.path, "first", "one")
-        await writeTurn(session.id, tmp.path, "second", "two")
+  test("POST /session/:sessionID/rollback/ack acknowledges current rollback", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const session = await Session.create({})
+          await writeTurn(session.id, tmp.path, "first", "one")
+          await writeTurn(session.id, tmp.path, "second", "two")
 
-        const rollback = (await Session.rollback({
-          sessionID: session.id,
-          numTurns: 1,
-        })) as SessionHistory.RollbackEvent
+          const rollback = (await Session.rollback({
+            sessionID: session.id,
+            numTurns: 1,
+          })) as SessionHistory.RollbackEvent
 
-        const response = await app.request(`/session/${session.id}/rollback/ack`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rollbackID: rollback.id }),
-        })
+          const response = await app.request(`/session/${session.id}/rollback/ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rollbackID: rollback.id }),
+          })
 
-        expect(response.status).toBe(200)
-        const body = await response.json()
-        expect(body.rollbackAck).toBeDefined()
-        expect(body.rollbackAck.rollbackID).toBe(rollback.id)
-        expect(typeof body.rollbackAck.acknowledgedAt).toBe("number")
+          expect(response.status).toBe(200)
+          const body = await response.json()
+          expect(body.rollbackAck).toBeDefined()
+          expect(body.rollbackAck.rollbackID).toBe(rollback.id)
+          expect(typeof body.rollbackAck.acknowledgedAt).toBe("number")
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("POST /session/:sessionID/rollback/ack repeated is idempotent", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const app = Server.App()
-        const session = await Session.create({})
-        await writeTurn(session.id, tmp.path, "first", "one")
+  test("POST /session/:sessionID/rollback/ack repeated is idempotent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const session = await Session.create({})
+          await writeTurn(session.id, tmp.path, "first", "one")
 
-        const rollback = (await Session.rollback({
-          sessionID: session.id,
-          numTurns: 1,
-        })) as SessionHistory.RollbackEvent
+          const rollback = (await Session.rollback({
+            sessionID: session.id,
+            numTurns: 1,
+          })) as SessionHistory.RollbackEvent
 
-        const first = await app.request(`/session/${session.id}/rollback/ack`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rollbackID: rollback.id }),
-        })
-        const firstBody = await first.json()
+          const first = await app.request(`/session/${session.id}/rollback/ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rollbackID: rollback.id }),
+          })
+          const firstBody = await first.json()
 
-        const second = await app.request(`/session/${session.id}/rollback/ack`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rollbackID: rollback.id }),
-        })
-        const secondBody = await second.json()
+          const second = await app.request(`/session/${session.id}/rollback/ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rollbackID: rollback.id }),
+          })
+          const secondBody = await second.json()
 
-        expect(second.status).toBe(200)
-        expect(secondBody.rollbackAck.acknowledgedAt).toBe(firstBody.rollbackAck.acknowledgedAt)
+          expect(second.status).toBe(200)
+          expect(secondBody.rollbackAck.acknowledgedAt).toBe(firstBody.rollbackAck.acknowledgedAt)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("POST /session/:sessionID/rollback/ack rejects missing rollbackID body", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const app = Server.App()
-        const session = await Session.create({})
+  test("POST /session/:sessionID/rollback/ack rejects missing rollbackID body", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const session = await Session.create({})
 
-        const response = await app.request(`/session/${session.id}/rollback/ack`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        })
+          const response = await app.request(`/session/${session.id}/rollback/ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          })
 
-        expect(response.status).toBe(400)
+          expect(response.status).toBe(400)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("POST /session/:sessionID/rollback/ack rejects when no rollback is active", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const app = Server.App()
-        const session = await Session.create({})
+  test("POST /session/:sessionID/rollback/ack rejects when no rollback is active", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const session = await Session.create({})
 
-        const response = await app.request(`/session/${session.id}/rollback/ack`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rollbackID: Identifier.ascending("history") }),
-        })
+          const response = await app.request(`/session/${session.id}/rollback/ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rollbackID: Identifier.ascending("history") }),
+          })
 
-        expect(response.status).toBe(409)
+          expect(response.status).toBe(409)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

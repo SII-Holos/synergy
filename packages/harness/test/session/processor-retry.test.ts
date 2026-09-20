@@ -14,12 +14,17 @@ import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { ToolScheduler } from "../../src/session/tool-scheduler"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-afterEach(async () => {
-  mock.restore()
-  await ToolScheduler.stop()
-  ToolScheduler.configure()
-})
+afterEach(() =>
+  runtime.run(async () => {
+    mock.restore()
+    await ToolScheduler.stop()
+    ToolScheduler.configure()
+  }),
+)
 
 function testModel(): Provider.Model {
   return {
@@ -199,123 +204,137 @@ async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cance
   })
 }
 
-test("a failed provider stream cannot execute its proposed tool, and recovery executes once", async () => {
-  const result = await run("stream")
-  expect(result.calls).toBe(2)
-  expect(result.effects).toBe(1)
-  expect(result.disposed).toBe(2)
-  expect(
-    result.message.parts
-      .filter((part) => part.type === "tool")
-      .map((part) => part.state.status)
-      .sort(),
-  ).toEqual(["completed"])
-})
+test("a failed provider stream cannot execute its proposed tool, and recovery executes once", () =>
+  runtime.run(async () => {
+    const result = await run("stream")
+    expect(result.calls).toBe(2)
+    expect(result.effects).toBe(1)
+    expect(result.disposed).toBe(2)
+    expect(
+      result.message.parts
+        .filter((part) => part.type === "tool")
+        .map((part) => part.state.status)
+        .sort(),
+    ).toEqual(["completed"])
+  }))
 
-test("a failure after tool dispatch never replays the model or side effect", async () => {
-  const result = await run("dispatch")
-  expect(result.calls).toBe(1)
-  expect(result.effects).toBe(1)
-  expect(result.message.info).toMatchObject({ finish: "error" })
-})
+test("a failure after tool dispatch never replays the model or side effect", () =>
+  runtime.run(async () => {
+    const result = await run("dispatch")
+    expect(result.calls).toBe(1)
+    expect(result.effects).toBe(1)
+    expect(result.message.info).toMatchObject({ finish: "error" })
+  }))
 
-test("provider retries stop at the attempt budget and persist a terminal failure", async () => {
-  const result = await run("exhausted")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-  expect(result.effects).toBe(0)
-  expect(result.disposed).toBe(result.calls)
-  expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
-})
+test("provider retries stop at the attempt budget and persist a terminal failure", () =>
+  runtime.run(async () => {
+    const result = await run("exhausted")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(result.effects).toBe(0)
+    expect(result.disposed).toBe(result.calls)
+    expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
+  }))
 
-test("retry removes incomplete content from persisted history and the next model context", async () => {
-  const result = await run("stream")
-  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual(["valid answer"])
-  expect(result.message.parts.filter((part) => part.type === "reasoning").map((part) => part.text)).toEqual([
-    "valid reasoning",
-  ])
-  expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
-})
+test("retry removes incomplete content from persisted history and the next model context", () =>
+  runtime.run(async () => {
+    const result = await run("stream")
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "valid answer",
+    ])
+    expect(result.message.parts.filter((part) => part.type === "reasoning").map((part) => part.text)).toEqual([
+      "valid reasoning",
+    ])
+    expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
+  }))
 
-test("provider call IDs reused on retry execute the recovered input once", async () => {
-  const result = await run("reused")
-  expect(result.calls).toBe(2)
-  expect(result.effects).toBe(1)
-  const tools = result.message.parts.filter((part) => part.type === "tool")
-  expect(tools).toHaveLength(1)
-  expect(tools[0]?.state).toMatchObject({ status: "completed", input: { attempt: 2 } })
-})
+test("provider call IDs reused on retry execute the recovered input once", () =>
+  runtime.run(async () => {
+    const result = await run("reused")
+    expect(result.calls).toBe(2)
+    expect(result.effects).toBe(1)
+    const tools = result.message.parts.filter((part) => part.type === "tool")
+    expect(tools).toHaveLength(1)
+    expect(tools[0]?.state).toMatchObject({ status: "completed", input: { attempt: 2 } })
+  }))
 
-test("withdrawn retry output remains in the authoritative call records", async () => {
-  const result = await run("stream")
-  expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
-  expect(result.artifacts[0]).toContain("discard this partial answer")
-  expect(result.artifacts[1]).toContain("valid answer")
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.accounting).toMatchObject({
-    kind: "rollout",
-    callIDs: result.recordedCalls.map((call) => call.id),
-  })
-})
+test("withdrawn retry output remains in the authoritative call records", () =>
+  runtime.run(async () => {
+    const result = await run("stream")
+    expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
+    expect(result.artifacts[0]).toContain("discard this partial answer")
+    expect(result.artifacts[1]).toContain("valid answer")
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.accounting).toMatchObject({
+      kind: "rollout",
+      callIDs: result.recordedCalls.map((call) => call.id),
+    })
+  }))
 
-test("cancelling before retry keeps the final partial output and starts no new attempt", async () => {
-  const result = await run("cancel")
-  expect(result.calls).toBe(1)
-  expect(result.effects).toBe(0)
-  expect(result.message.info).toMatchObject({ finish: "error", error: { name: "MessageAbortedError" } })
-  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
-    "discard this partial answer",
-  ])
-})
+test("cancelling before retry keeps the final partial output and starts no new attempt", () =>
+  runtime.run(async () => {
+    const result = await run("cancel")
+    expect(result.calls).toBe(1)
+    expect(result.effects).toBe(0)
+    expect(result.message.info).toMatchObject({ finish: "error", error: { name: "MessageAbortedError" } })
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "discard this partial answer",
+    ])
+  }))
 
 // The reported incident: a Cortex run failed on Bun's unmapped BoringSSL fallback string
 // (unknown certificate verification error) and was treated as terminal after one attempt.
-test("an unmapped certificate verification failure retries within a bounded budget and persists evidence", async () => {
-  const result = await run("tls")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
-  expect(result.calls).toBe(3)
-  expect(result.effects).toBe(0)
-  expect(result.message.info).toMatchObject({
-    finish: "error",
-    error: {
-      name: "APIError",
-      data: {
-        isRetryable: true,
-        metadata: {
-          networkKind: "indeterminate",
-          category: "tls-verification",
-          endpointHost: "example.invalid",
-        },
-      },
-    },
-  })
-})
-
-test("keeps the full budget for a classified transport failure", async () => {
-  const result = await run("exhausted")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-  expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
-})
-
-// Provider-level baseURL is the standard proxy configuration (postmortem 0017):
-// the persisted endpoint host must come from the merged connection identity,
-// not the model catalog URL.
-test("derives endpointHost from provider-level baseURL when the provider is proxied", async () => {
-  const getProvider = spyOn(Provider, "getProvider").mockResolvedValue({
-    options: { baseURL: "https://gateway.example.test" },
-  } as never)
-  try {
+test("an unmapped certificate verification failure retries within a bounded budget and persists evidence", () =>
+  runtime.run(async () => {
     const result = await run("tls")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+    expect(result.calls).toBe(3)
+    expect(result.effects).toBe(0)
     expect(result.message.info).toMatchObject({
       finish: "error",
       error: {
+        name: "APIError",
         data: {
+          isRetryable: true,
           metadata: {
-            endpointHost: "gateway.example.test",
+            networkKind: "indeterminate",
+            category: "tls-verification",
+            endpointHost: "example.invalid",
           },
         },
       },
     })
-  } finally {
-    getProvider.mockRestore()
-  }
-})
+  }))
+
+test("keeps the full budget for a classified transport failure", () =>
+  runtime.run(async () => {
+    const result = await run("exhausted")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+  }))
+
+// Provider-level baseURL is the standard proxy configuration (postmortem 0017):
+// the persisted endpoint host must come from the merged connection identity,
+// not the model catalog URL.
+test("derives endpointHost from provider-level baseURL when the provider is proxied", () =>
+  runtime.run(async () => {
+    const getProvider = spyOn(Provider, "getProvider").mockResolvedValue({
+      options: { baseURL: "https://gateway.example.test" },
+    } as never)
+    try {
+      const result = await run("tls")
+      expect(result.message.info).toMatchObject({
+        finish: "error",
+        error: {
+          data: {
+            metadata: {
+              endpointHost: "gateway.example.test",
+            },
+          },
+        },
+      })
+    } finally {
+      getProvider.mockRestore()
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

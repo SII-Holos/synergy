@@ -53,3 +53,7 @@ For an explanation, report:
 For a change plan, name the smallest coherent set of owners and verification gates. Include SDK regeneration, config/help/docs sync, or persistence migration only when the change actually crosses those contracts.
 
 Do not reproduce a static directory inventory. Link canonical docs and cite current files or symbols so the analysis survives repository growth.
+
+## Runtime ownership
+
+Trace each mutable registry, cache, environment read, callback, child process and timer to its owning Runtime before changing lifecycle code. Imports define capabilities; composition registers them before opening. Native listeners must capture the owner explicitly. A scoped context from another Runtime cannot supply a workspace, credentials or storage. Test interleaved instances and closing one while the other continues, plus failed startup and resource drainage. Scope identity and nullable local metadata are distinct from a session’s explicit nullable workspace; see [Runtime and Scope](../../../docs/architecture/runtime-and-scope.md).

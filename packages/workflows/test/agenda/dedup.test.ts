@@ -228,9 +228,8 @@ describe("conflict message", () => {
         scope: {
           type: "project",
           id: "scope-1",
-          directory: "/tmp",
-          worktree: "/tmp",
-          sandboxes: [],
+          local: { directory: "/tmp", worktree: "/tmp", sandboxes: [] },
+
           time: { created: now, updated: now },
         },
       },

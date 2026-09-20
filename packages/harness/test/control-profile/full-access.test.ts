@@ -5,6 +5,9 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import type { ResolvedProfile } from "../../src/control-profile/types"
 import { SYNERGY_PROFILE_CAPABILITIES } from "../../../util/src/capability"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const workspace = "/tmp/test"
 
@@ -17,141 +20,152 @@ async function fullAccessProfile() {
   return buildProfile("full_access", { workspace, workspaceType: "main" })
 }
 
-test("full_access allows file_read (maps file_search)", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      expect(rule(profile, "file_read")?.action).toBe("allow")
-    },
-  })
-})
+test("full_access allows file_read (maps file_search)", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        expect(rule(profile, "file_read")?.action).toBe("allow")
+      },
+    })
+  }))
 
-test("full_access profile — decidePermission returns allow for file_search", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      const decision = ApprovalPolicy.decidePermission(profile, "file_search", {})
-      expect(decision).toMatchObject({
-        action: "allow",
-      })
-      expect(decision.capabilities).toContain("file_read")
-    },
-  })
-})
+test("full_access profile — decidePermission returns allow for file_search", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        const decision = ApprovalPolicy.decidePermission(profile, "file_search", {})
+        expect(decision).toMatchObject({
+          action: "allow",
+        })
+        expect(decision.capabilities).toContain("file_read")
+      },
+    })
+  }))
 
-test("full_access profile — decidePermission returns allow for all low-risk tools", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      const lowRiskTools = [
-        "file_search",
-        "scan_files",
-        "parse_code",
-        "view_file",
-        "glob",
-        "read",
-        "webfetch",
-        "file_search",
-      ]
-      for (const tool of lowRiskTools) {
-        const decision = ApprovalPolicy.decidePermission(profile, tool, {})
-        expect(decision.action, `tool: ${tool}`).toBe("allow")
-      }
-    },
-  })
-})
+test("full_access profile — decidePermission returns allow for all low-risk tools", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        const lowRiskTools = [
+          "file_search",
+          "scan_files",
+          "parse_code",
+          "view_file",
+          "glob",
+          "read",
+          "webfetch",
+          "file_search",
+        ]
+        for (const tool of lowRiskTools) {
+          const decision = ApprovalPolicy.decidePermission(profile, tool, {})
+          expect(decision.action, `tool: ${tool}`).toBe("allow")
+        }
+      },
+    })
+  }))
 
-test("full_access profile — decidePermission returns allow for medium-risk tools", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      const mediumRiskTools = ["bash", "edit", "write", "revise_file", "resolve_conflicts", "save_file"]
-      for (const tool of mediumRiskTools) {
-        const decision = ApprovalPolicy.decidePermission(profile, tool, {})
-        expect(decision.action, `tool: ${tool}`).toBe("allow")
-      }
-    },
-  })
-})
+test("full_access profile — decidePermission returns allow for medium-risk tools", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        const mediumRiskTools = ["bash", "edit", "write", "revise_file", "resolve_conflicts", "save_file"]
+        for (const tool of mediumRiskTools) {
+          const decision = ApprovalPolicy.decidePermission(profile, tool, {})
+          expect(decision.action, `tool: ${tool}`).toBe("allow")
+        }
+      },
+    })
+  }))
 
-test("full_access profile — decidePermission returns allow for high-risk tools", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      const highRiskTools = ["secrets", "email_send", "session_send"]
-      for (const tool of highRiskTools) {
-        const decision = ApprovalPolicy.decidePermission(profile, tool, {})
-        expect(decision.action, `tool: ${tool}`).toBe("allow")
-      }
-    },
-  })
-})
+test("full_access profile — decidePermission returns allow for high-risk tools", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        const highRiskTools = ["secrets", "email_send", "session_send"]
+        for (const tool of highRiskTools) {
+          const decision = ApprovalPolicy.decidePermission(profile, tool, {})
+          expect(decision.action, `tool: ${tool}`).toBe("allow")
+        }
+      },
+    })
+  }))
 
-test("full_access allows every profile capability", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      for (const permission of SYNERGY_PROFILE_CAPABILITIES) {
-        expect(rule(profile, permission)?.action, permission).toBe("allow")
-      }
-    },
-  })
-})
+test("full_access allows every profile capability", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        for (const permission of SYNERGY_PROFILE_CAPABILITIES) {
+          expect(rule(profile, permission)?.action, permission).toBe("allow")
+        }
+      },
+    })
+  }))
 
-test("full_access allows non-bypassable protected and hardline permissions", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      expect(ApprovalPolicy.decidePermission(profile, "protected_op", { nonBypassable: true }).action).toBe("allow")
-      expect(ApprovalPolicy.decidePermission(profile, "shell_hardline", {}).action).toBe("allow")
-    },
-  })
-})
+test("full_access allows non-bypassable protected and hardline permissions", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        expect(ApprovalPolicy.decidePermission(profile, "protected_op", { nonBypassable: true }).action).toBe("allow")
+        expect(ApprovalPolicy.decidePermission(profile, "shell_hardline", {}).action).toBe("allow")
+      },
+    })
+  }))
 
-test("full_access allows the opaque protected_op capability that classification failure synthesizes", async () => {
-  // The gate synthesizes exactly this capability when the Policy worker is
-  // unavailable. Under full_access it must authorize it like any other
-  // non-bypassable capability, so an infrastructure fault cannot refuse work.
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const profile = await fullAccessProfile()
-      const decision = ApprovalPolicy.decidePermission(profile, "protected_op", {
-        nonBypassable: true,
-        opaque: true,
-        capability: "protected_op",
-      })
-      expect(decision.action).toBe("allow")
-    },
-  })
-})
+test("full_access allows the opaque protected_op capability that classification failure synthesizes", () =>
+  runtime.run(async () => {
+    // The gate synthesizes exactly this capability when the Policy worker is
+    // unavailable. Under full_access it must authorize it like any other
+    // non-bypassable capability, so an infrastructure fault cannot refuse work.
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await fullAccessProfile()
+        const decision = ApprovalPolicy.decidePermission(profile, "protected_op", {
+          nonBypassable: true,
+          opaque: true,
+          capability: "protected_op",
+        })
+        expect(decision.action).toBe("allow")
+      },
+    })
+  }))
 
-test("guarded and autonomous still ask or deny the same opaque capability", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const guarded = await buildProfile("guarded", { workspace, workspaceType: "main" })
-      const autonomous = await buildProfile("autonomous", { workspace, workspaceType: "main" })
-      const metadata = { nonBypassable: true, opaque: true, capability: "protected_op" }
+test("guarded and autonomous still ask or deny the same opaque capability", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const guarded = await buildProfile("guarded", { workspace, workspaceType: "main" })
+        const autonomous = await buildProfile("autonomous", { workspace, workspaceType: "main" })
+        const metadata = { nonBypassable: true, opaque: true, capability: "protected_op" }
 
-      expect(ApprovalPolicy.decidePermission(guarded, "protected_op", metadata).action).toBe("ask")
-      expect(ApprovalPolicy.decidePermission(autonomous, "protected_op", metadata).action).toBe("deny")
-    },
-  })
-})
+        expect(ApprovalPolicy.decidePermission(guarded, "protected_op", metadata).action).toBe("ask")
+        expect(ApprovalPolicy.decidePermission(autonomous, "protected_op", metadata).action).toBe("deny")
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

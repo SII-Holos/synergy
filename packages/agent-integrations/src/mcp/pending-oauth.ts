@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 export namespace PendingOAuth {
@@ -23,19 +24,25 @@ export namespace PendingOAuth {
     timeout: ReturnType<typeof setTimeout>
   }
 
-  const entries = new Map<string, Entry>()
-  const mutations = new Map<string, Promise<void>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    entries: new Map<string, Entry>(),
+    mutations: new Map<string, Promise<void>>(),
+  }))
 
   function serialize<T>(name: string, mutation: () => Promise<T>): Promise<T> {
-    const previous = mutations.get(name) ?? Promise.resolve()
+    const instanceState = runtimeState()
+
+    const previous = instanceState.mutations.get(name) ?? Promise.resolve()
     const current = previous.then(mutation, mutation)
     const settled = current.then(
       () => undefined,
       () => undefined,
     )
-    mutations.set(name, settled)
+    instanceState.mutations.set(name, settled)
     void settled.finally(() => {
-      if (mutations.get(name) === settled) mutations.delete(name)
+      const instanceState = runtimeState()
+
+      if (instanceState.mutations.get(name) === settled) instanceState.mutations.delete(name)
     })
     return current
   }
@@ -46,6 +53,8 @@ export namespace PendingOAuth {
     options: { timeoutMs?: number; isCurrent?: () => boolean } = {},
   ): Promise<boolean> {
     return serialize(name, async () => {
+      const instanceState = runtimeState()
+
       if (options.isCurrent && !options.isCurrent()) {
         await releaseConnection(name, connection, "stale")
         return false
@@ -60,20 +69,24 @@ export namespace PendingOAuth {
         void dispose(name, "expired")
       }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
       if (typeof timeout === "object" && "unref" in timeout) timeout.unref()
-      entries.set(name, { ...connection, timeout })
+      instanceState.entries.set(name, { ...connection, timeout })
       return true
     })
   }
 
   export function get(name: string): Connection | undefined {
-    return entries.get(name)
+    const instanceState = runtimeState()
+
+    return instanceState.entries.get(name)
   }
 
   export function disposeIfIdentity(name: string, identity: string, reason: string): Promise<boolean> {
     return serialize(name, async () => {
-      const entry = entries.get(name)
+      const instanceState = runtimeState()
+
+      const entry = instanceState.entries.get(name)
       if (entry?.identity !== identity) return false
-      entries.delete(name)
+      instanceState.entries.delete(name)
       await release(name, entry, reason)
       return true
     })
@@ -85,18 +98,22 @@ export namespace PendingOAuth {
 
   export function disposeIfCurrent(name: string, connection: Connection, reason: string): Promise<boolean> {
     return serialize(name, async () => {
-      const entry = entries.get(name)
+      const instanceState = runtimeState()
+
+      const entry = instanceState.entries.get(name)
       if (entry !== connection) return false
-      entries.delete(name)
+      instanceState.entries.delete(name)
       await release(name, entry, reason)
       return true
     })
   }
 
   async function disposeEntry(name: string, reason: string): Promise<void> {
-    const entry = entries.get(name)
+    const instanceState = runtimeState()
+
+    const entry = instanceState.entries.get(name)
     if (!entry) return
-    entries.delete(name)
+    instanceState.entries.delete(name)
     await release(name, entry, reason)
   }
 
@@ -117,6 +134,8 @@ export namespace PendingOAuth {
   }
 
   export async function disposeAll(reason: string): Promise<void> {
-    await Promise.all([...entries.keys()].map((name) => dispose(name, reason)))
+    const instanceState = runtimeState()
+
+    await Promise.all([...instanceState.entries.keys()].map((name) => dispose(name, reason)))
   }
 }

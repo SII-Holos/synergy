@@ -13,6 +13,9 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -130,37 +133,44 @@ async function waitForRun(
 }
 
 describe("LatticeBridge", () => {
-  test("uses BlueprintLoop records as facts and Bus updates only as best-effort wakeups", async () => {
-    await withScope(async () => {
-      const scopeID = ScopeContext.current.scope.id
-      const { session, loop } = await runningRun(scopeID)
-      LatticeBridge.init()
-      LatticeBridge.init()
-      await LatticeRuntime.init()
+  test(
+    "uses BlueprintLoop records as facts and Bus updates only as best-effort wakeups",
+    () =>
+      runtime.run(async () => {
+        await withScope(async () => {
+          const scopeID = ScopeContext.current.scope.id
+          const { session, loop } = await runningRun(scopeID)
+          LatticeBridge.init()
+          LatticeBridge.init()
+          await LatticeRuntime.init()
 
-      const completedLoop = await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "completed" })
-      const completedRun = await waitForRun(
-        scopeID,
-        session.id,
-        (run) => run.status === "completed" && run.effect === undefined,
-      )
+          const completedLoop = await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "completed" })
+          const completedRun = await waitForRun(
+            scopeID,
+            session.id,
+            (run) => run.status === "completed" && run.effect === undefined,
+          )
 
-      expect(completedRun.pathway[0].status).toBe("completed")
-      expect(completedRun.pathway[0].loopHistory[0]).toMatchObject({
-        loopID: loop.id,
-        status: "completed",
-      })
+          expect(completedRun.pathway[0].status).toBe("completed")
+          expect(completedRun.pathway[0].loopHistory[0]).toMatchObject({
+            loopID: loop.id,
+            status: "completed",
+          })
 
-      const revision = completedRun.revision
-      await Bus.publish(LoopEvent.Updated, { loop: completedLoop })
-      await Bun.sleep(50)
-      expect((await LatticeStore.get(scopeID, session.id)).revision).toBe(revision)
+          const revision = completedRun.revision
+          await Bus.publish(LoopEvent.Updated, { loop: completedLoop })
+          await Bun.sleep(50)
+          expect((await LatticeStore.get(scopeID, session.id)).revision).toBe(revision)
 
-      await Bus.publish(LoopEvent.Updated, {
-        loop: { ...completedLoop, id: Identifier.ascending("blueprint_loop"), source: "user" },
-      })
-      await Bun.sleep(50)
-      expect((await LatticeStore.get(scopeID, session.id)).revision).toBe(revision)
-    })
-  }, 20_000)
+          await Bus.publish(LoopEvent.Updated, {
+            loop: { ...completedLoop, id: Identifier.ascending("blueprint_loop"), source: "user" },
+          })
+          await Bun.sleep(50)
+          expect((await LatticeStore.get(scopeID, session.id)).revision).toBe(revision)
+        })
+      }),
+    20_000,
+  )
 })
+
+afterRuntimeTests(() => runtime.close())

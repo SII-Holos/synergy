@@ -44,7 +44,7 @@ export interface ControlProfile {
 }
 
 export interface ResolutionContext {
-  workspace: string
+  workspace: string | null
   workspaceType: string
   trustedRoots?: string[]
   /**
@@ -63,7 +63,7 @@ export interface ProfileSummary {
   brief: string
   approval: ProfileApproval
   deniedCapabilities: string[]
-  workspaceRoot: string
+  workspaceRoot: string | null
 }
 
 export interface ResolvedProfile extends ControlProfile {

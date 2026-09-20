@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * L1 executor port for the L4 runtime reload orchestrator. L1 write paths
  * (tool file edits, config import/setup, provider auth, file watchers) call
@@ -12,9 +13,9 @@ import type { Config } from "./config"
 export namespace RuntimeReloadExecutor {
   export interface ReloadOptions {
     configChange?: Config.Change
-    eventDirectory?: string
+    eventScopeID?: string | null
     includePrerequisites?: boolean
-    useCurrentDirectory?: boolean
+    useCurrentScope?: boolean
     /** File paths that triggered the reload; lets Config.reload skip unaffected markdown scans. */
     files?: string[]
   }
@@ -24,25 +25,35 @@ export namespace RuntimeReloadExecutor {
 
   type Executor = (input: Input, options?: ReloadOptions) => Promise<Result>
 
-  let reloadExecutor: Executor | undefined
-  let reloadGlobalExecutor: Executor | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    reloadExecutor: undefined as Executor | undefined,
+    reloadGlobalExecutor: undefined as Executor | undefined,
+  }))
 
   export function setExecutor(fn: Executor): void {
-    reloadExecutor = fn
+    const instanceState = runtimeState()
+
+    instanceState.reloadExecutor = fn
   }
 
   export function setGlobalExecutor(fn: Executor): void {
-    reloadGlobalExecutor = fn
+    const instanceState = runtimeState()
+
+    instanceState.reloadGlobalExecutor = fn
   }
 
   export async function reload(input: Input, options: ReloadOptions = {}): Promise<Result> {
-    if (!reloadExecutor) return degradedResult(input)
-    return reloadExecutor(input, options)
+    const instanceState = runtimeState()
+
+    if (!instanceState.reloadExecutor) return degradedResult(input)
+    return instanceState.reloadExecutor(input, options)
   }
 
   export async function reloadGlobal(input: Input, options: ReloadOptions = {}): Promise<Result> {
-    if (!reloadGlobalExecutor) return degradedResult({ ...input, scope: "global" })
-    return reloadGlobalExecutor(input, options)
+    const instanceState = runtimeState()
+
+    if (!instanceState.reloadGlobalExecutor) return degradedResult({ ...input, scope: "global" })
+    return instanceState.reloadGlobalExecutor(input, options)
   }
 
   function degradedResult(input: Input): Result {

@@ -6,7 +6,7 @@ import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "../session/agent-turn/worker-
 import { DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS, ToolScheduler } from "../session/tool-scheduler"
 import { PolicyWorker, DEFAULT_POLICY_WORKER_POOL_OPTIONS } from "../enforcement/policy-worker"
 import { resolveRuntimeShutdownTimeoutMs } from "@ericsanchezok/synergy-util/runtime-shutdown"
-import { availableParallelism } from "os"
+import { availableParallelism, cpus } from "os"
 import { ServiceMemory } from "../process/service-memory"
 import { ObservabilityMetrics } from "../observability/metrics"
 
@@ -28,7 +28,7 @@ export function defaultAgentWorkers(
 ): number {
   const reserveBytes = Math.max(1, Math.floor(resolvedAgentWorkerMaxRssBytes(config) / 2))
   const memoryCap = Math.max(1, Math.floor((budget.limitBytes * AGENT_POOL_MEMORY_UTILIZATION) / reserveBytes))
-  const cpuCap = Math.max(1, availableParallelism() - 1)
+  const cpuCap = Math.max(1, (availableParallelism() || cpus().length) - 1)
   const derived = Math.min(memoryCap, cpuCap, AGENT_WORKER_CAPACITY_MAX)
   return Math.max(1, derived, desiredAgentWorkerMinIdle(config, mode))
 }

@@ -95,7 +95,7 @@ export function Sidebar(props: SidebarProps) {
   const sidebarWidth = () => layout.sidebar.width()
   const [sidebarResizing, setSidebarResizing] = createSignal(false)
   const recentEntries = createMemo(() => layout.nav.recentEntries())
-  const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
+  const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.id]?.nextCursor != null
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
   const [navigationRegistryVersion, setNavigationRegistryVersion] = createSignal(0)
   const sidebarNavigation = createMemo(() => {
@@ -169,8 +169,8 @@ export function Sidebar(props: SidebarProps) {
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
   const scopes = createMemo(() => layout.scopes.list())
-  const scopeWorktrees = createMemo(() => scopes().map((scope) => scope.worktree))
-  const scopeByWorktree = createMemo(() => new Map(scopes().map((scope) => [scope.worktree, scope])))
+  const scopeWorktrees = createMemo(() => scopes().map((scope) => scope.id))
+  const scopeByWorktree = createMemo(() => new Map(scopes().map((scope) => [scope.id, scope])))
 
   const managedWorktrees = createMemo(() => {
     const accounts = layout.channelProjection().channelAccounts
@@ -261,27 +261,27 @@ export function Sidebar(props: SidebarProps) {
   const handleProjectToggle = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
     if (layout.scopes.isSupplemental(scope)) {
-      layout.scopes.toggleSupplementalExpand(scope.worktree)
+      layout.scopes.toggleSupplementalExpand(scope.id)
       return
     }
     if (scope.expanded) {
-      layout.scopes.collapse(scope.worktree)
+      layout.scopes.collapse(scope.id)
     } else {
-      layout.scopes.expand(scope.worktree)
+      layout.scopes.expand(scope.id)
     }
   }
 
   const handleCollapseAllProjects = (e: MouseEvent) => {
     e.stopPropagation()
     for (const scope of scopes()) {
-      if (scope.expanded) layout.scopes.collapse(scope.worktree)
+      if (scope.expanded) layout.scopes.collapse(scope.id)
     }
   }
 
   const handleProjectArchive = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
     const scopeID = scope.id
-    const worktree = scope.worktree
+    const worktree = scope.id
     if (!scopeID) return
     confirm.show({
       ...archiveProjectConfirm(getScopeLabel(scope)),
@@ -299,7 +299,7 @@ export function Sidebar(props: SidebarProps) {
 
   const handleProjectPlus = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
-    navigate(`/${base64Encode(scope.worktree)}/session`)
+    navigate(`/${base64Encode(scope.id)}/session`)
   }
   const handleProjectPin = (scope: LocalScope) => {
     layout.scopes.pinScope(scope)
@@ -317,13 +317,13 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
-    navigate(`/${base64Encode(scope.worktree)}/session/${entry.id}`)
+    navigate(`/${base64Encode(scope.id)}/session/${entry.id}`)
   }
 
   const resolveEntryRouteDirectory = (entry: NavEntry): string => {
     if (entry.scopeID === "home" || entry.scopeType === "home") return "home"
     const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID)
-    if (metadata?.worktree) return metadata.worktree
+    if (metadata?.id) return metadata.id
     return entry.scopeID
   }
 
@@ -647,7 +647,7 @@ export function Sidebar(props: SidebarProps) {
                               activeID={params.id}
                               currentDirectory={currentDirectory()}
                               isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
-                              navLoaded={(scope) => !!layout.nav.navEntries()[scope.worktree]}
+                              navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
                               projectNavEntries={(scope) => layout.nav.projectNavEntries(scope)}
                               hasMoreForProject={hasMoreForProject}
                               managedProject={project.managedProject}
@@ -657,8 +657,8 @@ export function Sidebar(props: SidebarProps) {
                               onProjectEdit={handleProjectEdit}
                               onProjectArchive={handleProjectArchive}
                               onProjectPin={handleProjectPin}
-                              onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.worktree)}
-                              onLoadMore={(scope) => layout.nav.loadMoreNav(scope.worktree)}
+                              onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
+                              onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
                               activeSessionID={params.id}
                               onSessionClick={handleSessionClick}
                               _={_}
@@ -734,7 +734,7 @@ export function Sidebar(props: SidebarProps) {
                         activeID={params.id}
                         currentDirectory={currentDirectory()}
                         isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
-                        navLoaded={(scope) => !!layout.nav.navEntries()[scope.worktree]}
+                        navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
                         projectNavEntries={(scope) => layout.nav.projectNavEntries(scope)}
                         hasMoreForProject={hasMoreForProject}
                         onProjectToggle={handleProjectToggle}
@@ -743,8 +743,8 @@ export function Sidebar(props: SidebarProps) {
                         onProjectEdit={handleProjectEdit}
                         onProjectArchive={handleProjectArchive}
                         onProjectPin={handleProjectPin}
-                        onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.worktree)}
-                        onLoadMore={(scope) => layout.nav.loadMoreNav(scope.worktree)}
+                        onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
+                        onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
                         activeSessionID={params.id}
                         onSessionClick={handleSessionClick}
                         _={_}
@@ -780,7 +780,7 @@ export function Sidebar(props: SidebarProps) {
                     class="sb-flyout-project-row"
                     onClick={() => {
                       setProjectsFlyoutOpen(false)
-                      handleProjectClick(scope.worktree)
+                      handleProjectClick(scope.id)
                     }}
                   >
                     <Icon name={getSemanticIcon("workspace.main")} size="small" />
@@ -791,7 +791,7 @@ export function Sidebar(props: SidebarProps) {
                     scope={scope}
                     activeID={params.id}
                     flyout
-                    onSessionClick={(session) => handleFlyoutSessionClick(session, scope.worktree)}
+                    onSessionClick={(session) => handleFlyoutSessionClick(session, scope.id)}
                   />
                 </div>
               )
@@ -853,12 +853,12 @@ function SidebarProjectGroup(props: {
   })
   const isActive = createMemo(() => {
     const scope = props.scope()
-    return !!scope && scope.worktree === props.currentDirectory && !activeSessionVisible()
+    return !!scope && scope.id === props.currentDirectory && !activeSessionVisible()
   })
 
   return (
     <Show when={props.scope()}>
-      <div class="sb-project-group" data-scope-id={props.scope()?.id || props.scope()?.worktree}>
+      <div class="sb-project-group" data-scope-id={props.scope()?.id || props.scope()?.id}>
         <div
           classList={{
             "sb-project-row": true,
@@ -889,7 +889,7 @@ function SidebarProjectGroup(props: {
             class="sb-project-body"
             onClick={() => {
               const scope = props.scope()
-              if (scope) props.onProjectClick(scope.worktree)
+              if (scope) props.onProjectClick(scope.id)
             }}
           >
             <Icon name={getSemanticIcon("workspace.main")} size="normal" class="sb-project-folder" />
@@ -1203,6 +1203,7 @@ function SidebarSessionRow(props: {
   const { _ } = useLingui()
   const lingui = useLingui()
   const globalSync = useGlobalSync()
+  const sdk = useGlobalSDK()
 
   const visual = createMemo(() =>
     resolveSessionVisualState({
@@ -1225,7 +1226,8 @@ function SidebarSessionRow(props: {
     if (!directory) return
     setSessionDragData(event, {
       id: props.entry.id,
-      directory,
+      scopeID: directory,
+      connection: sdk.url,
       title: props.entry.title || _(sidebar.untitled),
       updatedAt: props.entry.lastActivityAt,
     })
@@ -1250,7 +1252,11 @@ function SidebarSessionRow(props: {
           <span class="sb-session-completion-dot" />
         </Show>
       </span>
-      <SessionDraftBadge sessionID={props.entry.id} label={_(sidebar.draftBadge)} />
+      <SessionDraftBadge
+        dirty={sdk.drafts.hasDraftSession(props.entry.id)}
+        sessionID={props.entry.id}
+        label={_(sidebar.draftBadge)}
+      />
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
         {props.entry.title || _(sidebar.untitled)}
       </span>

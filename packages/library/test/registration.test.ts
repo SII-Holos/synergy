@@ -1,96 +1,57 @@
 import { expect, test } from "bun:test"
+import path from "node:path"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { SessionPluginHooks } from "@ericsanchezok/synergy-harness/session/plugin-hooks"
+import { testRuntime as coreRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
+import { registerLibrary, disposeLibrary } from "../src/register"
+import { LibraryDB } from "../src/database"
+import { testRuntime } from "./support/runtime"
 
 test("library composes independently without product registration or plugin delivery", async () => {
-  const entry = new URL("../src/register.ts", import.meta.url).pathname
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
-      import assert from "node:assert/strict"
-      const { Config } = await import("@ericsanchezok/synergy-harness/config/config")
-      const { MigrationRegistry } = await import("@ericsanchezok/synergy-harness/migration/registry")
-      const { ToolRegistry } = await import("@ericsanchezok/synergy-harness/tool/registry")
-      const { SessionPluginHooks } = await import("@ericsanchezok/synergy-harness/session/plugin-hooks")
-      const { registerLibrary } = await import(${JSON.stringify(entry)})
-      registerLibrary()
-      registerLibrary()
-      assert.equal(MigrationRegistry.list().has("library"), true)
-      assert.equal(ToolRegistry.toolProviderIDs().filter(id => id === "library").length, 1)
-      for (const key of ["channel", "plugin", "voice", "mcp"]) assert.equal(key in Config.Info.shape, false)
-      const initial = { results: ["unchanged"] }
-      assert.equal(await SessionPluginHooks.trigger("library.search.after", {}, initial), initial)
-      assert.deepEqual(await SessionPluginHooks.installed(), [])
-    `,
-    ],
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env },
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    registerLibrary()
+    registerLibrary()
+    expect(MigrationRegistry.list().has("library")).toBe(true)
+    expect(ToolRegistry.toolProviderIDs().filter((id) => id === "library")).toHaveLength(1)
+    for (const key of ["channel", "plugin", "voice", "mcp"]) expect(key in Config.Info.shape).toBe(false)
+    const initial = { results: ["unchanged"] }
+    expect(await SessionPluginHooks.trigger("library.search.after", {}, initial)).toBe(initial)
+    expect(await SessionPluginHooks.installed()).toEqual([])
   })
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-  expect(code, stderr).toBe(0)
 })
 
 test("Library disposal closes its database after operations and can repeat", async () => {
-  const { registerLibrary, disposeLibrary } = await import("../src/register")
-  const { LibraryDB } = await import("../src/database")
-  registerLibrary()
-  const connection = LibraryDB.connection()
-  expect(connection.query("SELECT 1 AS value").get()).toEqual({ value: 1 })
-  await disposeLibrary()
-  expect(() => connection.query("SELECT 1").get()).toThrow()
-  await disposeLibrary()
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const connection = LibraryDB.connection()
+    expect(connection.query("SELECT 1 AS value").get()).toEqual({ value: 1 })
+    await disposeLibrary()
+    expect(() => connection.query("SELECT 1").get()).toThrow()
+    await disposeLibrary()
+  })
 })
 
-test("late Library import cannot partially register config or change dormant data", async () => {
-  const { createIsolatedTestEnv } = await import("@ericsanchezok/synergy-testing/env")
-  const isolated = await createIsolatedTestEnv()
-  const entry = new URL("../src/register.ts", import.meta.url).pathname
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
-      import assert from "node:assert/strict"
-      import path from "node:path"
-      import fs from "node:fs/promises"
-      const { Global } = await import("@ericsanchezok/synergy-harness/global")
-      const { Config } = await import("@ericsanchezok/synergy-harness/config/config")
-      const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
-      const { MigrationRegistry } = await import("@ericsanchezok/synergy-harness/migration/registry")
-      const { RuntimeHandle } = await import("@ericsanchezok/synergy-harness/lifecycle")
-      const configFile = path.join(Global.Path.config, "config/50-library.jsonc")
-      const dataFile = path.join(Global.Path.data, "library/absent-owner.json")
-      const dormant = JSON.stringify({ futureOwnerField: { revision: 42 } })
-      for (const file of [configFile, dataFile]) {
-        await fs.mkdir(path.dirname(file), { recursive: true })
-        await Bun.write(file, dormant)
-      }
-      const runtime = await RuntimeHandle.open({ mode: "oneshot" })
-      try {
-        assert.equal("library" in Config.Info.shape, false)
-        await assert.rejects(import(${JSON.stringify(entry)}), /before opening the runtime/)
-        for (const field of ["library", "embedding", "rerank"]) assert.equal(field in Config.Info.shape, false)
-        assert.equal(ConfigDomain.byId.has("library"), false)
-        assert.equal(MigrationRegistry.list().has("library"), false)
-        for (const file of [configFile, dataFile]) assert.equal(await Bun.file(file).text(), dormant)
-      } finally {
-        await runtime.close()
-      }
-    `,
-    ],
-    env: {
-      ...isolated.env,
-      SYNERGY_OBSERVABILITY_INLINE: "1",
-      SYNERGY_CONFIG_CONTENT: JSON.stringify({ execution: { agentWorkerMinIdle: 0 } }),
-    },
-    stdout: "pipe",
-    stderr: "pipe",
+test("late Library registration cannot partially register config or change dormant data", async () => {
+  await using fixture = await runtimeHome()
+  const files = [
+    path.join(fixture.host.root, "config/50-library.jsonc"),
+    path.join(fixture.host.root, "data/library/absent-owner.json"),
+  ]
+  const dormant = JSON.stringify({ futureOwnerField: { revision: 42 } })
+  for (const file of files) await Bun.write(file, dormant)
+  await using runtime = await coreRuntime({ home: fixture.host.home, composition: { register() {} } })
+  await runtime.run(async () => {
+    expect("library" in Config.Info.shape).toBe(false)
+    expect(registerLibrary).toThrow(/before opening/i)
+    expect(registerLibrary).toThrow(/before opening/i)
+    for (const field of ["library", "embedding", "rerank"]) expect(field in Config.Info.shape).toBe(false)
+    expect(ConfigDomain.byId().has("library")).toBe(false)
+    expect(MigrationRegistry.list().has("library")).toBe(false)
+    for (const file of files) expect(await Bun.file(file).text()).toBe(dormant)
   })
-  try {
-    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    expect(code, stderr).toBe(0)
-  } finally {
-    await isolated.dispose()
-  }
-}, 30_000)
+})

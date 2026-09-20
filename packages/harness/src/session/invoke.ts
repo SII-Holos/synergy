@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { SessionExecutionContributions } from "./execution-contributions"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
@@ -28,7 +29,6 @@ import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import { SessionCommandRuntime } from "./command-runtime"
 import { InstructionRegistry } from "../instruction/registry"
-import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "../util/fn"
 import { SessionProcessor } from "./processor"
@@ -56,13 +56,11 @@ import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
-import "./title"
 
 import { LLM } from "./llm"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { LoopJob } from "./loop-job"
-import "./loop-signals"
 import { ContinuationKernel } from "./continuation-kernel"
 import { SessionContextContributions } from "./context-contributions"
 import { SessionProjectHealth } from "./project-health"
@@ -83,8 +81,10 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
-  const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
-  const maxOutputTokensByMessage = new Map<string, number>()
+  const runtimeState = RuntimeContext.state(() => ({
+    ephemeralToolsByMessage: new Map<string, ToolResolver.EphemeralTool[]>(),
+    maxOutputTokensByMessage: new Map<string, number>(),
+  }))
 
   function channelDeliveryMetadata(messages: MessageV2.WithParts[], afterIndex: number) {
     let channelPush = false
@@ -252,22 +252,25 @@ export namespace SessionInvoke {
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput, lease?: SessionManager.LoopLease) {
+    const instanceState = runtimeState()
+
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        await Session.assertWorkspaceAvailable(input.sessionID)
         const message = await createUserMessage(input)
         if (input.ephemeralTools?.length) {
-          ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
+          instanceState.ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
         }
-        if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
+        if (input.maxOutputTokens) instanceState.maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
 
         await Session.update(input.sessionID, (draft) => {
           draft.pendingReply = input.noReply !== true || undefined
         })
 
         if (input.noReply === true) {
-          ephemeralToolsByMessage.delete(message.info.id)
-          maxOutputTokensByMessage.delete(message.info.id)
+          instanceState.ephemeralToolsByMessage.delete(message.info.id)
+          instanceState.maxOutputTokensByMessage.delete(message.info.id)
           return message
         }
 
@@ -279,8 +282,8 @@ export namespace SessionInvoke {
           })
           throw error
         } finally {
-          ephemeralToolsByMessage.delete(message.info.id)
-          maxOutputTokensByMessage.delete(message.info.id)
+          instanceState.ephemeralToolsByMessage.delete(message.info.id)
+          instanceState.maxOutputTokensByMessage.delete(message.info.id)
         }
       },
       lease ? { lease, releaseLease: false } : undefined,
@@ -299,6 +302,7 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        await Session.assertWorkspaceAvailable(input.sessionID)
         const item = await SessionInbox.getStored(input.sessionID, input.itemID)
         const message = await SessionInbox.materializeItem(item)
         if (!message || message.info.role !== "user") {
@@ -445,6 +449,7 @@ export namespace SessionInvoke {
     lease: SessionManager.LoopLease,
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
+    await Session.assertWorkspaceAvailable(sessionID)
     ContinuationKernel.init()
     for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
     const abort = lease.signal
@@ -723,8 +728,8 @@ export namespace SessionInvoke {
                   mode: agent.name,
                   agent: agent.name,
                   path: {
-                    cwd: ScopeContext.current.directory,
-                    root: ScopeContext.current.directory,
+                    cwd: ScopeContext.current.workspace?.path ?? null,
+                    root: ScopeContext.current.workspace?.path ?? null,
                   },
                   cost: 0,
                   tokens: {
@@ -804,7 +809,7 @@ export namespace SessionInvoke {
                   sessionID,
                   session,
                   userTools: R.tools,
-                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  ephemeralTools: runtimeState().ephemeralToolsByMessage.get(R.id),
                   includeMCP: true,
                 }),
                 Promise.all([
@@ -847,7 +852,7 @@ export namespace SessionInvoke {
 
               // Layer 1.5: Semi-static — permission context (stable per session)
               try {
-                const workspace = ScopeContext.current.directory
+                const workspace = ScopeContext.current.workspace?.path ?? null
                 const workspaceInfo = ScopeContext.current.workspace
                 const profileId = await Session.resolveEffectiveControlProfile({
                   sessionID: session?.id,
@@ -906,7 +911,9 @@ export namespace SessionInvoke {
               lateSystemParts.push(...envParts)
 
               // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
-              const gitHealthBlock = SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
+              const gitHealthBlock = ScopeContext.current.workspace
+                ? SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
+                : undefined
               if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
               // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
@@ -915,7 +922,7 @@ export namespace SessionInvoke {
               // contradicts "Is directory a git repo" in the environment text.
               if ((await Config.current()).prompt?.coauthorReminder !== false) {
                 const inGitRepo =
-                  ScopeContext.current.scope.type === "project" &&
+                  ScopeContext.current.workspace &&
                   (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
                 if (inGitRepo) {
                   lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
@@ -1014,7 +1021,7 @@ export namespace SessionInvoke {
               if (!promptPlan) break
 
               const calibration = buildCalibration(msgs)
-              const requestedMaxOutputTokens = maxOutputTokensByMessage.get(R.id)
+              const requestedMaxOutputTokens = runtimeState().maxOutputTokensByMessage.get(R.id)
               const promptDecideTimer = log.time("promptBudgeter.decide")
               let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
                 overflowThreshold: jobCtx.compactionOverflowThreshold,
@@ -1080,7 +1087,7 @@ export namespace SessionInvoke {
                   processor,
                   session,
                   userTools: R.tools,
-                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  ephemeralTools: runtimeState().ephemeralToolsByMessage.get(R.id),
                   includeMCP: true,
                 },
                 toolAvailability,
@@ -1238,7 +1245,7 @@ export namespace SessionInvoke {
                   sessionID,
                   session,
                   userTools: R.tools,
-                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  ephemeralTools: runtimeState().ephemeralToolsByMessage.get(R.id),
                   includeMCP: true,
                 },
                 model,
@@ -1637,8 +1644,8 @@ export namespace SessionInvoke {
         mode: latestRoot.agent,
         agent: latestRoot.agent,
         path: {
-          cwd: ScopeContext.current.directory,
-          root: ScopeContext.current.directory,
+          cwd: ScopeContext.current.workspace?.path ?? null,
+          root: ScopeContext.current.workspace?.path ?? null,
         },
         cost: 0,
         tokens: {
@@ -1730,8 +1737,8 @@ export namespace SessionInvoke {
       mode: user.agent,
       agent: user.agent,
       path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
+        cwd: ScopeContext.current.workspace?.path ?? null,
+        root: ScopeContext.current.workspace?.path ?? null,
       },
       cost: 0,
       tokens: {
@@ -1793,8 +1800,8 @@ export namespace SessionInvoke {
       mode: "unknown",
       agent: "unknown",
       path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
+        cwd: ScopeContext.current.workspace?.path ?? null,
+        root: ScopeContext.current.workspace?.path ?? null,
       },
       cost: 0,
       tokens: {
@@ -2148,8 +2155,8 @@ export namespace SessionInvoke {
       agent: agentName,
       cost: 0,
       path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
+        cwd: ScopeContext.current.workspace?.path ?? null,
+        root: ScopeContext.current.workspace?.path ?? null,
       },
       time: { created: Date.now(), completed: Date.now() },
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

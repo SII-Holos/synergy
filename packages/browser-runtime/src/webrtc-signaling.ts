@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserWebRTCMessageSchema,
@@ -32,7 +33,9 @@ function send(socket: BrowserWebRTCSocket, payload: Record<string, unknown>): vo
 }
 
 export namespace BrowserWebRTCSignaling {
-  const channels = new Map<string, Channel>()
+  const runtimeState = RuntimeContext.state(() => ({
+    channels: new Map<string, Channel>(),
+  }))
 
   export function channelKey(owner: BrowserOwner.Info, pageId: string): string {
     return `${BrowserOwner.key(owner)}:page:${pageId}`
@@ -77,8 +80,10 @@ export namespace BrowserWebRTCSignaling {
   }
 
   export function detachViewer(owner: BrowserOwner.Info, pageId: string, socket: BrowserWebRTCSocket): void {
+    const instanceState = runtimeState()
+
     const key = channelKey(owner, pageId)
-    const channel = channels.get(key)
+    const channel = instanceState.channels.get(key)
     if (!channel || channel.viewer?.socket !== socket) return
     channel.viewer = undefined
     if (channel.connectionId && channel.host) {
@@ -96,12 +101,16 @@ export namespace BrowserWebRTCSignaling {
   }
 
   export function hasHost(owner: BrowserOwner.Info, pageId: string): boolean {
-    return Boolean(channels.get(channelKey(owner, pageId))?.host)
+    const instanceState = runtimeState()
+
+    return Boolean(instanceState.channels.get(channelKey(owner, pageId))?.host)
   }
 
   export function detachHost(owner: BrowserOwner.Info, pageId: string, socket: BrowserWebRTCSocket): boolean {
+    const instanceState = runtimeState()
+
     const key = channelKey(owner, pageId)
-    const channel = channels.get(key)
+    const channel = instanceState.channels.get(key)
     if (!channel || channel.host?.socket !== socket) return false
     channel.host = undefined
     if (channel.viewer) {
@@ -169,15 +178,19 @@ export namespace BrowserWebRTCSignaling {
   }
 
   export function resetForTest(): void {
-    channels.clear()
+    const instanceState = runtimeState()
+
+    instanceState.channels.clear()
   }
 
   function getChannel(owner: BrowserOwner.Info, pageId: string): Channel {
+    const instanceState = runtimeState()
+
     const key = channelKey(owner, pageId)
-    const existing = channels.get(key)
+    const existing = instanceState.channels.get(key)
     if (existing) return existing
     const channel: Channel = { generation: -1, viewerIceSequence: -1, hostIceSequence: -1 }
-    channels.set(key, channel)
+    instanceState.channels.set(key, channel)
     return channel
   }
 
@@ -205,6 +218,8 @@ export namespace BrowserWebRTCSignaling {
   }
 
   function deleteIfEmpty(key: string, channel: Channel): void {
-    if (!channel.viewer && !channel.host) channels.delete(key)
+    const instanceState = runtimeState()
+
+    if (!channel.viewer && !channel.host) instanceState.channels.delete(key)
   }
 }

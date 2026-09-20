@@ -1,5 +1,4 @@
 import type { Agent, NotePatchInput, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
-import { resolveProjectScope } from "@/utils/scope"
 
 export type BlueprintRunMode = "current" | "new" | "worktree"
 export type BlueprintExecutionControlProfile = "autonomous" | "full_access"
@@ -12,9 +11,7 @@ export type BlueprintExecutionAgentOption = {
 
 export type BlueprintScopeSummary = {
   id: string
-  worktree?: string
-  sandboxes?: string[]
-  vcs?: string
+  local?: { directory: string; worktree: string; sandboxes: string[]; vcs?: "git" } | null
 }
 
 export type BlueprintLoopSummary = {
@@ -28,8 +25,8 @@ export type BlueprintRunNoteSummary = {
   }
 }
 
-export function blueprintSessionWorkspaceSelection(mode: BlueprintRunMode): SessionWorkspaceSelection {
-  return mode === "worktree" ? { mode: "create" } : { mode: "current" }
+export function blueprintSessionWorkspaceSelection(mode: BlueprintRunMode): SessionWorkspaceSelection | undefined {
+  return mode === "worktree" ? { mode: "create" } : undefined
 }
 
 export function blueprintExecutionControlProfile(configured?: string | null): BlueprintExecutionControlProfile {
@@ -59,30 +56,16 @@ export function blueprintExecutionAgentPatch(note: { version: number }, agentNam
   }
 }
 
-export function blueprintScopeIDForDirectory(directory: string | undefined, scopes: BlueprintScopeSummary[]) {
-  if (!directory) return ""
-  if (directory === "home") return "home"
-  const candidates = scopes.filter((scope): scope is BlueprintScopeSummary & { worktree: string } => !!scope.worktree)
-  return resolveProjectScope(directory, undefined, candidates)?.id ?? ""
-}
-
 export function canRunBlueprintInCurrentSession(input: {
   sessionID?: string
-  blueprintDirectory?: string
-  routeDirectory?: string
-  scopes: BlueprintScopeSummary[]
+  blueprintScopeID?: string
+  sessionScopeID?: string
 }) {
-  if (!input.sessionID) return false
-  const blueprintScopeID = blueprintScopeIDForDirectory(input.blueprintDirectory, input.scopes)
-  const routeScopeID = blueprintScopeIDForDirectory(input.routeDirectory, input.scopes)
-  return !!blueprintScopeID && blueprintScopeID === routeScopeID
+  return !!input.sessionID && !!input.blueprintScopeID && input.blueprintScopeID === input.sessionScopeID
 }
 
-export function canCreateBlueprintWorktree(input: { blueprintDirectory?: string; scopes: BlueprintScopeSummary[] }) {
-  if (!input.blueprintDirectory || input.blueprintDirectory === "home") return false
-  const scopeID = blueprintScopeIDForDirectory(input.blueprintDirectory, input.scopes)
-  const scope = input.scopes.find((item) => item.id === scopeID)
-  return scope?.vcs === "git"
+export function canCreateBlueprintWorktree(input: { scopeID?: string; scopes: BlueprintScopeSummary[] }) {
+  return input.scopes.find((scope) => scope.id === input.scopeID)?.local?.vcs === "git"
 }
 
 export function isActiveBlueprintLoopStatus(status?: string | null) {

@@ -1,13 +1,20 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { Provider } from "./types"
 
-const providers = new Map<string, Provider>()
+const runtimeState = RuntimeContext.state(() => ({
+  providers: new Map<string, Provider>(),
+}))
 
 export function registerProvider<TAccountConfig, TChannelConfig>(
   provider: Provider<TAccountConfig, TChannelConfig>,
 ): void {
-  providers.set(provider.type, provider as unknown as Provider)
+  const instanceState = runtimeState()
+
+  instanceState.providers.set(provider.type, provider as unknown as Provider)
 }
 
 export function getProvider(type: string): Provider | undefined {
-  return providers.get(type)
+  const instanceState = runtimeState()
+
+  return instanceState.providers.get(type)
 }
