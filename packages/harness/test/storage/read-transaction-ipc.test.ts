@@ -117,6 +117,50 @@ describe("read-only transaction round trips", () => {
   })
 })
 
+// The store-level wrappers above are not what production calls: the public
+// `Storage` surface is, and it is where the round-trip saving has to be
+// observable. A regression there would leave the store tests green while every
+// real read paid two extra round trips again.
+describe("public storage read round trips", () => {
+  test("a point read through the public surface issues one statement and no transaction", async () => {
+    const store = await open()
+    await store.write(["perf", "public-point"], { value: 1 })
+    await store.write(["perf", "public-second"], { value: 2 })
+
+    const capture = captureStatements(store)
+    try {
+      await Storage.provide({ store, artifactDirectory: root }, async () => {
+        capture.statements.length = 0
+        expect(await Storage.read<{ value: number }>(["perf", "public-point"])).toEqual({ value: 1 })
+        expect(capture.statements).toHaveLength(1)
+        expect(capture.statements.filter((statement) => statement === "BEGIN" || statement === "COMMIT")).toEqual([])
+
+        // The keyed and prefix shapes go through the same single-statement path.
+        capture.statements.length = 0
+        expect((await Storage.versioned<{ value: number }>(["perf", "public-point"])).value).toEqual({ value: 1 })
+        expect(capture.statements).toHaveLength(1)
+
+        capture.statements.length = 0
+        expect(await Storage.list(["perf"])).toContainEqual(["perf", "public-point"])
+        expect(capture.statements).toHaveLength(1)
+
+        // A key list longer than one batch still needs its transaction, because
+        // separate statements would observe separate snapshots.
+        capture.statements.length = 0
+        await Storage.readMany(Array.from({ length: 129 }, (_, index) => ["missing", String(index)]))
+        expect(capture.statements[0]).toBe("BEGIN")
+        expect(capture.statements.at(-1)).toBe("COMMIT")
+
+        capture.statements.length = 0
+        await Storage.readMany([["perf", "public-point"]])
+        expect(capture.statements).toHaveLength(1)
+      })
+    } finally {
+      capture.restore()
+    }
+  })
+})
+
 describe("storage operation measurement", () => {
   test("store primitives that query the driver directly are visible to telemetry", async () => {
     const store = await open()

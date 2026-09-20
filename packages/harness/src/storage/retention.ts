@@ -85,7 +85,20 @@ export namespace StorageRetention {
           return report
         })
         .catch((error) => {
+          // A pass that never completes cannot reclaim anything, and the failure
+          // repeats on every sweep. A log line leaves the store silently over
+          // budget, so the condition is reported where an operator already looks
+          // for storage problems.
           log.warn("retention pass failed", { error })
+          ObservabilityIssues.raise({
+            code: "STORAGE_RETENTION_PASS_FAILED",
+            severity: "warning",
+            module: "storage",
+            title: "Retention pass failed",
+            message:
+              "A scheduled retention pass did not complete, so the store keeps its previous footprint and the next sweep retries the same work.",
+            evidence: { errorName: error instanceof Error ? error.name : "unknown" },
+          })
           return undefined as unknown as Report
         })
         .finally(() => {

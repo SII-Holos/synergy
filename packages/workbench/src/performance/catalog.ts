@@ -223,6 +223,35 @@ export namespace PerformanceCatalog {
     metric("storage.write.bytes", "Storage written bytes", "bytes", "counter", "sum", "storage", "backend", [
       "operation",
     ]),
+    metric("storage.queue.depth", "Storage queue depth", "count", "gauge", "latest", "storage", "backend", ["queue"]),
+    metric("storage.queue.wait", "Storage queue wait", "ms", "duration", "p95", "storage", "backend", [
+      "queue",
+      "slow",
+    ]),
+    metric("storage.queue.hold", "Storage queue hold", "ms", "duration", "p95", "storage", "backend", ["queue"]),
+    metric("storage.retention.pass", "Storage retention passes", "count", "counter", "sum", "storage", "backend", [
+      "infeasible",
+    ]),
+    metric(
+      "storage.retention.deleted_records",
+      "Storage retention deleted records",
+      "count",
+      "counter",
+      "sum",
+      "storage",
+      "backend",
+      ["infeasible"],
+    ),
+    metric(
+      "storage.retention.budget_ratio",
+      "Storage retention budget ratio",
+      "count",
+      "ratio",
+      "avg",
+      "storage",
+      "backend",
+      [],
+    ),
     metric("snapshot.track.duration", "Snapshot track latency", "ms", "duration", "p95", "session", "backend", []),
     metric("snapshot.patch.duration", "Snapshot patch latency", "ms", "duration", "p95", "session", "backend", []),
     metric(
@@ -695,6 +724,12 @@ export namespace PerformanceCatalog {
     "storage.operation.duration",
     "storage.read.bytes",
     "storage.write.bytes",
+    "storage.queue.depth",
+    "storage.queue.wait",
+    "storage.queue.hold",
+    "storage.retention.pass",
+    "storage.retention.deleted_records",
+    "storage.retention.budget_ratio",
   ]
   export const defaultMetricNames = [
     "http.request.duration",

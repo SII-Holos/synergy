@@ -117,10 +117,13 @@ export namespace Storage {
     return result
   }
 
-  export function snapshot<T>(body: (tx: StoreTransaction) => Promise<T>): Promise<T> {
+  export function snapshot<T>(
+    body: (tx: StoreTransaction) => Promise<T>,
+    options: { singleStatement?: boolean } = {},
+  ): Promise<T> {
     const parent = current()
     if (parent.transaction) return body(parent.transaction)
-    return parent.store.snapshot((tx) => context.run({ ...parent, transaction: tx }, () => body(tx)))
+    return parent.store.snapshot((tx) => context.run({ ...parent, transaction: tx }, () => body(tx)), options)
   }
 
   export function inTransaction() {
@@ -148,15 +151,17 @@ export namespace Storage {
   }
 
   export function read<T>(key: string[], options: { silentNotFound?: boolean } = {}): Promise<T> {
-    return measureStorage("read", key, () => snapshot((tx) => tx.read<T>(key)), options)
+    return measureStorage("read", key, () => snapshot((tx) => tx.read<T>(key), { singleStatement: true }), options)
   }
 
   export function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
-    return measureStorage("readMany", [keys[0]?.[0] ?? "root"], () => snapshot((tx) => tx.readMany<T>(keys)))
+    return measureStorage("readMany", [keys[0]?.[0] ?? "root"], () =>
+      snapshot((tx) => tx.readMany<T>(keys), { singleStatement: keys.length <= 128 }),
+    )
   }
 
   export function versioned<T>(key: string[]) {
-    return snapshot((tx) => tx.versioned<T>(key))
+    return snapshot((tx) => tx.versioned<T>(key), { singleStatement: true })
   }
 
   export function write<T>(key: string[], value: T) {
@@ -176,19 +181,19 @@ export namespace Storage {
   }
 
   export function scan(prefix: string[]) {
-    return measureStorage("scan", prefix, () => snapshot((tx) => tx.scan(prefix)))
+    return measureStorage("scan", prefix, () => snapshot((tx) => tx.scan(prefix), { singleStatement: true }))
   }
 
   export function list(prefix: string[]) {
-    return measureStorage("list", prefix, () => snapshot((tx) => tx.list(prefix)))
+    return measureStorage("list", prefix, () => snapshot((tx) => tx.list(prefix), { singleStatement: true }))
   }
 
   export function query<T>(input: RecordQuery) {
-    return snapshot((tx) => tx.query<T>(input))
+    return snapshot((tx) => tx.query<T>(input), { singleStatement: true })
   }
 
   export function queryKeys(input: RecordQuery) {
-    return snapshot((tx) => tx.queryKeys(input))
+    return snapshot((tx) => tx.queryKeys(input), { singleStatement: true })
   }
 
   export async function* records<T>(input: Omit<RecordQuery, "after"> = {}) {

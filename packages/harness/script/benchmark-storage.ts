@@ -104,3 +104,71 @@ try {
 } finally {
   await fs.rm(traversalRoot, { recursive: true, force: true })
 }
+
+// Owner enumeration is measured against a rollout-shaped namespace because that
+// is what retention scans, and its cost is the difference between a bounded
+// seek and a full group. `storage_records_owner` carries the owner columns, so
+// the statement resolves `MAX(updated)` per owner without touching `key_text`;
+// reintroducing that column would turn this back into a per-row table walk while
+// still looking correct.
+const ownerRecords = Number(process.env.SYNERGY_BENCH_OWNER_RECORDS ?? 200_000)
+const ownerCount = Number(process.env.SYNERGY_BENCH_OWNER_COUNT ?? 50)
+const ownerRoot = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-storage-owners-"))
+try {
+  const namespace = `owners_${crypto.randomUUID()}`
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace,
+    filename: path.join(ownerRoot, "agent.sqlite"),
+  })
+  try {
+    // Written through the real store so the index the enumeration depends on is
+    // maintained by production code rather than by fixture SQL.
+    for (let offset = 0; offset < ownerRecords; offset += 500) {
+      const batch = Math.min(500, ownerRecords - offset)
+      await store.transaction(async (tx) => {
+        for (let index = offset; index < offset + batch; index++) {
+          const owner = index % ownerCount
+          await tx.write(["sessions", `scope_${owner}`, `ses_${owner}`, "rollout", "runs", `run_${index}`, "info"], {
+            index,
+            pad: "x".repeat(64),
+          })
+        }
+      })
+    }
+
+    await store.evidenceOwners()
+    const started = performance.now()
+    const owners = await store.evidenceOwners()
+    const enumerationMs = performance.now() - started
+    if (owners.length !== ownerCount) throw new Error("Owner enumeration benchmark verification failed")
+
+    const pointStart = performance.now()
+    for (let index = 0; index < 200; index++)
+      await store.read<{ index: number }>(["sessions", "scope_0", "ses_0", "rollout", "runs", "run_0", "info"])
+    const pointReadMs = (performance.now() - pointStart) / 200
+
+    const readStarted = performance.now()
+    const page = await store.query({ kind: "rollout", limit: 256, descending: true })
+    const pageMs = performance.now() - readStarted
+    if (page.length !== 256) throw new Error("Owner page benchmark verification failed")
+
+    console.log(
+      JSON.stringify({
+        harness: "storage-owners",
+        backend: "sqlite",
+        rolloutRecords: ownerRecords,
+        owners: ownerCount,
+        // The number the defect was about: this is one serialized reader lane
+        // that the whole process shares.
+        enumerationMs: +enumerationMs.toFixed(2),
+        pointReadMs: +pointReadMs.toFixed(3),
+        page256Ms: +pageMs.toFixed(2),
+      }),
+    )
+  } finally {
+    await store.close()
+  }
+} finally {
+  await fs.rm(ownerRoot, { recursive: true, force: true })
+}
