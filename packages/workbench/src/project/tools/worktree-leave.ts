@@ -20,7 +20,7 @@ interface WorktreeLeaveMetadata {
   reason?: string
   previous?: { type: string; path: string; name?: string }
   restored?: { type: string; path: string }
-  cleanup?: { performed: boolean; skippedReason?: string }
+  cleanup?: { performed: boolean; skippedReason?: string; error?: string; cleanupDeferred?: boolean }
   message?: string
 }
 
@@ -48,10 +48,12 @@ export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMet
     const worktreePath = workspace.path
     const worktreeName: string | undefined = (workspace as any).name as string | undefined
 
-    let isClean: boolean | undefined
+    // Tri-state: `undefined` means the dirty probe could not answer, which is
+    // not the same as "clean" and must not be reported as "dirty".
+    let dirtyState: boolean | undefined
     if (params.cleanup === "remove_if_clean") {
       const st = await Worktree.status(ctx.sessionID)
-      isClean = st.dirty === false
+      dirtyState = st.dirty
     }
 
     try {
@@ -83,13 +85,30 @@ export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMet
     await Worktree.leave(ctx.sessionID)
     const restored = { type: "main", path: ScopeContext.current.scope.directory }
 
-    let cleanupResult: { performed: boolean; skippedReason?: string } = { performed: false }
+    let cleanupResult: { performed: boolean; skippedReason?: string; error?: string; cleanupDeferred?: boolean } = {
+      performed: false,
+    }
     if (params.cleanup === "remove_if_clean" && worktreeID) {
-      if (isClean) {
-        await Worktree.remove({ sessionID: ctx.sessionID, target: worktreeID, force: false })
-        cleanupResult = { performed: true }
-      } else {
+      if (dirtyState === false) {
+        try {
+          // The turn issuing this call still holds the worktree's git lock and
+          // use token, so removal must be told that the caller is its own turn.
+          await Worktree.remove(
+            { sessionID: ctx.sessionID, target: worktreeID, force: false },
+            { insideCallerTurn: true },
+          )
+          cleanupResult = { performed: true }
+        } catch (error) {
+          // Leaving already succeeded, so a failed cleanup must not fail the
+          // turn: mark the worktree for the janitor and report the reason.
+          const message = error instanceof Error ? error.message : String(error)
+          await Worktree.markLifecycle(worktreeID, "gc_candidate").catch(() => undefined)
+          cleanupResult = { performed: false, error: message, cleanupDeferred: true }
+        }
+      } else if (dirtyState === true) {
         cleanupResult = { performed: false, skippedReason: "dirty" }
+      } else {
+        cleanupResult = { performed: false, skippedReason: "unknown_dirty" }
       }
     }
 

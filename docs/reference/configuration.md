@@ -15,6 +15,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
 | `skills` | `55-skills.jsonc` | merge |
+| `worktree` | `57-worktree.jsonc` | merge |
 | `agents` | `60-agents.jsonc` | merge |
 | `commands` | `70-commands.jsonc` | merge |
 | `permissions` | `80-permissions.jsonc` | merge |
@@ -110,6 +111,14 @@ File: `55-skills.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `skills` | SkillsConfig |  |
+
+## Worktrees
+
+File: `57-worktree.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `worktree` | WorktreeConfig |  |
 
 ## Agents
 

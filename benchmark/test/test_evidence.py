@@ -189,3 +189,34 @@ def test_ctrf_and_go_test_events_provide_independent_execution_evidence(tmp_path
     assert result["test_count"] == 2
     assert len(result["observations"]) == 2
     assert result["test_count_semantics"] == "maximum_observed_count_across_overlapping_reports"
+
+
+def test_private_runtime_home_is_not_public_evidence(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "agent/home"
+    vault = home / ".synergy/data/auth/secret-vault.json"
+    vault.parent.mkdir(parents=True)
+    vault.write_text('{"private": "fixture-credential"}')
+    public = tmp_path / "agent/events.jsonl"
+    public.write_text('{"type": "completed"}\n')
+    original = Path.open
+
+    def opened(self, *args, **kwargs):
+        if self.is_relative_to(home):
+            raise AssertionError("Private runtime home was read as public evidence")
+        return original(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", opened)
+        result = collect_evidence(tmp_path, {})
+    assert "agent/events.jsonl" in result["files"]
+    assert not any(name.startswith("agent/home/") for name in result["files"])
+    assert "fixture-credential" in vault.read_text()
+
+
+def test_evidence_does_not_follow_directory_symlinks(tmp_path: Path) -> None:
+    private = tmp_path / "agent/home"
+    private.mkdir(parents=True)
+    (private / "credentials.json").write_text("fixture-credential")
+    (tmp_path / "linked-home").symlink_to(private, target_is_directory=True)
+    result = collect_evidence(tmp_path, {})
+    assert not any(name.startswith("linked-home/") for name in result["files"])

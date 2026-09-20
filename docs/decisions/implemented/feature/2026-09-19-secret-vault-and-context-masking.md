@@ -44,3 +44,5 @@ Historical transcripts embed resolvable capability references for as long as an 
 False-positive registrations (example tokens, fixtures, injected strings) accumulate as vault noise; because the mask is value-preserving they cannot corrupt any execution, and the panel is the pruning surface. The fingerprint-based heuristic masks only standalone token-shaped values, so prose about key formats passes through untouched.
 
 No persisted-state migration was needed: the vault starts empty, historical transcripts are deliberately not backfilled (explicit non-goal), and both config keys the mechanism touches (`redactForClient` paths, SmartAllow patterns) kept their public behavior — the existing redaction, SmartAllow, and config-extension suites pass unmodified as the equivalence proof.
+
+Benchmark runtime homes remain private recovery inputs. The public evidence inventory prunes the entire runtime Home before traversal, so automatically registered provider keys and vault metadata cannot become exportable evidence entries. Rollout export and archive validation remain independent and continue checking the public archive.

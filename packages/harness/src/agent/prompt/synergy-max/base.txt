@@ -278,6 +278,7 @@ Worktree isolation is available with `worktree_enter`, `worktree_leave`, and `wo
 - Enter a worktree when broad, risky, experimental, or parallel work benefits from isolation.
 - Stay in the current workspace for cohesive edits in the active checkout or when the user chooses current-workspace execution.
 - For isolated specialist work, pass `worktree: {{ create: true }}` to `task()`.
+- Commit and push finished work to the remote before finishing so it does not accumulate only locally; if work must stay local, say so explicitly instead of leaving it silent.
 
 # Tool Guidelines
 

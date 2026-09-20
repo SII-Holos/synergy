@@ -191,4 +191,6 @@ Docker `exec` 未显式指定命令期限时继承调用方的原生阶段期限
 
 OOM 通过本地 Unix Docker Engine API 在执行期间持续订阅并落盘，关闭时按容器 ID、纳秒时间戳和事件类型合并并去重最终事件窗口，避免遗漏已发生但尚未消费的事件。订阅中断或只能取得历史窗口时，精确 OOM 数保持 unknown，另列已观察到的下界；远端 Docker 端点目前只有历史窗口覆盖。CPU/RSS 峰值来自定期采样，报告保留采样间隔并声明可能漏过短峰值。
 
+运行时 Home 是私有恢复输入，可能包含密钥库；`evidence.json` 的文件清单不遍历 `agent/home`，也不跟随目录符号链接。可共享的 Synergy 执行证据使用已验证的 `rollout.zip`，恢复过程仍可读取保留的私有 Home。
+
 CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence.py` 收集诊断，只复制明确列出的证据文件，跳过 native home、wire、输入目录与符号链接；单个不可读文件不会丢弃其他诊断，收集错误单独保留。

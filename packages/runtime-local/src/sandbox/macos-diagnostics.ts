@@ -107,12 +107,20 @@ export function startDenialLogger(): DenialLoggerSession {
 
   // Read the stream in the background — never block the caller.
   const drained = (async () => {
+    const decoder = new TextDecoder()
+    let pending = ""
     try {
       for await (const chunk of proc.stdout as unknown as AsyncIterable<Uint8Array>) {
-        for (const line of Buffer.from(chunk).toString("utf-8").split("\n")) {
+        pending += decoder.decode(chunk, { stream: true })
+        const lines = pending.split("\n")
+        pending = lines.pop() ?? ""
+        if (pending.length > 65536) pending = ""
+        for (const line of lines) {
           const filtered = filterDenialOutput(line)
           if (!filtered) continue
+          if (targetPid !== undefined && recordPid(filtered) !== targetPid) continue
           candidates.push(filtered)
+          if (candidates.length > 256) candidates.shift()
           if (targetPid !== undefined) select()
         }
       }
@@ -134,6 +142,8 @@ export function startDenialLogger(): DenialLoggerSession {
     output,
     adoptPid(pid: number) {
       targetPid = pid
+      for (let index = candidates.length - 1; index >= 0; index--)
+        if (recordPid(candidates[index]) !== pid) candidates.splice(index, 1)
       select()
     },
     async flush(timeoutMs = 400) {

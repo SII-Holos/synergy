@@ -3762,6 +3762,21 @@ export type SkillsConfig = {
   compatibility?: SkillsCompatibilityConfig
 }
 
+export type WorktreeConfig = {
+  /**
+   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
+   */
+  maxManaged?: number
+  /**
+   * Hours between managed-worktree janitor sweeps
+   */
+  sweepIntervalHours?: number
+  /**
+   * Run the managed-worktree janitor at all (default: true)
+   */
+  janitor?: boolean
+}
+
 /**
  * Speech-to-text service configuration
  */
@@ -4784,6 +4799,7 @@ export type Config = {
     lsp?: boolean
   }
   skills?: SkillsConfig
+  worktree?: WorktreeConfig
   voice?: VoiceConfig
   /**
    * UI locale (system = follow OS, default: system)
@@ -5430,6 +5446,7 @@ export type ConfigDomainSummary = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   filename: string
   label: string
@@ -5487,6 +5504,7 @@ export type ConfigExportResult = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   warnings: Array<string>
@@ -5546,6 +5564,7 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   filename: string
   path: string
@@ -5600,6 +5619,7 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5684,6 +5704,7 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
     >
   }
@@ -5716,6 +5737,7 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5883,6 +5905,8 @@ export type Worktree = {
   lastUsedAt?: number
   setupFailed?: boolean
   setupError?: string
+  locked?: string
+  prunable?: boolean
 }
 
 export type WorktreeCreateInput = {
@@ -13195,6 +13219,7 @@ export type ConfigDomainGetData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13246,6 +13271,7 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13297,6 +13323,7 @@ export type ConfigDomainOpenData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13356,6 +13383,7 @@ export type ConfigExportData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
       | Array<
           | "general"
@@ -13374,6 +13402,7 @@ export type ConfigExportData = {
           | "library"
           | "mcp"
           | "skills"
+          | "worktree"
           | "voice"
         >
     includeSecrets?: string

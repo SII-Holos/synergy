@@ -1,4 +1,3 @@
-import { $ } from "bun"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { CortexWorkspace } from "@ericsanchezok/synergy-harness/cortex/workspace"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -35,10 +34,12 @@ export function registerWorkspace() {
           })
           return
         }
+        // One owner for this probe: the shared helper confirms a remote exists
+        // before trusting the count, because `--not --remotes` degenerates to
+        // the whole local history when the repository has no remote-tracking ref.
         if (state.worktree.branch) {
-          const result = await $`git rev-list --count HEAD --not --remotes`.quiet().nothrow().cwd(state.path)
-          const localOnly = parseInt(result.stdout.toString().trim(), 10)
-          if (!isNaN(localOnly) && localOnly > 0) {
+          const localOnly = await Worktree.localOnlyCommitCount(state.path)
+          if (localOnly > 0) {
             log.info("child worktree has local-only commits, kept for review", {
               taskID: input.taskID,
               worktreeID: state.worktree.id,

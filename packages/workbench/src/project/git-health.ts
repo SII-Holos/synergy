@@ -11,6 +11,7 @@ export namespace GitHealth {
       | "extra_branches"
       | "detached_head"
       | "gc_needed"
+      | "unpushed"
     level: "warn" | "critical"
     message: string
     detail: Record<string, unknown>
@@ -38,6 +39,7 @@ export namespace GitHealth {
   const GIT_COMMAND_TIMEOUT_MS = 2_000
   const SCAN_TIMEOUT_MS = 3_000
   const LARGE_FILE_STAT_BATCH_SIZE = 64
+  const DEFAULT_GC_AUTO = 6700
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -300,7 +302,7 @@ export namespace GitHealth {
     return {
       dimension: "extra_branches",
       level,
-      message: `${count} non-current branches — prune with git branch -d or archive`,
+      message: `${count} non-current branches — archive or remove them via the worktree cleanup path; deleting is deferred there because squash- or rebase-merged branches are not detected as merged by ancestry alone, which needs content comparison`,
       detail: { count },
     }
   }
@@ -325,13 +327,17 @@ export namespace GitHealth {
 
   // ---------------------------------------------------------------------------
   // Dimension 7: gc_needed
-  // Uses both git count-objects and filesystem count (max of the two).
-  // git count-objects only counts valid objects; the filesystem fallback
-  // catches hand-crafted test fixture objects.
-  // Thresholds: 50→warn, 200→critical
+  // Thresholds derive from the repo's effective gc.auto (git's documented
+  // default is 6700): git auto-gcs once loose objects exceed gc.auto, so warn at
+  // a quarter of that. Uses both git count-objects and filesystem count (max of
+  // the two); git count-objects only counts valid objects, while the filesystem
+  // fallback catches hand-crafted test fixture objects.
   // ---------------------------------------------------------------------------
   async function checkGcNeeded(cwd: string, gitDir: string, deadline: number): Promise<Issue | undefined> {
-    const output = (await gitText(cwd, ["count-objects", "-v"])) ?? ""
+    const [output, gcAutoText] = await Promise.all([
+      gitText(cwd, ["count-objects", "-v"]).then((x) => x ?? ""),
+      gitText(cwd, ["config", "--get", "gc.auto"]),
+    ])
 
     const countMatch = output.match(/count:\s*(\d+)/)
     const sizeMatch = output.match(/size:\s*(\d+)/)
@@ -341,15 +347,42 @@ export namespace GitHealth {
     const looseObjects = Math.max(gitCount, diskCount)
     const size = sizeMatch ? parseInt(sizeMatch[1]) : 0
 
-    if (looseObjects < 50) return undefined
+    // gc.auto <= 0 disables auto-gc, so treat it as absent rather than as a threshold.
+    const configuredGcAuto = parseInt(gcAutoText?.trim() ?? "")
+    const gcAuto = Number.isFinite(configuredGcAuto) && configuredGcAuto > 0 ? configuredGcAuto : DEFAULT_GC_AUTO
 
-    const level: Issue["level"] = looseObjects >= 200 ? "critical" : "warn"
+    if (looseObjects < Math.floor(gcAuto / 4)) return undefined
+
+    const level: Issue["level"] = looseObjects >= gcAuto ? "critical" : "warn"
 
     return {
       dimension: "gc_needed",
       level,
-      message: `Git gc recommended — ${looseObjects} loose objects. Run git gc to reclaim space`,
+      message: `Git gc recommended — ${looseObjects} loose objects (gc.auto ${gcAuto}). Run git gc to reclaim space`,
       detail: { looseObjects, size },
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dimension 8: unpushed
+  // ---------------------------------------------------------------------------
+  async function checkUnpushed(cwd: string): Promise<Issue | undefined> {
+    // With no remote-tracking refs `--not --remotes` subtracts nothing and the
+    // count degenerates to the entire local history, so only report when the
+    // repo actually tracks a remote.
+    const remoteRefs = await gitText(cwd, ["for-each-ref", "--count=1", "--format=%(refname)", "refs/remotes/"])
+    if (!remoteRefs?.trim()) return undefined
+
+    const output = await gitText(cwd, ["rev-list", "--count", "HEAD", "--not", "--remotes"])
+
+    const count = parseInt(output?.trim() ?? "")
+    if (!Number.isFinite(count) || count <= 0) return undefined
+
+    return {
+      dimension: "unpushed",
+      level: "warn",
+      message: `${count} commit(s) not on any remote — push to preserve this work`,
+      detail: { unpushed: count },
     }
   }
 
@@ -373,6 +406,7 @@ export namespace GitHealth {
       checkExtraBranches(repo.root),
       checkDetachedHead(repo.root),
       checkGcNeeded(repo.root, repo.gitDir, deadline),
+      checkUnpushed(repo.root),
     ]
     const results = await withTimeoutValue(Promise.all(checks), remaining, [])
 

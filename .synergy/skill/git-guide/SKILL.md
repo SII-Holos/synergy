@@ -113,21 +113,23 @@ The `autonomous` profile permits ordinary topic-branch and pull-request publicat
 
 The permission system classifies `gh` commands before applying the active control profile. The table shows the base profile decision before user rules, approval cache, SmartAllow, GitHub authorization, or ordinary runtime failures.
 
-| Command                              | Capability             | Guarded  | Autonomous | Full Access |
-| ------------------------------------ | ---------------------- | -------- | ---------- | ----------- |
-| `gh pr view/list/status/checks/diff` | `shell_read`           | ✅ allow | ✅ allow   | ✅ allow    |
-| `gh pr create`                       | `shell_remote_publish` | ⚠️ ask   | ✅ allow   | ✅ allow    |
-| `gh pr comment` / `gh pr review`     | `shell_remote_publish` | ⚠️ ask   | ✅ allow   | ✅ allow    |
-| `gh pr edit` / `gh pr ready`         | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
-| `gh issue view/list/status`          | `shell_read`           | ✅ allow | ✅ allow   | ✅ allow    |
-| `gh issue create/comment`            | `shell_remote_publish` | ⚠️ ask   | ✅ allow   | ✅ allow    |
-| `gh issue edit/close/reopen`         | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
-| `gh pr merge/close/reopen`           | `shell_destructive`    | ⚠️ ask   | ❌ deny    | ✅ allow    |
-| `gh api <endpoint>` (GET, no fields) | `shell_read`           | ✅ allow | ✅ allow   | ✅ allow    |
-| `gh api -X GET` / `-X HEAD`          | `shell_read`           | ✅ allow | ✅ allow   | ✅ allow    |
-| `gh api -f/-F/--input` (auto-POST)   | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
-| `gh api -X POST/PATCH/PUT/DELETE`    | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
-| `gh api graphql` (mutation possible) | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
+| Command                              | Capability             | Guarded | Autonomous | Full Access |
+| ------------------------------------ | ---------------------- | ------- | ---------- | ----------- |
+| `gh pr view/list/status/checks/diff` | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh pr create`                       | `shell_remote_publish` | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh pr comment` / `gh pr review`     | `shell_remote_publish` | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh pr edit` / `gh pr ready`         | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
+| `gh issue view/list/status`          | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh issue create/comment`            | `shell_remote_publish` | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh issue edit/close/reopen`         | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
+| `gh pr merge/close/reopen`           | `shell_destructive`    | ⚠️ ask  | ❌ deny    | ✅ allow    |
+| `gh api <endpoint>` (GET, no fields) | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh api -X GET` / `-X HEAD`          | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
+| `gh api -f/-F/--input` (auto-POST)   | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
+| `gh api -X POST/PATCH/PUT/DELETE`    | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
+| `gh api graphql` (mutation possible) | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
+
+Read-only `gh` commands sit at the `shell` risk floor rather than a read-only tier: there is no `shell_read` capability, because a shell command string carries no precise input for the gate to reason about. Every `gh` command also carries `network_request`. Under `guarded`, `network_request` alone is allowed but `shell` is a medium capability outside the allowed set, so the combination asks; `autonomous` allows both. Use the table as the base profile decision — it is not the resolved one.
 
 Checkout type does not change ordinary `shell_remote_publish` into `shell_remote_write`. Unknown write-capable `gh` subcommands default to `shell_remote_write`. Full Access silently allows permission-system capabilities but does not override task authorization, protected-branch rules, GitHub permissions, validation failures, or network/runtime errors.
 
