@@ -3,6 +3,7 @@ import type { StorageUpgradeStatus } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { useLocale } from "@/context/locale"
+import { createUpgradeStatusController } from "./upgrade-status-controller"
 
 export function UpgradeStatus() {
   const sdk = useGlobalSDK()
@@ -12,24 +13,13 @@ export function UpgradeStatus() {
   createEffect(() => {
     server.url
     setStatus(undefined)
-    let disposed = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const refresh = async () => {
-      try {
-        const { data } = await sdk.client.storage.upgradeStatus()
-        if (disposed) return
-        setStatus(data)
-        if (!data || !(data.pending + data.partial)) return
-      } catch {
-        if (disposed) return
-      }
-      timer = setTimeout(refresh, document.hidden ? 10_000 : 2000)
-    }
-    void refresh()
-    onCleanup(() => {
-      disposed = true
-      clearTimeout(timer)
+    const controller = createUpgradeStatusController({
+      load: async () => (await sdk.client.storage.upgradeStatus()).data,
+      publish: setStatus,
+      hidden: () => document.hidden,
     })
+    void controller.refresh()
+    onCleanup(controller.dispose)
   })
   return (
     <Show when={status() && status()!.imported < status()!.total}>

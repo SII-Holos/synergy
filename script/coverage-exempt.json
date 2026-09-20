@@ -683,6 +683,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/status-bar/upgrade-status.tsx",
+          "reason": "Solid view composes server, SDK and locale contexts; polling, completion, retries and disposal are covered in upgrade-status-controller.test.ts"
+        },
+        {
           "glob": "src/components/terminal/index.ts",
           "reason": "barrel re-export"
         },
