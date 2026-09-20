@@ -8820,6 +8820,14 @@ msgstr "Hide side workspace"
 msgid "app.topBar.sideWorkspace.open"
 msgstr "Open side workspace"
 
+#. js-lingui-explicit-id
+msgid "app.upgrade.attention"
+msgstr "{count} historical sessions need repair"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.progress"
+msgstr "Preparing history: {done}/{total}"
+
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.add.bottomPanel"
 msgstr "Add bottom panel"

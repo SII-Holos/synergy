@@ -8820,6 +8820,14 @@ msgstr ""
 msgid "app.topBar.sideWorkspace.open"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.upgrade.attention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.progress"
+msgstr ""
+
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.add.bottomPanel"
 msgstr ""

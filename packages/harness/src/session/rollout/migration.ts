@@ -161,6 +161,10 @@ export namespace RolloutMigration {
   }
 
   export const migration: Migration = {
+    scope: "session",
+    async upSession(owner) {
+      await session({ kind: "session", ...owner })
+    },
     id: "20260907-session-rollout-evidence",
     description: "Preserve legacy accounting and retained tool evidence with explicit historical gaps",
     dependsOn: ["20260828-session-nav-timestamps"],

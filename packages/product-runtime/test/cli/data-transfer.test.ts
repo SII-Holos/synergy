@@ -91,6 +91,7 @@ test("merge refuses authority records from another home; trusted relocation keep
   try {
     await source.store.write(["plugin-approvals", "records", "plugin-x"], { grant: "broad" })
     await source.store.write(["notes", "scope", "note"], { text: "payload" })
+    await source.store.write(["compat_catalog", "scope", "0000000000000001", "session"], { status: "pending" })
     await source.activate()
   } finally {
     await source.store.close()
@@ -110,6 +111,7 @@ test("merge refuses authority records from another home; trusted relocation keep
   try {
     expect((await target.store.readMany([["plugin-approvals", "records", "plugin-x"]]))[0]).toBeUndefined()
     expect(await target.store.read<{ text: string }>(["notes", "scope", "note"])).toEqual({ text: "payload" })
+    expect(await target.store.list(["compat_catalog"])).toEqual([])
   } finally {
     await target.store.close()
   }
@@ -120,6 +122,7 @@ test("merge refuses authority records from another home; trusted relocation keep
     expect(await trusted.store.read<{ grant: string }>(["plugin-approvals", "records", "plugin-x"])).toEqual({
       grant: "broad",
     })
+    expect(await trusted.store.list(["compat_catalog"])).toEqual([])
   } finally {
     await trusted.store.close()
   }

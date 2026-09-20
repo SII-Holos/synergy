@@ -914,6 +914,7 @@ export namespace Session {
   }
 
   export async function acknowledgeRollback(id: string, rollbackID: string): Promise<RollbackAck> {
+    await SessionCompat.requireImported(id)
     return Storage.transaction(async () => {
       const session = await SessionManager.requireSession(id)
       const scope = session.scope as Scope
@@ -954,6 +955,7 @@ export namespace Session {
     acknowledgedCount: number,
     options?: { repairNavOnNoop?: boolean },
   ) {
+    await SessionCompat.requireImported(id)
     return serializeCompletionNoticeMutation(id, () =>
       Storage.transaction(async () => {
         if (!Number.isSafeInteger(acknowledgedCount) || acknowledgedCount < 0) {
@@ -1013,6 +1015,7 @@ export namespace Session {
   }
 
   export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
+    await SessionCompat.requireImported(id)
     return serializeCompletionNoticeMutation(id, () =>
       Storage.transaction(async () => {
         let unreadCount: number | undefined
@@ -1037,6 +1040,7 @@ export namespace Session {
     editor: (session: Info) => void,
     options?: { preserveActivityAt?: boolean; forcePublish?: boolean },
   ) {
+    await SessionCompat.requireImported(id)
     return Storage.transaction(async () => {
       const session = await SessionManager.requireSession(id)
       const scope = session.scope as Scope
@@ -1136,7 +1140,6 @@ export namespace Session {
     const keys = ids.map((id) => StoragePath.sessionInfo(sid, asSessionID(id)))
     const sessions = await Storage.readMany<Info>(keys)
     for (const [index, id] of ids.entries()) {
-      if (sessions[index]) continue
       const info = await SessionCompat.pendingInfo(scopeID, id)
       if (info) sessions[index] = info
     }
@@ -1318,6 +1321,7 @@ export namespace Session {
   })
 
   export async function updateLastExchange(sessionID: string) {
+    await SessionCompat.requireImported(sessionID)
     return Storage.transaction(async () => {
       const session = await SessionManager.requireSession(sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
@@ -1370,8 +1374,9 @@ export namespace Session {
     }
   }
 
-  export const updateMessage = fn(MessageV2.Info, async (msg) =>
-    Storage.transaction(async () => {
+  export const updateMessage = fn(MessageV2.Info, async (msg) => {
+    await SessionCompat.requireImported(msg.sessionID)
+    return Storage.transaction(async () => {
       const canonical = MessageV2.canonicalMessage(msg)
       const session = await SessionManager.requireSession(msg.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
@@ -1392,14 +1397,15 @@ export namespace Session {
       })
       await SessionSearchIndex.markDirty(scopeID, asSessionID(canonical.sessionID))
       return canonical
-    }),
-  )
+    })
+  })
 
   export async function updateAssistantContextUsage(input: {
     sessionID: string
     messageID: string
     contextUsage: NonNullable<MessageV2.Assistant["contextUsage"]>
   }) {
+    await SessionCompat.requireImported(input.sessionID)
     return Storage.transaction(async () => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
@@ -1426,6 +1432,7 @@ export namespace Session {
       metadata: z.record(z.string(), z.any()),
     }),
     async (input) => {
+      await SessionCompat.requireImported(input.sessionID)
       return Storage.transaction(async () => {
         const session = await SessionManager.requireSession(input.sessionID)
         const scopeID = asScopeID((session.scope as Scope).id)
@@ -1454,6 +1461,7 @@ export namespace Session {
     }),
     async (input) => {
       await flushPartWrites(input.sessionID)
+      await SessionCompat.requireImported(input.sessionID)
       return Storage.transaction(async () => {
         const session = await SessionManager.requireSession(input.sessionID)
         const scopeID = asScopeID((session.scope as Scope).id)
@@ -1484,6 +1492,7 @@ export namespace Session {
     }),
     async (input) => {
       await flushPartWrites(input.sessionID)
+      await SessionCompat.requireImported(input.sessionID)
       return Storage.transaction(async () => {
         const session = await SessionManager.requireSession(input.sessionID)
         const scopeID = asScopeID((session.scope as Scope).id)

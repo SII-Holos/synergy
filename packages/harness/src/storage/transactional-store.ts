@@ -87,10 +87,10 @@ function metadata(key: string[]) {
   }
   return {
     kind: key[0],
-    scope: key[0] === "projects" ? (key[1] ?? "") : "",
+    scope: ["projects", "compat_catalog"].includes(key[0]) ? (key[1] ?? "") : "",
     session: "",
     message: "",
-    order: key.at(-1)!,
+    order: key[0] === "compat_catalog" ? key[2]! : key.at(-1)!,
   }
 }
 

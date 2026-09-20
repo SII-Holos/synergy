@@ -33,6 +33,7 @@ import {
   type SubsessionCursor,
 } from "./subsession"
 import { createSubsessionController } from "./subsession-controller"
+import { UpgradeStatus } from "./upgrade-status"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -696,6 +697,7 @@ export function StatusBar() {
 
   return (
     <div class="flex flex-col items-center gap-1 pt-3 pb-1 min-w-0 w-full">
+      <UpgradeStatus />
       <div class="statusbar-glass flex items-center gap-1.5 min-w-0 max-w-full overflow-hidden px-2 py-1.5 rounded-full">
         <HolosIconButton />
 

@@ -7,6 +7,7 @@ import { StorageIncrementalVacuum } from "./incremental-vacuum"
 
 const migrations: Migration[] = [
   {
+    scope: "global",
     id: StorageArtifactMigration.id,
     description: "Pack legacy rollout artifacts with transactional byte references",
     async up(progress) {
@@ -29,6 +30,7 @@ const migrations: Migration[] = [
     },
   },
   {
+    scope: "global",
     id: StorageIncrementalVacuum.id,
     description: "Convert authoritative SQLite storage to incremental auto-vacuum",
     domain: "storage",
