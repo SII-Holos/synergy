@@ -29,7 +29,7 @@ import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/session/rollout/snapshot"
-import { continueSession } from "@ericsanchezok/synergy-runtime-local/session-api"
+import { continueSession, submitInput } from "@ericsanchezok/synergy-runtime-local/session-api"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
@@ -2747,6 +2747,100 @@ test("startup reconciliation records the pause without driving the stuck continu
           await SessionInvoke.reconcilePausedSessions(scopeID)
           expect((await SessionLifecycle.snapshot(session.id))?.since).toBe(since)
           expect(processedRoots).toEqual([])
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+          await Session.remove(session.id)
+        }
+      },
+    })
+  } finally {
+    restore()
+  }
+})
+
+/** Fail fast instead of hanging when the behavior under test never happens. */
+async function withDeadline<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+test("a new user message drives past an interrupted breakpoint instead of stranding the queue", async () => {
+  await using tmp = await tmpdir({ git: true })
+  let breakpointRootID = ""
+  const processedRoots: string[] = []
+  const processedQueued = Promise.withResolvers<string>()
+  const restore = installBasicLoopMocks({
+    onProcess(input) {
+      processedRoots.push(input.user.id)
+      if (input.user.id !== breakpointRootID) processedQueued.resolve(input.user.id)
+    },
+  })
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const rootID = Identifier.ascending("message")
+          breakpointRootID = rootID
+          await Session.updateMessage({
+            ...(userMessage(rootID).info as MessageV2.User),
+            sessionID: session.id,
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() },
+          })
+          await Session.updateMessage({
+            ...(assistantMessage(Identifier.ascending("message"), rootID, "").info as MessageV2.Assistant),
+            sessionID: session.id,
+            rootID,
+            // A turn stopped between steps: `tool-calls` is deliberately
+            // non-terminal, which is what makes this message the breakpoint.
+            finish: "tool-calls",
+            time: { created: Date.now(), completed: Date.now() },
+          })
+          // The stop terminalized the breakpoint's run, so appending to it is
+          // refused until an explicit user action resumes it. This is exactly
+          // the state `RolloutLifecycle.cancel` leaves behind.
+          const owner = RolloutLifecycle.owner(session)
+          await RolloutLifecycle.configuration(session, rootID)
+          await RolloutLedger.requestCancel(owner, rootID)
+          await RolloutLedger.finishRun(owner, rootID, "cancelled")
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+
+          const submitted = await submitInput({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            parts: [{ type: "text", text: "Continue after cancellation" }],
+          })
+          if (submitted.status !== "queued") throw new Error("expected a queued task")
+
+          // Sending new input is the other way the user takes a stopped session
+          // back, so this message has to reach a model call. A drive that dies on
+          // the interrupted breakpoint leaves it in the inbox forever.
+          const processedRoot = await withDeadline(
+            processedQueued.promise,
+            5_000,
+            "the queued user message never reached a model call",
+          )
+          // The interrupted turn is resumed, not silently discarded.
+          expect(processedRoots).toContain(breakpointRootID)
+          expect(processedRoot).toBe(submitted.item.messageID)
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+
+          // Taking the session back also lifts the pause, so the drive the
+          // input scheduled was allowed through the gate in the first place.
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
         } finally {
           SessionManager.unregisterRuntime(session.id)
           await Session.remove(session.id)
