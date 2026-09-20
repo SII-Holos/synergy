@@ -60,6 +60,8 @@ bun bench clean /absolute/path/to/run
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
+启用思考的模型 profile 必须同时声明 `reasoning_effort`；思考档位是实验条件，不是实现细节。[GLM-5.3](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3) 始终思考、只接受 `thinking.type: enabled`，并通过 `reasoning_effort` 暴露 `low`、`high`、`max` 三档且以 `max` 为服务商默认值，因此省略该参数等于静默选用最深档位。预设把档位写进模型键名（`glm53flash-max`）并显式设值，使该条件同时体现在 variant 名（`synergy-max-full__glm53flash-max`）、冻结的 `plan.json` 和账本保留的有效请求参数中。更低的档位是各自独立、各有证据的条件，不能用来重新解释已完成的运行。该规则由[预设契约](test/test_experiment_presets.py)强制，取舍见[档位决策](../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md)。
+
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。
 
 OpenCode 的 `bun_jit: false` 映射为原生进程的 `BUN_JSC_useJIT=0`；它是运行时执行条件，可能改变延迟和资源消耗。需要比较时声明独立名称，例如 `opencode-native` 和 `opencode-jitless`。该值随配置和每次尝试的有效环境冻结，不改变模型、提示词、工具或压缩策略，也不根据宿主或失败结果自动切换。其他 harness 使用此选项会报错。运行时适配的取舍见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
