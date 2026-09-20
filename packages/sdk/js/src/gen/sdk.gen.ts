@@ -83,12 +83,8 @@ import type {
   BlueprintLoopGetResponses,
   BlueprintLoopListErrors,
   BlueprintLoopListResponses,
-  BlueprintLoopResumeErrors,
-  BlueprintLoopResumeResponses,
   BlueprintLoopStartErrors,
   BlueprintLoopStartResponses,
-  BlueprintLoopWaitErrors,
-  BlueprintLoopWaitResponses,
   BossSessionOpenErrors,
   BossSessionOpenResponses,
   BossSessionTreeErrors,
@@ -299,8 +295,6 @@ import type {
   LatticeRunGetResponses,
   LatticeRunListErrors,
   LatticeRunListResponses,
-  LatticeRunPauseErrors,
-  LatticeRunPauseResponses,
   LatticeRunResumeErrors,
   LatticeRunResumeResponses,
   LatticeSessionGetRunErrors,
@@ -10280,72 +10274,6 @@ export class Loop extends HeyApiClient {
   }
 
   /**
-   * Wait BlueprintLoop (running → waiting)
-   *
-   * Transition a BlueprintLoop from running to waiting.
-   */
-  public wait<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopWaitResponses, BlueprintLoopWaitErrors, ThrowOnError>({
-      url: "/blueprint/loop/{id}/wait",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Resume BlueprintLoop (waiting → running)
-   *
-   * Transition a BlueprintLoop from waiting back to running.
-   */
-  public resume<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopResumeResponses, BlueprintLoopResumeErrors, ThrowOnError>(
-      {
-        url: "/blueprint/loop/{id}/resume",
-        ...options,
-        ...params,
-      },
-    )
-  }
-
-  /**
    * Get BlueprintLoop activity
    *
    * Get derived activity metrics for a BlueprintLoop (derived from session state).
@@ -10476,45 +10404,6 @@ export class Run extends HeyApiClient {
       url: "/lattice/run/{id}/events",
       ...options,
       ...params,
-    })
-  }
-
-  /**
-   * Pause a Lattice Run
-   */
-  public pause<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      body?: {
-        [key: string]: never
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<LatticeRunPauseResponses, LatticeRunPauseErrors, ThrowOnError>({
-      url: "/lattice/run/{id}/pause",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
     })
   }
 

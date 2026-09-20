@@ -1792,7 +1792,7 @@ export type SessionNavEntry = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
   workspaceType?: string
   workflow?: {
@@ -5159,7 +5159,7 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
 }
 
@@ -8586,7 +8586,7 @@ export type BlueprintLoopInfo = {
     reviewToolRecoveryAttempts?: number
   }
   scopeID: string
-  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  status: "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
@@ -9959,6 +9959,19 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+    directory?: string
+  }
+}
+
 export type EventBlueprintLoopCreated = {
   type: "blueprint_loop.created"
   properties: {
@@ -10007,19 +10020,6 @@ export type EventBlueprintLoopRejected = {
   properties: {
     loopID: string
     reason: string
-  }
-}
-
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
-    directory?: string
   }
 }
 
@@ -10595,6 +10595,8 @@ export type EventGlobalDisposed = {
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventScopeUpdated
+  | EventScopeRemoved
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -10602,8 +10604,6 @@ export type Event =
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
   | EventBlueprintLoopRejected
-  | EventScopeUpdated
-  | EventScopeRemoved
   | EventScopeRuntimeDisposed
   | EventNoteCreated
   | EventNoteUpdated
@@ -19451,88 +19451,6 @@ export type BlueprintLoopStartResponses = {
 
 export type BlueprintLoopStartResponse = BlueprintLoopStartResponses[keyof BlueprintLoopStartResponses]
 
-export type BlueprintLoopWaitData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/wait"
-}
-
-export type BlueprintLoopWaitErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
-
-export type BlueprintLoopWaitResponses = {
-  /**
-   * Waiting BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopWaitResponse = BlueprintLoopWaitResponses[keyof BlueprintLoopWaitResponses]
-
-export type BlueprintLoopResumeData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/resume"
-}
-
-export type BlueprintLoopResumeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
-
-export type BlueprintLoopResumeResponses = {
-  /**
-   * Resumed BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopResumeResponse = BlueprintLoopResumeResponses[keyof BlueprintLoopResumeResponses]
-
 export type BlueprintLoopActivityData = {
   body?: never
   path: {
@@ -19740,60 +19658,6 @@ export type LatticeRunEventsResponses = {
 }
 
 export type LatticeRunEventsResponse = LatticeRunEventsResponses[keyof LatticeRunEventsResponses]
-
-export type LatticeRunPauseData = {
-  body?: {
-    [key: string]: never
-  }
-  path: {
-    /**
-     * Lattice Run ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/lattice/run/{id}/pause"
-}
-
-export type LatticeRunPauseErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: {
-    name: string
-    data: unknown
-  }
-  /**
-   * Internal server error
-   */
-  500: LatticeInternalServerError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type LatticeRunPauseError = LatticeRunPauseErrors[keyof LatticeRunPauseErrors]
-
-export type LatticeRunPauseResponses = {
-  /**
-   * Paused Lattice Run
-   */
-  200: LatticeRunView
-}
-
-export type LatticeRunPauseResponse = LatticeRunPauseResponses[keyof LatticeRunPauseResponses]
 
 export type LatticeRunResumeData = {
   body?: {

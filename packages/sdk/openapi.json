@@ -18137,166 +18137,6 @@
         ]
       }
     },
-    "/blueprint/loop/{id}/wait": {
-      "post": {
-        "operationId": "blueprint.loop.wait",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "BlueprintLoop ID"
-          }
-        ],
-        "summary": "Wait BlueprintLoop (running → waiting)",
-        "description": "Transition a BlueprintLoop from running to waiting.",
-        "responses": {
-          "200": {
-            "description": "Waiting BlueprintLoop",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BlueprintLoopInfo"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.wait({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/blueprint/loop/{id}/resume": {
-      "post": {
-        "operationId": "blueprint.loop.resume",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "BlueprintLoop ID"
-          }
-        ],
-        "summary": "Resume BlueprintLoop (waiting → running)",
-        "description": "Transition a BlueprintLoop from waiting back to running.",
-        "responses": {
-          "200": {
-            "description": "Resumed BlueprintLoop",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BlueprintLoopInfo"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.resume({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/blueprint/loop/{id}/activity": {
       "get": {
         "operationId": "blueprint.loop.activity",
@@ -18719,124 +18559,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.events({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/lattice/run/{id}/pause": {
-      "post": {
-        "operationId": "lattice.run.pause",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "required": true,
-            "description": "Lattice Run ID"
-          }
-        ],
-        "summary": "Pause a Lattice Run",
-        "responses": {
-          "200": {
-            "description": "Paused Lattice Run",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LatticeRunView"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "data": {}
-                  },
-                  "required": ["name", "data"]
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LatticeInternalServerError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.pause({\n  ...\n})"
           }
         ]
       }
@@ -32725,7 +32447,7 @@
               },
               "phase": {
                 "type": "string",
-                "enum": ["running", "waiting", "auditing"]
+                "enum": ["running", "auditing"]
               }
             }
           },
@@ -39797,7 +39519,7 @@
               },
               "phase": {
                 "type": "string",
-                "enum": ["running", "waiting", "auditing"]
+                "enum": ["running", "auditing"]
               }
             }
           }
@@ -50046,7 +49768,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"]
+            "enum": ["armed", "running", "auditing", "completed", "failed", "cancelled"]
           },
           "runMode": {
             "type": "string",
@@ -54263,6 +53985,41 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.scope.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.blueprint_loop.created": {
         "type": "object",
         "properties": {
@@ -54398,41 +54155,6 @@
               }
             },
             "required": ["loopID", "reason"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.updated"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/Scope"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -56058,6 +55780,12 @@
             "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
+            "$ref": "#/components/schemas/Event.scope.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
             "$ref": "#/components/schemas/Event.blueprint_loop.created"
           },
           {
@@ -56077,12 +55805,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.blueprint_loop.rejected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.removed"
           },
           {
             "$ref": "#/components/schemas/Event.scope.runtime.disposed"
