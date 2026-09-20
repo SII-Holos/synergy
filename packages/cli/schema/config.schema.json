@@ -969,7 +969,7 @@
                   "maximum": 9007199254740991
                 },
                 "chunkBudgetMs": {
-                  "description": "Budget for one maintenance, migration or delete chunk (default: 30000 ms). Every maintenance path is chunked so no single statement grows with the store, and this value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume.",
+                  "description": "Budget for reclaim, the only maintenance operation that can be split: it frees a bounded page count per call, so a fixed budget is enforceable (default: 30000 ms). CREATE INDEX, PRAGMA integrity_check and VACUUM cannot be chunked or cancelled, so they are bounded by hardCeilingMs instead and raising this value does not extend them. This value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume, and requestDeadlineMs and probeTimeoutMs are clamped the same way, because the invariant only holds when every limit that can occupy the worker's loop leaves that margin.",
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991
