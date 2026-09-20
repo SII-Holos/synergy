@@ -22,6 +22,18 @@ import { StorageIntegrityError } from "./errors"
  */
 export type RecordBody = string | Uint8Array
 
+/**
+ * Which container a store may write into.
+ *
+ * The choice follows the namespace's recorded format, exactly as the key
+ * encoding does, because a `TEXT` body column cannot hold a byte frame: the
+ * backend renders the bytes as hex text and the reader then rejects a value that
+ * is neither JSON nor the retired `z:` form. A format 2 namespace therefore keeps
+ * the container it already had. Readers accept every container regardless, so
+ * only the writer is constrained.
+ */
+export type BodyContainer = "frame" | "text"
+
 export namespace RecordCodec {
   const CODEC_MARKER = 0x1a
   const CODEC_RAW = 0
@@ -45,10 +57,29 @@ export namespace RecordCodec {
     return body.byteLength < raw.byteLength ? body : json
   }
 
-  export function encode(value: unknown): RecordBody {
+  /**
+   * The text container, for a namespace whose body column is `TEXT`.
+   *
+   * Such a column holds the plain JSON text and the retired `z:` base64 form, so
+   * this is the form it already stores rather than a new one. The size test is
+   * the same honest comparison the frame uses, measured against the bytes the
+   * column would actually hold.
+   */
+  function textForm(json: string): RecordBody {
+    const raw = Buffer.from(json, "utf8")
+    if (raw.byteLength < COMPRESSION_FLOOR || raw.byteLength > MAX_BODY_BYTES) return json
+    const compressed = "z:" + deflateSync(json, { level: 1 }).toString("base64")
+    return compressed.length < raw.byteLength ? compressed : json
+  }
+
+  function encodeInto(json: string, container: BodyContainer): RecordBody {
+    return container === "frame" ? frame(json) : textForm(json)
+  }
+
+  export function encode(value: unknown, container: BodyContainer = "frame"): RecordBody {
     const json = JSON.stringify(value)
     if (json === undefined) throw new StorageIntegrityError("A storage record must be JSON serializable")
-    return frame(json)
+    return encodeInto(json, container)
   }
 
   /**
@@ -62,8 +93,8 @@ export namespace RecordCodec {
    * evidence. Only the container changes here; the text is carried across
    * exactly.
    */
-  export function reencode(body: RecordBody): RecordBody {
-    return frame(text(body))
+  export function reencode(body: RecordBody, container: BodyContainer = "frame"): RecordBody {
+    return encodeInto(text(body), container)
   }
 
   /** The JSON text a stored body holds, without parsing it. */

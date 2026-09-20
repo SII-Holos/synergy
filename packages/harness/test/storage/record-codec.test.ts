@@ -71,6 +71,43 @@ test("a declared length beyond the expansion limit is rejected before any work",
   expect(() => RecordCodec.decode(oversized)).toThrow("Stored record encoding is invalid")
 })
 
+test("the text container keeps a body representable in a TEXT column", () => {
+  // A byte frame is only storable where the body column is a blob: a `TEXT`
+  // column renders those bytes as hex text, and no reader accepts that. A
+  // namespace whose body column is `TEXT` therefore writes the text container,
+  // and what it writes has to be a form its own readers already parse.
+  const value = { text: "durable evidence".repeat(2000) }
+  const text = RecordCodec.encode(value, "text")
+  expect(typeof text).toBe("string")
+  expect(RecordCodec.decode<typeof value>(text)).toEqual(value)
+
+  const framed = RecordCodec.encode(value, "frame")
+  expect(framed).toBeInstanceOf(Uint8Array)
+  // The container changes the form, never the value.
+  expect(RecordCodec.decode<typeof value>(framed)).toEqual(value)
+})
+
+test("a body below the floor stays plain text in either container", () => {
+  // Below the floor neither container may add bytes the column would store: the
+  // text container writes JSON text and the frame container writes the same JSON
+  // string rather than a frame header.
+  expect(RecordCodec.encode({ v: 1 }, "text")).toBe('{"v":1}')
+  expect(RecordCodec.encode({ v: 1 }, "frame")).toBe('{"v":1}')
+})
+
+test("re-encoding targets the container its caller names", () => {
+  // The format 3 rewrite moves bodies into a blob column, while a rewrite that
+  // has not run yet must leave them in the text column they came from.
+  const value = { legacy: "x".repeat(4096) }
+  const legacy = "z:" + deflateSync(JSON.stringify(value), { level: 1 }).toString("base64")
+  const asText = RecordCodec.reencode(legacy, "text")
+  const asFrame = RecordCodec.reencode(legacy, "frame")
+  expect(typeof asText).toBe("string")
+  expect(asFrame).toBeInstanceOf(Uint8Array)
+  expect(RecordCodec.decode<typeof value>(asText)).toEqual(value)
+  expect(RecordCodec.decode<typeof value>(asFrame)).toEqual(value)
+})
+
 test("an incompressible body is stored plainly rather than growing", () => {
   const value = { random: crypto.randomUUID().repeat(40) }
   const body = RecordCodec.encode(value)
