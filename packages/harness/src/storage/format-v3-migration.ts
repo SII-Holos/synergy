@@ -4,12 +4,14 @@ import { RecordCodec } from "./record-codec"
 import { StorageIntegrityError } from "./errors"
 import {
   STORAGE_NODES_PARENT_INDEX,
+  artifactPackLayout,
   artifactsTableDdl,
   keyBytes,
   nodesTableDdl,
   recordsTableDdl,
   storageArtifactsIndexes,
   storageRecordsIndexes,
+  type ArtifactPackLayout,
   type TransactionalStore,
 } from "./transactional-store"
 import type { SqlConnection, SqlRow, SqlValue } from "./sql-contract"
@@ -19,6 +21,13 @@ import { ObservabilityIssues } from "../observability/issues"
 const recordsTable = "storage_records_v3"
 const nodesTable = "storage_nodes_v3"
 const artifactsTable = "storage_artifacts_v3"
+// The scratch table and index the capability probe builds. They are named after
+// what they test rather than after the replacement table, so a probe left behind
+// by a power loss names itself and the next run's `DROP TABLE IF EXISTS` repairs
+// it. The index goes with the table, so no probe index can survive into the swap
+// and be renamed onto the live table.
+const artifactsProbeTable = "storage_artifacts_probe"
+const artifactsProbeIndex = "storage_artifacts_probe_pack"
 const BATCH = 256
 // Rows examined to size a table the copy has not written yet. The sample is the
 // lowest keys in the table's key order, which is a uniform slice of the namespace
@@ -106,6 +115,35 @@ function gib(bytes: number | bigint): string {
   return (Number(bytes) / 1024 ** 3).toFixed(2)
 }
 
+/**
+ * The `pack` field of a stored artifact location, read the way the generated
+ * column reads it.
+ *
+ * `json_extract(location, '$.pack')` reads that one field and nothing else, so
+ * the fallback extracts the same field rather than validating the whole
+ * document: a legacy row whose other fields a stricter reader would reject is
+ * still a row the generated column copies happily, and the fallback must not fail
+ * a rewrite the supported path completes. Malformed JSON fails either way, since
+ * `json_extract` rejects it too.
+ *
+ * A valid document carrying no `pack` is the one case the two layouts cannot
+ * share: the generated column stores `NULL` and the physical column is
+ * `NOT NULL`. That row cannot be represented in the fallback layout at all, so it
+ * is reported as the integrity problem it is instead of surfacing as a bare
+ * `NOT NULL` constraint failure.
+ */
+function packFromLocation(location: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(location)
+  } catch {
+    throw new StorageIntegrityError("A stored artifact location is not valid JSON")
+  }
+  const pack = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).pack : undefined
+  if (typeof pack !== "string") throw new StorageIntegrityError("A stored artifact location names no pack")
+  return pack
+}
+
 const emptyState = (): State => ({
   version: 3,
   phase: "records",
@@ -150,6 +188,15 @@ export namespace StorageFormatV3Migration {
   export async function run(options: {
     store: TransactionalStore
     progress?: (current: number, total: number, phase: number) => void
+    /**
+     * Answers whether this engine accepts and can index the generated `pack`
+     * column the format 3 layout derives from `location`.
+     *
+     * Injectable so a test can drive the fallback deterministically instead of
+     * depending on what the host engine happens to support; production passes the
+     * probe that asks the engine itself.
+     */
+    supportsGeneratedPack?: () => Promise<boolean>
   }): Promise<void> {
     const { store, progress } = options
     // The layout depends on a column with no affinity, which PostgreSQL cannot
@@ -171,7 +218,12 @@ export namespace StorageFormatV3Migration {
       await preflightCapacity(store, state)
     state = await copyRecords(store, state, progress)
     state = await copyNodes(store, state, progress)
-    state = await copyArtifacts(store, state, progress)
+    state = await copyArtifacts(
+      store,
+      state,
+      progress,
+      options.supportsGeneratedPack ?? (() => supportsGeneratedArtifacts(store)),
+    )
     state = await swap(store, state, progress)
     await reclaim(store, state, progress)
   }
@@ -458,17 +510,140 @@ export namespace StorageFormatV3Migration {
     return state
   }
 
+  /**
+   * Creates the artifact replacement table when it does not exist, and reports
+   * the `pack` layout it has.
+   *
+   * Format 3 derives `pack` from the `location` JSON, which is what makes the
+   * column free, but a generated column is an engine feature the rewrite cannot
+   * assume: an engine built without the JSON functions rejects the declaration,
+   * and one that accepts it can still refuse to index it. The layout is therefore
+   * verified here, before a single row is copied, and the run stages a physical
+   * `pack TEXT NOT NULL` column when the engine cannot supply a generated one.
+   * The fallback keeps the `pack` column name and the `storage_artifacts_pack`
+   * index, so the two layouts are indistinguishable to every reader; they differ
+   * only in whether a writer may name the column, which `writeArtifacts` decides
+   * from this same table shape.
+   *
+   * The table is created once and kept. Like the records copy, this phase resumes
+   * from a durable cursor, so recreating the table on a resumed run would discard
+   * every row below that cursor -- the copy would resume past rows the emptied
+   * table no longer holds, and the swap would install an artifact table missing
+   * them. Keeping it is also what records the layout without a second copy of the
+   * decision: a resumed run reads the shape of the very table it is about to
+   * rename, so the staging table is itself the authority on the layout the swap
+   * installs.
+   */
+  async function prepareArtifactsTable(
+    store: TransactionalStore,
+    supportsGeneratedPack: () => Promise<boolean>,
+  ): Promise<ArtifactPackLayout> {
+    const [existing] = await store.snapshot(
+      (tx) =>
+        tx.raw.query<{ tables: bigint | number }>(
+          "SELECT COUNT(*) AS tables FROM sqlite_master WHERE type = 'table' AND name = ?",
+          [artifactsTable],
+        ),
+      { singleStatement: true },
+    )
+    // A resumed run adopts the layout its own earlier attempt staged rather than
+    // asking the engine again: the rows already in that table were written for the
+    // shape it has, and staging the other shape would leave a table whose column
+    // set disagrees with its contents.
+    if (Number(existing?.tables ?? 0) > 0)
+      return store.snapshot((tx) => artifactPackLayout(tx.raw, artifactsTable), { singleStatement: true })
+    const layout: ArtifactPackLayout = (await supportsGeneratedPack()) ? "generated" : "physical"
+    if (layout === "physical") {
+      // The rewrite is still correct and the store fully readable, but this
+      // namespace now differs from every store rewritten by an engine that
+      // supports the column, so the difference is reported rather than left to be
+      // discovered from the schema.
+      log.warn("format 3 rewrite staged a physical artifact pack column", {
+        namespace: store.options.namespace,
+      })
+      ObservabilityIssues.raise({
+        code: "STORAGE_FORMAT_V3_ARTIFACT_PACK_PHYSICAL",
+        severity: "warning",
+        module: "storage",
+        title: "Format 3 rewrite fell back to a physical artifact pack column",
+        message:
+          "The SQLite engine could not accept or index the generated `pack` column the format 3 artifact layout derives from `location`, so the rewrite staged the physical column instead. The replacement keeps the `pack` column name, the `storage_artifacts_pack` index and every reader, and the rewrite completes normally; only the storage the duplicated pack value costs is not returned.",
+        recommendation:
+          "Confirm the runtime is using a SQLite build with the JSON functions enabled. The layout is decided when a namespace is rewritten and is not revisited afterwards, so an affected store keeps the physical column until it is rewritten again from a backup under a supported engine.",
+        evidence: { table: artifactsTable, probe: artifactsProbeTable },
+      })
+    }
+    await store.maintainDdlTransaction([
+      { statement: `DROP TABLE IF EXISTS ${artifactsTable}` },
+      { statement: artifactsTableDdl("sqlite", artifactsTable, layout) },
+    ])
+    return layout
+  }
+
+  /**
+   * Whether this engine both accepts and can index a generated `pack` column.
+   *
+   * The question is asked of a scratch table carrying the format 3 artifact DDL
+   * and the index the swap will build on the replacement, so what is verified is
+   * the shape the rewrite commits rather than a stand-in for it. Both steps run
+   * on an empty table and cost nothing that scales with the store.
+   *
+   * The engine's own catalog answers through `pragma_table_xinfo` and
+   * `pragma_index_xinfo` rather than through a planned query: `EXPLAIN QUERY PLAN`
+   * holds a statement open on the table it plans, and SQLite then refuses the
+   * `DROP INDEX` and `ALTER TABLE` the swap performs next.
+   */
+  async function supportsGeneratedArtifacts(store: TransactionalStore): Promise<boolean> {
+    try {
+      await store.maintainDdlTransaction([
+        { statement: `DROP TABLE IF EXISTS ${artifactsProbeTable}` },
+        { statement: artifactsTableDdl("sqlite", artifactsProbeTable, "generated") },
+        { statement: `CREATE INDEX ${artifactsProbeIndex} ON ${artifactsProbeTable}(namespace, pack)` },
+      ])
+    } catch (error) {
+      // A rejected declaration or a rejected index is the unsupported case, not a
+      // failure of the rewrite: the caller stages the physical layout instead. The
+      // engine's own message is recorded because it is the only thing that
+      // separates "this engine has no JSON functions" from an unrelated refusal,
+      // and the fallback is otherwise indistinguishable from a normal rewrite.
+      log.warn("format 3 artifact pack probe was rejected", {
+        namespace: store.options.namespace,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
+    const [probe] = await store.snapshot(
+      (tx) =>
+        tx.raw.query<{ engineDerived: bigint | number | null; indexEntries: bigint | number }>(
+          `SELECT (SELECT hidden FROM pragma_table_xinfo(?) WHERE name = 'pack') AS engineDerived, (SELECT COUNT(*) FROM pragma_index_xinfo(?) WHERE name = 'pack' AND "key" = 1) AS indexEntries`,
+          [artifactsProbeTable, artifactsProbeIndex],
+        ),
+      { singleStatement: true },
+    )
+    await store.maintainDdlTransaction([{ statement: `DROP TABLE IF EXISTS ${artifactsProbeTable}` }])
+    // `hidden` is 2 for a `VIRTUAL` generated column and 3 for a `STORED` one; a
+    // plain column reports 0, and a table without the column reports nothing. The
+    // index must also carry a key entry for `pack`, which is the other half of
+    // what "can index it" means.
+    return Number(probe?.engineDerived ?? 0) >= 2 && Number(probe?.indexEntries ?? 0) > 0
+  }
+
   async function copyArtifacts(
     store: TransactionalStore,
     state: State,
-    progress?: (current: number, total: number, phase: number) => void,
+    progress: ((current: number, total: number, phase: number) => void) | undefined,
+    supportsGeneratedPack: () => Promise<boolean>,
   ): Promise<State> {
     if (state.phase !== "artifacts") return state
     progress?.(0, 0, 3)
-    await store.maintainDdlTransaction([
-      { statement: `DROP TABLE IF EXISTS ${artifactsTable}` },
-      { statement: artifactsTableDdl("sqlite", artifactsTable) },
-    ])
+    const generated = (await prepareArtifactsTable(store, supportsGeneratedPack)) === "generated"
+    // The two layouts differ in exactly one thing: whether this writer supplies
+    // `pack`. Naming an engine-derived column is an error and omitting a real
+    // `NOT NULL` one is too, so the statement follows the staged shape.
+    const columns = generated
+      ? "(namespace, key_text, owner_key, location)"
+      : "(namespace, key_text, owner_key, location, pack)"
+    const placeholder = generated ? "(?, ?, ?, ?)" : "(?, ?, ?, ?, ?)"
     let cursor = state.artifactsCursor
     let copied = 0
     for (;;) {
@@ -479,9 +654,15 @@ export namespace StorageFormatV3Migration {
         )
         if (!page.length) return []
         const values: SqlValue[] = []
-        for (const row of page) values.push(store.options.namespace, row.key_text, row.owner_key, row.location)
+        for (const row of page) {
+          values.push(store.options.namespace, row.key_text, row.owner_key, row.location)
+          // The fallback supplies the physical column from the row's own location
+          // rather than through a SQL JSON function, because an engine without
+          // those functions is exactly the case the fallback exists for.
+          if (!generated) values.push(packFromLocation(row.location))
+        }
         await tx.raw.query(
-          `INSERT OR REPLACE INTO ${artifactsTable}(namespace, key_text, owner_key, location) VALUES ${page.map(() => "(?, ?, ?, ?)").join(",")}`,
+          `INSERT OR REPLACE INTO ${artifactsTable}${columns} VALUES ${page.map(() => placeholder).join(",")}`,
           values,
         )
         return page
@@ -576,6 +757,12 @@ export namespace StorageFormatV3Migration {
     if (state.phase !== "swap") return state
     progress?.(0, 0, 4)
     const namespace = store.options.namespace
+    // Read before the swap's own transaction: the shape of the table being
+    // renamed is the only record of which layout this run staged, and reading it
+    // here is what lets a run resumed at the swap install the same one.
+    const artifactPack = await store.snapshot((tx) => artifactPackLayout(tx.raw, artifactsTable), {
+      singleStatement: true,
+    })
     const next: State = { ...state, phase: "reclaim" }
     await store.maintainDdlTransaction(
       [
@@ -609,9 +796,9 @@ export namespace StorageFormatV3Migration {
       "create-index",
     )
     // Reads declare a single-statement contract and cannot re-read the format per
-    // statement, so the store adopts the byte encoding in the process that
-    // performed the swap.
-    store.adoptFormatV3()
+    // statement, so the store adopts the byte encoding and the artifact layout in
+    // the process that performed the swap.
+    store.adoptFormatV3(artifactPack)
     progress?.(1, 1, 4)
     return next
   }

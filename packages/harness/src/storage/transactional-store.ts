@@ -179,13 +179,24 @@ const PRUNE_CHUNK = 4096
 // namespace keeps the format 2 layout and hex encoding, and the format 3
 // rewrite is a no-op there. The `POSTGRES_*` definitions below are that layout,
 // not a compatibility path.
-const sqliteArtifactsColumns =
+/**
+ * The format 3 artifact layout: `pack` is derived from the `location` JSON by
+ * the engine, so a writer must never name it.
+ */
+const generatedArtifactsColumns =
   "namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT GENERATED ALWAYS AS (json_extract(location, '$.pack')) VIRTUAL, PRIMARY KEY(namespace, key_text)"
 const sqliteNodesColumns =
   "namespace TEXT NOT NULL, key_id BLOB NOT NULL, parent_id BLOB NOT NULL, segment TEXT NOT NULL, PRIMARY KEY(namespace, key_id)"
 const sqliteRecordsColumns =
   "namespace TEXT NOT NULL, key_id BLOB NOT NULL, key_text TEXT NOT NULL, body BLOB, revision BIGINT NOT NULL, kind TEXT NOT NULL, scope_id TEXT NOT NULL, session_id TEXT NOT NULL, message_id TEXT NOT NULL, order_key TEXT NOT NULL, updated BIGINT NOT NULL, PRIMARY KEY(namespace, key_id)"
-const postgresArtifactsColumns =
+/**
+ * The physical artifact layout: `pack` is a real column the writer supplies.
+ * PostgreSQL always keeps it, because it has no `json_extract`, and a SQLite
+ * namespace falls back to it when its engine cannot accept or index a generated
+ * `pack` -- see `StorageFormatV3Migration`. The column name, the
+ * `storage_artifacts_pack` index and every reader are the same in both layouts.
+ */
+const physicalArtifactsColumns =
   "namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, key_text)"
 const postgresNodesColumns =
   "namespace TEXT NOT NULL, key_id TEXT NOT NULL, parent_id TEXT NOT NULL, key_text TEXT NOT NULL, segment TEXT NOT NULL, PRIMARY KEY(namespace, key_id)"
@@ -194,8 +205,52 @@ const postgresRecordsColumns =
 
 export type StorageBackend = "sqlite" | "postgres"
 
-export function artifactsTableDdl(backend: StorageBackend, name: string) {
-  return `CREATE TABLE IF NOT EXISTS ${name} (${backend === "sqlite" ? sqliteArtifactsColumns : postgresArtifactsColumns})`
+/**
+ * How a namespace stores `storage_artifacts.pack`.
+ *
+ * `generated` is the format 3 column the engine derives from `location`, which a
+ * writer must omit; `physical` is the format 2 column a writer supplies. The
+ * choice decides only that: both keep the `pack` column name and the
+ * `storage_artifacts_pack` index, and every reader reads `pack` either way. It
+ * is read from the table rather than derived from the recorded format, because a
+ * format 3 namespace takes the physical column when its SQLite engine cannot
+ * accept or index a generated one.
+ */
+export type ArtifactPackLayout = "generated" | "physical"
+
+/**
+ * The artifact table DDL for a backend and layout.
+ *
+ * The default is the layout a namespace is born with: format 3 on SQLite, and
+ * the physical column PostgreSQL -- and a SQLite fallback -- keep. `IF NOT
+ * EXISTS` leaves an existing table alone, so a fallback store keeps the layout
+ * the rewrite chose for it.
+ */
+export function artifactsTableDdl(
+  backend: StorageBackend,
+  name: string,
+  packLayout: ArtifactPackLayout = backend === "sqlite" ? "generated" : "physical",
+) {
+  const layout = backend === "sqlite" ? packLayout : "physical"
+  return `CREATE TABLE IF NOT EXISTS ${name} (${layout === "generated" ? generatedArtifactsColumns : physicalArtifactsColumns})`
+}
+
+/**
+ * How `table` stores its `pack` column, read from the table itself.
+ *
+ * A pragma is the authority: the layout of a format 3 namespace depends on what
+ * its engine supported when the rewrite staged it, so it can be neither assumed
+ * from the recorded format nor held in a separate record that would have to stay
+ * in step. `hidden` is 2 for a `VIRTUAL` generated column and 3 for a `STORED`
+ * one; both are engine-derived and must stay out of an `INSERT`. A table without
+ * the column, or a backend that has no generated columns, reports `physical`.
+ */
+export async function artifactPackLayout(connection: SqlConnection, table: string): Promise<ArtifactPackLayout> {
+  const [row] = await connection.query<{ hidden: bigint | number }>(
+    "SELECT hidden FROM pragma_table_xinfo(?) WHERE name = 'pack'",
+    [table],
+  )
+  return row && Number(row.hidden) >= 2 ? "generated" : "physical"
 }
 
 export function nodesTableDdl(backend: StorageBackend, name: string) {
@@ -272,6 +327,7 @@ export class StoreTransaction {
     private readonly readonly = false,
     private readonly keys: KeyEncoding = "bytes",
     private readonly backend: StorageBackend = "sqlite",
+    private readonly artifactPack: ArtifactPackLayout = keys === "bytes" ? "generated" : "physical",
   ) {
     this.connection = {
       query: async <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[]) => {
@@ -842,10 +898,13 @@ export class StoreTransaction {
 
   async writeArtifacts(entries: Array<{ key: string[]; location: ArtifactLocation }>) {
     this.check(true)
-    // The pack column is generated only in the format 3 layout. Keying this off
-    // the store's encoding rather than the backend is what makes a write issued
-    // before the rewrite still satisfy the format 2 `pack NOT NULL` column.
-    const generated = this.keys === "bytes"
+    // The pack column is an engine-derived one only in the generated layout, and
+    // a writer must not name such a column. Which layout this namespace has is
+    // read from its artifact table rather than assumed from the backend or the
+    // recorded format: a format 3 SQLite namespace whose engine could not accept
+    // or index a generated column keeps the physical one and needs it supplied,
+    // exactly as a format 2 writer does.
+    const generated = this.artifactPack === "generated"
     for (let start = 0; start < entries.length; start += 128) {
       const batch = entries.slice(start, start + 128)
       const owners = new Map<string, string[]>()
@@ -1020,6 +1079,10 @@ export class TransactionalStore {
   // live store cannot re-read the version per transaction without either adding
   // a round trip or breaking the declared single-statement read contract.
   private keyEncoding: KeyEncoding = "hex"
+  // Read from the artifact table at open, for the same reason: a writer has to
+  // know whether it may name `pack`, and the layout depends on what the engine
+  // supported when the rewrite staged that table.
+  private artifactPack: ArtifactPackLayout = "generated"
   private constructor(
     private readonly driver: SqlDriver,
     readonly options: StoreOptions,
@@ -1063,6 +1126,13 @@ export class TransactionalStore {
           // let a v2 store claim v3 while still holding hex keys.
           const version = existing ? Number(existing.version) : options.backend === "sqlite" ? 3 : 2
           store.keyEncoding = options.backend === "sqlite" && version >= 3 ? "bytes" : "hex"
+          // The artifact layout is a property of the table, not of the recorded
+          // format: a format 3 namespace falls back to a physical `pack` when its
+          // engine cannot accept or index a generated one. PostgreSQL has no
+          // `json_extract` and no table-valued pragma here, so it is always
+          // physical.
+          store.artifactPack =
+            options.backend === "sqlite" ? await artifactPackLayout(connection, "storage_artifacts") : "physical"
           if (options.readonly) {
             if (existing && version === 1)
               throw new StorageIntegrityError(
@@ -1118,6 +1188,7 @@ export class TransactionalStore {
           true,
           this.keyEncoding,
           this.driver.backend,
+          this.artifactPack,
         )
         try {
           const result = await body(snapshot)
@@ -1164,6 +1235,7 @@ export class TransactionalStore {
               false,
               this.keyEncoding,
               this.driver.backend,
+              this.artifactPack,
             )
             try {
               const result = await body(tx)
@@ -1303,15 +1375,22 @@ export class TransactionalStore {
   }
 
   /**
-   * Adopts the format 3 byte encoding after the records swap commits.
+   * Adopts the format 3 layout after the swap commits.
    *
-   * The encoding follows the namespace's recorded layout, and the rewrite is the
+   * The encoding follows the namespace's recorded format, and the rewrite is the
    * only transition that changes it. A store must not re-read the version per
    * statement -- reads declare a single-statement contract -- so the swap flips
    * this in the same process that performed it.
+   *
+   * The artifact layout comes from the swap because it is not implied by the
+   * format: the rewrite stages the generated column when the engine supports it
+   * and falls back to a physical one when it does not, so the caller that
+   * performed the swap is the one place that already knows which of the two the
+   * renamed table has.
    */
-  adoptFormatV3() {
+  adoptFormatV3(artifactPack: ArtifactPackLayout) {
     this.keyEncoding = "bytes"
+    this.artifactPack = artifactPack
   }
 
   /**
@@ -1495,6 +1574,7 @@ export class TransactionalStore {
               true,
               this.keyEncoding,
               this.driver.backend,
+              this.artifactPack,
             )
             const issues: Array<{ key: string[]; reason: string }> = []
             const kinds: Record<string, number> = {}
