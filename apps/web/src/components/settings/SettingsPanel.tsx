@@ -110,6 +110,7 @@ import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { StoragePanel } from "./panels/StoragePanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
+import { SecretsPanel } from "./panels/SecretsPanel"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { BossModePanel } from "./panels/BossModePanel"
 import { CodeChecksPanel } from "./panels/CodeChecksPanel"
@@ -1128,6 +1129,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onSafetyChange={(key, value) => setSettings("safety", key, value)}
       />
     ),
+    secrets: () => <SecretsPanel />,
     questions: () => (
       <QuestionsPanel runtime={settings.runtime} onRuntimeChange={(key, value) => setSettings("runtime", key, value)} />
     ),

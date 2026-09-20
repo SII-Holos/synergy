@@ -59,7 +59,21 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
         if variant.harness == "opencode":
             env = options["native"]["env"]
             if filename == "glm53-long-session.yaml":
-                assert name == "opencode-jitless__glm53flash"
+                assert name == "opencode-jitless__glm53flash-max"
                 assert env["BUN_JSC_useJIT"] == "0"
             else:
                 assert "BUN_JSC_useJIT" not in env
+
+
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).parents[1] / "configs").glob("*.yaml")), ids=lambda path: path.name
+)
+def test_thinking_presets_declare_their_reasoning_tier(path):
+    config = load_config(path)
+    for key, model in config.models.items():
+        if "thinking" not in model.parameters:
+            continue
+        assert model.parameters.get("reasoning_effort"), (
+            f"{path.name}:{key} enables thinking without declaring reasoning_effort; "
+            "the reasoning tier would come from the provider default instead of the experiment"
+        )

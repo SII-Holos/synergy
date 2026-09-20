@@ -10,6 +10,8 @@ The root `package.json` selects workspace packages. Each package manifest owns i
 
 `apps/web` owns Web interaction. `apps/desktop` owns Electron, native Browser/Computer hosting and managed runtime processes. Desktop Browser Host is a second entry and independently packaged artifact. Shared protocol packages remain separate from these native implementations.
 
+The [secret-detection package](../../packages/secret-detection/README.md) owns the asynchronous detection interface, regex baseline and offline quality/performance evaluation. Harness owns its detector source, Vault and masking integration.
+
 ## Package builds
 
 Run `bun script/build-workspace.ts packages/harness` from the repository root to build its importable modules. `bun script/pack-workspace.ts packages/cli .artifacts/packages` builds and packs the CLI workspace dependency closure. Archives contain compiled module exports and normal dependency versions. Packing compiles the existing HTTP SDK without regenerating the complete product API; run the root generator explicitly after API changes. Core archives do not include optional Browser, Library, MCP or UI packages.

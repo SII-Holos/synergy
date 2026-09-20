@@ -12,6 +12,8 @@ import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { tmpdir } from "../support/fixture"
+import { SecretMask } from "../../src/secrets/mask"
+import { SecretVault } from "../../src/secrets/vault"
 
 afterAll(async () => {
   // executeToolCall dispatches through the module-level ToolScheduler
@@ -340,5 +342,54 @@ describe("tool settlement vs late state flushes", () => {
         expect(state.output).toBe("done")
       },
     })
+  })
+
+  test("running metadata captures credentials before durable progress is published", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const value = `sk-progress-${crypto.randomUUID()}`
+    const id = SecretVault.idOf(value)
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { processor, readDurableToolPart } = await createTurn()
+          const callID = Identifier.ascending("part")
+          const ready = Promise.withResolvers<void>()
+          const finish = Promise.withResolvers<void>()
+          const execution = processor.executeToolCall({
+            callID,
+            toolName: "probe",
+            args: {},
+            tool: {
+              async execute(args: unknown) {
+                await processor.updateToolCallState(callID, {
+                  input: {},
+                  title: value,
+                  metadata: { output: `progress ${value}`, values: [value] },
+                })
+                ready.resolve()
+                await finish.promise
+                processor.beginExecution(callID).complete(args, { title: "probe", output: "done", metadata: {} })
+                return { title: "probe", output: "done", metadata: {} }
+              },
+            } as unknown as AITool,
+          })
+          void execution.catch(ready.reject)
+          try {
+            await ready.promise
+            const part = await readDurableToolPart(callID)
+            if (part.state.status !== "running") throw new Error("Expected running tool")
+            expect(part.state.title).toBe(SecretMask.token(id))
+            expect(part.state.metadata?.output).toBe(`progress ${SecretMask.token(id)}`)
+            expect(part.state.metadata?.values).toEqual([SecretMask.token(id)])
+          } finally {
+            finish.resolve()
+            await execution
+          }
+        },
+      })
+    } finally {
+      await SecretVault.remove(id)
+    }
   })
 })

@@ -13,9 +13,11 @@ import { RecordCodec } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
+import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
 import { sqlParameterBytes } from "./sql-contract"
+import { Identifier } from "../id/id"
 import type {
   SqlConnection,
   SqlDriver,
@@ -94,6 +96,22 @@ function metadata(key: string[]) {
   }
 }
 
+/**
+ * Serves retention's owner enumeration.
+ *
+ * The key carries `scope_id`, `session_id` and `updated` after the `kind` prefix,
+ * which lets `evidenceOwners` aggregate rows in owner order without a
+ * temporary b-tree. Counting still visits each live rollout index entry.
+ * `key_text` is deliberately absent: selecting it would force a table walk per
+ * row and the index would stop paying for itself. The partial predicate keeps
+ * tombstoned rows out of a write-maintained index.
+ *
+ * The open path creates it from `schema` and the owning migration re-runs it for
+ * stores created before the index existed, so both share this one definition.
+ */
+export const STORAGE_RECORDS_OWNER_INDEX =
+  "CREATE INDEX IF NOT EXISTS storage_records_owner ON storage_records(namespace, kind, scope_id, session_id, updated) WHERE body IS NOT NULL"
+
 const schema = [
   "CREATE TABLE IF NOT EXISTS storage_artifact_gc (namespace TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, pack))",
   "CREATE TABLE IF NOT EXISTS storage_artifacts (namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, key_text))",
@@ -106,6 +124,7 @@ const schema = [
   "CREATE INDEX IF NOT EXISTS storage_records_session ON storage_records(namespace, session_id, kind, order_key, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_kind ON storage_records(namespace, kind, order_key, key_id)",
+  STORAGE_RECORDS_OWNER_INDEX,
   "CREATE TABLE IF NOT EXISTS storage_receipts (namespace TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL, result TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY(namespace, operation_id))",
   "CREATE TABLE IF NOT EXISTS storage_events (namespace TEXT NOT NULL, id TEXT NOT NULL, scope_id TEXT NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, position BIGINT NOT NULL, PRIMARY KEY(namespace, id))",
   "CREATE INDEX IF NOT EXISTS storage_events_pending ON storage_events(namespace, position)",
@@ -714,7 +733,16 @@ export class TransactionalStore {
     try {
       await driver.transaction(
         async (connection) => {
-          if (!options.readonly) for (const statement of schema) await connection.query(statement)
+          if (!options.readonly)
+            for (const statement of schema)
+              await connection.query(statement, [], {
+                // `CREATE INDEX` reads every existing row, so on a large store it
+                // outlasts the ordinary request deadline. A DDL statement killed at
+                // that deadline is rolled back, and because the index is then still
+                // missing the next open repeats the same doomed build. `CREATE TABLE`
+                // stays on the ordinary deadline: it is a no-op once the table exists.
+                maintenance: statement.startsWith("CREATE INDEX"),
+              })
           const [existing] = await connection.query(
             "SELECT version, owner, state FROM storage_namespaces WHERE namespace = ?",
             [options.namespace],
@@ -883,34 +911,53 @@ export class TransactionalStore {
   }
 
   /**
-   * Drops a retired index through the serialized writer.
+   * Runs one DDL statement through the serialized writer and the maintenance
+   * deadline.
    *
-   * The identifier is interpolated into DDL, so it is validated rather than
-   * accepted as arbitrary input. `IF EXISTS` makes the statement a no-op on a
-   * store that never created the index, which is what keeps the owning
-   * migration safe to re-run.
+   * DDL belongs to the maintenance class: an index build reads every record, so
+   * on a large store it outlasts the ordinary request deadline by minutes. A DDL
+   * statement killed at that deadline is rolled back, and because the index is
+   * then still missing the next open repeats the same doomed build. The caller
+   * owns the statement text, so any interpolated identifier is its
+   * responsibility to validate.
    */
-  async dropIndexIfExists(index: string): Promise<void> {
+  async maintainDdl(statement: string): Promise<void> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
-    if (!/^[a-z_][a-z0-9_]*$/.test(index)) throw new StorageIntegrityError("Invalid storage index name")
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
-        await connection.query(`DROP INDEX IF EXISTS ${index}`)
+        await connection.query(statement, [], { maintenance: true })
       }),
     )
   }
 
   /**
-   * Evidence owners with the recency of their newest record. Only keys and
-   * timestamps are read, so the scan stays bounded by owner count rather than
-   * by how much evidence each owner holds.
+   * Drops a retired index. `IF EXISTS` makes the statement a no-op on a store
+   * that never created the index, which is what keeps the owning migration safe
+   * to re-run. The identifier is interpolated into DDL rather than bound, so it
+   * is validated first.
+   */
+  async dropIndexIfExists(index: string): Promise<void> {
+    this.check()
+    if (!/^[a-z_][a-z0-9_]*$/.test(index)) throw new StorageIntegrityError("Invalid storage index name")
+    await this.maintainDdl(`DROP INDEX IF EXISTS ${index}`)
+  }
+
+  /**
+   * Evidence owners with the recency of their newest record. Only indexed
+   * columns and timestamps are read. Work scales with the live rollout index
+   * entries; the returned result scales with owner count.
    *
-   * Rollout records group by the `scope_id`/`session_id` columns under the
-   * indexed `kind` prefix; extracting those segments from the key text per row
-   * made this the most expensive statement in a retention pass by an order of
-   * magnitude. Operation records store no such columns, but there are only
-   * thousands of them, so the key-text form stays bounded there.
+   * Rollout owners come from the `storage_records_owner` partial index, whose
+   * key carries `scope_id`, `session_id` and `updated` after the `kind` prefix.
+   * That is what lets the group resolve per owner; without it the group is a
+   * temporary b-tree over every rollout row. `MIN(key_text)` must not come back:
+   * `key_text` is not in the index, so selecting it forces a table walk per row
+   * and the index stops paying for itself.
+   *
+   * Operation records store no owner columns -- their `scope_id` and
+   * `session_id` are empty -- so they keep the key-text form. There are only
+   * thousands of them, which keeps that form bounded.
    */
   async evidenceOwners(): Promise<
     Array<{ keyPrefix: string[]; kind: string; scopeID: string; ownerID: string; newest: number; records: number }>
@@ -921,20 +968,41 @@ export class TransactionalStore {
     if (this.driver.backend !== "sqlite") return []
     return measureStorageOperation("evidenceOwners", "storage_records", async () => {
       const rows = await this.driver.query(
-        `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL GROUP BY scope_id, session_id`,
+        `SELECT scope_id, session_id, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL GROUP BY scope_id, session_id`,
         [this.options.namespace],
       )
       const operations = await this.driver.query(
         `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'operations' AND body IS NOT NULL GROUP BY json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
         [this.options.namespace],
       )
-      return [...rows, ...operations].flatMap((row) => {
+      const sessions = rows.flatMap((row) => {
+        const scopeID = String(row.scope_id)
+        const sessionID = String(row.session_id)
+        // Rollout evidence is addressed through the canonical owner composer
+        // rather than a literal, so a change to the storage key layout cannot
+        // leave retention pruning a prefix that no longer names this evidence. A
+        // row whose owner columns are empty has no such prefix, and pruning
+        // irreversible evidence through a prefix that does not name it is worse
+        // than leaving it in place, so it is not an owner.
+        if (!scopeID || !sessionID) return []
+        return [
+          {
+            keyPrefix: StoragePath.sessionRolloutRoot(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+            kind: "session",
+            scopeID,
+            ownerID: sessionID,
+            newest: Number(row.newest),
+            records: Number(row.records),
+          },
+        ]
+      })
+      const others = operations.flatMap((row) => {
         const key = JSON.parse(String(row.key_text)) as string[]
         if (key.length < 4) return []
         return [
           {
             keyPrefix: key.slice(0, 4),
-            kind: key[0] === "operations" ? "operation" : "session",
+            kind: "operation",
             scopeID: key[1]!,
             ownerID: key[2]!,
             newest: Number(row.newest),
@@ -942,6 +1010,7 @@ export class TransactionalStore {
           },
         ]
       })
+      return [...sessions, ...others]
     })
   }
 

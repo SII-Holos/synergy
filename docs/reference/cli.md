@@ -30,6 +30,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
 | `plugin` | install, remove, update, and inspect plugins |
+| `secrets` | manage the secret vault |
 | `send` | send a message to synergy |
 | `server` | start synergy server |
 | `session` | manage sessions |
@@ -509,13 +510,18 @@ detect experience candidates with low-quality intent or script
 | `--intent` (boolean) | show intent candidates |
 | `--script` (boolean) | show script candidates |
 
-## remove <id>
+## register
 
-uninstall and deactivate a plugin
+register a secret value (read from a hidden prompt)
 
 | Option | Description |
 | --- | --- |
-| `--force` (boolean) | skip confirmation prompt |
+| `--policy-tools` (array) | Restrict which tools may resolve this secret; can be repeated |
+
+## remove <id>
+
+remove a secret; historical mask tokens stop resolving
+
 
 ## repair
 
@@ -545,9 +551,19 @@ restart plugin runtime
 retry a failed or pending lifecycle.install for a plugin
 
 
+## reveal <id>
+
+print a secret's plaintext to this terminal (local process only; never over HTTP)
+
+
 ## rg
 
 ripgrep debugging utilities
+
+
+## rotate <id>
+
+replace a secret's value; policy and history carry over
 
 
 ## runtime
@@ -572,6 +588,11 @@ search file contents using ripgrep
 ## search <query>
 
 search the npm registry for Synergy plugins
+
+
+## secrets <command>
+
+manage the secret vault
 
 
 ## send [message..]

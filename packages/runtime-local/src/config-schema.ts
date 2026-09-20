@@ -28,8 +28,26 @@ export const SkillsConfig = z
 
 export type SkillsConfig = z.infer<typeof SkillsConfig>
 
+export const WorktreeConfig = z
+  .object({
+    maxManaged: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones"),
+    sweepIntervalHours: z.number().positive().optional().describe("Hours between managed-worktree janitor sweeps"),
+    janitor: z.boolean().optional().describe("Run the managed-worktree janitor at all (default: true)"),
+  })
+  .strict()
+  .optional()
+  .meta({ ref: "WorktreeConfig" })
+
+export type WorktreeConfig = z.infer<typeof WorktreeConfig>
+
 export const ConfigShape = {
   skills: SkillsConfig,
+  worktree: WorktreeConfig,
 }
 
 export type ConfigValues = z.output<z.ZodObject<typeof ConfigShape>>
@@ -52,6 +70,16 @@ export function registerConfig() {
       uiSection: "skills",
       importable: true,
     },
+    {
+      id: "worktree",
+      filename: "57-worktree.jsonc",
+      label: "Worktrees",
+      ownedKeys: ["worktree"],
+      mergePolicy: "merge",
+      reloadTargets: ["config"],
+      uiSection: "worktree",
+      importable: true,
+    },
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
@@ -60,4 +88,11 @@ registerConfig()
 export async function readConfig(): Promise<ConfigValues> {
   const { Config } = await import("@ericsanchezok/synergy-harness/config/config")
   return Config.current()
+}
+
+/** The `worktree` domain with its defaults applied, resolved through the owning domain. */
+export async function readWorktreeConfig() {
+  const { ConfigExtensions } = await import("@ericsanchezok/synergy-harness/config/extensions")
+  const config = (await readConfig()) as unknown as Record<string, unknown>
+  return ConfigExtensions.readField(config, "worktree") as WorktreeConfig
 }

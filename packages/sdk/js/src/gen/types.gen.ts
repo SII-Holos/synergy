@@ -3763,6 +3763,21 @@ export type SkillsConfig = {
   compatibility?: SkillsCompatibilityConfig
 }
 
+export type WorktreeConfig = {
+  /**
+   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
+   */
+  maxManaged?: number
+  /**
+   * Hours between managed-worktree janitor sweeps
+   */
+  sweepIntervalHours?: number
+  /**
+   * Run the managed-worktree janitor at all (default: true)
+   */
+  janitor?: boolean
+}
+
 /**
  * Speech-to-text service configuration
  */
@@ -4785,6 +4800,7 @@ export type Config = {
     lsp?: boolean
   }
   skills?: SkillsConfig
+  worktree?: WorktreeConfig
   voice?: VoiceConfig
   /**
    * UI locale (system = follow OS, default: system)
@@ -5438,6 +5454,7 @@ export type ConfigDomainSummary = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   filename: string
   label: string
@@ -5495,6 +5512,7 @@ export type ConfigExportResult = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   warnings: Array<string>
@@ -5554,6 +5572,7 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   filename: string
   path: string
@@ -5608,6 +5627,7 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5692,6 +5712,7 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
     >
   }
@@ -5724,6 +5745,7 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "mcp"
     | "skills"
+    | "worktree"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5732,6 +5754,45 @@ export type ConfigDomainImportApplyInput = {
   revision?: string
   yes?: boolean
   force?: boolean
+}
+
+export type SecretPolicy = {
+  tools?: Array<string>
+  maxResolvesPerSession?: number
+}
+
+export type SecretEntry = {
+  id: string
+  fingerprint: {
+    sha256: string
+    length: number
+  }
+  source: unknown
+  policy?: SecretPolicy
+  createdAt: number
+  updatedAt: number
+  lastResolvedAt?: number
+  resolvedCount: number
+}
+
+export type SecretCreateInput = {
+  value: string
+  policy?: SecretPolicy
+}
+
+export type SecretPolicyInput = {
+  policy: SecretPolicy
+}
+
+export type SecretRotateInput = {
+  value: string
+}
+
+export type SecretResolveAuditEntry = {
+  at: number
+  sessionID?: string
+  tool?: string
+  outcome: "resolved" | "denied_policy" | "denied_limit" | "removed"
 }
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
@@ -5852,6 +5913,8 @@ export type Worktree = {
   lastUsedAt?: number
   setupFailed?: boolean
   setupError?: string
+  locked?: string
+  prunable?: boolean
 }
 
 export type WorktreeCreateInput = {
@@ -13186,6 +13249,7 @@ export type ConfigDomainGetData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13237,6 +13301,7 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13288,6 +13353,7 @@ export type ConfigDomainOpenData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
   }
   query?: {
@@ -13347,6 +13413,7 @@ export type ConfigExportData = {
       | "library"
       | "mcp"
       | "skills"
+      | "worktree"
       | "voice"
       | Array<
           | "general"
@@ -13365,6 +13432,7 @@ export type ConfigExportData = {
           | "library"
           | "mcp"
           | "skills"
+          | "worktree"
           | "voice"
         >
     includeSecrets?: string
@@ -13502,6 +13570,218 @@ export type ConfigProvidersResponses = {
 }
 
 export type ConfigProvidersResponse = ConfigProvidersResponses[keyof ConfigProvidersResponses]
+
+export type SecretsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets"
+}
+
+export type SecretsListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsListError = SecretsListErrors[keyof SecretsListErrors]
+
+export type SecretsListResponses = {
+  /**
+   * Secret entries without values
+   */
+  200: Array<SecretEntry>
+}
+
+export type SecretsListResponse = SecretsListResponses[keyof SecretsListResponses]
+
+export type SecretsCreateData = {
+  body?: SecretCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets"
+}
+
+export type SecretsCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsCreateError = SecretsCreateErrors[keyof SecretsCreateErrors]
+
+export type SecretsCreateResponses = {
+  /**
+   * The registered entry without its value
+   */
+  200: SecretEntry
+}
+
+export type SecretsCreateResponse = SecretsCreateResponses[keyof SecretsCreateResponses]
+
+export type SecretsRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}"
+}
+
+export type SecretsRemoveErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsRemoveError = SecretsRemoveErrors[keyof SecretsRemoveErrors]
+
+export type SecretsRemoveResponses = {
+  /**
+   * Whether an entry was removed
+   */
+  200: {
+    removed: boolean
+  }
+}
+
+export type SecretsRemoveResponse = SecretsRemoveResponses[keyof SecretsRemoveResponses]
+
+export type SecretsUpdatePolicyData = {
+  body?: SecretPolicyInput
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}"
+}
+
+export type SecretsUpdatePolicyErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsUpdatePolicyError = SecretsUpdatePolicyErrors[keyof SecretsUpdatePolicyErrors]
+
+export type SecretsUpdatePolicyResponses = {
+  /**
+   * The updated entry without its value
+   */
+  200: SecretEntry
+}
+
+export type SecretsUpdatePolicyResponse = SecretsUpdatePolicyResponses[keyof SecretsUpdatePolicyResponses]
+
+export type SecretsRotateData = {
+  body?: SecretRotateInput
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}/rotate"
+}
+
+export type SecretsRotateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsRotateError = SecretsRotateErrors[keyof SecretsRotateErrors]
+
+export type SecretsRotateResponses = {
+  /**
+   * The rotated entry without its value
+   */
+  200: SecretEntry
+}
+
+export type SecretsRotateResponse = SecretsRotateResponses[keyof SecretsRotateResponses]
+
+export type SecretsHistoryData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/secrets/{id}/history"
+}
+
+export type SecretsHistoryErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SecretsHistoryError = SecretsHistoryErrors[keyof SecretsHistoryErrors]
+
+export type SecretsHistoryResponses = {
+  /**
+   * Resolve audit entries
+   */
+  200: Array<SecretResolveAuditEntry>
+}
+
+export type SecretsHistoryResponse = SecretsHistoryResponses[keyof SecretsHistoryResponses]
 
 export type RuntimeReloadData = {
   body?: {

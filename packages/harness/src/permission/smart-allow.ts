@@ -4,6 +4,7 @@ import { record, RolloutRecordingError } from "../session/rollout/error"
 import { AgentCall } from "../agent/call"
 import type { Capability } from "../enforcement/gate"
 import { Log } from "../util/log"
+import { SecretPatterns } from "@ericsanchezok/synergy-secret-detection/patterns"
 
 export namespace SmartAllow {
   const log = Log.create({ service: "permission.smart-allow" })
@@ -43,8 +44,7 @@ export namespace SmartAllow {
   }
 
   const SECRET_VALUE_PATTERN = /(api[_-]?key|token|secret|password|credential|cookie)/i
-  const SECRET_TOKEN_PATTERN =
-    /\b(?:sk-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|github_pat_[A-Za-z0-9_]{16,}|gh[pousr]_[A-Za-z0-9_]{16,}|[A-Za-z0-9+/=_-]{48,})\b/g
+  const SECRET_TOKEN_PATTERN = SecretPatterns.longForm()
   const PLACEHOLDER_VALUE_PATTERN =
     /^(|example|placeholder|changeme|change_me|your[_-]?(key|token|secret|password)?[_-]?here|xxx+|todo)$/i
   const GLOBAL_SCOPE = "__global__"

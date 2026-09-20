@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import { SecretPaths } from "../secrets/path-registry"
 import { LegacyExecutionConfig } from "./legacy-execution"
 import { Experiment } from "./experiment"
 import { Log } from "../util/log"
@@ -1122,83 +1123,12 @@ export namespace Config {
    * field has not changed. When the server receives this value, it merges
    * the currently stored secret instead of overwriting it with the placeholder.
    */
-  export const REDACTED_SENTINEL = "__REDACTED__"
-  // Secret-shaped key heuristic for free-form string maps (MCP remote
-  // headers, MCP local environment, agent/provider options): these fields
-  // hold arbitrary keys, so redaction matches key names instead of fixed
-  // paths. Keys are split into components (snake/kebab/camel) so
-  // ANTHROPIC_API_KEY and apiKey both match; single `key`-shaped names
-  // (keybinds, max_tokens) deliberately do not. mergeRedactedSecrets
-  // restores sentinels from stored values, keeping redacted round-trips
-  // lossless for these fields too.
-  const SECRET_KEY_COMPONENTS = new Set([
-    "secret",
-    "secrets",
-    "password",
-    "passwords",
-    "passwd",
-    "token",
-    "authorization",
-    "credential",
-    "credentials",
-    "apikey",
-    "apikeys",
-    "privatekey",
-    "privatekeys",
-    "accesstoken",
-    "accesstokens",
-    "refreshtoken",
-    "refreshtokens",
-    "cookie",
-    "cookies",
-  ])
-
-  function isSecretShapedKey(key: string): boolean {
-    const parts = key
-      .split(/[^a-zA-Z0-9]+/)
-      .flatMap((part) => part.split(/(?<=[a-z0-9])(?=[A-Z])/))
-      .map((part) => part.toLowerCase())
-      .filter(Boolean)
-    for (const part of parts) if (SECRET_KEY_COMPONENTS.has(part)) return true
-    for (let i = 0; i + 1 < parts.length; i++) {
-      if (SECRET_KEY_COMPONENTS.has(parts[i]! + parts[i + 1]!)) return true
-    }
-    return false
-  }
-
-  function redactSecretShapedRecord(record: Record<string, unknown>) {
-    for (const [key, value] of Object.entries(record)) {
-      if (typeof value === "string") {
-        if (value.length > 0 && isSecretShapedKey(key)) record[key] = REDACTED_SENTINEL
-      } else if (value && typeof value === "object" && !Array.isArray(value)) {
-        redactSecretShapedRecord(value as Record<string, unknown>)
-      }
-    }
-  }
-
-  function mergeSecretShapedRecord(incoming: Record<string, unknown>, stored: Record<string, unknown> | undefined) {
-    if (!stored) return
-    for (const [key, value] of Object.entries(incoming)) {
-      const storedValue = stored[key]
-      if (value === REDACTED_SENTINEL && typeof storedValue === "string" && storedValue.length > 0) {
-        incoming[key] = storedValue
-      } else if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        storedValue &&
-        typeof storedValue === "object" &&
-        !Array.isArray(storedValue)
-      ) {
-        mergeSecretShapedRecord(value as Record<string, unknown>, storedValue as Record<string, unknown>)
-      }
-    }
-  }
+  export const REDACTED_SENTINEL = SecretPaths.REDACTED_SENTINEL
 
   const secretHelpers = {
-    sentinel: REDACTED_SENTINEL,
-    redact: redactSecretShapedRecord,
-    restore: mergeSecretShapedRecord,
+    sentinel: SecretPaths.REDACTED_SENTINEL,
+    redact: SecretPaths.redactRecord,
+    restore: SecretPaths.mergeRecord,
   }
 
   /** Deep-clone config and replace secrets with REDACTED_SENTINEL for safe client exposure. */
@@ -1212,17 +1142,17 @@ export namespace Config {
     if (result.provider) {
       for (const provider of Object.values(result.provider) as any[]) {
         if (provider?.options?.apiKey) provider.options.apiKey = REDACTED_SENTINEL
-        if (provider?.options) redactSecretShapedRecord(provider.options)
+        if (provider?.options) SecretPaths.redactRecord(provider.options)
         for (const model of Object.values(provider?.models ?? {}) as any[]) {
           if (model?.options?.apiKey) model.options.apiKey = REDACTED_SENTINEL
-          if (model?.options) redactSecretShapedRecord(model.options)
+          if (model?.options) SecretPaths.redactRecord(model.options)
         }
       }
     }
 
     if (result.agent) {
       for (const agent of Object.values(result.agent) as any[]) {
-        if (agent?.options) redactSecretShapedRecord(agent.options)
+        if (agent?.options) SecretPaths.redactRecord(agent.options)
       }
     }
     ConfigExtensions.redact(result, secretHelpers)
@@ -1243,20 +1173,20 @@ export namespace Config {
         if (provider?.options?.apiKey === REDACTED_SENTINEL) {
           if (storedProvider?.options?.apiKey) provider.options.apiKey = storedProvider.options.apiKey
         }
-        if (provider?.options) mergeSecretShapedRecord(provider.options, storedProvider?.options)
+        if (provider?.options) SecretPaths.mergeRecord(provider.options, storedProvider?.options)
         for (const [modelKey, model] of Object.entries(provider?.models ?? {}) as [string, any][]) {
           const storedModel = storedProvider?.models?.[modelKey]
           if (model?.options?.apiKey === REDACTED_SENTINEL) {
             if (storedModel?.options?.apiKey) model.options.apiKey = storedModel.options.apiKey
           }
-          if (model?.options) mergeSecretShapedRecord(model.options, storedModel?.options)
+          if (model?.options) SecretPaths.mergeRecord(model.options, storedModel?.options)
         }
       }
     }
 
     if (result.agent && stored.agent) {
       for (const [key, agent] of Object.entries(result.agent) as [string, any][]) {
-        if (agent?.options) mergeSecretShapedRecord(agent.options, (stored.agent as Record<string, any>)[key]?.options)
+        if (agent?.options) SecretPaths.mergeRecord(agent.options, (stored.agent as Record<string, any>)[key]?.options)
       }
     }
     ConfigExtensions.restore(result, stored, secretHelpers)

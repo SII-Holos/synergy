@@ -272,6 +272,7 @@ export namespace SandboxBackend {
     // so binding the pid afterwards loses the race. The pid is adopted once
     // the child exists.
     let denialSession: DenialLoggerSession | null = null
+    using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
     if (wrapper.sandboxed && detectPlatform() === "macos") {
       denialSession = startDenialLogger()
     }

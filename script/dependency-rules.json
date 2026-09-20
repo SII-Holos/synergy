@@ -1,5 +1,5 @@
 {
-  "packages/harness": ["packages/util", "packages/synergy-link-protocol"],
+  "packages/harness": ["packages/util", "packages/synergy-link-protocol", "packages/secret-detection"],
   "packages/runtime-local": ["packages/harness", "packages/util", "packages/synergy-link-protocol"],
   "packages/cli": ["packages/harness", "packages/runtime-local", "packages/sdk/js", "packages/util"],
   "packages/server": ["packages/harness", "packages/runtime-local", "packages/util"],
@@ -17,5 +17,6 @@
   "packages/computer": [],
   "packages/util": [],
   "packages/sdk/js": [],
-  "packages/synergy-link-protocol": []
+  "packages/synergy-link-protocol": [],
+  "packages/secret-detection": []
 }

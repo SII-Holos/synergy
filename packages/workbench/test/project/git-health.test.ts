@@ -7,7 +7,7 @@
 //   export namespace GitHealth {
 //     interface Issue {
 //       dimension: "diff_lines" | "diff_files" | "untracked" | "large_files"
-//                 | "extra_branches" | "detached_head" | "gc_needed"
+//                 | "extra_branches" | "detached_head" | "gc_needed" | "unpushed"
 //       level: "warn" | "critical"
 //       message: string
 //       detail: Record<string, unknown>
@@ -55,6 +55,7 @@ interface Issue {
     | "extra_branches"
     | "detached_head"
     | "gc_needed"
+    | "unpushed"
   level: "warn" | "critical"
   message: string
   detail: Record<string, unknown>
@@ -68,6 +69,7 @@ const VALID_DIMENSIONS: Issue["dimension"][] = [
   "extra_branches",
   "detached_head",
   "gc_needed",
+  "unpushed",
 ]
 const VALID_LEVELS: Issue["level"][] = ["warn", "critical"]
 
@@ -98,6 +100,21 @@ async function gitEmptyCommit(dir: string, message = "test commit"): Promise<voi
 async function gitCommit(dir: string, message = "test commit"): Promise<void> {
   await $`git add -A`.cwd(dir).quiet()
   await $`git commit -m ${message}`.cwd(dir).quiet()
+}
+
+async function gitInitBare(dir: string): Promise<void> {
+  mkdirSync(dir, { recursive: true })
+  await $`git init --bare`.cwd(dir).quiet()
+}
+
+async function writeLooseObjects(dir: string, count: number): Promise<void> {
+  const objectsDir = join(dir, ".git", "objects")
+  for (let i = 0; i < count; i++) {
+    const hex = i.toString(16).padStart(2, "0")
+    const subDir = join(objectsDir, hex)
+    mkdirSync(subDir, { recursive: true })
+    writeFileSync(join(subDir, "0000000000000000000000000000000000000000"), "fake object")
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +361,8 @@ describe("GitHealth.check — extra branches", () => {
         expectValidIssue(extraBranchesIssue)
         expect(extraBranchesIssue!.level).toBeOneOf(["warn", "critical"])
         expect(extraBranchesIssue!.detail).toHaveProperty("count")
+        expect(extraBranchesIssue!.message).not.toMatch(/git branch -d/)
+        expect(extraBranchesIssue!.message).toMatch(/squash/i)
       } finally {
         repo.cleanup()
       }
@@ -407,26 +426,71 @@ describe("GitHealth.check — detached HEAD", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — gc needed", () => {
-  gitHealthTest("detects gc_needed issue when many loose objects exist", async () => {
+  gitHealthTest("does not flag gc_needed for 100 loose objects with gc.auto unset", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
       await gitEmptyCommit(repo.path, "root")
 
-      // Simulate many loose objects by writing dummy entries under .git/objects
-      const objectsDir = join(repo.path, ".git", "objects")
-      for (let i = 0; i < 100; i++) {
-        const hex = i.toString(16).padStart(2, "0")
-        const subDir = join(objectsDir, hex)
-        mkdirSync(subDir, { recursive: true })
-        writeFileSync(join(subDir, "0000000000000000000000000000000000000000"), "fake object")
-      }
+      // 100 loose objects is far below git's documented gc.auto default of 6700
+      await writeLooseObjects(repo.path, 100)
+
+      const issues = await GitHealth.check(repo.path)
+      const gcIssue = issues.find((i: Issue) => i.dimension === "gc_needed")
+      expect(gcIssue).toBeUndefined()
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("treats gc.auto=0 as unset and does not flag gc_needed at 100 loose objects", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "root")
+      await $`git config gc.auto 0`.cwd(repo.path).quiet()
+      await writeLooseObjects(repo.path, 100)
+
+      const issues = await GitHealth.check(repo.path)
+      const gcIssue = issues.find((i: Issue) => i.dimension === "gc_needed")
+      expect(gcIssue).toBeUndefined()
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("warns when loose objects cross a quarter of the configured gc.auto", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "root")
+      await $`git config gc.auto 200`.cwd(repo.path).quiet()
+      await writeLooseObjects(repo.path, 100)
 
       const issues = await GitHealth.check(repo.path)
       const gcIssue = issues.find((i: Issue) => i.dimension === "gc_needed")
       expect(gcIssue).toBeDefined()
       expectValidIssue(gcIssue)
-      expect(gcIssue!.level).toBeOneOf(["warn", "critical"])
+      expect(gcIssue!.level).toBe("warn")
+      expect(gcIssue!.message).toMatch(/gc\.auto 200/)
+      expect(gcIssue!.detail).toHaveProperty("looseObjects")
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("escalates to critical once loose objects reach the configured gc.auto", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "root")
+      await $`git config gc.auto 100`.cwd(repo.path).quiet()
+      await writeLooseObjects(repo.path, 100)
+
+      const issues = await GitHealth.check(repo.path)
+      const gcIssue = issues.find((i: Issue) => i.dimension === "gc_needed")
+      expect(gcIssue).toBeDefined()
+      expect(gcIssue!.level).toBe("critical")
     } finally {
       repo.cleanup()
     }
@@ -768,5 +832,63 @@ describe("GitHealth.isGitRepo", () => {
 
   gitHealthTest("returns false for a directory that does not exist", async () => {
     expect(await GitHealth.isGitRepo("/tmp/does-not-exist-git-health-test")).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe("GitHealth.check — unpushed commits", () => {
+  gitHealthTest("does not flag unpushed when the repo has no remote-tracking refs", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "root")
+
+      const issues = await GitHealth.check(repo.path)
+      expect(issues.find((i: Issue) => i.dimension === "unpushed")).toBeUndefined()
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("does not flag unpushed when every commit is on the remote", async () => {
+    const repo = makeRepo()
+    const remote = makeRepo()
+    try {
+      await gitInitBare(remote.path)
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "root")
+      await $`git remote add origin ${remote.path}`.cwd(repo.path).quiet()
+      await $`git push --quiet origin HEAD:refs/heads/main`.cwd(repo.path).quiet()
+
+      const issues = await GitHealth.check(repo.path)
+      expect(issues.find((i: Issue) => i.dimension === "unpushed")).toBeUndefined()
+    } finally {
+      repo.cleanup()
+      remote.cleanup()
+    }
+  })
+
+  gitHealthTest("detects unpushed issue for a local-only commit", async () => {
+    const repo = makeRepo()
+    const remote = makeRepo()
+    try {
+      await gitInitBare(remote.path)
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "root")
+      await $`git remote add origin ${remote.path}`.cwd(repo.path).quiet()
+      await $`git push --quiet origin HEAD:refs/heads/main`.cwd(repo.path).quiet()
+      await gitEmptyCommit(repo.path, "local-only")
+
+      const issues = await GitHealth.check(repo.path)
+      const unpushedIssue = issues.find((i: Issue) => i.dimension === "unpushed")
+      expect(unpushedIssue).toBeDefined()
+      expectValidIssue(unpushedIssue)
+      expect(unpushedIssue!.level).toBe("warn")
+      expect(unpushedIssue!.detail).toHaveProperty("unpushed", 1)
+      expect(unpushedIssue!.message).toMatch(/remote/i)
+    } finally {
+      repo.cleanup()
+      remote.cleanup()
+    }
   })
 })

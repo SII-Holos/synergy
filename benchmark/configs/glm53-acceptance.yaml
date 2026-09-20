@@ -36,7 +36,7 @@ harnesses:
     kind: deepseek
     package_version: 0.1.5-rc.1
 models:
-  glm53flash:
+  glm53flash-max:
     model: glm-5.3-flash
     protocol: chat-completions
     base_url: https://open.bigmodel.cn/api/coding/paas/v4
@@ -50,4 +50,5 @@ models:
       thinking:
         type: enabled
         clear_thinking: false
+      reasoning_effort: max
       tool_stream: true

@@ -13,6 +13,48 @@ let writer: Database | undefined
 let reader: Database | undefined
 let filename: string | undefined
 
+// The authoritative store is orders of magnitude larger than either
+// connection's defaults assume, so both connections ask for a memory map and a
+// page cache sized for it. A negative cache_size is a size in KiB rather than a
+// page count, so the cache keeps its byte size if the page size ever changes;
+// SQLite's own default is -2000, two megabytes. Windows is left unmapped
+// because it cannot truncate a memory-mapped file, and that silently failed
+// shrink would defeat the incremental vacuum governing this store's capacity.
+const MMAP_SIZE_BYTES = 268435456
+const CACHE_SIZE_KIB = -65536
+
+// A `PRAGMA name = value` that does not throw is not evidence the value took
+// effect: SQLite caps `mmap_size` at its compile-time SQLITE_MAX_MMAP_SIZE,
+// ignores it where memory-mapped I/O is unsupported, and ignores an unknown
+// pragma entirely. Read each setting back and report the ones the engine did
+// not honor instead of assuming the request landed. A rejected or clamped
+// pragma must never throw and never fail startup.
+function applySizePragmas(connection: Database) {
+  if (process.platform !== "win32") applyReadBackPragma(connection, "mmap_size", MMAP_SIZE_BYTES)
+  applyReadBackPragma(connection, "cache_size", CACHE_SIZE_KIB)
+}
+
+function applyReadBackPragma(connection: Database, name: "mmap_size" | "cache_size", requested: number) {
+  let effective: number | undefined
+  try {
+    connection.run(`PRAGMA ${name} = ${requested}`)
+    const row = connection.query(`PRAGMA ${name}`).get() as Record<string, number | bigint> | null
+    const value = Object.values(row ?? {})[0]
+    effective = value === undefined ? undefined : Number(value)
+  } catch {
+    effective = undefined
+  }
+  // cache_size has no compile-time cap, so any value other than the request
+  // means the pragma never applied. A smaller mmap_size is SQLite's documented
+  // clamp against the compile-time maximum and still maps memory, so only a
+  // zero means memory-mapped I/O is unavailable on this host.
+  const honored = name === "cache_size" ? effective === requested : (effective ?? 0) > 0
+  if (!honored)
+    process.stderr.write(
+      `SQLite worker: PRAGMA ${name} = ${requested} not honored (effective ${effective ?? "unavailable"})\n`,
+    )
+}
+
 if (!process.send) throw new Error("SQLite worker requires a parent IPC channel")
 
 process.on("message", (request: SqliteRequest) => {
@@ -41,9 +83,11 @@ process.on("message", (request: SqliteRequest) => {
         // TRUNCATE checkpoint.
         writer.run("PRAGMA journal_size_limit = 67108864")
       }
+      applySizePragmas(writer)
       reader = new Database(request.filename!, { readonly: true, strict: true, safeIntegers: true })
       reader.run("PRAGMA busy_timeout = 5000")
       reader.run("PRAGMA query_only = ON")
+      applySizePragmas(reader)
       filename = request.filename
     } else if (request.action === "ping") {
       // Liveness probes answer from the event loop without touching SQLite, so

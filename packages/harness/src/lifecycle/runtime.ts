@@ -30,6 +30,11 @@ import { ToolScheduler } from "../session/tool-scheduler"
 import { Observability, ObservabilityResources, ObservabilityStore } from "../observability/index"
 import { configureRuntimeEndpoint } from "../util/runtime-endpoint"
 import { configureExecution, resolveExecutionConfiguration } from "../execution/execution-config"
+import { Log } from "../util/log"
+import { Bus } from "../bus"
+import { SecretVault } from "../secrets/vault"
+
+const log = Log.create({ service: "runtime" })
 
 export interface RuntimeNetwork {
   hostname: string
@@ -77,6 +82,8 @@ export namespace RuntimeHandle {
     let server: RuntimeServer | undefined
     let residentStarted = false
     let stopCompat: (() => Promise<void>) | undefined
+    let stopVaultSync: (() => void) | undefined
+    let vaultSync = Promise.resolve()
     let closing: Promise<void> | undefined
 
     function closeAdmission() {
@@ -100,6 +107,10 @@ export namespace RuntimeHandle {
         }
         await cleanup(() => StorageRetention.stop())
         await cleanup(() => stopCompat?.())
+        await cleanup(async () => {
+          stopVaultSync?.()
+          await vaultSync
+        })
         await cleanup(() => services.reload?.stop())
         closeAdmission()
         if (residentStarted) await cleanup(() => services.resident?.stop())
@@ -201,6 +212,25 @@ export namespace RuntimeHandle {
       const config = resolveExecutionConfiguration(requested, options.mode)
       Experiment.configureRuntime(config, options.experiment?.runtime)
       ScopeStartup.configure(options.mode)
+      // Secret vault sync: register secret-shaped config values on startup
+      // and on every config reload; registration is idempotent by id.
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => SecretVault.syncFromConfig(config) }).catch((error) =>
+        log?.warn?.("secret vault config sync failed", { error: String(error) }),
+      )
+      stopVaultSync = Bus.subscribeGlobal(Config.Event.Updated, () => {
+        const scope = ScopeContext.current.scope
+        vaultSync = vaultSync
+          .then(() =>
+            ScopeContext.provide({
+              scope,
+              fn: async () => {
+                const current = await Config.current()
+                await SecretVault.syncFromConfig(current)
+              },
+            }),
+          )
+          .catch(() => log.warn("secret vault config sync failed"))
+      })
       SessionManager.openAdmission()
       await RolloutRecovery.all((current) => options.recoveryReporter?.progress(current))
       options.recoveryReporter?.completed()

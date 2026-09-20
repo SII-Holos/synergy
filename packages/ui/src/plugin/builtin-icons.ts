@@ -109,6 +109,7 @@ const builtinIconNames = [
   "inbox",
   "info",
   "key-round",
+  "vault",
   "layers",
   "layout-grid",
   "lightbulb",

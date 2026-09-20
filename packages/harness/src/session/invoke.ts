@@ -76,6 +76,7 @@ import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
 import { ObservabilitySpans } from "../observability/spans"
 import { ObservabilityContext } from "../observability/context"
 import { SkillSourceProfile } from "../instruction/source-profile"
+import { SecretVault } from "../secrets/vault"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -969,6 +970,20 @@ export namespace SessionInvoke {
 
               // Domain advisories share the turn cancellation signal.
               lateSystemParts.push(...advisoryParts)
+
+              // Secret token semantics — present only when the vault is in
+              // use, so installs that never register secrets see no extra
+              // prompt bytes.
+              if (await SecretVault.hasAny()) {
+                lateSystemParts.push(
+                  "<secret-tokens>\n" +
+                    "Registered secrets appear in this conversation only as ⟦sec:<id>⟧ references. " +
+                    "Synergy resolves them to the real values automatically when a tool call executes; " +
+                    "never ask the user to paste the plaintext. Restating or writing a token is safe — " +
+                    "it resolves at execution time.\n" +
+                    "</secret-tokens>",
+                )
+              }
 
               // Layer 6: Dynamic advisory context — cortex reminders and time context
               if (cortexReminder) lateSystemParts.push(cortexReminder)

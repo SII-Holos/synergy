@@ -3,6 +3,7 @@ import type { Migration } from "../migration/types"
 import { Storage } from "./storage"
 import { StorageArtifactMigration } from "./artifact-migration"
 import { StorageDropScopeIndex } from "./drop-scope-index"
+import { StorageRecordsOwnerIndex } from "./owner-index"
 import { StorageIncrementalVacuum } from "./incremental-vacuum"
 
 const migrations: Migration[] = [
@@ -47,6 +48,16 @@ const migrations: Migration[] = [
     async up(progress) {
       progress(0, 0, 1)
       await StorageDropScopeIndex.run()
+      progress(1, 1, 1)
+    },
+  },
+  {
+    id: StorageRecordsOwnerIndex.id,
+    description: "Create the storage_records_owner evidence enumeration index",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageRecordsOwnerIndex.run()
       progress(1, 1, 1)
     },
   },

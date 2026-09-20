@@ -39,6 +39,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "permissions",
   "sandbox",
   "control-profile",
+  "secrets",
   "questions",
   "compaction",
   "timeouts",
@@ -353,6 +354,18 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
   },
+  secrets: {
+    label: { id: "settings.catalog.secrets.label", message: "Secrets" },
+    description: {
+      id: "settings.catalog.secrets.description",
+      message: "Registered secrets masked from model context, resolved at execution.",
+    },
+    searchTerms: {
+      id: "settings.catalog.secrets.searchTerms",
+      message: "secret | vault | api key | token | mask | credential",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+  },
   questions: {
     label: { id: "settings.catalog.questions.label", message: "Questions" },
     description: { id: "settings.catalog.questions.description", message: "Question timeout behavior." },
@@ -547,6 +560,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("permissions", "safety", 10, "settings.permissions", ["permissions"]),
   section("sandbox", "safety", 20, "settings.sandbox", ["permissions"]),
   section("control-profile", "safety", 30, "settings.controlProfile", ["permissions"]),
+  section("secrets", "safety", 40, "settings.secrets", ["permissions"]),
   section("questions", "runtime", 10, "settings.questions", ["runtime"]),
   section("compaction", "runtime", 20, "settings.compaction", ["runtime"]),
   section("timeouts", "runtime", 30, "settings.timeouts", ["runtime", "agents"]),

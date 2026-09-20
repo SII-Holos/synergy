@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import os
 import re
 import tarfile
 import xml.etree.ElementTree as ET
@@ -132,15 +133,22 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
     if not exported or exported.get("status") != "completed":
         missing.append("export_failed")
     files = {}
-    for path in sorted(trial.rglob("*")):
-        relative = path.relative_to(trial).as_posix()
-        try:
-            if path.is_file() and not path.is_symlink() and path.name != "evidence.json":
-                with path.open("rb") as stream:
-                    checksum = hashlib.file_digest(stream, "sha256").hexdigest()
-                files[relative] = {"sha256": checksum, "bytes": path.stat().st_size}
-        except OSError:
-            missing.append(f"file_unreadable:{relative}")
+    for directory, children, names in os.walk(trial):
+        children[:] = sorted(
+            name
+            for name in children
+            if Path(directory) / name != agent / "home" and not (Path(directory) / name).is_symlink()
+        )
+        for name in sorted(names):
+            path = Path(directory) / name
+            relative = path.relative_to(trial).as_posix()
+            try:
+                if path.is_file() and not path.is_symlink() and path.name != "evidence.json":
+                    with path.open("rb") as stream:
+                        checksum = hashlib.file_digest(stream, "sha256").hexdigest()
+                    files[relative] = {"sha256": checksum, "bytes": path.stat().st_size}
+            except OSError:
+                missing.append(f"file_unreadable:{relative}")
     external = execution and execution.get("harness") not in {None, "synergy"}
     payload = files.get("agent/rollout.tar.gz" if external else "agent/rollout.zip")
     structural = bool(

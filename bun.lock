@@ -333,6 +333,7 @@
       "dependencies": {
         "@ai-sdk/provider": "2.0.3",
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
+        "@ericsanchezok/synergy-secret-detection": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@zip.js/zip.js": "2.8.26",
         "ai": "catalog:",
@@ -631,6 +632,17 @@
         "@tsconfig/node22": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/secret-detection": {
+      "name": "@ericsanchezok/synergy-secret-detection",
+      "version": "1.1.26",
+      "dependencies": {
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -1121,6 +1133,8 @@
     "@ericsanchezok/synergy-runtime-local": ["@ericsanchezok/synergy-runtime-local@workspace:packages/runtime-local"],
 
     "@ericsanchezok/synergy-sdk": ["@ericsanchezok/synergy-sdk@workspace:packages/sdk/js"],
+
+    "@ericsanchezok/synergy-secret-detection": ["@ericsanchezok/synergy-secret-detection@workspace:packages/secret-detection"],
 
     "@ericsanchezok/synergy-server": ["@ericsanchezok/synergy-server@workspace:packages/server"],
 

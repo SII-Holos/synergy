@@ -356,6 +356,12 @@ export const LocalBashBackend = {
       }
     }
 
+    // Secret boundary: resolved mask tokens arrive as SYNERGY_SEC_* environment
+    // variables from the resolver; the command references them via
+    // ${SYNERGY_SEC_*} so plaintext never appears in argv or process listings.
+    const secretEnv = (ctx.extra as { secretEnv?: Record<string, string> } | undefined)?.secretEnv
+    if (secretEnv) Object.assign(sandboxEnv, secretEnv)
+
     // Autonomous (and any gate-sandboxed) execution: point TMPDIR/TMP/TEMP at
     // the workspace-controlled temporary root so tools that honor TMPDIR write
     // inside the workspace boundary instead of the host's shared temporary
@@ -417,6 +423,7 @@ export const LocalBashBackend = {
     // the system log rather than to the child's stderr, so this is the only
     // source of the denied path that the structured explanation needs.
     let denialSession: DenialLoggerSession | null = null
+    using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
     let windowsProcessJob: WindowsProcessJob.Prepared | undefined
     let windowsProcessOwner: WindowsProcessJob.Owner | undefined
     let ownsUnixProcessGroup = false
@@ -424,10 +431,7 @@ export const LocalBashBackend = {
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
-      // The denial logger is deliberately not stopped here. Kernel audit
-      // records trail the child by a short interval, and this cleanup runs at
-      // child close — stopping the stream now would discard the very record
-      // that names the denied path. The session bounds its own lifetime.
+      // Audit drainage remains owned by the foreground execution scope, including early returns.
       windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)

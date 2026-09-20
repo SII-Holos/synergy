@@ -14946,6 +14946,18 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.secrets.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.secrets.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.secrets.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.skills.description"
 msgstr ""
 
@@ -18699,6 +18711,154 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.history"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.rotate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.action.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.list.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.list.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.page.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.button"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.register.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.removeConfirm.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.removeConfirm.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.revealHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.rotate.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.rotate.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.cap"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.capPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.resolves"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.row.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.emptyValue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.policy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.registered"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.registeredDesc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.removed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.removedDesc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.toast.rotated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.tools.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.tools.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.value.label"
 msgstr ""
 
 #. js-lingui-explicit-id

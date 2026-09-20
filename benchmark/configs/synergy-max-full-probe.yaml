@@ -1,0 +1,36 @@
+version: 2
+suite: ../suites/local-24.json
+output: ../../.artifacts/benchmark/synergy-max-probe
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 20260918
+repeat: 1
+concurrency: auto
+preparation_timeout_seconds: 7200
+selection:
+  tasks:
+    - terminal-bench-2.1/openssl-selfsigned-cert
+harnesses:
+  synergy-max-full:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: full
+    agent: synergy-max
+models:
+  glm53flash-max:
+    model: glm-5.3-flash
+    protocol: chat-completions
+    base_url: https://open.bigmodel.cn/api/coding/paas/v4
+    api_key_env: ZHIPU_CODING_PLAN_API_KEY
+    context_window: 1048576
+    max_output_tokens: 131072
+    supports_developer_role: false
+    parameters:
+      temperature: 1
+      top_p: 0.95
+      thinking:
+        type: enabled
+        clear_thinking: false
+      reasoning_effort: max
+      tool_stream: true

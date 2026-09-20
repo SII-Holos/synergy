@@ -638,21 +638,36 @@ async function handleWorktreeLeave(sessionID: string, params: Parameters) {
   const worktreeName = typeof (workspace as any).name === "string" ? ((workspace as any).name as string) : undefined
   const previous = { type: workspace.type, path: worktreePath, name: worktreeName }
 
-  let isClean: boolean | undefined
+  // Tri-state: `undefined` means the dirty probe could not answer, which is not
+  // the same as "clean" and must not be reported as "dirty".
+  let dirtyState: boolean | undefined
   if (params.cleanup === "remove_if_clean") {
     const status = await Worktree.status(sessionID)
-    isClean = status.dirty === false
+    dirtyState = status.dirty
   }
 
   await Worktree.leave(sessionID)
   const restored = { type: "main", path: ScopeContext.current.scope.directory }
-  let cleanup: { performed: boolean; skippedReason?: string } = { performed: false }
+  let cleanup: { performed: boolean; skippedReason?: string; error?: string; cleanupDeferred?: boolean } = {
+    performed: false,
+  }
   if (params.cleanup === "remove_if_clean" && worktreeID) {
-    if (isClean) {
-      await Worktree.remove({ sessionID, target: worktreeID, force: false })
-      cleanup = { performed: true }
-    } else {
+    if (dirtyState === false) {
+      try {
+        // The turn issuing this call still holds the worktree's git lock and use
+        // token, so removal must be told that the caller is its own turn.
+        await Worktree.remove({ sessionID, target: worktreeID, force: false }, { insideCallerTurn: true })
+        cleanup = { performed: true }
+      } catch (error) {
+        // Leaving already succeeded, so a failed cleanup must not fail the turn.
+        const message = error instanceof Error ? error.message : String(error)
+        await Worktree.markLifecycle(worktreeID, "gc_candidate").catch(() => undefined)
+        cleanup = { performed: false, error: message, cleanupDeferred: true }
+      }
+    } else if (dirtyState === true) {
       cleanup = { performed: false, skippedReason: "dirty" }
+    } else {
+      cleanup = { performed: false, skippedReason: "unknown_dirty" }
     }
   }
 
