@@ -529,7 +529,6 @@ export class StoreTransaction {
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
     // The tombstone stays; the node chain the removal emptied does not.
-    // The tombstone stays; the node chain the removal emptied does not.
     await this.cleanDanglingNodes(key)
   }
 
