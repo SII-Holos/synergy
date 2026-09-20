@@ -417,6 +417,7 @@ export const LocalBashBackend = {
     // the system log rather than to the child's stderr, so this is the only
     // source of the denied path that the structured explanation needs.
     let denialSession: DenialLoggerSession | null = null
+    using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
     let windowsProcessJob: WindowsProcessJob.Prepared | undefined
     let windowsProcessOwner: WindowsProcessJob.Owner | undefined
     let ownsUnixProcessGroup = false
@@ -424,10 +425,7 @@ export const LocalBashBackend = {
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
-      // The denial logger is deliberately not stopped here. Kernel audit
-      // records trail the child by a short interval, and this cleanup runs at
-      // child close — stopping the stream now would discard the very record
-      // that names the denied path. The session bounds its own lifetime.
+      // Audit drainage remains owned by the foreground execution scope, including early returns.
       windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
