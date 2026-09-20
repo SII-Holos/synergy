@@ -146,6 +146,18 @@ CLI 汇总保留全部记录或基础设施失败数，另列已恢复的启动�
 
 ## 缓存、并发与维护
 
+### 离线轨迹诊断
+
+`uv run --locked --project benchmark python -m synergy_bench.trajectory /absolute/path/to/run --output /absolute/path/to/analysis` 只读分析保留的 Chat Completions wire 与 Synergy v1 rollout，输出 JSON 和逐请求、工具、会话、消息、调用用途、schema、内容重复暴露的 CSV。输出目录必须位于证据树之外；该入口不启动模型、容器、重判或 resume，也不替换正式评分报告。
+
+重试保留每次派发；请求体摘要重复时，仅在两侧数量相等后按时间排序关联，并明确标记推断匹配。未知 usage 保留已知字段下界，缺失账本元数据直接报错，未观测到的 native transport attempts 阻止精确总量。`trials`、`probes`、`debug` 和 `recoveries` 分开统计；多个运行分别解析后可汇总成本，不能把补充运行的高分替换首次评分。
+
+token 来自服务商 usage，缓存属于 input、reasoning 属于 output；已有输入／输出但缺少相应子集字段时，缓存率／推理占比保持未知。历史内容与工具 schema 只报告 UTF-8 字节，不按字节比例伪造精确 token。模型／工具耗时按区间并集统计，首字节不等于首 token；多任务的全局并集也不等于逐题解题时间之和。工具分类、相同参数调用和消息前缀相等都是诊断信号，不能直接认定冗余、缓存可命中或可无损裁剪。原生 `contextUsage` 的归因字段保留其估算性质。额度和货币折算需要独立、带日期的套餐规则及账户证据，此模块不将 token 等同于订阅额度。
+
+默认导出不含提示词、工具参数或工具输出正文；仍含任务名、请求标识和时间等研究元数据，应按原证据的访问范围保存。用临时合成证据验证解析器：`uv run --locked --project benchmark pytest benchmark/test/test_trajectory.py`。分析约定见[离线轨迹诊断决策](../docs/decisions/implemented/testing/2026-09-20-offline-trajectory-diagnostics.md)。
+
+### 运行资源与缓存维护
+
 调度读取 Docker CPU/内存配额，预留至少 2 核及 max(2 GiB, 15%) 内存；不满足静态资源需求时提前报错。宿主内存压力或磁盘余量不足会延迟新任务，不杀正在运行的任务。agent 与独立 verifier 的原生资源声明共同决定准入。8 GB 任务等待时允许有限次数的轻任务补位，随后为队首释放容量；无人运行而宿主持续受压时有界报错。每项准入另计 0.2 核与 128 MiB 的代理和记录服务余量，容器自身的原生资源限制不变。源码和安装包构建预留 2 核、4 GiB，与执行共享预算；构建默认最多两项，跨进程使用可自动释放的锁。实际峰值另行采样，构建资源预留属于准入估计。
 
 暖任务镜像按原题内容、原生声明、安装步骤和平台复用。冻结镜像缺失或 ID 改变会报错；预热与执行使用相同镜像条件。正常清理只删除本次容器、网络和卷，避免 Pier 的 `--rmi all` 删除共享镜像。缓存发布校验内容、按键合并构建并原子发布。活动构建/运行与回收互斥，冻结 run 持有产物引用；只回收明确属于 benchmark 的无引用对象，不自动认领共享镜像。
