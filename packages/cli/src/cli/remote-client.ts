@@ -59,6 +59,8 @@ export function createRemoteClient(sdk: SynergyClient): RuntimeClient {
         return { data: value.data, error: value.error, response: { status: value.response.status } }
       },
       input: async (input) => parsed(SessionInbox.InputResult, await sdk.session.input(input, { throwOnError: true })),
+      continue: async (input) => result(await sdk.session.continue(input, { throwOnError: true })),
+      abandon: async (input) => result(await sdk.session.abandon(input, { throwOnError: true })),
       command: async (input) => {
         const value = await sdk.session.command(input, { throwOnError: true })
         return result({ data: undefined, response: value.response })

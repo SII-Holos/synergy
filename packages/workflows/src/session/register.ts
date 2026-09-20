@@ -4,6 +4,7 @@ import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/w
 import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { SessionRecoveryContributions } from "@ericsanchezok/synergy-harness/session/recovery-contributions"
 import { SessionModePolicy as CoreModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionModePolicy, workflowToolAvailability } from "./tool-mode-policy"
 import { WorkflowSessionService, WorkflowConflictError } from "./workflow"
 import { SessionBlueprintState } from "./blueprint-state"
@@ -63,26 +64,32 @@ export function registerWorkflowSessions() {
         : undefined
       return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
     },
-    async recoveringDescription(session) {
-      if (session.blueprint?.loopID) {
-        const loop = await SessionBlueprintState.getLoop(session.scope.id, session.blueprint.loopID)
-        if (loop && SessionBlueprintState.isActiveStatus(loop.status)) return WorkflowRecovery.describeActiveLoop(loop)
-      }
-      if (isActiveLightLoopWorkflow(session.workflow)) return "Light Loop active"
-      if (session.workflow?.kind === "lattice") return "Lattice run active"
-      return undefined
-    },
-    async abandonPhantom(session) {
-      // Scope: only BlueprintLoops. Light Loop and Lattice own their own
-      // restart reconciliation, and an active Light Loop is legitimately
-      // re-driven by the continuation kernel between turns.
+    async abandonWorkflow(session) {
+      let abandoned = false
       const loopID = session.blueprint?.loopID
-      if (!loopID) return false
-      const loop = await SessionBlueprintState.getLoop(session.scope.id, loopID)
-      if (!loop || !SessionBlueprintState.isActiveStatus(loop.status)) return false
-      if (await WorkflowRecovery.hasResumableEvidence(loop)) return false
-      await WorkflowRecovery.abandonLoop(session.scope.id, loopID)
-      return true
+      if (loopID) {
+        const loop = await SessionBlueprintState.getLoop(session.scope.id, loopID)
+        if (loop && SessionBlueprintState.isActiveStatus(loop.status)) {
+          await WorkflowRecovery.abandonLoop(session.scope.id, loopID)
+          abandoned = true
+        }
+      }
+      // Light Loop and Lattice persist their own terminal records, so their
+      // domain cancel paths run instead of a raw status write.
+      if (isActiveLightLoopWorkflow(session.workflow)) {
+        await WorkflowPromptRegistry.get("lightloop")?.cancel?.(session.id)
+        abandoned = true
+      }
+      if (session.workflow?.kind === "lattice") {
+        await ScopeContext.provide({
+          scope: session.scope,
+          fn: async () => {
+            await WorkflowPromptRegistry.get("lattice")?.disable?.(session.id)
+          },
+        })
+        abandoned = true
+      }
+      return abandoned
     },
     hasContinuation(session) {
       return (
@@ -124,7 +131,6 @@ export function registerWorkflowSessions() {
     id: "workflows",
     scopes: () => WorkflowRecovery.scopeIDsForRuntimeRecovery(),
     reconcile: WorkflowRecovery.reconcileRuntimeScope,
-    resume: WorkflowRecovery.resumePendingStopRequests,
     statuses: WorkflowRecovery.recoverableStatuses,
   })
   CoreModePolicy.register({

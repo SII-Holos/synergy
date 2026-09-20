@@ -623,7 +623,7 @@
 }
 
 .kanban-status-dot-retry,
-.kanban-status-dot-recovering {
+.kanban-status-dot-paused {
   background: var(--surface-warning-base);
 }
 

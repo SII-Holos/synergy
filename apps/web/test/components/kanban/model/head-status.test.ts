@@ -7,15 +7,14 @@ describe("paneHeadStatusFromVisual", () => {
     expect(paneHeadStatusFromVisual({ tone: "blueprint-running", pulse: true })).toBe("working")
   })
 
-  test("recovering and retry status read as working even when the tone is idle", () => {
-    expect(paneHeadStatusFromVisual({ statusType: "recovering", tone: "default" })).toBe("working")
+  test("retry status reads as working even when the tone is idle", () => {
     expect(paneHeadStatusFromVisual({ statusType: "retry", tone: "default" })).toBe("working")
   })
 
-  test("a recovering audit remains working without an audit pulse", () => {
+  test("an audit recolored to a paused status stops reading as working", () => {
     expect(
-      paneHeadStatusFromVisual({ statusType: "recovering", tone: "blueprint-audit", completionUnread: true }),
-    ).toBe("working")
+      paneHeadStatusFromVisual({ statusType: "paused", tone: "blueprint-audit", completionUnread: true }),
+    ).toBe("completed")
   })
 
   test("waiting and blueprint-waiting tones read as waiting", () => {

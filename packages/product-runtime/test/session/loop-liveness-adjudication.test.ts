@@ -4,10 +4,10 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { NoteStore } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
-import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
-import { RolloutContinuationRecovery } from "@ericsanchezok/synergy-harness/session/rollout/continuation-recovery"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -16,13 +16,13 @@ Log.init({ print: false })
 
 async function createBlueprintNote() {
   return NoteStore.create({
-    title: "Phantom liveness Blueprint",
+    title: "Orphaned liveness Blueprint",
     kind: "blueprint",
     blueprint: { description: "Adjudicate driverless loops after restart." },
   })
 }
 
-async function createLoop(status: "armed" | "running" | "waiting" | "auditing" = "running") {
+async function createLoop(status: "armed" | "running" | "auditing" = "running") {
   const session = await Session.create({})
   const note = await createBlueprintNote()
   const created = await BlueprintLoopStore.create({
@@ -47,30 +47,27 @@ async function reconcile() {
   return SessionRecovery.reconcileRuntimeState({ scopeID: ScopeContext.current.scope.id, apply: true })
 }
 
-describe("phantom BlueprintLoop adjudication on restart", () => {
-  for (const source of ["inbox", "continuation"] as const) {
-    test(`preserves a loop when its ${source} evidence cannot be read`, async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const { loop } = await createLoop("running")
-          const read =
-            source === "inbox" ? spyOn(SessionInbox, "hasRunnableItem") : spyOn(RolloutContinuationRecovery, "pending")
-          read.mockRejectedValueOnce(new Error("Evidence storage is temporarily unavailable"))
-          try {
-            const report = await reconcile()
-            expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
-            expect(report.entries.some((entry) => entry.action.startsWith("scope_reconcile_failed:"))).toBe(true)
-          } finally {
-            read.mockRestore()
-          }
-        },
-      })
+describe("orphaned BlueprintLoop adjudication on restart", () => {
+  test("preserves a loop when its inbox evidence cannot be read", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { loop } = await createLoop("running")
+        const read = spyOn(SessionInbox, "hasRunnableItem")
+        read.mockRejectedValueOnce(new Error("Evidence storage is temporarily unavailable"))
+        try {
+          const report = await reconcile()
+          expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+          expect(report.entries.some((entry) => entry.action.startsWith("scope_reconcile_failed:"))).toBe(true)
+        } finally {
+          read.mockRestore()
+        }
+      },
     })
-  }
+  })
 
-  test("terminalizes a running loop with no durable driver and clears its references", async () => {
+  test("stops the session of a running loop with no durable driver and keeps the loop", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -86,19 +83,24 @@ describe("phantom BlueprintLoop adjudication on restart", () => {
 
         await reconcile()
 
+        // The loop record is left exactly as stored. A restart is evidence the
+        // turn stopped, not that the user's work should be destroyed, and this
+        // record is the only handle left for continuing or abandoning it.
         const after = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(after.status).toBe("failed")
-        expect(after.error).toStartWith("interrupted:")
+        expect(after.status).toBe("running")
+        expect(after.error).toBeUndefined()
 
+        // The references therefore stay bound, because the loop they point at is
+        // still live.
         const refreshed = await Session.get(session.id)
-        expect(refreshed.blueprint?.loopID).toBeUndefined()
+        expect(refreshed.blueprint?.loopID).toBe(loop.id)
         const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
-        expect(refreshedNote.blueprint?.activeLoopID).toBeUndefined()
+        expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
       },
     })
   })
 
-  test("leaves the session idle rather than pinned in recovering", async () => {
+  test("reports the stopped session with the workflow that holds it", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -110,65 +112,92 @@ describe("phantom BlueprintLoop adjudication on restart", () => {
 
         await reconcile()
 
+        // The status must name the cause, so the user has something actionable
+        // instead of an unexplained stall that no control can clear.
         const statuses = await SessionManager.listStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toBeUndefined()
-      },
-    })
-  })
-
-  test("cancels an orphaned armed loop because failed is not a legal transition from armed", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { loop } = await createLoop("armed")
-        await reconcile()
-        const after = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(after.status).toBe("cancelled")
-      },
-    })
-  })
-
-  test("frees the Blueprint so a new loop can start after adjudication", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, note, loop } = await createLoop("running")
-        expect(loop.status).toBe("running")
-        await reconcile()
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("failed")
-
-        // The retired run must not block a fresh one on the same Blueprint.
-        const restarted = await BlueprintLoopStore.create({
-          noteID: note.id,
-          noteVersion: note.version,
-          title: note.title,
-          sessionID: session.id,
-          runMode: "current",
+        expect(statuses[session.id]).toMatchObject({
+          type: "paused",
+          reason: "workflow",
+          description: "BlueprintLoop active",
         })
-        expect(restarted.status).toBe("armed")
+        expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("workflow")
       },
     })
   })
-})
 
-describe("phantom BlueprintLoop adjudication preserves real drivers", () => {
-  test("preserves a user-paused loop", async () => {
+  test("stops the session of an orphaned armed loop and preserves the loop", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const { session, loop } = await createLoop("waiting")
+        const { session, loop } = await createLoop("armed")
         await Session.update(session.id, (draft) => {
           draft.blueprint = { loopID: loop.id, loopRole: "execution" }
         })
 
         await reconcile()
 
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("waiting")
-        const refreshed = await Session.get(session.id)
-        expect(refreshed.blueprint?.loopID).toBe(loop.id)
+        // `armed` has no in-flight work, but adjudication no longer invents a
+        // terminal outcome for it either: the user's intent is preserved and the
+        // session is what stops.
+        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("armed")
+        expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("workflow")
+      },
+    })
+  })
+
+  test("keeps the preserved loop as the user's only handle on the stopped work", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, note, loop } = await createLoop("running")
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+
+        await reconcile()
+
+        // Adjudication deliberately does not free the Blueprint: the stopped
+        // loop is the record the user continues or abandons from, so a second
+        // loop on the same Blueprint is refused rather than silently allowed to
+        // orphan the first one.
+        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+        await expect(
+          BlueprintLoopStore.create({
+            noteID: note.id,
+            noteVersion: note.version,
+            title: note.title,
+            sessionID: session.id,
+            runMode: "current",
+          }),
+        ).rejects.toMatchObject({ name: "BlueprintLoopAlreadyActive" })
+      },
+    })
+  })
+})
+
+describe("orphaned BlueprintLoop adjudication preserves real drivers", () => {
+  test("does not rewrite a pause the user already recorded", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createLoop("running")
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+        // The user's own stop, recorded before any reconciliation ran.
+        await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+        const before = await SessionLifecycle.snapshot(session.id)
+
+        await reconcile()
+
+        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+        // First pause wins: rewriting here would churn `since` and replace the
+        // user's own cause with the workflow's.
+        expect(await SessionLifecycle.snapshot(session.id)).toEqual(before)
+        expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("aborted")
       },
     })
   })
@@ -203,6 +232,9 @@ describe("phantom BlueprintLoop adjudication preserves real drivers", () => {
         await reconcile()
 
         expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+        // A loop that still owes a verdict is not orphaned, so the session is
+        // left alone rather than being stopped under the user.
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
       },
     })
   })
@@ -234,6 +266,7 @@ describe("phantom BlueprintLoop adjudication preserves real drivers", () => {
         await reconcile()
 
         expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
       },
     })
   })
@@ -259,11 +292,12 @@ describe("phantom BlueprintLoop adjudication preserves real drivers", () => {
         await reconcile()
 
         expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, created.id)).status).toBe("running")
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
       },
     })
   })
 
-  test("never terminalizes a loop that already reached a terminal status", async () => {
+  test("never touches a loop that already reached a terminal status", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),

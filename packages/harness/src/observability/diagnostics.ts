@@ -71,7 +71,7 @@ export namespace Diagnostics {
         finished: ProcessRegistry.listFinished().map(summarizeFinishedProcess),
       },
       sessions: {
-        pendingReply: await pendingSessions(input.freshPendingSessions).catch(() => []),
+        paused: await pausedSessions(input.freshPendingSessions).catch(() => []),
       },
     })
   }
@@ -130,7 +130,7 @@ export namespace Diagnostics {
     await fs.writeFile(path.join(root, "runtime", "processes.json"), JSON.stringify(info.processes, null, 2) + "\n")
     await fs.writeFile(
       path.join(root, "runtime", "pending-sessions.json"),
-      JSON.stringify(info.sessions.pendingReply, null, 2) + "\n",
+      JSON.stringify(info.sessions.paused, null, 2) + "\n",
     )
 
     const pluginState = path.join(Global.Path.data, "plugin-runtime-state.json")
@@ -384,22 +384,22 @@ export namespace Diagnostics {
     }
   }
 
-  let pendingSessionsCache: { at: number; root: string; value: Summary["sessions"]["pendingReply"] } | undefined
-  const PENDING_SESSIONS_CACHE_MS = 15_000
+  let pausedSessionsCache: { at: number; root: string; value: Summary["sessions"]["paused"] } | undefined
+  const PAUSED_SESSIONS_CACHE_MS = 15_000
 
-  async function pendingSessions(fresh = false) {
+  async function pausedSessions(fresh = false) {
     const now = Date.now()
     const root = path.join(Global.Path.data, "sessions")
     if (
       !fresh &&
-      pendingSessionsCache &&
-      pendingSessionsCache.root === root &&
-      now - pendingSessionsCache.at < PENDING_SESSIONS_CACHE_MS
+      pausedSessionsCache &&
+      pausedSessionsCache.root === root &&
+      now - pausedSessionsCache.at < PAUSED_SESSIONS_CACHE_MS
     ) {
-      return pendingSessionsCache.value
+      return pausedSessionsCache.value
     }
-    const result: Summary["sessions"]["pendingReply"] = []
-    // Only session-level info.json files carry pendingReply; message-level
+    const result: Summary["sessions"]["paused"] = []
+    // Only session-level info.json files carry the pause latch; message-level
     // files under messages/ never do. Skipping them turns an O(all messages)
     // scan into an O(sessions) scan for the dashboard's 5s polling.
     await walk(root, async (file) => {
@@ -407,13 +407,13 @@ export namespace Diagnostics {
       // Cross-process read: on Windows a concurrent atomic rename can fail
       // this read transiently; retry keeps the dashboard scan accurate (#1247).
       const data = await readFileWithRetry(file).catch(() => "")
-      if (!data.includes('"pendingReply"')) return
-      const json = JSON.parse(data) as { id?: string; pendingReply?: boolean; time?: { updated?: number } }
-      if (!json.pendingReply || !json.id) return
+      if (!data.includes('"paused"')) return
+      const json = JSON.parse(data) as { id?: string; paused?: unknown; time?: { updated?: number } }
+      if (!json.paused || !json.id) return
       result.push({ sessionID: json.id, path: file, updated: json.time?.updated })
     })
     const value = result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
-    pendingSessionsCache = { at: now, root, value }
+    pausedSessionsCache = { at: now, root, value }
     return value
   }
 
@@ -422,7 +422,7 @@ export namespace Diagnostics {
     await Promise.all(
       entries.map(async (entry) => {
         const full = path.join(dir, entry.name)
-        // Message payloads live under messages/ and never carry pendingReply;
+        // Message payloads live under messages/ and never carry the pause latch;
         // skipping them bounds the scan to session-level info.json files.
         if (entry.isDirectory()) {
           if (entry.name === "messages") return

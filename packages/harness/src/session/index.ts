@@ -1063,8 +1063,14 @@ export namespace Session {
       if (result.parentID) {
         await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
       }
-      const shouldPreserveActivityAt =
-        options?.preserveActivityAt ?? (before.pendingReply === true && result.pendingReply === true)
+      // Freeze nav activity while the turn is unfinished, in either sense: an
+      // in-flight turn (the runtime still owns it) or one that stopped and is
+      // waiting for the user. Ordered writes to a running session's title must
+      // not churn the sidebar ordering, and a paused session's activity
+      // timestamp is the moment it stopped, not the moment its latch was last
+      // re-described.
+      const unfinished = SessionManager.isRunning(id) || (!!before.paused && !!result.paused)
+      const shouldPreserveActivityAt = options?.preserveActivityAt ?? unfinished
       const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
         preserveActivityAt: shouldPreserveActivityAt,
       })

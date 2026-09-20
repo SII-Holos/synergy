@@ -6,6 +6,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { Server } from "../../src/server/server"
 
 Log.init({ print: false })
@@ -35,13 +36,15 @@ async function createIncompleteAssistant(sessionID: string) {
   })
 }
 
-async function createRecoverableSession(title: string) {
+/** A session stopped mid-work: the pause latch is what the cross-scope status
+ *  scan reports, so the fixture returns it for exact-status assertions. */
+async function createPausedSession(title: string) {
   const session = await Session.create({ title })
   await createIncompleteAssistant(session.id)
-  await Session.update(session.id, (draft) => {
-    draft.pendingReply = true
-  })
-  return session
+  await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+  const paused = await SessionLifecycle.snapshot(session.id)
+  if (!paused) throw new Error("expected a pause latch")
+  return { session, paused }
 }
 
 describe("GET /global/session/status", () => {
@@ -52,19 +55,22 @@ describe("GET /global/session/status", () => {
     const scopeB = await tmpB.scope()
 
     let busyID = ""
-    let recoveringID = ""
+    let pausedID = ""
+    let pausedSince = 0
 
     await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
-        busyID = (await createRecoverableSession("Busy in scope A")).id
+        busyID = (await createPausedSession("Busy in scope A")).session.id
         SessionManager.setStatus(busyID, { type: "busy", description: "working" })
       },
     })
     await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
-        recoveringID = (await createRecoverableSession("Recovering in scope B")).id
+        const paused = await createPausedSession("Paused in scope B")
+        pausedID = paused.session.id
+        pausedSince = paused.paused.since
       },
     })
 
@@ -78,16 +84,16 @@ describe("GET /global/session/status", () => {
 
           expect(body[busyID]).toEqual({ type: "busy", description: "working" })
           // The cause travels with the status so a client can explain why the
-          // session is recovering instead of showing one opaque state.
-          expect(body[recoveringID]).toEqual({ type: "recovering", reason: "incomplete-turn" })
+          // session is stopped instead of showing one opaque state.
+          expect(body[pausedID]).toEqual({ type: "paused", reason: "aborted", since: pausedSince })
           expect(res.headers.get("x-synergy-seq")).toMatch(/^\d+$/)
         },
       })
     } finally {
       SessionManager.unregisterRuntime(busyID)
-      SessionManager.unregisterRuntime(recoveringID)
+      SessionManager.unregisterRuntime(pausedID)
       await Session.remove(busyID)
-      await Session.remove(recoveringID)
+      await Session.remove(pausedID)
     }
   })
 

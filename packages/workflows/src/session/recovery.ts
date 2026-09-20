@@ -13,22 +13,17 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionBlueprintState } from "./blueprint-state"
 import { SessionNoteAccess } from "@ericsanchezok/synergy-note/session-contract"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
-import { RolloutContinuationRecovery } from "@ericsanchezok/synergy-harness/session/rollout/continuation-recovery"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 export namespace WorkflowRecovery {
   const log = Log.create({ service: "workflow.recovery" })
   const TERMINAL_LOOP_STATUSES = new Set<SessionBlueprintState.LoopStatus>(["completed", "failed", "cancelled"])
-
-  /** Stable prefix marking a loop terminalized by restart adjudication rather
-   * than by its own lifecycle, so operators can distinguish the two. */
-  const INTERRUPTED_PREFIX = "interrupted:"
 
   function isActiveLoop(loop: SessionBlueprintState.LoopInfo | undefined) {
     return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
@@ -38,37 +33,24 @@ export namespace WorkflowRecovery {
     return !!loop && TERMINAL_LOOP_STATUSES.has(loop.status)
   }
 
-  /**
-   * Whether an active loop has durable evidence that something will resume it.
-   * Exported so an explicit user stop can reuse the identical test: a loop kept
-   * alive by real evidence must never be abandoned by an abort.
-   */
-  export async function hasResumableEvidence(loop: SessionBlueprintState.LoopInfo): Promise<boolean> {
-    return hasDurableDriver({ loop, sessionID: loop.sessionID })
-  }
-
   /** Whether the session itself carries queued work that will be driven. */
   export async function sessionHasDurableDriver(sessionID: string): Promise<boolean> {
-    if (await SessionInbox.hasRunnableItem(sessionID)) return true
-    return RolloutContinuationRecovery.pending(sessionID)
+    return SessionInbox.hasRunnableItem(sessionID)
   }
 
   /**
    * A persisted active loop is only a real driver when something will resume it
-   * after a restart. A loop without such evidence is a phantom: it keeps the
-   * session pinned in `recovering` while nothing drives it, and no user-facing
-   * control can clear it because the derived status is recomputed from this very
-   * record.
+   * after a restart. A loop without such evidence is orphaned: it pins the
+   * session while nothing drives it, so adjudication stops the session and
+   * leaves the loop record for the user to continue or abandon.
    */
   async function hasDurableDriver(input: {
     loop: SessionBlueprintState.LoopInfo
     sessionID: string | undefined
   }): Promise<boolean> {
     const { loop } = input
-    // A user-paused loop waits for an explicit resume, not for a driver.
-    if (loop.status === "waiting") return true
-    // Stop-intent recovery re-drives the execution session before this loop
-    // would need a fresh driver (see resumePendingStopRequests).
+    // A pending review request means a verdict is still owed: the review
+    // session's completion re-enters the loop through the continuation kernel.
     if (loop.stopRequest) return true
     // Lattice creates, starts, and reconciles its own loops through its own
     // startup controller, which runs after session recovery.
@@ -82,14 +64,9 @@ export namespace WorkflowRecovery {
     return sessionHasDurableDriver(input.sessionID)
   }
 
-  /** Stable prefix for a loop an operator or recovery ended before its own
-   * lifecycle finished, so the two are distinguishable in stored history. */
-  const INTERRUPTED_LOOP_ERROR = `${INTERRUPTED_PREFIX} runtime restarted before this loop resumed`
-
   /**
    * End a loop on explicit user request. Cancellation is the honest terminal
-   * status here — unlike restart adjudication, nothing was interrupted in
-   * flight; the user asked for it to stop.
+   * status here: nothing failed, the user asked for the work to stop.
    */
   export async function abandonLoop(scopeID: string, loopID: string): Promise<void> {
     await SessionBlueprintState.updateLoopStatus(scopeID, loopID, {
@@ -99,51 +76,67 @@ export namespace WorkflowRecovery {
   }
 
   /**
-   * Terminalize a loop that has no resumable evidence. Returns the terminal
-   * status applied, or undefined when the loop is preserved. `armed` has no
-   * in-flight work to fail and its only legal terminal transition is
-   * `cancelled`; a started loop is honestly `failed`.
+   * Stop the session of a loop nothing will resume.
+   *
+   * The loop record is left exactly as stored: a restart is evidence that the
+   * turn stopped, not that the user's work should be destroyed, and that record
+   * is the only handle left for continuing it. The pause latch is what makes the
+   * state honest and actionable — the session stops, names the workflow holding
+   * it, and the user chooses between continuing and abandoning the work.
    */
   async function adjudicateOrphanedLoop(input: {
     scopeID: string
     loop: SessionBlueprintState.LoopInfo
     apply: boolean
     report: SessionRecovery.RuntimeReconcileReport
-  }): Promise<SessionBlueprintState.LoopStatus | undefined> {
+  }): Promise<void> {
     const { loop } = input
-    if (await hasResumableEvidence(loop)) return undefined
+    if (await hasDurableDriver({ loop, sessionID: loop.sessionID })) return
 
-    const status: SessionBlueprintState.LoopStatus = loop.status === "armed" ? "cancelled" : "failed"
     if (!input.apply) {
-      reportChange(input.report, { scopeID: input.scopeID, loopID: loop.id, action: `orphaned_loop_would_${status}` })
-      return status
-    }
-    try {
-      await SessionBlueprintState.updateLoopStatus(input.scopeID, loop.id, {
-        status,
-        error: INTERRUPTED_LOOP_ERROR,
+      reportChange(input.report, {
+        scopeID: input.scopeID,
+        sessionID: loop.sessionID,
+        loopID: loop.id,
+        action: "paused_session_would_be_set",
       })
-    } catch (error) {
-      // A concurrent writer already moved the loop (or removed it); that actor
-      // owns the outcome, and the next reconcile pass re-adjudicates the rest.
-      log.warn("orphaned BlueprintLoop adjudication lost the record", {
+      return
+    }
+
+    const paused = await SessionLifecycle.pause({
+      sessionID: loop.sessionID,
+      reason: "workflow",
+      description: describeActiveLoop(),
+    }).catch((error) => {
+      log.warn("orphaned BlueprintLoop session pause failed", {
         scopeID: input.scopeID,
         loopID: loop.id,
         error: String(error),
       })
-      return undefined
-    }
-    reportChange(input.report, { scopeID: input.scopeID, loopID: loop.id, action: `orphaned_loop_${status}` })
-    return status
+      return false
+    })
+    if (!paused) return
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      sessionID: loop.sessionID,
+      loopID: loop.id,
+      action: "paused_session_set",
+    })
   }
 
   function isWorkflowRecoveryCandidate(session: Info) {
     return isActiveLightLoopWorkflow(session.workflow) || session.workflow?.kind === "lattice"
   }
 
+  /**
+   * A session worth reconciling: it carries a pause latch, meaning it stopped
+   * and awaits the user, or it still has a live workflow binding. A binding
+   * alone is enough because clearing a stale reference to a terminal loop must
+   * not depend on a latch.
+   */
   function isSessionRecoveryCandidate(session: Info) {
     if (session.time.archived) return false
-    return session.pendingReply === true || !!session.blueprint?.loopID || isWorkflowRecoveryCandidate(session)
+    return session.paused !== undefined || !!session.blueprint?.loopID || isWorkflowRecoveryCandidate(session)
   }
 
   export async function scopeIDsForRuntimeRecovery(scopeID?: string): Promise<string[]> {
@@ -324,17 +317,12 @@ export namespace WorkflowRecovery {
     ])
     input.report.loopsScanned += listedLoops.length
 
-    // Adjudicate before restoring bindings: a loop with no resumable evidence
-    // must become terminal here, so that the binding and note-reference logic
-    // below sees its terminal state and clears the references pinning the
-    // session. Restoring first, then adjudicating, would rebuild exactly the
-    // references that must go away.
-    const loops = [...listedLoops]
-    for (let index = 0; index < loops.length; index++) {
-      const loop = loops[index]!
+    // A loop nothing will resume holds its session: stop that session, and keep
+    // the loop record so the user can still continue or abandon the work.
+    const loops = listedLoops
+    for (const loop of loops) {
       if (!isActiveLoop(loop)) continue
-      const terminal = await adjudicateOrphanedLoop({ ...input, loop })
-      if (terminal) loops[index] = { ...loop, status: terminal }
+      await adjudicateOrphanedLoop({ ...input, loop })
     }
 
     const loopsByID = new Map(loops.map((loop) => [loop.id, loop]))
@@ -345,9 +333,9 @@ export namespace WorkflowRecovery {
     }
 
     for (const loop of loops) {
-      // Contain a failure per loop: the statuses are already written, so one
-      // unrecoverable reference cleanup must not starve every later loop of its
-      // own cleanup on this pass and every pass after it.
+      // Contain a failure per loop: adjudication for this loop is already
+      // committed, so one unrecoverable reference cleanup must not starve every
+      // later loop of its own cleanup on this pass and every pass after it.
       try {
         if (isActiveLoop(loop)) {
           await reconcileNoteActiveLoop({ ...input, loop })
@@ -391,83 +379,29 @@ export namespace WorkflowRecovery {
     await reconcileNoteBlueprintReferences({ ...input, loops: loopsByID })
   }
 
-  export async function resumePendingStopRequests(targetScopeID?: string): Promise<number> {
-    let requested = 0
-    for (const scopeID of await scopeIDsForRuntimeRecovery(targetScopeID)) {
-      const [sessions, loops] = await Promise.all([sessionInfos(scopeID), SessionBlueprintState.listLoops(scopeID)])
-      const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
-      const pending = new Map<string, Info>()
-
-      for (const session of sessions) {
-        if (!session.time || session.time.archived || !isActiveLightLoopWorkflow(session.workflow)) continue
-        const stopRequest = session.workflow.stopRequest
-        if (!stopRequest) continue
-        if (stopRequest.reviewSessionID) {
-          const reviewer = sessionsByID.get(stopRequest.reviewSessionID)
-          if (reviewer?.cortex?.status === "interrupted") {
-            await Session.update(session.id, (draft) => {
-              if (draft.workflow?.kind !== "lightloop") return
-              const current = draft.workflow.stopRequest
-              if (!current || current.reviewSessionID !== stopRequest.reviewSessionID) return
-              current.reviewTaskID = undefined
-              current.reviewSessionID = undefined
-            })
-          } else if (reviewer?.cortex?.status !== "completed") {
-            continue
-          }
-        }
-        pending.set(session.id, session)
-      }
-
-      for (const loop of loops) {
-        if (!loop.stopRequest) continue
-        if (loop.status === "auditing" && loop.auditSessionID) {
-          const reviewer = sessionsByID.get(loop.auditSessionID)
-          if (reviewer?.cortex?.status === "interrupted") {
-            await SessionBlueprintState.updateLoopStatus(scopeID, loop.id, {
-              status: "running",
-              auditSessionID: null,
-              auditTaskID: null,
-              stopRequest: loop.stopRequest,
-            })
-          } else if (reviewer?.cortex?.status !== "completed") {
-            continue
-          }
-        } else if (loop.status !== "running") {
-          continue
-        }
-        const execution = sessionsByID.get(loop.sessionID)
-        if (execution?.time && !execution.time.archived) pending.set(execution.id, execution)
-      }
-
-      for (const session of pending.values()) {
-        await ScopeContext.provide({
-          scope: session.scope,
-          fn: async () => {
-            const { SessionDrive } = await import("@ericsanchezok/synergy-harness/session/drive")
-            await SessionDrive.request(session.id, "stop-review-recovery")
-          },
-        })
-        requested++
-      }
-    }
-    return requested
+  /** Readable cause for a session held by an active BlueprintLoop. The single
+   * source for the pause description, so a session held by a workflow is always
+   * named the same way. */
+  function describeActiveLoop(): string {
+    return "BlueprintLoop active"
   }
 
-  /** Readable cause for a session held by an active BlueprintLoop. Single
-   * source for both the bound-session contribution and the status fallback, so
-   * a paused loop cannot be reported as merely active through one of them. */
-  export function describeActiveLoop(loop: SessionBlueprintState.LoopInfo): string {
-    return loop.status === "waiting" ? "BlueprintLoop paused — resume it to continue" : "BlueprintLoop active"
-  }
-
+  /**
+   * Statuses recovery is responsible for, keyed by session id.
+   *
+   * A workflow projects no status of its own: with the session as the single
+   * pause authority, a persisted loop is a record of intent rather than evidence
+   * of work. The only status reported for a bound session is the pause the
+   * session itself carries, and a session with neither a latch nor a live turn
+   * reports nothing at all.
+   */
   export async function recoverableStatuses(scopeID: string): Promise<Record<string, StatusInfo>> {
     const { resolve, toStatus } = await import("@ericsanchezok/synergy-harness/session/working")
     const [sessions, loops] = await Promise.all([sessionInfos(scopeID), SessionBlueprintState.listLoops(scopeID)])
     const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
     const candidates = new Map<string, Info>()
-    // The loop that makes each session recovering, so the fallback below can
-    // describe the real cause even when the session record carries no binding.
+    // The loop that binds each session, so the fallback below can tell a bound
+    // session from an unbound one.
     const activeLoopBySessionID = new Map<string, SessionBlueprintState.LoopInfo>()
     for (const session of sessions) {
       if (isSessionRecoveryCandidate(session)) candidates.set(session.id, session)
@@ -493,11 +427,11 @@ export namespace WorkflowRecovery {
       const working = await resolve(session.id).catch(() => undefined)
       if (working) {
         result[session.id] = toStatus(working)
-      } else {
-        const loop = activeLoopBySessionID.get(session.id)
-        if (!loop) continue
-        result[session.id] = { type: "recovering", reason: "workflow", description: describeActiveLoop(loop) }
+        continue
       }
+      if (!activeLoopBySessionID.has(session.id)) continue
+      const paused = await SessionLifecycle.snapshot(session.id).catch(() => undefined)
+      if (paused) result[session.id] = toStatus({ status: "paused", ...paused })
     }
     return result
   }

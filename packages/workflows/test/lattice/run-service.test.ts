@@ -352,10 +352,11 @@ describe("LatticeRunService v2", () => {
         message: { role: "user", parts: [{ type: "text", text: "keep" }] },
       })
 
-      const paused = await LatticeRunService.pause(run.id)
+      const paused = await LatticeRunService.disable(session.id)
+      if (!paused) throw new Error("expected the current Run to pause on workflow disable")
 
       expect(paused.status).toBe("paused")
-      expect(paused.statusReason).toBe("user_paused")
+      expect(paused.statusReason).toBe("user_exit")
       expect((await SessionInbox.list(session.id)).map((item) => item.deliveryKey)).toEqual(["other:keep"])
       expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, owned.id)).status).toBe("cancelled")
       expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, unrelated.id)).status).toBe("armed")
@@ -372,7 +373,8 @@ describe("LatticeRunService v2", () => {
         draft.pathway[0].loopHistory[0].sourceDigest = "digest-corrupted"
       })
 
-      const paused = await LatticeRunService.pause(run.id)
+      const paused = await LatticeRunService.disable(session.id)
+      if (!paused) throw new Error("expected the current Run to pause on workflow disable")
       const untouched = await BlueprintLoopStore.get(scopeID, loop.id)
 
       expect(paused.status).toBe("paused")
@@ -445,9 +447,9 @@ describe("LatticeRunService v2", () => {
       try {
         const reconcile = LatticeController.reconcileDirect(scopeID, session.id, "action")
         await created
-        const pause = LatticeRunService.pause(run.id)
+        const disabled = LatticeRunService.disable(session.id)
         releaseCreate()
-        await Promise.all([reconcile, pause])
+        await Promise.all([reconcile, disabled])
       } finally {
         ;(BlueprintLoopService.create as any) = create
         releaseCreate?.()
@@ -482,7 +484,8 @@ describe("LatticeRunService v2", () => {
       }
       await Storage.write(StoragePath.blueprintLoop(Identifier.asScopeID(enabled.scopeID), second.id), second)
 
-      const paused = await LatticeRunService.pause(enabled.id)
+      const paused = await LatticeRunService.disable(session.id)
+      if (!paused) throw new Error("expected the current Run to pause on workflow disable")
 
       expect(paused.status).toBe("paused")
       expect(paused.effect).toBeUndefined()
@@ -545,7 +548,7 @@ describe("LatticeRunService v2", () => {
         ]
       })
 
-      await LatticeRunService.pause(run.id)
+      await LatticeRunService.disable(session.id)
 
       expect((await BlueprintLoopStore.get(run.scopeID, first.id)).status).toBe("cancelled")
       expect((await BlueprintLoopStore.get(run.scopeID, second.id)).status).toBe("cancelled")
@@ -592,7 +595,7 @@ describe("LatticeRunService v2", () => {
         ]
       })
 
-      await LatticeRunService.pause(run.id)
+      await LatticeRunService.disable(session.id)
 
       expect((await BlueprintLoopStore.get(run.scopeID, canonical.id)).status).toBe("running")
     })
@@ -602,8 +605,11 @@ describe("LatticeRunService v2", () => {
     await withScope(async () => {
       const session = await Session.create({})
       const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      // A pristine Run is cancelled rather than paused by the surviving
+      // workflow-exit path, so this crash window starts from a progressed Run.
+      LatticeModelCalls.record(session.id)
       await LatticeStore.updateByRunID(ScopeContext.current.scope.id, run.id, (draft) =>
-        LatticeMachine.pause(draft, "user_paused"),
+        LatticeMachine.pause(draft, "user_exit"),
       )
       await SessionInbox.deliverUnique({
         sessionID: session.id,
@@ -612,7 +618,8 @@ describe("LatticeRunService v2", () => {
         message: { role: "user", parts: [{ type: "text", text: "remove on retry" }] },
       })
 
-      const paused = await LatticeRunService.pause(run.id)
+      const paused = await LatticeRunService.disable(session.id)
+      if (!paused) throw new Error("expected the current Run to pause on workflow disable")
 
       expect(paused.status).toBe("paused")
       expect(await SessionInbox.list(session.id)).toEqual([])
@@ -629,7 +636,7 @@ describe("LatticeRunService v2", () => {
         source: "agent",
         input: { action: "submit_requirements", goal: "Build", successCriteria: ["done"] },
       })
-      await LatticeRunService.pause(run.id)
+      await LatticeRunService.disable(session.id)
 
       const resumed = await LatticeRunService.resume(run.id)
 
@@ -740,7 +747,7 @@ describe("LatticeRunService v2", () => {
       expect(resumed.effect).toBeUndefined()
       expect(await SessionInbox.list(session.id)).toEqual([])
 
-      await LatticeRunService.pause(run.id)
+      await LatticeRunService.disable(session.id)
       const resumedFromPause = await LatticeRunService.resume(run.id)
       expect(resumedFromPause.state).toBe("awaiting_execution")
       expect(resumedFromPause.effect).toBeUndefined()

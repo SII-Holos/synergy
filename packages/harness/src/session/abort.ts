@@ -1,3 +1,4 @@
+import type { PausedReason } from "./types"
 import z from "zod"
 import { SessionInvoke } from "./invoke"
 import { SessionCortexRuntime } from "./cortex-runtime"
@@ -25,8 +26,8 @@ export namespace SessionAbort {
       repaired: z.boolean().meta({ description: "An interrupted turn was terminalized" }),
       /** A workflow was terminalized because nothing durable drove it. */
       abandoned: z.boolean().meta({ description: "A driverless workflow was terminalized" }),
-      /** Idle was published because this call cleared the last work. */
-      settled: z.boolean().meta({ description: "The session settled to idle" }),
+      /** The session was left paused, awaiting an explicit continue. */
+      paused: z.boolean().meta({ description: "The session was left paused, awaiting an explicit continue" }),
     })
     .meta({ ref: "SessionAbortResult" })
   export type Result = z.infer<typeof Result>
@@ -36,16 +37,34 @@ export namespace SessionAbort {
     return () => hooks.delete(hook)
   }
 
-  export async function abort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): Promise<Result> {
+  export interface AbortOptions {
+    /**
+     * A cancellation this domain owns (Lattice, Light Loop). The work stopped
+     * because its owner withdrew it, not because the user asked this session to
+     * hold still, so the turn is settled without latching a pause.
+     */
+    internalCancel?: boolean
+    terminalize?: boolean
+    abandonWorkflow?: boolean
+    pauseReason?: PausedReason
+  }
+
+  export async function abort(sessionID: string, options?: AbortOptions): Promise<Result> {
     // Sample liveness *before* the signal. The signal ends the turn, which
     // releases the runtime, so a later sample cannot distinguish a loop that was
     // healthily driving this turn from one orphaned by a dead runtime.
     const turnWasRunning = SessionManager.isRunning(sessionID)
-    const outcome = SessionInvoke.cancel(sessionID, options)
+    const outcome = SessionInvoke.cancel(sessionID)
     await SessionCortexRuntime.cancelAllForParent(sessionID)
-    const state = await SessionInvoke.repairAbortState(sessionID, { turnWasRunning })
+    const state = await SessionInvoke.repairAbortState(sessionID, {
+      turnWasRunning,
+      internalCancel: options?.internalCancel,
+      terminalize: options?.terminalize,
+      abandonWorkflow: options?.abandonWorkflow,
+      pauseReason: options?.pauseReason,
+    })
     await Promise.all([...hooks].map((hook) => hook(sessionID)))
-    return { outcome, repaired: state.repaired, abandoned: state.abandoned, settled: state.settled }
+    return { outcome, repaired: state.repaired, paused: state.paused, abandoned: state.abandoned }
   }
 
   /** Whether this call had any real effect, as opposed to finding an idle
@@ -59,6 +78,6 @@ export namespace SessionAbort {
     // Cancelling a detached loop job or a Cortex child is real work even though
     // it is not reflected in the runtime signal outcome.
     if (options.cortexCancelled || options.signalsDelivered) return true
-    return result.repaired || result.abandoned || result.settled
+    return result.repaired || result.abandoned || result.paused
   }
 }

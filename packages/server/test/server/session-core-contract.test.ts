@@ -86,17 +86,20 @@ test("abort reports what it actually did instead of an unconditional success", a
         outcome: string
         repaired: boolean
         abandoned: boolean
-        settled: boolean
+        paused: boolean
       }
 
       // The payload must distinguish "a running turn was stopped" from "nothing
       // was running"; a bare `true` made a no-op stop indistinguishable from a
       // real one, which is what left the stuck session un-abortable.
-      expect(Object.keys(result).sort()).toEqual(["abandoned", "outcome", "repaired", "settled"])
+      expect(Object.keys(result).sort()).toEqual(["abandoned", "outcome", "paused", "repaired"])
       expect(["idle", "not_found"]).toContain(result.outcome)
       expect(result.repaired).toBe(false)
       expect(result.abandoned).toBe(false)
-      expect(result.settled).toBe(false)
+      // The stop still records the pause latch: the session is now stopped and
+      // awaits an explicit continue, which is a real state change the client
+      // must be told about rather than a silent success.
+      expect(result.paused).toBe(true)
     },
   })
 })

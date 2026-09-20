@@ -2981,7 +2981,7 @@ msgid "app.kanban.status.idle"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.status.recovering"
+msgid "app.kanban.status.paused"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
@@ -3361,14 +3361,6 @@ msgid "app.lattice.panel.pathway"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.pause"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.pausing"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.lattice.panel.previousStep"
 msgstr ""
 
@@ -3378,14 +3370,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.recoveryFor"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.resume"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.resuming"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8565,23 +8549,27 @@ msgid "app.statusBar.runtime.label"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering"
+msgid "app.statusBar.runtime.paused"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering.incompleteTurn"
+msgid "app.statusBar.runtime.paused.aborted"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering.pendingReply"
+msgid "app.statusBar.runtime.paused.failed"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering.workflow"
+msgid "app.statusBar.runtime.paused.interrupted"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recoveringState"
+msgid "app.statusBar.runtime.paused.workflow"
+msgstr ""
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.pausedState"
 msgstr ""
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
@@ -10105,113 +10093,6 @@ msgstr ""
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpAria.holdCancel"
-msgstr ""
-
-#. prompt-input.tsx — blueprint slot aria labels
-msgid "prompt.bpAria.holdStop"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpAria.holdUnequip"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpFail.stoppedEquipped"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpFail.stopRun"
-msgstr ""
-
-#. prompt-input.tsx — blueprint failure titles
-msgid "prompt.bpFail.unequip"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpHold.cancelLoop"
-msgstr ""
-
-#. prompt-input.tsx — blueprint slot hold labels
-msgid "prompt.bpHold.stopRun"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpHold.unequip"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.auditing"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.cancelled"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.completed"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.equipped"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.failed"
-msgstr ""
-
-#. prompt-input.tsx — blueprint slot status labels
-msgid "prompt.bpSlot.ready"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.running"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.waiting"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.cancelBoss"
 msgstr ""
 
@@ -10262,6 +10143,62 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonDone"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonHint"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continue"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueHint"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.disabledHint"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.pause"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.pauseHint"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
@@ -11162,20 +11099,6 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.stopping"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.stopRun.control"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.stopRun.failed"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
@@ -13752,7 +13675,19 @@ msgid "session.state.loopWaiting"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.state.recovering"
+msgid "session.state.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.pausedBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.pausedLoop"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.retrying"
 msgstr ""
 
 #. js-lingui-explicit-id

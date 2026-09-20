@@ -1,5 +1,4 @@
 import { SessionMigrationTarget } from "../migration/session-target"
-import { RolloutContinuationMigration } from "./rollout/continuation-migration"
 import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
 import path from "path"
@@ -17,6 +16,7 @@ import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionNav } from "./nav"
 import { SessionProgress } from "./progress"
+import { SessionInteraction } from "./interaction"
 import { SnapshotSchema } from "./snapshot-schema"
 import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
@@ -964,94 +964,58 @@ function deriveHistoryForMigration(messages: MessageV2.Info[], events: any[]): I
   }
 }
 
-async function repairPendingReplyFlags(progress: (current: number, total: number) => void) {
-  const scopeIDs = await SessionMigrationTarget.scopes()
-  const tasks: Array<{ scopeID: string; sessionID: string; info: Info }> = []
-
-  for (const scopeID of scopeIDs) {
-    const scope = Identifier.asScopeID(scopeID)
-    const sessionIDs = await SessionMigrationTarget.sessions(scope)
-    const sessions = await Storage.readMany<Info>(
-      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
-    )
-
-    for (const info of sessions) {
-      if (!info || info.time?.archived || info.pendingReply !== true) continue
-      tasks.push({ scopeID, sessionID: info.id, info })
-    }
+/**
+ * Convert the retired session-level `pendingReply` flag into the pause latch.
+ *
+ * The flag and the latch describe the same fact — a reply-required turn never
+ * reached a terminal assistant — so the latch inherits every session the flag
+ * still marks. The flag also outlived turns that later completed normally,
+ * though, so it is re-checked against the persisted messages rather than
+ * trusted, and the flag is dropped either way so no store keeps a field the
+ * current schema no longer defines.
+ *
+ * The two exclusions mirror `SessionLifecycle.pause` because this writes the
+ * latch directly instead of through it: an archived session's latch would be
+ * unreachable state, and a machine session is never paused at all.
+ */
+async function migratePendingReplyToPaused(progress: (current: number, total: number) => void) {
+  const candidates: Array<{ scopeID: string; sessionID: string; info: Record<string, unknown> }> = []
+  for await (const record of SessionMigrationTarget.records<unknown>({ kind: "session" })) {
+    const info = asRecord(record.value)
+    if (!info || info.pendingReply !== true) continue
+    const scopeID = asString(record.key[1])
+    const sessionID = asString(record.key[2])
+    if (!scopeID || !sessionID) continue
+    candidates.push({ scopeID, sessionID, info })
   }
-
-  if (tasks.length === 0) return
+  progress(0, candidates.length)
+  if (candidates.length === 0) return
 
   let done = 0
-  let cleared = 0
-  for (const { scopeID, sessionID, info } of tasks) {
-    const scope = Identifier.asScopeID(scopeID)
-    const sid = Identifier.asSessionID(sessionID)
+  let paused = 0
+  for (const { scopeID, sessionID, info } of candidates) {
+    const key = StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID))
     try {
       const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
-      const pendingReply = SessionProgress.pendingReply(messages)
-      if (!pendingReply) {
-        await Storage.write(StoragePath.sessionInfo(scope, sid), {
-          ...info,
-          pendingReply: undefined,
-        })
-        cleared++
-      }
+      const interaction = SessionInteraction.Info.safeParse(info.interaction)
+      const eligible =
+        !info.paused &&
+        !asRecord(info.time)?.archived &&
+        !(interaction.success && SessionInteraction.isUnattended(interaction.data))
+      const latch = eligible && SessionProgress.pendingReply(messages)
+      await Storage.write(key, {
+        ...info,
+        pendingReply: undefined,
+        ...(latch ? { paused: { reason: "interrupted", since: Date.now() } } : {}),
+      })
+      if (latch) paused++
     } catch (error) {
-      log.warn("failed to repair pendingReply flag", { scopeID, sessionID, error: String(error) })
-    }
-
-    done++
-    progress(done, tasks.length)
-  }
-
-  log.info("pendingReply repair complete", { checked: tasks.length, cleared })
-}
-
-async function recomputePendingReplyFlags(progress: (current: number, total: number) => void) {
-  const scopeIDs = await SessionMigrationTarget.scopes()
-  const tasks: Array<{ scopeID: string; sessionID: string; info: Info }> = []
-
-  for (const scopeID of scopeIDs) {
-    const scope = Identifier.asScopeID(scopeID)
-    const sessionIDs = await SessionMigrationTarget.sessions(scope)
-    const sessions = await Storage.readMany<Info>(
-      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
-    )
-
-    for (const info of sessions) {
-      if (!info || info.time?.archived) continue
-      tasks.push({ scopeID, sessionID: info.id, info })
-    }
-  }
-
-  if (tasks.length === 0) return
-
-  let done = 0
-  let updated = 0
-  await work(MIGRATION_CONCURRENCY, tasks, async ({ scopeID, sessionID, info }) => {
-    const scope = Identifier.asScopeID(scopeID)
-    const sid = Identifier.asSessionID(sessionID)
-    try {
-      const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
-      const pendingReply = SessionProgress.pendingReply(messages)
-      const nextPendingReply = pendingReply || undefined
-      if (info.pendingReply !== nextPendingReply) {
-        await Storage.write(StoragePath.sessionInfo(scope, sid), {
-          ...info,
-          pendingReply: nextPendingReply,
-        })
-        updated++
-      }
-    } catch (error) {
-      log.warn("failed to recompute pendingReply flag", { scopeID, sessionID, error: String(error) })
+      log.warn("failed to convert pendingReply into the pause latch", { scopeID, sessionID, error: String(error) })
     }
     done++
-    progress(done, tasks.length)
-  })
-
-  log.info("pendingReply recompute complete", { checked: tasks.length, updated })
+    progress(done, candidates.length)
+  }
+  log.info("pendingReply to pause conversion complete", { checked: candidates.length, paused })
 }
 
 async function migrateActiveRevertState(progress: (current: number, total: number) => void) {
@@ -1818,8 +1782,10 @@ export const migrations: Migration[] = [
   {
     id: "20260619-session-repair-stale-pending-reply",
     description: "Repair stale pendingReply flags on completed sessions",
-    async up(progress) {
-      await repairPendingReplyFlags(progress)
+    async up() {
+      // Superseded by 20260920-session-pause-latch, which reads the same stale
+      // flag and both clears it and converts it into the pause latch. The id
+      // and description stay because already-migrated stores log this id.
     },
   },
   {
@@ -2007,8 +1973,9 @@ export const migrations: Migration[] = [
   {
     id: "20260703-session-parent-pending-reply",
     description: "Recompute session pendingReply using assistant parent links",
-    async up(progress) {
-      await recomputePendingReplyFlags(progress)
+    async up() {
+      // Superseded by 20260920-session-pause-latch, which re-derives the same
+      // unfinished-turn evidence from persisted messages.
     },
   },
   {
@@ -2215,7 +2182,6 @@ export const migrations: Migration[] = [
     },
   },
   RolloutMigration.migration,
-  RolloutContinuationMigration.migration,
 
   {
     id: "20260907-snapshot-shared-store",
@@ -2305,26 +2271,14 @@ export const migrations: Migration[] = [
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
     },
     description: "Move continuation recovery intents into indexed Session records",
-    async up(progress) {
-      const { RolloutContinuationRecovery } = await import("./rollout/continuation-recovery")
-      let done = 0
-      progress?.(0, 0)
-      for await (const { key } of SessionMigrationTarget.records({ kind: "session" })) {
-        const owner = { kind: "session" as const, scopeID: key[1], sessionID: key[2] }
-        const legacy = [
-          ...StoragePath.sessionRolloutRoot(Identifier.asScopeID(key[1]), Identifier.asSessionID(key[2])),
-          "continuation-recovery",
-        ]
-        for (const runID of await Storage.scan(legacy)) {
-          await Storage.transaction(async () => {
-            await RolloutContinuationRecovery.request(owner, runID)
-            await Storage.remove([...legacy, runID])
-          })
-        }
-        done++
-        if (done % 128 === 0) progress?.(done, 0)
-      }
-      progress?.(done, done)
+    async up() {
+      // Superseded by 20260920-session-pause-latch. Automatic recovery no
+      // longer exists, so the intents this migration moved have no reader and
+      // the pause latch carries the same "a human must decide" information.
+      // The body is emptied rather than deleted, and the id stays, because
+      // already-migrated stores log this id; leaving the old body would also
+      // keep importing the deleted recovery module on any store that still
+      // has this migration pending.
     },
   },
   {
@@ -2336,6 +2290,17 @@ export const migrations: Migration[] = [
     description: "Settle tool parts left running on terminal assistant messages by an interrupted runtime",
     async up(progress) {
       await migrateOrphanedToolParts(progress)
+    },
+  },
+  {
+    id: "20260920-session-pause-latch",
+    scope: "session",
+    upSession(owner, progress) {
+      return SessionMigrationTarget.provide(owner, () => this.up(progress))
+    },
+    description: "Convert the retired session pendingReply flag into the persisted pause latch",
+    async up(progress) {
+      await migratePendingReplyToPaused(progress)
     },
   },
 ]

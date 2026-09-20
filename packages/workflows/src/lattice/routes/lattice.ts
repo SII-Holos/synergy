@@ -140,30 +140,6 @@ export const LatticeRoute = new Hono()
     },
   )
   .post(
-    "/run/:id/pause",
-    describeRoute({
-      summary: "Pause a Lattice Run",
-      operationId: "lattice.run.pause",
-      responses: {
-        200: {
-          description: "Paused Lattice Run",
-          content: { "application/json": { schema: resolver(LatticeTypes.RunView) } },
-        },
-        ...routeErrors(400, 404, 409),
-      },
-    }),
-    validator("param", RunID),
-    validator("json", EmptyMutationBody),
-    async (c) => {
-      const runID = c.req.valid("param").id
-      try {
-        return c.json(runView(await LatticeRunService.pause(runID)))
-      } catch (error) {
-        return handleError(c, error, runID)
-      }
-    },
-  )
-  .post(
     "/run/:id/resume",
     describeRoute({
       summary: "Resume a paused Lattice Run",

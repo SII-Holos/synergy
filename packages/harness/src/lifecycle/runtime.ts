@@ -114,7 +114,13 @@ export namespace RuntimeHandle {
         await cleanup(async () => {
           const results = await Promise.allSettled(
             sessions.map((session) =>
-              ScopeContext.provide({ scope: session.scope, fn: () => SessionAbort.abort(session.id) }),
+              // Shutdown is an interruption, not the user asking this session
+              // to hold still: the reason distinguishes "the host went away"
+              // from "I pressed stop" on the paused session after restart.
+              ScopeContext.provide({
+                scope: session.scope,
+                fn: () => SessionAbort.abort(session.id, { pauseReason: "interrupted" }),
+              }),
             ),
           )
           for (const result of results) if (result.status === "rejected") errors.push(result.reason)

@@ -229,62 +229,6 @@ export const BlueprintRoute = new Hono()
       }
     },
   )
-  .post(
-    "/loop/:id/wait",
-    describeRoute({
-      summary: "Wait BlueprintLoop (running → waiting)",
-      description: "Transition a BlueprintLoop from running to waiting.",
-      operationId: "blueprint.loop.wait",
-      responses: {
-        200: {
-          description: "Waiting BlueprintLoop",
-          content: { "application/json": { schema: resolver(BlueprintLoopInfoSchema) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator("param", z.object({ id: z.string().meta({ description: "BlueprintLoop ID" }) })),
-    async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "waiting" })
-        return c.json(loop)
-      } catch (err: any) {
-        if (err instanceof Storage.NotFoundError)
-          return c.json({ message: `BlueprintLoop not found: ${c.req.valid("param").id}` }, 404)
-        if (err instanceof LoopError.InvalidTransition) return c.json({ message: err.message, data: err.data }, 400)
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
-    },
-  )
-  .post(
-    "/loop/:id/resume",
-    describeRoute({
-      summary: "Resume BlueprintLoop (waiting → running)",
-      description: "Transition a BlueprintLoop from waiting back to running.",
-      operationId: "blueprint.loop.resume",
-      responses: {
-        200: {
-          description: "Resumed BlueprintLoop",
-          content: { "application/json": { schema: resolver(BlueprintLoopInfoSchema) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator("param", z.object({ id: z.string().meta({ description: "BlueprintLoop ID" }) })),
-    async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
-        return c.json(loop)
-      } catch (err: any) {
-        if (err instanceof Storage.NotFoundError)
-          return c.json({ message: `BlueprintLoop not found: ${c.req.valid("param").id}` }, 404)
-        if (err instanceof LoopError.InvalidTransition) return c.json({ message: err.message, data: err.data }, 400)
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
-    },
-  )
   .get(
     "/loop/:id/activity",
     describeRoute({

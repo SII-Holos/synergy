@@ -9,8 +9,6 @@ import { StoragePath } from "../storage/path"
 import { SessionEndpoint } from "./endpoint"
 import { SessionNav, type ScopeNavIndex } from "./nav"
 import type { Info, StatusInfo } from "./types"
-import { SessionProgress } from "./progress"
-import { Session } from "."
 import { MessageV2 } from "./message-v2"
 
 export namespace SessionRecovery {
@@ -61,39 +59,6 @@ export namespace SessionRecovery {
     return result
   }
 
-  function reportChange(
-    report: RuntimeReconcileReport,
-    input: { scopeID: string; sessionID?: string; noteID?: string; loopID?: string; action: string },
-  ) {
-    report.changed++
-    report.entries.push(input)
-  }
-
-  async function reconcilePendingReply(input: {
-    scopeID: string
-    session: Info
-    apply: boolean
-    report: RuntimeReconcileReport
-  }) {
-    if (!input.session.pendingReply) return
-    const pendingReply = await SessionProgress.pendingReplyFor({
-      scopeID: input.scopeID,
-      sessionID: input.session.id,
-    }).catch(() => true)
-    if (pendingReply) return
-
-    if (input.apply) {
-      await Session.update(input.session.id, (draft) => {
-        draft.pendingReply = undefined
-      })
-    }
-    reportChange(input.report, {
-      scopeID: input.scopeID,
-      sessionID: input.session.id,
-      action: "pending_reply_cleared",
-    })
-  }
-
   async function scopeIDsForRuntimeRecovery(scopeID?: string): Promise<string[]> {
     if (scopeID) return [scopeID]
     const ids = new Set(await Storage.scan(["sessions"]).catch(() => []))
@@ -115,9 +80,6 @@ export namespace SessionRecovery {
       try {
         const sessions = await sessionInfos(scopeID)
         report.sessionsScanned += sessions.length
-        for (const session of sessions)
-          if (!session.time.archived)
-            await reconcilePendingReply({ scopeID, session, apply: input.apply === true, report })
         for (const source of SessionRecoveryContributions.list())
           await source.reconcile?.({ scopeID, apply: input.apply === true, report })
       } catch (error) {
@@ -126,16 +88,11 @@ export namespace SessionRecovery {
     }
     return report
   }
-  export async function resumePendingStopRequests(scopeID?: string) {
-    let requested = 0
-    for (const source of SessionRecoveryContributions.list()) requested += (await source.resume?.(scopeID)) ?? 0
-    return requested
-  }
   export async function recoverableStatuses(scopeID: string): Promise<Record<string, StatusInfo>> {
     const { resolve, toStatus } = await import("./working")
     const result: Record<string, StatusInfo> = {}
     for (const session of await sessionInfos(scopeID)) {
-      if (session.time.archived || !session.pendingReply) continue
+      if (session.time.archived || !session.paused) continue
       const working = await resolve(session.id).catch(() => undefined)
       if (working) result[session.id] = toStatus(working)
     }

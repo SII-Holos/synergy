@@ -578,6 +578,8 @@ import type {
   ScopeUpdateErrors,
   ScopeUpdateResponses,
   ServerUpdateStartInput,
+  SessionAbandonErrors,
+  SessionAbandonResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionAgendaErrors,
@@ -588,6 +590,8 @@ import type {
   SessionChildrenResponses,
   SessionCommandErrors,
   SessionCommandResponses,
+  SessionContinueErrors,
+  SessionContinueResponses,
   SessionCreateErrors,
   SessionCreateResponses,
   SessionDagErrors,
@@ -2615,9 +2619,73 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Continue a paused session
+   *
+   * Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.
+   */
+  public continue<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionContinueResponses, SessionContinueErrors, ThrowOnError>({
+      url: "/session/{sessionID}/continue",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Abandon a stopped session
+   *
+   * Give up on a session that stopped mid-work. Stops anything running, terminalizes the interrupted turn so the transcript reports an honest end, cancels the workflow bound to the session, and clears the pause latch so the session rests instead of staying paused. Idempotent: a repeat call reports what it changed rather than failing.
+   */
+  public abandon<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionAbandonResponses, SessionAbandonErrors, ThrowOnError>({
+      url: "/session/{sessionID}/abandon",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Abort session
    *
-   * Abort an active session and stop any ongoing AI processing or command execution.
+   * Stop an active session's ongoing AI processing or command execution. A user stop leaves the session paused and awaiting an explicit continue or abandon, so the work is not restarted behind the user's back.
    */
   public abort<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3834,7 +3902,7 @@ export class Global extends HeyApiClient {
   /**
    * Get global activity
    *
-   * Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, recovering) and in-flight loop background jobs both count; a session still queued for recovery after a restart counts once it begins executing. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
+   * Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, paused) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
    */
   public activity<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalActivityResponses, GlobalActivityErrors, ThrowOnError>({

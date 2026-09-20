@@ -371,7 +371,6 @@ export namespace SessionImport {
       forkedFrom,
       category: SessionNav.deriveCategory({ scopeType, parentID: input.parentID, cortex }),
       endpoint: undefined,
-      pendingReply: undefined,
       cortex,
       workspace,
       time,

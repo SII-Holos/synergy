@@ -98,12 +98,13 @@ function serverStatusLabel(healthy: boolean | undefined, i18n: ReturnType<typeof
   return i18n._(copy.serverUnknown)
 }
 
-function iconButtonClass(tone?: "base" | "danger" | "success") {
+function iconButtonClass(tone?: "base" | "danger" | "success" | "paused") {
   return {
     "relative size-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-surface-raised-base-hover": true,
     "text-icon-base": !tone || tone === "base",
     "text-icon-critical-base": tone === "danger",
     "text-icon-success-base": tone === "success",
+    "text-icon-warning-base": tone === "paused",
   }
 }
 

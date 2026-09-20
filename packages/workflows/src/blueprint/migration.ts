@@ -27,11 +27,11 @@ function asNumber(value: unknown): number | undefined {
 }
 
 function isLiveLoopStatus(status: BlueprintLoopInfo["status"]) {
-  return status === "running" || status === "waiting" || status === "auditing"
+  return status === "running" || status === "auditing"
 }
 
 function isActiveLoopStatus(status: unknown): status is BlueprintLoopInfo["status"] {
-  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+  return status === "armed" || status === "running" || status === "auditing"
 }
 
 function loopUpdatedAt(loop: BlueprintLoopInfo) {

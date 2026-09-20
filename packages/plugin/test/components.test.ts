@@ -11,7 +11,7 @@ afterEach(() => {
 
 test("public components require the current host runtime and preserve reactive props", () => {
   delete runtime[PLUGIN_UI_RUNTIME_KEY]
-  expect(() => Button({ children: "Send" })).toThrow("UI API 5 host")
+  expect(() => Button({ children: "Send" })).toThrow("UI API 6 host")
   let label = "Send"
   const props = {
     get children() {

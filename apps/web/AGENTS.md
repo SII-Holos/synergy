@@ -42,7 +42,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Use `src/components/settings/catalog.ts` for built-in section metadata, search terms, and domains.
 - Derive field ownership from `/config/domains` `ownedKeys`; do not maintain a frontend duplicate.
 - Use focused forms for common settings. For complex/low-frequency config, always show the canonical file and Copy Path; expose generated `config.domain.open` behavior only in Desktop managed-local mode where the shell and server share filesystem and desktop authority.
-- Preserve the UI API 5 single-context component lifecycle, public domain services, required Shell outlets, scoped styles and owned portals. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
+- Preserve the UI API 6 single-context component lifecycle, public domain services, required Shell outlets, scoped styles and owned portals. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
 - Built-in settings metadata and every other Synergy-owned user-visible string use the shared Lingui runtime with explicit semantic IDs; do not add language branches, dynamic IDs, macro imports, or module-load translation calls. Keep plugin-author, user, LLM, brand, path, identifier, and raw diagnostic content verbatim. Avoid vague paired `X & Y` headings.
 - Read [Plugin UI contributions](../../docs/plugins/ui-contributions.md) before changing the Web plugin host or registries.
 - Read [Frontend localization](../../docs/architecture/localization.md) before adding product copy, locale-sensitive formatting, or a language setting. Update catalogs with App extraction, then run the single repository localization gate for drift, strict compilation, and the App/UI source contract.

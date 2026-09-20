@@ -72,8 +72,8 @@ export function KanbanPaneComposer(props: {
         return s.description ?? _(kanbanPage.statusBusy)
       case "retry":
         return _(kanbanPage.statusRetry)
-      case "recovering":
-        return _(kanbanPage.statusRecovering)
+      case "paused":
+        return s.description ?? _(kanbanPage.statusPaused)
       default:
         return _(kanbanPage.statusIdle)
     }

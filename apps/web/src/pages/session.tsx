@@ -132,6 +132,7 @@ import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 import { createBottomRecoveryTrigger } from "@/context/session-bottom-recovery"
+import { isWorkingStatus, resolveSessionStatus } from "@/utils/session-status"
 
 const handoff = {
   prompt: "",
@@ -461,7 +462,7 @@ function SessionPageContent() {
           if (!sessionID || !cutMessageID) return
           const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
           // Abort if running, then allow the runtime to release its loop lease before rollback asserts idle.
-          if (status().type !== "idle") {
+          if (isWorkingStatus(status())) {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
@@ -913,7 +914,6 @@ function SessionPageContent() {
     scrollToMessage(msgs[targetIndex], "auto")
   }
 
-  const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let scroller: HTMLDivElement | undefined
 
@@ -962,23 +962,12 @@ function SessionPageContent() {
   )
 
   const currentSession = createMemo(() => dataView().sessionFor(params.id ?? ""))
-  const status = createMemo<SessionStatus>(() => {
-    const runtimeStatus = dataView().statusFor(params.id ?? "")
-    if (runtimeStatus && runtimeStatus.type !== "idle") return runtimeStatus
-    const working = currentSession()?.working
-    if (working?.status === "busy") return { type: "busy", description: working.description }
-    if (working?.status === "retry") {
-      return {
-        type: "retry",
-        attempt: working.attempt,
-        message: working.message,
-        next: working.next,
-      }
-    }
-    if (working?.status === "recovering")
-      return { type: "recovering", reason: working.reason, description: working.description }
-    return runtimeStatus ?? idle
-  })
+  const status = createMemo<SessionStatus>(() =>
+    resolveSessionStatus({
+      runtimeStatus: dataView().statusFor(params.id ?? ""),
+      working: currentSession()?.working,
+    }),
+  )
 
   const sessionHasMessages = createMemo(() => (messageSnapshot()?.length ?? 0) > 0)
 
@@ -1075,7 +1064,7 @@ function SessionPageContent() {
     userMessages,
     setActiveMessage,
     navigateMessageByOffset,
-    isWorking: () => status().type !== "idle",
+    isWorking: () => isWorkingStatus(status()),
     onRewind: openRewindConfirm,
   })
 
@@ -1105,7 +1094,7 @@ function SessionPageContent() {
     }
   }
 
-  const isWorking = createMemo(() => status().type !== "idle")
+  const isWorking = createMemo(() => isWorkingStatus(status()))
   const [scrolledUp, setScrolledUp] = createSignal(false)
 
   const autoScroll = createAutoScroll({

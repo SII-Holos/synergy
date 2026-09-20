@@ -37,7 +37,7 @@ export const DiagnosticsCommand = cmd({
     UI.println(`Diagnostics package: ${result.output}`)
     UI.println(`  Indexed events: ${result.summary.traces.recentErrors.length} recent error(s)`)
     UI.println(`  Mirror files: ${result.summary.traces.files.length}`)
-    UI.println(`  Pending sessions: ${result.summary.sessions.pendingReply.length}`)
+    UI.println(`  Paused sessions: ${result.summary.sessions.paused.length}`)
     UI.println(`  Active processes: ${result.summary.processes.active.length}`)
   },
 })

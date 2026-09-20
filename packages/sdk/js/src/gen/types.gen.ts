@@ -499,7 +499,7 @@ export type DiagnosticsSummary = {
     }>
   }
   sessions: {
-    pendingReply: Array<{
+    paused: Array<{
       sessionID: string
       path: string
       updated?: number
@@ -1733,7 +1733,7 @@ export type GlobalActivity = {
   backgroundJobs: number
 }
 
-export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
 
 export type SessionStatus =
   | {
@@ -1750,9 +1750,10 @@ export type SessionStatus =
       description?: string
     }
   | {
-      type: "recovering"
-      reason?: SessionRecoveringReason
+      type: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionNavEntry = {
@@ -4885,6 +4886,12 @@ export type SessionCompletionNotice = {
   silent: boolean
 }
 
+export type SessionPaused = {
+  reason: SessionPausedReason
+  description?: string
+  since: number
+}
+
 export type SessionInteractionMode = "interactive" | "unattended"
 
 export type SessionInteraction = {
@@ -4995,9 +5002,10 @@ export type SessionWorkingInfo =
       next: number
     }
   | {
-      status: "recovering"
-      reason?: SessionRecoveringReason
+      status: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionWorkspace = {
@@ -5132,7 +5140,7 @@ export type Session = {
    * Per-session agent override set by session control
    */
   agentOverride?: string
-  pendingReply?: boolean
+  paused?: SessionPaused
   interaction?: SessionInteraction
   lastExchange?: {
     user?: string
@@ -6666,6 +6674,28 @@ export type SessionForkPointMissingError = {
   }
 }
 
+export type SessionContinueResult = {
+  /**
+   * Whether the drive accepted the session; a paused or already-running session reports false
+   */
+  handled: boolean
+}
+
+export type SessionAbandonResult = {
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * The repair latched a pause; this route clears it in the same call, so the session rests
+   */
+  paused: boolean
+  /**
+   * A workflow bound to the session was cancelled
+   */
+  abandoned: boolean
+}
+
 export type SessionAbortResult = {
   /**
    * Runtime signal result; not_found/idle mean no running turn was stopped
@@ -6680,9 +6710,9 @@ export type SessionAbortResult = {
    */
   abandoned: boolean
   /**
-   * The session settled to idle
+   * The session was left paused, awaiting an explicit continue
    */
-  settled: boolean
+  paused: boolean
 }
 
 export type AttachmentSourceText = {
@@ -14667,6 +14697,88 @@ export type SessionForkResponses = {
 }
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
+
+export type SessionContinueData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/continue"
+}
+
+export type SessionContinueErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionContinueError = SessionContinueErrors[keyof SessionContinueErrors]
+
+export type SessionContinueResponses = {
+  /**
+   * Continue result
+   */
+  200: SessionContinueResult
+}
+
+export type SessionContinueResponse = SessionContinueResponses[keyof SessionContinueResponses]
+
+export type SessionAbandonData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/abandon"
+}
+
+export type SessionAbandonErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionAbandonError = SessionAbandonErrors[keyof SessionAbandonErrors]
+
+export type SessionAbandonResponses = {
+  /**
+   * Abandon result
+   */
+  200: SessionAbandonResult
+}
+
+export type SessionAbandonResponse = SessionAbandonResponses[keyof SessionAbandonResponses]
 
 export type SessionAbortData = {
   body?: never

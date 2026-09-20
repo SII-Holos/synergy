@@ -8,7 +8,6 @@ import { AgendaSessionWakeup } from "./session-wakeup"
 export function registerAgendaSessionSignals() {
   SessionExecutionContributions.register({
     id: "agenda",
-    ownsPendingReply: (session) => !!session.agenda,
     async advisory(sessionID, scopeID, signal) {
       signal.throwIfAborted()
       const reminder = await buildAgendaReminder(sessionID, scopeID)

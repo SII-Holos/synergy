@@ -6,14 +6,13 @@ import { createComponent } from "solid-js"
 import { render } from "solid-js/web"
 import type { Prompt } from "../../../src/context/prompt"
 
-// The dedicated stop control exists only for the case the primary button cannot
-// cover: a working session whose composer still holds a draft. The primary button
-// stops an *empty* composer, while a draft makes it send instead, so the run would
-// be unstoppable from the UI without this second control. This suite mounts the
-// real `createPromptInputController` toolbar, so removing the `showsDedicatedStop`
-// gate, the `Show` around the control, or the `stopRunAndCancel` wiring fails it.
+// The composer has exactly one primary control whose meaning follows session
+// state: Send with a draft, Pause while running, Continue while paused, and
+// Disabled when idle with nothing armed. This suite mounts the real
+// `createPromptInputController` toolbar, so a second control creeping back onto
+// the row, or a Pause rendered for a paused session, fails it.
 await plugin({
-  name: "prompt-stop-control-render",
+  name: "prompt-single-control-render",
   setup(build) {
     build.onLoad({ filter: /\.tsx$/ }, async ({ path }) => ({
       contents: (await transformAsync(await Bun.file(path).text(), {
@@ -34,10 +33,17 @@ const i18n = setupI18n({ locale: "en", messages: { en: {} } })
 const translate = i18n._.bind(i18n)
 mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: translate }) }))
 
-let statusType: "idle" | "busy" = "idle"
+type TestStatusType = "idle" | "busy" | "pause" | "paused"
+let statusType: TestStatusType = "idle"
+const statusForType = () =>
+  statusType === "pause"
+    ? { type: "busy" as const }
+    : statusType === "paused"
+      ? { type: "paused" as const, reason: "aborted" as const, since: 1 }
+      : { type: statusType }
 let promptParts: Prompt = []
 const abortCalls: Array<{ sessionID?: string }> = []
-const loopCancelCalls: string[] = []
+const continueCalls: Array<{ sessionID?: string }> = []
 
 const message = (content: string): Prompt => [{ type: "text", content, start: 0, end: content.length }]
 
@@ -59,13 +65,15 @@ const sdkClient = () => ({
       abortCalls.push(input)
       return { data: {} }
     },
+    continue: async (input: { sessionID?: string }) => {
+      continueCalls.push(input)
+      return { data: { handled: true } }
+    },
+    abandon: async () => ({ data: { repaired: false, paused: false, abandoned: false } }),
   },
   blueprint: {
     loop: {
-      cancel: async (input: { id: string }) => {
-        loopCancelCalls.push(input.id)
-        return { data: {} }
-      },
+      cancel: async () => ({ data: {} }),
     },
   },
 })
@@ -210,7 +218,7 @@ mock.module("../../../src/context/session-data-view", () => ({
   createSessionDataRuntime: () => ({}),
   useSessionDataView: () => () => ({
     messagesFor: () => [],
-    statusFor: () => ({ type: statusType }),
+    statusFor: () => statusForType(),
     planBlueprintOfferFor: () => undefined,
     cortexTasks: () => [],
   }),
@@ -274,30 +282,52 @@ function mount(): Harness {
 const buttonWithLabel = (label: string) =>
   [...document.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.getAttribute("aria-label") === label)
 
-const stopControl = () => buttonWithLabel(PI.stopRunControl.message)
 const primaryControl = (label: string) => buttonWithLabel(label)
+const controlCount = () =>
+  [...document.querySelectorAll<HTMLButtonElement>("button")].filter((node) =>
+    node.classList.contains("prompt-input-submit"),
+  ).length
 
 afterEach(() => {
   statusType = "idle"
   promptParts = []
   abortCalls.length = 0
-  loopCancelCalls.length = 0
+  continueCalls.length = 0
   document.body.innerHTML = ""
 })
 
-describe("dedicated stop control", () => {
-  test("renders a stop control for a working session that holds a draft, and stops the run when clicked", async () => {
-    statusType = "busy"
+describe("single composer control", () => {
+  test("renders exactly one primary control", () => {
+    statusType = "idle"
+    const harness = mount()
+    try {
+      expect(controlCount()).toBe(1)
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("sends while a draft is present, even on a paused session", () => {
+    statusType = "paused"
     promptParts = message("half-written prompt")
     const harness = mount()
     try {
-      const control = stopControl()
-      expect(control, "no dedicated stop control for a working session with a draft").toBeDefined()
-      expect(control!.disabled).toBe(false)
-
-      // The draft makes the primary button send rather than stop, so the
-      // dedicated control is the only stop affordance in this state.
       expect(primaryControl(PI.sendMessage.message)).toBeDefined()
+      // A paused session with a draft offers Send, never a second stop control.
+      expect(primaryControl(PI.pauseControl.message)).toBeUndefined()
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("pauses a running session with an empty draft", async () => {
+    statusType = "pause"
+    promptParts = []
+    const harness = mount()
+    try {
+      const control = primaryControl(PI.pauseControl.message)
+      expect(control, "no pause control for a running session").toBeDefined()
+      expect(control!.disabled).toBe(false)
 
       control!.click()
       await settle()
@@ -308,27 +338,34 @@ describe("dedicated stop control", () => {
     }
   })
 
-  test("omits the stop control while the session is idle", async () => {
-    statusType = "idle"
-    promptParts = message("half-written prompt")
+  test("continues a paused session instead of offering a stop control", async () => {
+    statusType = "paused"
+    promptParts = []
     const harness = mount()
     try {
-      expect(stopControl()).toBeUndefined()
+      const control = primaryControl(PI.continueControl.message)
+      expect(control, "no continue control for a paused session").toBeDefined()
+      // The regression this guards: a paused session must never render "Stop".
+      expect(primaryControl(PI.pauseControl.message)).toBeUndefined()
+
+      control!.click()
+      await settle()
+
+      expect(continueCalls).toEqual([{ sessionID: "ses_prompt" }])
+      expect(abortCalls).toEqual([])
     } finally {
       harness.dispose()
     }
   })
 
-  test("omits the stop control for an empty draft, which the primary button already stops", async () => {
-    statusType = "busy"
+  test("disables the control when the session is idle and nothing is armed", () => {
+    statusType = "idle"
     promptParts = []
     const harness = mount()
     try {
-      expect(stopControl()).toBeUndefined()
-      expect(
-        primaryControl(PI.stopSession.message),
-        "the primary button must own the empty-composer stop",
-      ).toBeDefined()
+      const control = primaryControl(PI.sendMessage.message)
+      expect(control).toBeDefined()
+      expect(control!.disabled).toBe(true)
     } finally {
       harness.dispose()
     }

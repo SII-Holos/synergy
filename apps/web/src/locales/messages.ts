@@ -832,21 +832,25 @@ export const statusBar = {
     id: "app.statusBar.runtime.copyRetryErrorFailed",
     message: "Unable to copy the retry error.",
   },
-  recoveringTooltip: {
-    id: "app.statusBar.runtime.recovering",
-    message: "Session is recovering from an incomplete turn",
+  pausedTooltip: {
+    id: "app.statusBar.runtime.paused",
+    message: "Session is paused",
   },
-  recoveringWorkflow: {
-    id: "app.statusBar.runtime.recovering.workflow",
-    message: "A BlueprintLoop workflow is still holding this session",
+  pausedAborted: {
+    id: "app.statusBar.runtime.paused.aborted",
+    message: "Stopped by you; continue to resume",
   },
-  recoveringIncompleteTurn: {
-    id: "app.statusBar.runtime.recovering.incompleteTurn",
-    message: "Session is recovering from an incomplete turn",
+  pausedFailed: {
+    id: "app.statusBar.runtime.paused.failed",
+    message: "Stopped after a failure; continue to resume",
   },
-  recoveringPendingReply: {
-    id: "app.statusBar.runtime.recovering.pendingReply",
-    message: "Session is waiting for an unanswered reply",
+  pausedInterrupted: {
+    id: "app.statusBar.runtime.paused.interrupted",
+    message: "Stopped mid-work; continue to resume",
+  },
+  pausedWorkflow: {
+    id: "app.statusBar.runtime.paused.workflow",
+    message: "Stopped while a workflow was driving this session",
   },
   contextOpenAria: {
     id: "app.statusBar.context.openAria",
@@ -907,7 +911,7 @@ export const statusBar = {
   runtimeWaiting: { id: "app.statusBar.runtime.waiting", message: "waiting" },
   runtimeIdle: { id: "app.statusBar.runtime.idle", message: "idle" },
   runtimeRunning: { id: "app.statusBar.runtime.running", message: "running" },
-  runtimeRecovering: { id: "app.statusBar.runtime.recoveringState", message: "recovering" },
+  runtimePaused: { id: "app.statusBar.runtime.pausedState", message: "paused" },
   retryAttempt: { id: "app.statusBar.runtime.retryAttempt", message: "retry {attempt}" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
@@ -1396,7 +1400,7 @@ export const kanbanPage = {
   statusIdle: { id: "app.kanban.status.idle", message: "Idle" },
   statusBusy: { id: "app.kanban.status.busy", message: "Working…" },
   statusRetry: { id: "app.kanban.status.retry", message: "Retrying…" },
-  statusRecovering: { id: "app.kanban.status.recovering", message: "Recovering…" },
+  statusPaused: { id: "app.kanban.status.paused", message: "Paused" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin marketplace ────────────────────────────────────────────────────────

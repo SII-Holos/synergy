@@ -9,6 +9,8 @@ import { LightLoopRuntime } from "@ericsanchezok/synergy-workflows/light-loop/ru
 // Product domains register workflow contributions via the L4 manifest
 import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { LatticeRunService } from "@ericsanchezok/synergy-workflows/lattice/run-service"
+import { LatticeStore } from "@ericsanchezok/synergy-workflows/lattice/store"
+import { LatticeMachine } from "@ericsanchezok/synergy-workflows/lattice/machine"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint/loop-store"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
@@ -88,7 +90,12 @@ describe("workflow routes", () => {
       const session = await Session.create({})
       const enabled = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
       if (enabled.workflow?.kind !== "lattice") throw new Error("expected Lattice workflow")
-      await LatticeRunService.pause(enabled.workflow.runID)
+      // A paused run is a machine state written straight to the record: the
+      // user-facing pause entry point is retired because the session's own
+      // pause owns that surface now.
+      await LatticeStore.updateByRunID(scope.id, enabled.workflow.runID, (draft) =>
+        LatticeMachine.pause(draft, "model_call_budget_exhausted"),
+      )
 
       const legacy = await Server.App().request(`/workflow/session/${session.id}`, {
         method: "PUT",

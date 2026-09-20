@@ -3,7 +3,9 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke, type InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -32,6 +34,10 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
   }
 
   const item = await SessionInbox.enqueueUser(input)
+  // The user is taking the session back, so the pause stops applying. Cleared
+  // after the enqueue succeeds, so a failed enqueue cannot silently discard the
+  // pause, and before the drive below, which the gate would otherwise refuse.
+  await SessionLifecycle.clear(input.sessionID)
   void SessionDrive.request(input.sessionID, "user-input").catch((error) => {
     log.error("failed to schedule durable user input", {
       sessionID: input.sessionID,
@@ -75,4 +81,49 @@ export async function submitCommand(input: Parameters<typeof SessionInvoke.comma
   void SessionInvoke.command({ ...input, messageID }).catch((error) => {
     log.error("failed to execute async command", { command: input.command, sessionID: input.sessionID, error })
   })
+}
+
+/**
+ * Resume a session that stopped mid-work, from its breakpoint.
+ *
+ * Clearing the latch comes first because the drive gate refuses a paused
+ * session even when the request is forced: the pause is the thing being
+ * lifted. Continue is legal on a session that was never paused, so the clear
+ * result is deliberately ignored rather than treated as a precondition.
+ *
+ * The latest root run is resumed for the same reason the inbox retry path
+ * reopens one: an aborted turn's run was terminalized, and materialization
+ * refuses to append a segment to a terminal rollout. `resumeRun` is the
+ * user-initiated variant — `reopenRun` deliberately refuses a cancelled run so
+ * an unattended retry cannot undo a cancellation, which is precisely the state
+ * an abort leaves behind. Calling `reopenRun` here would make Continue a silent
+ * no-op on the most common path. Both are idempotent and decide from the
+ * persisted record under their own lock.
+ */
+export async function continueSession(sessionID: string): Promise<boolean> {
+  const session = await Session.get(sessionID)
+  await SessionLifecycle.clear(sessionID)
+  const runID = await SessionInbox.latestRootID(sessionID)
+  if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
+  return SessionDrive.request(sessionID, "user-continue", { force: true, waitForProcessing: true })
+}
+
+/**
+ * Give up on a session that stopped mid-work.
+ *
+ * Ordering is the contract: stop live work before repairing, because a running
+ * turn would keep writing; terminalize and cancel the workflow before clearing
+ * the latch, because clearing first would let the release drive resume the very
+ * work the user is abandoning.
+ */
+export async function abandonSession(sessionID: string): Promise<SessionInvoke.AbortRepairState> {
+  await Session.get(sessionID)
+  SessionInvoke.cancel(sessionID)
+  const state = await SessionInvoke.repairAbortState(sessionID, {
+    terminalize: true,
+    abandonWorkflow: true,
+    pauseReason: "aborted",
+  })
+  await SessionLifecycle.clear(sessionID)
+  return state
 }

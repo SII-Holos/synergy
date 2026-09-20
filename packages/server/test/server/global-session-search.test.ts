@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -572,9 +573,10 @@ describe("GET /global/session authority and orphan handling", () => {
       scope,
       fn: async () => {
         session = await Session.create({ title: "Authoritative Update" })
-        await Session.update(session.id, (draft) => {
-          draft.pendingReply = true
-        })
+        // A paused session freezes nav activity while the authoritative info
+        // timestamp keeps advancing, so clients can distinguish "the ordering
+        // badge is still catching up" from "the session was not updated".
+        await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
         const frozen = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session!.id)!
 
         await Bun.sleep(5)

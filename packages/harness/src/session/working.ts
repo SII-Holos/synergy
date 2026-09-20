@@ -1,59 +1,41 @@
-import { SessionExecutionContributions } from "./execution-contributions"
 import { Log } from "../util/log"
 import { SessionManager } from "./manager"
-import type { Info, StatusInfo, WorkingInfo } from "./types"
-import { MessageV2 } from "./message-v2"
-import { Identifier } from "../id/id"
-import { Scope } from "../scope"
-import { SessionProgress } from "./progress"
-import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
-import { WorkflowKindRegistry } from "./workflow-kind-registry"
+import type { StatusInfo, WorkingInfo } from "./types"
 
 const log = Log.create({ service: "session.working" })
 
+/**
+ * The runtime projection of a session's status.
+ *
+ * Two sources only, in priority order:
+ *
+ * 1. The live turn — `busy` or `retry`, owned by the runtime.
+ * 2. The persisted pause latch — a session stopped mid-work that will stay
+ *    stopped until the user acts.
+ *
+ * Anything else is idle. Notably absent is any inference from persisted
+ * workflow state: a stored `active` loop is a record of intent, not evidence
+ * that a turn is running, and projecting it as work is what let a dead process
+ * pin a session in a state no control could clear.
+ */
 export async function resolve(sessionID: string): Promise<WorkingInfo | undefined> {
-  const runtime = SessionManager.getRuntime(sessionID)
   if (SessionManager.isRunning(sessionID)) {
-    const s = runtime!.status
-    if (s.type === "busy") return { status: "busy", description: s.description }
-    if (s.type === "retry") return { status: "retry", attempt: s.attempt, message: s.message, next: s.next }
+    const runtime = SessionManager.getRuntime(sessionID)
+    const status = runtime?.status
+    if (status?.type === "busy") return { status: "busy", description: status.description }
+    if (status?.type === "retry")
+      return { status: "retry", attempt: status.attempt, message: status.message, next: status.next }
   }
+
   const session = await SessionManager.getSession(sessionID)
-  if (!session) return undefined
-  const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-  const sid = Identifier.asSessionID(sessionID)
-
-  if (await hasActiveWorkflow({ session, scopeID })) {
-    log.info("detected recovering session (workflow)", { sessionID, workflow: session.workflow?.kind })
-    return {
-      status: "recovering",
-      reason: "workflow",
-      description: await SessionExecutionContributions.recoveringDescription(session),
-    }
+  if (!session?.paused) return undefined
+  log.info("resolved paused session", { sessionID, reason: session.paused.reason })
+  return {
+    status: "paused",
+    reason: session.paused.reason,
+    ...(session.paused.description ? { description: session.paused.description } : {}),
+    since: session.paused.since,
   }
-
-  for await (const info of MessageV2.readNewestInfos({ scopeID, sessionID: sid })) {
-    if (info.role !== "assistant") continue
-    if (!SessionProgress.isTerminalAssistant(info as MessageV2.Assistant)) {
-      log.info("detected recovering session (incomplete)", { sessionID, messageID: info.id })
-      return { status: "recovering", reason: "incomplete-turn" }
-    }
-    break
-  }
-
-  if (session.pendingReply && (await SessionProgress.pendingReplyFor({ scopeID, sessionID }))) {
-    log.info("detected recovering session (pending reply)", { sessionID })
-    return { status: "recovering", reason: "pending-reply" }
-  }
-
-  return undefined
-}
-
-async function hasActiveWorkflow(input: { session: Info; scopeID: Identifier.ScopeID }): Promise<boolean> {
-  const workflow = input.session.workflow
-  if (await SessionExecutionContributions.isActive(input.session)) return true
-  const kind = WorkflowKindRegistry.effectiveKind(workflow)
-  return kind ? (await WorkflowPromptRegistry.get(kind)?.isActive?.(input.session)) === true : false
 }
 
 export function toStatus(working: WorkingInfo): StatusInfo {
@@ -62,11 +44,12 @@ export function toStatus(working: WorkingInfo): StatusInfo {
       return { type: "busy", description: working.description }
     case "retry":
       return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
-    case "recovering":
+    case "paused":
       return {
-        type: "recovering",
-        ...(working.reason ? { reason: working.reason } : {}),
+        type: "paused",
+        reason: working.reason,
         ...(working.description ? { description: working.description } : {}),
+        since: working.since,
       }
   }
 }

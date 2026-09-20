@@ -1,6 +1,6 @@
 # Plugin UI Contributions
 
-UI API 5 supports host-rendered declarations and approved Solid components. Backend Plugin API 4 and runtime IPC 9 are independent versions. An executable UI artifact must declare `artifacts.ui.apiVersion: "5.0"`; missing versions identify UI 4 and are rejected before module evaluation. Incompatible UI does not disable the plugin's backend tools, operations, or declarative settings. See the [UI 4 migration](../migrations/plugin-ui-4-to-5.md).
+UI API 6 supports host-rendered declarations and approved Solid components. Backend Plugin API 4 and runtime IPC 9 are independent versions. An executable UI artifact must declare `artifacts.ui.apiVersion: "6.0"`; a missing version identifies UI 4 and a `"5.0"` artifact is UI 5, and both are rejected before module evaluation. Incompatible UI does not disable the plugin's backend tools, operations, or declarative settings. The only vocabulary change from UI 5 is session status, where `recovering` is replaced by `paused`; see [the UI 6 migration](README.md#migrating-executable-ui-from-ui-api-5-to-6).
 
 ## Components and services
 

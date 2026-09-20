@@ -54,6 +54,8 @@ import { Observability } from "../observability"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
+import { SessionLifecycle } from "./lifecycle"
+import type { PausedReason } from "./types"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
 import "./title"
@@ -140,7 +142,7 @@ export namespace SessionInvoke {
   }
   export function cancel(
     sessionID: string,
-    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number },
+    options?: { fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
   ): SessionManager.AbortOutcome {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
@@ -157,91 +159,143 @@ export namespace SessionInvoke {
    *
    * @returns Whether an incomplete assistant message was repaired.
    */
-  export async function repairAfterAbort(sessionID: string): Promise<boolean> {
-    return (await repairAbortState(sessionID)).repaired
+  export async function repairAfterAbort(sessionID: string, options: AbortRepairOptions = {}): Promise<boolean> {
+    return (await repairAbortState(sessionID, options)).repaired
   }
 
   export interface AbortRepairState {
-    /** An interrupted turn was terminalized and had non-terminal tool parts
-     * settled, or its stale pendingReply was cleared. */
+    /** An interrupted turn had its non-terminal tool parts settled. */
     repaired: boolean
-    /** A workflow claiming activity without a durable driver was terminalized. */
+    /** The session was left paused, awaiting an explicit continue. */
+    paused: boolean
+    /** A workflow bound to this session was cancelled. */
     abandoned: boolean
-    /** Idle was published because this call actually cleared the last work. */
-    settled: boolean
   }
 
   export interface AbortRepairOptions {
     /**
      * True when the preceding stop signal interrupted a live turn.
      *
-     * A loop being driven at signal time is not a phantom. Between turns a
-     * healthy BlueprintLoop has no *durable* driver — the continuation kernel
-     * re-drives it in-process when the turn settles — so it is indistinguishable
-     * in storage from a loop orphaned by a dead runtime. Sampling liveness after
-     * the signal is therefore not enough: the release that ends the interrupted
-     * turn clears the owner inside that window, and abandoning on that basis
-     * would silently turn "stop this turn" into "terminate the workflow".
-     * Requiring the session to have been unoccupied *before* the signal keeps
-     * the escape hatch for genuinely driverless loops without racing a healthy
-     * one. An explicit cancel remains the way to end a loop deliberately.
+     * A turn that was live when the signal arrived is genuinely mid-work, and
+     * the stop that ends it is the user's own act. It is still repaired, but
+     * the distinction matters for callers deciding whether the stop was real.
      */
     turnWasRunning?: boolean
+    /**
+     * A cancellation this domain owns (Lattice, Light Loop, Cortex, Boss). The
+     * work stopped because its owner withdrew it, not because the user asked
+     * this session to hold still, so the turn is settled without latching a
+     * pause the user never requested.
+     */
+    internalCancel?: boolean
+    /**
+     * Terminalize the interrupted turn instead of leaving it resumable. This is
+     * `session.abandon`: the user is done with the work, so the transcript gets
+     * an honest terminal error rather than a resumable断点.
+     */
+    terminalize?: boolean
+    /** Cancel the workflow bound to this session. Part of `session.abandon`. */
+    abandonWorkflow?: boolean
+    /** Why the session is being paused. Defaults to `aborted`. */
+    pauseReason?: PausedReason
   }
 
   /**
    * Repair everything a stopped turn can leave behind, and report what changed
    * so a caller can tell a real stop from a no-op on an already-idle session.
+   *
+   * This is the funnel for every abnormal end. A turn that stops for any reason
+   * other than normal completion leaves the session paused, so the client can
+   * offer a continue action and no drive path will restart it behind the user's
+   * back. `internalCancel` is the single opt-out, reserved for cancellations a
+   * domain performs on work it owns.
    */
   export async function repairAbortState(
     sessionID: string,
     options: AbortRepairOptions = {},
   ): Promise<AbortRepairState> {
-    const repaired = await repairIncompleteAssistant(sessionID).catch((err) => {
-      log.error("assistant repair after abort failed", { sessionID, error: err })
-      return false
-    })
-    if (SessionManager.isRunning(sessionID)) return { repaired, abandoned: false, settled: false }
-    if (options.turnWasRunning) return { repaired, abandoned: false, settled: false }
+    const repaired = await repairIncompleteAssistant(sessionID, { terminalize: options.terminalize === true }).catch(
+      (err) => {
+        log.error("assistant repair after abort failed", { sessionID, error: err })
+        return false
+      },
+    )
+    const abandoned = options.abandonWorkflow
+      ? await abandonBoundWorkflow(sessionID).catch((err) => {
+          log.error("workflow abandonment failed", { sessionID, error: err })
+          return false
+        })
+      : false
 
-    // No live loop owns this session, and none was being driven when the stop
-    // was requested. A workflow that still reports activity while nothing
-    // durable will resume it is a phantom: it would pin the session in
-    // `recovering` with no way for the user to clear it. Abandon it so the
-    // derived status can settle. A loop held by real evidence (a stop intent, a
-    // queued drive, a Lattice-owned run, a user pause) is untouched.
-    const abandoned = await abandonPhantomWorkflows(sessionID).catch((err) => {
-      log.error("phantom workflow abandonment failed", { sessionID, error: err })
-      return false
-    })
+    const paused = options.internalCancel
+      ? false
+      : await SessionLifecycle.pause({
+          sessionID,
+          reason: options.pauseReason ?? "aborted",
+          description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
+        }).catch((err) => {
+          log.error("session pause failed", { sessionID, error: err })
+          return false
+        })
 
-    // A repeat abort must not republish idle, so only settle status when this
-    // call actually changed durable state.
-    const changed = repaired || abandoned
-    if (!changed) return { repaired, abandoned, settled: false }
-    const settled = await settleIdle(sessionID)
-    return { repaired, abandoned, settled }
+    await publishResolvedStatus(sessionID)
+    return { repaired, paused, abandoned }
   }
 
-  async function settleIdle(sessionID: string): Promise<boolean> {
-    try {
-      if (await SessionWorking.resolve(sessionID)) return false
-      await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
-      return true
-    } catch (err) {
-      // The turn is already terminalized and any phantom workflow is already
-      // abandoned, so the observable repair succeeded. Reporting a failure here
-      // would invite a retry against state that no longer matches the caller's
-      // assumptions.
-      log.warn("abort idle publication failed", { sessionID, error: err })
+  /**
+   * Settle an interrupted turn without latching a pause.
+   *
+   * The pre-wake guard needs the same part settlement as abort repair, but it
+   * runs precisely because the session has queued work to consume. Pausing there
+   * would convert "there is more to do" into "wait for the user", which is the
+   * opposite of what the wake was requested for.
+   */
+  export async function settleInterruptedTurn(sessionID: string): Promise<boolean> {
+    return repairIncompleteAssistant(sessionID, { terminalize: false }).catch((err) => {
+      log.warn("interrupted turn settlement failed", { sessionID, error: err })
       return false
+    })
+  }
+
+  /** Republish the derived status so a latch change reaches live clients. */
+  async function publishResolvedStatus(sessionID: string): Promise<void> {
+    try {
+      const working = await SessionWorking.resolve(sessionID)
+      await SessionManager.publishStatusOnly(sessionID, working ? SessionWorking.toStatus(working) : { type: "idle" })
+    } catch (err) {
+      log.warn("status publication after repair failed", { sessionID, error: err })
     }
   }
 
-  async function abandonPhantomWorkflows(sessionID: string): Promise<boolean> {
+  async function abandonBoundWorkflow(sessionID: string): Promise<boolean> {
     const session = await SessionManager.getSession(sessionID)
     if (!session || session.time.archived) return false
-    return SessionExecutionContributions.abandonPhantom(session)
+    return SessionExecutionContributions.abandonWorkflow(session)
+  }
+
+  /**
+   * Latch a pause for a turn that ended in error.
+   *
+   * The turn is already terminal by the time this runs, so unlike the abort
+   * path there is no breakpoint to preserve — the pause here exists so the user
+   * sees that the session stopped and why, instead of a session that quietly
+   * rests as if it had finished. The reason is carried in the description
+   * because the client renders that text.
+   */
+  async function pauseAfterFailure(sessionID: string, error: MessageV2.Assistant["error"]): Promise<void> {
+    const data = error?.data
+    const detail =
+      data && typeof data === "object" && "message" in data && typeof data.message === "string"
+        ? data.message
+        : undefined
+    await SessionLifecycle.pause({
+      sessionID,
+      reason: "failed",
+      description: detail ?? error?.name,
+    }).catch((pauseError) => {
+      log.warn("session pause after turn error failed", { sessionID, error: pauseError })
+    })
+    await publishResolvedStatus(sessionID)
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -259,10 +313,6 @@ export namespace SessionInvoke {
           ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
         }
         if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
-
-        await Session.update(input.sessionID, (draft) => {
-          draft.pendingReply = input.noReply !== true || undefined
-        })
 
         if (input.noReply === true) {
           ephemeralToolsByMessage.delete(message.info.id)
@@ -304,10 +354,6 @@ export namespace SessionInvoke {
           throw new Error(`Session inbox task could not be materialized: ${input.itemID}`)
         }
         await SessionInbox.commitReady(input.sessionID, [item.id])
-
-        await Session.update(input.sessionID, (draft) => {
-          draft.pendingReply = true
-        })
 
         try {
           return await loopBodyWithIncident(input.sessionID, runLease)
@@ -1434,12 +1480,6 @@ export namespace SessionInvoke {
 
     evictRecallCache(sessionID)
 
-    // Clear pendingReply only after the loop has fully drained. Completion
-    // notices are recorded once per processed root task above.
-    await Session.update(sessionID, (draft) => {
-      draft.pendingReply = undefined
-    })
-
     let resultMessage = selectResultMessage(await SessionHistory.modelMessages({ sessionID }))
     // A session whose only queued task is parked never produced a transcript;
     // surface the parked failure instead of synthesizing an aborted assistant
@@ -1505,13 +1545,22 @@ export namespace SessionInvoke {
    * latest-message-only repair never revisits it and the part would render as a
    * permanent spinner forever.
    */
-  async function settleOrphanedToolParts(input: { sessionID: string }): Promise<number> {
+  async function settleOrphanedToolParts(input: {
+    sessionID: string
+    includeAssistantMessageID?: string
+  }): Promise<number> {
     const messages = await SessionHistory.modelMessages({ sessionID: input.sessionID }).catch(() => [])
     let settled = 0
     for (const message of messages) {
       if (message.info.role !== "assistant") continue
       const assistant = message.info as MessageV2.Assistant
-      if (!SessionProgress.isTerminalAssistant(assistant)) continue
+      // On a terminal message the sweep can cover the whole session, because
+      // nothing else will ever settle those parts. A *non-terminal* message
+      // belongs to a turn that is legitimately unfinished, so it is settled
+      // only when the caller names it — which the pause path does, since an
+      // aborted in-flight call must not render as running forever.
+      const targeted = assistant.id === input.includeAssistantMessageID
+      if (!SessionProgress.isTerminalAssistant(assistant) && !targeted) continue
       for (const part of message.parts) {
         if (part.type !== "tool") continue
         if (!MessageV2.isUnsettledToolState(part.state)) continue
@@ -1536,11 +1585,25 @@ export namespace SessionInvoke {
   }
 
   /**
-   * Terminalize the latest reply-required root after an interrupted turn.
+   * Settle the latest reply-required root after an interrupted turn.
+   *
+   * Two mutually exclusive modes, because "the turn stopped" and "the work is
+   * over" are different facts:
+   *
+   * - `terminalize: true` (`session.abandon`) writes the honest terminal error
+   *   and destroys the resume point.
+   * - Otherwise the message is left non-terminal on purpose — that *is* the
+   *   breakpoint `session.continue` resumes from — and only the in-flight tool
+   *   parts are settled, so an interrupted call does not render as a spinner
+   *   that nothing will ever clear.
+   *
    * The repair is root-anchored and serialized per session so startup, Abort,
-   * and pre-wake callers can safely share the same idempotent operation.
+   * abandon, and pre-wake callers can safely share the same idempotent operation.
    */
-  async function repairIncompleteAssistant(sessionID: string): Promise<boolean> {
+  async function repairIncompleteAssistant(
+    sessionID: string,
+    options: { terminalize?: boolean } = {},
+  ): Promise<boolean> {
     using _ = await Lock.write(`session-terminal-repair:${sessionID}`)
     const session = await SessionManager.getSession(sessionID)
     if (!session) return false
@@ -1580,11 +1643,15 @@ export namespace SessionInvoke {
       // still have left its tool parts non-terminal. Settle them here rather
       // than returning early, or they stay `running` forever.
       const settled = await settleOrphanedToolParts({ sessionID })
-      if (!session.pendingReply) return settled > 0
-      await Session.update(sessionID, (draft) => {
-        draft.pendingReply = undefined
+      return settled > 0
+    }
+
+    if (latestAssistant && options.terminalize !== true) {
+      const settled = await settleOrphanedToolParts({
+        sessionID,
+        includeAssistantMessageID: latestAssistant.id,
       })
-      return true
+      return settled > 0
     }
 
     if (latestAssistant) {
@@ -1606,8 +1673,8 @@ export namespace SessionInvoke {
                 message: "Session aborted during turn — assistant response was not completed",
               }).toObject(),
       })
-      await settleOrphanedToolParts({ sessionID })
-    } else if (latestRoot) {
+      await settleOrphanedToolParts({ sessionID, includeAssistantMessageID: latestAssistant.id })
+    } else if (latestRoot && options.terminalize === true) {
       log.info("creating aborted assistant for pending root", {
         sessionID,
         rootID: latestRoot.id,
@@ -1643,9 +1710,6 @@ export namespace SessionInvoke {
       } satisfies MessageV2.Assistant)
     }
 
-    await Session.update(sessionID, (draft) => {
-      draft.pendingReply = undefined
-    })
     return true
   }
 
@@ -1680,6 +1744,14 @@ export namespace SessionInvoke {
       log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
     )
     await SessionContextContributions.onAssistantComplete(message)
+    // A turn that ends in error is an abnormal end, so it leaves the same
+    // visible intermediate state as every other one: the session stays stopped
+    // until the user decides. Abort-shaped errors are excluded because a stop
+    // the user asked for is not a failure, and its own path already records the
+    // accurate reason.
+    if (!MessageV2.AbortedError.isInstance(message.error)) {
+      await pauseAfterFailure(input.sessionID, message.error)
+    }
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1736,10 +1808,6 @@ export namespace SessionInvoke {
       sessionID,
     })) as MessageV2.Assistant
 
-    await Session.update(sessionID, (draft) => {
-      draft.pendingReply = undefined
-    })
-    await Session.recordCompletionNotice(sessionID, { publishEvent: false })
     Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),
@@ -2296,61 +2364,28 @@ export namespace SessionInvoke {
     },
   )
 
-  export async function resumePending(input?: { scopeID?: string; waitForProcessing?: boolean }): Promise<void> {
-    await reconcileInterruptedCortexDelegations(input?.scopeID)
-    const { SessionRecovery } = await import("./recovery")
-    await SessionRecovery.resumePendingStopRequests(input?.scopeID)
-    await SessionCortexRuntime.reconcileParentNotifications(input?.scopeID)
-
-    // Durable inbox tasks and migration recovery intents use the owning loop;
-    // startup discovery never materializes messages itself.
-    const { SessionDrive } = await import("./drive")
-    const { RolloutContinuationRecovery } = await import("./rollout/continuation-recovery")
-    const [inboxSessions, continuationSessions] = await Promise.all([
-      SessionInbox.listRunnableSessions(input?.scopeID),
-      RolloutContinuationRecovery.list(input?.scopeID),
-    ])
-    for (const sessionID of new Set([...continuationSessions, ...inboxSessions])) {
+  /**
+   * Reconcile persisted session state after a restart.
+   *
+   * This replaces the old `resume-pending` step, and the change of verb is the
+   * whole point: startup no longer resumes anything. Every session that ended
+   * abnormally is *recorded as paused* and left alone, because a process
+   * restart is not evidence that the user wants the work continued — it is only
+   * evidence that the turn was interrupted.
+   *
+   * Each session is examined for direct evidence of an unfinished turn rather
+   * than for a flag a previous run happened to leave behind, so a session whose
+   * marker was never written is still caught.
+   */
+  export async function reconcilePausedSessions(scopeID?: string): Promise<void> {
+    await reconcileInterruptedCortexDelegations(scopeID)
+    await SessionCortexRuntime.reconcileParentNotifications(scopeID)
+    for (const sessionID of await SessionLifecycle.listUnfinishedSessions(scopeID)) {
       if (SessionManager.isRunning(sessionID)) continue
       try {
-        const handled = await SessionDrive.request(sessionID, "inbox-recovery", {
-          waitForProcessing: input?.waitForProcessing,
-        })
-        log.info("startup inbox recovery drive request", { sessionID, handled })
+        await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
       } catch (error) {
-        log.warn("startup inbox recovery drive failed", { sessionID, error })
-      }
-    }
-
-    const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
-    for (const sessionID of sessionIDs) {
-      try {
-        const session = await SessionManager.getSession(sessionID)
-        if (!session) continue
-        if (SessionExecutionContributions.ownsPendingReply(session)) continue
-
-        const messages = await effectiveCompactedMessages(sessionID)
-        const pendingReply = SessionProgress.pendingReply(messages)
-
-        if (session.pendingReply !== pendingReply) {
-          await Session.update(sessionID, (draft) => {
-            draft.pendingReply = pendingReply || undefined
-          })
-        }
-
-        if (!pendingReply) continue
-
-        if (!SessionManager.isRunning(sessionID)) {
-          const repaired = await repairAfterAbort(sessionID)
-          if (repaired) {
-            log.info("repaired incomplete assistant during startup recovery", { sessionID })
-            continue
-          }
-        }
-
-        log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
-      } catch (error) {
-        log.warn("pending session startup recovery failed", { sessionID, error })
+        log.warn("session pause reconcile failed", { sessionID, error })
       }
     }
   }
@@ -2372,8 +2407,6 @@ export namespace SessionInvoke {
         if (draft.cortex.status !== "queued" && draft.cortex.status !== "running") return
         draft.cortex.status = "interrupted"
         draft.cortex.completedAt ??= completedAt
-        draft.cortex.error ??= interruption
-        draft.pendingReply = undefined
       })
       const updated = await Session.get(sessionID)
       if (!updated?.cortex) continue
