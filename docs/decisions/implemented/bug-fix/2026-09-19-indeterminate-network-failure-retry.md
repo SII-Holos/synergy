@@ -16,7 +16,7 @@ Bun 自带的 BoringSSL 在无法把 TLS 校验失败映射成原因码时抛出
 
 [供应商判定](../../../../packages/harness/src/provider/retry.ts) 把 `indeterminate` 与 `transient` 一并纳入准入。分类修正之后，该错误会命中 `fromError` 的 `Error && providerRetryable !== undefined` 分支，持久化为结构化 `APIError`（`isRetryable: true`）而不是 `UnknownError`。
 
-[会话重试](../../../../packages/harness/src/session/retry.ts) 的 `retryable()` 由返回 `string | undefined` 改为返回 `{ message, maxAttempts } | undefined`，让事实与预算各自归位：分类器只回答事实，预算仍由调用方持有。`category === "tls-verification"` 使用两额外次尝试与五秒退避上限，其余情形保持十次与三十秒。未知错误分支增加字符串兜底，仅凭文本无法还原对象时按同一受限预算处理。`AgentCall` 继续只判断 `!== undefined`，其预算仍由调用方 `input.retries` 决定，既有分工不变。
+[会话重试](../../../../packages/harness/src/session/retry.ts) 的 `retryable()` 由返回 `string | undefined` 改为返回 `{ message, maxAttempts } | undefined`，让事实与预算各自归位：分类器只回答事实，预算仍由调用方持有。`category === "tls-verification"` 使用六额外次尝试与三十秒退避上限（退避上限与通用瞬时失败持平，尝试预算仍保持更窄），其余情形保持十次与三十秒。未知错误分支增加字符串兜底，仅凭文本无法还原对象时按同一受限预算处理。`AgentCall` 继续只判断 `!== undefined`，其预算仍由调用方 `input.retries` 决定，既有分工不变。预算随后按实证校准放宽：一次持续约八十秒的端点故障中，同一连接连续六次尝试全部失败后自愈，期间无任何配置变化，说明该类抖动的恢复窗口是分钟级而非秒级，最初两次尝试的窗口覆盖不足。
 
 [网页抓取](../../../../packages/runtime-local/src/tools/webfetch.ts) 在自身既有的三次尝试与总截止时间内接纳该类别。
 
@@ -42,6 +42,6 @@ Bun 自带的 BoringSSL 在无法把 TLS 校验失败映射成原因码时抛出
 
 无法定因的证书校验抖动不再必然终止正在运行的长任务，带原因码的确定性配置错误仍然快速失败，两类语义相反的失败获得了各自的路径。失败错误现在能同时回答「哪一类网络失败」与「打到哪个端点」，且在代理或 TUN 拦截环境中 `synergy doctor` 会给出可执行的恢复指引。
 
-代价是三方面。第一，真正的 CA 配置错误会多消耗两次模型调用才会终止，换来的是对抖动类故障的自动恢复。第二，`SessionRetry.retryable()` 的返回类型是跨模块契约变更，所有消费点必须同步，`maxAttempts` 取代了原先隐含的全局常量。第三，新增的 `category` 字段是将来扩展其他无法定因情形的挂载点，需要保持判别值稳定。
+代价是三方面。第一，真正的 CA 配置错误会多消耗六次模型调用才会终止，换来的是对抖动类故障的自动恢复。第二，`SessionRetry.retryable()` 的返回类型是跨模块契约变更，所有消费点必须同步，`maxAttempts` 取代了原先隐含的全局常量。第三，新增的 `category` 字段是将来扩展其他无法定因情形的挂载点，需要保持判别值稳定。
 
 仍未覆盖的范围：MCP、插件与其他写入路径也存在同名字符串的可能性，本轮只让模型调用与网页抓取接纳该类别，其余维持既有策略。无法定因的失败不做整段任务重试，也不做成果留存；重试预算耗尽后任务仍按现状终止。
