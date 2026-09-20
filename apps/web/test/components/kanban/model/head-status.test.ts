@@ -12,9 +12,9 @@ describe("paneHeadStatusFromVisual", () => {
   })
 
   test("an audit recolored to a paused status stops reading as working", () => {
-    expect(
-      paneHeadStatusFromVisual({ statusType: "paused", tone: "blueprint-audit", completionUnread: true }),
-    ).toBe("completed")
+    expect(paneHeadStatusFromVisual({ statusType: "paused", tone: "blueprint-audit", completionUnread: true })).toBe(
+      "completed",
+    )
   })
 
   test("waiting and blueprint-waiting tones read as waiting", () => {

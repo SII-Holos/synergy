@@ -36,7 +36,7 @@ function Fixture() {
           "public-components",
           params.get("bundle")!,
           "plugin_component_0",
-          "5.0",
+          "6.0",
           params.get("hash")!,
         )
       ).default,
