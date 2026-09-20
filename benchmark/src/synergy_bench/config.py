@@ -51,6 +51,7 @@ class ModelProfile(StrictModel):
     context_window: int = Field(gt=0)
     max_output_tokens: int = Field(gt=0)
     supports_developer_role: bool = True
+    merge_system_messages: bool = False
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -67,7 +68,16 @@ class ModelProfile(StrictModel):
             raise ValueError("Model parameters cannot override transport, messages or credentials")
         common = {"temperature", "top_p"}
         allowed = common | (
-            {"seed", "stop", "frequency_penalty", "presence_penalty", "reasoning_effort", "thinking", "tool_stream"}
+            {
+                "seed",
+                "stop",
+                "frequency_penalty",
+                "presence_penalty",
+                "reasoning_effort",
+                "thinking",
+                "tool_stream",
+                "chat_template_kwargs",
+            }
             if self.protocol == "chat-completions"
             else {"reasoning"}
         )
@@ -119,6 +129,16 @@ class ModelProfile(StrictModel):
                 or value.get("summary", "auto") not in ("auto", "concise", "detailed")
             ):
                 raise ValueError("Invalid reasoning parameters")
+        if "chat_template_kwargs" in self.parameters:
+            value = self.parameters["chat_template_kwargs"]
+            if not isinstance(value, dict) or value.keys() - {"enable_thinking", "thinking_budget"}:
+                raise ValueError("Invalid chat_template_kwargs parameters")
+            if "enable_thinking" in value and type(value["enable_thinking"]) is not bool:
+                raise ValueError("Invalid chat_template_kwargs enable_thinking")
+            if "thinking_budget" in value and (
+                type(value["thinking_budget"]) is not int or value["thinking_budget"] < 0
+            ):
+                raise ValueError("Invalid chat_template_kwargs thinking_budget")
         return self
 
 
@@ -131,11 +151,17 @@ class HarnessProfile(StrictModel):
     config: str | None = None
     experiment: str | None = None
     bun_jit: StrictBool | None = None
+    merge_system_messages: StrictBool | None = None
+    strip_reasoning: StrictBool | None = None
 
     @model_validator(mode="after")
     def validate_native_options(self) -> HarnessProfile:
         if self.bun_jit is not None and self.kind != "opencode":
             raise ValueError("bun_jit is supported only for opencode")
+        if self.merge_system_messages is not None and self.kind != "synergy":
+            raise ValueError("merge_system_messages is supported only for synergy")
+        if self.strip_reasoning is not None and self.kind != "synergy":
+            raise ValueError("strip_reasoning is supported only for synergy")
         if self.kind != "synergy":
             if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
@@ -180,6 +206,8 @@ class Variant(StrictModel):
     model_profile: ModelProfile | None = None
     package_version: str | None = None
     bun_jit: StrictBool | None = None
+    merge_system_messages: StrictBool | None = None
+    strip_reasoning: StrictBool | None = None
 
 
 class Selection(StrictModel):
@@ -256,6 +284,8 @@ class ExperimentConfig(StrictModel):
                 model_profile=model,
                 package_version=harness.package_version,
                 bun_jit=harness.bun_jit,
+                merge_system_messages=harness.merge_system_messages,
+                strip_reasoning=harness.strip_reasoning,
             )
         if not resolved:
             raise ValueError("No matrix combinations selected")

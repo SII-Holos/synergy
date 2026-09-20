@@ -1,0 +1,53 @@
+version: 2
+suite: ../suites/local-24-iter.json
+output: ../../.artifacts/benchmark/qwen38-iter-r7
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 20260920
+repeat: 1
+concurrency: auto
+selection:
+  tasks:
+    - terminal-bench-2.1/large-scale-text-editing
+    - terminal-bench-2.1/openssl-selfsigned-cert
+    - terminal-bench-2.1/polyglot-c-py
+    - deepswe-1.1/dasel-html-document-format
+    - deepswe-1.1/fd-deterministic-multi-key-sorting
+harnesses:
+  synergy-flash:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: core
+    agent: synergy-flash
+    merge_system_messages: true
+  synergy-flash-core:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: core
+    agent: synergy-flash
+    merge_system_messages: true
+    config: ./qwen38-iter-r7-flash-core.json
+models:
+  qwen38:
+    model: Qwen3.8-27B
+    protocol: chat-completions
+    base_url: https://cqhbod8bjjjbcoakk8pmeebgkaq9akcq.openapi-sj.sii.edu.cn/v1
+    api_key_env: INF_API_KEY
+    context_window: 262144
+    max_output_tokens: 65536
+    supports_developer_role: false
+    merge_system_messages: true
+    parameters:
+      temperature: 0.6
+      top_p: 0.95
+      thinking:
+        type: enabled
+        clear_thinking: false
+matrix:
+  include:
+    - harness: synergy-flash
+      model: qwen38
+    - harness: synergy-flash-core
+      model: qwen38

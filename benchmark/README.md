@@ -58,6 +58,10 @@ bun bench clean /absolute/path/to/run
 
 [GLM 长会话研究示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，为每题显式设置 10800 秒解题期限，并使用 `opencode-jitless` 规避已复现的 Bun JIT / Rosetta 停滞路径。准备、排队、导出和独立判题均不占该解题期限；模型在任务中安装依赖属于解题时间。该配置改变 agent 期限及 OpenCode 运行条件，必须创建新实验，不能与原题期限的结果直接配对，也不能替换旧评分。它保留原生 verifier 期限，并非上游运行时缺陷已修复的保证。
 
+[Qwen 验收示例](configs/qwen38-acceptance.yaml) 使用相同任务与重复安排评测 vLLM 部署的 Qwen3.8-27B（262,144 上下文）。该端点拒绝多条前导 system 消息，因此 Synergy 声明 `merge_system_messages: true`（评测器生成的 provider 配置合并前导 system 消息，产品已有行为），模型 profile 声明同名端点能力（网关在协议桥转换后合并前导 system 消息，供 Codex 的 Responses→Chat 桥使用）。两者均为显式命名条件，不改变模型、提示词、工具或压缩策略，也不根据宿主或结果自动切换；错误轴使用会报错。该预设按原生 `linux/amd64` 宿主执行，OpenCode 运行原生 Bun，不含 JITless 变体。
+
+[迭代预设](configs/qwen38-iter-r6.yaml) 展示同窗配对矩阵的用法：`synergy-plain` 与 `synergy-strip` 两个 Synergy 变体交错运行于同一端点窗口，变体间对比不受端点性能漂移影响。`strip_reasoning: true` 声明产品传输层的 `stripReasoning` 行为——发送前剥除回放 assistant 历史中的 reasoning 内容，用于忽略服务端 thinking 控制（接受但不执行 `thinking_budget` / `clear_thinking`）且逐轮输出体积被回放深思主导的端点。思考仍在模型侧发生，只移除其回放。
+
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。

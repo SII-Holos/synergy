@@ -495,6 +495,12 @@ export const Provider = ModelsDev.Provider.partial()
           .describe(
             "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
           ),
+        stripReasoning: z
+          .boolean()
+          .optional()
+          .describe(
+            "Drop reasoning content from replayed assistant history before sending. For strict OpenAI-compatible endpoints that ignore server-side thinking controls (e.g. vLLM Qwen chat templates accept but do not enforce thinking_budget), where per-turn output volume is dominated by reasoning that is echoed back in context. Default false.",
+          ),
         timeout: z
           .union([
             z

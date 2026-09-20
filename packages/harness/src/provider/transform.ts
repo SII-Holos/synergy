@@ -30,6 +30,7 @@ export namespace ProviderTransform {
     viewImageAvailable?: boolean
     profileID?: string
     mergeSystemMessages?: boolean
+    stripReasoning?: boolean
   }
 
   export function sanitizeSurrogates(content: string) {
@@ -424,6 +425,19 @@ export namespace ProviderTransform {
   }
 
   export function message(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions) {
+    if (options?.stripReasoning === true) {
+      // Strict endpoints can ignore server-side thinking controls (vLLM Qwen
+      // chat templates accept but do not enforce thinking_budget or history
+      // clearing), so the replay policy belongs to the transport: drop prior
+      // deliberation before the provider sees it. A reasoning-only assistant
+      // turn collapses to empty string content to preserve turn alternation.
+      msgs = msgs.map((msg) => {
+        if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+        const kept = msg.content.filter((part) => part.type !== "reasoning")
+        if (kept.length === msg.content.length) return msg
+        return { ...msg, content: kept.length === 0 ? "" : kept }
+      })
+    }
     msgs = unsupportedParts(msgs, model, options)
     msgs = normalizeMessages(msgs, model)
     if (options?.mergeSystemMessages === true) {

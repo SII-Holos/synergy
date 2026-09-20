@@ -55,6 +55,57 @@ def test_model_profile_controls_all_sampling_including_absent_native_defaults(tm
     assert "seed" not in payload
 
 
+def strict_model(url):
+    return ModelProfile(
+        model="fixture-one",
+        protocol="chat-completions",
+        base_url=url,
+        api_key_env="FIXTURE_KEY",
+        context_window=32000,
+        max_output_tokens=2048,
+        supports_developer_role=False,
+        merge_system_messages=True,
+    )
+
+
+def test_model_capability_merges_leading_system_messages_after_bridge(tmp_path):
+    gateway = Gateway(strict_model("http://provider.invalid/v1"), tmp_path)
+    payload, bridge = gateway.effective(
+        {
+            "model": "fixture-one",
+            "stream": False,
+            "instructions": "Terminal coding rules.",
+            "input": [
+                {"role": "developer", "content": "Skill guidance."},
+                {"role": "user", "content": "read"},
+            ],
+        },
+        "responses",
+    )
+    assert bridge == "responses-chat-v1"
+    assert [(m["role"], m["content"]) for m in payload["messages"]] == [
+        ("system", "Terminal coding rules.\n\nSkill guidance."),
+        ("user", "read"),
+    ]
+
+
+def test_default_model_keeps_the_native_leading_system_sequence(tmp_path):
+    gateway = Gateway(model("http://provider.invalid/v1"), tmp_path)
+    payload, bridge = gateway.effective(
+        {
+            "model": "fixture-one",
+            "messages": [
+                {"role": "system", "content": "a"},
+                {"role": "system", "content": "b"},
+                {"role": "user", "content": "read"},
+            ],
+        },
+        "chat-completions",
+    )
+    assert bridge is None
+    assert [m["role"] for m in payload["messages"]] == ["system", "system", "user"]
+
+
 async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkeypatch):
     monkeypatch.setenv("FIXTURE_KEY", "upstream-private-test-key")
     bodies = []
