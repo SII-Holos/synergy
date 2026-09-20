@@ -160,27 +160,28 @@ export namespace ObservabilityConfig {
       // busy; it takes `hardCeilingMs` of sustained silence to mean a wedge.
       probeTimeoutMs: 30_000,
       probeAttempts: 3,
-      // This ceiling must exceed the longest *legitimate* statement, because two
+      // This ceiling must exceed the longest *legitimate* statement, because three
       // maintenance statements cannot be chunked or cancelled: SQLite has no
-      // partial `CREATE INDEX`, and `PRAGMA integrity_check` is one engine call
-      // that `bun:sqlite` offers no progress callback for.
+      // partial `CREATE INDEX`, `PRAGMA integrity_check` is a single engine call
+      // that `bun:sqlite` offers no progress callback for, and `VACUUM` rewrites
+      // every page of the database.
       //
-      // Both were measured on production-shaped fixtures, and the measurement is
-      // noisy enough that the ceiling has to be read as a range rather than a
-      // number. The physical check took 17-33 s at 920,000 records and 140-280 s
-      // at 2,760,000 records -- a 2x spread on the *same file*, because whether
-      // the store fits in page cache decides most of the cost. Extrapolating the
-      // slowest run to the 15.1M records of the store this work came from puts
-      // that one statement in the neighbourhood of 22 minutes, and the spread
-      // means the true figure is not pinned. A ceiling of half an hour would sit
-      // inside that spread, so it could kill a healthy worker finishing exactly
-      // this statement -- and it runs while a migration is activating.
+      // The measurement is noisy enough that this has to be read as a range rather
+      // than a number. The physical check took 17-33 s at 920,000 records and
+      // 140-280 s at 2,760,000 records -- a two-fold spread on the *same file*,
+      // because whether the store fits in page cache decides most of the cost.
+      // Extrapolating the slowest run to the 15.1M records of the store this work
+      // came from puts that one statement in the neighbourhood of 22 minutes, and
+      // the spread means the true figure is not pinned. `VACUUM` measured 36 s at
+      // the smaller fixture, which projects to roughly nine minutes at the larger.
       //
-      // The ceiling's only cost is how long a genuinely wedged worker is given
-      // before the managed restart: while it is occupied, storage already fails
-      // new work fast and the runtime keeps serving everything else. Delaying a
-      // restart is recoverable; killing a healthy worker during a migration is
-      // not, so the default is deliberately generous.
+      // None of the three fits comfortably inside the five minutes the previous
+      // ceiling allowed, and the check runs while a migration is activating, so a
+      // ceiling inside that range could kill a healthy worker finishing exactly
+      // this statement. The ceiling's only cost is how long a genuinely wedged
+      // worker is given before its managed restart: while it is occupied, storage
+      // already fails new work fast and the runtime keeps serving everything else.
+      // Delaying a restart is recoverable; interrupting a migration is not.
       hardCeilingMs: 3_600_000,
       // Every maintenance, DDL, delete and migration path must finish one
       // chunk inside this budget. Kept a full margin below the ceiling so a
