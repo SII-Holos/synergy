@@ -6,6 +6,8 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -115,16 +117,27 @@ export async function submitCommand(input: Parameters<typeof SessionInvoke.comma
  * Resume a session that stopped mid-work, from its breakpoint.
  *
  * The take-back is the shared `takeSessionBack` step. Continue is additionally
- * forced because the shared continuation gate requires a *terminal* assistant
- * on the latest reply-required root while an interrupted turn is deliberately
- * non-terminal, so a plain request would find nothing to do. `force` skips only
- * that discovery, so it cannot manufacture work or bypass the pause. Continue
- * is legal on a session that was never paused, so no take-back step is treated
- * as a precondition.
+ * forced when the session really is holding an interrupted breakpoint: the
+ * shared continuation gate requires a *terminal* assistant on the latest
+ * reply-required root, while an interrupted turn is deliberately non-terminal,
+ * so a plain request would find nothing to do.
+ *
+ * That force is conditional because it is precisely what lets Continue resume
+ * work the gate cannot discover — and equally able to drive a session that has
+ * nothing pending, which leaves the loop with no result to report and fails the
+ * request. A session with no breakpoint takes the ordinary path instead, which
+ * still consumes queued work and honestly reports that it handled nothing.
+ * Continue is legal on a session that was never paused, so no take-back step
+ * is treated as a precondition.
  */
 export async function continueSession(sessionID: string): Promise<boolean> {
   await takeSessionBack(sessionID)
-  return SessionDrive.request(sessionID, "user-continue", { force: true, waitForProcessing: true })
+  const messages = await SessionHistory.modelMessages({ sessionID })
+  const interrupted = SessionProgress.pendingReply(messages)
+  return SessionDrive.request(sessionID, "user-continue", {
+    ...(interrupted ? { force: true } : {}),
+    waitForProcessing: true,
+  })
 }
 
 /**
