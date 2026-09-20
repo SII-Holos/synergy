@@ -112,6 +112,13 @@ function metadata(key: string[]) {
 export const STORAGE_RECORDS_OWNER_INDEX =
   "CREATE INDEX IF NOT EXISTS storage_records_owner ON storage_records(namespace, kind, scope_id, session_id, updated) WHERE body IS NOT NULL"
 
+// How many records one prune statement removes. Retention prunes whole
+// subtrees, and a subtree can hold millions of rows: issuing that as one
+// statement is what let a single pass occupy the worker's event loop past the
+// ceiling. Each round is its own statement the caller commits, so the work is
+// interruptible between rounds and no single statement grows with subtree size.
+const PRUNE_CHUNK = 4096
+
 const schema = [
   "CREATE TABLE IF NOT EXISTS storage_artifact_gc (namespace TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, pack))",
   "CREATE TABLE IF NOT EXISTS storage_artifacts (namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, key_text))",
@@ -430,10 +437,19 @@ export class StoreTransaction {
       artifactValues,
     )
     await this.connection.query(`DELETE FROM storage_artifacts WHERE ${artifactCondition}`, artifactValues)
-    const removed = await this.connection.query<SqlRow>(
-      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) RETURNING key_id",
-      [this.namespace, keyID(prefix), this.namespace, this.namespace],
-    )
+    // Each statement stays inside the chunk budget: a single unbounded delete is
+    // what let one retention prune occupy the worker past the ceiling. The
+    // recursion reads the node tree, which stays intact until every record in
+    // the subtree is gone, so a bounded batch is still exact.
+    let removed = 0
+    for (;;) {
+      const batch = await this.connection.query<SqlRow>(
+        "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree LIMIT ?) RETURNING key_id",
+        [this.namespace, keyID(prefix), this.namespace, this.namespace, PRUNE_CHUNK],
+      )
+      removed += batch.length
+      if (batch.length < PRUNE_CHUNK) break
+    }
     for (let round = 0; round < 64; round++) {
       const dropped = await this.connection.query<SqlRow>(
         "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = storage_nodes.key_id) AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = storage_nodes.key_id) RETURNING key_id",
@@ -441,7 +457,7 @@ export class StoreTransaction {
       )
       if (!dropped.length) break
     }
-    return removed.length
+    return removed
   }
 
   async query<T>(input: RecordQuery): Promise<StoredRecord<T>[]> {
