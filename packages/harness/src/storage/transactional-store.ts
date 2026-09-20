@@ -13,9 +13,11 @@ import { RecordCodec } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
+import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
 import { sqlParameterBytes } from "./sql-contract"
+import { Identifier } from "../id/id"
 import type {
   SqlConnection,
   SqlDriver,
@@ -976,14 +978,16 @@ export class TransactionalStore {
       const sessions = rows.flatMap((row) => {
         const scopeID = String(row.scope_id)
         const sessionID = String(row.session_id)
-        // Rollout evidence is addressed as `["sessions", scope, session, "rollout"]`.
-        // A row whose owner columns are empty cannot be reached by that prefix,
-        // and pruning irreversible evidence through a prefix that does not name
-        // it is worse than leaving it in place, so it is not an owner.
+        // Rollout evidence is addressed through the canonical owner composer
+        // rather than a literal, so a change to the storage key layout cannot
+        // leave retention pruning a prefix that no longer names this evidence. A
+        // row whose owner columns are empty has no such prefix, and pruning
+        // irreversible evidence through a prefix that does not name it is worse
+        // than leaving it in place, so it is not an owner.
         if (!scopeID || !sessionID) return []
         return [
           {
-            keyPrefix: ["sessions", scopeID, sessionID, "rollout"],
+            keyPrefix: StoragePath.sessionRolloutRoot(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
             kind: "session",
             scopeID,
             ownerID: sessionID,

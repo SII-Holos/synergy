@@ -347,6 +347,28 @@ describe.serial("performance observability store", () => {
     expect(timeline.series[0]?.points.length).toBeLessThanOrEqual(ObservabilityConfig.current().maxTimelineBuckets)
   })
 
+  test("timeline accepts the storage retention and queue metrics instead of rejecting the query", () => {
+    // `normalizeMetrics` rejects the whole query when any requested name is not
+    // in the catalog, so a storage series missing from the catalog would make
+    // the timeline endpoint return 400 rather than an empty series. These six
+    // names are what the storage queue and the retention pass report.
+    const storageMetrics = [
+      "storage.queue.depth",
+      "storage.queue.wait",
+      "storage.queue.hold",
+      "storage.retention.pass",
+      "storage.retention.deleted_records",
+      "storage.retention.budget_ratio",
+    ]
+    const timeline = PerformanceTimeline.get({ metric: storageMetrics, windowMs: 60_000 })
+    expect(timeline.series.map((entry) => entry.name)).toEqual(storageMetrics)
+
+    // The gate is only meaningful if an unknown name still fails the query.
+    expect(() => PerformanceTimeline.get({ metric: ["storage.queue.depth", "storage.not.a.metric"] })).toThrow(
+      "Timeline metric is not allowed",
+    )
+  })
+
   test("coalesces repeated issue events while preserving occurrence counts", () => {
     let published = 0
     const unsubscribe = ObservabilityLiveEvents.subscribe((event) => {
