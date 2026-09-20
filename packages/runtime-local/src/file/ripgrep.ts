@@ -160,6 +160,7 @@ export namespace Ripgrep {
 
           const proc = Bun.spawn(args, {
             cwd: Global.Path.bin,
+            env: host.env,
             stderr: "pipe",
             stdout: "pipe",
           })
@@ -249,6 +250,7 @@ export namespace Ripgrep {
 
     const proc = Bun.spawn(args, {
       cwd: input.cwd,
+      env: RuntimeContext.current().host.env,
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -309,6 +311,7 @@ export namespace Ripgrep {
 
     const proc = Bun.spawn(args, {
       cwd: input.cwd,
+      env: RuntimeContext.current().host.env,
       stdout: "pipe",
       stderr: "ignore",
     })
