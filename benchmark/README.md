@@ -167,7 +167,7 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
+普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。依赖任务到期收尾的故障注入夹具显式选择 `timeout_seconds: native` 或独立短期限，不继承研究默认值。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 

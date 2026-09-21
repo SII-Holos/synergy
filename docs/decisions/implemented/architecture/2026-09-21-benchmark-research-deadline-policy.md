@@ -16,6 +16,8 @@ Status: implemented
 
 网关的 `request_idle_timeout_seconds` 默认 null，不再额外设置读空闲截止；实验可显式配置正整数，该值进入冻结配置和报告配对条件。连接建立保留原有三十秒期限，断连、取消及整题截止仍有效。原生 harness 自身的超时不在此改写。准备、启动、doctor、导出、清理及原生判题保留各自期限。
 
+确定性 Docker 故障注入夹具显式采用 `native`，保留原有九十秒任务期限及十五秒超时注入覆盖。断连场景允许由任务截止完成证据保留，不能继承三小时研究默认值而延长 CI 等待；终态、用量与清理断言保持不变。
+
 此策略替代[矩阵决策](2026-09-14-benchmark-native-harness-matrix.md)中遗漏解题期限时隐式采用原题期限的行为。已有实验的配置和 evaluator 不变，新代码必须新建实验。
 
 ## Alternatives considered
