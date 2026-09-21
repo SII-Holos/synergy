@@ -29,3 +29,5 @@ Local adaptation: retain Synergy's zero-based offsets, hashline language, format
 ## Consequences
 
 Output volume is bounded independently of match count. Large selections may require targeted continuation, and a single oversized line cannot supply a partial editable anchor. Tests cover UTF-8 boundaries, exact limits, search-to-edit and consecutive edits. Byte reductions alone do not establish token, billing, latency or task-quality improvements; model-backed comparisons must count all calls and recovery reads.
+
+The fixed-input observation probe exercises the same tool sequence across source versions and emits versioned byte measurements. Document extraction windows, empty seen sets, formatter invalidation, multi-hunk row numbering and partial commit failures have focused regression coverage. Snapshot-cap previews expose complete prefix rows and explicitly require a non-anchored recovery path.

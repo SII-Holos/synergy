@@ -11,7 +11,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 2. Separate evaluator code, measured harness source or package version, runtime composition, model profile, native task inputs and repeat identity. Declare configuration differences as named variants before observing scores.
    A model profile that enables thinking must also declare its reasoning tier. Providers expose depth through a separate control from the enable switch, so an omitted tier silently inherits the provider default and the retained evidence cannot state the condition that produced a score. Name the tier in the model key and set it explicitly; treat a different tier as a new named condition rather than a reinterpretation of a completed run. See the [tier decision](../../../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md).
 3. Freeze a new experiment after changing the evaluator. Resume only through the recorded evaluator. Import historical evidence into reports without rewriting attempts or continuing old runs under new execution code.
-4. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
+4. Put disposable live-task workspaces outside protected assistant configuration directories. Validate that the actual sandbox can run a fixture-local Node/Bun test before interpreting model recovery loops as harness regressions. A fixture inside a denied ancestor can permit some reads while breaking module resolution and current-directory discovery.
+5. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
 
 ## Preserve execution and evidence
 
