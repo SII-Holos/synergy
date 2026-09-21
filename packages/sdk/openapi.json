@@ -45492,6 +45492,11 @@
               },
               "item": {
                 "$ref": "#/components/schemas/SessionInboxItem"
+              },
+              "runID": {
+                "description": "Existing task run resumed by this input, when continuing a paused task",
+                "type": "string",
+                "pattern": "^msg.*"
               }
             },
             "required": ["status", "item"]

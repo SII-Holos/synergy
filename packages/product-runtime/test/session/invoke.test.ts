@@ -2773,60 +2773,69 @@ async function withDeadline<T>(promise: Promise<T>, ms: number, message: string)
   }
 }
 
-test("new input after abandonment keeps the old rollout cancelled and starts a new task", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const processed = Promise.withResolvers<string>()
-  const restore = installBasicLoopMocks({
-    onProcess(input) {
-      processed.resolve(input.user.id)
-    },
-  })
-  try {
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        try {
-          const rootID = Identifier.ascending("message")
-          await Session.updateMessage({
-            ...(userMessage(rootID).info as MessageV2.User),
-            sessionID: session.id,
-            isRoot: true,
-            rootID,
-            time: { created: Date.now() },
-          })
-          const owner = RolloutLifecycle.owner(session)
-          await RolloutLifecycle.configuration(session, rootID)
-          await RolloutLedger.requestCancel(owner, rootID)
-          await RolloutLedger.finishRun(owner, rootID, "cancelled")
-          await SessionAbort.abort(session.id, { terminalize: true, abandonWorkflow: true })
-          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-
-          const submitted = await submitInput({
-            sessionID: session.id,
-            agent: "synergy",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            parts: [{ type: "text", text: "Start a different task" }],
-          })
-          if (submitted.status !== "queued") throw new Error("expected a queued task")
-          const processedRoot = await withDeadline(processed.promise, 5_000, "New task was not processed")
-          await SessionManager.waitForIdle(session.id)
-          expect(submitted.item.mode).toBe("task")
-          expect(processedRoot).toBe(submitted.item.messageID)
-          expect(processedRoot).not.toBe(rootID)
-          expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("cancelled")
-        } finally {
-          SessionManager.signalAbort(session.id)
-          await SessionManager.waitForIdle(session.id)
-          SessionManager.unregisterRuntime(session.id)
-          await Session.remove(session.id)
-        }
+for (const stoppedBy of ["abandonment", "run cancellation"] as const)
+  test(`new input after ${stoppedBy} keeps the old rollout cancelled and starts a new task`, async () => {
+    await using tmp = await tmpdir({ git: true })
+    const processed = Promise.withResolvers<string>()
+    const restore = installBasicLoopMocks({
+      onProcess(input) {
+        processed.resolve(input.user.id)
       },
     })
-  } finally {
-    restore()
-  }
-})
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          try {
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              ...(userMessage(rootID).info as MessageV2.User),
+              sessionID: session.id,
+              isRoot: true,
+              rootID,
+              time: { created: Date.now() },
+            })
+            await Session.updateMessage({
+              ...(assistantMessage(Identifier.ascending("message"), rootID, "").info as MessageV2.Assistant),
+              sessionID: session.id,
+              rootID,
+              finish: "tool-calls",
+              time: { created: Date.now(), completed: Date.now() },
+            })
+            const owner = RolloutLifecycle.owner(session)
+            await RolloutLifecycle.configuration(session, rootID)
+            await RolloutLifecycle.cancel(session.id, rootID)
+            if (stoppedBy === "abandonment")
+              await SessionAbort.abort(session.id, { terminalize: true, abandonWorkflow: true })
+            expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+
+            const submitted = await submitInput({
+              sessionID: session.id,
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              parts: [{ type: "text", text: "Start a different task" }],
+            })
+            if (submitted.status !== "queued") throw new Error("expected a queued task")
+            const processedRoot = await withDeadline(processed.promise, 5_000, "New task was not processed")
+            await SessionManager.waitForIdle(session.id)
+            expect(submitted.item.mode).toBe("task")
+            expect(submitted.runID).toBeUndefined()
+            expect(processedRoot).toBe(submitted.item.messageID)
+            expect(processedRoot).not.toBe(rootID)
+            expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("cancelled")
+          } finally {
+            SessionManager.signalAbort(session.id)
+            await SessionManager.waitForIdle(session.id)
+            SessionManager.unregisterRuntime(session.id)
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      restore()
+    }
+  })
 
 test("paused input steers the original task before its first resumed model call", async () => {
   await using tmp = await tmpdir({ git: true })
@@ -2895,6 +2904,7 @@ test("paused input steers the original task before its first resumed model call"
           await SessionManager.waitForIdle(session.id)
           expect(resumedInputs[0]).toContain("Continue after cancellation")
           expect(submitted.item.mode).toBe("steer")
+          expect(submitted.runID).toBe(breakpointRootID)
           expect(processedRoot).toBe(breakpointRootID)
           const guided = await MessageV2.get({ sessionID: session.id, messageID: submitted.item.messageID })
           expect(guided.info).toMatchObject({ isRoot: false, rootID: breakpointRootID })

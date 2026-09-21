@@ -7,6 +7,7 @@ async function run(
   command = false,
   delayedCommand = false,
   inputFailure?: string,
+  steered = false,
 ) {
   await using tmp = await tmpdir()
   let polls = 0
@@ -84,11 +85,12 @@ async function run(
         experiment = (await request.json()).experiment
         return Response.json({
           status: "queued",
+          ...(steered ? { runID } : {}),
           item: {
             id: "inb_test",
             sessionID,
-            mode: "task",
-            messageID: runID,
+            mode: steered ? "steer" : "task",
+            messageID: steered ? "msg_steer" : runID,
             summary: { title: "hello" },
             source: { type: "user" },
             time: { created: 1 },
@@ -179,6 +181,13 @@ test("send ignores session idle and returns the persisted run result with sequen
     exitCode: 0,
   })
   expect(result.experiment).toMatchObject({ version: 1, label: "test", overrides: { compaction: { prune: false } } })
+}, 20_000)
+
+test("send tracks the original run when input steers a paused task", async () => {
+  const result = await run(undefined, false, false, undefined, true)
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.polls).toBeGreaterThanOrEqual(3)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
 }, 20_000)
 
 for (const interaction of ["permission", "question"] as const)

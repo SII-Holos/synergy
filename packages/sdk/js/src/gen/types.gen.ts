@@ -7001,6 +7001,10 @@ export type SessionInputResult =
   | {
       status: "queued"
       item: SessionInboxItem
+      /**
+       * Existing task run resumed by this input, when continuing a paused task
+       */
+      runID?: string
     }
 
 export type WorktreeUnavailableError = {

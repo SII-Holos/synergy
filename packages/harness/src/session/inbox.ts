@@ -138,6 +138,9 @@ export namespace SessionInbox {
       z.object({
         status: z.literal("queued"),
         item: Item,
+        runID: Identifier.schema("message")
+          .optional()
+          .meta({ description: "Existing task run resumed by this input, when continuing a paused task" }),
       }),
     ])
     .meta({ ref: "SessionInputResult" })

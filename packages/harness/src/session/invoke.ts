@@ -55,6 +55,7 @@ import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./
 import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
 import { SessionLifecycle } from "./lifecycle"
+import { Storage } from "../storage/storage"
 import type { PausedReason } from "./types"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
@@ -271,10 +272,23 @@ export namespace SessionInvoke {
    * opposite of what the wake was requested for.
    */
   export async function settleInterruptedTurn(sessionID: string): Promise<boolean> {
-    return repairIncompleteAssistant(sessionID, { terminalize: false }).catch((err) => {
+    try {
+      const session = await SessionManager.getSession(sessionID)
+      const rootID = await SessionInbox.latestRootID(sessionID)
+      const run =
+        session && rootID
+          ? await RolloutLedger.getRun(RolloutLifecycle.owner(session), rootID).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return undefined
+              throw error
+            })
+          : undefined
+      return await repairIncompleteAssistant(sessionID, {
+        terminalize: !session?.paused && run?.status === "cancelled",
+      })
+    } catch (err) {
       log.warn("interrupted turn settlement failed", { sessionID, error: err })
       return false
-    })
+    }
   }
 
   /** Republish the derived status so a latch change reaches live clients. */

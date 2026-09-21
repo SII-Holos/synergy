@@ -447,7 +447,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
               },
               { throwOnError: true },
             )
-            runID = data.status === "queued" ? data.item.messageID : data.messageID
+            runID = data.status === "queued" ? (data.runID ?? data.item.messageID) : data.messageID
           }
           output("run_started")
           submitted.resolve()

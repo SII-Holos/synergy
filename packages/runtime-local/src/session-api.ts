@@ -38,12 +38,14 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
   }
 
   let item: SessionInbox.Item
+  let runID: string | undefined
   {
     using control = await Lock.write(`session-control:${input.sessionID}`)
     const paused = await SessionLifecycle.snapshot(input.sessionID)
     if (paused) await SessionManager.waitForIdle(input.sessionID)
     const rootID = paused ? await SessionInbox.latestRootID(input.sessionID) : undefined
     item = await SessionInbox.enqueueUser(input, rootID ? { mode: "steer" } : undefined)
+    runID = rootID
     await takeSessionBack(input.sessionID)
   }
   void SessionDrive.request(input.sessionID, "user-input").catch((error) => {
@@ -54,7 +56,7 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
       error,
     })
   })
-  return { status: "queued", item }
+  return { status: "queued", item, runID }
 }
 
 async function takeSessionBack(sessionID: string): Promise<void> {
