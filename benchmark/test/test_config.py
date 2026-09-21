@@ -3,7 +3,35 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from synergy_bench.config import ExperimentConfig, resolve_plan
+from synergy_bench.config import ExperimentConfig, ModelProfile, resolve_plan
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_boolean_thinking_switch_survives_freezing(enabled):
+    profile = ModelProfile(
+        model="bailian/deepseek-v4.1-flash",
+        protocol="chat-completions",
+        base_url="http://provider.invalid/v1",
+        api_key_env="BOYUE_API_KEY",
+        context_window=1000000,
+        max_output_tokens=8192,
+        parameters={"enable_thinking": enabled},
+    )
+    assert ModelProfile.model_validate(profile.model_dump()).parameters["enable_thinking"] is enabled
+
+
+@pytest.mark.parametrize("enabled", [None, 0, 1, "false", "true"])
+def test_boolean_thinking_switch_rejects_coercion(enabled):
+    with pytest.raises(ValidationError):
+        ModelProfile(
+            model="fixture",
+            protocol="chat-completions",
+            base_url="http://provider.invalid/v1",
+            api_key_env="KEY",
+            context_window=1000,
+            max_output_tokens=100,
+            parameters={"enable_thinking": enabled},
+        )
 
 
 def config():
@@ -47,6 +75,28 @@ def test_ambiguous_or_invalid_deadlines_are_rejected(deadline):
 def test_request_idle_deadline_is_explicit_and_frozen(deadline):
     parsed = ExperimentConfig.model_validate({**config(), "request_idle_timeout_seconds": deadline})
     assert parsed.model_dump()["request_idle_timeout_seconds"] == deadline
+
+
+def test_preflight_deadline_default_survives_freezing():
+    parsed = ExperimentConfig.model_validate(config())
+    assert parsed.preflight_timeout_seconds == 120
+    assert ExperimentConfig.model_validate(parsed.model_dump()).preflight_timeout_seconds == 120
+
+
+@pytest.mark.parametrize("deadline", [1, 600, 3600])
+def test_explicit_preflight_deadline_is_independent_of_task_deadline(deadline):
+    parsed = ExperimentConfig.model_validate(
+        {**config(), "timeout_seconds": "native", "preflight_timeout_seconds": deadline}
+    )
+    frozen = ExperimentConfig.model_validate(parsed.model_dump())
+    assert frozen.preflight_timeout_seconds == deadline
+    assert frozen.timeout_seconds == "native"
+
+
+@pytest.mark.parametrize("deadline", [None, 0, -1, True, "600", 600.0, 3601])
+def test_invalid_preflight_deadlines_are_rejected(deadline):
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**config(), "preflight_timeout_seconds": deadline})
 
 
 def test_rejects_unknown_fields_and_missing_model():

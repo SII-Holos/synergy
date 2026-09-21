@@ -8,12 +8,11 @@ import {
   DEFAULT_VIEW_BYTES,
   DEFAULT_VIEW_LINES,
   displayPath,
-  formatRecordedBlock,
-  formatSelectedLines,
+  recordHashlineSnapshot,
+  OutputBudget,
+  selectDisplayLines,
   markFileRead,
-  MIN_VIEW_LINES,
   normalizeLineLimit,
-  readTextFile,
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
@@ -34,42 +33,14 @@ interface RangeMetadata {
   truncatedLines: number[]
 }
 
-function formatLineRange(
-  lines: string[],
-  offset: number,
-  limit: number,
-): { body: string; truncated: boolean; endLine: number; truncatedLines: number[] } {
-  const shown = lines.slice(offset, offset + limit)
-  const lineNumbers = shown.map((_, index) => offset + index + 1)
-  const formatted = formatSelectedLines(lines, lineNumbers)
-  return {
-    body: formatted.output,
-    truncated: offset + shown.length < lines.length || formatted.truncatedLines.length > 0,
-    endLine: offset + shown.length,
-    truncatedLines: formatted.truncatedLines,
-  }
-}
-
 function cappedPreviewMessage(filePath: string): string {
   return [
     `[Large file: ${displayPath(filePath)} is too large for anchored editing in one call.]`,
     "Only the beginning of the file is displayed. No [path#TAG] header is returned, so revise_file cannot use this output directly.",
-    "Use scan_files or a narrower view_file range after locating the relevant lines.",
+    "The snapshot limit applies to the whole file regardless of range. Use bounded shell reads or classic read for later regions; anchored editing is unavailable.",
   ].join("\n")
 }
 
-function recordDisplayLines(
-  sessionID: string,
-  filePath: string,
-  tag: string | undefined,
-  startLine: number,
-  endLine: number,
-): void {
-  if (!tag || endLine < startLine) return
-  const seenLines: number[] = []
-  for (let i = startLine; i <= endLine; i++) seenLines.push(i)
-  recordSeenSessionLines(sessionID, filePath, seenLines, tag)
-}
 function viewContent(snapshotAvailable: boolean, content: string): string | undefined {
   if (!snapshotAvailable) return undefined
   // Cap the UI-only content at a fraction of the snapshot cap so large
@@ -104,83 +75,74 @@ export const ViewFileTool = Tool.define("view_file", {
     const snapshotAvailable = content !== undefined
     if (content === undefined) {
       const file = Bun.file(filePath)
-      content = await file.slice(0, DEFAULT_VIEW_BYTES).text()
+      const prefix = await file.slice(0, DEFAULT_VIEW_BYTES).text()
+      content = prefix.slice(0, prefix.lastIndexOf("\n") + 1)
     }
 
-    const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
-    const tag = snapshotAvailable ? formatRecordedBlock(ctx.sessionID, filePath, content).tag : undefined
+    const tag = snapshotAvailable ? recordHashlineSnapshot(ctx.sessionID, filePath, content) : undefined
     markFileRead(ctx.sessionID, filePath)
     void ToolLspSource.get()?.touchFile(filePath, false)
 
     const lines = splitDisplayLines(content)
     const display = displayPath(filePath)
-    const conflict = detectConflicts(fullContentForConflict)
+    const conflict = detectConflicts(content)
     const warning = conflictWarning(conflict)
     const header = tag ? `[${display}#${tag}]` : cappedPreviewMessage(filePath)
 
-    const emptyRangeMetadata: RangeMetadata[] = []
-    if (params.ranges) {
-      const blocks: string[] = []
-      const rangeMetadata: RangeMetadata[] = params.ranges.map((range, index) => {
-        const limit = normalizeLineLimit(range.limit)
-        const formatted = formatLineRange(lines, range.offset, limit)
-        if (formatted.body)
-          blocks.push(`## Range ${index + 1}: lines ${range.offset + 1}-${formatted.endLine}\n${formatted.body}`)
-        return {
-          offset: range.offset,
-          limit,
-          startLine: range.offset + 1,
-          endLine: formatted.endLine,
-          truncated: formatted.truncated,
-          truncatedLines: formatted.truncatedLines,
-        }
+    const budget = new OutputBudget()
+    const displayed = new Set<number>()
+    const requested = params.ranges ?? [{ offset: params.offset ?? 0, limit: params.limit }]
+    const blocks: string[] = []
+    const rangeMetadata: RangeMetadata[] = []
+    const continuations: string[] = []
+    for (const [index, range] of requested.entries()) {
+      const limit = normalizeLineLimit(range.limit)
+      const end = Math.min(lines.length, range.offset + limit)
+      const numbers = Array.from({ length: Math.max(0, end - range.offset) }, (_, i) => range.offset + i + 1)
+      const selected = selectDisplayLines(lines, numbers, budget, displayed)
+      const endLine = selected.seen.at(-1) ?? Math.min(range.offset, lines.length)
+      const nextLine = selected.omitted[0] ?? (end < lines.length ? end + 1 : undefined)
+      if (selected.output) {
+        blocks.push(
+          params.ranges
+            ? `## Range ${index + 1}: lines ${selected.seen[0]}-${endLine}\n${selected.output}`
+            : selected.output,
+        )
+      }
+      if (snapshotAvailable && limit > 0 && nextLine !== undefined && continuations.length < 8) {
+        const oversized = Buffer.byteLength(`${nextLine}:${lines[nextLine - 1]}`, "utf8") > DEFAULT_VIEW_BYTES
+        continuations.push(
+          oversized
+            ? `Line ${nextLine} exceeds the ${DEFAULT_VIEW_BYTES}-byte budget; inspect it with a bounded shell command. It is not an editable displayed line.`
+            : `Continue range ${index + 1} with offset=${nextLine - 1}, limit=${Math.max(1, Math.min(limit || DEFAULT_VIEW_LINES, lines.length - nextLine + 1))}.`,
+        )
+      }
+      rangeMetadata.push({
+        offset: range.offset,
+        limit,
+        startLine: selected.seen[0] ?? range.offset + 1,
+        endLine,
+        truncated: nextLine !== undefined,
+        truncatedLines: selected.omitted.slice(0, 1),
       })
-
-      // Record all displayed ranges as seen lines
-      for (const rm of rangeMetadata) {
-        recordDisplayLines(ctx.sessionID, filePath, tag, rm.startLine, rm.endLine)
-      }
-
-      const outputParts = [warning, header, ...blocks].filter(Boolean)
-      return {
-        title: display,
-        output: `${outputParts.join("\n")}${blocks.length ? "" : "\n"}`,
-        metadata: {
-          path: display,
-          tag,
-          totalLines: lines.length,
-          ranges: rangeMetadata,
-          offset: undefined as number | undefined,
-          limit: undefined as number | undefined,
-          truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
-          truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
-          snapshotAvailable,
-          content: viewContent(snapshotAvailable, content),
-          hasConflicts: conflict.hasConflicts,
-          conflicts: conflict.conflicts,
-        },
-      }
     }
-    const offset = params.offset ?? 0
-    const rawLimit = Math.max(params.limit ?? DEFAULT_VIEW_LINES, MIN_VIEW_LINES)
-    const limit = normalizeLineLimit(rawLimit)
-    const formatted = formatLineRange(lines, offset, limit)
-    const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
-
-    // Record the displayed offset..offset+limit range as seen lines
-    recordDisplayLines(ctx.sessionID, filePath, tag, offset + 1, formatted.endLine)
+    if (tag) recordSeenSessionLines(ctx.sessionID, filePath, [...displayed], tag)
+    const output = [warning, header, ...blocks, ...continuations].filter(Boolean).join("\n")
+    const primary = rangeMetadata[0]
     return {
       title: display,
-      output,
+      output: `${output}${blocks.length ? "" : "\n"}`,
       metadata: {
         path: display,
         tag,
-        offset,
-        limit,
-        ranges: emptyRangeMetadata,
-        totalLines: lines.length,
-        truncated: !snapshotAvailable || formatted.truncated,
-        truncatedLines: formatted.truncatedLines,
+        offset: params.ranges ? undefined : primary?.offset,
+        limit: params.ranges ? undefined : primary?.limit,
+        ranges: params.ranges ? rangeMetadata : [],
+        totalLines: snapshotAvailable ? lines.length : undefined,
+        prefixLines: snapshotAvailable ? undefined : lines.length,
+        conflictsPartial: !snapshotAvailable,
+        truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
+        truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
         snapshotAvailable,
         content: viewContent(snapshotAvailable, content),
         hasConflicts: conflict.hasConflicts,

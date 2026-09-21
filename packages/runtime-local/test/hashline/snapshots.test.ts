@@ -105,3 +105,16 @@ describe("InMemorySnapshotStore", () => {
     expect(head.seenLines!.has(3)).toBe(false)
   })
 })
+
+import { mapSeenLines } from "../../src/hashline/snapshots"
+
+test("seen evidence follows unchanged rows, author additions, and formatter invalidation", () => {
+  const original = "known\nunknown\ntail"
+  const intended = "new\nknown\nunknown\ntail"
+  const seen = mapSeenLines(original, intended, new Set([1, 3]), true)
+  expect([...seen]).toEqual([1, 2, 4])
+  const formatted = mapSeenLines(intended, "NEW\nknown\nunknown\ntail", seen)
+  expect([...formatted]).toEqual([2, 4])
+  expect([...mapSeenLines(original, "known\ntail", new Set([1, 3]))]).toEqual([1, 2])
+  expect(mapSeenLines(original, original, new Set()).size).toBe(0)
+})

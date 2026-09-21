@@ -8,6 +8,9 @@ const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "ut
 interface ShardEntry {
   shard?: string
   packages?: string
+  harness?: string
+  scenario?: string
+  selection?: string
 }
 
 const workflow = Bun.YAML.parse(ciSource) as {
@@ -154,10 +157,29 @@ describe("CI test matrix", () => {
   test("native benchmark jobs exercise five harnesses with deterministic providers", () => {
     const matrix = workflow.jobs["test-benchmark-matrix"]!
     expect(matrix.strategy?.["fail-fast"]).toBe(false)
-    expect(matrix.strategy?.matrix?.harness).toEqual(["synergy", "codex", "opencode", "pi", "deepseek"])
+    const entries = matrix.strategy?.matrix?.include ?? []
+    expect(entries.filter((entry) => entry.scenario === "roundtrip").map((entry) => entry.harness)).toEqual([
+      "synergy",
+      "codex",
+      "opencode",
+      "pi",
+      "deepseek",
+    ])
+    const long = entries.filter((entry) => entry.scenario !== "roundtrip")
+    expect(long).toHaveLength(4)
+    expect(long.every((entry) => entry.harness === "synergy")).toBe(true)
+    expect(long.map((entry) => entry.selection).sort()).toEqual(
+      [
+        "test_synergy_long_sessions and not jitless and chat-completions",
+        "test_synergy_long_sessions and not jitless and responses",
+        "test_synergy_long_sessions and jitless and chat-completions",
+        "test_synergy_long_sessions and jitless and responses",
+      ].sort(),
+    )
     const run = matrix.steps?.find((step) => step.run?.includes("test_matrix_docker.py"))
     expect(run?.env?.SYNERGY_BENCH_DOCKER).toBe("1")
     expect(run?.env?.SYNERGY_BENCH_TEST_HARNESSES).toBe("${{ matrix.harness }}")
+    expect(run?.run).toContain('-k "${{ matrix.selection }}"')
     expect(
       workflow.jobs["test-benchmark-streams"]?.steps?.some((step) => step.run?.includes("test_gateway_faults.py")),
     ).toBe(true)

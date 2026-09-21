@@ -1,5 +1,6 @@
 sst-env.d.ts
 .synergy/worktrees/
+.artifacts/
 # Symlinked files (checked out as plain files on Windows)
 apps/web/public/
 apps/web/src/custom-elements.d.ts

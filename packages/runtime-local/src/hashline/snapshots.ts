@@ -4,6 +4,28 @@
  */
 import { LRUCache } from "lru-cache"
 import { computeFileHash } from "./format"
+import { diffArrays } from "diff"
+import { splitContentLines } from "./tag"
+
+export function mapSeenLines(before: string, after: string, seen: ReadonlySet<number>, authored = false): Set<number> {
+  if (before === after) return new Set(seen)
+  if (!authored && seen.size === 0) return new Set()
+  const result = new Set<number>()
+  let oldLine = 1
+  let newLine = 1
+  for (const change of diffArrays(splitContentLines(before), splitContentLines(after))) {
+    for (const _line of change.value) {
+      if (change.removed) {
+        oldLine++
+        continue
+      }
+      if (change.added ? authored : seen.has(oldLine)) result.add(newLine)
+      if (!change.added) oldLine++
+      newLine++
+    }
+  }
+  return result
+}
 
 export interface Snapshot {
   readonly path: string

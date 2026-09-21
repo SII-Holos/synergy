@@ -251,6 +251,7 @@ def _initialize(path: Path) -> Path:
             )
             variants[name] = {
                 **variant.model_dump(),
+                "runtime_protocol": receipt["identity"].get("runtime_protocol"),
                 "artifact": str(artifact),
                 "artifact_id": receipt["id"],
                 "source_receipt": receipt["source"],
@@ -553,11 +554,18 @@ def trial_configuration(
     export_timeout = plan["config"]["export_timeout_seconds"]
     configured_timeout = plan["config"]["timeout_seconds"]
     timeout = (
-        120 if probe_instruction else task["agent_seconds"] if configured_timeout == "native" else configured_timeout
+        plan["config"]["preflight_timeout_seconds"]
+        if probe_instruction
+        else task["agent_seconds"]
+        if configured_timeout == "native"
+        else configured_timeout
     )
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
+        "harness": variant.get("harness", "synergy"),
+        "runtime_protocol": variant.get("runtime_protocol"),
         "config": "/benchmark-input/config.json",
+        "bun_jit": variant.get("bun_jit"),
         "experiment": "/benchmark-input/experiment.json" if variant["experiment"] else None,
         "timeout_seconds": timeout,
         "startup_timeout_seconds": plan["config"].get("startup_timeout_seconds", 120),
@@ -579,6 +587,10 @@ def trial_configuration(
             atomic_json(inputs / "config.json", settings)
         else:
             options.update({"native": native, "harness": variant["harness"]})
+    if variant.get("runtime_protocol") == "synergy-session-v1":
+        from .harnesses import session_configuration
+
+        options["native"] = session_configuration(read_json(inputs / "config.json"), options)
     atomic_json(inputs / "options.json", options)
     trial_name = f"sb-{root.name[-8:]}-{attempt.parent.parent.name}-{attempt.parent.name}-{attempt.name}"
     trial_dir = attempt / trial_name
@@ -608,6 +620,8 @@ def trial_configuration(
                 "settings": {
                     "artifact_id": variant["artifact_id"],
                     "harness": variant.get("harness", "synergy"),
+                    "runtime_protocol": variant.get("runtime_protocol"),
+                    "bun_jit": variant.get("bun_jit"),
                     "env": {"BENCH_GATEWAY_KEY": reference} if gateway else variant["env"],
                     "network_domains": [gateway.advertised] if gateway else variant["network_domains"],
                     "cleanup_seconds": cleanup,
@@ -662,6 +676,7 @@ async def _execute_trial(
         probe_instruction=probe_instruction,
     )
     variant = plan["variants"][item["variant"]]
+    rollout = variant.get("harness", "synergy") == "synergy" and variant.get("runtime_protocol") != "synergy-session-v1"
     if gateway:
         gateway.execution_marker = trial_dir / "agent/model-started.json"
     trial = await BenchmarkTrial.create(config)
@@ -673,12 +688,12 @@ async def _execute_trial(
             if not debug:
                 await background(audit_environment, root, attempt / "environment.json", trial_dir / "agent")
     except asyncio.CancelledError:
-        if variant.get("harness", "synergy") != "synergy":
+        if not rollout:
             accounting = await background(native_accounting, trial_dir / "agent", variant["harness"])
             if accounting is not None:
                 atomic_json(trial_dir / "agent/accounting.json", accounting)
         evidence = await background(collect_evidence, trial_dir, trial.result.model_dump(mode="json"))
-        if variant.get("harness", "synergy") == "synergy":
+        if rollout:
             evidence["accounting"] = await background(
                 attach_synergy_requests, trial_dir / "agent", evidence.get("accounting")
             )
@@ -686,14 +701,14 @@ async def _execute_trial(
         evidence["attempt_status"] = "completed" if evidence.get("execution") else "interrupted"
         atomic_json(attempt / "evidence.json", evidence)
         raise
-    if variant.get("harness", "synergy") != "synergy":
+    if not rollout:
         accounting = native_accounting(trial_dir / "agent", variant["harness"])
         if accounting is not None:
             atomic_json(trial_dir / "agent/accounting.json", accounting)
     evidence = await background(
         collect_evidence, trial_dir, result.model_dump(mode="json"), verification_required=not bool(probe_instruction)
     )
-    if variant.get("harness", "synergy") == "synergy":
+    if rollout:
         evidence["accounting"] = await background(
             attach_synergy_requests, trial_dir / "agent", evidence.get("accounting")
         )
@@ -957,7 +972,7 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
         }
         if evidence["accounting"] is None:
             evidence["accounting"] = (terminal.get("result") or {}).get("accounting")
-    if execution.get("harness") not in {None, "synergy"}:
+    if execution.get("harness") not in {None, "synergy"} or execution.get("runtime_protocol") == "synergy-session-v1":
         evidence["accounting"] = await background(native_accounting, agent, execution["harness"])
     else:
         evidence["accounting"] = await background(attach_synergy_requests, agent, evidence.get("accounting"))

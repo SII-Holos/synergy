@@ -1,4 +1,5 @@
 import z from "zod"
+import { OutputBudget } from "./anchored-file"
 import DESCRIPTION from "./file-search.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { WorkspaceFileSearch } from "../workspace-file/search"
@@ -53,21 +54,29 @@ export const FileSearchTool = Tool.define("file_search", {
         exclude,
         signal,
       })
-      const items = result.items.filter((item) => item.kind === "file")
-      const output = items.length
+      const candidates = result.items.filter((item) => item.kind === "file")
+      const budget = new OutputBudget()
+      const items = candidates.filter((item) =>
+        budget.take(`${item.type === "directory" ? "dir " : "file"} ${item.path}`),
+      )
+      const listing = items.length
         ? items.map((item) => `${item.type === "directory" ? "dir " : "file"} ${item.path}`).join("\n")
         : "No matching files found."
 
       return {
         title: params.query || "Files",
-        output,
+        output:
+          result.truncated || items.length < candidates.length
+            ? `${listing}\nResults limited; narrow the include filter to inspect remaining paths.`
+            : listing,
         metadata: {
           query: params.query,
           pathCount: items.length,
           contentCount: 0,
           symbolCount: 0,
           count: items.length,
-          truncated: result.truncated,
+          displayedCounts: { path: items.length, content: 0, symbol: 0 },
+          truncated: result.truncated || items.length < candidates.length,
           nextCursor: result.nextCursor,
         },
       }
@@ -98,23 +107,37 @@ export const FileSearchTool = Tool.define("file_search", {
         : []
     const symbolTruncated = symbolSettled.status === "fulfilled" ? symbolSettled.value.truncated : false
 
+    const groups = [
+      pathItems.map((item) => `${item.type === "directory" ? "dir " : "file"} ${item.path}`),
+      contentItems.map(
+        (item) =>
+          `[content] ${item.path}:${item.lineNumber}:${item.column}: ${item.line.length > 2000 ? `${item.line.slice(0, 2000)}… [line shortened]` : item.line}`,
+      ),
+      symbolItems.map((item) => `[symbol] Symbol "${item.name}" in ${item.path}:${item.range.start.line + 1}`),
+    ]
     const merged: string[] = []
-    let remaining = limit
-
-    for (const item of pathItems.slice(0, remaining)) {
-      if (item.kind !== "file") continue
-      merged.push(`${item.type === "directory" ? "dir " : "file"} ${item.path}`)
-    }
-    remaining = limit - merged.length
-
-    for (const item of contentItems.slice(0, remaining)) {
-      merged.push(`[content] ${item.path}:${item.lineNumber}:${item.column}: ${item.line}`)
-    }
-    remaining = limit - merged.length
-
-    for (const item of symbolItems.slice(0, remaining)) {
-      const line = item.range.start.line + 1
-      merged.push(`[symbol] Symbol "${item.name}" in ${item.path}:${line}`)
+    const displayedCounts = { path: 0, content: 0, symbol: 0 }
+    const kinds = ["path", "content", "symbol"] as const
+    const budget = new OutputBudget()
+    const unique = new Set<string>()
+    let resultLimited = filesResult.truncated || contentTruncated || symbolTruncated
+    let budgetLimited = false
+    for (let index = 0; index < Math.max(...groups.map((group) => group.length)); index++) {
+      for (let channel = 0; channel < groups.length; channel++) {
+        const row = groups[channel][index]
+        if (row === undefined || unique.has(row)) continue
+        if (merged.length >= limit) {
+          resultLimited = true
+          continue
+        }
+        if (!budget.take(row)) {
+          budgetLimited = true
+          continue
+        }
+        unique.add(row)
+        merged.push(row)
+        displayedCounts[kinds[channel]]++
+      }
     }
 
     const output = merged.length
@@ -126,17 +149,24 @@ Tips:
 - Try a shorter query or partial filename
 - For content searches, try fewer words
 - New files may still be indexing — try searching again`
+    const guidance = [
+      resultLimited ? "[Results omitted by the result limit. Increase limit or narrow the query or scope.]" : "",
+      budgetLimited ? "[Results omitted by the shared budget. Narrow the query or scope for more evidence.]" : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
 
     return {
       title: params.query || "Search",
-      output,
+      output: guidance ? `${output}\n${guidance}` : output,
       metadata: {
         query: params.query,
         pathCount: pathItems.length,
         contentCount: contentItems.length,
         symbolCount: symbolItems.length,
         count: merged.length,
-        truncated: filesResult.truncated || contentTruncated || symbolTruncated,
+        displayedCounts,
+        truncated: budgetLimited || resultLimited,
         nextCursor: filesResult.nextCursor,
       },
     }

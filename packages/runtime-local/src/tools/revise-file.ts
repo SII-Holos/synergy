@@ -2,6 +2,7 @@ import z from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./revise-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
 import { trimDiff } from "./edit"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
@@ -10,7 +11,9 @@ import { detectConflicts } from "../conflict/detect"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
 import { formatCompactReloadResult } from "@ericsanchezok/synergy-harness/config/reload-schema"
-import { computeFileHash, formatHashlineBlock, formatHashlineHeader } from "../hashline/format"
+import { computeFileHash, formatHashlineHeader } from "../hashline/format"
+import { previewFileChanges } from "../hashline/diff-preview"
+import { mapSeenLines } from "../hashline/snapshots"
 import { Patch, PatchSection } from "../hashline/input"
 import { normalizeToLF } from "../hashline/normalize"
 import { Patcher, type PreparedSection, type PatchSectionResult } from "../hashline/patcher"
@@ -19,7 +22,7 @@ import { SessionHashlineStore } from "../hashline/store"
 import { createBlockResolver } from "../hashline/block-resolver"
 import { NoopLoopGuard, noopLoopDiagnostic } from "../hashline/noop-loop-guard"
 import { noopSoftWarning, WIDENED_SWAP_WARNING } from "../hashline/messages"
-import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
+import { OutputBudget, recordSeenSessionLines, diffStats, displayPath, resolveFilePath } from "./anchored-file"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
 import { SnapshotSchema } from "@ericsanchezok/synergy-harness/session/snapshot-schema"
 
@@ -69,8 +72,41 @@ function summarizeOperations(section: PatchSection): string[] {
   })
 }
 
+function summarizeSection(result: PatchSectionResult, prepared: PreparedSection, recovered: boolean) {
+  return {
+    path: result.path,
+    tag: result.fileHash,
+    applied: result.op !== "noop",
+    operationSummary: result.op === "noop" ? [] : summarizeOperations(prepared.section),
+    recovered,
+    recoveryMode: recovered ? ("three-way-merge" as const) : undefined,
+  }
+}
+
 function buildSectionDiff(before: string, after: string): string {
   return trimDiff(createTwoFilesPatch("file", "file", before, after))
+}
+
+async function boundEditFeedback(blocks: string[]) {
+  const result = await Truncate.output(blocks.join("\n"))
+  const footer = result.truncated
+    ? `Output budget reached. Full output saved to: ${result.outputPath}\nUse view_file on the source for omitted context before editing it.`
+    : ""
+  const budget = new OutputBudget(
+    Truncate.MAX_BYTES - (footer ? Buffer.byteLength(footer, "utf8") + 1 : 0),
+    Truncate.MAX_LINES - (footer ? footer.split("\n").length : 0),
+  )
+  const displayed: string[] = []
+  for (const block of blocks) {
+    if (!budget.take(block)) break
+    displayed.push(block)
+  }
+  return {
+    output: [...displayed, ...(footer ? [footer] : [])].join("\n"),
+    displayed: displayed.length,
+    truncated: result.truncated,
+    outputPath: result.truncated ? result.outputPath : undefined,
+  }
 }
 
 const noRuntimeReload = undefined as Awaited<ReturnType<typeof RuntimeReloadExecutor.reload>> | undefined
@@ -155,18 +191,22 @@ export const ReviseFileTool = Tool.define("revise_file", {
         throw new Error(noopLoopDiagnostic(displayTitle, noop.count))
       }
 
-      const block = formatHashlineBlock(displayTitle, snapshots.head(p.canonicalPath)?.hash ?? "????", p.normalized)
+      const block = formatHashlineHeader(displayTitle, snapshots.head(p.canonicalPath)?.hash ?? "????")
       const diagnostics = await collectWriteDiagnostics(p.canonicalPath)
       const noopMsg = noopSoftWarning(displayTitle, noop.count)
+      const feedback = await boundEditFeedback(`${block}\n${noopMsg}${diagnostics.output}`.split("\n"))
       return {
         title: displayTitle,
-        output: `${block}\n${noopMsg}${diagnostics.output}`,
+        output: feedback.output,
         metadata: {
+          truncated: feedback.truncated,
+          outputPath: feedback.outputPath,
+          partialFailure: undefined as string | undefined,
           filepath: p.canonicalPath,
           path: displayTitle,
           tag: snapshots.head(p.canonicalPath)?.hash ?? "????",
           applied: false,
-          sections: [],
+          sections: [] as ReturnType<typeof summarizeSection>[],
           operations: 0,
           diff: "",
           filediff: SnapshotSchema.fromContents({
@@ -179,7 +219,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
           operationSummary: summarizeOperations(p.section),
           changeSummary: { additions: 0, deletions: 0 },
           recovered: false,
-          recoveryMode: undefined,
+          recoveryMode: undefined as "three-way-merge" | undefined,
           diagnostics: diagnostics.diagnostics,
           runtimeReload: noRuntimeReload,
           builtinSourceWarning: undefined as string | undefined,
@@ -241,8 +281,8 @@ export const ReviseFileTool = Tool.define("revise_file", {
         continue
       }
 
+      let result: PatchSectionResult | undefined
       try {
-        let result: PatchSectionResult | undefined
         await FileTime.withLock(
           p.canonicalPath,
           async () => {
@@ -256,7 +296,11 @@ export const ReviseFileTool = Tool.define("revise_file", {
             // the final formatted content so returned tags and diffs are accurate.
             const formattedContent = await fs.readText(p.section.path)
             const formattedNormalized = normalizeToLF(formattedContent)
-            const formattedHash = snapshots.record(p.canonicalPath, formattedNormalized)
+            const original = snapshots.byHash(p.canonicalPath, p.section.fileHash ?? "")
+            const known = mapSeenLines(original?.text ?? p.normalized, p.normalized, original?.seenLines ?? new Set())
+            const intended = mapSeenLines(p.normalized, p.applyResult.text, known, true)
+            const finalSeen = mapSeenLines(p.applyResult.text, formattedNormalized, intended)
+            const formattedHash = snapshots.record(p.canonicalPath, formattedNormalized, finalSeen)
             result = {
               ...result,
               after: formattedNormalized,
@@ -275,24 +319,60 @@ export const ReviseFileTool = Tool.define("revise_file", {
         if (result) committedResults.push(result)
       } catch (error) {
         firstError = error instanceof Error ? error : new Error(String(error))
+        if (result) {
+          committedResults.push(result)
+          snapshots.invalidate(p.canonicalPath)
+          firstError = new Error(
+            `Write completed for ${result.path}, but post-write verification failed: ${firstError.message}. The preview describes the last committed write; its tag is invalidated. Read this file again before further edits`,
+            { cause: firstError },
+          )
+        }
         break
       }
     }
 
     // ── 8. Format output ──
+    if (!committedResults.length) throw firstError ?? new Error("No file changes were committed")
     const primary = committedResults[0]
-    const outputBlocks: string[] = []
-
-    if (allWarnings.length > 0) {
-      outputBlocks.push(`Warnings:\n${allWarnings.map((w) => `  ${w}`).join("\n")}`)
+    const outputBlocks: { text: string; observed?: { result: PatchSectionResult; line: number } }[] = []
+    if (firstError)
+      outputBlocks.push({
+        text: `Partial failure: ${committedResults.length}/${prepared.length} files committed. Read the remaining files before retrying; do not repeat the successful edits.`,
+      })
+    const previews = committedResults.map((result) => ({
+      result,
+      preview: previewFileChanges(result.before, result.after),
+    }))
+    for (const { result, preview } of previews) {
+      outputBlocks.push({
+        text: `${result.header}\n${result.op === "noop" ? "No changes" : "Applied"}: +${preview.addedLines} -${preview.removedLines}`,
+      })
+      if (!snapshots.byHash(result.canonicalPath, result.fileHash))
+        outputBlocks.push({
+          text: "Tag invalidated after post-write verification failed; read this file before editing.",
+        })
     }
-    for (const r of committedResults) {
-      outputBlocks.push(formatHashlineBlock(r.path, r.fileHash, r.after))
+    for (const { result, preview } of previews) {
+      if (committedResults.length > 1) outputBlocks.push({ text: result.header })
+      for (const text of preview.preview.split("\n")) {
+        if (!text) continue
+        const match = /^(\d+):/.exec(text)
+        outputBlocks.push({ text, observed: match ? { result, line: Number(match[1]) } : undefined })
+      }
     }
+    if (firstError) outputBlocks.push(...firstError.message.split("\n").map((text) => ({ text })))
+    if (allWarnings.length > 0)
+      outputBlocks.push(...`Warnings:\n${allWarnings.join("\n")}`.split("\n").map((text) => ({ text })))
 
     const primaryCanonical = committedResults.find((r) => r.op !== "noop")?.canonicalPath ?? primary.canonicalPath
     const diagnostics = await collectWriteDiagnostics(primaryCanonical, { before: beforeDiagnostics })
-    if (diagnostics.output) outputBlocks.push(diagnostics.output.trim())
+    if (diagnostics.output)
+      outputBlocks.push(
+        ...diagnostics.output
+          .trim()
+          .split("\n")
+          .map((text) => ({ text })),
+      )
 
     const reloadTargets = RuntimeReloadPath.detectTargetsForFile(primaryCanonical)
     const reloadScope = RuntimeReloadPath.detectScopeForFile(primaryCanonical) ?? "auto"
@@ -304,10 +384,21 @@ export const ReviseFileTool = Tool.define("revise_file", {
         })
       : undefined
     const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(primaryCanonical)
-    if (runtimeReload) outputBlocks.push(formatCompactReloadResult(runtimeReload))
-    if (builtinSourceWarning) outputBlocks.push(builtinSourceWarning)
+    if (runtimeReload) outputBlocks.unshift({ text: formatCompactReloadResult(runtimeReload) })
+    if (builtinSourceWarning) outputBlocks.unshift({ text: builtinSourceWarning })
 
-    const output = outputBlocks.join("\n")
+    const feedback = await boundEditFeedback(outputBlocks.map((block) => block.text))
+    const seen = new Map<PatchSectionResult, number[]>()
+    for (const block of outputBlocks.slice(0, feedback.displayed)) {
+      if (block.observed) {
+        const { result, line } = block.observed
+        const lines = seen.get(result) ?? []
+        lines.push(line)
+        seen.set(result, lines)
+      }
+    }
+    for (const [result, lines] of seen)
+      recordSeenSessionLines(ctx.sessionID, result.canonicalPath, lines, result.fileHash)
 
     const filediffBefore =
       committedResults.length === 1
@@ -336,20 +427,16 @@ ${r.after}`,
 
     return {
       title: committedResults.length === 1 ? committedResults[0].path : `${committedResults.length} files`,
-      output,
+      output: feedback.output,
       metadata: {
+        truncated: feedback.truncated,
+        outputPath: feedback.outputPath,
+        partialFailure: firstError?.message,
         filepath: primaryCanonical,
         path: committedResults.length === 1 ? committedResults[0].path : committedResults.map((r) => r.path).join(", "),
         tag: primary.fileHash,
         applied: appliedCount > 0,
-        sections: committedResults.map((r, i) => ({
-          path: r.path,
-          tag: r.fileHash,
-          applied: r.op !== "noop",
-          operationSummary: r.op === "noop" ? [] : summarizeOperations(prepared[i].section),
-          recovered,
-          recoveryMode: recovered ? ("three-way-merge" as const) : undefined,
-        })),
+        sections: committedResults.map((result, index) => summarizeSection(result, prepared[index], recovered)),
         operations: totalOps,
         diff: finalDiff,
         filediff: SnapshotSchema.fromContents({

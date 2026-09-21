@@ -11,7 +11,13 @@ description: Change or validate the repository benchmark evaluator, native harne
 2. Separate evaluator code, measured harness source or package version, runtime composition, model profile, native task inputs and repeat identity. Declare configuration differences as named variants before observing scores.
    A model profile that enables thinking must also declare its reasoning tier. Providers expose depth through a separate control from the enable switch, so an omitted tier silently inherits the provider default and the retained evidence cannot state the condition that produced a score. Name the tier in the model key and set it explicitly; treat a different tier as a new named condition rather than a reinterpretation of a completed run. See the [tier decision](../../../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md).
 3. Freeze a new experiment after changing the evaluator. Resume only through the recorded evaluator. Import historical evidence into reports without rewriting attempts or continuing old runs under new execution code.
-4. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
+4. Put disposable live-task workspaces outside protected assistant configuration directories. Validate that the actual sandbox can run a fixture-local Node/Bun test before interpreting model recovery loops as harness regressions. A fixture inside a denied ancestor can permit some reads while breaking module resolution and current-directory discovery.
+5. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
+   Freeze the provider's actual thinking switch, including strict boolean `enable_thinking` where required. Explicitly disabled thinking is not a reasoning capability. Inspect retained upstream requests from primary and auxiliary calls; native reasoning defaults must not survive a disabled profile. Honor endpoint-specific direct transport settings in the isolated evaluator process without changing live configuration.
+
+   Verify context and output limits against the selected model's configuration. A lower output ceiling is a separate declared constraint, not a value to inherit from an earlier pilot. Changing the baseline release or output ceiling requires a fresh experiment; retain cancelled attempts and their costs outside the new scoring population.
+
+   Freeze `preflight_timeout_seconds` independently of the original task deadline. Its default is 120 seconds; a slow provider may require an explicit longer connectivity window. Establish that need from retained response timing, preserve failed preflights and any diagnostic usage, and create a new experiment for the changed condition. Verify that the declared value reaches native doctor launches while formal task and verifier deadlines stay unchanged.
 
 ## Preserve execution and evidence
 
@@ -19,7 +25,9 @@ description: Change or validate the repository benchmark evaluator, native harne
    Preserve Pier's `AgentTimeoutError` when an outer deadline interrupts execution; its native exception type determines whether artifact collection and verification continue. Validate this with a real timed-out native oracle and a completed verifier.
 2. Keep native prompts, tools, loops and compaction. A protocol bridge converts messages and streams; it must not create an agent loop or silently drop unsupported controls.
 3. Exercise both Git and ordinary workspaces when upgrading native CLIs. Wait for the CLI's terminal process and native session state; a completed model turn does not establish that the agent loop ended.
-   For a native stall, compare the actual CLI with and without the observer in disposable environments before attributing it to capture. Runtime controls such as OpenCode's `bun_jit` require explicit named variants, retained effective settings and actual CLI acceptance; never hot-switch the original attempt. A passing workaround does not by itself establish the stalled process's internal root cause.
+   For a native stall, compare the actual CLI with and without the observer in disposable environments before attributing it to capture. Runtime controls such as Synergy/OpenCode `bun_jit` require explicit named variants, retained effective settings and actual CLI acceptance; never hot-switch the original attempt. A passing workaround does not by itself establish the stalled process's internal root cause.
+
+   For Bun controls, check the effective environment of the actual native CLI process (Synergy intentionally sanitizes the shell tool environment) and complete at least 120 tool roundtrips with two deterministic models; a short doctor probe cannot establish long-session stability. Match the intended workload's observation sizes, allocation pressure and tool mix: repeated tiny shell outputs can pass while real file-reading sessions still stall.
 
    Repeat native long-session controls and inspect thread waits when the CLI stops progressing; compare container-local and mounted Home storage before attributing a wait inside capture to filesystem failure. Keep diagnostic no-progress limits separate from task deadlines. New research YAML inherits the central solving deadline; native task timing requires explicit `timeout_seconds: native`, and numeric overrides declare a different condition. Never copy default deadlines between presets. Keep every preset in automatic discovery tests, verify the frozen configuration and effective deadline at every harness launch, and preserve native verifier limits. The outer clock owns solving from first dispatch; nested CLI deadlines must include startup and cleanup headroom. Gateway read-idle limits are optional, explicit experiment conditions. Operator cancellation retains first-attempt scoring and all costs but excludes that execution from paired differences.
 
@@ -28,6 +36,10 @@ description: Change or validate the repository benchmark evaluator, native harne
 5. Cross-check every completed provider request against native evidence. Interrupted requests retain unknown usage and any known lower bound. Cache and reasoning tokens have explicit inclusion rules; byte measurements remain bytes.
 6. Read the primary native reward while preserving auxiliary verifier metrics. Require positive test-start evidence separately. Check archive contents and checksums independently of agent outcomes and rewards.
 
+   When native collection reads committed history, check the original task's submission instructions and distinguish committed output from an uncommitted implementation. If the task requires a commit and the agent stops before making it, retain the native empty-patch result as a submission failure; do not commit for the agent or substitute working-tree grading. A stricter native format check also remains part of the frozen score even when the generated artifact executes successfully.
+
+   For delegated acceptance, inspect the actual child trajectory, shared dirty workspace, review count, parent wait and post-review edits/tests. A functional reward or reviewer verdict alone does not prove that findings were resolved. Verify factual claims against independent evidence and retain unresolved findings without changing the native score.
+
    Respect the environment's declared log mounts when delivering instructions: a host file in a mounted log directory is already visible at its container path. Upload it only for non-mounted environments; keep credentials in separate private temporary files. Test both paths with real file contents and retain pre-dispatch transfer failures without calling them model failures.
 
 ## Control resources and cache ownership
@@ -35,6 +47,10 @@ description: Change or validate the repository benchmark evaluator, native harne
 1. Inspect Docker quotas, host pressure and native task/verifier declarations. Use shared resource reservations for concurrent evaluators using the same cache. Keep reserved resources and admission decisions in evidence; do not kill running tasks to make room.
    Deduplicate kernel OOM observations by container identity and nanosecond event time, independently of CLI/API serialization metadata. Validate resource parsers against a real container: Docker process inspection requires a PID column alongside RSS. Preserve unknown metrics when inspection fails, and distinguish sampled peaks from kernel maxima.
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
+   Exercise independent cache roots on the same Docker daemon. Task and inference-proxy image identities must isolate ownership by resolved cache root while preserving warm reuse through path aliases; do not fabricate receipts for another cache's images.
+
+   Exclude generated benchmark outputs from repository-wide formatter discovery with a negative input glob; ignore-file rules alone can still traverse unreadable directories. Native Homes can remain container-owned and private during execution; a publication hook must not require widening their permissions or walking their contents.
+
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.
 
@@ -43,6 +59,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 1. Run the narrow Python/Bun regression, relevant pure suites and static checks. Root-invoked mypy must explicitly select `benchmark/pyproject.toml`; `uv --project` selects the environment but does not change mypy's configuration discovery directory. For wire changes run `test_gateway.py`, `test_gateway_faults.py` and the native capture tests.
 2. Run the native Docker matrix with two deterministic models over both protocols. Keep live credentials out of CI. Actual CLIs, restricted inference egress and real tool roundtrips are required.
    Fault-injection fixtures that rely on task expiry must explicitly select `timeout_seconds: native` or their own short deadline. They must not inherit the research solving default; retain the existing terminal-evidence and cleanup assertions.
+
+   Match deterministic providers' request-body capacity to the gateway when exercising long tool histories; otherwise fixture limits can fail before the native context window. See [the matrix decision](../../../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md).
 
    Exercise native compaction with actual retained tool history as well as reported usage; a high synthetic token count alone may not leave any eligible history to summarize. Require a native compaction record and per-request usage reconciliation. Use the shared CI evidence collector for lifecycle and native matrix jobs; never recurse into native homes or follow symlinks when publishing diagnostics. The result file inventory must also prune the private runtime Home before traversal, including credential stores created by the measured runtime; keep it available only for local recovery. Native `rollout.tar.gz` includes the private Home and stays local; collect its validation/checksum metadata instead. Synergy `rollout.zip` follows the public rollout contract.
 
@@ -60,7 +78,13 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 ## Runtime cache boundaries
 
-Synergy's prepared runtime key covers TypeScript sources and the shared `deadline.mjs`; external CLIs use separate Node bundles keyed by every file in `engines.NATIVE_RUNTIME`. Adding an executed dependency requires updating its owning key and invalidation regression. Frozen bundles still verify their complete recorded bytes; external CLI observers copied into a Synergy bundle are not executed by Synergy.
+Synergy's rollout runtime key covers TypeScript sources and the shared `deadline.mjs`; external CLIs use separate Node bundles keyed by every file in `engines.NATIVE_RUNTIME`. The audited `synergy-session-v1` release also hashes its executed JavaScript observer, wrapper and inspection files. Adding an executed dependency requires updating its owning key and invalidation regression. Frozen bundles verify their complete recorded bytes.
+
+Historical source support requires an explicit immutable revision, native CLI/worker launch inspection, model-role validation, independent request reconciliation and actual short/long Docker controls. Do not backport the current loop or fabricate modern rollout records. Archive the native format and disclose release-to-candidate attribution limits; see [the release decision](../../../docs/decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md).
+
+When a native CLI exits before auxiliary transport recording finishes, keep the observer in an independent wrapper and bound its drain by the cleanup deadline. Abort observation on task cancellation or timeout, retain unknown usage, and record native and observation durations separately while including both in total wall time. Exercise native process exit before provider completion and proxy bypass for the loopback observer.
+
+Native JSON can contain escaped unpaired UTF-16 from JavaScript truncation. Preserve it in transport and evidence without replacing or repairing the measured output. Cover both streaming and non-streaming bridges and durable byte accounting; see the release decision above.
 
 ## Secret detector experiments
 

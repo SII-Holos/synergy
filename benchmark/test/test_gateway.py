@@ -3,6 +3,7 @@ import json
 from contextlib import asynccontextmanager
 
 import aiohttp
+import pytest
 from aiohttp import web
 
 from synergy_bench.config import ModelProfile
@@ -36,6 +37,78 @@ def model(url):
     )
 
 
+@pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_native_unpaired_utf16_is_forwarded_and_recorded_losslessly(tmp_path, monkeypatch, protocol, streaming):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    content = "中文😀\ud83d/\ude00/\\ud83d"
+    received = []
+
+    async def handler(request):
+        raw = await request.read()
+        body = json.loads(raw)
+        assert body["messages"][0]["content"] == content
+        assert "中文😀" in raw.decode("utf-8")
+        received.append(raw)
+        usage = {"prompt_tokens": 10, "completion_tokens": 3}
+        if not streaming:
+            return web.json_response(
+                {
+                    "id": "fixture",
+                    "model": "fixture-one",
+                    "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                    "usage": usage,
+                }
+            )
+        frames = [
+            {"choices": [{"delta": {"content": content}, "finish_reason": "stop"}]},
+            {"choices": [], "usage": usage},
+        ]
+        payload = "".join("data: " + json.dumps(frame) + "\n\n" for frame in frames) + "data: [DONE]\n\n"
+        return web.Response(text=payload, content_type="text/event-stream")
+
+    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+        async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
+            request = {"model": "fixture-one", "stream": streaming}
+            request.update(
+                {"messages": [{"role": "user", "content": content}]}
+                if protocol == "chat-completions"
+                else {"input": content}
+            )
+            async with client.post(
+                gateway.url + ("/responses" if protocol == "responses" else "/chat/completions"), json=request
+            ) as response:
+                assert response.status == 200
+                text = await response.text()
+                if streaming:
+                    events = [
+                        json.loads(line[6:])
+                        for line in text.splitlines()
+                        if line.startswith("data: ") and line != "data: [DONE]"
+                    ]
+                    observed = (
+                        [event["delta"] for event in events if event.get("type") == "response.output_text.delta"]
+                        if protocol == "responses"
+                        else [
+                            event["choices"][0]["delta"].get("content", "") for event in events if event.get("choices")
+                        ]
+                    )
+                    assert "".join(observed) == content
+                else:
+                    result = json.loads(text)
+                    assert (
+                        result["output"][0]["content"][0]["text"]
+                        if protocol == "responses"
+                        else result["choices"][0]["message"]["content"]
+                    ) == content
+    [record] = read_ledger(tmp_path)
+    retained = tmp_path / record["id"]
+    assert record["status"] == "completed"
+    assert record["usage"] == {"prompt_tokens": 10, "completion_tokens": 3}
+    assert (retained / "upstream.bin").read_bytes() == received[0]
+    assert json.loads((retained / "upstream.json").read_text())["messages"][0]["content"] == content
+
+
 def test_model_profile_controls_all_sampling_including_absent_native_defaults(tmp_path):
     gateway = Gateway(model("http://provider.invalid/v1"), tmp_path)
     payload, _ = gateway.effective(
@@ -53,6 +126,30 @@ def test_model_profile_controls_all_sampling_including_absent_native_defaults(tm
     assert "reasoning_effort" not in payload
     assert "top_p" not in payload
     assert "seed" not in payload
+
+
+def test_frozen_thinking_switch_overrides_native_reasoning_defaults(tmp_path):
+    profile = model("http://provider.invalid/v1").model_copy(
+        update={"parameters": {"enable_thinking": False, "temperature": 1}}
+    )
+    gateway = Gateway(profile, tmp_path)
+    payload, _ = gateway.effective(
+        {
+            "model": "fixture-one",
+            "messages": [],
+            "enable_thinking": True,
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": "max",
+        },
+        "chat-completions",
+    )
+    assert payload["enable_thinking"] is False
+    assert "thinking" not in payload
+    assert "reasoning_effort" not in payload
+    without_switch, _ = Gateway(model("http://provider.invalid/v1"), tmp_path).effective(
+        {"model": "fixture-one", "messages": [], "enable_thinking": True}, "chat-completions"
+    )
+    assert "enable_thinking" not in without_switch
 
 
 async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkeypatch):
@@ -80,7 +177,14 @@ async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkey
         await response.write(b"data: [DONE]\n\n")
         return response
 
-    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+    async with (
+        provider(handler) as url,
+        Gateway(
+            model(url).model_copy(update={"parameters": {"temperature": 0.2, "enable_thinking": False}}),
+            tmp_path,
+            bind="127.0.0.1",
+        ) as gateway,
+    ):
         async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
             for inputs in [
                 [{"role": "user", "content": "read"}],
@@ -95,6 +199,7 @@ async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkey
                     json={
                         "model": "fixture-one",
                         "stream": True,
+                        "enable_thinking": True,
                         "tools": [{"type": "function", "name": "read", "parameters": {"type": "object"}}],
                         "input": inputs,
                     },
@@ -103,9 +208,11 @@ async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkey
                     assert "response.completed" in await response.text()
     assert len(bodies) == 2
     assert all(body["temperature"] == 0.2 and body["max_tokens"] == 2048 for body in bodies)
+    assert all(body["enable_thinking"] is False for body in bodies)
     records = read_ledger(tmp_path)
     assert aggregate_usage(records)["tokens"]["total"]["total"] == 26
     assert len(records) == 2
+    assert all(row["parameter_overrides"]["enable_thinking"] == {"native": True, "effective": False} for row in records)
     assert len({row["downstream_response_id"] for row in records}) == 2
     for row in records:
         raw = (tmp_path / row["id"] / "downstream-response.bin").read_text()

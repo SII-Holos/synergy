@@ -38,6 +38,7 @@ MODEL_PARAMETERS = {
     "presence_penalty",
     "reasoning_effort",
     "thinking",
+    "enable_thinking",
     "tool_stream",
     "reasoning",
 }
@@ -67,7 +68,16 @@ class ModelProfile(StrictModel):
             raise ValueError("Model parameters cannot override transport, messages or credentials")
         common = {"temperature", "top_p"}
         allowed = common | (
-            {"seed", "stop", "frequency_penalty", "presence_penalty", "reasoning_effort", "thinking", "tool_stream"}
+            {
+                "seed",
+                "stop",
+                "frequency_penalty",
+                "presence_penalty",
+                "reasoning_effort",
+                "thinking",
+                "enable_thinking",
+                "tool_stream",
+            }
             if self.protocol == "chat-completions"
             else {"reasoning"}
         )
@@ -85,8 +95,9 @@ class ModelProfile(StrictModel):
                     raise ValueError(f"Invalid {key} parameter")
         if "seed" in self.parameters and type(self.parameters["seed"]) is not int:
             raise ValueError("Model seed must be an integer")
-        if "tool_stream" in self.parameters and type(self.parameters["tool_stream"]) is not bool:
-            raise ValueError("tool_stream must be a boolean")
+        for key in ("tool_stream", "enable_thinking"):
+            if key in self.parameters and type(self.parameters[key]) is not bool:
+                raise ValueError(f"{key} must be a boolean")
         if "stop" in self.parameters:
             stop = self.parameters["stop"]
             if not isinstance(stop, str) and not (
@@ -134,8 +145,8 @@ class HarnessProfile(StrictModel):
 
     @model_validator(mode="after")
     def validate_native_options(self) -> HarnessProfile:
-        if self.bun_jit is not None and self.kind != "opencode":
-            raise ValueError("bun_jit is supported only for opencode")
+        if self.bun_jit is not None and self.kind not in {"synergy", "opencode"}:
+            raise ValueError("bun_jit is supported only for synergy and opencode")
         if self.kind != "synergy":
             if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
@@ -208,6 +219,7 @@ class ExperimentConfig(StrictModel):
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
+    preflight_timeout_seconds: int = Field(default=120, ge=1, le=3600, strict=True)
     timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | Literal["native"] = 10_800
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
 

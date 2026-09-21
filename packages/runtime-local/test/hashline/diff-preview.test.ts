@@ -51,3 +51,20 @@ describe("buildCompactDiffPreview", () => {
     expect(preview.removedLines).toBe(2)
   })
 })
+
+import { previewFileChanges } from "../../src/hashline/diff-preview"
+
+test("multi-hunk compact previews always name final-file rows after inserts and deletes", () => {
+  const before = Array.from({ length: 80 }, (_, i) => `line ${i + 1}`)
+  const after = [...before]
+  after.splice(60, 2)
+  after.splice(2, 0, "inserted", "second inserted", "third inserted")
+  const preview = previewFileChanges(before.join("\n"), after.join("\n"))
+  expect(preview.addedLines).toBe(3)
+  expect(preview.removedLines).toBe(2)
+  expect(preview.preview).toContain("…")
+  for (const row of preview.preview.split("\n")) {
+    const match = /^(\d+):(.*)$/.exec(row)
+    if (match) expect(match[2]).toBe(after[Number(match[1]) - 1])
+  }
+})

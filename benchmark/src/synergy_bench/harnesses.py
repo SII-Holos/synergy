@@ -23,6 +23,42 @@ PACKAGES = {
 }
 
 
+def session_configuration(settings: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+    if options["runtime"] != "full" or options.get("experiment"):
+        raise ValueError("Session-export releases require full runtime without experiment overlays")
+    provider = options["model"].split("/", 1)[0]
+    endpoint = settings["provider"][provider]["options"]["baseURL"]
+    env = {
+        "SYNERGY_HOME": "/logs/agent/home",
+        "SYNERGY_CONFIG": options["config"],
+        "SYNERGY_CONFIG_CONTENT": "{}",
+        "SYNERGY_DISABLE_AUTOUPDATE": "1",
+        "SYNERGY_DISABLE_DEFAULT_PLUGINS": "1",
+        "SYNERGY_DISABLE_MODELS_FETCH": "1",
+        "MODELS_DEV_API_JSON": "/opt/synergy/source/packages/synergy/test/tool/fixtures/models-api.json",
+        "BENCH_GATEWAY_BASE": endpoint,
+        "BENCH_CAPTURE_DIR": "/logs/agent/home/native-wire",
+        # v3.0.22 process-host.ts inherits this in the native agent-turn workers.
+        "BUN_OPTIONS": "--preload=/opt/synergy/runtime/session-capture.mjs",
+    }
+    if options.get("bun_jit") is not None:
+        env["BUN_JSC_useJIT"] = str(int(options["bun_jit"]))
+    argv = [
+        "/opt/synergy/bin/bun",
+        "/opt/synergy/source/packages/synergy/src/index.ts",
+        "send",
+        "--format",
+        "json",
+        "--model",
+        options["model"],
+        "--agent",
+        options["agent"],
+    ]
+    if options.get("variant"):
+        argv += ["--variant", options["variant"]]
+    return {"argv": argv, "env": env, "files": {}}
+
+
 def harness_configuration(
     kind: str, model: ModelProfile, endpoint: str, home: str, *, bun_jit: bool | None = None
 ) -> dict[str, Any]:
@@ -33,8 +69,8 @@ def harness_configuration(
         "NODE_USE_ENV_PROXY": "1",
     }
     if bun_jit is not None:
-        if kind != "opencode" or type(bun_jit) is not bool:
-            raise ValueError("bun_jit requires an explicit boolean for opencode")
+        if kind not in {"synergy", "opencode"} or type(bun_jit) is not bool:
+            raise ValueError("bun_jit requires an explicit boolean for synergy or opencode")
         # Provenance: https://github.com/oven-sh/bun/issues/22901
         # Local adaptation: expose Bun's supported override as an explicit experiment
         # condition; do not use the distinct JSC_useJIT variable or auto-detect a fallback.
@@ -42,11 +78,14 @@ def harness_configuration(
     protocol = "responses" if kind == "codex" else model.protocol
     api = "openai-completions" if protocol == "chat-completions" else "openai-responses"
     name = model.model
-    reasoning = bool(
-        model.parameters.get("reasoning_effort")
-        or model.parameters.get("reasoning")
-        or model.parameters.get("thinking")
-    )
+    effort = model.parameters.get("reasoning_effort")
+    if "reasoning" in model.parameters:
+        effort = model.parameters["reasoning"].get("effort", "medium")
+    reasoning = effort is not None and effort != "none"
+    if "thinking" in model.parameters:
+        reasoning = model.parameters["thinking"]["type"] == "enabled"
+    if "enable_thinking" in model.parameters:
+        reasoning = model.parameters["enable_thinking"]
     model_spec = {
         "id": name,
         "name": name,

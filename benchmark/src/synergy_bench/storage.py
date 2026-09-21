@@ -14,11 +14,18 @@ def digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def json_bytes(value: Any, *, sort_keys: bool = False) -> bytes:
+    # Native JavaScript strings can contain unpaired UTF-16 after truncation; retain their JSON escapes.
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=sort_keys).encode(
+        "utf-8", errors="backslashreplace"
+    )
+
+
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
     try:
-        with os.fdopen(fd, "w") as output:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as output:
             json.dump(value, output, indent=2, ensure_ascii=False)
             output.write("\n")
             output.flush()

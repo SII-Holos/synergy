@@ -40,7 +40,7 @@ bun bench clean /absolute/path/to/run
 | 字段                                         | 含义                                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment                |
-| `harnesses.<name>.bun_jit`                   | OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭其内嵌 Bun JIT                      |
+| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT                  |
 | `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                       |
 | `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                                 |
 | `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                          |
@@ -54,6 +54,7 @@ bun bench clean /absolute/path/to/run
 | `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                       |
 | `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                                     |
 | `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始           |
+| `preflight_timeout_seconds`                  | doctor 工具往返期限，默认 120 秒；1–3600 的严格整数，独立于正式题目期限并随配置冻结        |
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。它显式设置 `timeout_seconds: native` 以保留原题解题期限。平台实现不绑定该模型或智谱端点。
 
@@ -61,15 +62,19 @@ bun bench clean /absolute/path/to/run
 
 新 YAML 应省略解题期限以继承统一研究默认值；只有复现原题或明确改变实验条件时才覆盖。默认值在配置解析时写入冻结的 `plan.json`，每次启动的 `inputs/options.json` 保留最终秒数。所有预设自动纳入[期限传播测试](test/test_experiment_presets.py)，不维护文件名白名单。历史实验仍由冻结的 evaluator 执行；修改默认值不能改写或继续旧实验。v1 配置通过显式迁移命令保留原有期限语义，将遗漏或 null 转换为 `native`。
 
-外层执行时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。网关默认不设读空闲期限，断连仍会报错，连接建立仍有 30 秒期限，整题时钟仍可取消执行；显式的读空闲限制属于独立实验条件。harness 自身的超时不由网关改写。`doctor` 连通性探测保持 120 秒，不能当作题目解题期限。取舍见[研究期限策略](../docs/decisions/implemented/architecture/2026-09-21-benchmark-research-deadline-policy.md)。
+外层执行时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。网关默认不设读空闲期限，断连仍会报错，连接建立仍有 30 秒期限，整题时钟仍可取消执行；显式的读空闲限制属于独立实验条件。harness 自身的超时不由网关改写。`doctor` 使用独立的 `preflight_timeout_seconds`，默认 120 秒；Boyue 预设明确选择 600 秒以容纳已观察到的慢首响应。修改预检期限须新建实验，正式解题及原生 verifier 期限不受该字段影响。取舍见[研究期限策略](../docs/decisions/implemented/architecture/2026-09-21-benchmark-research-deadline-policy.md)。
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
+
+Chat Completions profile 支持严格布尔值 `enable_thinking`；使用服务商实际接受的开关，不把 `false` 当成启用 reasoning 的信号。网关从原生请求移除所有受管参数后应用冻结 profile，因此辅助调用不能自行启用思考。[Boyue 编码观察预设](configs/coding-observations-boyue.yaml) 固定关闭思考及三道原生筛查题；运行前将占位端点写入私有配置，并通过 `BOYUE_API_KEY` 注入凭据。端点、凭据和直连配置保持在本地，完整评测另建实验并移除选题限制。参数语义见[开关决策](../docs/decisions/implemented/architecture/2026-09-21-benchmark-explicit-thinking-switches.md)。
 
 启用思考的模型 profile 必须同时声明 `reasoning_effort`；思考档位是实验条件，不是实现细节。[GLM-5.3](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3) 始终思考、只接受 `thinking.type: enabled`，并通过 `reasoning_effort` 暴露 `low`、`high`、`max` 三档且以 `max` 为服务商默认值，因此省略该参数等于静默选用最深档位。预设把档位写进模型键名（`glm53flash-max`）并显式设值，使该条件同时体现在 variant 名（`synergy-max-full__glm53flash-max`）、冻结的 `plan.json` 和账本保留的有效请求参数中。更低的档位是各自独立、各有证据的条件，不能用来重新解释已完成的运行。该规则由[预设契约](test/test_experiment_presets.py)强制，取舍见[档位决策](../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md)。
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。
 
-OpenCode 的 `bun_jit: false` 映射为原生进程的 `BUN_JSC_useJIT=0`；它是运行时执行条件，可能改变延迟和资源消耗。需要比较时声明独立名称，例如 `opencode-native` 和 `opencode-jitless`。该值随配置和每次尝试的有效环境冻结，不改变模型、提示词、工具或压缩策略，也不根据宿主或失败结果自动切换。其他 harness 使用此选项会报错。运行时适配的取舍见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
+历史基线 `v3.0.22` 必须使用明确的 release revision，按 `synergy-session-v1` 执行原生单体 CLI，只接受 `full`，不支持实验覆盖。归档保留原生 Home 和事件，工作进程继承 transport redirect，独立观察器在包装进程中记录已派发的请求，并与网关核对。原生进程退出后只在清理期限内完成观察；任务取消或超时立即中断，未知用量保持未知。不会生成该版本没有的 rollout/run 记录。其他历史布局须先审计再支持，取舍见[历史 release 评测](../docs/decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md)。
+
+Synergy 和 OpenCode 的 `bun_jit: false` 映射为原生进程的 `BUN_JSC_useJIT=0`；它是运行时执行条件，可能改变延迟和资源消耗。需要比较时声明独立名称，例如 `opencode-native` 和 `opencode-jitless`。该值随配置和每次尝试的有效环境冻结，不改变模型、提示词、工具或压缩策略，也不根据宿主或失败结果自动切换。Synergy 的开关在启动 Bun 包装进程前生效，由 CLI、子进程和导出过程继承；模型密钥引用仍通过独立临时文件传递。其他 harness 使用此选项会报错。运行时适配的取舍见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
 
 人工取消的执行保留首次评分、原生 reward 和全部消耗，并通过 `pairing_exclusions: [cancelled_execution]` 公开排除配对差值。按预先声明期限自然超时的尝试仍属于原实验条件；不能把人工提前结束伪装成相同期限的超时，也不能以取消为由挑选后续更高分的尝试。
 
@@ -167,6 +172,8 @@ token 来自服务商 usage，缓存属于 input、reasoning 属于 output；已
 
 暖任务镜像按原题内容、原生声明、安装步骤和平台复用。冻结镜像缺失或 ID 改变会报错；预热与执行使用相同镜像条件。正常清理只删除本次容器、网络和卷，避免 Pier 的 `--rmi all` 删除共享镜像。缓存发布校验内容、按键合并构建并原子发布。活动构建/运行与回收互斥，冻结 run 持有产物引用；只回收明确属于 benchmark 的无引用对象，不自动认领共享镜像。
 
+任务与推理代理镜像的身份包含解析后的缓存根目录摘要。同一缓存的不同路径别名共享镜像，独立缓存使用不同标签及归属记录。迁移缓存目录后应冻结新实验；旧实验继续使用原位置及记录的 evaluator。此隔离不改变任务或代理镜像的构建步骤。
+
 维护边界：`config.py` 与 `harnesses.py` 拥有矩阵和原生映射；`gateway.py` / `bridge.py` / `usage.py` 拥有协议及计量；`trial.py` / `environment.py` 拥有固定 Pier 生命周期扩展；`cache.py` / `resources.py` / `monitor.py` 拥有准备和资源；`evidence.py` / `results.py` / `report.py` 拥有结果和统计。上游来源与修改边界保留在 [Pier NOTICE](third_party/pier/NOTICE)。
 
 ```bash
@@ -181,11 +188,13 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 
 普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。依赖任务到期收尾的故障注入夹具显式选择 `timeout_seconds: native` 或独立短期限，不继承研究默认值。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
+Synergy 长会话控制的覆盖范围、确定性 provider 请求体容量与 CI 编排期限见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的原题期限。
+
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 
 退出码：0 编排结束且证据有效（包括正常答错）；1 基础设施、导出或记录失败；2 配置或输入无效；130 中断。进度写 stderr，最终 JSON 写 stdout。
 
-120 行读取下限保留，用于减少过小读取引起的多轮工具调用和重复上下文成本。本轮不修改读取策略、提示词或推理效率，也不把单次返回字节较多直接视为 token 缺陷。
+评测器不覆盖被测 harness 的读取策略或提示词；这些行为由冻结源码决定。工具输出字节用于诊断信息暴露，不能直接换算为任务 token 或额度收益。
 
 原生 oracle 记录可通过 `oracle-report RUN --output REPORT.json` 只读导入。报告读取明确的 `reward` 主字段，并保留 DeepSWE 的辅助指标；不会再次执行判题或改写旧记录。
 

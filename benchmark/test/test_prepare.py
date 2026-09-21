@@ -6,6 +6,27 @@ from synergy_bench.prepare import recipe_links
 from synergy_bench.storage import atomic_json
 
 
+def test_session_export_release_uses_its_own_public_package_and_rejects_unknown_history(tmp_path):
+    from synergy_bench.prepare import source_protocol
+
+    atomic_json(tmp_path / "packages/synergy/package.json", {"name": "synergy"})
+    assert source_protocol(tmp_path, "024dd683e091d9fce3d1d26b79b2e188ce636b52") == "synergy-session-v1"
+    with pytest.raises(ValueError, match="Unsupported historical Synergy source"):
+        source_protocol(tmp_path, "unverified-history")
+
+
+@pytest.mark.parametrize(
+    "name", ["external.mjs", "capture.mjs", "native-outcome.mjs", "session-capture.mjs", "session-relay.mjs"]
+)
+def test_session_export_runtime_invalidates_when_an_executed_observer_changes(tmp_path, name):
+    from synergy_bench.prepare import synergy_runtime_digest
+
+    (tmp_path / name).write_text("first observer")
+    before = synergy_runtime_digest(tmp_path, protocol="synergy-session-v1")
+    (tmp_path / name).write_text("updated observer")
+    assert synergy_runtime_digest(tmp_path, protocol="synergy-session-v1") != before
+
+
 def test_recipe_resolves_public_names_without_a_benchmark_workspace(tmp_path: Path) -> None:
     atomic_json(tmp_path / "package.json", {"workspaces": {"packages": ["components/*"]}})
     atomic_json(tmp_path / "components/renamed/package.json", {"name": "@example/runtime"})

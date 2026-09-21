@@ -64,8 +64,16 @@ const env = {
   XDG_CONFIG_HOME: path.join(home, ".config"),
   XDG_DATA_HOME: path.join(home, ".local/share"),
   XDG_CACHE_HOME: path.join(home, ".cache"),
-  PATH: `/opt/synergy/node/bin:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}`,
+  PATH: `/opt/synergy/bin:/opt/synergy/node/bin:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}`,
 }
+const capture =
+  options.runtime_protocol === "synergy-session-v1"
+    ? (await import("./session-relay.mjs")).startSessionCapture({
+        root: path.join(home, "native-wire"),
+        endpoint: native.env.BENCH_GATEWAY_BASE,
+      })
+    : undefined
+if (capture) env.BENCH_CAPTURE_ENDPOINT = capture.url
 const stdout = await open(path.join(logs, "events.jsonl"), "w", 0o600)
 const stderr = await open(path.join(logs, "stderr.log"), "w", 0o600)
 const started = Date.now()
@@ -90,6 +98,7 @@ function signal(value) {
 function stop() {
   if (stopping) return
   stopping = true
+  void capture?.close(options.cleanup_seconds, true)
   signal("SIGTERM")
   forceTimer = setTimeout(() => {
     forced = true
@@ -115,9 +124,11 @@ const result = await new Promise((resolve) => {
   child.once("error", (error) => resolve({ code: null, error: error.code ?? error.name }))
   child.once("exit", (code, signal) => resolve({ code, signal }))
 })
+const ended = Date.now()
 await executionClock.stop()
 clearTimeout(forceTimer)
 signal("SIGKILL")
+const captureCleanup = await capture?.close(options.cleanup_seconds, timedOut || interrupted || forced)
 await stdout.sync()
 await stdout.close()
 await stderr.sync()
@@ -141,12 +152,18 @@ const outcome = interrupted
       ? "failed"
       : ["failed", "cancelled"].includes(nativeResult.status)
         ? nativeResult.status
-        : "completed"
+        : options.runtime_protocol === "synergy-session-v1" && nativeResult.status !== "completed"
+          ? "failed"
+          : "completed"
 await atomic("execution.json", {
   version: 3,
   harness: options.harness,
+  runtime_protocol: options.runtime_protocol ?? null,
   started_at: started,
   ended_at: Date.now(),
+  native_ended_at: ended,
+  native_wall_ms: ended - started,
+  capture_cleanup: captureCleanup ?? null,
   exit_code: result.code,
   signal: result.signal ?? null,
   error: result.error ?? null,
@@ -199,7 +216,7 @@ if (code === 0) {
     valid: true,
     format: "native-home-tar-v1",
     filename: "rollout.tar.gz",
-    recording: forced ? "partial" : "complete",
+    recording: forced || captureCleanup?.timed_out ? "partial" : "complete",
     bytes: size,
     sha256: hash.digest("hex"),
   })

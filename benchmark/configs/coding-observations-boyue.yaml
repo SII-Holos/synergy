@@ -1,0 +1,43 @@
+version: 2
+suite: ../suites/local-24.json
+output: ../../.artifacts/benchmark/coding-observations-boyue
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 20260921
+repeat: 1
+concurrency: 1
+timeout_seconds: native
+preflight_timeout_seconds: 600
+selection:
+  tasks:
+    - deepswe-1.1/dasel-html-document-format
+    - deepswe-1.1/superjson-error-stack-serialization
+    - terminal-bench-2.1/large-scale-text-editing
+harnesses:
+  baseline:
+    kind: synergy
+    source:
+      path: ../..
+      revision: 024dd683e091d9fce3d1d26b79b2e188ce636b52
+    runtime: full
+    agent: synergy-max
+    bun_jit: true
+  candidate:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: full
+    agent: synergy-max
+    bun_jit: true
+models:
+  boyue-deepseek41flash-no-thinking:
+    model: bailian/deepseek-v4.1-flash
+    protocol: chat-completions
+    base_url: http://provider.example/v1
+    api_key_env: BOYUE_API_KEY
+    context_window: 1000000
+    max_output_tokens: 393216
+    supports_developer_role: false
+    parameters:
+      temperature: 1
+      enable_thinking: false
