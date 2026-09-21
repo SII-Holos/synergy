@@ -172,6 +172,27 @@ describe("tool.parse_code", () => {
   })
 
   describe("metadata", () => {
+    test("keeps distinct AST ranges while reporting each source line once", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "code.ts"), "console.log('first'); console.log('second')\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const result = await (
+            await ParseCodeTool.init()
+          ).execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
+          expect(result.metadata.matches).toBe(2)
+          expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
+          expect(result.metadata.matchLines["code.ts"]).toEqual([1])
+          expect(result.output.split("\n").filter((line) => line.startsWith("1:"))).toHaveLength(1)
+        },
+      })
+    })
+
     test("reports match count and snapshotted files", async () => {
       await using tmp = await tmpdir({
         git: true,

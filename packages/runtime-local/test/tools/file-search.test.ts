@@ -16,6 +16,26 @@ const ctx = {
 }
 
 describe("tool.file_search", () => {
+  test("reports byte-budget omissions separately from the requested result limit", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "data.txt"), `needle ${"界".repeat(500)}\n`.repeat(40))
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await (await FileSearchTool.init()).execute({ query: "needle", limit: 100 }, ctx)
+        expect(result.metadata.truncated).toBe(true)
+        expect(result.metadata.count).toBeLessThan(40)
+        expect(result.output).toContain("shared budget")
+        expect(result.output).not.toContain("result limit")
+        expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(50 * 1024)
+      },
+    })
+  })
+
   test("path matches cannot consume the entire budget before content evidence", async () => {
     await using tmp = await tmpdir({
       git: true,
@@ -31,6 +51,8 @@ describe("tool.file_search", () => {
         expect(result.output).toContain("[content] implementation.ts")
         expect(result.metadata.truncated).toBe(true)
         expect(result.metadata.count).toBeLessThanOrEqual(3)
+        expect(result.output).toContain("result limit")
+        expect(result.output).not.toContain("shared budget")
       },
     })
   })
