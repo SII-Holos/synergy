@@ -38,6 +38,7 @@ description: Add, modify, or review Synergy capability classification, control p
 6. Run focused suites under `test/control-profile`, `test/enforcement`, `test/permission`, `test/sandbox`, `test/session`, and `test/workspace` as applicable, then typecheck and `bun run quality:quick`.
 7. Use `develop-synergy` for platform or end-to-end shell verification. Never experiment against the runtime carrying the current task.
 8. For packaged Linux or Windows sandboxes, build helpers per supported OS, architecture, and ABI before compiling the runtime. Embed the matching helper digest, fail a Stable build when an asset is missing, preserve the helper through every installer/package layout, and validate the installed artifact rather than only the source build.
+9. For native credential-service compatibility, compare the same operation outside and inside the real sandbox. Exercise the OS service lookup without reading real credentials or changing the user's Keychain/search list; `test/sandbox/keychain-access.test.ts` compiles a port-lookup probe with macOS Command Line Tools. Pair successful service access with denied synthetic credential reads and external writes in every affected filesystem/network mode. Keep service permissions distinct from filesystem permissions.
 
 Update the architecture document when the pipeline, profile semantics, capability contract, workspace boundary, or sandbox guarantee changes. Update `git-guide`, `add-tool`, or `change-plugin-runtime` when their executable workflow depends on the new classification.
 
