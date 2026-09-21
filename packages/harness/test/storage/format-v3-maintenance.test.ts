@@ -33,7 +33,7 @@ test("format 3 waits for deferred vacuum conversion and completes in the mainten
       const ledger = await store.read(StoragePath.metaMigrationLogDomain("storage"))
       expect(ledger).toHaveProperty(StorageIncrementalVacuum.id)
       expect(ledger).toHaveProperty(StorageFormatV3Migration.id)
-      expect(await store.read(["fixture", "record"])).toEqual({ kept: true })
+      expect(await store.read<{ kept: boolean }>(["fixture", "record"])).toEqual({ kept: true })
     })
   } finally {
     await store.close()
