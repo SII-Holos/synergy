@@ -558,6 +558,7 @@ def trial_configuration(
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
         "config": "/benchmark-input/config.json",
+        "bun_jit": variant.get("bun_jit"),
         "experiment": "/benchmark-input/experiment.json" if variant["experiment"] else None,
         "timeout_seconds": timeout,
         "startup_timeout_seconds": plan["config"].get("startup_timeout_seconds", 120),
@@ -608,6 +609,7 @@ def trial_configuration(
                 "settings": {
                     "artifact_id": variant["artifact_id"],
                     "harness": variant.get("harness", "synergy"),
+                    "bun_jit": variant.get("bun_jit"),
                     "env": {"BENCH_GATEWAY_KEY": reference} if gateway else variant["env"],
                     "network_domains": [gateway.advertised] if gateway else variant["network_domains"],
                     "cleanup_seconds": cleanup,

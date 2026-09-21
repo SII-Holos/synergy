@@ -39,8 +39,9 @@ def test_unknown_harness_fails_before_launch():
         harness_configuration("imaginary", model, "http://localhost:1/v1", "/home/fixture")
 
 
+@pytest.mark.parametrize("kind", ["synergy", "opencode"])
 @pytest.mark.parametrize("enabled", [None, False, True])
-def test_opencode_jit_controls_the_native_process_without_changing_model_or_tools(enabled):
+def test_bun_jit_controls_the_native_process_without_changing_model_or_tools(kind, enabled):
     model = ModelProfile(
         model="m",
         protocol="chat-completions",
@@ -49,8 +50,8 @@ def test_opencode_jit_controls_the_native_process_without_changing_model_or_tool
         context_window=32000,
         max_output_tokens=2000,
     )
-    baseline = harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture")
-    actual = harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture", bun_jit=enabled)
+    baseline = harness_configuration(kind, model, "http://localhost:1/v1", "/home/fixture")
+    actual = harness_configuration(kind, model, "http://localhost:1/v1", "/home/fixture", bun_jit=enabled)
     assert actual["files"] == baseline["files"]
     assert actual["argv"] == baseline["argv"]
     if enabled is None:

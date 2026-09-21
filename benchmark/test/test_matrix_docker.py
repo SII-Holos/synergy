@@ -223,10 +223,33 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
 
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 async def test_native_matrix_uses_restricted_egress_and_two_independent_models(tmp_path, monkeypatch, protocol):
+    await run_native_matrix(tmp_path, monkeypatch, protocol)
+
+
+@pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
+async def test_synergy_jitless_long_sessions_preserve_native_tools_and_usage(tmp_path, monkeypatch, protocol):
+    if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
+        pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
+    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True)
+
+
+async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=False):
     create_matrix_suite(tmp_path)
 
     async def provider_with_runtime_evidence(request):
-        return await fixture_provider(request, command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ')
+        body = await request.json()
+        messages = body.get("messages", body.get("input", []))
+        count = sum(
+            message.get("role") == "tool" or message.get("type") == "function_call_output"
+            for message in messages
+            if isinstance(message, dict)
+        )
+        probe = "BENCHMARK_TOOL_" in json.dumps(messages)
+        return await fixture_provider(
+            request,
+            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ',
+            force_tool=count < 120 if long_session and not probe else None,
+        )
 
     app = web.Application()
     app.router.add_post("/v1/chat/completions", provider_with_runtime_evidence)
@@ -247,8 +270,14 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
         }
         for kind in kinds
     }
-    if "opencode" in harnesses:
-        harnesses["opencode-jitless"] = {**harnesses["opencode"], "bun_jit": False}
+    if long_session:
+        harnesses = {
+            "synergy-jitless": {**harnesses["synergy"], "runtime": "full", "agent": "synergy-max", "bun_jit": False}
+        }
+    else:
+        for kind in ["synergy", "opencode"]:
+            if kind in harnesses:
+                harnesses[kind + "-jitless"] = {**harnesses[kind], "bun_jit": False}
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture-key-private")
     profiles = {
         name: {
@@ -256,8 +285,8 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             "protocol": protocol,
             "base_url": f"http://127.0.0.1:{provider.addresses[0][1]}/v1",
             "api_key_env": "BENCH_FIXTURE_KEY",
-            "context_window": 32000,
-            "max_output_tokens": 2048,
+            "context_window": 1000000 if long_session else 32000,
+            "max_output_tokens": 8192 if long_session else 2048,
         }
         for name in ["fixture-one", "fixture-two"]
     }
@@ -266,7 +295,8 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
         "suite": "suite.json",
         "harnesses": harnesses,
         "models": profiles,
-        "concurrency": 4,
+        "concurrency": 1 if long_session else 4,
+        "timeout_seconds": 900 if long_session else None,
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
@@ -300,7 +330,7 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             [sys.executable, "-m", "synergy_bench.cli", "resume", str(root)],
             env=recorded_environment(root, read_json(root / "plan.json")["evaluator"]),
             log=root / "integration-cli.log",
-            deadline=1200,
+            deadline=2400 if long_session else 1200,
         )
         assert code == 0, (root / "integration-cli.log").read_text()[-20000:]
 
@@ -316,10 +346,17 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
                         assert startup_retryable(attempt, result), result
                         continue
                     results.append(result)
-                    if read_json(attempt / "trial.json")["harness"] == "opencode-jitless":
-                        assert read_json(attempt / "inputs/options.json")["native"]["env"]["BUN_JSC_useJIT"] == "0"
+                    harness = read_json(attempt / "trial.json")["harness"]
+                    if harness.endswith("-jitless"):
+                        options = read_json(attempt / "inputs/options.json")
+                        assert options["bun_jit"] is False
+                        if harness == "opencode-jitless":
+                            assert options["native"]["env"]["BUN_JSC_useJIT"] == "0"
                         events = next(attempt.glob("*/agent/events.jsonl")).read_text()
                         assert "BENCH_JIT=0" in events
+                        if long_session:
+                            assert events.count("BENCH_JIT=0") >= 120
+                            assert result["wire_usage"]["attempts"] >= 121
             return results
 
         results = await asyncio.to_thread(retained_results)
