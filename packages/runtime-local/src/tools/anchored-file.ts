@@ -13,6 +13,51 @@ export const MAX_VIEW_LINES = 3000
 export const DEFAULT_VIEW_BYTES = 50 * 1024
 export const MAX_LINE_COLUMNS = 512
 
+// Provenance: https://github.com/earendil-works/pi/blob/890f920884f6d21fc7617d236ef9e1cc5d7a0ef8/packages/coding-agent/src/core/tools/truncate.ts
+// Local adaptation: share a UTF-8/line budget across files and disjoint ranges; never mint partial editable rows.
+export class OutputBudget {
+  bytes = 0
+  lines = 0
+  constructor(
+    readonly maxBytes = DEFAULT_VIEW_BYTES,
+    readonly maxLines = MAX_VIEW_LINES,
+  ) {}
+
+  take(text: string): boolean {
+    const bytes = Buffer.byteLength(text, "utf8") + (this.lines > 0 ? 1 : 0)
+    const lines = text.split("\n").length
+    if (this.bytes + bytes > this.maxBytes || this.lines + lines > this.maxLines) return false
+    this.bytes += bytes
+    this.lines += lines
+    return true
+  }
+}
+
+export function selectDisplayLines(
+  lines: string[],
+  numbers: Iterable<number>,
+  budget: OutputBudget,
+  displayed = new Set<number>(),
+): { output: string; seen: number[]; omitted: number[] } {
+  const rows: string[] = []
+  const seen: number[] = []
+  const omitted: number[] = []
+  let exhausted = false
+  for (const line of numbers) {
+    if (line < 1 || line > lines.length || displayed.has(line)) continue
+    const row = `${line}:${lines[line - 1]}`
+    if (exhausted || !budget.take(row)) {
+      exhausted = true
+      omitted.push(line)
+      continue
+    }
+    displayed.add(line)
+    seen.push(line)
+    rows.push(row)
+  }
+  return { output: rows.join("\n"), seen, omitted }
+}
+
 export function resolveFilePath(filePath: string): string {
   return path.isAbsolute(filePath) ? filePath : path.join(ScopeContext.current.directory, filePath)
 }
@@ -154,6 +199,5 @@ export function diffStats(diff: string): { additions: number; deletions: number 
  * not from the old parallel SeenStore.
  */
 export function recordSeenSessionLines(sessionID: string, filePath: string, lines: number[], tag: string): void {
-  if (lines.length === 0) return
   SessionHashlineStore.get(sessionID).recordSeenLines(filePath, tag, lines)
 }

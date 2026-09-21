@@ -224,7 +224,7 @@ describe("tool.view_file", () => {
       })
     })
 
-    test("enforces minimum line limit of 120 when limit is set explicitly", async () => {
+    test("honors an explicit limit without widening the requested region", async () => {
       const content = "line01\nline02\nline03\nline04\nline05\n"
       await using tmp = await tmpdir({
         git: true,
@@ -249,7 +249,8 @@ describe("tool.view_file", () => {
           expect(result.output).toContain("4:line04")
           expect(result.output).not.toContain("1:line01")
           expect(result.metadata.offset).toBe(2)
-          expect(result.metadata.limit).toBe(120)
+          expect(result.metadata.limit).toBe(2)
+          expect(result.output).not.toContain("5:line05")
           expect(result.metadata.totalLines).toBe(5)
         },
       })

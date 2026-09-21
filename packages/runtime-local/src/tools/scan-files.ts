@@ -6,8 +6,9 @@ import { conflictWarning, detectConflicts } from "../conflict/detect"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import {
   displayPath,
-  formatRecordedBlock,
-  formatSelectedLines,
+  recordHashlineSnapshot,
+  OutputBudget,
+  selectDisplayLines,
   markFileRead,
   readTextFileUnderSnapshotCap,
   resolveFilePath,
@@ -93,6 +94,12 @@ export const ScanFilesTool = Tool.define("scan_files", {
     globs: z.array(z.string()).optional().describe("Additional include/exclude globs; prefix exclusions with !"),
     limitFiles: z.number().int().min(1).optional().describe("Maximum matched files to return; defaults to 20"),
     perFileLimit: z.number().int().min(1).optional().describe("Maximum matched lines per file; defaults to 20"),
+    context: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Context lines on each side of a match; defaults to 0 and shares the output budget"),
     skipFiles: z.number().int().min(0).optional().describe("Matched files to skip for pagination"),
     timeoutSeconds: z.number().int().min(1).optional().describe("Search timeout in seconds; defaults to 10"),
     outputMode: z
@@ -191,6 +198,8 @@ export const ScanFilesTool = Tool.define("scan_files", {
     const limitReached = hasNextFile || truncatedReason !== undefined
     const nextSkipFiles = hasNextFile && selectedEntries.length ? skipFiles + selectedEntries.length : undefined
 
+    const budget = new OutputBudget()
+    let budgetLimited = false
     const blocks: string[] = []
     const files: string[] = []
     const matchLines: Record<string, number[]> = {}
@@ -211,20 +220,34 @@ export const ScanFilesTool = Tool.define("scan_files", {
       }
 
       const contentLines = splitDisplayLines(smallContent)
-      const { tag } = formatRecordedBlock(ctx.sessionID, filePath, smallContent)
+      const tag = recordHashlineSnapshot(ctx.sessionID, filePath, smallContent)
       markFileRead(ctx.sessionID, filePath)
       const conflict = detectConflicts(smallContent)
       const warning = conflictWarning(conflict)
       const lines = lineWindow(entry.lines)
       const header = `Matches in [${pathLabel}#${tag}]: ${lines.join(", ")}`
-      const body =
+      const context = Math.min(params.context ?? 0, contentLines.length)
+      const selectedNumbers =
         outputMode === "files"
-          ? formatRecordedBlock(ctx.sessionID, filePath, smallContent).output
-          : `${header}\n${formatSelectedLines(contentLines, lines).output}`
-      blocks.push(`${warning ? `${warning}\n` : ""}${outputMode === "files" ? body : body}`)
+          ? contentLines.map((_, index) => index + 1)
+          : lineWindow(
+              lines.flatMap((line) =>
+                Array.from(
+                  { length: Math.min(contentLines.length, line + context) - Math.max(1, line - context) + 1 },
+                  (_, i) => Math.max(1, line - context) + i,
+                ),
+              ),
+            )
+      const selected = selectDisplayLines(contentLines, selectedNumbers, budget)
+      budgetLimited ||= selected.omitted.length > 0
+      const title = outputMode === "files" ? `[${pathLabel}#${tag}]` : header
+      const continuation = selected.omitted.length
+        ? `\n[Code budget reached. Use view_file with filePath=${JSON.stringify(filePath)}, offset=${selected.omitted[0] - 1} to inspect the omitted region.]`
+        : ""
+      blocks.push(`${warning ? `${warning}\n` : ""}${title}\n${selected.output}${continuation}`)
       files.push(pathLabel)
       matchLines[pathLabel] = lines
-      recordSeenSessionLines(ctx.sessionID, filePath, lines, tag)
+      recordSeenSessionLines(ctx.sessionID, filePath, selected.seen, tag)
       tags[pathLabel] = tag
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
@@ -247,7 +270,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
         matchLines,
         tags,
         conflicts,
-        truncated: limitReached || oversizedFiles.length > 0,
+        truncated: limitReached || budgetLimited || oversizedFiles.length > 0,
         limitReached,
         nextSkipFiles,
         totalFiles: fileIndexes.size,
