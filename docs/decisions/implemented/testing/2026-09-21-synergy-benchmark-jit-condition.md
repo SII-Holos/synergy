@@ -18,7 +18,7 @@ Changing the option creates a separate experimental condition. Retain original f
 
 **Change the prepared product bundle.** The evaluator can set the environment before Bun starts, preserving immutable product artifacts and their provenance. Modifying product source solely for evaluation is unnecessary.
 
-**Accept short preflight success.** Short tool roundtrips do not exercise the native execution length where stalls appeared. Deterministic native controls must retain at least 120 tool roundtrips, effective tool subprocess settings, terminal execution, native grading and complete usage for two models over both supported protocols.
+**Accept short preflight success.** Short tool roundtrips do not exercise the native execution length where stalls appeared. Deterministic native controls must retain at least 120 tool roundtrips, effective wrapper and CLI process settings, terminal execution, native grading and complete usage for two models over both supported protocols.
 
 ## Consequences
 

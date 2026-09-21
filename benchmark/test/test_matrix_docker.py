@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import uuid
@@ -227,14 +228,33 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
 
 
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
-async def test_synergy_jitless_long_sessions_preserve_native_tools_and_usage(tmp_path, monkeypatch, protocol):
+@pytest.mark.parametrize("tool_turns", [1, 120], ids=["short", "long"])
+async def test_synergy_jitless_long_sessions_preserve_native_tools_and_usage(
+    tmp_path, monkeypatch, protocol, tool_turns
+):
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
-    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True)
+    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True, tool_turns=tool_turns)
 
 
-async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=False):
+async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=False, tool_turns=120):
     create_matrix_suite(tmp_path)
+
+    native_probe = shlex.join(
+        [
+            "python3",
+            "-c",
+            "from pathlib import Path; "
+            "pid=Path('/logs/agent/runner.pid').read_text().strip(); "
+            "root=Path('/proc')/pid; "
+            "synergy=b'/opt/synergy/runtime/trial.ts' in (root/'cmdline').read_bytes().split(bytes([0])); "
+            "children=(root/'task'/pid/'children').read_text().split(); "
+            "processes=[('WRAPPER',pid),*[('CLI',child) for child in children]] if synergy else []; "
+            "[(print('BENCH_SYNERGY_'+kind+'_'+value.decode())) for kind,child in processes "
+            "for value in (Path('/proc')/child/'environ').read_bytes().split(bytes([0])) "
+            "if value.startswith(b'BUN_JSC_useJIT=')]",
+        ]
+    )
 
     async def provider_with_runtime_evidence(request):
         body = await request.json()
@@ -247,8 +267,8 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         probe = "BENCHMARK_TOOL_" in json.dumps(messages)
         return await fixture_provider(
             request,
-            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ',
-            force_tool=count < 120 if long_session and not probe else None,
+            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ' + native_probe + "; ",
+            force_tool=count < tool_turns if long_session and not probe else None,
         )
 
     app = web.Application()
@@ -353,10 +373,20 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
                         if harness == "opencode-jitless":
                             assert options["native"]["env"]["BUN_JSC_useJIT"] == "0"
                         events = next(attempt.glob("*/agent/events.jsonl")).read_text()
-                        assert "BENCH_JIT=0" in events
+                        if harness == "synergy-jitless":
+                            assert "BENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT=0" in events
+                            assert "BENCH_SYNERGY_CLI_BUN_JSC_useJIT=0" in events
+                        else:
+                            assert "BENCH_JIT=0" in events
                         if long_session:
-                            assert events.count("BENCH_JIT=0") >= 120
-                            assert result["wire_usage"]["attempts"] >= 121
+                            records = [json.loads(line) for line in events.splitlines()]
+                            completed = {
+                                event["part"]["callID"]
+                                for event in records
+                                if event.get("type") == "tool_use" and event["part"]["state"]["status"] == "completed"
+                            }
+                            assert len(completed) >= tool_turns
+                            assert result["wire_usage"]["attempts"] >= tool_turns + 1
             return results
 
         results = await asyncio.to_thread(retained_results)
