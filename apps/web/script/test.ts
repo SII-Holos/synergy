@@ -37,6 +37,7 @@ const playwrightIsolated = [
   "test/components/prompt-input/stop-control.render.test.ts",
   "test/components/settings/components/ThemePicker.behavior.test.tsx",
   "test/components/settings/settings-dialog-dismiss.test.tsx",
+  "test/components/settings/storage-maintenance.test.ts",
   "test/components/settings/settings-mobile-layout.test.ts",
   "test/components/settings/panels/BossModePanel.test.ts",
   "test/components/settings/panels/VoicePanel.test.ts",

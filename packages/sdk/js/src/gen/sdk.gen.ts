@@ -687,8 +687,13 @@ import type {
   SkillRemoveResponses,
   StorageControlUpgradeErrors,
   StorageControlUpgradeResponses,
+  StorageMaintenanceStatusErrors,
+  StorageMaintenanceStatusResponses,
   StoragePrepareSessionErrors,
   StoragePrepareSessionResponses,
+  StorageReclaimControlErrors,
+  StorageReclaimControlInput,
+  StorageReclaimControlResponses,
   StorageRetrySessionErrors,
   StorageRetrySessionResponses,
   StorageSnapshotCleanErrors,
@@ -4529,6 +4534,43 @@ export class Snapshot extends HeyApiClient {
 }
 
 export class Storage extends HeyApiClient {
+  /**
+   * Get storage format and reclamation status
+   */
+  public maintenanceStatus<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageMaintenanceStatusResponses,
+      StorageMaintenanceStatusErrors,
+      ThrowOnError
+    >({ url: "/global/storage/maintenance", ...options })
+  }
+
+  /**
+   * Pause or resume background storage reclamation
+   */
+  public reclaimControl<ThrowOnError extends boolean = false>(
+    parameters?: {
+      storageReclaimControlInput?: StorageReclaimControlInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageReclaimControlInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageReclaimControlResponses,
+      StorageReclaimControlErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/reclaim/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Get historical data upgrade progress
    *

@@ -7,8 +7,26 @@ import { StorageDropScopeIndex } from "./drop-scope-index"
 import { StorageRecordsOwnerIndex } from "./owner-index"
 import { StorageFormatV3Migration } from "./format-v3-migration"
 import { StorageIncrementalVacuum } from "./incremental-vacuum"
+import { StorageFormatV3State } from "./format-v3-state"
 
 const migrations: Migration[] = [
+  {
+    id: "20260921-format-v3-maintenance-state",
+    scope: "global",
+    execution: "startup",
+    description: "Separate committed format upgrades from resumable space reclamation",
+    async up() {
+      const store = Storage.current().store
+      const state = await StorageFormatV3State.read(store)
+      if (!state) return
+      await StorageFormatV3State.update(store, (current) => ({
+        ...current,
+        paused: current.paused ?? false,
+        releasedPages: current.releasedPages ?? 0,
+        invalidated: current.invalidated || (!current.fenced && store.keyEncodedAs === "hex"),
+      }))
+    },
+  },
   {
     id: "20260921-pending-owner-admission",
     scope: "global",
@@ -49,7 +67,7 @@ const migrations: Migration[] = [
     scope: "global",
     id: StorageIncrementalVacuum.id,
     execution: "maintenance",
-    startupSafe: () => Storage.current().store.incrementalVacuumEnabled(),
+    isApplied: () => Storage.current().store.incrementalVacuumEnabled(),
     description: "Convert authoritative SQLite storage to incremental auto-vacuum",
     domain: "storage",
     async up(progress) {
@@ -87,7 +105,7 @@ const migrations: Migration[] = [
     scope: "global",
     execution: "maintenance",
     dependsOn: [StorageIncrementalVacuum.id],
-    startupSafe: () => Storage.current().store.incrementalVacuumEnabled(),
+    isApplied: () => StorageFormatV3Migration.isApplied(Storage.current().store),
     description: "Rewrite records, nodes and artifact locators into the format 3 layout",
     domain: "storage",
     async up(progress) {

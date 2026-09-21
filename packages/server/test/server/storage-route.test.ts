@@ -94,6 +94,55 @@ interface CompactBatch {
 }
 
 describe("GlobalStorageRoute", () => {
+  test("pause and resume persist independently of database readiness", async () => {
+    const store = Storage.current().store
+    await store.maintainDdlTransaction([
+      {
+        statement:
+          "CREATE TABLE IF NOT EXISTS storage_format_v3_state(namespace TEXT PRIMARY KEY, state TEXT NOT NULL)",
+      },
+    ])
+    await store.transaction((tx) =>
+      tx.raw.query("INSERT INTO storage_format_v3_state(namespace, state) VALUES (?, ?)", [
+        store.options.namespace,
+        JSON.stringify({ version: 3, phase: "reclaim", recordsCursor: "", nodesCursor: "", artifactsCursor: "" }),
+      ]),
+    )
+    try {
+      for (const action of ["pause", "resume"] as const) {
+        const response = await app().request("/global/storage/reclaim/control", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({
+          format: { current: 3, maintenanceRequired: false },
+          reclaim: { pending: true, paused: action === "pause" },
+        })
+        const read = await app().request("/global/storage/maintenance")
+        expect(await read.json()).toMatchObject({ reclaim: { pending: true, paused: action === "pause" } })
+      }
+    } finally {
+      await store.transaction((tx) =>
+        tx.raw.query("DELETE FROM storage_format_v3_state WHERE namespace = ?", [store.options.namespace]),
+      )
+    }
+  })
+  test("maintenance status is independent of historical preparation and rejects invalid reclaim controls", async () => {
+    const response = await app().request("/global/storage/maintenance")
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      format: { current: 3, target: 3, maintenanceRequired: false },
+      reclaim: { pending: false, running: false },
+    })
+    const invalid = await app().request("/global/storage/reclaim/control", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "rewrite" }),
+    })
+    expect(invalid.status).toBe(400)
+  })
   test("GET snapshot reports the per-scope usage shape", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

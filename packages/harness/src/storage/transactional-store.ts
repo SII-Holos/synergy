@@ -1441,12 +1441,14 @@ export class TransactionalStore {
   async maintainDdlTransaction(
     statements: Array<{ statement: string; values?: SqlValue[] }>,
     operation?: Extract<StorageMaintenanceOperation, "create-index" | "drop-index">,
+    validate?: (connection: SqlConnection) => Promise<void>,
   ): Promise<void> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     if (!statements.length) return
     await this.writes.run(() =>
       this.driver.transaction(async (connection) => {
+        await validate?.(connection)
         for (const { statement, values } of statements)
           await connection.query(statement, values ?? [], operation ? { maintenance: operation } : undefined)
       }),

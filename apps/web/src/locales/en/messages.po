@@ -19066,6 +19066,58 @@ msgid "settings.storage.compact.title"
 msgstr "Pack shared storage"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.format.external"
+msgstr "On the server host, stop Synergy, run the command below, then restart the server."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.failed"
+msgstr "Could not load database status. Try refreshing."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.loading"
+msgstr "Checking database status…"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.pending"
+msgstr "Storage optimization available"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.progress"
+msgstr "Step {step}: {current} processed. You can return to Synergy and continue later."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.ready"
+msgstr "Saved data is ready"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.resume"
+msgstr "Continue optimization"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.return"
+msgstr "Return to Synergy"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.running"
+msgstr "Optimizing saved data…"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.start"
+msgstr "Optimize storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.description"
+msgstr "You can keep using Synergy. Optimize storage when convenient; large databases may take a while."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.title"
+msgstr "Database maintenance"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.stopping"
+msgstr "Saving progress and returning…"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
 msgstr "inspect and check run through the CLI (synergy data snapshots). migrate and compact can also run here, each with a dry run first; clean reclaims legacy directories that no session owns."
 
@@ -19124,6 +19176,38 @@ msgstr "Inspect file snapshot storage usage per project scope."
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
 msgstr "Storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.control.failed"
+msgstr "Space reclamation control failed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.pause"
+msgstr "Pause"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.resume"
+msgstr "Resume"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.done"
+msgstr "No space reclamation pending"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.pending"
+msgstr "Waiting until Synergy is idle"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.running"
+msgstr "Running in the background"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.title"
+msgstr "Space reclamation"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.refresh"

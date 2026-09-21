@@ -17,6 +17,15 @@ test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
         external: ["electron"],
       })
       if (!build.success) throw new AggregateError(build.logs, "Startup fixture build failed")
+      const preload = await Bun.build({
+        entrypoints: [path.resolve(import.meta.dir, "fixture/recovery-preload.ts")],
+        outdir: directory,
+        naming: "recovery-preload.cjs",
+        target: "node",
+        format: "cjs",
+        external: ["electron"],
+      })
+      if (!preload.success) throw new AggregateError(preload.logs, "Recovery preload build failed")
       const electron: unknown = process.env.SYNERGY_DESKTOP_ELECTRON_BIN ?? createRequire(import.meta.url)("electron")
       if (typeof electron !== "string") throw new Error("Electron executable path is unavailable")
       const launched = Bun.spawn(

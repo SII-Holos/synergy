@@ -19066,6 +19066,58 @@ msgid "settings.storage.compact.title"
 msgstr "打包共享存储"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.format.external"
+msgstr "在服务器所在的电脑上停止 Synergy，运行以下命令，然后重新启动服务器。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.failed"
+msgstr "无法加载数据库状态，请刷新重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.loading"
+msgstr "正在检查数据库状态…"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.pending"
+msgstr "可以优化存储空间"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.progress"
+msgstr "第 {step} 步：已处理 {current} 项。你可以返回 Synergy，稍后继续。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.ready"
+msgstr "已保存的数据可以使用"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.resume"
+msgstr "继续优化"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.return"
+msgstr "返回 Synergy"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.running"
+msgstr "正在优化已保存的数据…"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.start"
+msgstr "优化存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.description"
+msgstr "你可以继续使用 Synergy，在方便时再优化存储。大型数据库可能需要较长时间。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.title"
+msgstr "数据库维护"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.stopping"
+msgstr "正在保存进度并返回…"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
 msgstr "inspect 与 check 通过 CLI（synergy data snapshots）执行。migrate 与 compact 也可在此运行，均先展示预演结果；clean 回收无会话拥有的旧版目录。"
 
@@ -19124,6 +19176,38 @@ msgstr "按项目范围查看文件快照存储占用。"
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
 msgstr "存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.control.failed"
+msgstr "空间回收控制失败"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.pause"
+msgstr "暂停"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.resume"
+msgstr "继续"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.done"
+msgstr "没有待回收的空间"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.pending"
+msgstr "等待 Synergy 空闲后回收"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.running"
+msgstr "正在后台运行"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.title"
+msgstr "空间回收"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.refresh"

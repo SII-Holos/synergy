@@ -15,6 +15,12 @@ import { ObservabilitySchema } from "./schema"
 import { ObservabilityStore } from "./store"
 import { parseJson } from "../util/json-parse"
 import { readFileWithRetry } from "../util/io-retry"
+import {
+  RuntimeStartupProgress,
+  RUNTIME_STARTUP_PREFIX,
+  RUNTIME_STARTUP_MAX_LINE_LENGTH,
+} from "@ericsanchezok/synergy-util/runtime-startup"
+import { Installation } from "../global/installation"
 
 export namespace Diagnostics {
   export type Summary = ObservabilitySchema.DiagnosticsSummary
@@ -23,6 +29,52 @@ export namespace Diagnostics {
     sessionID?: string
     sinceMs?: number
     output?: string
+  }
+
+  export async function createStartupPackage(options: Pick<PackageOptions, "output"> = {}) {
+    const output = path.resolve(options.output ?? path.join(process.cwd(), `synergy-startup-${timestamp()}.tar.gz`))
+    const root = await fs.mkdtemp(path.join(tmpdir(), "synergy-startup-diagnostics-"))
+    try {
+      await fs.mkdir(path.join(root, "logs"))
+      const files = [
+        process.env.SYNERGY_DESKTOP_STARTUP_LOG ?? "",
+        Log.file(),
+        Log.devFile(),
+        DaemonPaths.logFile(),
+        ...(await Log.listDevArchives().catch(() => [])).slice(-2),
+      ]
+      for (const file of unique(files.filter(Boolean)))
+        await copyLogSummary(file, path.join(root, "logs", path.basename(file))).catch(async () => {
+          await fs.writeFile(
+            path.join(root, "logs", `${path.basename(file)}.unavailable`),
+            "This log could not be read.\n",
+          )
+        })
+      await copyLockSummary(ServerProcessLock.path(), path.join(root, "runtime-lock.json")).catch(() => {})
+      await Bun.write(
+        path.join(root, "startup.json"),
+        JSON.stringify(
+          {
+            generatedAt: new Date().toISOString(),
+            version: Installation.VERSION,
+            platform: process.platform,
+            architecture: process.arch,
+            storage: { inspected: false, reason: "Startup diagnostics does not open the database" },
+            telemetry: { inspected: false, reason: "Startup diagnostics contains bounded redacted log summaries only" },
+          },
+          null,
+          2,
+        ),
+      )
+      await fs.mkdir(path.dirname(output), { recursive: true })
+      const child = Bun.spawn(["tar", "-czf", output, "-C", root, "."], { stdout: "pipe", stderr: "pipe" })
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      if (code !== 0) throw new Error(`Could not create startup diagnostics: ${stderr}`)
+      await fs.chmod(output, 0o600)
+      return { output }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
   }
 
   export async function summary(input: { freshPendingSessions?: boolean } = {}): Promise<Summary> {
@@ -301,7 +353,16 @@ export namespace Diagnostics {
     const stat = await fs.stat(src).catch(() => undefined)
     if (!stat) return
     if (!stat.isFile()) return
-    const text = await fs.readFile(src, "utf8").catch(() => "")
+    const file = await fs.open(src, "r")
+    let text: string
+    try {
+      const buffer = Buffer.alloc(Math.min(stat.size, 256 * 1024))
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, Math.max(0, stat.size - buffer.length))
+      text = buffer.subarray(0, bytesRead).toString("utf8")
+      if (stat.size > buffer.length) text = text.slice(text.indexOf("\n") + 1)
+    } finally {
+      await file.close()
+    }
     const lines = text.split(/\r?\n/).filter(Boolean)
     const recent = lines.slice(-200).map(summarizeLogLine)
     await fs.writeFile(
@@ -310,7 +371,7 @@ export namespace Diagnostics {
         `# redacted log summary`,
         `source=${path.basename(src)}`,
         `bytes=${stat.size}`,
-        `lines=${lines.length}`,
+        `tailLines=${lines.length}`,
         ...recent,
       ].join("\n") + "\n",
     )
@@ -340,6 +401,12 @@ export namespace Diagnostics {
   }
 
   function summarizeLogLine(line: string) {
+    if (line.startsWith(RUNTIME_STARTUP_PREFIX) && line.length <= RUNTIME_STARTUP_MAX_LINE_LENGTH) {
+      try {
+        const progress = RuntimeStartupProgress.safeParse(JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length)))
+        if (progress.success) return RUNTIME_STARTUP_PREFIX + JSON.stringify(progress.data)
+      } catch {}
+    }
     const match = line.match(/^(DEBUG|INFO|WARN|ERROR)\s+(\S+)\s+\+\d+ms\s+([\s\S]*)$/)
     if (!match) return `[redacted-log-line] chars=${line.length}`
     const service = match[3]?.match(/\bservice=([^\s]+)/)?.[1]

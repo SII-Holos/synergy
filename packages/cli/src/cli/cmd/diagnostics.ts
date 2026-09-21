@@ -7,6 +7,11 @@ export const DiagnosticsCommand = cmd({
   describe: "create a local diagnostics package",
   builder: (yargs) =>
     yargs
+      .option("startup", {
+        type: "boolean",
+        default: false,
+        describe: "create bounded startup diagnostics without opening any database",
+      })
       .option("session", {
         type: "string",
         describe: "include indexed observability events for a specific session",
@@ -21,6 +26,11 @@ export const DiagnosticsCommand = cmd({
         describe: "path for the generated .tar.gz package",
       }),
   handler: async (args) => {
+    if (args.startup) {
+      const result = await Diagnostics.createStartupPackage({ output: args.output })
+      UI.println(`Diagnostics package: ${result.output}`)
+      return
+    }
     const sinceMs = args.since ? parseDuration(args.since) : undefined
     if (args.since && sinceMs === undefined) {
       UI.error(`Invalid --since duration: ${args.since}`)

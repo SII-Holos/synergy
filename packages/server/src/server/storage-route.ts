@@ -6,6 +6,7 @@ import { SnapshotLease } from "@ericsanchezok/synergy-harness/session/snapshot-l
 import { SnapshotLifecycle } from "@ericsanchezok/synergy-harness/session/snapshot-lifecycle"
 import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-store"
 import { SessionCompat } from "@ericsanchezok/synergy-harness/persistence"
+import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 
 const StorageUpgradeStatus = z
   .object({
@@ -185,7 +186,43 @@ const StorageSnapshotCompactBatch = z
   })
   .meta({ ref: "StorageSnapshotCompactBatch" })
 
+const StorageMaintenanceStatus = StorageMaintenance.Status
+
+const StorageReclaimControlInput = z
+  .object({ action: z.enum(["pause", "resume"]) })
+  .strict()
+  .meta({ ref: "StorageReclaimControlInput" })
+
 export const GlobalStorageRoute = new Hono()
+  .get(
+    "/maintenance",
+    describeRoute({
+      summary: "Get storage format and reclamation status",
+      operationId: "storage.maintenanceStatus",
+      responses: {
+        200: {
+          description: "Current storage maintenance status",
+          content: { "application/json": { schema: resolver(StorageMaintenanceStatus) } },
+        },
+      },
+    }),
+    async (c) => c.json(await StorageMaintenance.status()),
+  )
+  .post(
+    "/reclaim/control",
+    describeRoute({
+      summary: "Pause or resume background storage reclamation",
+      operationId: "storage.reclaimControl",
+      responses: {
+        200: {
+          description: "Updated storage maintenance status",
+          content: { "application/json": { schema: resolver(StorageMaintenanceStatus) } },
+        },
+      },
+    }),
+    validator("json", StorageReclaimControlInput),
+    async (c) => c.json(await StorageMaintenance.controlReclaim(c.req.valid("json").action)),
+  )
   .get(
     "/upgrade",
     describeRoute({

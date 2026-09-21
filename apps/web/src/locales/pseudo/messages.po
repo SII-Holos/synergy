@@ -19066,6 +19066,58 @@ msgid "settings.storage.compact.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.storage.format.external"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.resume"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.return"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.stopping"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
 msgstr ""
 
@@ -19123,6 +19175,38 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.control.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.pause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.resume"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.title"
 msgstr ""
 
 #. js-lingui-explicit-id

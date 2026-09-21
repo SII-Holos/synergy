@@ -1125,6 +1125,28 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageMaintenanceStatus = {
+  format: {
+    current: number
+    target: number
+    maintenanceRequired: boolean
+    phase?: "records" | "nodes" | "artifacts" | "swap" | "reclaim" | "complete"
+    restartRequired: boolean
+  }
+  reclaim: {
+    pending: boolean
+    running: boolean
+    paused: boolean
+    remainingPages?: number
+    releasedPages: number
+    error?: string
+  }
+}
+
+export type StorageReclaimControlInput = {
+  action: "pause" | "resume"
+}
+
 export type StorageUpgradeStatus = {
   ready: true
   historyReady: boolean
@@ -11636,6 +11658,57 @@ export type PerformanceEventsStreamResponses = {
    */
   200: unknown
 }
+
+export type StorageMaintenanceStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/maintenance"
+}
+
+export type StorageMaintenanceStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageMaintenanceStatusError = StorageMaintenanceStatusErrors[keyof StorageMaintenanceStatusErrors]
+
+export type StorageMaintenanceStatusResponses = {
+  /**
+   * Current storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageMaintenanceStatusResponse =
+  StorageMaintenanceStatusResponses[keyof StorageMaintenanceStatusResponses]
+
+export type StorageReclaimControlData = {
+  body?: StorageReclaimControlInput
+  path?: never
+  query?: never
+  url: "/global/storage/reclaim/control"
+}
+
+export type StorageReclaimControlErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageReclaimControlError = StorageReclaimControlErrors[keyof StorageReclaimControlErrors]
+
+export type StorageReclaimControlResponses = {
+  /**
+   * Updated storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageReclaimControlResponse = StorageReclaimControlResponses[keyof StorageReclaimControlResponses]
 
 export type StorageUpgradeStatusData = {
   body?: never

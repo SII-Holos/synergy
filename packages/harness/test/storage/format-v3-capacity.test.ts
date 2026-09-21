@@ -181,24 +181,44 @@ test("a volume that cannot hold the second copy fails with the actual shortfall"
 
 test("a run resumed past the copy phases is not refused for headroom it already paid", async () => {
   const { store } = await open("resumed")
-  // Interrupt as the reclaim begins, which is the state a crash after the swap
-  // leaves: both copies are built and the swap has committed.
-  let interrupted = false
-  await expect(
-    StorageFormatV3Migration.run({
-      store,
-      progress: (_current, _total, phase) => {
-        if (!interrupted && phase === 5) {
-          interrupted = true
-          throw new Error("interrupt-in-reclaim")
-        }
-      },
-    }),
-  ).rejects.toThrow("interrupt-in-reclaim")
+  await StorageFormatV3Migration.run({ store })
 
   using _disk = spyOn(fs, "statfs").mockImplementation((async () => {
     throw new Error("the preflight must not consult the volume once the copies are built")
   }) as unknown as typeof fs.statfs)
+  await StorageFormatV3Migration.run({ store })
+  expect((await store.verify()).issues).toEqual([])
+})
+
+test("resumed node derivation discounts the durable nodes already staged", async () => {
+  const { store } = await open("node-cursor")
+  const interrupt = async (after: number) =>
+    expect(
+      StorageFormatV3Migration.run({
+        store,
+        progress: (current, _total, phase) => {
+          if (phase === 2 && current >= after) throw new Error("interrupt nodes")
+        },
+      }),
+    ).rejects.toThrow("interrupt nodes")
+  const required = async () => {
+    using _disk = spyOn(fs, "statfs").mockImplementation((async () => ({
+      bavail: 0n,
+      bsize: 4096n,
+    })) as unknown as typeof fs.statfs)
+    const error = await StorageFormatV3Migration.run({ store }).then(
+      () => undefined,
+      (error: unknown) => error as Error,
+    )
+    const match = /needs (\d+) bytes/.exec(error?.message ?? "")
+    expect(match).not.toBeNull()
+    return Number(match![1])
+  }
+  await interrupt(0)
+  const before = await required()
+  await interrupt(768)
+  const after = await required()
+  expect(after).toBeLessThan(before)
   await StorageFormatV3Migration.run({ store })
   expect((await store.verify()).issues).toEqual([])
 })

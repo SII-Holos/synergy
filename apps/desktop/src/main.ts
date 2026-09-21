@@ -54,6 +54,7 @@ import { selectDirectoryWithNativeDialog } from "./directory-picker.js"
 import { installAppMenu } from "./menu.js"
 import { DesktopRendererDelivery } from "./main-renderer-delivery.js"
 import { DesktopServerManager } from "./server-manager.js"
+import { DesktopServerActions, trustedServerFrame } from "./server-ipc.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopStartupOverlay } from "./startup-overlay.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
@@ -122,6 +123,10 @@ let serverManager: DesktopServerManager | null = null
 let updater: DesktopUpdater | null = null
 let desktopTray: Tray | null = null
 let currentAppURL: string | null = null
+let recoveryURL: string | null = null
+let serverDocumentGeneration = 0
+let cancellingMaintenance = false
+const serverActions = new DesktopServerActions()
 let shouldStart = true
 let isQuitting = false
 let isUpdateQuit = false
@@ -296,6 +301,9 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions)
+  mainWindow.webContents.on("did-start-navigation", (event) => {
+    if (event.isMainFrame && !event.isSameDocument) serverDocumentGeneration++
+  })
   applyDesktopZoom()
   mainWindow.webContents.on("did-finish-load", () => applyDesktopZoom())
   applyDesktopUnreadState()
@@ -572,7 +580,8 @@ async function resolveAppURL(): Promise<string> {
   } catch (error) {
     currentAppURL = null
     const details = error instanceof Error ? error.stack || error.message : String(error)
-    return desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot())
+    recoveryURL = desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot())
+    return recoveryURL
   }
 }
 
@@ -753,17 +762,79 @@ function registerIpcHandlers() {
     }
   })
 
-  ipcMain.handle("desktop.server.status", () => serverManager?.status() ?? null)
-  ipcMain.handle("desktop.server.restart", async () => {
+  const trustedServerSender = (event: Electron.IpcMainInvokeEvent) => {
+    if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, recoveryURL))
+      throw new Error("Desktop server IPC sender is not trusted")
+  }
+  const reloadManagedServer = (action: "restart" | "maintenance") =>
+    serverActions.run(action, async () => {
+      if (!serverManager) throw new Error("Desktop server manager is not initialized")
+      const window = mainWindow
+      const generation = serverDocumentGeneration
+      try {
+        const url = await (action === "maintenance"
+          ? serverManager.runMaintenance()
+          : serverManager.status().mode === "external"
+            ? serverManager.start()
+            : serverManager.restart())
+        currentAppURL = url
+        recoveryURL = null
+        await syncLocalBrowserBroker(true)
+        await syncLocalComputerBroker(true)
+        if (window && !window.isDestroyed() && mainWindow === window && serverDocumentGeneration === generation)
+          await window.loadURL(url)
+        return serverManager.status()
+      } catch (error) {
+        if (
+          !cancellingMaintenance &&
+          serverManager.status().state === "failed" &&
+          window &&
+          !window.isDestroyed() &&
+          mainWindow === window &&
+          serverDocumentGeneration === generation
+        ) {
+          currentAppURL = null
+          recoveryURL = desktopErrorPage(
+            "Synergy needs attention",
+            error instanceof Error ? error.message : String(error),
+            getDesktopThemeSnapshot(),
+          )
+          await window.loadURL(recoveryURL)
+        }
+        throw error
+      }
+    })
+  ipcMain.handle("desktop.server.status", (event) => {
+    trustedServerSender(event)
+    return serverManager?.status() ?? null
+  })
+  ipcMain.handle("desktop.server.restart", (event) => {
+    trustedServerSender(event)
+    return reloadManagedServer("restart")
+  })
+  ipcMain.handle("desktop.server.maintenance", (event) => {
+    trustedServerSender(event)
+    return reloadManagedServer("maintenance")
+  })
+  ipcMain.handle("desktop.server.cancelMaintenance", async (event) => {
+    trustedServerSender(event)
     if (!serverManager) throw new Error("Desktop server manager is not initialized")
-    await stopLocalBrowserBroker()
-    await stopLocalComputerBroker()
-    const url = await serverManager.restart()
-    currentAppURL = url
-    await syncLocalBrowserBroker(true)
-    await syncLocalComputerBroker(true)
-    await mainWindow?.loadURL(url)
-    return serverManager.status()
+    if (cancellingMaintenance) throw new Error("Storage maintenance is stopping")
+    cancellingMaintenance = true
+    try {
+      await serverManager.cancelMaintenance()
+      await serverActions.settle()
+      return await reloadManagedServer("restart")
+    } finally {
+      cancellingMaintenance = false
+    }
+  })
+  ipcMain.handle("desktop.server.diagnostics", async (event) => {
+    trustedServerSender(event)
+    if (!serverManager) throw new Error("Desktop server manager is not initialized")
+    const output = await serverManager.createDiagnostics()
+    shell.showItemInFolder(output)
+    return output
   })
   ipcMain.handle("desktop.update.status", () => updater?.getStatus() ?? null)
   ipcMain.handle("desktop.update.setMode", (_event, input: unknown) => {

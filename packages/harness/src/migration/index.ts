@@ -8,6 +8,7 @@ import { progressBar, stageWrite, disableWrap, enableWrap, PROGRESS_INTERVAL } f
 import { Installation } from "../global/installation"
 import { SessionCompat } from "../session/compat-import"
 import { setActiveMigrationContext } from "./context"
+import { UpgradeWork } from "../storage/upgrade-work"
 // Side-effect imports: register harness-core domain migrations in
 // MigrationRegistry. Product-domain migrations register through the L4
 // product manifest (src/product-registration.ts) loaded by real entry points.
@@ -182,7 +183,11 @@ export function resetMigrations(): void {
 }
 
 export function runMigrations(options?: RunOptions): Promise<MigrationSummary> {
-  return Storage.withMigrationRecords(() => runMigrationsWithAccess(options))
+  return Storage.withMigrationRecords(() =>
+    UpgradeWork.run({ background: false, signal: options?.signal ?? UpgradeWork.signal() }, () =>
+      runMigrationsWithAccess(options),
+    ),
+  )
 }
 
 async function runMigrationsWithAccess(options?: RunOptions): Promise<MigrationSummary> {
@@ -279,6 +284,7 @@ async function runMigrationsInternal(
       }
     }
     for (const { domain, migration } of MigrationPlan.ordered(collectByDomain())) {
+      UpgradeWork.signal()?.throwIfAborted()
       const logData = logs.get(domain)
       if (!logData || migration.id in logData) continue
       for (const dependency of migration.dependsOn ?? []) {
@@ -289,11 +295,22 @@ async function runMigrationsInternal(
             `Migration ${domain}/${migration.id} has unfinished dependency ${owner}/${id}; run its domain first`,
           )
       }
+      if (migration.execution === "maintenance") {
+        const applied = await migration.isApplied?.()
+        if (!options.maintenance || applied) {
+          if (applied) {
+            if (dryRun) summary.dryRun++
+            else {
+              logData[migration.id] = Date.now()
+              await saveLogForDomain(domain, logData)
+              summary.completed++
+            }
+          } else summary.deferred = (summary.deferred ?? 0) + 1
+          continue
+        }
+      }
       const counts = await SessionCompat.stats()
-      if (
-        (migration.execution === "maintenance" && !options.maintenance && !(await migration.startupSafe?.())) ||
-        (migration.execution === "after-convergence" && counts.pending + counts.partial + counts.quarantined > 0)
-      ) {
+      if (migration.execution === "after-convergence" && counts.pending + counts.partial + counts.quarantined > 0) {
         summary.deferred = (summary.deferred ?? 0) + 1
         continue
       }
@@ -343,7 +360,12 @@ async function runMigrationsInternal(
           reporter?.progress?.({ domain, migration, current, total, dryRun })
           if (output === "interactive") {
             const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0
-            const counts = total > 0 ? `${Math.floor(ratio * 100)}% (${current}/${total})` : "Preparing"
+            const counts =
+              total > 0
+                ? `${Math.floor(ratio * 100)}% (${current}/${total})`
+                : current > 0
+                  ? `${current} processed`
+                  : "Preparing"
             stageWrite(`  ${progressBar(ratio)} ${counts} [${domain}] ${migration.description}`, true)
           }
         }

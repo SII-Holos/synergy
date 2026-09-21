@@ -5,6 +5,7 @@ import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
 import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
+import { StorageReclamation } from "../storage/format-reclamation"
 import { observeStorageMaintenance } from "../storage/maintenance-progress"
 import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { ConfigExtensions } from "../config/extensions"
@@ -103,6 +104,7 @@ export namespace RuntimeHandle {
     let server: RuntimeServer | undefined
     let residentStarted = false
     let stopCompat: (() => Promise<void>) | undefined
+    let stopReclamation: (() => Promise<void>) | undefined
     let stopVaultSync: (() => void) | undefined
     let vaultSync = Promise.resolve()
     let closing: Promise<void> | undefined
@@ -127,6 +129,7 @@ export namespace RuntimeHandle {
           }
         }
         await cleanup(() => StorageRetention.stop())
+        await cleanup(() => stopReclamation?.())
         await cleanup(() => stopCompat?.())
         await cleanup(async () => {
           stopVaultSync?.()
@@ -303,6 +306,10 @@ export namespace RuntimeHandle {
       if (await SessionCompat.isActive())
         stopCompat = SessionCompat.startBackgroundMigrator({
           busy: () => SessionManager.runtimeStats().runningCount > 0,
+        })
+      if (options.mode === "server")
+        stopReclamation = StorageReclamation.start(Storage.current().store, {
+          busy: () => SessionManager.activeRuntimeCount() > 0 || LoopJob.activeBackgroundCount() > 0,
         })
       return { server, migration, config, shutdownTimeoutMs, closeAdmission, close, [Symbol.asyncDispose]: close }
     } catch (error) {

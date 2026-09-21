@@ -69,7 +69,7 @@ export const RuntimeStartupProgress = z.union([
         total: count,
       })
       .strict()
-      .refine((value) => value.current <= value.total),
+      .refine((value) => value.total === 0 || value.current <= value.total),
   ]),
 ])
 export type RuntimeStartupProgress = z.infer<typeof RuntimeStartupProgress>
