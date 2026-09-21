@@ -40,6 +40,21 @@ describe("GET /session/index (v2 nav)", () => {
       })
     }))
 
+  test("rejects an empty tag filter", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const app = Server.App()
+          const response = await app.request(`/session/index?scopeID=${encodeURIComponent(scope.id)}&tag=%23`)
+          expect(response.status).toBe(400)
+        },
+      })
+    }))
+
   test("filters by parentOnly=true (default) excluding child sessions", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

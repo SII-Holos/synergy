@@ -36,6 +36,17 @@ describe("GET /global/recent", () => {
       })
     }))
 
+  test("rejects an empty tag filter", () =>
+    runtime.run(async () => {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const response = await Server.App().request("/global/recent?tag=%23")
+          expect(response.status).toBe(400)
+        },
+      })
+    }))
+
   test("counts unread completions before pagination and excludes children and archived sessions", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -267,7 +278,11 @@ describe("POST /global/acknowledge-completions", () => {
           expect((await before.json()).unreadCompletionCount).toBe(4)
           const first = await app.request("/global/acknowledge-completions", { method: "POST" })
           expect(first.status).toBe(200)
-          expect(await first.json()).toEqual({ acknowledgedCount: 3, modifiedSessionCount: 2, failedSessionCount: 0 })
+          expect(await first.json()).toEqual({
+            acknowledgedCount: 3,
+            modifiedSessionCount: 2,
+            failedSessionCount: 0,
+          })
 
           expect((await Session.get(rootA!.id)).completionNotice.unreadCount).toBe(0)
           expect((await Session.get(rootB!.id)).completionNotice.unreadCount).toBe(0)
@@ -280,7 +295,11 @@ describe("POST /global/acknowledge-completions", () => {
 
           const second = await app.request("/global/acknowledge-completions", { method: "POST" })
           expect(second.status).toBe(200)
-          expect(await second.json()).toEqual({ acknowledgedCount: 0, modifiedSessionCount: 0, failedSessionCount: 0 })
+          expect(await second.json()).toEqual({
+            acknowledgedCount: 0,
+            modifiedSessionCount: 0,
+            failedSessionCount: 0,
+          })
         },
       })
 

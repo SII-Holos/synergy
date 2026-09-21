@@ -1,8 +1,57 @@
-import z from "zod"
+import { z } from "zod"
 import { SessionSchemaRegistry } from "./schema-registry"
 
 export interface SessionExtensionShape {}
-export interface SessionCreationExtensions {}
+export interface SessionCreationExtensions {
+  tags?: string[]
+}
+export const SESSION_TAG_MAX_LENGTH = 40
+export const SESSION_TAG_MAX_COUNT = 20
+
+export function normalizeSessionTags(values: unknown): string[] {
+  return Tags.parse(values === undefined ? [] : values)
+}
+
+export function normalizeSessionTag(value: unknown): string | undefined {
+  const parsed = TagQuery.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
+export const TagQuery = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/^(?:#\s*)+/, ""))
+  .pipe(z.string().min(1).max(SESSION_TAG_MAX_LENGTH))
+  .meta({ ref: "SessionTagQuery" })
+
+export const Tags = z
+  .array(z.string())
+  .transform((values, context) => {
+    const tags: string[] = []
+    values.forEach((value, index) => {
+      const parsed = TagQuery.safeParse(value)
+      if (!parsed.success) {
+        const tooLong = parsed.error.issues.some((issue) => issue.code === z.ZodIssueCode.too_big)
+        if (!tooLong) return
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index],
+          message: "Session tags must be at most 40 characters after removing a leading hash",
+        })
+        return
+      }
+      tags.push(parsed.data)
+    })
+    return [...new Set(tags)]
+  })
+  .refine((tags) => tags.every((tag) => tag.length <= SESSION_TAG_MAX_LENGTH), {
+    message: `Session tags can be at most ${SESSION_TAG_MAX_LENGTH} characters`,
+  })
+  .refine((tags) => tags.length <= SESSION_TAG_MAX_COUNT, {
+    message: `Sessions can have at most ${SESSION_TAG_MAX_COUNT} tags`,
+  })
+  .meta({ ref: "SessionTags" })
+
 import { Identifier } from "../id/id"
 import type { Scope } from "../scope/types"
 import { SnapshotSchema } from "./snapshot-schema"
@@ -159,6 +208,7 @@ const BaseInfo = z.preprocess(
       })
       .optional(),
     category: z.enum(["project", "home", "channel", "background", "github"]).optional(),
+    tags: Tags.default([]),
     provenance: z.literal("github").optional(),
     endpoint: SessionEndpoint.Info.optional(),
     summary: z

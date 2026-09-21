@@ -13,6 +13,8 @@ import { migrations } from "../../src/session/migration"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+import { runMigrations } from "../../src/migration"
+import { Scope as ScopeRegistry } from "../../src/scope"
 
 runtime.run(() => Log.init({ print: false }))
 
@@ -676,9 +678,9 @@ describe("SessionNav session identity", () => {
         fn: async () => {
           const session = await identitySession(scope)
           await stripStoredIdentity(scope.id, session.id)
-          expect(
-            (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!.workspaceType,
-          ).toBeUndefined()
+
+          const stored = await Storage.read<ScopeNavIndex>(StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id)))
+          expect(stored.entries.find((e) => e.id === session.id)!.workspaceType).toBeUndefined()
 
           const migration = migrations.find((entry) => entry.id === "20260918-session-nav-identity")
           expect(migration).toBeDefined()
@@ -688,6 +690,68 @@ describe("SessionNav session identity", () => {
           const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
           expect(migrated.workspaceType).toBe("git_worktree")
           expect(migrated.workflow).toEqual({ kind: "plan", active: false })
+
+          await Session.remove(session.id)
+        },
+      })
+    }))
+
+  test("backfills canonical tags into stale v1 nav indexes without changing session info", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Tagged Session", tags: ["focus", "release"] })
+          const homeSession = await ScopeContext.provide({
+            scope: ScopeRegistry.home(),
+            fn: () => Session.create({ title: "Tagged Home Session", tags: ["focus", "home"] }),
+          })
+          const home = ScopeRegistry.home()
+          const key = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
+          const info = await Storage.read<Session.Info>(key)
+          const projectStore = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
+          const homeStore = StoragePath.sessionNavIndex(Identifier.asScopeID(home.id))
+          const projectIndex = await Storage.read<ScopeNavIndex>(projectStore)
+          const homeIndex = await Storage.read<ScopeNavIndex>(homeStore)
+          const clearTags = (entry: SessionNavEntry, targetID: string): SessionNavEntry =>
+            entry.id === targetID ? { ...entry, tags: undefined } : entry
+          await Storage.write(projectStore, {
+            ...projectIndex,
+            entries: projectIndex.entries.map((entry) => clearTags(entry, session.id)),
+          })
+          await Storage.write(homeStore, {
+            ...homeIndex,
+            entries: homeIndex.entries.map((entry) => clearTags(entry, homeSession.id)),
+          })
+
+          const migration = migrations.find((candidate) => candidate.id === "20260921-session-nav-tags")
+          expect(migration).toBeDefined()
+          const tracking = StoragePath.metaMigrationLogDomain("session")
+          const [previous] = await Storage.readMany<Record<string, number>>([tracking])
+          try {
+            await Storage.write(
+              tracking,
+              Object.fromEntries(
+                migrations.filter((candidate) => candidate.id !== migration!.id).map((candidate) => [candidate.id, 1]),
+              ),
+            )
+            expect((await runMigrations({ targetDomain: "session", output: "silent" })).completed).toBe(1)
+            expect((await runMigrations({ targetDomain: "session", output: "silent" })).completed).toBe(0)
+          } finally {
+            if (previous) await Storage.write(tracking, previous)
+            else await Storage.remove(tracking)
+          }
+
+          const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+          expect(migrated.tags).toEqual(["focus", "release"])
+          expect(await Storage.read<Session.Info>(key)).toEqual(info)
+          expect(await Session.list({ tag: "focus" })).toMatchObject({
+            total: 1,
+            data: [{ id: session.id, tags: ["focus", "release"] }],
+          })
 
           await Session.remove(session.id)
         },

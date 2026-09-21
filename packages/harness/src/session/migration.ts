@@ -2233,6 +2233,18 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260921-session-nav-tags",
+    scope: "derived",
+    async upSession(owner) {
+      const { SessionCompat } = await import("./compat-import")
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    description: "Rebuild session nav indexes to backfill canonical session tags",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
   RolloutMigration.migration,
 
   {

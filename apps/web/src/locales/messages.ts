@@ -464,6 +464,17 @@ export const sessionReview = {
 
 // ── Note panel ───────────────────────────────────────────────────────────────
 
+export const sessionTags = {
+  tags: { id: "session.tags.menu", message: "Tags" },
+  filterOrCreate: { id: "session.tags.filterOrCreate", message: "Filter or create a tag" },
+  create: { id: "session.tags.create", message: "Create #{tag}" },
+  loadFailed: { id: "session.tags.loadFailed", message: "Could not load tagged sessions" },
+  saveFailed: { id: "session.tags.saveFailed", message: "Could not save tags" },
+  retry: { id: "session.tags.retry", message: "Retry" },
+  noMatches: { id: "session.tags.noMatches", message: "No matching sessions" },
+  all: { id: "session.tags.all", message: "All" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
 export const note = {
   untitled: { id: "app.note.untitled", message: "Untitled" },
   // Blueprint status

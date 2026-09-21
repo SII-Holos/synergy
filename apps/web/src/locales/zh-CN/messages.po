@@ -4533,11 +4533,11 @@ msgstr "Synergy"
 msgid "app.note.blueprint.pluginOwner"
 msgstr "来自 {plugin}"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.active"
 msgstr "当前会话运行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.new"
 msgstr "新建会话"
 
@@ -4545,19 +4545,19 @@ msgstr "新建会话"
 msgid "app.note.blueprint.runMode.session"
 msgstr "指定会话运行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.worktree"
 msgstr "工作树运行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.state.label"
 msgstr "蓝图"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.state.lastRunFailed"
 msgstr "上次运行失败"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.state.noActiveRun"
 msgstr "没有活动运行"
 
@@ -4569,23 +4569,23 @@ msgstr "运行失败"
 msgid "app.note.blueprint.status.armed"
 msgstr "运行已排队"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.status.auditing"
 msgstr "正在审阅"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.status.cancelled"
 msgstr "已取消"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.status.completed"
 msgstr "已完成"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.status.failed"
 msgstr "失败"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.blueprint.status.running"
 msgstr "运行中"
 
@@ -4705,31 +4705,31 @@ msgstr "拆分单元格"
 msgid "app.note.bubble.table.toggleHeaderRow"
 msgstr "切换标题行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.archive"
 msgstr "归档"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.cancel"
 msgstr "取消"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.delete"
 msgstr "永久删除"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.noNotesFound"
 msgstr "未找到笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.refresh"
 msgstr "刷新"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.restore"
 msgstr "恢复"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.selectAll"
 msgstr "选择全部"
 
@@ -4737,7 +4737,7 @@ msgstr "选择全部"
 msgid "app.note.bulk.selected"
 msgstr "已选择"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.bulk.selectNotes"
 msgstr "选择笔记"
 
@@ -4745,31 +4745,31 @@ msgstr "选择笔记"
 msgid "app.note.card.from"
 msgstr "来自 {name}"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.card.noRunsYet"
 msgstr "尚无运行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.card.noteCountLabel"
 msgstr "{count, plural, one {# 条笔记} other {# 条笔记}}"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.card.runHistory"
 msgstr "运行历史"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.card.runsCount"
 msgstr "{count, plural, one {# 次运行} other {# 次运行}}"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.detail.addTag"
 msgstr "添加标签"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.detail.addTags"
 msgstr "添加标签…"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.detail.keepMine"
 msgstr "保留我的版本"
 
@@ -4777,15 +4777,15 @@ msgstr "保留我的版本"
 msgid "app.note.detail.lastActivity"
 msgstr "最近活动时间"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.detail.openSession"
 msgstr "打开会话"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.detail.overwriteRemote"
 msgstr "覆盖远端"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.detail.reloadRemote"
 msgstr "重新加载远端"
 
@@ -4793,47 +4793,47 @@ msgstr "重新加载远端"
 msgid "app.note.editor.backToList"
 msgstr "返回列表"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.convertToBlueprint"
 msgstr "转换为蓝图"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.convertToNote"
 msgstr "转换为笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.deleteNote"
 msgstr "删除笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.downloadMarkdown"
 msgstr "下载为 Markdown"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.downloadNote"
 msgstr "下载笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.global"
 msgstr "全局"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.local"
 msgstr "本地"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.makeGlobal"
 msgstr "设为全局"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.makeLocal"
 msgstr "设为本地"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.pin"
 msgstr "固定"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.pinnedState"
 msgstr "已固定"
 
@@ -4845,15 +4845,15 @@ msgstr "正在保存…"
 msgid "app.note.editor.slashHint"
 msgstr "输入 / 查看命令…"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.toBlueprint"
 msgstr "转为蓝图"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.toNote"
 msgstr "转为笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.editor.unpin"
 msgstr "取消固定"
 
@@ -4861,23 +4861,23 @@ msgstr "取消固定"
 msgid "app.note.filter.all"
 msgstr "全部"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.filter.blueprints"
 msgstr "蓝图"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.filter.notes"
 msgstr "笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.filter.showActive"
 msgstr "显示活动项"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.filter.showArchived"
 msgstr "显示已归档项"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.agentUnavailable"
 msgstr "不可用"
 
@@ -4885,103 +4885,103 @@ msgstr "不可用"
 msgid "app.note.run.blueprint"
 msgstr "运行蓝图"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.chooseModel"
 msgstr "选择蓝图运行模型"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.currentSession"
 msgstr "当前会话"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.currentSessionDesc"
 msgstr "在当前查看的会话中运行。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.currentSessionHint"
 msgstr "请先在此蓝图作用域中打开一个会话。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.executionAgent"
 msgstr "执行智能体"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.executionAgentChooseHelp"
 msgstr "选择由哪个智能体执行此蓝图。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.label"
 msgstr "运行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.model"
 msgstr "模型"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.modelChooseHelp"
 msgstr "选择指定模型，或让系统自动选择备用模型。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.newSession"
 msgstr "新建会话"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.newSessionDesc"
 msgstr "在此作用域中新建会话并立即开始。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.noAgentResults"
 msgstr "无智能体结果"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.noModelResults"
 msgstr "无模型结果"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.searchAgents"
 msgstr "搜索智能体"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.searchModels"
 msgstr "搜索模型"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.selectedAgentUnavailable"
 msgstr "所选智能体不可用。请返回并选择其他智能体。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.selectExecutionAgent"
 msgstr "选择执行智能体"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.selectModel"
 msgstr "选择模型"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.useFallback"
 msgstr "使用备用模型"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.useFallbackDesc"
 msgstr "让智能体自动选择最佳模型。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.withSelectedModel"
 msgstr "使用所选模型运行"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.worktreeDesc"
 msgstr "创建隔离的工作树会话并立即开始。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.worktreeHint"
 msgstr "工作树运行需要 Git 项目作用域。"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.run.worktreeSession"
 msgstr "新建工作树会话"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.separator.dot"
 msgstr " · "
 
@@ -5081,55 +5081,55 @@ msgstr "视频"
 msgid "app.note.toolbar.back"
 msgstr "后退"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.backToAgent"
 msgstr "返回智能体选择"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.backToSession"
 msgstr "返回会话模式"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.clearSearch"
 msgstr "清除搜索"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.close"
 msgstr "关闭"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.closeRunMenu"
 msgstr "关闭运行菜单"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.current"
 msgstr "当前"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.newNote"
 msgstr "新建笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.noNotes"
 msgstr "此作用域中没有笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.notes"
 msgstr "笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.searchNotes"
 msgstr "搜索笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.viewAll"
 msgstr "查看全部"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.toolbar.viewAllNotes"
 msgstr "查看全部 {count} 条笔记"
 
-#. ── Note panel ───────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.note.untitled"
 msgstr "未命名"
 
@@ -13908,6 +13908,38 @@ msgstr "点按打开 · 长按取消"
 #. subagent-dock.tsx
 msgid "session.subagent.toolsCount"
 msgstr "{count} 个工具"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.all"
+msgstr "全部"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.create"
+msgstr "创建 #{tag}"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.filterOrCreate"
+msgstr "筛选或创建标签"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.loadFailed"
+msgstr "无法加载带标签的会话"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.menu"
+msgstr "标签"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.noMatches"
+msgstr "没有匹配的会话"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.retry"
+msgstr "重试"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "session.tags.saveFailed"
+msgstr "无法保存标签"
 
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"

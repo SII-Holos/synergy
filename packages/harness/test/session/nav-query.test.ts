@@ -10,6 +10,65 @@ import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
 describe("SessionNav.queryGlobal", () => {
+  test("filters sessions by normalized tag before pagination", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      const token = `tag-normalization-${crypto.randomUUID()}`
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const tagged = await Session.create({
+            title: `${token} tagged`,
+            tags: ["## focus", " # # focus", "focus"],
+          })
+          await Session.create({ title: `${token} other`, tags: ["later"] })
+
+          expect(tagged.tags).toEqual(["focus"])
+          expect((await Session.get(tagged.id)).tags).toEqual(tagged.tags)
+          expect(await Session.list({ tag: "#focus" })).toMatchObject({
+            data: [expect.objectContaining({ id: tagged.id, tags: ["focus"] })],
+            total: 1,
+          })
+
+          const scopeFocus = await SessionNav.queryScope(scope.id, { tag: "# focus", limit: 20 })
+          const scopeCanonical = await SessionNav.queryScope(scope.id, { tag: "focus", limit: 20 })
+          expect([scopeFocus.total, scopeFocus.items.map((entry) => entry.id)]).toEqual([
+            scopeCanonical.total,
+            scopeCanonical.items.map((entry) => entry.id),
+          ])
+          expect(scopeFocus.total).toBe(1)
+          expect(scopeFocus.items[0]?.id).toBe(tagged.id)
+
+          const globalFocus = await SessionNav.queryGlobal({
+            search: token,
+            tag: " #focus",
+            parentOnly: false,
+            limit: 20,
+          })
+          const globalCanonical = await SessionNav.queryGlobal({
+            search: token,
+            tag: "focus",
+            parentOnly: false,
+            limit: 20,
+          })
+          expect(globalFocus.total).toBe(globalCanonical.total)
+          expect(globalFocus.items.map((entry) => entry.id)).toEqual(globalCanonical.items.map((entry) => entry.id))
+          expect(globalFocus.total).toBe(1)
+          expect(globalFocus.items[0]?.id).toBe(tagged.id)
+
+          expect(await SessionNav.queryScope(scope.id, { tag: "" })).toMatchObject({ items: [], total: 0 })
+          expect(await SessionNav.queryGlobal({ tag: "#", parentOnly: false })).toMatchObject({
+            items: [],
+            total: 0,
+          })
+
+          for (const session of (await Session.list({ limit: 100 })).data) await Session.remove(session.id)
+        },
+      })
+    }))
+
   test("filters by category before pagination", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

@@ -3598,6 +3598,13 @@
           },
           {
             "in": "query",
+            "name": "tag",
+            "schema": {
+              "$ref": "#/components/schemas/SessionTagQuery"
+            }
+          },
+          {
+            "in": "query",
             "name": "search",
             "schema": {
               "type": "string"
@@ -7510,6 +7517,13 @@
           },
           {
             "in": "query",
+            "name": "tag",
+            "schema": {
+              "$ref": "#/components/schemas/SessionTagQuery"
+            }
+          },
+          {
+            "in": "query",
             "name": "parentOnly",
             "schema": {
               "type": "string",
@@ -7921,6 +7935,13 @@
           },
           {
             "in": "query",
+            "name": "tag",
+            "schema": {
+              "$ref": "#/components/schemas/SessionTagQuery"
+            }
+          },
+          {
+            "in": "query",
             "name": "parentOnly",
             "schema": {
               "type": "boolean"
@@ -8040,6 +8061,9 @@
                   },
                   "title": {
                     "type": "string"
+                  },
+                  "tags": {
+                    "$ref": "#/components/schemas/SessionTags"
                   },
                   "id": {
                     "type": "string"
@@ -8376,6 +8400,9 @@
                 "properties": {
                   "title": {
                     "type": "string"
+                  },
+                  "tags": {
+                    "$ref": "#/components/schemas/SessionTags"
                   },
                   "pinned": {
                     "type": "number"
@@ -33400,6 +33427,12 @@
           "title": {
             "type": "string"
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "category": {
             "type": "string",
             "enum": ["project", "home", "channel", "background", "github"]
@@ -33590,6 +33623,10 @@
           }
         },
         "required": ["items", "nextCursor", "total", "unreadCompletionCount"]
+      },
+      "SessionTagQuery": {
+        "description": "Filter sessions by tag",
+        "type": "string"
       },
       "GlobalAcknowledgeCompletionsResponse": {
         "type": "object",
@@ -39795,6 +39832,12 @@
           }
         ]
       },
+      "SessionTags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
       "FileDiff": {
         "type": "object",
         "properties": {
@@ -40553,6 +40596,9 @@
           "category": {
             "type": "string",
             "enum": ["project", "home", "channel", "background", "github"]
+          },
+          "tags": {
+            "$ref": "#/components/schemas/SessionTags"
           },
           "provenance": {
             "type": "string",

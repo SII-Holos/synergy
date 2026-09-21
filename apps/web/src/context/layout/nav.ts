@@ -11,6 +11,7 @@ import type { LocalScope, NavCursor, NavEntry, NavListState, ScopeNavEntry } fro
 export type NavSessionUpdate = {
   id: string
   title?: string
+  tags?: string[]
   pinned?: number
   lastActivityAt?: number
   archived: boolean
@@ -26,6 +27,7 @@ export function navUpdateFromSession(
   info: {
     id: string
     title?: string
+    tags?: string[]
     pinned?: number
     parentID?: string
     time?: { updated?: number; archived?: number }
@@ -36,6 +38,7 @@ export function navUpdateFromSession(
   return {
     id: info.id,
     title: info.title,
+    tags: info.tags,
     pinned: info.pinned,
     lastActivityAt: navEntry?.lastActivityAt ?? info.time?.updated,
     archived: !!info.time?.archived,
@@ -77,6 +80,7 @@ export function applySessionToNavList(
   const merged: NavEntry = {
     ...prev,
     title: update.title ?? prev.title,
+    tags: update.tags ?? prev.tags,
     pinned: update.pinned ?? prev.pinned,
     lastActivityAt: update.lastActivityAt ?? prev.lastActivityAt,
     parentID: update.parentID ?? prev.parentID,

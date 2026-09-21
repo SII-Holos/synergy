@@ -188,6 +188,7 @@ export const SessionRoute = () =>
             .optional()
             .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
           pinned: booleanQuery.optional().meta({ description: "Only include pinned sessions" }),
+          tag: Session.TagQuery.optional().meta({ description: "Filter sessions by tag" }),
           parentOnly: booleanQuery
             .default(true)
             .meta({ description: "Only include top-level sessions (exclude subsessions). Default: true" }),
@@ -203,6 +204,7 @@ export const SessionRoute = () =>
           before: query.before,
           pinned: query.pinned,
           parentOnly: query.parentOnly,
+          tag: query.tag,
         })
         return c.json({
           data: result.data,
@@ -406,6 +408,7 @@ export const SessionRoute = () =>
           .object({
             parentID: z.string().optional(),
             title: z.string().optional(),
+            tags: Session.Tags.optional(),
             id: z.string().optional(),
             controlProfile: ControlProfileId.optional(),
             workspace: Session.WorkspaceSelection.optional(),
@@ -480,6 +483,7 @@ export const SessionRoute = () =>
         "json",
         z.object({
           title: z.string().optional(),
+          tags: Session.Tags.optional(),
           pinned: z.number().optional(),
           controlProfile: ControlProfileId.optional(),
           resolvePendingPermissions: z.boolean().optional(),
@@ -511,6 +515,7 @@ export const SessionRoute = () =>
 
         const applyOtherUpdates = (session: Session.Info) => {
           if (updates.title !== undefined) session.title = updates.title
+          if (updates.tags !== undefined) session.tags = updates.tags
           if (updates.pinned !== undefined) session.pinned = updates.pinned
           if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
           if (updates.completionNotice?.unread === false) {
@@ -536,6 +541,7 @@ export const SessionRoute = () =>
 
         const hasOtherUpdates =
           updates.title !== undefined ||
+          updates.tags !== undefined ||
           updates.pinned !== undefined ||
           updates.controlProfile !== undefined ||
           updates.time?.archived !== undefined ||

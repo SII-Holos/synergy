@@ -47,9 +47,12 @@ import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
 import {
   Info as InfoSchema,
+  normalizeSessionTags,
   PersistedInfo as PersistedInfoSchema,
   RollbackAck as RollbackAckSchema,
   StatusInfo as StatusInfoSchema,
+  TagQuery as TagQuerySchema,
+  Tags as TagsSchema,
 } from "./types"
 import type {
   Info as InfoType,
@@ -72,6 +75,8 @@ export namespace Session {
   export const Info = InfoSchema
   export const PersistedInfo = PersistedInfoSchema
   export const StatusInfo = StatusInfoSchema
+  export const TagQuery = TagQuerySchema
+  export const Tags = TagsSchema
   export const RollbackAck = RollbackAckSchema
   export type RollbackAck = RollbackAckType
 
@@ -400,6 +405,7 @@ export namespace Session {
       scopeID: scope.id,
       scopeType,
       title: session.title,
+      tags: session.tags,
       category,
       lastActivityAt: session.time.updated,
       createdAt: session.time.created,
@@ -561,6 +567,7 @@ export namespace Session {
     const result: Info = {
       ...SessionSchemaRegistry.creationFields(input),
       id: Identifier.descending("session", input?.id),
+      tags: normalizeSessionTags(input?.tags),
       version: Installation.VERSION,
       scope,
       parentID: input?.parentID,
@@ -1216,12 +1223,22 @@ export namespace Session {
     before?: number
     pinned?: boolean
     parentOnly?: boolean
+    tag?: string
   }): Promise<ListResult> {
     const scopeID = asScopeID(ScopeContext.current.scope.id)
     const index = await readPageIndex(scopeID)
     let entries = index.entries.filter((e) => !e.archived)
 
     if (options?.parentOnly !== false) entries = entries.filter((e) => !e.parentID)
+    if (options?.tag !== undefined) {
+      const tag = normalizeSessionTags([options.tag])[0]
+      if (!tag) return { data: [], total: 0 }
+      const sessions = await readListInfos(
+        scopeID,
+        entries.map((entry) => entry.id),
+      )
+      entries = entries.filter((_, sessionIndex) => sessions[sessionIndex]?.tags?.includes(tag))
+    }
     if (options?.pinned) entries = entries.filter((e) => e.pinned > 0)
     if (options?.since) entries = entries.filter((e) => e.updated >= options.since!)
     if (options?.before) entries = entries.filter((e) => e.updated < options.before!)

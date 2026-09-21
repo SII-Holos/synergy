@@ -6,12 +6,17 @@ import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
-import { Info as SessionInfo } from "./types"
+import { Info as SessionInfo, normalizeSessionTag } from "./types"
 import { SessionManagedProjects } from "./managed-projects"
 import { SessionCompat } from "./compat-import"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
+
+function normalizeTagFilter(value: string): string | undefined {
+  return normalizeSessionTag(value)
+}
+
 export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
 const NavBlueprintIdentity = z.object({
   loopID: z.string().optional(),
@@ -25,6 +30,7 @@ export const SessionNavEntry = z
     scopeID: z.string(),
     scopeType: z.enum(["home", "project"]),
     title: z.string(),
+    tags: z.string().array().optional(),
     category: NavCategory,
     lastActivityAt: z.number(),
     createdAt: z.number().optional(),
@@ -115,6 +121,7 @@ export interface SessionNavEntry {
   scopeID: string
   scopeType: "home" | "project"
   title: string
+  tags?: string[]
   category: NavCategory
   lastActivityAt: number
   createdAt?: number
@@ -271,6 +278,7 @@ export namespace SessionNav {
           scopeID,
           scopeType,
           title: session.title,
+          tags: session.tags,
           category,
           lastActivityAt: session.time.updated,
           createdAt: session.time.created,
@@ -363,6 +371,7 @@ export namespace SessionNav {
     opts?: {
       parentOnly?: boolean
       category?: NavCategory
+      tag?: string
       includeArchived?: boolean
       cursor?: NavCursor
       limit?: number
@@ -372,6 +381,10 @@ export namespace SessionNav {
     let entries = index.entries
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
     if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
+    if (opts?.tag !== undefined) {
+      const tag = normalizeTagFilter(opts.tag)
+      entries = tag ? entries.filter((e) => e.tags?.includes(tag)) : []
+    }
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     return paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit })
   }
@@ -380,6 +393,7 @@ export namespace SessionNav {
     parentOnly?: boolean
     category?: NavCategory
     channelType?: string
+    tag?: string
     includeArchived?: boolean
     search?: string
     cursor?: NavCursor
@@ -402,6 +416,10 @@ export namespace SessionNav {
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
     if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
     if (opts?.channelType) entries = entries.filter((e) => e.channelType === opts.channelType)
+    if (opts?.tag !== undefined) {
+      const tag = normalizeTagFilter(opts.tag)
+      entries = tag ? entries.filter((e) => e.tags?.includes(tag)) : []
+    }
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     if (opts?.search) {
       const term = opts.search.toLowerCase()

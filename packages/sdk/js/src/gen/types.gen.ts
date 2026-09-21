@@ -1814,6 +1814,7 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
+  tags?: Array<string>
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   createdAt?: number
@@ -1869,6 +1870,11 @@ export type GlobalRecentResponse = {
   total: number
   unreadCompletionCount: number
 }
+
+/**
+ * Filter sessions by tag
+ */
+export type SessionTagQuery = string
 
 export type GlobalAcknowledgeCompletionsResponse = {
   acknowledgedCount: number
@@ -4977,6 +4983,8 @@ export type SessionScope =
       }
     }
 
+export type SessionTags = Array<string>
+
 export type FileDiff = {
   file: string
   additions: number
@@ -5210,6 +5218,7 @@ export type Session = {
     title?: string
   }
   category?: "project" | "home" | "channel" | "background" | "github"
+  tags?: SessionTags
   provenance?: "github"
   endpoint?: SessionEndpoint
   summary?: {
@@ -12732,6 +12741,7 @@ export type GlobalNavRecentData = {
     includeArchived?: boolean
     category?: "project" | "home" | "channel" | "background" | "github"
     channelType?: string
+    tag?: SessionTagQuery
     search?: string
     limit?: number
     cursorLastActivityAt?: number
@@ -14639,6 +14649,7 @@ export type SessionIndexData = {
     directory?: string
     scopeID?: string
     category?: "project" | "home" | "channel" | "background" | "github"
+    tag?: SessionTagQuery
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number
@@ -14813,6 +14824,7 @@ export type SessionListData = {
      * Only include pinned sessions
      */
     pinned?: boolean
+    tag?: SessionTagQuery
     /**
      * Only include top-level sessions (exclude subsessions). Default: true
      */
@@ -14848,6 +14860,7 @@ export type SessionCreateData = {
   body?: {
     parentID?: string
     title?: string
+    tags?: SessionTags
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
@@ -14998,6 +15011,7 @@ export type SessionGetResponse = SessionGetResponses[keyof SessionGetResponses]
 export type SessionUpdateData = {
   body?: {
     title?: string
+    tags?: SessionTags
     pinned?: number
     controlProfile?: "guarded" | "autonomous" | "full_access"
     resolvePendingPermissions?: boolean

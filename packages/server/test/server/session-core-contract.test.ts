@@ -16,6 +16,89 @@ const json = (method: string, body: unknown) => ({
   body: JSON.stringify(body),
 })
 
+test("POST and PATCH /session preserve normalized tags", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const createdResponse = await app.request(
+          "/session",
+          json("POST", { title: "Tagged route fixture", tags: ["# focus", " focus", "focus"] }),
+        )
+        expect(createdResponse.status).toBe(200)
+        const created = (await createdResponse.json()) as Session.Info
+        expect(created.tags).toEqual(["focus"])
+
+        const filteredResponse = await app.request("/session?tag=#focus&parentOnly=true")
+        expect(filteredResponse.status).toBe(200)
+        const filtered = (await filteredResponse.json()) as { total: number; data: Session.Info[] }
+        expect(filtered.total).toBe(1)
+        expect(filtered.data.map((session) => session.id)).toContain(created.id)
+
+        const patchedResponse = await app.request(
+          `/session/${created.id}`,
+          json("PATCH", { tags: ["# planning", "  planning ", "planning"] }),
+        )
+        expect(patchedResponse.status).toBe(200)
+        expect((await patchedResponse.json()).tags).toEqual(["planning"])
+
+        const patchedFilteredResponse = await app.request("/session?tag=%23%20planning&parentOnly=true")
+        expect(patchedFilteredResponse.status).toBe(200)
+        expect((await patchedFilteredResponse.json()).total).toBe(1)
+
+        await app.request(`/session/${created.id}`, { method: "DELETE" })
+      },
+    })
+  }))
+
+test("POST /session normalizes and bounds a tags array", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const normalized = await app.request(
+          "/session",
+          json("POST", { title: "Canonical tags", tags: ["", " # ", "# focus", " focus", "focus", 42] }),
+        )
+        expect(normalized.status).toBe(400)
+
+        const defaulted = await app.request("/session", json("POST", { title: "Default tags" }))
+        expect(defaulted.status).toBe(200)
+        expect((await defaulted.json()).tags).toEqual([])
+
+        const duplicateBounded = await app.request(
+          "/session",
+          json("POST", { title: "Duplicate tags", tags: Array(21).fill("# focus") }),
+        )
+        expect(duplicateBounded.status).toBe(200)
+        expect((await duplicateBounded.json()).tags).toEqual(["focus"])
+
+        const canonical = await app.request(
+          "/session",
+          json("POST", { title: "Canonical tags", tags: ["", " # ", "# focus", " focus", "focus"] }),
+        )
+        expect(canonical.status).toBe(200)
+        expect((await canonical.json()).tags).toEqual(["focus"])
+
+        const tooLong = await app.request("/session", json("POST", { title: "Long tag", tags: [`#${"a".repeat(41)}`] }))
+        expect(tooLong.status).toBe(400)
+
+        const tooMany = await app.request(
+          "/session",
+          json("POST", {
+            title: "Too many tags",
+            tags: Array.from({ length: 21 }, (_, index) => `tag-${index}`),
+          }),
+        )
+        expect(tooMany.status).toBe(400)
+
+        expect(await app.request("/session?tag=&parentOnly=true")).toHaveProperty("status", 400)
+      },
+    })
+  }))
+
 test("core HTTP sessions support listing, fork, file export and import without product domains", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })

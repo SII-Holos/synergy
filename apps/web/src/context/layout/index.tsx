@@ -90,6 +90,7 @@ export interface NavEntry {
   scopeID: string
   scopeType: "home" | "project"
   title: string
+  tags?: string[]
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
