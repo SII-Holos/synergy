@@ -5,6 +5,72 @@ import path from "node:path"
 import { runProcess } from "../runtime/process"
 import { readEvents } from "../runtime/events"
 
+for (const outcome of ["completed", "timeout"]) {
+  test(`startup longer than solving budget retains ${outcome} under the wrapper clock`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bench-startup-clock-"))
+    let child: Bun.Subprocess | undefined
+    try {
+      for (const file of ["trial.ts", "events.ts", "export.ts", "process.ts", "files.ts", "deadline.mjs"])
+        await Bun.write(path.join(root, file), Bun.file(path.join(import.meta.dir, "../runtime", file)))
+      const marker = path.join(root, "started.json")
+      await Bun.write(
+        path.join(root, "entry.ts"),
+        `
+        if (process.argv[2] === "send") {
+          const seconds = Number(process.argv[process.argv.indexOf("--timeout") + 1])
+          const timer = setTimeout(() => process.exit(9), seconds * 1000)
+          await Bun.sleep(700)
+          await Bun.write(${JSON.stringify(marker)}, JSON.stringify({ started_at: Date.now() }))
+          await Bun.sleep(${outcome === "completed" ? 100 : 2000})
+          clearTimeout(timer)
+          console.log(JSON.stringify({type:"result", outcome:"completed", sessionID:"s", runID:"r"}))
+        } else {
+          await Bun.write(process.argv.at(-1), "retained")
+        }
+      `,
+      )
+      await Bun.write(path.join(root, "verify.ts"), "process.exit(0)")
+      await Bun.write(
+        path.join(root, "options.json"),
+        JSON.stringify({
+          runtime: "core",
+          config: "unused",
+          model: "fixture",
+          agent: "synergy",
+          timeout_seconds: 0.5,
+          startup_timeout_seconds: 5,
+          execution_marker: marker,
+          cleanup_seconds: 1,
+          export_timeout_seconds: 5,
+        }),
+      )
+      await Bun.write(path.join(root, "instruction.md"), "fixture")
+      const running = Bun.spawn(
+        [
+          process.execPath,
+          path.join(root, "trial.ts"),
+          path.join(root, "options.json"),
+          path.join(root, "instruction.md"),
+          path.join(root, "logs"),
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      child = running
+      await Promise.all([running.exited, new Response(running.stdout).text(), new Response(running.stderr).text()])
+      const execution = await Bun.file(path.join(root, "logs/execution.json")).json()
+      expect(execution.outcome).toBe(outcome)
+      expect(execution.lifecycle.model_started_at).toBeNumber()
+      expect(execution.lifecycle.timeout_stage).toBe(outcome === "timeout" ? "agent" : null)
+    } finally {
+      if (child?.exitCode === null) {
+        child.kill("SIGTERM")
+        await child.exited
+      }
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 15000)
+}
+
 test("process deadlines retain nonzero, signal and timeout independently", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bench-process-"))
   try {

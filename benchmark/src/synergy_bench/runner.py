@@ -465,7 +465,7 @@ async def execute_trial(
     if not variant.get("model_profile"):
         return await _execute_trial(root, plan, item, attempt, debug=debug, probe_instruction=probe_instruction)
     profile = ModelProfile.model_validate(variant["model_profile"])
-    gateway = Gateway(profile, attempt / "wire")
+    gateway = Gateway(profile, attempt / "wire", stream_timeout=plan["config"]["request_idle_timeout_seconds"])
     reference = "BENCH_GATEWAY_TOKEN_" + uuid.uuid4().hex.upper()
     result = None
     try:
@@ -551,7 +551,10 @@ def trial_configuration(
     shutil.copytree(root / "inputs" / item["variant"], inputs)
     cleanup = plan["config"]["cleanup_seconds"]
     export_timeout = plan["config"]["export_timeout_seconds"]
-    timeout = 120 if probe_instruction else plan["config"]["timeout_seconds"] or task["agent_seconds"]
+    configured_timeout = plan["config"]["timeout_seconds"]
+    timeout = (
+        120 if probe_instruction else task["agent_seconds"] if configured_timeout == "native" else configured_timeout
+    )
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
         "config": "/benchmark-input/config.json",

@@ -132,6 +132,10 @@ Latest-page loading treats a freshness rejection as a superseded attempt, not a 
 
 Each asynchronous latest-page request also captures a per-session projection revision. A newer latest-page request or a persisted `message.updated`/`message.removed` event advances that revision. After resource freshness accepts a page, the projection revision independently prevents an older response from overwriting newer event-driven Context usage. Complete persisted `message.updated` events reduce the projection inside the accepted event write even while history mode suppresses insertion into `messages`. Removing the projected message invalidates the key without a per-event request; the next authoritative latest page restores it.
 
+### History transitions
+
+The active session watches the server-owned rollback identity and redo validity as well as connection and reconnect recovery state. A rewind or redo identity change requests a `history-transition` sync, forcing the authoritative effective latest message window even when redo is unavailable. Applying that window replaces old branch messages and removes their part buckets through the existing message-page reconciliation path. The latest rollback summary supports immediate local filtering, including known dropped IDs outside the loaded cut boundary, but cannot represent every earlier rollback. Ordinary session metadata updates do not trigger this history reload.
+
 ### History mode
 
 When the user requests older messages via "Load earlier", the frontend switches to history mode (`mode: "history"`):
