@@ -67,7 +67,9 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0022 | Optional format rewrite blocked startup | implemented | 2026-09-21 |
 
-| 0023 | Provider fetch wrappers lost request inputs | implemented | 2026-09-22 |
+| 0023 | Historical preparation blocked its own evidence writes | implemented | 2026-09-21 |
+
+| 0024 | Provider fetch wrappers lost request inputs | implemented | 2026-09-22 |
 
 ## History rules
 

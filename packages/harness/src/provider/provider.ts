@@ -1172,7 +1172,8 @@ export namespace Provider {
 
         // Combine signals before fetch
         const signals: AbortSignal[] = []
-        const callerSignal = opts.signal ?? (input instanceof Request ? input.signal : undefined)
+        const callerSignal =
+          opts.signal === undefined ? (input instanceof Request ? input.signal : undefined) : opts.signal
         if (callerSignal) signals.push(callerSignal)
         if (ttfbController) signals.push(ttfbController.signal)
         if (idleController) signals.push(idleController.signal)

@@ -13,6 +13,25 @@ import { ScopeContext } from "../../src/scope/context"
 
 afterEach(() => ProviderSdkSource.register(undefined))
 
+test.each(["buffer", "view"] as const)("authentication retry preserves the original %s bytes", async (kind) => {
+  const providerID = `mutable-fixture-${crypto.randomUUID()}`
+  await Auth.set(providerID, { type: "api", key: "fixture-key" })
+  const source = new TextEncoder().encode("original")
+  const body = kind === "buffer" ? source.buffer : new DataView(source.buffer)
+  const requests: string[] = []
+  const transport = ProviderAuthRecovery.wrapFetch(providerID, async (input, init) => {
+    requests.push(await new Request(input, init).text())
+    source.fill(120)
+    return new Response(null, { status: requests.length === 1 ? 401 : 204 })
+  })
+  try {
+    expect((await transport("http://fixture.invalid/v1", { method: "POST", body })).status).toBe(204)
+    expect(requests).toEqual(["original", "original"])
+  } finally {
+    await Auth.remove(providerID)
+  }
+})
+
 async function providerFetch(options: Record<string, unknown>, providerID = `fetch-fixture-${crypto.randomUUID()}`) {
   let transport: ProviderProfile.FetchLike | undefined
   const factory: ProviderSdkSource.Factory = (options) => {
@@ -228,3 +247,15 @@ test.each(["headers", "signal"] as const)(
     else expect(received?.signal.reason).toBe(reason)
   },
 )
+
+test("an explicit null signal replaces a Request caller's cancellation", async () => {
+  let received: Request | undefined
+  const transport = await providerFetch({
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      received = new Request(input, init)
+      return new Response(null, { status: 204 })
+    },
+  })
+  await transport(new Request("http://fixture.invalid/v1", { signal: AbortSignal.abort() }), { signal: null })
+  expect(received?.signal.aborted).toBe(false)
+})

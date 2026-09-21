@@ -487,10 +487,15 @@ export namespace ProviderAuthRecovery {
       const template = new Request(input, init)
       // Provenance: https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3 .
       // Local adaptation: preserve materialized SDK bodies so recording retains known-length uploads.
+      const body = init?.body
       const bufferedBody =
-        typeof init?.body === "string" || init?.body instanceof ArrayBuffer || ArrayBuffer.isView(init?.body)
-          ? init.body
-          : undefined
+        typeof body === "string"
+          ? body
+          : body instanceof ArrayBuffer
+            ? body.slice(0)
+            : ArrayBuffer.isView(body)
+              ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength).slice()
+              : undefined
       const selected = await Auth.select(providerID)
       const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
       const environmentKey = options?.environment

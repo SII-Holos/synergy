@@ -8,9 +8,9 @@ Provider requests pass through proxy selection, credential recovery, and evidenc
 
 ## Decision
 
-Proxy selection passes the original input and initializer to the selected fetch function, adding only the configured proxy. The timeout wrapper inherits the Request's headers and caller cancellation before applying its own transport headers and timeout signals. The explicit direct transport constructs its request with both input and initializer. Credential recovery preserves string, ArrayBuffer, and ArrayBufferView bodies for each attempt; other bodies use the retry clone's own stream. Transport recording retains its existing materialized-body handling and stream settlement contract.
+Proxy selection passes the original input and initializer to the selected fetch function, adding only the configured proxy. The timeout wrapper inherits the Request's headers and caller cancellation before applying its own transport headers and timeout signals; an explicit null signal removes the inherited caller signal. The explicit direct transport constructs its request with both input and initializer. Credential recovery preserves immutable strings and snapshots ArrayBuffer and ArrayBufferView bytes once for every attempt, including sliced views, so caller mutation cannot alter a retry; other bodies use the retry clone's own stream. Transport recording retains its existing materialized-body handling and stream settlement contract.
 
-This follows RFC 9112 section 6.3's preference for a known Content-Length when the request length is available. The authoritative provenance marker is beside body preservation in `provider/auth-recovery.ts`. See [LLM loop and compaction](../../../architecture/llm-loop.md) for the current call pipeline and [the postmortem](../../../postmortem/0023-provider-fetch-wrapper-input-loss.md) for the test gap.
+This follows RFC 9112 section 6.3's preference for a known Content-Length when the request length is available. The authoritative provenance marker is beside body preservation in `provider/auth-recovery.ts`. See [LLM loop and compaction](../../../architecture/llm-loop.md) for the current call pipeline and [the postmortem](../../../postmortem/0024-provider-fetch-wrapper-input-loss.md) for the test gap.
 
 ## Alternatives considered
 
