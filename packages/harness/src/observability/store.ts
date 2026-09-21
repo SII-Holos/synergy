@@ -252,7 +252,12 @@ export namespace ObservabilityStore {
     // flush() and close() can otherwise retain a statement and make SQLite's
     // strict close report SQLITE_BUSY during shutdown.
     clearTimers()
-    flush()
+    try {
+      flush()
+    } finally {
+      // A lazy flush can open the connection and schedule maintenance again.
+      clearTimers()
+    }
     if (instanceState.db) checkpointConnectionSafely(instanceState.db)
     // All queued writes have been committed above. Non-throwing close uses
     // sqlite3_close_v2 semantics, so outstanding cached statements can finish

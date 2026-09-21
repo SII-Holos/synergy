@@ -287,6 +287,30 @@ describe("ObservabilityStore", () => {
       expect(oldest[2].name).toBe("test.sort.c")
     }))
 
+  test("closing an unopened store drains queued metrics without leaving maintenance timers", () =>
+    runtime.run(() => {
+      expect(ObservabilityStore.stats().available).toBe(false)
+      ObservabilityMetrics.record({
+        name: "test.close.lazy",
+        value: 7,
+        unit: "count",
+        module: "observability",
+      })
+      expect(ObservabilityStore.stats().pending).toBeGreaterThan(0)
+
+      ObservabilityStore.close()
+
+      expect(ObservabilityStore.stats()).toMatchObject({
+        available: false,
+        pending: 0,
+        checkpointIntervalMs: undefined,
+        retentionIntervalMs: undefined,
+      })
+      expect(ObservabilityStore.queryMetrics({ since: 0, names: ["test.close.lazy"] }).map((row) => row.value)).toEqual(
+        [7],
+      )
+    }))
+
   test("compact timer is created on open and cleared on close", () =>
     runtime.run(() => {
       const conn = ObservabilityStore.open()
