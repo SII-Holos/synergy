@@ -11,6 +11,11 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Server } from "../../src/server/server"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 
 Log.init({ print: false })
 
@@ -83,6 +88,76 @@ describe("POST /session/:sessionID/continue", () => {
 })
 
 describe("POST /session/:sessionID/abandon", () => {
+  test("reports cancellation failure, retains the pause and permits an explicit retry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await createInterruptedTurn(session.id)
+        SessionExecutionContributions.register({
+          id: "abandon-failure-test",
+          abandonWorkflow: async (owner) => {
+            if (owner.id === session.id) throw new Error("Cancellation unavailable")
+            return false
+          },
+        })
+        try {
+          const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          expect(response.status).toBe(409)
+          expect(await response.json()).toMatchObject({ name: "SessionAbandonError" })
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+        } finally {
+          SessionExecutionContributions.register({ id: "abandon-failure-test" })
+        }
+        const retry = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+        expect(retry.status).toBe(200)
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+      },
+    })
+  })
+  test("cancels queued work even when the paused execution has already exited", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await createInterruptedTurn(session.id)
+        await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          parts: [{ type: "text", text: "Queued task" }],
+        })
+        const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+        expect(response.status).toBe(200)
+        expect(await SessionInbox.list(session.id)).toEqual([])
+        expect((await RolloutLedger.getRun(RolloutLifecycle.owner(session), queued.messageID)).status).toBe("cancelled")
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+      },
+    })
+  })
+  test("retains the pause when an abort hook fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const unregister = SessionAbort.registerHook((sessionID) => {
+          if (sessionID === session.id) throw new Error("Cancellation hook unavailable")
+        })
+        try {
+          const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          expect(response.status).toBe(409)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+        } finally {
+          unregister()
+        }
+        const retry = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+        expect(retry.status).toBe(200)
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+      },
+    })
+  })
   test.each([false, true])(
     "terminalizes the interrupted turn and leaves the session resting (paused=%s)",
     async (paused) => {

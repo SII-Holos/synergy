@@ -7,6 +7,7 @@ import { SessionDrive } from "../../src/session/drive"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionLifecycle } from "../../src/session/lifecycle"
 import { SessionManager } from "../../src/session/manager"
+import { SessionHistory } from "../../src/session/history"
 import { resolve as resolveWorking, toStatus } from "../../src/session/working"
 
 /** A reply-required root with no terminal assistant: the persisted shape of a
@@ -38,6 +39,42 @@ async function createInterruptedTurn(sessionID: string, rootMessageID: string) {
 }
 
 describe("a paused session is visible and inert without a live runtime", () => {
+  test.each([false, true])(
+    "startup settles orphaned tools without terminalizing the breakpoint (paused=%s)",
+    async (paused) => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await createInterruptedTurn(session.id, Identifier.ascending("message"))
+          const assistant = (await SessionHistory.modelMessages({ sessionID: session.id })).at(-1)!
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: session.id,
+            messageID: assistant.info.id,
+            type: "tool",
+            callID: "interrupted-tool",
+            tool: "bash",
+            state: { status: "running", input: { command: "sleep 120" }, time: { start: Date.now() } },
+          })
+          if (paused) await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+          const original = await SessionLifecycle.snapshot(session.id)
+          await SessionInvoke.reconcilePausedSessions(session.scope.id)
+          const messages = await SessionHistory.modelMessages({ sessionID: session.id })
+          const repaired = messages.find((message) => message.info.id === assistant.info.id)!
+          expect(repaired.parts.find((part) => part.type === "tool")?.state.status).toBe("error")
+          if (repaired.info.role !== "assistant") throw new Error("Expected an assistant breakpoint")
+          expect(repaired.info.time.completed).toBeUndefined()
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+          const latch = await SessionLifecycle.snapshot(session.id)
+          if (original) expect(latch).toEqual(original)
+          await SessionInvoke.reconcilePausedSessions(session.scope.id)
+          expect(await SessionLifecycle.snapshot(session.id)).toEqual(latch)
+        },
+      })
+    },
+  )
   test("startup reconciliation records the latch and drives nothing", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

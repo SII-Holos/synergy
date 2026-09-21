@@ -827,6 +827,11 @@ export const statusBar = {
   // Runtime
   runtimeLabel: { id: "app.statusBar.runtime.label", message: "Runtime: {label}" },
   copyRetryError: { id: "app.statusBar.runtime.copyRetryError", message: "Copy retry error" },
+  copyPauseReason: { id: "app.statusBar.runtime.copyPauseReason", message: "Copy pause reason" },
+  copyRuntimeDetailsFailed: {
+    id: "app.statusBar.runtime.copyDetailsFailed",
+    message: "Could not copy execution details",
+  },
   copyRetryErrorFailed: {
     id: "app.statusBar.runtime.copyRetryErrorFailed",
     message: "Unable to copy the retry error.",

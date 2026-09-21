@@ -172,12 +172,12 @@ describe("crashed-runtime recovery end to end", () => {
         expect((await NoteStore.get(ScopeContext.current.scope.id, note.id)).blueprint?.activeLoopID).toBe(loop.id)
 
         // 4. The interrupted turn stays resumable. The in-flight tool call is
-        // deliberately not settled here and the assistant is not terminalized,
-        // so a continue has real work to resume instead of being a silent no-op.
+        // settled as interrupted while the assistant remains non-terminal,
+        // so Continue resumes a real breakpoint without a stale running card.
         const parts = await MessageV2.parts({ sessionID: session.id, messageID: assistant.id })
         const toolPart = parts.find((part) => part.id === toolPartID)
         if (toolPart?.type !== "tool") throw new Error("expected tool part")
-        expect(toolPart.state.status).toBe("running")
+        expect(toolPart.state.status).toBe("error")
         const messages = await Session.messages({ sessionID: session.id })
         const interrupted = messages.find((message) => message.info.id === assistant.id)
         if (interrupted?.info.role !== "assistant") throw new Error("expected assistant message")
@@ -224,11 +224,11 @@ describe("crashed-runtime recovery end to end", () => {
         const { session } = await reproduceCrashedTurn()
         await restartRecovery()
 
-        // Startup recovery records the pause but deliberately leaves the
-        // interrupted turn alone, so the first explicit repair is real work.
+        // Startup already settled the tool parts and kept the pause.
+        // Repeating repair must preserve the resumable breakpoint.
         const first = await SessionInvoke.repairAbortState(session.id)
-        expect(first.repaired).toBe(true)
-        expect(first.paused).toBe(false)
+        expect(first.repaired).toBe(false)
+        expect(first.paused).toBe(true)
 
         // A repeat must report that it changed nothing rather than claiming a
         // second success on an already-settled turn, and it must not rewrite the
@@ -236,7 +236,7 @@ describe("crashed-runtime recovery end to end", () => {
         const second = await SessionInvoke.repairAbortState(session.id)
         expect(second.repaired).toBe(false)
         expect(second.abandoned).toBe(false)
-        expect(second.paused).toBe(false)
+        expect(second.paused).toBe(true)
         expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("workflow")
       },
     })

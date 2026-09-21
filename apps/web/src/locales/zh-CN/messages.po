@@ -8521,6 +8521,14 @@ msgid "app.statusBar.panel.workspace"
 msgstr "工作区"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.copyDetailsFailed"
+msgstr "无法复制执行详情"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.copyPauseReason"
+msgstr "复制暂停原因"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.runtime.copyRetryError"
 msgstr "复制重试错误"
 
@@ -10193,8 +10201,36 @@ msgstr "连接已断开——回复可能延迟"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonBack"
+msgstr "返回"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonConfirm"
+msgstr "放弃执行"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonDescription"
+msgstr "将停止当前执行、取消当前工作流，并取消已排队的消息。会话历史、已生成文件和未发送草稿会保留。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.abandonDone"
-msgstr "已放弃会话"
+msgstr "已放弃本次执行"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonExecution"
+msgstr "放弃本次执行"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10209,6 +10245,20 @@ msgstr "放弃会话失败"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.abandonHint"
 msgstr "按住 3 秒放弃"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonHolding"
+msgstr "继续按住以放弃 · 松手取消"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandoning"
+msgstr "正在放弃…"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10235,6 +10285,13 @@ msgstr "输入消息后可发送"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.failed"
+msgstr "无法更新执行状态"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.pause"
 msgstr "暂停"
 
@@ -10244,6 +10301,27 @@ msgstr "暂停"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.pauseHint"
 msgstr "停止当前回合；会话将暂停"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.queueMessage"
+msgstr "加入队列"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.sendAndContinue"
+msgstr "发送并继续"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.steerHint"
+msgstr "先调整当前任务，再继续执行"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.

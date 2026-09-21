@@ -8,12 +8,35 @@ import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { LatticeStore } from "@ericsanchezok/synergy-workflows/lattice/store"
 import * as SessionWorking from "@ericsanchezok/synergy-harness/session/working"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 Log.init({ print: false })
+
+test("abandon cancels a Lattice Run with planning progress and clears its binding", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const session = await Session.create({})
+      const run = await LatticeStore.create({ sessionID: session.id, mode: "auto", goal: "Keep planning evidence" })
+      await LatticeStore.updateByRunID(session.scope.id, run.id, (draft) => {
+        draft.modelCallCount = 2
+      })
+      await Session.update(session.id, (draft) => {
+        draft.workflow = { kind: "lattice", runID: run.id, mode: "auto" }
+      })
+      await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+      await SessionAbort.abort(session.id, { abandonWorkflow: true, terminalize: true })
+      expect((await LatticeStore.getByRunID(session.scope.id, run.id))?.status).toBe("cancelled")
+      expect((await Session.get(session.id)).workflow).toBeUndefined()
+      expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+    },
+  })
+})
 
 async function createBlueprintNote() {
   return NoteStore.create({

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
-import { createComponent } from "solid-js"
+import { createComponent, createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import type { Prompt } from "../../../src/context/prompt"
 
@@ -34,16 +34,21 @@ const translate = i18n._.bind(i18n)
 mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: translate }) }))
 
 type TestStatusType = "idle" | "busy" | "pause" | "paused"
-let statusType: TestStatusType = "idle"
+const [statusType, setStatusType] = createSignal<TestStatusType>("idle")
 const statusForType = () =>
-  statusType === "pause"
+  statusType() === "pause"
     ? { type: "busy" as const }
-    : statusType === "paused"
+    : statusType() === "paused"
       ? { type: "paused" as const, reason: "aborted" as const, since: 1 }
-      : { type: statusType }
-let promptParts: Prompt = []
+      : { type: statusType() as "idle" | "busy" }
+const [promptParts, setPromptParts] = createSignal<Prompt>([])
+let draftResets = 0
+const toastTitles: string[] = []
+let abandonFails = false
 const abortCalls: Array<{ sessionID?: string }> = []
 const continueCalls: Array<{ sessionID?: string }> = []
+const abandonCalls: Array<{ sessionID?: string }> = []
+let abandonBarrier: Promise<void> | undefined
 
 const message = (content: string): Prompt => [{ type: "text", content, start: 0, end: content.length }]
 
@@ -69,7 +74,12 @@ const sdkClient = () => ({
       continueCalls.push(input)
       return { data: { handled: true } }
     },
-    abandon: async () => ({ data: { repaired: false, paused: false, abandoned: false } }),
+    abandon: async (input: { sessionID?: string }) => {
+      abandonCalls.push(input)
+      await abandonBarrier
+      if (abandonFails) return { error: { name: "SessionAbandonError", data: { message: "Cancellation unavailable" } } }
+      return { data: { repaired: false, paused: false, abandoned: false } }
+    },
   },
   blueprint: {
     loop: {
@@ -166,12 +176,18 @@ mock.module("../../../src/context/prompt", () => ({
   PromptProvider: (props: { children?: unknown }) => props.children,
   usePrompt: () => ({
     ready: () => true,
-    current: () => promptParts,
-    dirty: () => promptParts.length > 0,
+    current: promptParts,
+    dirty: () => promptParts().length > 0,
     cursor: () => 0,
-    set: () => {},
-    reset: () => {},
-    resetDraft: () => {},
+    set: (value: Prompt) => setPromptParts(value),
+    reset: () => {
+      draftResets++
+      setPromptParts([])
+    },
+    resetDraft: () => {
+      draftResets++
+      setPromptParts([])
+    },
     capture: () => ({ draft: {}, isCurrent: () => true, release() {} }),
     context: { items: () => [], add: () => {}, set: () => {}, reset: () => {}, remove: () => {} },
     attach: () => {},
@@ -248,7 +264,9 @@ mock.module("../../../src/components/lattice/lattice-config-dialog", () => ({
 mock.module("@ericsanchezok/synergy-ui/composer-slots", () => ({
   ComposerSlotOutlet: () => null,
 }))
-mock.module("@ericsanchezok/synergy-ui/toast", () => ({ showToast: () => {} }))
+mock.module("@ericsanchezok/synergy-ui/toast", () => ({
+  showToast: (input: { title: string }) => toastTitles.push(input.title),
+}))
 
 // Static imports of `packages/ui` TSX compile before this file's Bun loader is
 // registered, so the UI surfaces load dynamically after it.
@@ -289,16 +307,116 @@ const controlCount = () =>
   ).length
 
 afterEach(() => {
-  statusType = "idle"
-  promptParts = []
+  setStatusType("idle")
+  setPromptParts([])
   abortCalls.length = 0
   continueCalls.length = 0
+  abandonCalls.length = 0
+  abandonBarrier = undefined
+  abandonFails = false
+  draftResets = 0
+  toastTitles.length = 0
   document.body.innerHTML = ""
 })
 
 describe("single composer control", () => {
+  test("a failed abandonment reports failure and keeps the paused draft available", async () => {
+    setStatusType("paused")
+    setPromptParts(message("Keep after failure"))
+    abandonFails = true
+    const harness = mount()
+    try {
+      const control = document.querySelector<HTMLButtonElement>(".prompt-input-submit")!
+      control.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 3100))
+      control.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }))
+      const release = new MouseEvent("click", { bubbles: true, cancelable: true })
+      control.dispatchEvent(release)
+      expect(release.defaultPrevented).toBe(true)
+      expect(abandonCalls).toHaveLength(1)
+      expect(toastTitles).toEqual([PI.abandonFailed.message])
+      expect(promptParts()).toEqual(message("Keep after failure"))
+      expect(draftResets).toBe(0)
+      expect(control.disabled).toBe(false)
+      expect(control.getAttribute("aria-label")).toBe(PI.sendAndContinue.message)
+    } finally {
+      harness.dispose()
+    }
+  })
+  test("a new pointer gesture permits sending after release produced no click while abandonment was pending", async () => {
+    setStatusType("paused")
+    setPromptParts(message("Send this later"))
+    const pending = Promise.withResolvers<void>()
+    abandonBarrier = pending.promise
+    const harness = mount()
+    try {
+      const control = document.querySelector<HTMLButtonElement>(".prompt-input-submit")!
+      control.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 3100))
+      expect(control.disabled).toBe(true)
+      control.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }))
+      setStatusType("idle")
+      pending.resolve()
+      await settle()
+      expect(control.disabled).toBe(false)
+      control.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true }))
+      control.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }))
+      const next = new MouseEvent("click", { bubbles: true, cancelable: true })
+      control.dispatchEvent(next)
+      expect(next.defaultPrevented).toBe(false)
+      expect(abandonCalls).toHaveLength(1)
+    } finally {
+      pending.resolve()
+      harness.dispose()
+    }
+  })
+  test.each([false, true])(
+    "releasing a partial hold cancels without continuing or sending (draft=%s)",
+    async (draft) => {
+      setStatusType("paused")
+      setPromptParts(draft ? message("Adjust direction") : [])
+      const harness = mount()
+      try {
+        const control = document.querySelector<HTMLButtonElement>(".prompt-input-submit")!
+        control.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true }))
+        await new Promise((resolve) => setTimeout(resolve, 350))
+        control.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }))
+        const release = new MouseEvent("click", { bubbles: true, cancelable: true })
+        control.dispatchEvent(release)
+        await settle()
+        expect(release.defaultPrevented).toBe(true)
+        expect(continueCalls).toEqual([])
+        expect(abandonCalls).toEqual([])
+        expect(promptParts()).toEqual(draft ? message("Adjust direction") : [])
+      } finally {
+        harness.dispose()
+      }
+    },
+  )
+  test("a completed hold consumes the release click and preserves the draft", async () => {
+    setStatusType("paused")
+    setPromptParts(message("Keep this draft"))
+    const harness = mount()
+    try {
+      const control = document.querySelector<HTMLButtonElement>(".prompt-input-submit")!
+      control.dispatchEvent(new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5, bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 3100))
+      control.dispatchEvent(new PointerEvent("pointerup", { button: 0, bubbles: true }))
+      const release = new MouseEvent("click", { bubbles: true, cancelable: true })
+      control.dispatchEvent(release)
+      expect(release.defaultPrevented).toBe(true)
+      expect(abandonCalls).toEqual([{ sessionID: "ses_prompt" }])
+      expect(promptParts()).toEqual(message("Keep this draft"))
+      expect(draftResets).toBe(0)
+      const next = new MouseEvent("click", { bubbles: true, cancelable: true })
+      control.dispatchEvent(next)
+      expect(next.defaultPrevented).toBe(false)
+    } finally {
+      harness.dispose()
+    }
+  })
   test("renders exactly one primary control", () => {
-    statusType = "idle"
+    setStatusType("idle")
     const harness = mount()
     try {
       expect(controlCount()).toBe(1)
@@ -308,11 +426,11 @@ describe("single composer control", () => {
   })
 
   test("sends while a draft is present, even on a paused session", () => {
-    statusType = "paused"
-    promptParts = message("half-written prompt")
+    setStatusType("paused")
+    setPromptParts(message("half-written prompt"))
     const harness = mount()
     try {
-      expect(primaryControl(PI.sendMessage.message)).toBeDefined()
+      expect(primaryControl(PI.sendAndContinue.message)).toBeDefined()
       // A paused session with a draft offers Send, never a second stop control.
       expect(primaryControl(PI.pauseControl.message)).toBeUndefined()
     } finally {
@@ -321,8 +439,8 @@ describe("single composer control", () => {
   })
 
   test("pauses a running session with an empty draft", async () => {
-    statusType = "pause"
-    promptParts = []
+    setStatusType("pause")
+    setPromptParts([])
     const harness = mount()
     try {
       const control = primaryControl(PI.pauseControl.message)
@@ -339,8 +457,8 @@ describe("single composer control", () => {
   })
 
   test("continues a paused session instead of offering a stop control", async () => {
-    statusType = "paused"
-    promptParts = []
+    setStatusType("paused")
+    setPromptParts([])
     const harness = mount()
     try {
       const control = primaryControl(PI.continueControl.message)
@@ -359,8 +477,8 @@ describe("single composer control", () => {
   })
 
   test("disables the control when the session is idle and nothing is armed", () => {
-    statusType = "idle"
-    promptParts = []
+    setStatusType("idle")
+    setPromptParts([])
     const harness = mount()
     try {
       const control = primaryControl(PI.sendMessage.message)

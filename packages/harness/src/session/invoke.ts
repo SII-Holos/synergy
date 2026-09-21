@@ -55,6 +55,7 @@ import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./
 import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
 import { SessionLifecycle } from "./lifecycle"
+import { Storage } from "../storage/storage"
 import type { PausedReason } from "./types"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
@@ -179,6 +180,8 @@ export namespace SessionInvoke {
     abandoned: boolean
   }
 
+  export const AbandonError = NamedError.create("SessionAbandonError", z.object({ message: z.string() }))
+
   export interface AbortRepairOptions {
     /**
      * True when the preceding stop signal interrupted a live turn.
@@ -221,31 +224,40 @@ export namespace SessionInvoke {
     sessionID: string,
     options: AbortRepairOptions = {},
   ): Promise<AbortRepairState> {
+    if (options.abandonWorkflow) await SessionLifecycle.pause({ sessionID, reason: options.pauseReason ?? "aborted" })
     const repaired = await repairIncompleteAssistant(sessionID, { terminalize: options.terminalize === true }).catch(
       (err) => {
         log.error("assistant repair after abort failed", { sessionID, error: err })
+        if (options.abandonWorkflow)
+          throw new AbandonError(
+            { message: "Could not settle the interrupted execution. Retry abandoning the session." },
+            { cause: err },
+          )
         return false
       },
     )
     const abandoned = options.abandonWorkflow
       ? await abandonBoundWorkflow(sessionID).catch((err) => {
           log.error("workflow abandonment failed", { sessionID, error: err })
-          return false
+          throw new AbandonError(
+            { message: "Could not cancel the bound workflow. The session remains paused; retry abandoning it." },
+            { cause: err },
+          )
         })
       : false
 
     if (options.abandonWorkflow) await SessionLifecycle.clear(sessionID)
-    const paused =
-      options.internalCancel || options.abandonWorkflow
-        ? false
-        : await SessionLifecycle.pause({
-            sessionID,
-            reason: options.pauseReason ?? "aborted",
-            description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
-          }).catch((err) => {
-            log.error("session pause failed", { sessionID, error: err })
-            return false
-          })
+    if (!options.internalCancel && !options.abandonWorkflow) {
+      await SessionLifecycle.pause({
+        sessionID,
+        reason: options.pauseReason ?? "aborted",
+        description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
+      }).catch((err) => {
+        log.error("session pause failed", { sessionID, error: err })
+        return false
+      })
+    }
+    const paused = !!(await SessionLifecycle.snapshot(sessionID))
 
     await publishResolvedStatus(sessionID)
     return { repaired, paused, abandoned }
@@ -260,10 +272,23 @@ export namespace SessionInvoke {
    * opposite of what the wake was requested for.
    */
   export async function settleInterruptedTurn(sessionID: string): Promise<boolean> {
-    return repairIncompleteAssistant(sessionID, { terminalize: false }).catch((err) => {
+    try {
+      const session = await SessionManager.getSession(sessionID)
+      const rootID = await SessionInbox.latestRootID(sessionID)
+      const run =
+        session && rootID
+          ? await RolloutLedger.getRun(RolloutLifecycle.owner(session), rootID).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return undefined
+              throw error
+            })
+          : undefined
+      return await repairIncompleteAssistant(sessionID, {
+        terminalize: !session?.paused && run?.status === "cancelled",
+      })
+    } catch (err) {
       log.warn("interrupted turn settlement failed", { sessionID, error: err })
       return false
-    })
+    }
   }
 
   /** Republish the derived status so a latch change reaches live clients. */
@@ -2437,6 +2462,7 @@ export namespace SessionInvoke {
       if (SessionManager.isRunning(sessionID)) continue
       try {
         await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
+        await repairIncompleteAssistant(sessionID, { terminalize: false })
       } catch (error) {
         log.warn("session pause reconcile failed", { sessionID, error })
       }

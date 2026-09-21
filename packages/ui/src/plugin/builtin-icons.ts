@@ -46,6 +46,8 @@ const builtinIconNames = [
   "circle-dashed",
   "circle-gauge",
   "circle-play",
+  "circle-pause",
+  "play",
   "circle-plus",
   "circle-stop",
   "circle-x",

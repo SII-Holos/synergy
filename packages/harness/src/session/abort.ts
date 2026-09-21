@@ -4,6 +4,10 @@ import { SessionInvoke } from "./invoke"
 import { SessionCortexRuntime } from "./cortex-runtime"
 import { SessionManager } from "./manager"
 import { SessionLifecycle } from "./lifecycle"
+import { SessionInbox } from "./inbox"
+import { Lock } from "../util/lock"
+import { RolloutLedger } from "./rollout/ledger"
+import { RolloutLifecycle } from "./rollout/lifecycle"
 type AbortHook = (sessionID: string) => void | Promise<void>
 
 export namespace SessionAbort {
@@ -51,6 +55,7 @@ export namespace SessionAbort {
   }
 
   export async function abort(sessionID: string, options?: AbortOptions): Promise<Result> {
+    using control = options?.internalCancel ? undefined : await Lock.write(`session-control:${sessionID}`)
     // Sample liveness *before* the signal. The signal ends the turn, which
     // releases the runtime, so a later sample cannot distinguish a loop that was
     // healthily driving this turn from one orphaned by a dead runtime.
@@ -74,8 +79,38 @@ export namespace SessionAbort {
       options?.terminalize !== true &&
       options?.abandonWorkflow !== true &&
       SessionLifecycle.latchable(await SessionManager.getSession(sessionID).catch(() => undefined))
-    const outcome = SessionInvoke.cancel(sessionID, pauseTurn ? { pauseTurn: true } : undefined)
-    await SessionCortexRuntime.cancelAllForParent(sessionID)
+    if (!options?.internalCancel) {
+      await SessionLifecycle.pause({ sessionID, reason: options?.pauseReason ?? "aborted" })
+    }
+    let outcome: Result["outcome"] = "idle"
+    let fenced: SessionInbox.StoredItem[] = []
+    if (options?.abandonWorkflow) {
+      await SessionInbox.fenceQueuedWork(sessionID, (fenceQueuedBefore, items) => {
+        fenced = items
+        outcome = SessionInvoke.cancel(sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
+      })
+    } else {
+      outcome = SessionInvoke.cancel(sessionID, pauseTurn ? { pauseTurn: true } : undefined)
+    }
+    try {
+      await SessionCortexRuntime.cancelAllForParent(sessionID)
+      if (options?.abandonWorkflow) {
+        await SessionManager.waitForIdle(sessionID)
+        const session = await SessionManager.getSession(sessionID)
+        for (const item of fenced) {
+          if (item.mode !== "task" || !item.messageID || !session) continue
+          await RolloutLedger.cancelUnopenedRun(RolloutLifecycle.owner(session), item.messageID, item.time.created)
+          await RolloutLifecycle.cancel(sessionID, item.messageID)
+        }
+      }
+      await Promise.all([...hooks].map((hook) => hook(sessionID)))
+    } catch (cause) {
+      if (!options?.abandonWorkflow) throw cause
+      throw new SessionInvoke.AbandonError(
+        { message: "Could not finish cancelling execution. The session remains paused; retry abandoning it." },
+        { cause },
+      )
+    }
     const state = await SessionInvoke.repairAbortState(sessionID, {
       turnWasRunning,
       internalCancel: options?.internalCancel,
@@ -83,7 +118,6 @@ export namespace SessionAbort {
       abandonWorkflow: options?.abandonWorkflow,
       pauseReason: options?.pauseReason,
     })
-    await Promise.all([...hooks].map((hook) => hook(sessionID)))
     return { outcome, repaired: state.repaired, paused: state.paused, abandoned: state.abandoned }
   }
 

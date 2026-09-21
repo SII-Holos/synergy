@@ -5,9 +5,6 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { statusBar as copy } from "@/locales/messages"
 import { classifySessionActivity, isPausedSessionStatus } from "@/utils/session-status"
 
-/** `circle-pause` has no semantic token yet; the catalog lives outside this app. */
-const PAUSED_ICON: IconName = "circle-pause"
-
 function pausedReasonLabel(reason: SessionPausedReason, i18n: I18n): string {
   switch (reason) {
     case "aborted":
@@ -73,7 +70,7 @@ export function resolveRuntimeIconState(
     case "paused": {
       const message = isPausedSessionStatus(status) ? pausedDetail(status, i18n) : i18n._(copy.pausedTooltip)
       return {
-        icon: PAUSED_ICON,
+        icon: getSemanticIcon("session.pause"),
         label,
         tooltip: message,
         tone: "paused",

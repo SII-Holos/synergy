@@ -267,7 +267,7 @@ describe("a live user stop preserves the resume breakpoint", () => {
         fn: async () => {
           const session = await createSessionWithRoot()
           try {
-            const turn = SessionInvoke.loop.force(session.id)
+            const turn = SessionInvoke.loop.force(session.id).catch(() => undefined)
             await harness.firstTurnStarted
 
             await abandonSession(session.id)

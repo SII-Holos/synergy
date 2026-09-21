@@ -77,14 +77,18 @@ export function registerWorkflowSessions() {
       // Light Loop and Lattice persist their own terminal records, so their
       // domain cancel paths run instead of a raw status write.
       if (isActiveLightLoopWorkflow(session.workflow)) {
-        await WorkflowPromptRegistry.get("lightloop")?.cancel?.(session.id)
+        const cancel = WorkflowPromptRegistry.get("lightloop")?.cancel
+        if (!cancel) throw new Error("Light Loop cancellation is unavailable")
+        await cancel(session.id)
         abandoned = true
       }
       if (session.workflow?.kind === "lattice") {
         await ScopeContext.provide({
           scope: session.scope,
           fn: async () => {
-            await WorkflowPromptRegistry.get("lattice")?.disable?.(session.id)
+            const cancel = WorkflowPromptRegistry.get("lattice")?.cancel
+            if (!cancel) throw new Error("Lattice cancellation is unavailable")
+            await cancel(session.id)
           },
         })
         abandoned = true
