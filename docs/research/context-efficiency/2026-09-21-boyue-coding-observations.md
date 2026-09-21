@@ -4,9 +4,11 @@
 
 ## 预先固定的协议
 
-基线为 `2717298d48db609a38bbecd93a9d68eb262d6480`，包含付费派发前同步的存储 liveness 与结构回收修复。候选使用修复后提交；两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。正式派发后不改写输入或续跑到其他 evaluator。
+正式评分基线为 `3838cf56c34600c7a6f049f3a0197cd48b3f4954`，包含存储 liveness、结构回收及统一 paused 会话状态。候选使用修复后提交；两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。正式派发后不改写输入或续跑到其他 evaluator。
 
 两侧使用原生 Linux amd64、synergy-max、full runtime、`bun_jit: true`、并发 1、repeat 1、调度 seed 20260921 和 `timeout_seconds: native`。模型为 Boyue `bailian/deepseek-v4.1-flash`，Chat Completions，`enable_thinking: false`，不声明 reasoning tier，temperature 1、context 1000000、max output 8192、developer role disabled。主代理、辅助及子代理使用同一 profile。端点、凭据与直连设置仅在私有配置中保存。
+
+正式实验将缓存上限固定为 384 GiB、磁盘余量保持 20 GiB，以同时保留历史证据引用和完整原题镜像；准备时宿主可用磁盘超过 600 GiB。该条件同时应用于两侧，不改变原生任务的 CPU、内存或解题期限。早期预检使用的 32 GiB 缓存条件单独保留。
 
 小样本按[公开预设](../../../benchmark/configs/coding-observations-boyue.yaml)选择 dasel、superjson 和 large-scale-text-editing，每题两侧各一次，共六次正式执行。另用[委派夹具](../../../benchmark/test/fixtures/delegated-review/instruction.md)各执行一次；姓名规范化、Unicode 空白、非 BMP 字母、emoji 的校验在运行前固定。要求恰好一次 maintainability-reviewer 审阅同一工作目录的未提交修改，单列原生功能 reward 与委派次数，不能用其中一项替代另一项。
 
@@ -29,3 +31,5 @@
 三道筛查原题及独立委派夹具的原生 oracle 均已通过，reward 均为 1。首轮真实 doctor 对三题两侧分别完成工具往返，共 30 次请求，全部使用指定模型、关闭 thinking、8192 输出上限与 temperature 1，没有 reasoning tier 或 developer 消息。六次预检均正常退出、归档有效，核心用量及缓存读取逐请求匹配；缓存写入与推理 token 未提供，保持未知。主代理、标题及意图调用均包含在账本内。
 
 首轮预检候选产品源码为 `1ca6324da7292fb120a0f8cfaa71a9622d87e7ac`。正式评分前修正审阅发现的搜索条数上限提示和 AST 重复行号；旧预检保留全部用量，修复后另建候选实验，不改写旧身份。长会话控制覆盖的读取、编辑、计量和生命周期实现不受这两处搜索反馈修正影响。小样本、委派回归与完整 local-24 结果仍待后续验收，免费控制及 doctor 不能替代任务质量与效率结论。
+
+第二轮候选 `5b70d2166512632ad27f2ce1129d5778aa236e58` 的一项预检在 120 秒内未收到服务商响应头，其余五项通过。端点直连及后续模型响应恢复后，仅对失败项另建预检 attempt，重验通过；原中断请求的 usage 保持未知。两轮共 62 个请求、947029 个已知输入加输出 token，另有 1 个请求用量未知。两轮均以 `2717298d48db609a38bbecd93a9d68eb262d6480` 为基线，没有正式评分执行；随后 dev 合入会话状态变更，因此正式评分前跟进 rebase 并重新冻结输入，早期预检不替代新基线的运行验收。
