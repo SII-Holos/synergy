@@ -40,6 +40,8 @@ Each attempt starts its own queue clock before resource admission. Prior executi
 
 Instruction delivery follows Pier's declared log-mount capability: mounted logs expose the host instruction directly, while non-mounted environments receive an upload. Recopying the same bound file adds a Docker failure point without improving visibility. Credentials stay outside the mounted logs and retain their separate private transfer. The [transfer postmortem](../../../postmortem/0014-benchmark-recopied-mounted-instructions.md) preserves the observed failure and the limits of its underlying Docker diagnosis.
 
+The native Synergy control exercises 120 tool roundtrips with real Unicode file reads, edits and verification under both JIT modes and protocols. Its deterministic HTTP provider admits the gateway's 128 MiB request limit: the default 1 MiB fixture limit rejected valid long histories before 120 rounds. The Synergy CI job has a 75-minute orchestration budget for the full sequential matrix; other harness jobs retain 35 minutes. Per-control 900-second solving deadlines and native research-task deadlines remain independent.
+
 ## Alternatives considered
 
 **Run every model through Synergy's loop.** This would compare model behavior but remove the native harness differences the experiment needs to measure.

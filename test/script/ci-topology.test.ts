@@ -100,6 +100,10 @@ describe("CI topology", () => {
         "test-aux",
         "test-harness",
         "test-benchmark",
+        "test-benchmark-docker",
+        "test-benchmark-matrix",
+        "test-benchmark-streams",
+        "agent-storage",
         "test-rollout-long",
       ].sort(),
     )
