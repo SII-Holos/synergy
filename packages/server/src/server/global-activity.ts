@@ -24,7 +24,7 @@ export const GlobalActivityRoute = () =>
     describeRoute({
       summary: "Get global activity",
       description:
-        "Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, recovering) and in-flight loop background jobs both count; a session still queued for recovery after a restart counts once it begins executing. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
+        "Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, paused) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
       operationId: "global.activity",
       responses: {
         200: {

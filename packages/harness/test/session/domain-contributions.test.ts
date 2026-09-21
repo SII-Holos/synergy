@@ -36,7 +36,7 @@ test("an explicitly registered workflow shares session persistence, execution ow
           id: kind,
           isActive: (info) => info.id === session.id && info.workflow?.kind === kind,
           hasContinuation: (info) => info.id === session.id && info.workflow?.kind === kind,
-          ownsPendingReply: (info) => info.id === session.id,
+          abandonWorkflow: async (info) => info.id === session.id,
           system: (info) => (info.id === session.id ? ["experiment system context"] : []),
           archive: async (info) => (info.id === session.id ? { experiment: "saved evidence" } : {}),
           advisory: async (sessionID, _scopeID, signal) => {
@@ -51,7 +51,7 @@ test("an explicitly registered workflow shares session persistence, execution ow
         expect(enabled.workflow).toEqual({ kind, experiment: "run A" })
         expect(await SessionWorkflowService.hasPendingExecution(enabled)).toBe(true)
         expect(SessionExecutionContributions.hasContinuation(enabled)).toBe(true)
-        expect(SessionExecutionContributions.ownsPendingReply(enabled)).toBe(true)
+        expect(await SessionExecutionContributions.abandonWorkflow(enabled)).toBe(true)
         expect(
           await SessionExecutionContributions.system(enabled, { agentName: "test", deliveryMetadata: undefined }),
         ).toEqual(["experiment system context"])
@@ -92,9 +92,10 @@ test("recovery invokes the selected domain without requiring product stores", ()
             report.entries.push({ scopeID, sessionID: session.id, action: "experiment_recovery" })
             report.changed++
           },
-          resume: async (scopeID) => (scopeID === session.scope.id ? 1 : 0),
           statuses: async (scopeID) =>
-            scopeID === session.scope.id ? { [session.id]: { type: "recovering" as const } } : {},
+            scopeID === session.scope.id
+              ? { [session.id]: { type: "paused" as const, reason: "interrupted" as const, since: 1 } }
+              : {},
         })
         const preview = await SessionRecovery.reconcileRuntimeState({ scopeID: session.scope.id })
         expect(preview.changed).toBe(1)
@@ -102,9 +103,8 @@ test("recovery invokes the selected domain without requiring product stores", ()
         const applied = await SessionRecovery.reconcileRuntimeState({ scopeID: session.scope.id, apply: true })
         expect(applied.sessionsScanned).toBe(1)
         expect((await Session.get(session.id)).title).toBe("Recovered experiment")
-        expect(await SessionRecovery.resumePendingStopRequests(session.scope.id)).toBe(1)
         expect(await SessionRecovery.recoverableStatuses(session.scope.id)).toEqual({
-          [session.id]: { type: "recovering" },
+          [session.id]: { type: "paused", reason: "interrupted", since: 1 },
         })
       },
     })

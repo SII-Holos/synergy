@@ -46,7 +46,7 @@ describe("session.updated nav entry payload", () => {
         fn: async () => {
           const session = await Session.create({ title: "Running" })
           const started = await Session.update(session.id, (draft) => {
-            draft.pendingReply = true
+            draft.paused = { reason: "aborted", since: Date.now() }
             draft.title = "Running started"
           })
 

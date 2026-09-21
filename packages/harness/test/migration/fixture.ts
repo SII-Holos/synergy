@@ -39,11 +39,13 @@ export async function migrationFixture(
     }))
   try {
     if (options.register) context.run(options.register)
-    store = await TransactionalStore.open({
-      backend: "sqlite",
-      namespace: "migration-test",
-      filename: path.join(host.root, "migration.sqlite"),
-    })
+    store = await context.run(() =>
+      TransactionalStore.open({
+        backend: "sqlite",
+        namespace: "migration-test",
+        filename: path.join(host.root, "migration.sqlite"),
+      }),
+    )
     context.storage = { store, artifactDirectory: path.join(host.root, "data") }
     return { host, [Symbol.asyncDispose]: close, run: context.run, bind: context.bind, close }
   } catch (error) {

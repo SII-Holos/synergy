@@ -10,6 +10,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotLease } from "./snapshot-lease"
+import { SnapshotProtection } from "./snapshot-protection"
 
 export namespace SnapshotStore {
   export const Owner = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared", "deleted"]) })
@@ -118,6 +119,15 @@ export namespace SnapshotStore {
   export async function withSession<T>(sessionID: string, fn: () => Promise<T>, signal?: AbortSignal) {
     const scopeID = ScopeContext.current.scope.id
     component(sessionID)
+    if (
+      (await owner(scopeID, sessionID))?.backend === "legacy" &&
+      (await SnapshotProtection.active(Storage.current().artifactDirectory))
+    ) {
+      const { SnapshotMaintenance } = await import("./snapshot-maintenance")
+      const result = await SnapshotMaintenance.migrate(scopeID, { apply: true, sessionID, signal })
+      if (result.results.some((result) => result.status !== "migrated"))
+        throw new StorageError("Protected historical snapshots are not ready")
+    }
     return SnapshotLease.use(
       scopeID,
       false,
@@ -155,6 +165,7 @@ export namespace SnapshotStore {
       { directory: SnapshotLease.directory(), key: `snapshot-init:${operation.repository}` },
       async () => {
         if (operation.backend === "legacy") {
+          await SnapshotProtection.assertWritable(Storage.current().artifactDirectory)
           if (!(await Bun.file(path.join(operation.repository, "HEAD")).exists()))
             throw new StorageError("Legacy snapshot repository is missing")
           return

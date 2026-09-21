@@ -175,6 +175,17 @@ export function registerLatticeDomain(): void {
     async disable(sessionID) {
       await LatticeRunService.disable(sessionID)
     },
+    async cancel(sessionID) {
+      const session = await Session.get(sessionID)
+      if (session.workflow?.kind !== "lattice") return session
+      const runID = session.workflow.runID
+      const run = await LatticeStore.getByRunID(session.scope.id, runID)
+      if (run?.status === "completed" || run?.status === "failed") {
+        return WorkflowSessionService.clearIfLattice(sessionID, runID)
+      }
+      await LatticeRunService.cancel(runID)
+      return Session.get(sessionID)
+    },
     workflowConflict(error: unknown) {
       return error instanceof LatticeError.StateConflict ? { reason: error.data.reason } : undefined
     },

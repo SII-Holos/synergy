@@ -69,7 +69,7 @@ export function canCreateBlueprintWorktree(input: { scopeID?: string; scopes: Bl
 }
 
 export function isActiveBlueprintLoopStatus(status?: string | null) {
-  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+  return status === "armed" || status === "running" || status === "auditing"
 }
 
 export function activeBlueprintLoop<T extends BlueprintLoopSummary>(

@@ -15,7 +15,7 @@ const log = Log.create({ service: "scope-startup" })
  * so order-sensitive product steps can pin themselves with before/after
  * declarations; the chain reproduces the historical startup order exactly:
  * plugin-activate → listeners → plugin-init → session-recovery → lattice →
- * resume-pending → format → lsp → file-watcher → vcs →
+ * session-pause-reconcile → format → lsp → file-watcher → vcs →
  * command-watcher. Execution is a deterministic topological sort; ties break
  * by (phase rank, registration rank).
  */
@@ -101,8 +101,8 @@ export namespace ScopeStartup {
       },
     },
     {
-      name: "resume-pending",
-      init: (scope) => (resident() ? SessionInvoke.resumePending({ scopeID: scope.id }) : undefined),
+      name: "session-pause-reconcile",
+      init: (scope) => (resident() ? SessionInvoke.reconcilePausedSessions(scope.id) : undefined),
     },
   ]
 

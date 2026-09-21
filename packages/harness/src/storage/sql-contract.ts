@@ -13,6 +13,11 @@ export function sqlParameterBytes(values: SqlValue[]): number {
 }
 
 export interface SqlQueryOptions {
+  // The operation names what a statement is doing *and* whether it can be split:
+  // `reclaim` frees a bounded page count per call, while every other operation is
+  // one engine call whose cost grows with the store. That distinction is what
+  // decides the budget, so the operation -- not a separate flag that could
+  // disagree with it -- is the single source of truth for it.
   maintenance?: StorageMaintenanceOperation
 }
 
@@ -36,7 +41,11 @@ export interface SqlDriver extends SqlConnection {
   close(): Promise<void>
   // Reports a store that failed terminally and cannot serve further work, so the
   // host can escalate to its managed restart instead of serving a dead store.
-  onUnavailable?(listener: (error: Error) => void): () => void
+  // Required rather than optional: a driver that omitted it would make
+  // `Storage.onUnavailable` silently return a no-op, which is exactly how a
+  // terminally failed store goes unreported. A backend that cannot raise the
+  // signal must say so by declaring its own implementation.
+  onUnavailable(listener: (error: Error) => void): () => void
 }
 
 export type StoreOptions = {

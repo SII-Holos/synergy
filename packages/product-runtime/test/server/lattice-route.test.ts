@@ -158,9 +158,9 @@ describe("LatticeRoute", () => {
         expect(resume.status).toBe(200)
         expect(await resume.json()).toMatchObject({ id: run.id, status: "active" })
 
-        const pause = await app().request(`/lattice/run/${run.id}/pause`, { method: "POST" })
-        expect(pause.status).toBe(200)
-        expect(await pause.json()).toMatchObject({ id: run.id, status: "paused" })
+        // The run-level pause route is retired: pausing is owned by the session's
+        // own latch, so the surface is resume/cancel/approve only.
+        expect((await app().request(`/lattice/run/${run.id}/pause`, { method: "POST" })).status).toBe(404)
 
         const cancel = await app().request(`/lattice/run/${run.id}/cancel`, { method: "POST" })
         expect(cancel.status).toBe(200)

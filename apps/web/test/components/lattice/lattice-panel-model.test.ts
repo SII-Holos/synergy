@@ -111,7 +111,9 @@ describe("Lattice panel model", () => {
         }),
       ),
     ).toEqual({ pause: true, resume: false, cancel: true, approve: true })
-    expect(controlsForRun(run({ status: "paused", statusReason: "user_paused", state: "blueprinting" }))).toEqual({
+    expect(
+      controlsForRun(run({ status: "paused", statusReason: "model_call_budget_exhausted", state: "blueprinting" })),
+    ).toEqual({
       pause: false,
       resume: true,
       cancel: true,

@@ -7,7 +7,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
  * loops, every status inactive, no prompt context).
  */
 export namespace SessionBlueprintState {
-  export type LoopStatus = "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  export type LoopStatus = "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
 
   /** Structural mirror of a persisted loop stop request as carried through
    * recovery patches. */
@@ -47,7 +47,7 @@ export namespace SessionBlueprintState {
     list(scopeID: string): Promise<LoopInfo[]>
     updateStatus(scopeID: string, loopID: string, patch: LoopPatch): Promise<LoopInfo>
     /** Mirror of the blueprint domain's active-status semantics
-     * (armed/running/waiting/auditing). */
+     * (armed/running/auditing). */
     isActiveStatus(status: LoopStatus): boolean
     /** Render the <blueprint-loop-context> system block for a bound session. */
     buildLoopContext(input: { loop: LoopInfo; isAuditSession: boolean; agentName: string }): string

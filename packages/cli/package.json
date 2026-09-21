@@ -10,6 +10,7 @@
     "./util/ui": "./src/util/ui.ts",
     "./main": "./src/main.ts",
     "./daemon/log-rotate": "./src/daemon/log-rotate.ts",
+    "./cli/maintenance-progress": "./src/cli/maintenance-progress.ts",
     "./cli/startup-reporter": "./src/cli/startup-reporter.ts",
     "./util/keybind": "./src/util/keybind.ts",
     "./index": "./src/index.ts",

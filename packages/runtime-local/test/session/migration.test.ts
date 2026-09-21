@@ -17,6 +17,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 
 const projectRoot = path.join(__dirname, "../..")
 
@@ -265,7 +266,11 @@ describe("session migrations", () => {
         fn: () =>
           Session.create({
             title: "Unwritable Feishu Channel Session",
-            endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "migration", chatId: "unwritable" }),
+            endpoint: SessionEndpoint.fromChannel({
+              type: "feishu",
+              accountId: "migration",
+              chatId: "unwritable",
+            }),
           }),
       })
       const target = StoragePath.sessionNavIndex(Identifier.asScopeID(tmpScope.id))
@@ -374,75 +379,94 @@ describe("session migrations", () => {
       })
     }))
 
-  test("repairs stale pendingReply flags without clearing genuinely pending sessions", () =>
+  test("converts the retired pendingReply flag into the pause latch", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
       await ScopeContext.provide({
-        scope: await tmp.scope(),
+        scope,
         fn: async () => {
           const completed = await Session.create({})
           const completedUser = await addUserMessage(completed.id)
           await addTerminalAssistantMessage(completed.id, completedUser.id)
-          await Session.update(completed.id, (draft) => {
-            draft.pendingReply = true
-          })
 
           const pending = await Session.create({})
           await addUserMessage(pending.id)
-          await Session.update(pending.id, (draft) => {
-            draft.pendingReply = true
-          })
 
-          const migration = migrations.find((entry) => entry.id === "20260619-session-repair-stale-pending-reply")
+          // Seeded through raw storage: the current schema no longer defines the
+          // flag, so this reproduces the shape an un-upgraded store actually has.
+          for (const session of [completed, pending]) {
+            const stored = await SessionManager.requireSession(session.id)
+            await Storage.write(
+              StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id)),
+              {
+                ...stored,
+                pendingReply: true,
+              },
+            )
+          }
+
+          const migration = migrations.find((entry) => entry.id === "20260920-session-pause-latch")
           expect(migration).toBeDefined()
           await migration!.up(() => {})
 
-          const completedAfter = await SessionManager.getSession(completed.id)
-          const pendingAfter = await SessionManager.getSession(pending.id)
+          const completedAfter: any = await SessionManager.getSession(completed.id)
+          const pendingAfter: any = await SessionManager.getSession(pending.id)
 
+          // The flag outlived turns that later finished normally, so it is
+          // re-checked against persisted messages rather than trusted: a stale
+          // flag is dropped without latching, or the user sees a phantom stop.
           expect(completedAfter?.pendingReply).toBeUndefined()
-          expect(pendingAfter?.pendingReply).toBe(true)
+          expect(completedAfter?.paused).toBeUndefined()
+          // A genuinely unfinished turn becomes the pause the user can act on.
+          expect(pendingAfter?.pendingReply).toBeUndefined()
+          expect(pendingAfter?.paused?.reason).toBe("interrupted")
         },
       })
     }))
 
-  test("recomputes pendingReply from assistant parent links and skips archived sessions", () =>
+  test("the pause conversion skips archived and machine sessions", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
       await ScopeContext.provide({
-        scope: await tmp.scope(),
+        scope,
         fn: async () => {
-          const swallowed = await Session.create({})
-          const swallowedFirstUser = await addUserMessage(swallowed.id)
-          await addTerminalAssistantMessage(swallowed.id, swallowedFirstUser.id)
-          await addUserMessage(swallowed.id)
-          await addTerminalAssistantMessage(swallowed.id, swallowedFirstUser.id)
-
-          const completed = await Session.create({})
-          const completedUser = await addUserMessage(completed.id)
-          await addTerminalAssistantMessage(completed.id, completedUser.id)
-          await Session.update(completed.id, (draft) => {
-            draft.pendingReply = true
-          })
-
           const archived = await Session.create({})
           await addUserMessage(archived.id)
           await Session.update(archived.id, (draft) => {
-            draft.pendingReply = undefined
             draft.time.archived = Date.now()
           })
 
-          const migration = migrations.find((entry) => entry.id === "20260703-session-parent-pending-reply")
+          const machine = await Session.create({
+            interaction: SessionInteraction.unattended("agenda"),
+          })
+          await addUserMessage(machine.id)
+
+          const scopeID = Identifier.asScopeID(scope.id)
+          for (const session of [archived, machine]) {
+            const stored = await SessionManager.requireSession(session.id)
+            await Storage.write(StoragePath.sessionInfo(scopeID, Identifier.asSessionID(session.id)), {
+              ...stored,
+              pendingReply: true,
+            })
+          }
+
+          const migration = migrations.find((entry) => entry.id === "20260920-session-pause-latch")
           expect(migration).toBeDefined()
           await migration!.up(() => {})
 
-          const swallowedAfter = await SessionManager.getSession(swallowed.id)
-          const completedAfter = await SessionManager.getSession(completed.id)
-          const archivedAfter = await SessionManager.getSession(archived.id)
+          const archivedAfter: any = await SessionManager.getSession(archived.id)
+          const machineAfter: any = await SessionManager.getSession(machine.id)
 
-          expect(swallowedAfter?.pendingReply).toBe(true)
-          expect(completedAfter?.pendingReply).toBeUndefined()
+          // An archived session's latch would be unreachable state, and a machine
+          // session is driven by a domain that reconciles its own work — latching
+          // either would leave a stop nobody can clear. The retired flag is
+          // dropped in both cases so no store keeps a field the schema removed.
           expect(archivedAfter?.pendingReply).toBeUndefined()
+          expect(archivedAfter?.paused).toBeUndefined()
+          expect(machineAfter?.pendingReply).toBeUndefined()
+          expect(machineAfter?.paused).toBeUndefined()
         },
       })
     }))

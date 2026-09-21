@@ -12,8 +12,29 @@ import { Storage } from "./storage"
 import { StorageBootstrap } from "./bootstrap"
 import { StorageRecovery } from "./recovery"
 import { StorageIntegrityError } from "./errors"
+import { StorageReclamation } from "./format-reclamation"
+import { observeStorageMaintenance } from "./maintenance-progress"
+import { UpgradeWork } from "./upgrade-work"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 
 export namespace StorageMaintenance {
+  export function observe<T>(
+    operation: () => Promise<T>,
+    reporter: (event: StorageMaintenanceEvent) => void,
+    signal?: AbortSignal,
+  ) {
+    return UpgradeWork.run({ background: false, signal }, () => {
+      signal?.throwIfAborted()
+      return observeStorageMaintenance(operation, reporter)
+    })
+  }
+  export const Status = StorageReclamation.Status
+  export const status = () => StorageReclamation.status(Storage.current().store)
+  export const controlReclaim = (action: "pause" | "resume") =>
+    StorageReclamation.control(Storage.current().store, action)
+  export const reclaim = (
+    options: { signal?: AbortSignal; progress?: (current: number, total: number, phase: number) => void } = {},
+  ) => StorageReclamation.drain(Storage.current().store, options)
   export async function restoreBackup(backupRoot: string, destination: string) {
     const target = path.resolve(destination)
     const parent = path.dirname(target)
@@ -35,7 +56,7 @@ export namespace StorageMaintenance {
         manifest = await segmented.restore(path.join(temporary, "data"))
       } else {
         const sealed = await backup.manifest()
-        if (!sealed || sealed.selection !== "home")
+        if (!sealed || sealed.selection !== "home" || sealed.excludedRoots?.length)
           throw new StorageIntegrityError("Restore requires a sealed Home backup or a recoverable segmented backup")
         await backup.restore(path.join(temporary, "data"))
         manifest = sealed

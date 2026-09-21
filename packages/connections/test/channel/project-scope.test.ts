@@ -10,6 +10,7 @@ import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
@@ -242,6 +243,7 @@ describe("Channel account project scope", () => {
         while (!connected && Date.now() < connectionDeadline) await Bun.sleep(5)
         expect(connected).toBe(true)
 
+        let sessionID = ""
         await ScopeContext.provide({
           scope,
           fn: async () => {
@@ -249,6 +251,7 @@ describe("Channel account project scope", () => {
               scope,
               endpoint: SessionEndpoint.fromChannel({ type, accountId, chatId }),
             })
+            sessionID = session.id
             const rootID = Identifier.ascending("message")
             await Session.updateMessage({
               id: rootID,
@@ -287,9 +290,9 @@ describe("Channel account project scope", () => {
               type: "text",
               text: "Interrupted background work",
             })
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
+            // The turn stopped before producing a terminal assistant, which is the
+            // breakpoint a restart has to preserve rather than repair away.
+            await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
           },
         })
 
@@ -297,7 +300,29 @@ describe("Channel account project scope", () => {
         await ScopeRuntime.dispose(scope.id)
         await ScopeRuntime.ensure(scope)
 
-        const deliveryDeadline = Date.now() + 1_000
+        // A restart is not evidence the user wants this reply continued, so the
+        // pending channel output must not be delivered on its own.
+        await Bun.sleep(100)
+        expect(replies).toEqual([])
+
+        // Delivery is still the contract once the turn actually reaches a terminal
+        // assistant, which is what a continue produces, and the correlation anchor
+        // has to survive the restart.
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const messages = await Session.messages({ sessionID })
+            const assistant = messages.find((message) => message.info.role === "assistant")
+            if (assistant?.info.role !== "assistant") throw new Error("expected assistant")
+            await Session.updateMessage({
+              ...assistant.info,
+              finish: "stop",
+              time: { ...assistant.info.time, completed: Date.now() },
+            })
+          },
+        })
+
+        const deliveryDeadline = Date.now() + 2_000
         while (replies.length === 0 && Date.now() < deliveryDeadline) await Bun.sleep(5)
         expect(replies).toEqual(["message-topic-root"])
       } finally {

@@ -106,6 +106,45 @@ export namespace RolloutLedger {
     return reopened
   }
 
+  /**
+   * Reopen a run so an explicit user continue can append to it.
+   *
+   * Deliberately separate from `reopenRun`, which serves the *retry* path where
+   * the payload failed and the queue will try again unattended — it must refuse
+   * a cancelled run, or an automatic retry would undo a cancellation the user
+   * asked for.
+   *
+   * A user continue is the opposite situation: the stop was deliberate and the
+   * user has now explicitly asked for the work to go on. Refusing the cancelled
+   * run there would make Continue a silent no-op, which is the exact failure
+   * the paused state exists to remove. Clearing `cancelRequestedAt` is required
+   * rather than cosmetic: `requireRunning` reads it as a standing instruction
+   * to abort, so a resumed run would still refuse every write.
+   *
+   * Two refusals survive because no user intent repairs them: a completed run
+   * is finished work, and a run whose recording failed has unusable evidence.
+   * `recording` drops to `partial` because appending work genuinely invalidates
+   * a previously complete recording.
+   */
+  export async function resumeRun(owner: Owner, runID: string) {
+    using lock = await Lock.write(lockKey(owner, runID))
+    const run = await getRun(owner, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!run || run.recording === "failed" || run.status === "completed") return run
+    if (run.status === "running" && !run.cancelRequestedAt) return run
+    const resumed = RolloutSchema.RunRecord.parse({
+      ...run,
+      ended: undefined,
+      status: "running",
+      recording: "partial",
+      cancelRequestedAt: undefined,
+    })
+    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], resumed))
+    return resumed
+  }
+
   /** Terminalize a queued task whose run shell never landed (its enqueue was
    *  best-effort): persist a durable cancelled record so materialization
    *  admission observes the cancellation instead of executing cancelled work.

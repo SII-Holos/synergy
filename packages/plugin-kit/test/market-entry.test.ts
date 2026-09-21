@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PLUGIN_UI_6_BASE_SYNERGY_RANGE, PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { buildPluginProject } from "../src/commands/build"
 import { packPluginProject } from "../src/commands/pack"
@@ -216,7 +216,7 @@ export default definePlugin({
       expect(entry.homepage).toBe("https://example.com/registry-entry")
       expect(entry.author).toEqual({ name: "Jane Doe", email: "jane@example.com" })
       expect(entry.keywords).toEqual(["beta", "synergy-plugin"])
-      expect(entry.compatibility).toEqual({ synergy: ">=3.0.23 >=3.1.0" })
+      expect(entry.compatibility).toEqual({ synergy: `${PLUGIN_UI_6_BASE_SYNERGY_RANGE} >=3.1.0` })
       expect(entry.verified).toBe(false)
       expect(entry.official).toBe(false)
       expect(entry.versions[0].apiVersion).toBe("4.0")

@@ -96,10 +96,10 @@ describe("Blueprint run session helpers", () => {
     expect(activeBlueprintLoop({}, [{ id: "loop-complete", status: "completed" }])).toBeUndefined()
     expect(activeBlueprintLoop({}, [{ id: "loop-running", status: "running" }])?.id).toBe("loop-running")
     expect(
-      activeBlueprintLoop({ blueprint: { activeLoopID: "loop-waiting" } }, [
+      activeBlueprintLoop({ blueprint: { activeLoopID: "loop-auditing" } }, [
         { id: "loop-running", status: "running" },
-        { id: "loop-waiting", status: "waiting" },
+        { id: "loop-auditing", status: "auditing" },
       ])?.id,
-    ).toBe("loop-waiting")
+    ).toBe("loop-auditing")
   })
 })

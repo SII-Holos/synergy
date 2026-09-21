@@ -95,7 +95,7 @@ export const WorkflowInfo = z
   .meta({ ref: "SessionWorkflowInfo" })
 export type WorkflowInfo = z.infer<typeof WorkflowInfo>
 
-export const SessionBlueprintPhase = z.enum(["running", "waiting", "auditing"])
+export const SessionBlueprintPhase = z.enum(["running", "auditing"])
 export type SessionBlueprintPhase = z.infer<typeof SessionBlueprintPhase>
 
 export const SessionFields = {

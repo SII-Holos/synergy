@@ -63,6 +63,10 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0020 | Managed startup maintenance outgrew Desktop progress | implemented | 2026-09-20 |
 
+| 0021 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
+
+| 0022 | Optional format rewrite blocked startup | implemented | 2026-09-21 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

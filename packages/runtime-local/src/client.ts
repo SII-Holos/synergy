@@ -16,7 +16,7 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "./question"
-import { createSession, submitInput, submitCommand } from "./session-api"
+import { abandonSession, continueSession, createSession, submitInput, submitCommand } from "./session-api"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export const RuntimeEvent = z.discriminatedUnion("type", [
@@ -142,6 +142,15 @@ export function createLocalClient(runtime: RuntimeHandle.Handle, selector: Scope
         await submitCommand(input)
         return success(undefined)
       }),
+      // The explicit exits from the paused state. They live here so in-process
+      // callers (Desktop main, the CLI) reach the same implementation the HTTP
+      // routes use, rather than a second definition that can drift.
+      continue: inScope(async (input: { sessionID: string }, _options?: RequestOptions) =>
+        success({ handled: await continueSession(input.sessionID) }),
+      ),
+      abandon: inScope(async (input: { sessionID: string }, _options?: RequestOptions) =>
+        success(await abandonSession(input.sessionID)),
+      ),
     },
   }
 }

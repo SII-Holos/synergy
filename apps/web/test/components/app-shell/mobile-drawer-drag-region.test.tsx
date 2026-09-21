@@ -82,7 +82,7 @@ const stubModules: Record<string, string> = {
     export const FIXTURE_SESSION_STATUS = {
       ses_busy: { type: "busy" },
       ses_retry: { type: "retry", attempt: 1, message: "rate limited", next: 1000 },
-      ses_recovering: { type: "recovering" },
+      ses_paused: { type: "paused", reason: "aborted", since: 1 },
       ses_idle: { type: "idle" },
     }
 
@@ -353,7 +353,7 @@ describe("mobile drawer titlebar drag suspension", () => {
 })
 
 describe("mobile drawer session status", () => {
-  test("reads recovering and retry as working and a missing status as idle", async () => {
+  test("reads retry as working, a paused session as not working, and a missing status as idle", async () => {
     await withFixture(async (page) => {
       await page.getByRole("button", { name: "Fixture Project", exact: true }).click()
       await page.waitForFunction(() => document.querySelectorAll("[data-session-row]").length === 5)
@@ -364,7 +364,7 @@ describe("mobile drawer session status", () => {
       for (const [sessionID, expected] of [
         ["ses_busy", "true"],
         ["ses_retry", "true"],
-        ["ses_recovering", "true"],
+        ["ses_paused", "false"],
         ["ses_idle", "false"],
         ["ses_missing", "false"],
       ] as const) {

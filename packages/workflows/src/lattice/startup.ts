@@ -12,7 +12,7 @@ export function registerLatticeStartup() {
     name: "lattice-runtime",
     phase: "workflow",
     after: ["session-recovery"],
-    before: ["resume-pending"],
+    before: ["session-pause-reconcile"],
     init: () => LatticeRuntime.init(),
   })
 }

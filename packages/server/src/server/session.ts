@@ -1,4 +1,10 @@
-import { createSession, submitInput, submitCommand } from "@ericsanchezok/synergy-runtime-local/session-api"
+import {
+  abandonSession,
+  continueSession,
+  createSession,
+  submitInput,
+  submitCommand,
+} from "@ericsanchezok/synergy-runtime-local/session-api"
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import { stream } from "hono/streaming"
@@ -48,6 +54,24 @@ const SessionRollbackAckInput = z
     rollbackID: Identifier.schema("history"),
   })
   .meta({ ref: "SessionRollbackAckInput" })
+
+const SessionContinueResult = z
+  .object({
+    handled: z.boolean().meta({
+      description: "Whether the drive accepted the session; a paused or already-running session reports false",
+    }),
+  })
+  .meta({ ref: "SessionContinueResult" })
+
+const SessionAbandonResult = z
+  .object({
+    repaired: z.boolean().meta({ description: "An interrupted turn was terminalized" }),
+    paused: z.boolean().meta({
+      description: "False after abandonment; the session is not left paused",
+    }),
+    abandoned: z.boolean().meta({ description: "A workflow bound to the session was cancelled" }),
+  })
+  .meta({ ref: "SessionAbandonResult" })
 
 export const SessionRoute = () =>
   new Hono()
@@ -603,10 +627,79 @@ export const SessionRoute = () =>
       },
     )
     .post(
+      "/:sessionID/continue",
+      describeRoute({
+        summary: "Continue a paused session",
+        description:
+          "Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.",
+        operationId: "session.continue",
+        responses: {
+          200: {
+            description: "Continue result",
+            content: {
+              "application/json": {
+                schema: resolver(SessionContinueResult),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        return c.json({ handled: await continueSession(sessionID) })
+      },
+    )
+    .post(
+      "/:sessionID/abandon",
+      describeRoute({
+        summary: "Abandon a stopped session",
+        description:
+          "Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.",
+        operationId: "session.abandon",
+        responses: {
+          200: {
+            description: "Abandon result",
+            content: {
+              "application/json": {
+                schema: resolver(SessionAbandonResult),
+              },
+            },
+          },
+          409: {
+            description: "Abandonment failed; the session remains paused and can be retried",
+            content: { "application/json": { schema: resolver(SessionInvoke.AbandonError.Schema) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(await abandonSession(c.req.valid("param").sessionID))
+        } catch (error) {
+          if (SessionInvoke.AbandonError.isInstance(error)) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .post(
       "/:sessionID/abort",
       describeRoute({
         summary: "Abort session",
-        description: "Abort an active session and stop any ongoing AI processing or command execution.",
+        description:
+          "Stop an active session's ongoing AI processing or command execution. A user stop leaves the session paused and awaiting an explicit continue or abandon, so the work is not restarted behind the user's back.",
         operationId: "session.abort",
         responses: {
           200: {
@@ -627,7 +720,7 @@ export const SessionRoute = () =>
         }),
       ),
       async (c) => {
-        const result = await SessionAbort.abort(c.req.valid("param").sessionID, { recoverQueuedTasks: true })
+        const result = await SessionAbort.abort(c.req.valid("param").sessionID)
         return c.json(result)
       },
     )
@@ -666,7 +759,7 @@ export const SessionRoute = () =>
       describeRoute({
         summary: "Submit session input",
         description:
-          "Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.",
+          "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.",
         operationId: "session.input",
         responses: {
           200: {

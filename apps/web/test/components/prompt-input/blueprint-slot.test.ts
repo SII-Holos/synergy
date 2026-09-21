@@ -35,7 +35,7 @@ describe("prompt blueprint slot display", () => {
   })
 
   test("displays an active non-terminal session loop", () => {
-    expect(resolveBlueprintSlotDisplay({ sessionLoop: loop("waiting"), activeLoopID: "bll_active" })).toEqual({
+    expect(resolveBlueprintSlotDisplay({ sessionLoop: loop("auditing"), activeLoopID: "bll_active" })).toEqual({
       slot: {
         type: "loop",
         loopID: "bll_active",
@@ -43,7 +43,7 @@ describe("prompt blueprint slot display", () => {
         title: "Active Blueprint",
         runMode: "current",
       },
-      mode: "waiting",
+      mode: "auditing",
     } satisfies BlueprintSlotDisplay)
   })
 
@@ -62,7 +62,7 @@ describe("prompt blueprint slot display", () => {
   })
 
   test("displays all non-terminal statuses without returning null", () => {
-    const nonTerminalStatuses: BlueprintLoopInfo["status"][] = ["armed", "running", "waiting", "auditing"]
+    const nonTerminalStatuses: BlueprintLoopInfo["status"][] = ["armed", "running", "auditing"]
     for (const status of nonTerminalStatuses) {
       const result = resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })
       expect(result).not.toBeNull()
@@ -88,7 +88,7 @@ describe("isTerminalBlueprintLoopStatus", () => {
   test("returns false for non-terminal statuses", () => {
     expect(isTerminalBlueprintLoopStatus("armed")).toBe(false)
     expect(isTerminalBlueprintLoopStatus("running")).toBe(false)
-    expect(isTerminalBlueprintLoopStatus("waiting")).toBe(false)
+    expect(isTerminalBlueprintLoopStatus("unrecognized")).toBe(false)
     expect(isTerminalBlueprintLoopStatus("auditing")).toBe(false)
   })
 

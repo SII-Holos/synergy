@@ -68,3 +68,57 @@ test("preserves cache-write categories and duration billing independently of tok
   expect(embedding.input.uncached).toBe(8)
   expect(embedding.output.total).toBe(0)
 })
+
+test("SDK usage maps camelCase fields and excludes cached input from uncached", () => {
+  const usage = RolloutUsage.normalizeSdk({
+    inputTokens: 1000,
+    outputTokens: 500,
+    totalTokens: 1500,
+    reasoningTokens: 100,
+    cachedInputTokens: 200,
+  })
+  expect(usage).not.toBeNull()
+  // OpenAI-compatible SDKs report inputTokens inclusive of cached tokens.
+  expect(usage!.input).toEqual({ total: 1000, uncached: 800, cacheRead: 200, cacheWrite: 0 })
+  expect(usage!.output).toEqual({ total: 500, reasoning: 100 })
+  expect(usage!.complete).toBe(true)
+})
+
+test("SDK usage without any token count is not treated as usage", () => {
+  expect(RolloutUsage.normalizeSdk(null)).toBeNull()
+  expect(RolloutUsage.normalizeSdk({})).toBeNull()
+  expect(RolloutUsage.normalizeSdk({ someOtherField: 1 })).toBeNull()
+})
+
+test("SDK usage keeps a missing output count unknown instead of zero", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 1000 })
+  expect(usage!.input.total).toBe(1000)
+  expect(usage!.output.total).toBeNull()
+  expect(usage!.complete).toBe(false)
+})
+
+test.each(["@ai-sdk/google", "@ai-sdk/google-vertex"])("SDK fallback includes thinking output for %s", (sdk) => {
+  const usage = RolloutUsage.normalizeSdk(
+    { inputTokens: 100, outputTokens: 20, reasoningTokens: 80, totalTokens: 200, cachedInputTokens: 0 },
+    sdk,
+  )
+  expect(usage!.output).toEqual({ total: 100, reasoning: 80 })
+  expect(usage!.protocol).toBe("google")
+  expect(usage!.complete).toBe(true)
+})
+
+test("Google SDK fallback preserves output when only the provider total includes thinking", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20, totalTokens: 200 }, "@ai-sdk/google")
+  expect(usage!.output).toEqual({ total: 100, reasoning: null })
+})
+
+test("Google SDK fallback sums reported output components without an aggregate", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20, reasoningTokens: 80 }, "@ai-sdk/google")
+  expect(usage!.output).toEqual({ total: 100, reasoning: 80 })
+})
+
+test("Google SDK fallback leaves output unknown when thinking and aggregate are both absent", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20 }, "@ai-sdk/google")
+  expect(usage!.output.total).toBeNull()
+  expect(usage!.complete).toBe(false)
+})

@@ -27,6 +27,7 @@ export namespace Storage {
   }
   interface Context extends Handle {
     owner?: RuntimeContext.Instance
+    migrationAccess?: boolean
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
     pending?: Promise<unknown>[]
@@ -75,6 +76,13 @@ export namespace Storage {
     return context.run({ ...handle, owner: RuntimeContext.current() }, body)
   }
 
+  export function withMigrationRecords<T>(body: () => T): T {
+    const parent = current()
+    if (parent.transaction && !parent.migrationAccess)
+      throw new StorageConflictError("Migration access must precede a business transaction")
+    return context.run({ ...parent, owner: RuntimeContext.current(), migrationAccess: true }, body)
+  }
+
   export async function transaction<T>(
     body: (tx: StoreTransaction) => Promise<T>,
     options?: TransactionOptions,
@@ -86,6 +94,7 @@ export namespace Storage {
     }
     let effects: Array<() => Promise<unknown> | void> = []
     const result = await parent.store.transaction(async (tx) => {
+      if (!parent.migrationAccess) tx.restrictToPublishedOwners()
       effects = []
       const pending: Promise<unknown>[] = []
       return RuntimeContext.transaction(() =>
@@ -124,11 +133,16 @@ export namespace Storage {
     const parent = current()
     if (parent.transaction) return body(parent.transaction)
     return parent.store.snapshot(
-      (tx) =>
-        RuntimeContext.transaction(() =>
+      (tx) => {
+        if (!parent.migrationAccess) tx.restrictToPublishedOwners()
+        return RuntimeContext.transaction(() =>
           context.run({ ...parent, owner: RuntimeContext.current(), transaction: tx }, () => body(tx)),
-        ),
-      options,
+        )
+      },
+      {
+        ...options,
+        singleStatement: options.singleStatement && (parent.migrationAccess || !parent.store.hasUnpublishedOwners()),
+      },
     )
   }
 
@@ -241,7 +255,10 @@ export namespace Storage {
     await state.gate.run(async () => {
       const hash = createHash("sha256").update(bytes).digest("hex")
       const previous = await current()
-        .store.snapshot((tx) => tx.artifact(key))
+        .store.snapshot((tx) => {
+          tx.restrictToPublishedOwners()
+          return tx.artifact(key)
+        })
         .catch((error: unknown) => {
           if (error instanceof NotFoundError) return undefined
           throw error
@@ -263,7 +280,7 @@ export namespace Storage {
     const read = async () => {
       const location = handle.transaction
         ? await handle.transaction.artifact(key)
-        : await handle.store.snapshot((tx) => tx.artifact(key))
+        : await snapshot((tx) => tx.artifact(key))
       const content = await state.pack.read(location, options?.maxBytes)
       ObservabilityResources.addRead(content.byteLength)
       return content
@@ -308,22 +325,30 @@ export namespace Storage {
         () =>
           state.gate.run(async () => {
             let removed = 0
+            const reclaimed = new Set<string>()
             if (options.scanOrphans) {
               const referenced = await store.snapshot(async (tx) => {
                 const result = new Set<string>()
                 for await (const pack of tx.artifactPacks()) result.add(pack)
                 return result
               })
+              for (const key of await store.list(["storage_pack_pins"])) referenced.add(key[1])
               const orphans = await state.pack.orphaned(referenced)
               await state.pack.prune(orphans)
+              for (const name of orphans) reclaimed.add(name)
               removed += orphans.length
             }
             for (;;) {
               const candidates = await store.snapshot((tx) => tx.artifactGarbage())
               if (!candidates.length) return removed
-              const unused = candidates.filter((entry) => !entry.used).map((entry) => entry.pack)
+              const pins = new Set((await store.list(["storage_pack_pins"])).map((key) => key[1]))
+              const unused = candidates
+                .filter((entry) => !entry.used && !pins.has(entry.pack) && !reclaimed.has(entry.pack))
+                .map((entry) => entry.pack)
               await state.pack.prune(unused)
-              await store.transaction((tx) => tx.acknowledgeArtifactGarbage(candidates.map((entry) => entry.pack)))
+              const acknowledged = candidates.filter((entry) => !pins.has(entry.pack)).map((entry) => entry.pack)
+              await store.transaction((tx) => tx.acknowledgeArtifactGarbage(acknowledged))
+              if (acknowledged.length < candidates.length) return removed + unused.length
               removed += unused.length
             }
           }),

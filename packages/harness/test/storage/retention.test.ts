@@ -38,7 +38,9 @@ async function writeEvidence(store: TransactionalStore, scopeID: string, session
 
 async function evidenceSurvives(store: TransactionalStore, scopeID: string, sessionID: string, runs = 6) {
   for (let index = 0; index < runs; index++) {
-    expect(await store.read(evidenceKey(scopeID, sessionID, `run_${index}`))).toMatchObject({ pad: expect.any(String) })
+    expect(await store.read(evidenceKey(scopeID, sessionID, `run_${index}`))).toMatchObject({
+      pad: expect.any(String),
+    })
   }
 }
 
@@ -88,7 +90,12 @@ test("retention stays off until a window is configured", () =>
     await writeEvidence(store, "scope", "ses_kept")
 
     const report = await Storage.provide({ store, artifactDirectory: path.dirname(tmp.filename) }, () =>
-      StorageRetention.run({ retentionMs: undefined, maxBytes: 0, liveSessionIDs: [], now: Date.now() + 300 * DAY }),
+      StorageRetention.run({
+        retentionMs: undefined,
+        maxBytes: 0,
+        liveSessionIDs: [],
+        now: Date.now() + 300 * DAY,
+      }),
     )
 
     expect(report.pruned).toEqual([])
@@ -116,10 +123,12 @@ test("retention leaves everything alone while the database is inside its byte bu
     await evidenceSurvives(store, "scope", "ses_under_budget")
   }))
 
-// A budget below what the retention window can reach is a configuration
-// problem, not a pruning problem: deleting more cannot converge on it, so a
-// pass must report the condition instead of repeating destructive work forever.
-test("an unreachable budget reports infeasible instead of pruning", () =>
+// A budget below what the retained evidence needs is a configuration problem,
+// not a pruning problem. `infeasible` now names the narrower condition — a
+// budget that cannot hold even the shortest permitted window — which needs a
+// measured ingress rate to establish; with no measurement the configured window
+// stands and this pass removes nothing.
+test("an unreachable budget prunes nothing and leaves protected evidence intact", () =>
   runtime.run(async () => {
     await using tmp = await fixture()
     const { store } = tmp
@@ -129,7 +138,8 @@ test("an unreachable budget reports infeasible instead of pruning", () =>
       StorageRetention.run({ retentionMs: RETENTION, maxBytes: 1, liveSessionIDs: [] }),
     )
 
-    expect(report.infeasible).toBe(true)
+    expect(report.infeasible).toBe(false)
+    expect(report.windowReduced).toBe(false)
     expect(report.capped).toBe(true)
     expect(report.pruned).toEqual([])
     expect(report.deletedRecords).toBe(0)
@@ -173,7 +183,14 @@ test("protectedOwners keeps both protection rules independent of storage state",
         newest: now - 10 * DAY,
         records: 3,
       },
-      { key: ["sessions", "s", "fresh"], kind: "session" as const, scopeID: "s", id: "fresh", newest: now, records: 3 },
+      {
+        key: ["sessions", "s", "fresh"],
+        kind: "session" as const,
+        scopeID: "s",
+        id: "fresh",
+        newest: now,
+        records: 3,
+      },
       {
         key: ["operations", "s", "op"],
         kind: "operation" as const,
@@ -184,7 +201,12 @@ test("protectedOwners keeps both protection rules independent of storage state",
       },
     ]
 
-    const result = StorageRetention.protectedOwners({ owners, retentionMs: RETENTION, liveSessionIDs: ["old"], now })
+    const result = StorageRetention.protectedOwners({
+      owners,
+      retentionMs: RETENTION,
+      liveSessionIDs: ["old"],
+      now,
+    })
     expect(result.protectedLive).toBe(1)
     expect(result.protectedByWindow).toBe(1)
     // Operations have no live protection, only the window.

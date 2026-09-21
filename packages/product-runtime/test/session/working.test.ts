@@ -18,6 +18,8 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 
 const projectRoot = path.join(__dirname, "../..")
 runtime.run(() => Log.init({ print: false }))
@@ -164,7 +166,27 @@ describe("SessionWorking", () => {
         })
       }))
 
-    test("ignores stored pendingReply without runtime work", () =>
+    test("ignores persisted workflow state without runtime work", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            // A stored `active` loop is a record of intent, not evidence that a
+            // turn is running. Projecting it as work is what let a dead process
+            // pin a session in a state no control could clear.
+            await Session.update(session.id, (draft) => {
+              draft.workflow = { kind: "lightloop", instructions: "Persisted intent" }
+            })
+
+            const result = await SessionWorking.resolve(session.id)
+            expect(result).toBeUndefined()
+          },
+        })
+      }))
+
+    test("resolves paused from the persisted latch, not from message state", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -172,11 +194,17 @@ describe("SessionWorking", () => {
           fn: async () => {
             const session = await Session.create({})
             await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
+              draft.paused = { reason: "interrupted", description: "Runtime restarted", since: 123 }
             })
 
-            const result = await SessionWorking.resolve(session.id)
-            expect(result).toBeUndefined()
+            // The latch is the whole source: a session with a perfectly finished
+            // transcript still reports paused while the user has not continued.
+            expect(await SessionWorking.resolve(session.id)).toEqual({
+              status: "paused",
+              reason: "interrupted",
+              description: "Runtime restarted",
+              since: 123,
+            })
           },
         })
       }))
@@ -201,7 +229,7 @@ describe("SessionWorking", () => {
         })
       }))
 
-    test("returns recovering when last assistant message lacks time.completed", () =>
+    test("does not infer work from an assistant message that never completed", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -231,14 +259,16 @@ describe("SessionWorking", () => {
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
 
-            const result = await SessionWorking.resolve(session.id)
-            assertExists(result)
-            expect(result.status).toBe("recovering")
+            // An unfinished turn is evidence for startup reconciliation, which
+            // converts it into a latch the user can act on. It is deliberately
+            // *not* a runtime status: inferring one here is what a dead process
+            // could pin forever, and what no abort control could clear.
+            expect(await SessionWorking.resolve(session.id)).toBeUndefined()
           },
         })
       }))
 
-    test("returns recovering when the latest assistant has no terminal finish", () =>
+    test("does not infer work from an assistant whose finish is non-terminal", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -273,14 +303,13 @@ describe("SessionWorking", () => {
               error: new MessageV2.APIError({ message: "provider failed", isRetryable: false }).toObject(),
             })
 
-            expect(await SessionWorking.resolve(session.id)).toEqual({
-              status: "recovering",
-              reason: "incomplete-turn",
-            })
+            // A completed message with no terminal `finish` stays resumable, so
+            // it must not be projected as an ongoing status either.
+            expect(await SessionWorking.resolve(session.id)).toBeUndefined()
           },
         })
       }))
-    test("uses message creation time to find the latest incomplete assistant", () =>
+    test("reports the latch instead of the newest assistant message", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -295,7 +324,9 @@ describe("SessionWorking", () => {
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: 100 },
             })
-            const delayedAssistantID = Identifier.ascending("message")
+            // A terminal assistant, followed by a newer non-terminal one. The old
+            // resolver picked the newest by creation time to decide it was
+            // interrupted; the latch is now the only thing that decides.
             await Session.updateMessage({
               id: Identifier.ascending("message"),
               sessionID: session.id,
@@ -312,7 +343,7 @@ describe("SessionWorking", () => {
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
             await Session.updateMessage({
-              id: delayedAssistantID,
+              id: Identifier.ascending("message"),
               sessionID: session.id,
               role: "assistant",
               parentID: userMsg.id,
@@ -326,9 +357,18 @@ describe("SessionWorking", () => {
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
 
-            const result = await SessionWorking.resolve(session.id)
-            assertExists(result)
-            expect(result.status).toBe("recovering")
+            expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+
+            // The same transcript with a latch reports paused, which is what
+            // makes the two assertions together prove the latch is the source.
+            await Session.update(session.id, (draft) => {
+              draft.paused = { reason: "aborted", since: 456 }
+            })
+            expect(await SessionWorking.resolve(session.id)).toEqual({
+              status: "paused",
+              reason: "aborted",
+              since: 456,
+            })
           },
         })
       }))
@@ -353,28 +393,26 @@ describe("SessionWorking", () => {
         expect(result).toEqual({ type: "retry", attempt: 2, message: "timeout", next: now })
       }))
 
-    test("converts recovering WorkingInfo to StatusInfo", () =>
+    test("converts paused WorkingInfo to StatusInfo", () =>
       runtime.run(() => {
-        const result = SessionWorking.toStatus({ status: "recovering" })
-        expect(result).toEqual({ type: "recovering" })
+        const result = SessionWorking.toStatus({
+          status: "paused",
+          reason: "failed",
+          description: "provider failed",
+          since: 42,
+        })
+        expect(result).toEqual({ type: "paused", reason: "failed", description: "provider failed", since: 42 })
       }))
   })
 
   describe("repairAfterAbort()", () => {
-    test("repairs incomplete assistant message so resolve() stops returning recovering", () =>
+    test("leaves an interrupted turn resumable and latches the pause", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
             const session = await Session.create({})
-
-            // Set pendingReply on the session to simulate a stuck session
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
-
-            // Create an incomplete assistant message (time.committed == null)
             const userMsg = await Session.updateMessage({
               id: Identifier.ascending("message"),
               sessionID: session.id,
@@ -399,47 +437,34 @@ describe("SessionWorking", () => {
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
 
-            // Before repair: should be recovering
-            const before = await SessionWorking.resolve(session.id)
-            assertExists(before)
-            expect(before.status).toBe("recovering")
-
             const statuses: Array<{ type: string }> = []
-            let idleEvents = 0
             const unsubscribeStatus = Bus.subscribe(SessionEvent.Status, (event) => {
               if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
             })
-            const unsubscribeIdle = Bus.subscribe(SessionEvent.Idle, (event) => {
-              if (event.properties.sessionID === session.id) idleEvents++
-            })
-
             const repaired = await SessionInvoke.repairAfterAbort(session.id)
             unsubscribeStatus()
-            unsubscribeIdle()
 
-            expect(repaired).toBe(true)
-            expect(statuses).toEqual([{ type: "idle" }])
-            expect(idleEvents).toBe(0)
+            // With no orphaned tool part there is nothing to settle, and the
+            // report says so rather than claiming a repair that did not happen.
+            expect(repaired).toBe(false)
 
-            // After repair: should not be recovering
-            const after = await SessionWorking.resolve(session.id)
-            expect(after).toBeUndefined()
+            // The session reports the stop the user can act on, never a work
+            // state that nothing can clear.
+            expect(statuses).toHaveLength(1)
+            expect(statuses[0]).toMatchObject({ type: "paused", reason: "aborted" })
 
-            // pendingReply should be cleared
-            const refreshed = await Session.get(session.id)
-            expect(refreshed.pendingReply).toBeUndefined()
+            const latch = await SessionLifecycle.snapshot(session.id)
+            expect(latch?.reason).toBe("aborted")
 
-            // Assistant message should now have time.completed and error
+            // The breakpoint survives on purpose: `session.continue` resumes from
+            // exactly here, so terminalizing the message would turn Continue into
+            // a silent no-op.
             const msgs = await Session.messages({ sessionID: session.id })
-            const assistant = msgs.find((m) => m.info.id === assistantID)
-            assertExists(assistant)
-            expect(assistant.info.role).toBe("assistant")
-            const assistantInfo =
-              assistant.info as import("@ericsanchezok/synergy-harness/session/message-v2").MessageV2.Assistant
-            expect(assistantInfo.time.completed).toBeGreaterThan(0)
-            expect(assistantInfo.finish).toBe("error")
-            expect(assistantInfo.error).toBeDefined()
-            expect(assistantInfo.error?.name).toBe("MessageAbortedError")
+            const assistantInfo = msgs.find((m) => m.info.id === assistantID)?.info as MessageV2.Assistant
+            assertExists(assistantInfo)
+            expect(SessionProgress.isTerminalAssistant(assistantInfo)).toBe(false)
+            expect(assistantInfo.time.completed).toBeUndefined()
+            expect(assistantInfo.finish).toBeUndefined()
           },
         })
       }))
@@ -486,9 +511,6 @@ describe("SessionWorking", () => {
               tokens: { input: 1, output: 2, reasoning: 3, cache: { read: 4, write: 5 } },
               error,
             })
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
 
             const statuses: Array<{ type: string }> = []
             let idleEvents = 0
@@ -500,8 +522,8 @@ describe("SessionWorking", () => {
             })
 
             try {
-              expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(true)
-              expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
+              expect(await SessionInvoke.repairAfterAbort(session.id, { terminalize: true })).toBe(true)
+              expect(await SessionInvoke.repairAfterAbort(session.id, { terminalize: true })).toBe(false)
             } finally {
               unsubscribeStatus()
               unsubscribeIdle()
@@ -517,8 +539,12 @@ describe("SessionWorking", () => {
             expect(repaired.time.completed).toBe(completedAt)
             expect(repaired.error).toEqual(error)
             expect(repaired.tokens).toEqual({ input: 1, output: 2, reasoning: 3, cache: { read: 4, write: 5 } })
-            expect((await Session.get(session.id)).pendingReply).toBeUndefined()
-            expect(statuses).toEqual([{ type: "idle" }])
+            expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+            // Both repairs republish the derived latch, and neither may claim the
+            // session settled: an idle announcement would tell the client the
+            // stopped turn is gone while it still waits for a continue.
+            expect(statuses).toHaveLength(2)
+            expect(statuses.every((status) => status.type === "paused")).toBe(true)
             expect(idleEvents).toBe(0)
           },
         })
@@ -569,13 +595,12 @@ describe("SessionWorking", () => {
               isRoot: true,
               rootID,
             })) as MessageV2.User
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
 
+            // Creating the aborted assistant is the `abandon` behavior, so it
+            // takes an explicit terminalize request.
             const repairs = await Promise.all([
-              SessionInvoke.repairAfterAbort(session.id),
-              SessionInvoke.repairAfterAbort(session.id),
+              SessionInvoke.repairAfterAbort(session.id, { terminalize: true }),
+              SessionInvoke.repairAfterAbort(session.id, { terminalize: true }),
             ])
             expect(repairs.filter(Boolean)).toHaveLength(1)
 
@@ -594,7 +619,7 @@ describe("SessionWorking", () => {
             expect(assistant.finish).toBe("error")
             expect(assistant.error?.name).toBe("MessageAbortedError")
             expect(assistant.time.completed).toBeNumber()
-            expect((await Session.get(session.id)).pendingReply).toBeUndefined()
+            expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("aborted")
           },
         })
       }))
@@ -606,9 +631,6 @@ describe("SessionWorking", () => {
           scope: await tmp.scope(),
           fn: async () => {
             const session = await Session.create({})
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
             const userMsg = await Session.updateMessage({
               id: Identifier.ascending("message"),
               sessionID: session.id,
@@ -640,8 +662,12 @@ describe("SessionWorking", () => {
             })
 
             try {
-              expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(true)
-              expect(statuses).toEqual([])
+              // There is no message mutation and no orphaned part to settle, so
+              // the repair reports nothing to repair. The invariant under test is
+              // the published status: it must follow the live runtime rather than
+              // announce an idle session that is still stopping.
+              expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
+              expect(statuses).toEqual([{ type: "busy" }])
             } finally {
               unsubscribe()
               await SessionManager.release(lease!)
@@ -658,9 +684,6 @@ describe("SessionWorking", () => {
           scope: await tmp.scope(),
           fn: async () => {
             const session = await Session.create({})
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
             const userMsg = await Session.updateMessage({
               id: Identifier.ascending("message"),
               sessionID: session.id,
@@ -669,7 +692,7 @@ describe("SessionWorking", () => {
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
-            await Session.updateMessage({
+            const assistant = await Session.updateMessage({
               id: Identifier.ascending("message"),
               sessionID: session.id,
               role: "assistant",
@@ -683,6 +706,17 @@ describe("SessionWorking", () => {
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
+            // The in-flight call a crash left behind. Settling it is what makes
+            // the first repair do real work and the second one a no-op.
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: assistant.id,
+              type: "tool",
+              callID: "call_repeated_repair",
+              tool: "bash",
+              state: { status: "running", input: { command: "echo repeated" }, time: { start: Date.now() } },
+            })
 
             const statuses: Array<{ type: string }> = []
             const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
@@ -692,7 +726,11 @@ describe("SessionWorking", () => {
             expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(true)
             expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
             unsubscribe()
-            expect(statuses).toEqual([{ type: "idle" }])
+            // Each repair republishes the derived latch. Neither may announce an
+            // idle session, which would tell the client the stopped turn is gone
+            // while it still waits for a continue.
+            expect(statuses).toHaveLength(2)
+            expect(statuses.every((status) => status.type === "paused")).toBe(true)
           },
         })
       }))
@@ -714,7 +752,7 @@ describe("SessionWorking", () => {
         })
       }))
 
-    test("no-ops when latest assistant already has time.completed", () =>
+    test("does not rewrite an assistant that already completed", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -745,16 +783,26 @@ describe("SessionWorking", () => {
               finish: "stop",
             })
 
+            // Nothing to repair: the message already reached a normal end, so the
+            // repair must leave it exactly as it is.
             expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
+            const stored = (await Session.messages({ sessionID: session.id })).find(
+              (message) => message.info.role === "assistant",
+            )?.info as MessageV2.Assistant
+            assertExists(stored)
+            expect(stored.finish).toBe("stop")
+            expect(stored.time.completed).toBeNumber()
+            expect(stored.error).toBeUndefined()
 
-            // Should still be complete (not recovering)
+            // The session reports the latch this stop wrote, never a work state
+            // that nothing is driving.
             const result = await SessionWorking.resolve(session.id)
-            expect(result).toBeUndefined()
+            expect(result).toMatchObject({ status: "paused" })
           },
         })
       }))
 
-    test("resumePending repairs the latest interrupted turn and publishes idle status", () =>
+    test("latches unfinished turns instead of repairing or driving them", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -814,50 +862,54 @@ describe("SessionWorking", () => {
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
-            await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
-            })
 
             const statuses: Array<{ type: string }> = []
-            let idleEvents = 0
-            const unsubscribeStatus = Bus.subscribe(SessionEvent.Status, (event) => {
+            const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
               if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
             })
-            const unsubscribeIdle = Bus.subscribe(SessionEvent.Idle, (event) => {
-              if (event.properties.sessionID === session.id) idleEvents++
+            const originalLoop = SessionInvoke.loop
+            const driven: string[] = []
+            ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+              driven.push(sessionID)
             })
-
             try {
-              await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+              await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
             } finally {
-              unsubscribeStatus()
-              unsubscribeIdle()
+              ;(SessionInvoke.loop as any) = originalLoop
+              unsubscribe()
             }
 
-            expect(statuses).toEqual([{ type: "idle" }])
-            expect(idleEvents).toBe(0)
-            expect((await Session.get(session.id)).pendingReply).toBeUndefined()
-            expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+            // Startup records the stop and stops there. Resuming would restart
+            // work the user never asked to continue, which is the whole point of
+            // replacing "resume" with "reconcile".
+            expect(driven).toEqual([])
+            expect(SessionManager.isRunning(session.id)).toBe(false)
+            // Reconciliation writes the latch directly, so it publishes nothing.
+            expect(statuses).toEqual([])
+            expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("interrupted")
 
             const messages = await Session.messages({ sessionID: session.id })
-            const completedAssistant = messages.find((message) => message.info.id === completedAssistantID)?.info as
-              | import("@ericsanchezok/synergy-harness/session/message-v2").MessageV2.Assistant
+            const completedAssistant = messages.find((m) => m.info.id === completedAssistantID)?.info as
+              | MessageV2.Assistant
               | undefined
-            const interruptedAssistant = messages.find((message) => message.info.id === interruptedAssistantID)
-              ?.info as import("@ericsanchezok/synergy-harness/session/message-v2").MessageV2.Assistant | undefined
+            const interruptedAssistant = messages.find((m) => m.info.id === interruptedAssistantID)?.info as
+              | MessageV2.Assistant
+              | undefined
             assertExists(completedAssistant)
             assertExists(interruptedAssistant)
-            expect(completedAssistant.time.completed).toBeNumber()
             expect(completedAssistant.finish).toBe("stop")
             expect(completedAssistant.error).toBeUndefined()
-            expect(interruptedAssistant.time.completed).toBeNumber()
-            expect(interruptedAssistant.finish).toBe("error")
-            expect(interruptedAssistant.error?.name).toBe("MessageAbortedError")
+            // The interrupted turn stays non-terminal on purpose: that is the
+            // breakpoint Continue resumes from, so terminalizing it here would
+            // make the resume action a silent no-op.
+            expect(interruptedAssistant.finish).toBeUndefined()
+            expect(interruptedAssistant.time.completed).toBeUndefined()
+            expect(SessionProgress.pendingReply(messages)).toBe(true)
           },
         })
       }))
 
-    test("resumePending isolates unreadable sessions during startup recovery", () =>
+    test("isolates a session whose evidence cannot be read", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -889,24 +941,45 @@ describe("SessionWorking", () => {
               ),
               brokenPart,
             )
-            await Session.update(corrupt.id, (draft) => {
-              draft.pendingReply = true
+
+            const healthy = await Session.create({ id: Identifier.create("session", false, 2) })
+            const healthyRootID = Identifier.ascending("message")
+            const healthyRoot = await Session.updateMessage({
+              id: healthyRootID,
+              sessionID: healthy.id,
+              role: "user",
+              agent: "test",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              time: { created: Date.now() },
+              isRoot: true,
+              rootID: healthyRootID,
+            })
+            await Session.updateMessage({
+              id: Identifier.ascending("message"),
+              sessionID: healthy.id,
+              role: "assistant",
+              parentID: healthyRoot.id,
+              time: { created: Date.now() },
+              modelID: "test-model",
+              providerID: "test-provider",
+              path: { cwd: projectRoot, root: projectRoot },
+              mode: "test",
+              agent: "test",
+              cost: 0,
+              tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
 
-            const stale = await Session.create({ id: Identifier.create("session", false, 2) })
-            await Session.update(stale.id, (draft) => {
-              draft.pendingReply = true
-            })
+            await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
-            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
-
-            expect((await Session.get(corrupt.id)).pendingReply).toBe(true)
-            expect((await Session.get(stale.id)).pendingReply).toBeUndefined()
+            // One unreadable session must not cost every later session its own
+            // reconciliation.
+            expect((await SessionLifecycle.snapshot(healthy.id))?.reason).toBe("interrupted")
+            expect(await SessionLifecycle.snapshot(corrupt.id)).toBeUndefined()
           },
         })
       }))
 
-    test("resumePending reconciles interrupted Cortex delegation state after restart", () =>
+    test("reconciles interrupted Cortex delegation state after restart", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -927,11 +1000,7 @@ describe("SessionWorking", () => {
               },
             })
 
-            await Session.update(child.id, (draft) => {
-              draft.pendingReply = true
-            })
-
-            await Session.updateMessage({
+            const assistant = await Session.updateMessage({
               id: Identifier.ascending("message"),
               sessionID: child.id,
               role: "assistant",
@@ -946,27 +1015,31 @@ describe("SessionWorking", () => {
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             })
 
-            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+            await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
             const refreshed = await Session.get(child.id)
             expect(refreshed.cortex?.status).toBe("interrupted")
             expect(refreshed.cortex?.completedAt).toBeNumber()
-            expect(refreshed.cortex?.error).toContain("Server restarted")
-            expect(refreshed.pendingReply).toBeUndefined()
+            // A Cortex delegation is a machine session in everything but its
+            // interaction mode: its owning domain reconciles the outcome, so the
+            // user-facing latch deliberately does not apply to it.
+            expect(await SessionLifecycle.snapshot(child.id)).toBeUndefined()
             expect(await SessionWorking.resolve(child.id)).toBeUndefined()
 
             const messages = await Session.messages({ sessionID: child.id })
-            const assistant = messages.find((message) => message.info.role === "assistant")?.info as
-              | import("@ericsanchezok/synergy-harness/session/message-v2").MessageV2.Assistant
+            const stored = messages.find((message) => message.info.id === assistant.id)?.info as
+              | MessageV2.Assistant
               | undefined
-            assertExists(assistant)
-            expect(assistant.time.completed).toBeNumber()
-            expect(assistant.finish).toBe("error")
+            assertExists(stored)
+            // Settlement is owned by the delegation's own status change, so the
+            // transcript is left exactly as the crash left it.
+            expect(stored.finish).toBeUndefined()
+            expect(stored.time.completed).toBeUndefined()
           },
         })
       }))
 
-    test("resumePending re-drives Light Loop after interrupting its last silent Cortex task", () =>
+    test("delivers a Light Loop continuation after interrupting its last silent Cortex task", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -994,11 +1067,13 @@ describe("SessionWorking", () => {
             })
 
             try {
-              await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+              await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
               expect((await Session.get(child.id)).cortex?.status).toBe("interrupted")
               const items = await SessionInbox.list(parent.id)
               expect(items.some((item) => item.message?.metadata?.source === "light_loop_continuation")).toBe(true)
+              // A silent child reports through the Light Loop continuation, never
+              // as a user-visible Cortex notification.
               expect(items.some((item) => item.source.type === "cortex")).toBe(false)
               await Promise.race([
                 parentWoke.promise,
@@ -1014,7 +1089,7 @@ describe("SessionWorking", () => {
         })
       }))
 
-    test("resumePending re-drives Light Loop when its last silent Cortex task was already terminal", () =>
+    test("delivers a Light Loop continuation when its last silent Cortex task was already terminal", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -1045,7 +1120,7 @@ describe("SessionWorking", () => {
             })
 
             try {
-              await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+              await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
               const firstItems = await SessionInbox.list(parent.id)
               expect(
@@ -1061,8 +1136,10 @@ describe("SessionWorking", () => {
                 }),
               ])
 
-              await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+              await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
+              // Idempotent: a repeat pass neither duplicates the continuation nor
+              // re-stamps delivery.
               const secondItems = await SessionInbox.list(parent.id)
               expect(
                 secondItems.filter((item) => item.message?.metadata?.source === "light_loop_continuation"),
@@ -1076,7 +1153,7 @@ describe("SessionWorking", () => {
         })
       }))
 
-    test("resumePending re-drives Light Loop review after marking its reviewer interrupted", () =>
+    test("marks an interrupted Light Loop reviewer and leaves its stop intent bound", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -1110,21 +1187,25 @@ describe("SessionWorking", () => {
                 },
               }
             })
-            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+            await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
             const childSession = await Session.get(child.id)
             const parentSession = await Session.get(parent.id)
             const workflow = parentSession.workflow
             expect(childSession.cortex?.status).toBe("interrupted")
             expect(workflow?.kind).toBe("lightloop")
+            // The reviewer is recorded as interrupted and its stop intent is left
+            // exactly as the crash left it. Unbinding the reviewer so the review
+            // re-drives automatically is part of the retired auto-recovery path;
+            // deciding what to do with a stalled review is now the user's.
             if (workflow?.kind === "lightloop") {
-              expect(workflow.stopRequest?.reviewTaskID).toBeUndefined()
-              expect(workflow.stopRequest?.reviewSessionID).toBeUndefined()
+              expect(workflow.stopRequest?.reviewTaskID).toBe(child.cortex?.taskID)
+              expect(workflow.stopRequest?.reviewSessionID).toBe(child.id)
             }
           },
         })
       }))
 
-    test("resumePending restores an undelivered terminal Cortex notification exactly once", () =>
+    test("restores an undelivered terminal Cortex notification exactly once", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -1149,7 +1230,7 @@ describe("SessionWorking", () => {
             })
             Cortex.reset()
 
-            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+            await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
             const firstItems = await SessionInbox.list(parent.id)
             expect(firstItems).toHaveLength(1)
@@ -1159,7 +1240,7 @@ describe("SessionWorking", () => {
             expect(delivered.cortex?.deliveryNotifiedAt).toBeNumber()
             const deliveredAt = delivered.cortex?.deliveryNotifiedAt
 
-            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+            await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
 
             expect(await SessionInbox.list(parent.id)).toHaveLength(1)
             expect((await Session.get(child.id)).cortex?.deliveryNotifiedAt).toBe(deliveredAt)

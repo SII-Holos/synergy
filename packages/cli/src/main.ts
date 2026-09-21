@@ -19,6 +19,7 @@ import { UI } from "./util/ui"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { EOL } from "os"
+import { withCliMaintenance } from "./cli/maintenance-progress"
 
 import { parse as parseJsonc } from "jsonc-parser"
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
@@ -61,10 +62,20 @@ export async function runCli(options: CliOptions): Promise<void> {
     await context.run(async () => {
       registerLocalRuntime()
       try {
-        await runCliImplementation({
-          ...options,
-          runtimeFactory: (input) => options.runtimeFactory({ ...input, host }),
-        })
+        const run = () =>
+          runCliImplementation({
+            ...options,
+            runtimeFactory: (input) => options.runtimeFactory({ ...input, host }),
+          })
+        const argv = options.argv ?? hideBin(process.argv)
+        if (
+          (argv.includes("migration") &&
+            argv.includes("run") &&
+            argv.some((arg) => arg === "--maintenance" || arg === "--maintenance=true")) ||
+          (argv.includes("data") && argv.includes("storage") && argv.includes("reclaim"))
+        )
+          await withCliMaintenance(() => run())
+        else await run()
       } finally {
         const errors: unknown[] = []
         for (const close of [

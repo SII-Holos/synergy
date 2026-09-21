@@ -483,3 +483,43 @@ describe("snapshot maintenance", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+test("protected preparation copies the required Git closure and preserves unrelated source objects", () =>
+  runtime.run(async () => {
+    const { SnapshotProtection } = await import("../../src/session/snapshot-protection")
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ scope })
+        const source = SnapshotStore.legacyRepository(scope.id, session.id)
+        await SnapshotStore.initializeBareRepository(source)
+        await Bun.write(path.join(tmp.path, "history.txt"), "required history")
+        await SnapshotStore.command(source, ["-C", tmp.path, "--work-tree", tmp.path, "add", "history.txt"])
+        const tree = await SnapshotStore.command(source, ["write-tree"])
+        await Bun.write(path.join(tmp.path, "unknown.txt"), "unreferenced evidence")
+        const unknown = await SnapshotStore.command(source, ["hash-object", "-w", path.join(tmp.path, "unknown.txt")])
+        await Storage.write(["sessions", scope.id, session.id, "messages", "message", "parts", "snapshot"], {
+          type: "step-start",
+          snapshot: tree,
+        })
+        await SnapshotMaintenance.registerLegacy(undefined, scope.id, session.id)
+        const data = Storage.current().artifactDirectory
+        await SnapshotProtection.protect(data, "protected-fixture")
+        try {
+          expect(
+            (await SnapshotMaintenance.migrate(scope.id, { apply: true, sessionID: session.id })).results[0].status,
+          ).toBe("migrated")
+          expect(await SnapshotStore.command(SnapshotStore.repository(scope.id), ["show", `${tree}:history.txt`])).toBe(
+            "required history",
+          )
+          expect(await SnapshotStore.command(source, ["cat-file", "-p", unknown])).toBe("unreferenced evidence")
+          await expect(SnapshotMaintenance.packLegacy(data, { apply: true, scopeID: scope.id })).rejects.toThrow(
+            "protected",
+          )
+        } finally {
+          await SnapshotProtection.release(data, "protected-fixture")
+        }
+      },
+    })
+  }))

@@ -6,6 +6,8 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { StorageSnapshotUsage } from "@ericsanchezok/synergy-sdk/client"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { formatBytes } from "@/components/library/shared"
+import { usePlatform } from "@/context/platform"
+import { StorageMaintenance } from "./StorageMaintenance"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
@@ -50,6 +52,10 @@ const maintenanceDescription = {
   id: "settings.storage.maintenance.description",
   message:
     "inspect and check run through the CLI (synergy data snapshots). migrate and compact can also run here, each with a dry run first; clean reclaims legacy directories that no session owns.",
+}
+const reclaimControlFailedTitle = {
+  id: "settings.storage.reclaim.control.failed",
+  message: "Space reclamation control failed",
 }
 const migrateTitle = { id: "settings.storage.migrate.title", message: "Migrate legacy snapshots" }
 const migrateDescription = {
@@ -180,9 +186,17 @@ export function StoragePanel(props: {
 }) {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
+  const platform = usePlatform()
   const confirm = useConfirm()
   const [cleaning, setCleaning] = createSignal(false)
   const [maintenance, setMaintenance] = createSignal<false | "migrate" | "compact">(false)
+  const [reclaimControl, setReclaimControl] = createSignal(false)
+
+  const [maintenanceStatus, { refetch: refetchMaintenance }] = createResource(async () => {
+    const response = await globalSDK.client.storage.maintenanceStatus()
+    if (response.error) throw new Error(requestErrorMessage(response.error))
+    return response.data
+  })
 
   const [usage, { refetch }] = createResource(async () => {
     const response = await globalSDK.client.storage.snapshot.usage()
@@ -194,6 +208,22 @@ export function StoragePanel(props: {
     const response = await globalSDK.client.scope.list()
     return response.data ?? []
   })
+
+  async function controlReclamation(action: "pause" | "resume") {
+    if (reclaimControl()) return
+    setReclaimControl(true)
+    try {
+      const response = await globalSDK.client.storage.reclaimControl({
+        storageReclaimControlInput: { action },
+      })
+      if (response.error) throw new Error(requestErrorMessage(response.error))
+      await refetchMaintenance()
+    } catch (error) {
+      showToast({ type: "error", title: _(reclaimControlFailedTitle), description: requestErrorMessage(error) })
+    } finally {
+      setReclaimControl(false)
+    }
+  }
 
   function scopeDisplayName(scopeID: string): string {
     const match = scopes.latest?.find((entry) => entry.id === scopeID)
@@ -466,6 +496,16 @@ export function StoragePanel(props: {
           }
         />
       </SettingsSection>
+
+      <StorageMaintenance
+        status={maintenanceStatus.latest}
+        loading={maintenanceStatus.loading}
+        error={maintenanceStatus.error}
+        bridge={platform.desktopServer}
+        controlBusy={reclaimControl()}
+        onRefresh={() => void Promise.resolve(refetchMaintenance()).catch(() => {})}
+        onControl={(action) => void controlReclamation(action)}
+      />
 
       <SettingsSection title={_(maintenanceTitle)}>
         <SettingRow

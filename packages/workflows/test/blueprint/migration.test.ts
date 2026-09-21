@@ -3,6 +3,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { migrations } from "../../src/blueprint/migration"
+import type { Info as BlueprintLoopInfo } from "../../src/blueprint/types"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -14,7 +15,7 @@ function blueprintLoop(input: {
   noteID: string
   sessionID: string
   scopeID: string
-  status: "running" | "waiting" | "auditing" | "armed" | "completed" | "failed" | "cancelled"
+  status: BlueprintLoopInfo["status"]
   updated: number
 }) {
   return {
@@ -127,7 +128,7 @@ describe("blueprint migrations", () => {
           noteID,
           sessionID: cancelSessionID,
           scopeID,
-          status: "waiting",
+          status: "auditing",
           updated: now + 1000,
         }),
       )

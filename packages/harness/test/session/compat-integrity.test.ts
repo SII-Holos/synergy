@@ -16,6 +16,7 @@ import { runMigrations } from "../../src/migration"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { migrationFixture as testRuntime } from "../migration/fixture"
 const runtime = await testRuntime()
+import { UpgradeWork } from "../../src/storage/upgrade-work"
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "compat-integrity-"))
@@ -86,7 +87,10 @@ test("touch imports from the owning handle, preserves auxiliary files, and retai
 test("pending endpoint resolution finds an aggregate before any endpoint index exists", () =>
   runtime.run(async () => {
     await using f = await fixture()
-    const endpoint = { kind: "channel" as const, channel: { type: "test", accountId: "account", chatId: "chat" } }
+    const endpoint = {
+      kind: "channel" as const,
+      channel: { type: "test", accountId: "account", chatId: "chat" },
+    }
     await f.write("info.json", { ...f.info, endpoint })
     await f.catalog()
     await f.run(async () => {
@@ -101,7 +105,13 @@ test("pending projections never become persisted entries when a different sessio
     await f.run(async () => {
       expect((await Session.readPageIndex("home")).entries.map((entry) => entry.id)).toEqual([f.id])
       const other = Identifier.ascending("session")
-      await Session.upsertPageIndexEntry("home", { id: other, created: 1, updated: 2, pinned: 0, archived: false })
+      await Session.upsertPageIndexEntry("home", {
+        id: other,
+        created: 1,
+        updated: 2,
+        pinned: 0,
+        archived: false,
+      })
       const persisted = await Storage.read<{ entries: { id: string }[] }>(
         StoragePath.sessionsPageIndex(Identifier.asScopeID("home")),
       )
@@ -236,7 +246,7 @@ test("transient file reads remain retryable and do not quarantine the aggregate"
 test("startup imports recovery-eligible sessions and leaves idle history deferred", () =>
   runtime.run(async () => {
     await using active = await fixture()
-    await active.write("info.json", { ...active.info, pendingReply: true })
+    await active.write("info.json", { ...active.info, paused: { reason: "aborted", since: 2000 } })
     await active.catalog()
     await active.run(async () => {
       await SessionCompat.prepareRecovery()
@@ -268,6 +278,32 @@ test("the background migrator retains its handle and its stop drains work before
     const cancel = untouched.run(() => SessionCompat.startBackgroundMigrator({ intervalMs: 100, budget: 1 }))
     await cancel()
     expect((await StorageCompat.readLocator(untouched.store, untouched.id))?.status).toBe("pending")
+  }))
+
+test("stopping a migrator cancels only its captured storage handle", () =>
+  runtime.run(async () => {
+    await using owner = await fixture()
+    await using caller = await fixture()
+    const stop = owner.run(() => SessionCompat.startBackgroundMigrator({ intervalMs: 10_000 }))
+    const ownedWork = owner.run(() => UpgradeWork.controller())
+    const unrelatedWork = caller.run(() => UpgradeWork.controller())
+    try {
+      await caller.run(stop)
+      expect(ownedWork.controller.signal.aborted).toBe(true)
+      expect(unrelatedWork.controller.signal.aborted).toBe(false)
+      const lateWork = owner.run(() => UpgradeWork.controller())
+      try {
+        expect(lateWork.controller.signal.aborted).toBe(true)
+      } finally {
+        lateWork.dispose()
+      }
+      await caller.run(() => SessionCompat.requireImported(caller.id))
+      expect((await StorageCompat.readLocator(caller.store, caller.id))?.status).toBe("imported")
+    } finally {
+      await stop()
+      ownedWork.dispose()
+      unrelatedWork.dispose()
+    }
   }))
 
 test("archived retired endpoints stay in canonical history and are omitted from projections", () =>

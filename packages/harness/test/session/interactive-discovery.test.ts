@@ -9,6 +9,7 @@ import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import { StorageClosedError } from "../../src/storage/errors"
+import { SessionLifecycle } from "../../src/session/lifecycle"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -22,9 +23,9 @@ test("startup discovery reads typed records without walking every historical ses
       fn: async () => {
         const sessions = await Promise.all(Array.from({ length: 12 }, () => Session.create({ title: "History" })))
         const active = sessions[0]
-        await Session.update(active.id, (draft) => {
-          draft.pendingReply = true
-        })
+        // Queued work is the unfinished-turn evidence startup reconciliation acts
+        // on. The other eleven sessions have no messages and no inbox work, so
+        // only this one is a candidate and the assertion stays discriminating.
         await SessionInbox.enqueueUser({
           sessionID: active.id,
           model: { providerID: "test", modelID: "test" },
@@ -32,10 +33,16 @@ test("startup discovery reads typed records without walking every historical ses
         })
         const scan = spyOn(Storage, "scan")
         try {
-          expect(await SessionManager.listPendingReply(active.scope.id)).toEqual([active.id])
+          expect(await SessionLifecycle.listUnfinishedSessions(active.scope.id)).toEqual([active.id])
           expect(await SessionManager.listInterruptedCortexDelegations(active.scope.id)).toEqual([])
           expect(await SessionInbox.listRunnableSessions(active.scope.id)).toEqual([active.id])
-          expect(scan.mock.calls.filter(([key]) => key[0] === "sessions")).toHaveLength(0)
+          // Discovery must resolve typed records rather than enumerate the session
+          // store: a `sessions`-rooted scan is only acceptable when it is bounded
+          // to a single session (`["sessions", scopeID, sessionID, ...]`). A
+          // prefix shorter than that walks the scope's whole history, which is the
+          // regression this guards.
+          const broadScans = scan.mock.calls.filter(([key]) => key[0] === "sessions" && key.length < 3)
+          expect(broadScans).toHaveLength(0)
         } finally {
           scan.mockRestore()
           for (const session of sessions) await Session.remove(session.id)

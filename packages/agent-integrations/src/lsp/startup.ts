@@ -11,7 +11,7 @@ export function registerLspStartup() {
   ScopeStartup.register({
     name: "format",
     phase: "surface",
-    after: ["resume-pending"],
+    after: ["session-pause-reconcile"],
     before: ["file-watcher"],
     init: () => Format.init(),
   })

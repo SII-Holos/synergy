@@ -558,6 +558,23 @@ describe("session.compaction.isContextExceeded", () => {
     runtime.run(() => {
       expect(SessionCompaction.isContextExceeded({ name: "Error", message: "network timeout" })).toBe(false)
     }))
+
+  test("detects Model Studio input-length overflow", () =>
+    runtime.run(() => {
+      expect(
+        SessionCompaction.isContextExceeded(
+          apiError("Range of input length should be [1, 1000000]", {
+            responseBody:
+              '{"error":{"code":"InvalidParameter","message":"Range of input length should be [1, 1000000]"}}',
+          }),
+        ),
+      ).toBe(true)
+    }))
+
+  test("detects a bare input-length overflow phrase", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("input length exceeds the model limit"))).toBe(true)
+    }))
 })
 
 // ---------------------------------------------------------------------------

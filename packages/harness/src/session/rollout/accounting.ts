@@ -2,6 +2,7 @@ import z from "zod"
 import { Decimal } from "decimal.js"
 import type { RolloutSnapshot } from "./snapshot"
 import type { RolloutSchema } from "./schema"
+import { RolloutUsage } from "./usage"
 
 export namespace RolloutAccounting {
   export const Metric = z
@@ -128,8 +129,15 @@ export namespace RolloutAccounting {
     const calls = new Map(snapshot.calls.map((call) => [call.id, call]))
     const observed = new Set<string>()
     const attempts = new Set<string>()
+    // Transport recording is best-effort: a request path that bypasses the
+    // recording fetch still reports usage on its call record. Reading it keeps
+    // token accounting — and the prompt budget's calibration anchor — alive
+    // when recording is lost.
+    function recordedCallUsage(call: RolloutSchema.CallRecord) {
+      return call.sdkUsage ? (RolloutUsage.normalizeSdk(call.sdkUsage, call.model.sdk) ?? undefined) : undefined
+    }
     function charge(call: RolloutSchema.CallRecord, attempt?: RolloutSchema.AttemptRecord) {
-      const usage = attempt?.usage
+      const usage = attempt ? attempt.usage : recordedCallUsage(call)
       if (usage?.reported) {
         const { currency, amount } = usage.reported
         result.reported.currencies[currency] = new Decimal(result.reported.currencies[currency] ?? 0)

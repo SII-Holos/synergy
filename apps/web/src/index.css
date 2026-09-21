@@ -766,6 +766,36 @@ a {
   box-shadow: none;
 }
 
+.synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+.prompt-abandon-ring {
+  position: absolute;
+  inset: -3px;
+  width: 40px;
+  height: 40px;
+  color: var(--icon-critical-base);
+  pointer-events: none;
+}
+
+.prompt-abandon-feedback {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  width: max-content;
+  max-width: min(260px, 75vw);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised-base);
+  color: var(--text-strong);
+  font-size: 12px;
+  line-height: 1.5;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
 @container prompt-input (max-width: 560px) {
   .synergy-workbench-canvas .prompt-input-compact-control {
     width: 28px;

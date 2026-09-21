@@ -436,7 +436,7 @@ async function handleCompact(sessionID: string) {
 }
 
 async function handleAbort(sessionID: string) {
-  await SessionAbort.abort(sessionID, { recoverQueuedTasks: true })
+  await SessionAbort.abort(sessionID)
   return {
     title: `Aborted ${sessionID}`,
     output: `Session ${sessionID} has been aborted.`,

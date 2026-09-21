@@ -133,3 +133,31 @@ test("a postgres store reports nothing to maintain instead of failing", () =>
   }))
 
 afterRuntimeTests(() => runtime.close())
+test("ordinary startup defers a blocking vacuum without claiming its migration completed", () =>
+  runtime.run(async () => {
+    const directory = await root()
+    const filename = path.join(directory, "deferred.sqlite")
+    const legacy = new Database(filename, { create: true })
+    legacy.exec("CREATE TABLE seed (id INTEGER)")
+    legacy.close(true)
+    const store = await TransactionalStore.open({ backend: "sqlite", namespace: "deferred", filename })
+    try {
+      await Storage.provide({ store, artifactDirectory: directory }, async () => {
+        const { runMigrations } = await import("../../src/migration")
+        const { StoragePath } = await import("../../src/storage/path")
+        await runMigrations({ targetDomain: "storage", output: "silent" })
+        expect(await store.incrementalVacuumEnabled()).toBe(false)
+        expect(
+          await store.read<Record<string, number>>(StoragePath.metaMigrationLogDomain("storage")),
+        ).not.toHaveProperty(StorageIncrementalVacuum.id)
+        await runMigrations({ targetDomain: "storage", maintenance: true, output: "silent" })
+        expect(await store.incrementalVacuumEnabled()).toBe(true)
+        expect(await store.read<Record<string, number>>(StoragePath.metaMigrationLogDomain("storage"))).toHaveProperty(
+          StorageIncrementalVacuum.id,
+        )
+      })
+    } finally {
+      await store.close()
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+  }))

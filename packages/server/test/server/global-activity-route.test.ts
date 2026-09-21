@@ -9,6 +9,7 @@ import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { Server } from "../../src/server/server"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -165,9 +166,9 @@ async function createRecoverableSession(title: string) {
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
-  await Session.update(session.id, (draft) => {
-    draft.pendingReply = true
-  })
+  // A session a previous process stopped: the pause latch is what the
+  // cross-scope recovery scan reports, and it is only visible on disk.
+  await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
   return session
 }
 

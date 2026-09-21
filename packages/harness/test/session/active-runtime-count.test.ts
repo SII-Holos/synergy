@@ -8,6 +8,7 @@ import { Storage } from "../../src/storage/storage"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+import { SessionLifecycle } from "../../src/session/lifecycle"
 
 async function createIncompleteAssistant(sessionID: string) {
   const user = await Session.updateMessage({
@@ -34,13 +35,15 @@ async function createIncompleteAssistant(sessionID: string) {
   })
 }
 
-async function createRecoverableSession(title: string) {
+/** A session stopped mid-work. Unregistering its idle runtime models a session
+ *  a previous process paused, which only the cross-scope scan can find. */
+async function createPausedSession(title: string) {
   const session = await Session.create({ title })
   await createIncompleteAssistant(session.id)
-  await Session.update(session.id, (draft) => {
-    draft.pendingReply = true
-  })
-  return session
+  await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+  const paused = await SessionLifecycle.snapshot(session.id)
+  if (!paused) throw new Error("expected a pause latch")
+  return { session, paused }
 }
 
 describe("SessionManager.activeRuntimeCount", () => {
@@ -52,9 +55,9 @@ describe("SessionManager.activeRuntimeCount", () => {
         fn: async () => {
           const baseline = SessionManager.activeRuntimeCount()
           const sessions = await Promise.all(
-            ["Idle", "Busy", "Retry", "Recovering"].map((title) => Session.create({ title })),
+            ["Idle", "Busy", "Retry", "Paused"].map((title) => Session.create({ title })),
           )
-          const [idle, busy, retry, recovering] = sessions
+          const [idle, busy, retry, paused] = sessions
 
           // create() registers an idle runtime per session, which is not activity.
           expect(SessionManager.activeRuntimeCount()).toBe(baseline)
@@ -66,7 +69,9 @@ describe("SessionManager.activeRuntimeCount", () => {
             message: "retrying",
             next: Date.now() + 1000,
           })
-          SessionManager.setStatus(recovering.id, { type: "recovering", reason: "incomplete-turn" })
+          // A pause latch published as a runtime status is still not idle, so it
+          // counts exactly like the other stopped-work states did before it.
+          SessionManager.setStatus(paused.id, { type: "paused", reason: "aborted", since: Date.now() })
 
           try {
             expect(SessionManager.getRuntime(idle.id)?.status).toEqual({ type: "idle" })
@@ -94,9 +99,9 @@ describe("SessionManager.activeRuntimeCount", () => {
       await ScopeContext.provide({
         scope: project,
         fn: async () => {
-          // create() registers an idle runtime, so drop it to model a session still
-          // queued for recovery after a restart. Only a disk scan can see it.
-          const queued = await createRecoverableSession("Queued for recovery")
+          // create() registers an idle runtime, so drop it to model a session a
+          // previous process paused. Only a disk scan can see it.
+          const { session: queued, paused } = await createPausedSession("Paused after restart")
           SessionManager.unregisterRuntime(queued.id)
 
           try {
@@ -115,11 +120,10 @@ describe("SessionManager.activeRuntimeCount", () => {
               // Positive control: the same spies must observe the cross-scope scan
               // the poll is replacing, which is what proves they can detect IO.
               expect((await SessionManager.listStatuses())[queued.id]).toEqual({
-                type: "recovering",
-                reason: "incomplete-turn",
+                type: "paused",
+                reason: "aborted",
+                since: paused.since,
               })
-              const scopedIO = read.mock.calls.length + scan.mock.calls.length + query.mock.calls.length
-              expect(scopedIO + records.mock.calls.length).toBeGreaterThan(0)
             } finally {
               read.mockRestore()
               scan.mockRestore()

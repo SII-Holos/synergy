@@ -1,4 +1,5 @@
 import { useLingui } from "@lingui/solid"
+import { PI } from "@/components/prompt-input/prompt-input-i18n"
 import { topBar } from "@/locales/messages"
 import { Show, createMemo, createSignal, type Accessor } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
@@ -43,6 +44,7 @@ function SessionActionMenu(props: {
   onWorktreeToggle: () => void
   onExport: () => void
   onImport: () => void
+  onAbandon?: () => void
   onArchive: () => void
 }) {
   const [open, setOpen] = createSignal(false)
@@ -122,6 +124,17 @@ function SessionActionMenu(props: {
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onImport)}>
             <Icon name={getSemanticIcon("action.import")} size="small" />
             <span>{_(topBar.importSessionData)}</span>
+          </button>
+        </Show>
+        <Show when={props.onAbandon}>
+          <button
+            type="button"
+            class="stb-menu-item stb-menu-item--danger"
+            role="menuitem"
+            onClick={() => run(props.onAbandon!)}
+          >
+            <Icon name={getSemanticIcon("action.stop")} size="small" />
+            <span>{_(PI.abandonExecution)}</span>
           </button>
         </Show>
         <Show when={props.visibility.archive}>
@@ -339,6 +352,11 @@ export function SessionTopBar(props: {
               onExport={() => dialog.show(() => <DialogSessionExport />)}
               onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
+              onAbandon={
+                command.options.some((option) => option.id === "session.abandon" && !option.disabled)
+                  ? () => command.trigger("session.abandon")
+                  : undefined
+              }
             />
           </Show>
         </div>
@@ -371,6 +389,11 @@ export function SessionTopBar(props: {
               onExport={() => dialog.show(() => <DialogSessionExport />)}
               onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
+              onAbandon={
+                command.options.some((option) => option.id === "session.abandon" && !option.disabled)
+                  ? () => command.trigger("session.abandon")
+                  : undefined
+              }
             />
           </Show>
           <Tooltip

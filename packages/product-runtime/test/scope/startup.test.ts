@@ -9,7 +9,7 @@ const runtime = await testRuntime()
  * every historical scope-startup step is registered as a contribution, and
  * the deterministic topological plan reproduces the historical startup
  * order exactly. Order-sensitive chain (blueprint): session-recovery →
- * lattice-runtime → resume-pending.
+ * lattice-runtime → session-pause-reconcile.
  */
 describe("ScopeStartup registration", () => {
   test("product registration mounts all domain startup contributions", () =>
@@ -36,9 +36,9 @@ describe("ScopeStartup registration", () => {
       expect(indexOf("starting-listeners")).toBeLessThan(indexOf("plugin-init"))
       expect(indexOf("plugin-init")).toBeLessThan(indexOf("session-recovery"))
       expect(indexOf("session-recovery")).toBeLessThan(indexOf("lattice-runtime"))
-      expect(indexOf("lattice-runtime")).toBeLessThan(indexOf("resume-pending"))
+      expect(indexOf("lattice-runtime")).toBeLessThan(indexOf("session-pause-reconcile"))
       expect(plan).not.toContain("activity-summary")
-      expect(indexOf("resume-pending")).toBeLessThan(indexOf("format"))
+      expect(indexOf("session-pause-reconcile")).toBeLessThan(indexOf("format"))
       expect(indexOf("format")).toBeLessThan(indexOf("lsp-init"))
       expect(indexOf("lsp-init")).toBeLessThan(indexOf("file-watcher"))
       expect(indexOf("file-watcher")).toBeLessThan(indexOf("vcs-init"))

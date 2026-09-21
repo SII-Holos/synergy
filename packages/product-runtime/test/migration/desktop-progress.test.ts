@@ -28,6 +28,31 @@ afterEach(() =>
 )
 
 describe("desktop migration reporting", () => {
+  test("forwards real migration counts with an unknown total", async () => {
+    const lines: string[] = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "uncounted-copy",
+        description: "Copy records",
+        async up(progress) {
+          progress(0, 0, 1)
+          progress(256, 0, 1)
+          progress(512, 0, 1)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: createManagedMigrationReporter((line) => lines.push(line)),
+    })
+    expect(lines.map((line) => JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length)))).toContainEqual({
+      phase: "migration",
+      step: 2,
+      current: 512,
+      total: 0,
+    })
+  })
   test("preserves every maintenance transition without throttling or adding private data", () => {
     const lines: string[] = []
     const reporter = createManagedMaintenanceReporter((line) => lines.push(line))

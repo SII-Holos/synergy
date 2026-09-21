@@ -499,7 +499,7 @@ export type DiagnosticsSummary = {
     }>
   }
   sessions: {
-    pendingReply: Array<{
+    paused: Array<{
       sessionID: string
       path: string
       updated?: number
@@ -1027,6 +1027,11 @@ export type PerfConfig = {
     retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
+    requestDeadlineMs: number
+    probeTimeoutMs: number
+    probeAttempts: number
+    hardCeilingMs: number
+    chunkBudgetMs: number
   }
   thresholds: {
     [key: string]: number
@@ -1065,6 +1070,11 @@ export type PerformanceConfigPatch = {
     retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
+    requestDeadlineMs: number
+    probeTimeoutMs: number
+    probeAttempts: number
+    hardCeilingMs: number
+    chunkBudgetMs: number
   }
   thresholds?: {
     [key: string]: number
@@ -1115,8 +1125,39 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageMaintenanceStatus = {
+  format: {
+    current: number
+    target: number
+    maintenanceRequired: boolean
+    phase?: "records" | "nodes" | "artifacts" | "swap" | "reclaim" | "complete"
+    restartRequired: boolean
+  }
+  reclaim: {
+    pending: boolean
+    running: boolean
+    paused: boolean
+    remainingPages?: number
+    releasedPages: number
+    error?: string
+  }
+}
+
+export type StorageReclaimControlInput = {
+  action: "pause" | "resume"
+}
+
 export type StorageUpgradeStatus = {
   ready: true
+  historyReady: boolean
+  paused: boolean
+  pauseReason?: "user" | "foreground" | "disk" | "wal"
+  backup: {
+    complete: boolean
+    attention?: boolean
+    sealed: number
+    total: number
+  }
   pending: number
   partial: number
   imported: number
@@ -1131,6 +1172,18 @@ export type StorageUpgradeCatalog = {
     status: "pending" | "partial" | "imported" | "quarantined"
   }>
   next?: Array<string>
+}
+
+export type StorageSessionPreparation = {
+  sessionID: string
+  state: "ready" | "pending" | "preparing" | "blocked" | "failed"
+  phase?: "backup" | "import" | "migrate" | "verify" | "publish" | "complete"
+  files: number
+  bytes: number
+  error?: {
+    category: "retryable" | "integrity" | "data"
+    message: string
+  }
 }
 
 export type StorageSnapshotOwnerCounts = {
@@ -1733,7 +1786,7 @@ export type GlobalActivity = {
   backgroundJobs: number
 }
 
-export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
 
 export type SessionStatus =
   | {
@@ -1750,9 +1803,10 @@ export type SessionStatus =
       description?: string
     }
   | {
-      type: "recovering"
-      reason?: SessionRecoveringReason
+      type: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionNavEntry = {
@@ -1791,7 +1845,7 @@ export type SessionNavEntry = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
   workspaceType?: string
   workflow?: {
@@ -2702,14 +2756,34 @@ export type ObservabilityConfig = {
        */
       maxSqliteBytes?: number
       /**
-       * Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.
+       * Byte budget for authoritative storage (default: 40GB). Budgeted pruning only runs while the database exceeds it, and the operative retention window is derived from it and the measured ingress rate, so this value decides how much evidence can actually be retained.
        */
       retentionBytes?: number
       /**
-       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.
+       * Retain authoritative evidence for this long (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). This is a promise the byte budget may shorten, never lengthen: when retentionBytes holds less than this window at the measured ingress rate, pruning uses the shorter budget-derived window and reports it, and a budget that cannot hold even one day raises an unreachable-budget issue without pruning.
        */
       retentionMs?: number
       walCheckpointIntervalMs?: number
+      /**
+       * Budget for one ordinary statement against authoritative storage (default: 30000 ms). Exceeding it retries rather than terminating: the worker's liveness probe reports occupancy separately, so one slow statement cannot restart the runtime.
+       */
+      requestDeadlineMs?: number
+      /**
+       * Budget for one authoritative-storage liveness probe (default: 30000 ms). An unanswered probe marks the worker busy rather than dead, so this value decides how quickly degradation is noticed, not whether the runtime survives.
+       */
+      probeTimeoutMs?: number
+      /**
+       * Unanswered liveness probes in a row before the worker is reported as busy (default: 3). Only sustained silence past hardCeilingMs is terminal, so this value governs when the condition becomes visible.
+       */
+      probeAttempts?: number
+      /**
+       * Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 3600000 ms). Must exceed the longest legitimate statement, because three maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, the physical integrity check is one engine call, and VACUUM rewrites every page. Measured on production-shaped fixtures the check alone took 17-33 s at 920,000 records and 140-280 s at 2,760,000 records, and it runs while a migration activates, so the projection to a much larger store is a range rather than a point. Raising this only delays declaring a real wedge, during which storage already fails new work fast and the runtime keeps serving, so it is the safe direction to err; lower it only if a shorter recovery time matters more than the risk of interrupting a migration.
+       */
+      hardCeilingMs?: number
+      /**
+       * Budget for reclaim, the only maintenance operation that can be split: it frees a bounded page count per call, so a fixed budget is enforceable (default: 30000 ms). CREATE INDEX, PRAGMA integrity_check and VACUUM cannot be chunked or cancelled, so they are bounded by hardCeilingMs instead and raising this value does not extend them. This value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume, and requestDeadlineMs and probeTimeoutMs are clamped the same way, because the invariant only holds when every limit that can occupy the worker's loop leaves that margin.
+       */
+      chunkBudgetMs?: number
     }
     thresholds?: {
       [key: string]: number
@@ -4921,6 +4995,12 @@ export type SessionCompletionNotice = {
   silent: boolean
 }
 
+export type SessionPaused = {
+  reason: SessionPausedReason
+  description?: string
+  since: number
+}
+
 export type SessionInteractionMode = "interactive" | "unattended"
 
 export type SessionInteraction = {
@@ -5031,9 +5111,10 @@ export type SessionWorkingInfo =
       next: number
     }
   | {
-      status: "recovering"
-      reason?: SessionRecoveringReason
+      status: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionWorkspace = {
@@ -5168,7 +5249,7 @@ export type Session = {
    * Per-session agent override set by session control
    */
   agentOverride?: string
-  pendingReply?: boolean
+  paused?: SessionPaused
   interaction?: SessionInteraction
   lastExchange?: {
     user?: string
@@ -5187,7 +5268,7 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
 }
 
@@ -6753,6 +6834,35 @@ export type SessionForkPointMissingError = {
   }
 }
 
+export type SessionContinueResult = {
+  /**
+   * Whether the drive accepted the session; a paused or already-running session reports false
+   */
+  handled: boolean
+}
+
+export type SessionAbandonResult = {
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * False after abandonment; the session is not left paused
+   */
+  paused: boolean
+  /**
+   * A workflow bound to the session was cancelled
+   */
+  abandoned: boolean
+}
+
+export type SessionAbandonError = {
+  name: "SessionAbandonError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionAbortResult = {
   /**
    * Runtime signal result; not_found/idle mean no running turn was stopped
@@ -6767,9 +6877,9 @@ export type SessionAbortResult = {
    */
   abandoned: boolean
   /**
-   * The session settled to idle
+   * The session was left paused, awaiting an explicit continue
    */
-  settled: boolean
+  paused: boolean
 }
 
 export type AttachmentSourceText = {
@@ -6937,6 +7047,10 @@ export type SessionInputResult =
   | {
       status: "queued"
       item: SessionInboxItem
+      /**
+       * Existing task run resumed by this input, when continuing a paused task
+       */
+      runID?: string
     }
 
 export type WorktreeUnavailableError = {
@@ -8643,7 +8757,7 @@ export type BlueprintLoopInfo = {
     reviewToolRecoveryAttempts?: number
   }
   scopeID: string
-  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  status: "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
@@ -11580,6 +11694,57 @@ export type PerformanceEventsStreamResponses = {
   200: unknown
 }
 
+export type StorageMaintenanceStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/maintenance"
+}
+
+export type StorageMaintenanceStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageMaintenanceStatusError = StorageMaintenanceStatusErrors[keyof StorageMaintenanceStatusErrors]
+
+export type StorageMaintenanceStatusResponses = {
+  /**
+   * Current storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageMaintenanceStatusResponse =
+  StorageMaintenanceStatusResponses[keyof StorageMaintenanceStatusResponses]
+
+export type StorageReclaimControlData = {
+  body?: StorageReclaimControlInput
+  path?: never
+  query?: never
+  url: "/global/storage/reclaim/control"
+}
+
+export type StorageReclaimControlErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageReclaimControlError = StorageReclaimControlErrors[keyof StorageReclaimControlErrors]
+
+export type StorageReclaimControlResponses = {
+  /**
+   * Updated storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageReclaimControlResponse = StorageReclaimControlResponses[keyof StorageReclaimControlResponses]
+
 export type StorageUpgradeStatusData = {
   body?: never
   path?: never
@@ -11633,6 +11798,114 @@ export type StorageUpgradeCatalogResponses = {
 }
 
 export type StorageUpgradeCatalogResponse = StorageUpgradeCatalogResponses[keyof StorageUpgradeCatalogResponses]
+
+export type StorageControlUpgradeData = {
+  body?: {
+    action: "pause" | "resume"
+  }
+  path?: never
+  query?: never
+  url: "/global/storage/upgrade/control"
+}
+
+export type StorageControlUpgradeErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageControlUpgradeError = StorageControlUpgradeErrors[keyof StorageControlUpgradeErrors]
+
+export type StorageControlUpgradeResponses = {
+  /**
+   * Updated preparation status
+   */
+  200: StorageUpgradeStatus
+}
+
+export type StorageControlUpgradeResponse = StorageControlUpgradeResponses[keyof StorageControlUpgradeResponses]
+
+export type StorageUpgradeSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}"
+}
+
+export type StorageUpgradeSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeSessionError = StorageUpgradeSessionErrors[keyof StorageUpgradeSessionErrors]
+
+export type StorageUpgradeSessionResponses = {
+  /**
+   * Preparation status without starting work
+   */
+  200: StorageSessionPreparation
+}
+
+export type StorageUpgradeSessionResponse = StorageUpgradeSessionResponses[keyof StorageUpgradeSessionResponses]
+
+export type StoragePrepareSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}/prepare"
+}
+
+export type StoragePrepareSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StoragePrepareSessionError = StoragePrepareSessionErrors[keyof StoragePrepareSessionErrors]
+
+export type StoragePrepareSessionResponses = {
+  /**
+   * Current preparation status
+   */
+  200: StorageSessionPreparation
+}
+
+export type StoragePrepareSessionResponse = StoragePrepareSessionResponses[keyof StoragePrepareSessionResponses]
+
+export type StorageRetrySessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}/retry"
+}
+
+export type StorageRetrySessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageRetrySessionError = StorageRetrySessionErrors[keyof StorageRetrySessionErrors]
+
+export type StorageRetrySessionResponses = {
+  /**
+   * Current preparation status
+   */
+  200: StorageSessionPreparation
+}
+
+export type StorageRetrySessionResponse = StorageRetrySessionResponses[keyof StorageRetrySessionResponses]
 
 export type StorageSnapshotUsageData = {
   body?: never
@@ -15003,6 +15276,92 @@ export type SessionForkResponses = {
 }
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
+
+export type SessionContinueData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/continue"
+}
+
+export type SessionContinueErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionContinueError = SessionContinueErrors[keyof SessionContinueErrors]
+
+export type SessionContinueResponses = {
+  /**
+   * Continue result
+   */
+  200: SessionContinueResult
+}
+
+export type SessionContinueResponse = SessionContinueResponses[keyof SessionContinueResponses]
+
+export type SessionAbandonData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/abandon"
+}
+
+export type SessionAbandonErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Abandonment failed; the session remains paused and can be retried
+   */
+  409: SessionAbandonError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionAbandonError2 = SessionAbandonErrors[keyof SessionAbandonErrors]
+
+export type SessionAbandonResponses = {
+  /**
+   * Abandon result
+   */
+  200: SessionAbandonResult
+}
+
+export type SessionAbandonResponse = SessionAbandonResponses[keyof SessionAbandonResponses]
 
 export type SessionAbortData = {
   body?: never
@@ -19675,88 +20034,6 @@ export type BlueprintLoopStartResponses = {
 
 export type BlueprintLoopStartResponse = BlueprintLoopStartResponses[keyof BlueprintLoopStartResponses]
 
-export type BlueprintLoopWaitData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/wait"
-}
-
-export type BlueprintLoopWaitErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
-
-export type BlueprintLoopWaitResponses = {
-  /**
-   * Waiting BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopWaitResponse = BlueprintLoopWaitResponses[keyof BlueprintLoopWaitResponses]
-
-export type BlueprintLoopResumeData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/resume"
-}
-
-export type BlueprintLoopResumeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
-
-export type BlueprintLoopResumeResponses = {
-  /**
-   * Resumed BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopResumeResponse = BlueprintLoopResumeResponses[keyof BlueprintLoopResumeResponses]
-
 export type BlueprintLoopActivityData = {
   body?: never
   path: {
@@ -19964,60 +20241,6 @@ export type LatticeRunEventsResponses = {
 }
 
 export type LatticeRunEventsResponse = LatticeRunEventsResponses[keyof LatticeRunEventsResponses]
-
-export type LatticeRunPauseData = {
-  body?: {
-    [key: string]: never
-  }
-  path: {
-    /**
-     * Lattice Run ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/lattice/run/{id}/pause"
-}
-
-export type LatticeRunPauseErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: {
-    name: string
-    data: unknown
-  }
-  /**
-   * Internal server error
-   */
-  500: LatticeInternalServerError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type LatticeRunPauseError = LatticeRunPauseErrors[keyof LatticeRunPauseErrors]
-
-export type LatticeRunPauseResponses = {
-  /**
-   * Paused Lattice Run
-   */
-  200: LatticeRunView
-}
-
-export type LatticeRunPauseResponse = LatticeRunPauseResponses[keyof LatticeRunPauseResponses]
 
 export type LatticeRunResumeData = {
   body?: {

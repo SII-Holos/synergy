@@ -945,7 +945,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         },
       }))
 
-      const queueing = input.working()
+      const queueing = input.working() || !!activeSession.paused
       const messageID = queueing ? undefined : Identifier.ascending("message")
       const textPart = {
         id: Identifier.ascending("part"),

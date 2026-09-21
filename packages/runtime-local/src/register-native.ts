@@ -8,7 +8,7 @@ export function registerLocalNativeRuntime(): void {
   ScopeStartup.register({
     name: "file-watcher",
     phase: "surface",
-    after: ["resume-pending"],
+    after: ["session-pause-reconcile"],
     init: () => FileWatcher.init(),
   })
 }

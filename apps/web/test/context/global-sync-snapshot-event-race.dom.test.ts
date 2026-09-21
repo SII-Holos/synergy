@@ -21,7 +21,7 @@ type ScopeApi = {
   retainScopeState(key: string): { state: ScopeState; release(): void }
   ensureScopeState(key: string): ScopeState
   peekScopeState(key: string): ScopeState | undefined
-  sessionStatus: Record<string, { type?: string }>
+  sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
   permissions: Record<string, Array<{ id: string }> | undefined>
   questions: Record<string, Array<{ id: string }> | undefined>
   cortex: Array<{ id: string; parentSessionID?: string; status: string }>
@@ -360,20 +360,20 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       )
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      // `recovering` reaches the client only through the snapshot route or a
+      // A paused latch reaches the client only through the snapshot route or a
       // session.updated `working` field, so the fallback fills a status the
       // index has no entry for and never overwrites one it does have — a real
       // status event always wins, mirroring SessionManager.listStatuses.
-      const recovering = { status: "recovering" }
-      h.emit("index-scope", 9, "session.updated", { info: { id: "derived", time: {}, working: recovering } })
-      expect(api.sessionStatus["derived"]).toEqual({ type: "recovering" })
+      const paused = { status: "paused", reason: "aborted", since: 1 }
+      h.emit("index-scope", 9, "session.updated", { info: { id: "derived", time: {}, working: paused } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
       h.emit("index-scope", 10, "session.updated", {
         info: { id: "derived", time: {}, working: { status: "retry", attempt: 1, message: "again", next: 2 } },
       })
-      expect(api.sessionStatus["derived"]).toEqual({ type: "recovering" })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
       h.emit("index-scope", 11, "session.status", { sessionID: "derived", status: { type: "busy" } })
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
-      h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: recovering } })
+      h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: paused } })
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
       // Convergence across eviction. A Scope's bootstrap response used to be
       // authoritative for its whole status bucket *including omissions*, so a
