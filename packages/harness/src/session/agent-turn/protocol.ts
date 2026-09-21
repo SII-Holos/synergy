@@ -4,9 +4,13 @@ import { APICallError, type FinishReason, type LanguageModelUsage, type Provider
 import { Runtime as ScopeRuntime } from "../../scope/types"
 import { Workspace } from "../workspace-schema"
 import { RolloutTransportSchema } from "../rollout/transport-schema"
+import { ObservabilitySchema } from "../../observability/schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 9
+  // An older host fails `parseWorkerToHost` inside the IPC handler, which kills
+  // the worker, so an incompatible pair must instead be rejected by the `ready`
+  // handshake's version check.
+  export const VERSION = 10
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -17,6 +21,10 @@ export namespace AgentTurnProtocol {
   export const ERROR_STACK_MAX_CHARS = 16 * 1024
   export const ERROR_RESPONSE_MAX_CHARS = 256 * 1024
   export const ERROR_DATA_MAX_BYTES = 256 * 1024
+  export const METRIC_ROWS_MAX = 64
+  export const METRIC_STRING_MAX_CHARS = 256
+  export const METRIC_LABEL_KEYS_MAX = 48
+  export const METRIC_LABEL_VALUE_MAX_CHARS = 4096
 
   const SerializedCause = z
     .object({
@@ -195,6 +203,27 @@ export namespace AgentTurnProtocol {
     .strict()
   export type WorkerMemory = z.infer<typeof WorkerMemory>
 
+  // Bounded subset of `ObservabilityMetrics.record` input. The worker cannot
+  // record locally (its observability config is disabled), so these rows are
+  // recorded by the host that receives them.
+  export const MetricRow = z
+    .object({
+      name: z.string().min(1).max(METRIC_STRING_MAX_CHARS),
+      value: z.number(),
+      unit: ObservabilitySchema.Unit,
+      module: ObservabilitySchema.Module,
+      labels: ObservabilitySchema.Labels,
+      sessionID: z.string().max(METRIC_STRING_MAX_CHARS).optional(),
+      messageID: z.string().max(METRIC_STRING_MAX_CHARS).optional(),
+      callID: z.string().max(METRIC_STRING_MAX_CHARS).optional(),
+      traceId: z.string().max(METRIC_STRING_MAX_CHARS).optional(),
+      spanId: z.string().max(METRIC_STRING_MAX_CHARS).optional(),
+      parentSpanId: z.string().max(METRIC_STRING_MAX_CHARS).optional(),
+      sampleRate: z.number().min(0).max(1).optional(),
+    })
+    .strict()
+  export type MetricRow = z.infer<typeof MetricRow>
+
   export type HostToWorker =
     | { type: "run-start"; requestId: string; totalBytes: number; chunkCount: number }
     | { type: "run-chunk"; requestId: string; index: number; data: Uint8Array }
@@ -242,6 +271,7 @@ export namespace AgentTurnProtocol {
         collection: "full" | "none"
         memory: WorkerMemory
       }
+    | { type: "metrics"; rows: MetricRow[] }
     | { type: "pong" }
 
   export const HostToWorkerSchema: z.ZodType<HostToWorker> = z.discriminatedUnion("type", [
@@ -359,6 +389,12 @@ export namespace AgentTurnProtocol {
         turns: z.number().int().nonnegative(),
         collection: z.enum(["full", "none"]),
         memory: WorkerMemory,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("metrics"),
+        rows: z.array(MetricRow).min(1).max(METRIC_ROWS_MAX),
       })
       .strict(),
     z.object({ type: z.literal("pong") }).strict(),

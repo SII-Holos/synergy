@@ -1872,4 +1872,55 @@ describe("AgentWorkerPool", () => {
     expect(calls.some((call) => call[0]?.name === "agent.worker.ready_latency" && call[0]?.unit === "ms")).toBe(true)
     await pool.stop()
   })
+
+  test("records metric rows forwarded by an idle worker", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, minIdle: 1 }, fake.spawn)
+    using _metrics = spyOn(ObservabilityMetrics, "record")
+    fake.workers[0].ready()
+
+    fake.workers[0].receive({
+      type: "metrics",
+      rows: [
+        {
+          name: "llm.fetch.headers",
+          value: 42,
+          unit: "ms",
+          module: "llm",
+          labels: { provider: "provider", model: "model" },
+        },
+        {
+          name: "llm.watchdog.fired",
+          value: 1,
+          unit: "count",
+          module: "llm",
+          labels: { kind: "ttfb" },
+          sessionID: "ses",
+        },
+      ],
+    })
+
+    const calls = (
+      _metrics as unknown as {
+        mock: {
+          calls: Array<Array<{ name?: string; value?: number; unit?: string; labels?: Record<string, unknown> }>>
+        }
+      }
+    ).mock.calls.map((call) => call[0])
+    expect(calls.some((call) => call?.name === "llm.fetch.headers" && call.value === 42 && call.unit === "ms")).toBe(
+      true,
+    )
+    expect(calls.find((call) => call?.name === "llm.fetch.headers")?.labels).toEqual({
+      provider: "provider",
+      model: "model",
+    })
+    expect(calls.find((call) => call?.name === "llm.watchdog.fired")).toMatchObject({
+      value: 1,
+      unit: "count",
+      labels: { kind: "ttfb" },
+    })
+    expect(calls.some((call) => call?.name === "agent.worker.recycle")).toBe(false)
+    expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
 })

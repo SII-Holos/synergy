@@ -8,6 +8,7 @@ import { AgentStreamEventCoalescer } from "./stream-event-coalescer"
 import type { AgentTurnWorkerInput } from "./worker-pool"
 import { clearReplayPlan } from "../../provider/codex-compaction"
 import { RolloutTransport } from "../rollout/transport"
+import { ObservabilityMetrics } from "../../observability/metrics"
 
 type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
 
@@ -43,6 +44,82 @@ const IDLE_SAMPLE_DELAY_MS = 1_000
 function send(message: AgentTurnProtocol.WorkerToHost): void {
   AgentTurnProtocol.assertIpcFrameBound(message)
   process.send?.(message)
+}
+
+// The worker's own observability config is disabled, so anything recorded here
+// reaches storage only through this frame. Rows coalesce per microtask into
+// frames of at most METRIC_ROWS_MAX; the queue bound is what keeps a sustained
+// burst from growing worker memory. A drop must never throw or stall the turn.
+const metricRows: AgentTurnProtocol.MetricRow[] = []
+const METRIC_QUEUE_MAX = AgentTurnProtocol.METRIC_ROWS_MAX * 4
+let metricRowsDropped = 0
+let metricFlushPending = false
+
+function flushMetrics(): void {
+  metricFlushPending = false
+  const rows = metricRows.splice(0, AgentTurnProtocol.METRIC_ROWS_MAX)
+  if (rows.length === 0) return
+  try {
+    send({ type: "metrics", rows })
+  } catch {
+    metricRowsDropped += rows.length
+  }
+  if (metricRows.length > 0) scheduleMetricFlush()
+}
+
+function scheduleMetricFlush(): void {
+  if (metricFlushPending) return
+  metricFlushPending = true
+  queueMicrotask(flushMetrics)
+}
+
+function toMetricLabels(input: Record<string, unknown> | undefined) {
+  const labels: Record<string, string | number | boolean | null> = {}
+  let keys = 0
+  for (const [key, value] of Object.entries(input ?? {})) {
+    if (keys >= AgentTurnProtocol.METRIC_LABEL_KEYS_MAX) break
+    if (typeof value === "string") {
+      labels[key] = value.slice(0, AgentTurnProtocol.METRIC_LABEL_VALUE_MAX_CHARS)
+    } else if ((typeof value === "number" && Number.isFinite(value)) || typeof value === "boolean" || value === null) {
+      labels[key] = value
+    } else {
+      continue
+    }
+    keys++
+  }
+  return labels
+}
+
+function forwardMetric(input: Parameters<typeof ObservabilityMetrics.record>[0]): void {
+  if (!process.send) return
+  const parsed = AgentTurnProtocol.MetricRow.safeParse({
+    name: input.name.slice(0, AgentTurnProtocol.METRIC_STRING_MAX_CHARS),
+    value: input.value,
+    unit: input.unit,
+    module: input.module,
+    labels: toMetricLabels(input.labels),
+    sessionID: input.sessionID,
+    messageID: input.messageID,
+    callID: input.callID,
+    traceId: input.traceId,
+    spanId: input.spanId,
+    parentSpanId: input.parentSpanId,
+    sampleRate: input.sampleRate,
+  })
+  if (!parsed.success) {
+    metricRowsDropped++
+    return
+  }
+  if (metricRows.length >= METRIC_QUEUE_MAX) {
+    metricRowsDropped++
+    return
+  }
+  metricRows.push(parsed.data)
+  scheduleMetricFlush()
+}
+
+export function droppedMetricRows(): number {
+  return metricRowsDropped
 }
 
 function memory() {
@@ -406,5 +483,7 @@ watchManagedParent({
   expectedParentPid: process.env.SYNERGY_AGENT_PARENT_PID,
   onParentExit: () => process.exit(0),
 })
+
+ObservabilityMetrics.setForwarder(forwardMetric)
 
 send({ type: "ready", protocolVersion: AgentTurnProtocol.VERSION, pid: process.pid, memory: memory() })

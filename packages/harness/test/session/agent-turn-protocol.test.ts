@@ -672,4 +672,74 @@ describe("AgentTurnProtocol", () => {
       }).success,
     ).toBe(false)
   })
+
+  test("round-trips worker metric rows through the metrics frame", () => {
+    const frame = {
+      type: "metrics" as const,
+      rows: [
+        {
+          name: "llm.fetch.headers",
+          value: 42,
+          unit: "ms" as const,
+          module: "llm" as const,
+          labels: { provider: "provider", model: "model", attempt: 2 },
+          sessionID: "ses_test",
+          messageID: "msg_test",
+          callID: "call_test",
+          traceId: "trc_test",
+          spanId: "spn_test",
+          parentSpanId: "spn_parent",
+          sampleRate: 1,
+        },
+      ],
+    }
+
+    expect(AgentTurnProtocol.parseWorkerToHost(frame)).toEqual(frame)
+    expect(() => AgentTurnProtocol.assertIpcFrameBound(frame)).not.toThrow()
+    expect(frame.rows[0]!.labels).toEqual({ provider: "provider", model: "model", attempt: 2 })
+  })
+
+  test("bounds metric rows, names, and labels", () => {
+    const row = { name: "llm.watchdog.fired", value: 1, unit: "count" as const, module: "llm" as const }
+    expect(AgentTurnProtocol.WorkerToHostSchema.safeParse({ type: "metrics", rows: [] }).success).toBe(false)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        rows: Array.from({ length: AgentTurnProtocol.METRIC_ROWS_MAX }, () => row),
+      }).success,
+    ).toBe(true)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        rows: Array.from({ length: AgentTurnProtocol.METRIC_ROWS_MAX + 1 }, () => row),
+      }).success,
+    ).toBe(false)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        rows: [{ ...row, name: "x".repeat(AgentTurnProtocol.METRIC_STRING_MAX_CHARS + 1) }],
+      }).success,
+    ).toBe(false)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        rows: [{ ...row, labels: { nested: { object: true } } }],
+      }).success,
+    ).toBe(false)
+  })
+
+  test("reports a metrics frame within the IPC frame bound", () => {
+    const frame = {
+      type: "metrics" as const,
+      rows: Array.from({ length: AgentTurnProtocol.METRIC_ROWS_MAX }, (_, index) => ({
+        name: "llm.fetch.first_byte",
+        value: index,
+        unit: "ms" as const,
+        module: "llm" as const,
+        labels: { provider: "provider", model: "model", note: "x".repeat(4096) },
+      })),
+    }
+
+    expect(() => AgentTurnProtocol.assertIpcFrameBound(frame)).not.toThrow()
+  })
 })

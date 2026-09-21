@@ -639,6 +639,12 @@ export class AgentWorkerPool {
       return
     }
     if (message.type === "pong") return
+    // Worker-recorded rows are not tied to an owned turn: a worker may forward
+    // while idle, so this must be handled before the request-ownership branch.
+    if (message.type === "metrics") {
+      for (const row of message.rows) ObservabilityMetrics.record(row)
+      return
+    }
 
     const task = worker.task
     if (!task || "requestId" in message === false || message.requestId !== task.requestId) {

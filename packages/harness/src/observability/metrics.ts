@@ -15,6 +15,15 @@ export namespace ObservabilityMetrics {
   const aggregates = new Map<string, AggregatedMetric>()
   let aggregateTimer: ReturnType<typeof setTimeout> | undefined
 
+  let forwarder: ((input: MetricInput) => void) | undefined
+
+  // Process-global hand-off for runtimes that cannot record locally (an Agent
+  // worker has observability disabled): the installed forwarder owns the row
+  // instead of the local store, and the host that receives it records it.
+  export function setForwarder(fn: ((input: MetricInput) => void) | undefined): void {
+    forwarder = fn
+  }
+
   type MetricInput = Parameters<typeof record>[0]
   type ResolvedMetricInput = Omit<MetricInput, "sampleRate"> & {
     sampleRate: number
@@ -49,6 +58,10 @@ export namespace ObservabilityMetrics {
     tool?: string
     sampleRate?: number
   }) {
+    if (forwarder) {
+      forwarder(input)
+      return
+    }
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
     const sampleRate = input.sampleRate ?? config.samplingRate
