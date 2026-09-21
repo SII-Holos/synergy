@@ -162,6 +162,7 @@ export namespace SnapshotLease {
       return { [Symbol.asyncDispose]: release }
     } catch (error) {
       await release()
+      if (options.signal?.aborted && error === options.signal.reason) throw error
       if (error instanceof FileLockTimeoutError) throw new BusyError()
       throw error
     }

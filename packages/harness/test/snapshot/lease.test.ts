@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { SnapshotLease } from "../../src/session/snapshot-lease"
 import { StoragePath } from "../../src/storage/path"
 import { withTimeout } from "../../src/util/timeout"
@@ -25,6 +25,24 @@ async function holdGate(dataRoot: string, scopeID: string) {
     },
   }
 }
+
+test.each([false, true])("preserves lock-timeout cancellation reasons when already aborted: %s", async (aborted) => {
+  await using tmp = await tmpdir()
+  await using gate = await holdGate(tmp.path, "cancelled-scope")
+  const controller = new AbortController()
+  const reason = new FileLockTimeoutError("outer-operation")
+  if (aborted) controller.abort(reason)
+  const result = SnapshotLease.acquire("cancelled-scope", false, {
+    dataRoot: tmp.path,
+    signal: controller.signal,
+  }).catch((error: unknown) => error)
+  if (!aborted) {
+    await Bun.sleep(50)
+    controller.abort(reason)
+  }
+  expect(await result).toBe(reason)
+  await using home = await SnapshotLease.acquireHome(tmp.path, { timeoutMs: 1000 })
+})
 
 test.each(["", "contended-scope"])(
   "lease admission waits through transient gate contention within its budget: %s",
