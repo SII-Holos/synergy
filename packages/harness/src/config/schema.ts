@@ -509,6 +509,27 @@ export const Provider = ModelsDev.Provider.partial()
       })
       .catchall(z.any())
       .optional(),
+    timeout: z
+      .object({
+        ttfb_sec: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Max seconds from request start to the first response body byte for this provider"),
+        idle_sec: z
+          .union([z.number().min(0), z.literal(false)])
+          .optional()
+          .describe("Idle timeout in seconds for this provider (0/false = disable)"),
+        wall_sec: z
+          .number()
+          .min(0)
+          .optional()
+          .describe("Hard wall-clock timeout per HTTP request in seconds for this provider (0 = disable)"),
+      })
+      .optional()
+      .describe(
+        "Provider-specific request timeouts in seconds, overriding timeout.provider.<key> for this provider only",
+      ),
   })
   .strict()
   .meta({
@@ -540,25 +561,24 @@ const CoreInfo = z
               .positive()
               .optional()
               .describe(
-                "Max seconds to wait for first byte (TTFB) from provider. " +
-                  "Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). " +
-                  "Default: 3600 = 1h",
+                "Max seconds from request start to the first response body byte. " +
+                  "This covers both the wait for response headers and the gap between headers and the " +
+                  "first model token, where a gateway can accept a request and then hold it open. " +
+                  "Raise per provider (provider.<id>.timeout.ttfb_sec) for slow reasoning models " +
+                  "such as o1-pro or deepseek-r1. Default: 15",
               ),
             idle_sec: z
               .union([z.number().min(0), z.literal(false)])
               .optional()
-              .describe(
-                "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
-              ),
+              .describe("Idle timeout in seconds (0/false = disable, default: 120). Resets on each data chunk."),
             wall_sec: z
               .number()
               .min(0)
               .optional()
               .describe(
-                "Hard wall-clock timeout per HTTP request in seconds " +
-                  "(0 = disabled, default: 0). CAUTION: conflicts with streaming — " +
-                  "will interrupt normal token output. Only enable if you need a " +
-                  "hard cap beyond idle+TTFB",
+                "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 1800). " +
+                  "Bounds a stream that keeps sending keep-alive traffic without ever producing " +
+                  "content, which would otherwise defeat the idle timeout indefinitely",
               ),
           })
           .optional(),

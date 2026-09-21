@@ -5,6 +5,9 @@ import { Provider } from "../../src/provider/provider"
 import { normalizeProviderError, providerRetryable } from "../../src/provider/retry"
 import { LLM } from "../../src/session/llm"
 import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { SessionProcessor } from "../../src/session/processor"
+import { MessageV2 } from "../../src/session/message-v2"
+import { SessionRetry } from "../../src/session/retry"
 
 const model: Provider.Model = {
   id: "test",
@@ -187,4 +190,49 @@ test("explicit provider KV capacity failures retain their transient classificati
   expect(providerRetryable({ error: { message: "no_kv_space" } })).toBe(true)
   expect(providerRetryable({ code: "no_kv_space" })).toBe(true)
   expect(providerRetryable({ error: { message: "unknown server detail" } })).toBeUndefined()
+})
+
+test("a TTFB watchdog abort stays retryable after signal composition", async () => {
+  const session = new AbortController()
+  const ttfb = new AbortController()
+  const combined = AbortSignal.any([session.signal, ttfb.signal])
+
+  ttfb.abort(new DOMException("TTFB timeout: no response received within 15000ms", "TimeoutError"))
+
+  expect(combined.reason).toMatchObject({ name: "TimeoutError" })
+  // The session itself was never cancelled, so this must not read as a user abort.
+  expect(SessionProcessor.isFastAbort(session.signal, combined.reason)).toBe(false)
+  expect(providerRetryable(combined.reason)).toBe(true)
+
+  const error = MessageV2.fromError(combined.reason, { providerID: "test", modelID: "test" })
+  expect(error).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+  expect(SessionRetry.retryable(error)).toBeDefined()
+})
+
+test("a wall-clock watchdog abort stays retryable after signal composition", async () => {
+  const session = new AbortController()
+  // AbortSignal.timeout cannot be cancelled, so race it instead of waiting on a
+  // fixed sleep: the wall watchdog is what the request path installs.
+  const wall = AbortSignal.timeout(20)
+  const combined = AbortSignal.any([session.signal, wall])
+
+  await new Promise<void>((resolve) => combined.addEventListener("abort", () => resolve(), { once: true }))
+
+  expect(combined.reason).toMatchObject({ name: "TimeoutError" })
+  expect(SessionProcessor.isFastAbort(session.signal, combined.reason)).toBe(false)
+  expect(providerRetryable(combined.reason)).toBe(true)
+
+  const error = MessageV2.fromError(combined.reason, { providerID: "test", modelID: "test" })
+  expect(error).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+  expect(SessionRetry.retryable(error)).toBeDefined()
+})
+
+test("a genuine user cancellation is still suppressed as a fast abort", async () => {
+  const session = new AbortController()
+  const ttfb = new AbortController()
+  const combined = AbortSignal.any([session.signal, ttfb.signal])
+
+  session.abort(new DOMException("Aborted", "AbortError"))
+
+  expect(SessionProcessor.isFastAbort(session.signal, combined.reason)).toBe(true)
 })

@@ -26,6 +26,7 @@ import { ProviderStream } from "./stream"
 import { ProviderModelUnavailableError } from "./model-unavailable-error"
 import { ProviderSdkSource } from "./sdk-source"
 import { ProviderPluginAuth } from "./plugin-auth-source"
+import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -1127,8 +1128,15 @@ export namespace Provider {
               providerIdleMs: workerState.timeouts[model.providerID].idleMs,
               providerWallMs: workerState.timeouts[model.providerID].wallMs,
             }
-          : await import("../util/timeout-config").then(({ TimeoutConfig }) => TimeoutConfig.resolve())
-      const DEFAULT_TIMEOUT_MS = 900_000
+          : await import("../util/timeout-config").then(({ TimeoutConfig }) =>
+              TimeoutConfig.forProvider({
+                providerID: model.providerID,
+                legacyIdle: options["timeout"],
+              }),
+            )
+      // `options.timeout` is the Synergy-only idle shorthand (milliseconds); it
+      // was folded into timeoutCfg above and must not reach the SDK factory.
+      delete options["timeout"]
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
         const fetchFn = authFetch
@@ -1137,20 +1145,40 @@ export namespace Provider {
         const proxyUrlForRequest = proxyUrl
         const noProxyForRequest = noProxy
 
-        // Provider-level options take precedence; otherwise use the configured
-        // idle timeout (timeout.provider.idle_sec). `false` disables it.
-        const configuredIdle = options["timeout"] !== undefined ? options["timeout"] : timeoutCfg.providerIdleMs
-        const timeoutMs =
-          configuredIdle === false ? false : ((configuredIdle as number | undefined) ?? DEFAULT_TIMEOUT_MS)
+        // Idle timeout for this request, already layered through
+        // TimeoutConfig.forProvider: provider.<id>.timeout > options.timeout > global.
+        const timeoutMs = timeoutCfg.providerIdleMs
 
         let ttfbController: AbortController | null = null
         let ttfbTimer: ReturnType<typeof setTimeout> | null = null
         let idleController: AbortController | null = null
+        // A watchdog must never report a fire for a response that already
+        // settled: `AbortSignal.timeout` cannot be cancelled.
+        let watchdogSettled = false
+        const recordWatchdog = (kind: "ttfb" | "idle" | "wall") => {
+          if (watchdogSettled) return
+          watchdogSettled = true
+          ObservabilityMetrics.record({
+            name: "llm.watchdog.fired",
+            value: 1,
+            unit: "count",
+            module: "llm",
+            labels: { provider: model.providerID, model: model.id, kind },
+          })
+        }
+        const clearTtfbTimer = () => {
+          if (!ttfbTimer) return
+          clearTimeout(ttfbTimer)
+          ttfbTimer = null
+        }
 
-        // TTFB timeout — covers time from fetch start to first byte (accommodates reasoning models)
+        // TTFB timeout — covers time from fetch start to the first body byte.
+        // It is cleared by that first byte, not by the response headers: a
+        // gateway can answer with headers promptly and then hold the body open.
         if (timeoutCfg.providerTtfbMs > 0) {
           ttfbController = new AbortController()
           ttfbTimer = setTimeout(() => {
+            recordWatchdog("ttfb")
             ttfbController!.abort(
               new DOMException(
                 "TTFB timeout: no response received within " + timeoutCfg.providerTtfbMs + "ms",
@@ -1165,11 +1193,13 @@ export namespace Provider {
           idleController = new AbortController()
         }
 
-        // Wall-clock timeout (optional — disabled by default)
+        // Wall-clock timeout: bounds a stream that keeps emitting keep-alive
+        // traffic without ever producing content.
         const wallClockSignal =
           timeoutCfg.providerWallMs !== false && timeoutCfg.providerWallMs > 0
             ? AbortSignal.timeout(timeoutCfg.providerWallMs)
             : null
+        wallClockSignal?.addEventListener("abort", () => recordWatchdog("wall"), { once: true })
 
         // Combine signals before fetch
         const signals: AbortSignal[] = []
@@ -1181,7 +1211,8 @@ export namespace Provider {
 
         // Clean up all timers when outer signal aborts (e.g. user cancel)
         const cleanupTimers = () => {
-          if (ttfbTimer) clearTimeout(ttfbTimer)
+          watchdogSettled = true
+          clearTtfbTimer()
         }
         opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
 
@@ -1199,6 +1230,7 @@ export namespace Provider {
             return logUrl
           }
         })()
+        const fetchStartedAt = Date.now()
         const fetchTimer = log.time("fetch.request", { url: safeUrl })
         let response: Response
         try {
@@ -1223,13 +1255,14 @@ export namespace Provider {
           log.error("fetch.request.failed", { url: safeUrl, error })
           throw error
         }
-        // First byte arrived — stop the TTFB timer so it cannot abort a
-        // healthy long-lived stream later on.
-        if (ttfbTimer) {
-          clearTimeout(ttfbTimer)
-          ttfbTimer = null
-        }
         fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
+        ObservabilityMetrics.record({
+          name: "llm.fetch.headers",
+          value: Date.now() - fetchStartedAt,
+          unit: "ms",
+          module: "llm",
+          labels: { provider: model.providerID, model: model.id },
+        })
         if (!response.ok) {
           log.warn("fetch.request.non-ok", {
             url: safeUrl,
@@ -1243,12 +1276,32 @@ export namespace Provider {
             ? ProviderStream.enforceSSEEventParserBound(response.body)
             : response.body
 
-        // For streaming responses, wrap the body to reset idle timer on each chunk
-        if (idleController && responseBody) {
+        // Every response body is wrapped, not only SSE ones: the first body byte
+        // is what clears the TTFB watchdog, so a non-SSE body must clear it too
+        // or the watchdog would abort a response that already delivered data.
+        if (responseBody) {
+          const bodyController = idleController ?? new AbortController()
           const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
-            controller: idleController,
-            signal: opts.signal ?? idleController.signal,
-            timeoutMs: timeoutMs as number,
+            controller: bodyController,
+            signal: opts.signal ?? bodyController.signal,
+            timeoutMs,
+            observer: {
+              onFirstByte: () => {
+                clearTtfbTimer()
+                ObservabilityMetrics.record({
+                  name: "llm.fetch.first_byte",
+                  value: Date.now() - fetchStartedAt,
+                  unit: "ms",
+                  module: "llm",
+                  labels: { provider: model.providerID, model: model.id },
+                })
+              },
+              onIdleTimeout: () => recordWatchdog("idle"),
+              onSettled: () => {
+                watchdogSettled = true
+                clearTtfbTimer()
+              },
+            },
           })
 
           return new Response(wrappedStream, {
@@ -1258,14 +1311,8 @@ export namespace Provider {
           })
         }
 
-        if (responseBody !== response.body) {
-          return new Response(responseBody, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          })
-        }
-
+        watchdogSettled = true
+        clearTtfbTimer()
         return response
       }
 

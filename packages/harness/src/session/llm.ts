@@ -324,11 +324,11 @@ export namespace LLM {
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
-    const [provider, cfg, timeout] = await Promise.all([
-      Provider.getProvider(input.model.providerID),
-      Config.current(),
-      TimeoutConfig.resolve(),
-    ])
+    const [provider, cfg] = await Promise.all([Provider.getProvider(input.model.providerID), Config.current()])
+    const providerTimeouts = await TimeoutConfig.forProvider({
+      providerID: input.model.providerID,
+      legacyIdle: provider?.options?.["timeout"],
+    })
     l.debug("prompt layout", {
       ...promptLayoutMetadata({
         model: input.model,
@@ -389,9 +389,9 @@ export namespace LLM {
       system,
       baseSystemLength,
       provider: await Provider.workerPlan(provider, {
-        ttfbMs: timeout.providerTtfbMs,
-        idleMs: timeout.providerIdleMs,
-        wallMs: timeout.providerWallMs,
+        ttfbMs: providerTimeouts.providerTtfbMs,
+        idleMs: providerTimeouts.providerIdleMs,
+        wallMs: providerTimeouts.providerWallMs,
       }),
       params,
       telemetryEnabled: cfg.observability?.modelSpans,
