@@ -18,4 +18,4 @@ The transport owns request cancellation independently of the consumer lock. Ever
 
 ## Consequences
 
-Failed uploads preserve their original transport error and partial recording. Early responses also settle unfinished uploads before completion. Terminal delivery waits for admitted evidence writes; actual recording failures still stop execution. Regression coverage uses a cloned Request and the real ledger/recorder, alongside the existing transport cancellation and recording-failure tests.
+Failed uploads preserve their original transport error and partial recording. Early responses also settle unfinished uploads before completion. Terminal delivery waits for admitted evidence writes, but not upstream cancellation acknowledgement: a cloned request can share that acknowledgement with a live sibling outside this attempt's ownership. Upload cancellation rejection cannot replace the transport outcome; actual recording failures still stop execution. Regression coverage uses the real ledger/recorder, a cloned streaming Request with a live usable sibling, and rejecting cancellation hooks alongside existing transport cancellation and recording-failure tests.

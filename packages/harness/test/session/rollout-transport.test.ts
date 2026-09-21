@@ -54,6 +54,80 @@ test.each(["network-failure", "empty-response", "stream-response"] as const)(
   },
 )
 
+test.each(["failure", "early-response"] as const)(
+  "finishes a cloned upload after %s without waiting for its live sibling",
+  async (mode) => {
+    const events: RolloutTransport.Event[] = []
+    let producer!: ReadableStreamDefaultController<Uint8Array>
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        producer = controller
+      },
+    })
+    const original = new Request("https://fixture.test", { method: "POST", body: source })
+    const request = original.clone()
+    const failure = new Error("upload disconnected")
+    let uploadReader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    let upload: Promise<unknown> | undefined
+    try {
+      const result = await RolloutTransport.provide(
+        async (event) => {
+          events.push(event)
+        },
+        () =>
+          RolloutTransport.fetch(async (input) => {
+            uploadReader = (input as Request).body!.getReader()
+            upload = uploadReader.read().catch((error: unknown) => error)
+            if (mode === "failure") throw failure
+            return new Response(null, { status: 204 })
+          }, request),
+      )
+        .then((response) => response.text())
+        .catch((error: unknown) => error)
+      expect(result).toBe(mode === "failure" ? failure : "")
+      expect(await upload).toEqual(mode === "failure" ? failure : expect.any(DOMException))
+      expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: mode === "failure" ? "failed" : "completed" })
+      producer.enqueue(new TextEncoder().encode("sibling is still usable"))
+      producer.close()
+      expect(await original.text()).toBe("sibling is still usable")
+    } finally {
+      uploadReader?.releaseLock()
+      if (!original.bodyUsed) await original.body?.cancel()
+    }
+  },
+  5000,
+)
+
+test.each(["failure", "early-response"] as const)("request cancellation failure preserves %s", async (mode) => {
+  const events: RolloutTransport.Event[] = []
+  const failure = new Error("upload disconnected")
+  const request = new Request("https://fixture.test", {
+    method: "POST",
+    body: new ReadableStream<Uint8Array>({
+      cancel() {
+        throw new Error("upload cleanup failed")
+      },
+    }),
+  })
+  const result = await RolloutTransport.provide(
+    async (event) => {
+      events.push(event)
+    },
+    () =>
+      RolloutTransport.fetch(async () => {
+        if (mode === "failure") throw failure
+        return new Response(null, { status: 204 })
+      }, request),
+  )
+    .then((response) => response.text())
+    .catch((error: unknown) => error)
+  expect(result).toBe(mode === "failure" ? failure : "")
+  expect(events.filter((event) => event.type === "body-end" && event.channel === "request")).toEqual([
+    expect.objectContaining({ complete: false }),
+  ])
+  expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: mode === "failure" ? "failed" : "completed" })
+})
+
 describe("rollout transport", () => {
   test("records a buffered POST while retaining its content length through a real proxy", async () => {
     const payload = JSON.stringify({ messages: [{ role: "user", content: "read".repeat(50000) }] })

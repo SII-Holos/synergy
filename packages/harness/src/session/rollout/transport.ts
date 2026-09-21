@@ -116,9 +116,11 @@ export namespace RolloutTransport {
           if (timer) clearTimeout(timer)
         }
       }
-      function cancelUpstream(reason?: unknown) {
+      async function cancelUpstream(reason?: unknown) {
         upstreamCancellation ??= reader.cancel(reason)
-        return upstreamCancellation
+        if (channel === "response") return upstreamCancellation
+        // A cloned upload can share cancellation acknowledgement with a live sibling.
+        void upstreamCancellation.catch(() => {})
       }
       function close(complete: boolean, reason?: unknown) {
         closing ??= (async () => {
