@@ -13,6 +13,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 3. Freeze a new experiment after changing the evaluator. Resume only through the recorded evaluator. Import historical evidence into reports without rewriting attempts or continuing old runs under new execution code.
 4. Put disposable live-task workspaces outside protected assistant configuration directories. Validate that the actual sandbox can run a fixture-local Node/Bun test before interpreting model recovery loops as harness regressions. A fixture inside a denied ancestor can permit some reads while breaking module resolution and current-directory discovery.
 5. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
+   Freeze the provider's actual thinking switch, including strict boolean `enable_thinking` where required. Explicitly disabled thinking is not a reasoning capability. Inspect retained upstream requests from primary and auxiliary calls; native reasoning defaults must not survive a disabled profile. Honor endpoint-specific direct transport settings in the isolated evaluator process without changing live configuration.
 
 ## Preserve execution and evidence
 

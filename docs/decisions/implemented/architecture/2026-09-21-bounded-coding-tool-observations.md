@@ -12,6 +12,8 @@ Read and search tools share UTF-8 output accounting across ranges and files. Exp
 
 Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. Specialist selection context and the task catalog are retained. Truncation recovery permits targeted inspection without requiring delegation.
 
+The entire edit reply, including diagnostics, warnings, reload results and the recovery footer, fits 50 KiB and 2,000 lines. Commit summaries and tag invalidation precede previews; complete feedback exceeding the budget is retained through the existing tool-output file mechanism. Displayed-line evidence is recorded only after selecting complete preview rows. The same accounting covers no-op feedback, whose diagnostics can also exceed the budget.
+
 Provenance: [Pi bounded reading](https://github.com/earendil-works/pi/blob/890f920884f6d21fc7617d236ef9e1cc5d7a0ef8/packages/coding-agent/src/core/tools/read.ts), [OMP edit previews](https://github.com/can1357/oh-my-pi/blob/d716bcf60ab0a2e7ece1fdf382c0d143fef1f307/crates/pi-edit/src/session.rs#L364).
 
 Local adaptation: retain Synergy's zero-based offsets, hashline language, formatter lifecycle, permissions and UI metadata. Reuse the previously ported compact-preview algorithm with final-file numbered diffs.

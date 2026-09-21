@@ -38,6 +38,7 @@ MODEL_PARAMETERS = {
     "presence_penalty",
     "reasoning_effort",
     "thinking",
+    "enable_thinking",
     "tool_stream",
     "reasoning",
 }
@@ -67,7 +68,16 @@ class ModelProfile(StrictModel):
             raise ValueError("Model parameters cannot override transport, messages or credentials")
         common = {"temperature", "top_p"}
         allowed = common | (
-            {"seed", "stop", "frequency_penalty", "presence_penalty", "reasoning_effort", "thinking", "tool_stream"}
+            {
+                "seed",
+                "stop",
+                "frequency_penalty",
+                "presence_penalty",
+                "reasoning_effort",
+                "thinking",
+                "enable_thinking",
+                "tool_stream",
+            }
             if self.protocol == "chat-completions"
             else {"reasoning"}
         )
@@ -85,8 +95,9 @@ class ModelProfile(StrictModel):
                     raise ValueError(f"Invalid {key} parameter")
         if "seed" in self.parameters and type(self.parameters["seed"]) is not int:
             raise ValueError("Model seed must be an integer")
-        if "tool_stream" in self.parameters and type(self.parameters["tool_stream"]) is not bool:
-            raise ValueError("tool_stream must be a boolean")
+        for key in ("tool_stream", "enable_thinking"):
+            if key in self.parameters and type(self.parameters[key]) is not bool:
+                raise ValueError(f"{key} must be a boolean")
         if "stop" in self.parameters:
             stop = self.parameters["stop"]
             if not isinstance(stop, str) and not (

@@ -81,7 +81,10 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
 def test_thinking_presets_declare_their_reasoning_tier(path):
     config = load_config(path)
     for key, model in config.models.items():
-        if "thinking" not in model.parameters:
+        if not (
+            model.parameters.get("thinking", {}).get("type") == "enabled"
+            or model.parameters.get("enable_thinking") is True
+        ):
             continue
         assert model.parameters.get("reasoning_effort"), (
             f"{path.name}:{key} enables thinking without declaring reasoning_effort; "
