@@ -10,7 +10,7 @@ import {
   StorageUnavailableError,
 } from "./errors"
 import { ArtifactLocation } from "./artifact-location"
-import { RecordCodec } from "./record-codec"
+import { RecordCodec, type BodyContainer, type RecordBody } from "./record-codec"
 import { measureStorageOperation } from "./measure"
 import { StorageQueue } from "./queue"
 import { observeStorageProgress } from "./progress"
@@ -56,18 +56,66 @@ export interface StoredRecord<T = unknown> {
   revision: bigint
 }
 
-type RecordRow = SqlRow & { key_text: string; body: string | null; revision: bigint | number | string }
+type RecordRow = SqlRow & { key_text: string; body: string | Uint8Array | null; revision: bigint | number | string }
 
-function keyID(key: readonly string[]) {
+function keyDigest(key: readonly string[]) {
   if (!Array.isArray(key) || key.some((value) => typeof value !== "string" || value.length === 0))
     throw new StorageIntegrityError("A storage key must contain nonempty string segments")
-  return createHash("sha256").update(JSON.stringify(key)).digest("hex")
+  return createHash("sha256").update(JSON.stringify(key)).digest()
 }
 
-function encode(value: unknown) {
-  const result = JSON.stringify(value)
-  if (result === undefined) throw new StorageIntegrityError("A storage record must be JSON serializable")
-  return result
+/** The hex digest: the identity a JavaScript `Map` or `Set` keys a record by. */
+function keyID(key: readonly string[]) {
+  return keyDigest(key).toString("hex")
+}
+
+/** The raw digest: the value a format 3 key column stores. */
+export function keyBytes(key: readonly string[]): Uint8Array {
+  return new Uint8Array(keyDigest(key))
+}
+
+/** A logical key as the value its key columns are bound with. */
+function keyColumnValue(keys: KeyEncoding, key: readonly string[]): SqlValue {
+  return keys === "bytes" ? keyBytes(key) : keyID(key)
+}
+
+/**
+ * How this namespace binds a logical key to its key column.
+ *
+ * `bytes` is format 3 and is what a SQLite namespace uses once its records
+ * table has been rewritten; `hex` is format 2 and is what a PostgreSQL
+ * namespace always uses, because one `text` column cannot also hold a `bytea`
+ * value. The choice follows the namespace's recorded format, never the backend
+ * alone: a namespace whose version still says 2 holds hex rows, and binding
+ * bytes against them would silently address nothing.
+ */
+export type KeyEncoding = "hex" | "bytes"
+
+function keyParameter(keys: KeyEncoding, key: readonly string[]) {
+  return keys === "bytes" ? keyBytes(key) : keyID(key)
+}
+
+/** The same encoding for a caller that already holds the hex identity. */
+function keyHexParameter(keys: KeyEncoding, hex: string) {
+  return keys === "bytes" ? new Uint8Array(Buffer.from(hex, "hex")) : hex
+}
+
+/** Normalizes a key column read back from either backend to hex identity. */
+function keyHex(value: SqlValue) {
+  if (typeof value === "string") return value
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("hex")
+  throw new StorageIntegrityError("A storage key column holds an unsupported value")
+}
+
+/** The container a body column may hold, from the namespace's recorded key encoding. */
+function bodyContainer(keys: KeyEncoding): BodyContainer {
+  return keys === "bytes" ? "frame" : "text"
+}
+
+/** Normalizes a body column read back from either backend to the codec's input. */
+function recordBody(value: SqlValue): RecordBody {
+  if (typeof value === "string" || value instanceof Uint8Array) return value
+  throw new StorageIntegrityError("A storage body column holds an unsupported value")
 }
 
 function metadata(key: string[]) {
@@ -114,19 +162,144 @@ function metadata(key: string[]) {
 export const STORAGE_RECORDS_OWNER_INDEX =
   "CREATE INDEX IF NOT EXISTS storage_records_owner ON storage_records(namespace, kind, scope_id, session_id, updated) WHERE body IS NOT NULL"
 
-const schema = [
-  "CREATE TABLE IF NOT EXISTS storage_artifact_gc (namespace TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, pack))",
-  "CREATE TABLE IF NOT EXISTS storage_artifacts (namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, key_text))",
-  "CREATE INDEX IF NOT EXISTS storage_artifacts_owner ON storage_artifacts(namespace, owner_key)",
-  "CREATE INDEX IF NOT EXISTS storage_artifacts_pack ON storage_artifacts(namespace, pack)",
-  "CREATE TABLE IF NOT EXISTS storage_namespaces (namespace TEXT PRIMARY KEY, version INTEGER NOT NULL, owner TEXT NOT NULL, state TEXT NOT NULL, next_event BIGINT NOT NULL DEFAULT 0)",
-  "CREATE TABLE IF NOT EXISTS storage_nodes (namespace TEXT NOT NULL, key_id TEXT NOT NULL, parent_id TEXT NOT NULL, key_text TEXT NOT NULL, segment TEXT NOT NULL, PRIMARY KEY(namespace, key_id))",
-  "CREATE INDEX IF NOT EXISTS storage_nodes_parent ON storage_nodes(namespace, parent_id)",
-  "CREATE TABLE IF NOT EXISTS storage_records (namespace TEXT NOT NULL, key_id TEXT NOT NULL, key_text TEXT NOT NULL, body TEXT, revision BIGINT NOT NULL, kind TEXT NOT NULL, scope_id TEXT NOT NULL, session_id TEXT NOT NULL, message_id TEXT NOT NULL, order_key TEXT NOT NULL, updated BIGINT NOT NULL, PRIMARY KEY(namespace, key_id))",
+// How many records one prune statement removes. Retention prunes whole
+// subtrees, and a subtree can hold millions of rows: issuing that as one
+// statement is what let a single pass occupy the worker's event loop past the
+// ceiling. Each round is its own statement the caller commits, so the work is
+// interruptible between rounds and no single statement grows with subtree size.
+const PRUNE_CHUNK = 4096
+
+// Format 3 stores a logical key as the raw 32-byte digest in a column declared
+// `BLOB`. That declaration is deliberate: a `BLOB` column has no affinity, so a
+// byte string written by this format and the hex text string an older format
+// wrote occupy the same column and both stay readable. The rewrite can therefore
+// run in bounded batches over a live table, and a stored value never needs a
+// second column or an in-place type conversion.
+//
+// PostgreSQL cannot mix `text` and `bytea` in one column, so a PostgreSQL
+// namespace keeps the format 2 layout and hex encoding, and the format 3
+// rewrite is a no-op there. The `POSTGRES_*` definitions below are that layout,
+// not a compatibility path.
+/**
+ * The format 3 artifact layout: `pack` is derived from the `location` JSON by
+ * the engine, so a writer must never name it.
+ */
+const generatedArtifactsColumns =
+  "namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT GENERATED ALWAYS AS (json_extract(location, '$.pack')) VIRTUAL, PRIMARY KEY(namespace, key_text)"
+const sqliteNodesColumns =
+  "namespace TEXT NOT NULL, key_id BLOB NOT NULL, parent_id BLOB NOT NULL, segment TEXT NOT NULL, PRIMARY KEY(namespace, key_id)"
+const sqliteRecordsColumns =
+  "namespace TEXT NOT NULL, key_id BLOB NOT NULL, key_text TEXT NOT NULL, body BLOB, revision BIGINT NOT NULL, kind TEXT NOT NULL, scope_id TEXT NOT NULL, session_id TEXT NOT NULL, message_id TEXT NOT NULL, order_key TEXT NOT NULL, updated BIGINT NOT NULL, PRIMARY KEY(namespace, key_id)"
+/**
+ * The physical artifact layout: `pack` is a real column the writer supplies.
+ * PostgreSQL always keeps it, because it has no `json_extract`, and a SQLite
+ * namespace falls back to it when its engine cannot accept or index a generated
+ * `pack` -- see `StorageFormatV3Migration`. The column name, the
+ * `storage_artifacts_pack` index and every reader are the same in both layouts.
+ */
+const physicalArtifactsColumns =
+  "namespace TEXT NOT NULL, key_text TEXT NOT NULL, owner_key TEXT NOT NULL, location TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, key_text)"
+const postgresNodesColumns =
+  "namespace TEXT NOT NULL, key_id TEXT NOT NULL, parent_id TEXT NOT NULL, key_text TEXT NOT NULL, segment TEXT NOT NULL, PRIMARY KEY(namespace, key_id)"
+const postgresRecordsColumns =
+  "namespace TEXT NOT NULL, key_id TEXT NOT NULL, key_text TEXT NOT NULL, body TEXT, revision BIGINT NOT NULL, kind TEXT NOT NULL, scope_id TEXT NOT NULL, session_id TEXT NOT NULL, message_id TEXT NOT NULL, order_key TEXT NOT NULL, updated BIGINT NOT NULL, PRIMARY KEY(namespace, key_id)"
+
+export type StorageBackend = "sqlite" | "postgres"
+
+/**
+ * How a namespace stores `storage_artifacts.pack`.
+ *
+ * `generated` is the format 3 column the engine derives from `location`, which a
+ * writer must omit; `physical` is the format 2 column a writer supplies. The
+ * choice decides only that: both keep the `pack` column name and the
+ * `storage_artifacts_pack` index, and every reader reads `pack` either way. It
+ * is read from the table rather than derived from the recorded format, because a
+ * format 3 namespace takes the physical column when its SQLite engine cannot
+ * accept or index a generated one.
+ */
+export type ArtifactPackLayout = "generated" | "physical"
+
+/**
+ * The artifact table DDL for a backend and layout.
+ *
+ * The default is the layout a namespace is born with: format 3 on SQLite, and
+ * the physical column PostgreSQL -- and a SQLite fallback -- keep. `IF NOT
+ * EXISTS` leaves an existing table alone, so a fallback store keeps the layout
+ * the rewrite chose for it.
+ */
+export function artifactsTableDdl(
+  backend: StorageBackend,
+  name: string,
+  packLayout: ArtifactPackLayout = backend === "sqlite" ? "generated" : "physical",
+) {
+  const layout = backend === "sqlite" ? packLayout : "physical"
+  return `CREATE TABLE IF NOT EXISTS ${name} (${layout === "generated" ? generatedArtifactsColumns : physicalArtifactsColumns})`
+}
+
+/**
+ * How `table` stores its `pack` column, read from the table itself.
+ *
+ * A pragma is the authority: the layout of a format 3 namespace depends on what
+ * its engine supported when the rewrite staged it, so it can be neither assumed
+ * from the recorded format nor held in a separate record that would have to stay
+ * in step. `hidden` is 2 for a `VIRTUAL` generated column and 3 for a `STORED`
+ * one; both are engine-derived and must stay out of an `INSERT`. A table without
+ * the column, or a backend that has no generated columns, reports `physical`.
+ */
+export async function artifactPackLayout(connection: SqlConnection, table: string): Promise<ArtifactPackLayout> {
+  const [row] = await connection.query<{ hidden: bigint | number }>(
+    "SELECT hidden FROM pragma_table_xinfo(?) WHERE name = 'pack'",
+    [table],
+  )
+  return row && Number(row.hidden) >= 2 ? "generated" : "physical"
+}
+
+export function nodesTableDdl(backend: StorageBackend, name: string) {
+  return `CREATE TABLE IF NOT EXISTS ${name} (${backend === "sqlite" ? sqliteNodesColumns : postgresNodesColumns})`
+}
+
+export function recordsTableDdl(backend: StorageBackend, name: string) {
+  return `CREATE TABLE IF NOT EXISTS ${name} (${backend === "sqlite" ? sqliteRecordsColumns : postgresRecordsColumns})`
+}
+
+/**
+ * Every secondary index on `storage_records`, in dependency order.
+ *
+ * The definition is shared rather than repeated because the format 3 rewrite
+ * drops and renames the table, and `DROP TABLE` takes its indexes with it: the
+ * rewrite must recreate exactly this set in its swap transaction, and the open
+ * path must create the same set on a fresh store. One definition is what keeps
+ * the two from drifting.
+ */
+export const storageRecordsIndexes = (backend: StorageBackend) => [
   "CREATE INDEX IF NOT EXISTS storage_records_session ON storage_records(namespace, session_id, kind, order_key, key_id)",
-  "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id)",
+  // Rollout rows carry an empty `message_id`, which was paying for a key entry
+  // in every one of them; the predicate keeps tombstoned and ownerless rows out
+  // of the index without changing which rows match a messageID query.
+  backend === "sqlite"
+    ? "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id) WHERE message_id <> ''"
+    : "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_kind ON storage_records(namespace, kind, order_key, key_id)",
   STORAGE_RECORDS_OWNER_INDEX,
+]
+
+export const STORAGE_NODES_PARENT_INDEX =
+  "CREATE INDEX IF NOT EXISTS storage_nodes_parent ON storage_nodes(namespace, parent_id)"
+
+export const storageArtifactsIndexes = [
+  "CREATE INDEX IF NOT EXISTS storage_artifacts_owner ON storage_artifacts(namespace, owner_key)",
+  "CREATE INDEX IF NOT EXISTS storage_artifacts_pack ON storage_artifacts(namespace, pack)",
+]
+
+const schemaFor = (backend: StorageBackend) => [
+  "CREATE TABLE IF NOT EXISTS storage_artifact_gc (namespace TEXT NOT NULL, pack TEXT NOT NULL, PRIMARY KEY(namespace, pack))",
+  artifactsTableDdl(backend, "storage_artifacts"),
+  ...storageArtifactsIndexes,
+  "CREATE TABLE IF NOT EXISTS storage_namespaces (namespace TEXT PRIMARY KEY, version INTEGER NOT NULL, owner TEXT NOT NULL, state TEXT NOT NULL, next_event BIGINT NOT NULL DEFAULT 0)",
+  nodesTableDdl(backend, "storage_nodes"),
+  STORAGE_NODES_PARENT_INDEX,
+  recordsTableDdl(backend, "storage_records"),
+  ...storageRecordsIndexes(backend),
   "CREATE TABLE IF NOT EXISTS storage_receipts (namespace TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL, result TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY(namespace, operation_id))",
   "CREATE TABLE IF NOT EXISTS storage_events (namespace TEXT NOT NULL, id TEXT NOT NULL, scope_id TEXT NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, position BIGINT NOT NULL, PRIMARY KEY(namespace, id))",
   "CREATE INDEX IF NOT EXISTS storage_events_pending ON storage_events(namespace, position)",
@@ -168,10 +341,26 @@ export class StoreTransaction {
   private active = true
   private failure?: unknown
   private readonly connection: SqlConnection
+  /**
+   * The container a body may be written in.
+   *
+   * It follows the same recorded format as the key encoding, because a byte frame
+   * is only storable where the body column is a blob -- the format 3 layout. A
+   * `TEXT` column renders those bytes as hex text, which no reader accepts.
+   * Deriving it here rather than storing it separately keeps the two from
+   * disagreeing, and `adoptFormatV3` therefore flips both at once.
+   */
+  private get bodies(): BodyContainer {
+    return bodyContainer(this.keys)
+  }
+
   constructor(
     connection: SqlConnection,
     readonly namespace: string,
     private readonly readonly = false,
+    private readonly keys: KeyEncoding = "bytes",
+    private readonly backend: StorageBackend = "sqlite",
+    private readonly artifactPack: ArtifactPackLayout = keys === "bytes" ? "generated" : "physical",
     private readonly admission = { pending: true },
   ) {
     this.connection = {
@@ -195,6 +384,19 @@ export class StoreTransaction {
     this.active = false
   }
 
+  /**
+   * The transaction's connection.
+   *
+   * Migration and maintenance paths issue SQL the typed read surface does not
+   * express -- keyset copies, table rebuilds, prefix reconstruction -- and that
+   * SQL has to run inside the same transaction and share its failure state, so
+   * a poisoned transaction cannot be left half-applied.
+   */
+  get raw(): SqlConnection {
+    this.check()
+    return this.connection
+  }
+
   private check(write = false) {
     if (!this.active) throw new StorageClosedError()
     this.assertHealthy()
@@ -206,7 +408,7 @@ export class StoreTransaction {
     await this.assertAdmitted([key])
     const [row] = await this.connection.query<RecordRow>(
       "SELECT key_text, body, revision FROM storage_records WHERE namespace = ? AND key_id = ?",
-      [this.namespace, keyID(key)],
+      [this.namespace, keyParameter(this.keys, key)],
     )
     if (row && row.key_text !== JSON.stringify(key)) throw new StorageIntegrityError("Logical key identity collision")
     return row
@@ -228,11 +430,11 @@ export class StoreTransaction {
     const result: (T | undefined)[] = []
     for (let offset = 0; offset < keys.length; offset += 128) {
       const batch = keys.slice(offset, offset + 128)
-      const rows = await this.connection.query<RecordRow & { key_id: string }>(
+      const rows = await this.connection.query<RecordRow & { key_id: SqlValue }>(
         `SELECT key_id, key_text, body, revision FROM storage_records WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")})`,
-        [this.namespace, ...batch.map(keyID)],
+        [this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
-      const index = new Map(rows.map((row) => [row.key_id, row]))
+      const index = new Map(rows.map((row) => [keyHex(row.key_id), row]))
       for (const key of batch) {
         const row = index.get(keyID(key))
         if (row && row.key_text !== JSON.stringify(key))
@@ -262,7 +464,7 @@ export class StoreTransaction {
       if (unique.has(id)) throw new StorageIntegrityError("A bulk write must contain distinct logical keys")
       unique.add(id)
       const text = JSON.stringify(key)
-      const body = RecordCodec.encode(value)
+      const body = RecordCodec.encode(value, this.bodies)
       const meta = metadata(key)
       const bytes = sqlParameterBytes([
         this.namespace,
@@ -297,17 +499,22 @@ export class StoreTransaction {
           owners.set(keyID(owner), owner)
         }
       const identities = [...new Set([...batch.map((entry) => entry.id), ...owners.keys()])]
-      const rows = await this.connection.query<RecordRow & { key_id: string }>(
+      const rows = await this.connection.query<RecordRow & { key_id: SqlValue }>(
         `SELECT key_id, key_text, body, revision FROM storage_records WHERE namespace = ? AND key_id IN (${identities.map(() => "?").join(",")})`,
-        [this.namespace, ...identities],
+        [this.namespace, ...identities.map((id) => keyHexParameter(this.keys, id))],
       )
-      const previous = new Map(rows.map((row) => [row.key_id, row]))
+      const previous = new Map(rows.map((row) => [keyHex(row.key_id), row]))
       for (const [id, key] of owners) {
         const row = previous.get(id)
         if (row && row.key_text !== JSON.stringify(key))
           throw new StorageIntegrityError("Logical key identity collision")
         if (row?.body === null) throw new StorageConflictError("A deleted record cannot be revived by a delayed writer")
       }
+      // A namespace that has not been rewritten yet still has the format 2 node
+      // table, whose `key_text` is NOT NULL. The row shape has to follow the
+      // namespace's own layout, not this code version, or a write issued before
+      // the rewrite runs would fail the constraint.
+      const legacyNodes = this.keys === "hex"
       const nodes = new Map<string, SqlValue[]>()
       const values: SqlValue[] = []
       for (const entry of batch) {
@@ -316,11 +523,21 @@ export class StoreTransaction {
         for (let depth = 1; depth <= entry.key.length; depth++) {
           const prefix = entry.key.slice(0, depth)
           const id = keyID(prefix)
-          nodes.set(id, [this.namespace, id, keyID(prefix.slice(0, -1)), JSON.stringify(prefix), prefix.at(-1)!])
+          nodes.set(
+            id,
+            legacyNodes
+              ? [this.namespace, id, keyID(prefix.slice(0, -1)), JSON.stringify(prefix), prefix.at(-1)!]
+              : [
+                  this.namespace,
+                  keyHexParameter(this.keys, id),
+                  keyParameter(this.keys, prefix.slice(0, -1)),
+                  prefix.at(-1)!,
+                ],
+          )
         }
         values.push(
           this.namespace,
-          entry.id,
+          keyHexParameter(this.keys, entry.id),
           entry.text,
           entry.body,
           BigInt(before?.revision ?? 0) + 1n,
@@ -336,7 +553,9 @@ export class StoreTransaction {
       for (let index = 0; index < paths.length; index += 128) {
         const group = paths.slice(index, index + 128)
         await this.connection.query(
-          `INSERT INTO storage_nodes(namespace, key_id, parent_id, key_text, segment) VALUES ${group.map(() => "(?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO NOTHING`,
+          legacyNodes
+            ? `INSERT INTO storage_nodes(namespace, key_id, parent_id, key_text, segment) VALUES ${group.map(() => "(?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO NOTHING`
+            : `INSERT INTO storage_nodes(namespace, key_id, parent_id, segment) VALUES ${group.map(() => "(?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO NOTHING`,
           group.flat(),
         )
       }
@@ -354,13 +573,22 @@ export class StoreTransaction {
     const revision = previous ? BigInt(previous.revision) : 0n
     if (options.expectedRevision !== undefined && options.expectedRevision !== revision)
       throw new StorageConflictError("Storage revision changed")
+    const legacyNodes = this.keys === "hex"
     const nodes: SqlValue[] = []
     for (let depth = 1; depth <= key.length; depth++) {
       const prefix = key.slice(0, depth)
-      nodes.push(this.namespace, keyID(prefix), keyID(prefix.slice(0, -1)), JSON.stringify(prefix), prefix.at(-1)!)
+      nodes.push(
+        this.namespace,
+        keyParameter(this.keys, prefix),
+        keyParameter(this.keys, prefix.slice(0, -1)),
+        ...(legacyNodes ? [JSON.stringify(prefix)] : []),
+        prefix.at(-1)!,
+      )
     }
     await this.connection.query(
-      `INSERT INTO storage_nodes(namespace, key_id, parent_id, key_text, segment) VALUES ${key.map(() => "(?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO NOTHING`,
+      legacyNodes
+        ? `INSERT INTO storage_nodes(namespace, key_id, parent_id, key_text, segment) VALUES ${key.map(() => "(?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO NOTHING`
+        : `INSERT INTO storage_nodes(namespace, key_id, parent_id, segment) VALUES ${key.map(() => "(?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO NOTHING`,
       nodes,
     )
     const meta = metadata(key)
@@ -368,9 +596,9 @@ export class StoreTransaction {
       "INSERT INTO storage_records(namespace, key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(namespace, key_id) DO UPDATE SET body = excluded.body, revision = excluded.revision, kind = excluded.kind, scope_id = excluded.scope_id, session_id = excluded.session_id, message_id = excluded.message_id, order_key = excluded.order_key, updated = excluded.updated",
       [
         this.namespace,
-        keyID(key),
+        keyParameter(this.keys, key),
         JSON.stringify(key),
-        RecordCodec.encode(value),
+        RecordCodec.encode(value, this.bodies),
         revision + 1n,
         meta.kind,
         meta.scope,
@@ -395,19 +623,22 @@ export class StoreTransaction {
     await this.assertAdmitted([key])
     await this.connection.query(
       "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL",
-      [Date.now(), this.namespace, keyID(key)],
+      [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
+    // The tombstone stays; the node chain the removal emptied does not.
+    await this.cleanDanglingNodes(key)
   }
 
   async removeMany(keys: string[][]): Promise<void> {
     this.check(true)
     await this.assertAdmitted(keys)
     for (let offset = 0; offset < keys.length; offset += 128) {
-      const batch = keys.slice(offset, offset + 128).map(keyID)
+      const batch = keys.slice(offset, offset + 128)
       await this.connection.query(
         `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
-        [Date.now(), this.namespace, ...batch],
+        [Date.now(), this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
+      for (const key of batch) await this.cleanDanglingNodes(key)
     }
   }
 
@@ -419,7 +650,7 @@ export class StoreTransaction {
       "SELECT child.segment AS child FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = ? AND EXISTS (WITH RECURSIVE tree(key_id) AS (SELECT child.key_id UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT 1 FROM tree CROSS JOIN storage_records record WHERE record.key_id = tree.key_id AND record.namespace = ? AND record.body IS NOT NULL" +
         this.visibility("record") +
         " LIMIT 1)",
-      [this.namespace, keyID(prefix), this.namespace, this.namespace],
+      [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => row.child).sort()
   }
@@ -429,7 +660,7 @@ export class StoreTransaction {
     const rows = await this.connection.query<SqlRow & { key_text: string }>(
       "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT record.key_text FROM tree CROSS JOIN storage_records record WHERE record.key_id = tree.key_id AND record.namespace = ? AND record.body IS NOT NULL" +
         this.visibility("record"),
-      [this.namespace, keyID(prefix), this.namespace, this.namespace],
+      [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => JSON.parse(row.key_text) as string[]).sort()
   }
@@ -460,12 +691,83 @@ export class StoreTransaction {
         "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND body IS NOT NULL",
         [Date.now(), this.namespace],
       )
+      await this.cleanDanglingNodes([])
       return
     }
     await this.connection.query(
       "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
-      [this.namespace, keyID(prefix), this.namespace, Date.now(), this.namespace],
+      [this.namespace, keyParameter(this.keys, prefix), this.namespace, Date.now(), this.namespace],
     )
+    await this.cleanDanglingNodes(prefix)
+  }
+
+  /**
+   * Drops the node rows a tombstone-only removal left unreachable.
+   *
+   * `remove` and `removeTree` keep a record tombstone as the fence that stops a
+   * delayed writer reviving deleted data, so their record rows stay behind. A
+   * predicate that counts any record row -- which is what `pruneTree` uses, and
+   * is correct there because it deletes the rows outright -- would therefore
+   * never fire here. Eligibility is instead "no live record at this node's own
+   * key and no surviving child", so an interior node drops only once its subtree
+   * has drained and the rounds proceed leaf-to-parent.
+   *
+   * The candidate set is the removed prefix's subtree plus that prefix's own
+   * ancestors, both reached from the prefix rather than from the deleted rows: a
+   * digest cannot reconstruct a parent link, and anchoring on the prefix keeps
+   * every round independent of what an earlier round already removed. Each round
+   * is one bounded statement, so no single statement grows with the tree.
+   *
+   * The recursive table drives the walk -- `FROM subtree CROSS JOIN
+   * storage_nodes` -- rather than being the probe target of it. Driving from
+   * `storage_nodes` makes the planner re-scan the whole node table once per
+   * recursion step, which is quadratic in the subtree: measured on a
+   * rollout-shaped tree it cost 32 s for 32,000 nodes against 13 ms for this
+   * shape. A removal that empties a large artifact tree runs in teardown, so the
+   * difference is the difference between a close and a hang.
+   */
+  private async cleanDanglingNodes(prefix: string[]): Promise<void> {
+    const root = keyParameter(this.keys, prefix)
+    const ancestors: SqlValue[] = []
+    for (let depth = 1; depth < prefix.length; depth++) ancestors.push(keyParameter(this.keys, prefix.slice(0, depth)))
+    const ancestorSet = ancestors.length ? ` OR node.key_id IN (${ancestors.map(() => "?").join(",")})` : ""
+    for (;;) {
+      const dropped = await this.connection.query<SqlRow>(
+        `WITH RECURSIVE subtree(key_id) AS (
+           SELECT node.key_id FROM storage_nodes node WHERE node.namespace = ? AND (node.key_id = ? OR node.parent_id = ?)
+           UNION
+           SELECT node.key_id FROM subtree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = subtree.key_id
+         ), candidate(key_id) AS (
+           SELECT node.key_id FROM storage_nodes node
+            WHERE node.namespace = ? AND (node.key_id IN (SELECT key_id FROM subtree)${ancestorSet})
+              AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = node.key_id AND record.body IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = node.key_id)
+            LIMIT ?
+         )
+         DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM candidate)
+         RETURNING key_id`,
+        [
+          this.namespace,
+          root,
+          root,
+          this.namespace,
+          this.namespace,
+          ...ancestors,
+          this.namespace,
+          this.namespace,
+          PRUNE_CHUNK,
+          this.namespace,
+        ],
+      )
+      // Stop on an empty round rather than a short one: a saturated round can
+      // hold nothing but ineligible ancestors, and treating that as the end would
+      // strand the interior nodes the rounds below it were about to free. The
+      // round count is not capped: deletion is monotonic, so the candidate set
+      // can only shrink and an empty round proves the fixed point is reached,
+      // whereas stopping early would leave nodes no traversal can reach and turn
+      // them into the orphans `verify` reports.
+      if (!dropped.length) break
+    }
   }
 
   /**
@@ -489,18 +791,34 @@ export class StoreTransaction {
       artifactValues,
     )
     await this.connection.query(`DELETE FROM storage_artifacts WHERE ${artifactCondition}`, artifactValues)
-    const removed = await this.connection.query<SqlRow>(
-      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) RETURNING key_id",
-      [this.namespace, keyID(prefix), this.namespace, this.namespace],
-    )
+    // Each statement stays inside the chunk budget: a single unbounded delete is
+    // what let one retention prune occupy the worker past the ceiling. The
+    // recursion reads the node tree, which stays intact until every record in
+    // the subtree is gone, so a bounded batch is still exact.
+    let removed = 0
+    for (;;) {
+      const batch = await this.connection.query<SqlRow>(
+        "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree LIMIT ?) RETURNING key_id",
+        [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace, PRUNE_CHUNK],
+      )
+      removed += batch.length
+      if (batch.length < PRUNE_CHUNK) break
+    }
     for (let round = 0; round < 64; round++) {
       const dropped = await this.connection.query<SqlRow>(
         "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = storage_nodes.key_id) AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = storage_nodes.key_id) RETURNING key_id",
-        [this.namespace, keyID(prefix), this.namespace, this.namespace, this.namespace, this.namespace],
+        [
+          this.namespace,
+          keyParameter(this.keys, prefix),
+          this.namespace,
+          this.namespace,
+          this.namespace,
+          this.namespace,
+        ],
       )
       if (!dropped.length) break
     }
-    return removed.length
+    return removed
   }
 
   async query<T>(input: RecordQuery): Promise<StoredRecord<T>[]> {
@@ -531,13 +849,18 @@ export class StoreTransaction {
       conditions.push(`${field} = ?`)
       values.push(value)
     }
+    // `storage_records_message` is partial on a nonempty `message_id`. The
+    // predicate is restated here so the planner can prove the index applies:
+    // an equality on the column alone does not imply `message_id <> ''`, and
+    // without this the message-keyed page would fall back to a full scan.
+    if (this.keys === "bytes" && input.messageID !== undefined) conditions.push("message_id <> ''")
     if (input.after !== undefined) {
       const comparison = input.descending ? "<" : ">"
       // Row-value bounds let SQLite seek past the cursor instead of filtering the index prefix.
       // https://www.sqlite.org/rowvalue.html#scrolling_window_queries
       conditions.push(`(order_key, key_id) ${comparison} (?, ?)`)
       const order = metadata(input.after).order
-      values.push(order, keyID(input.after))
+      values.push(order, keyParameter(this.keys, input.after))
     }
     const limit = input.limit ?? 100
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000)
@@ -554,23 +877,40 @@ export class StoreTransaction {
     let after = ""
     for (;;) {
       this.check()
-      const page = await this.connection.query<RecordRow & { key_id: string; node_key_text: string | null }>(
-        "SELECT r.key_id, r.key_text, r.body, r.revision, n.key_text AS node_key_text FROM storage_records r LEFT JOIN storage_nodes n ON n.namespace = r.namespace AND n.key_id = r.key_id WHERE r.namespace = ? AND r.body IS NOT NULL AND r.key_id > ?" +
+      const page = await this.connection.query<RecordRow & { key_id: SqlValue }>(
+        "SELECT r.key_id, r.key_text, r.body, r.revision FROM storage_records r WHERE r.namespace = ? AND r.body IS NOT NULL AND r.key_id > ?" +
           this.visibility("r") +
           " ORDER BY r.key_id LIMIT 256",
-        [this.namespace, after],
+        [this.namespace, keyHexParameter(this.keys, after)],
       )
       if (!page.length) break
+      // The retired format stored each node's full path text and this traversal
+      // compared it with the record's key. Format 3 stores no path, so the same
+      // invariant is checked directly against the node's own derived columns:
+      // the node must exist, its segment must be this record's last segment, and
+      // its parent link must name the record's parent prefix. A record whose
+      // index disagrees with its key is unreachable by traversal, so a full walk
+      // stops here rather than exporting evidence the store cannot address.
+      // One keyed lookup per page, answered from the primary index.
+      const nodes = await this.connection.query<{ key_id: SqlValue; parent_id: SqlValue; segment: string }>(
+        `SELECT key_id, parent_id, segment FROM storage_nodes WHERE namespace = ? AND key_id IN (${page.map(() => "?").join(",")})`,
+        [this.namespace, ...page.map((row) => row.key_id)],
+      )
+      const indexed = new Map(nodes.map((node) => [keyHex(node.key_id), node]))
       for (const row of page) {
-        if (row.node_key_text !== row.key_text || BigInt(row.revision) < 1n)
+        if (BigInt(row.revision) < 1n)
+          throw new StorageIntegrityError("Logical storage index integrity verification failed")
+        const key = JSON.parse(row.key_text) as string[]
+        const node = indexed.get(keyID(key))
+        if (!node || node.segment !== key.at(-1) || keyHex(node.parent_id) !== keyID(key.slice(0, -1)))
           throw new StorageIntegrityError("Logical storage index integrity verification failed")
         yield {
-          key: JSON.parse(row.key_text) as string[],
+          key,
           value: RecordCodec.decode<T>(row.body!),
           revision: BigInt(row.revision),
         }
       }
-      after = page.at(-1)!.key_id
+      after = keyHex(page.at(-1)!.key_id)
     }
   }
 
@@ -591,7 +931,7 @@ export class StoreTransaction {
           type: "receipt",
           operationID: String(row.operation_id),
           requestHash: String(row.request_hash),
-          result: String(row.result),
+          result: RecordCodec.text(recordBody(row.result)),
           created: Number(row.created),
         }
       operationID = String(page.at(-1)!.operation_id)
@@ -609,7 +949,7 @@ export class StoreTransaction {
           id: String(row.id),
           scopeID: String(row.scope_id),
           eventType: String(row.type),
-          payload: JSON.parse(String(row.payload)) as unknown,
+          payload: RecordCodec.decode(recordBody(row.payload)),
         }
       position = BigInt(page.at(-1)!.position as bigint)
     }
@@ -630,6 +970,13 @@ export class StoreTransaction {
   async writeArtifacts(entries: Array<{ key: string[]; location: ArtifactLocation }>) {
     this.check(true)
     await this.assertAdmitted(entries.map((entry) => entry.key))
+    // The pack column is an engine-derived one only in the generated layout, and
+    // a writer must not name such a column. Which layout this namespace has is
+    // read from its artifact table rather than assumed from the backend or the
+    // recorded format: a format 3 SQLite namespace whose engine could not accept
+    // or index a generated column keeps the physical one and needs it supplied,
+    // exactly as a format 2 writer does.
+    const generated = this.artifactPack === "generated"
     for (let start = 0; start < entries.length; start += 128) {
       const batch = entries.slice(start, start + 128)
       const owners = new Map<string, string[]>()
@@ -647,13 +994,15 @@ export class StoreTransaction {
         [this.namespace, ...batch.map(({ key }) => JSON.stringify(key))],
       )
       await this.connection.query(
-        `INSERT INTO storage_artifacts(namespace, key_text, owner_key, location, pack) VALUES ${batch.map(() => "(?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_text) DO UPDATE SET location = excluded.location, pack = excluded.pack`,
+        generated
+          ? `INSERT INTO storage_artifacts(namespace, key_text, owner_key, location) VALUES ${batch.map(() => "(?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_text) DO UPDATE SET location = excluded.location`
+          : `INSERT INTO storage_artifacts(namespace, key_text, owner_key, location, pack) VALUES ${batch.map(() => "(?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_text) DO UPDATE SET location = excluded.location, pack = excluded.pack`,
         batch.flatMap(({ key, location }) => [
           this.namespace,
           JSON.stringify(key),
           JSON.stringify(key.slice(0, ["sessions", "operations"].includes(key[0]) ? 3 : 1)),
           JSON.stringify(location),
-          location.pack,
+          ...(generated ? [] : [location.pack]),
         ]),
       )
     }
@@ -714,7 +1063,7 @@ export class StoreTransaction {
     this.check()
     const [record] = await this.connection.query(
       "SELECT body FROM storage_records WHERE namespace = ? AND key_id = ?",
-      [this.namespace, keyID(key)],
+      [this.namespace, keyParameter(this.keys, key)],
     )
     if (record && record.body === null)
       throw new StorageConflictError("A deleted record cannot be revived by a delayed writer")
@@ -738,7 +1087,7 @@ export class StoreTransaction {
       await this.put(entry.key, entry.value)
       await this.connection.query(
         "UPDATE storage_records SET revision = CASE WHEN revision > ? THEN revision ELSE ? END WHERE namespace = ? AND key_id = ?",
-        [BigInt(entry.revision), BigInt(entry.revision), this.namespace, keyID(entry.key)],
+        [BigInt(entry.revision), BigInt(entry.revision), this.namespace, keyParameter(this.keys, entry.key)],
       )
       return
     }
@@ -751,14 +1100,25 @@ export class StoreTransaction {
       [this.namespace, entry.operationID],
     )
     if (existing) {
-      if (existing.request_hash !== entry.requestHash || existing.result !== entry.result)
+      // The archive carries JSON text, so this compares the stored body's text
+      // rather than the frame a format 3 column holds.
+      const stored = RecordCodec.text(recordBody(existing.result))
+      if (existing.request_hash !== entry.requestHash || stored !== entry.result)
         throw new StorageConflictError("Command receipt conflicts with existing target data")
       return
     }
+    // `reencode` carries the archive's JSON text across exactly rather than
+    // parsing and re-serializing it, so a repeated import compares equal.
     JSON.parse(entry.result)
     await this.connection.query(
       "INSERT INTO storage_receipts(namespace, operation_id, request_hash, result, created) VALUES (?, ?, ?, ?, ?)",
-      [this.namespace, entry.operationID, entry.requestHash, entry.result, entry.created],
+      [
+        this.namespace,
+        entry.operationID,
+        entry.requestHash,
+        RecordCodec.reencode(entry.result, this.bodies),
+        entry.created,
+      ],
     )
   }
 
@@ -770,7 +1130,14 @@ export class StoreTransaction {
     )
     await this.connection.query(
       "INSERT INTO storage_events(namespace, id, scope_id, type, payload, position) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(namespace, id) DO NOTHING",
-      [this.namespace, event.id, event.scopeID, event.type, encode(event.payload), counter.next_event],
+      [
+        this.namespace,
+        event.id,
+        event.scopeID,
+        event.type,
+        RecordCodec.encode(event.payload, this.bodies),
+        counter.next_event,
+      ],
     )
   }
 }
@@ -784,6 +1151,15 @@ export class TransactionalStore {
   private readonly owner = randomUUID()
   private closing?: Promise<void>
   private unavailable?: Error
+  // Read from the namespace row at open and advanced by the format 3 rewrite,
+  // which is the only writer that can change it. Kept as store state because a
+  // live store cannot re-read the version per transaction without either adding
+  // a round trip or breaking the declared single-statement read contract.
+  private keyEncoding: KeyEncoding = "hex"
+  // Read from the artifact table at open, for the same reason: a writer has to
+  // know whether it may name `pack`, and the layout depends on what the engine
+  // supported when the rewrite staged that table.
+  private artifactPack: ArtifactPackLayout = "generated"
   private constructor(
     private readonly driver: SqlDriver,
     readonly options: StoreOptions,
@@ -796,14 +1172,14 @@ export class TransactionalStore {
         ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist)
         : await PostgresDriver.open(options.url, options.namespace, options.maxConnections, options.readonly)
     const store = new TransactionalStore(driver, options)
-    driver.onUnavailable?.((error) => {
+    driver.onUnavailable((error) => {
       store.unavailable = error
     })
     try {
       await driver.transaction(
         async (connection) => {
           if (!options.readonly)
-            for (const statement of schema)
+            for (const statement of schemaFor(options.backend))
               await connection.query(statement, [], {
                 // `CREATE INDEX` reads every existing row, so on a large store it
                 // outlasts the ordinary request deadline. A DDL statement killed at
@@ -817,10 +1193,25 @@ export class TransactionalStore {
             [options.namespace],
           )
           if (options.mustExist && !existing) throw new StorageIntegrityError("The active storage namespace is missing")
-          if (existing && ![1, 2].includes(Number(existing.version)))
+          if (existing && ![1, 2, 3].includes(Number(existing.version)))
             throw new StorageIntegrityError("Unsupported authoritative storage version")
+          // A fresh SQLite namespace is created with the format 3 layout, so it
+          // is born current. A PostgreSQL namespace keeps the format 2 layout
+          // and stays there: it has no rewrite to run and no byte encoding to
+          // adopt. An existing namespace keeps whatever it recorded -- marking a
+          // store current before its rows are rewritten is exactly what would
+          // let a v2 store claim v3 while still holding hex keys.
+          const version = existing ? Number(existing.version) : options.backend === "sqlite" ? 3 : 2
+          store.keyEncoding = options.backend === "sqlite" && version >= 3 ? "bytes" : "hex"
+          // The artifact layout is a property of the table, not of the recorded
+          // format: a format 3 namespace falls back to a physical `pack` when its
+          // engine cannot accept or index a generated one. PostgreSQL has no
+          // `json_extract` and no table-valued pragma here, so it is always
+          // physical.
+          store.artifactPack =
+            options.backend === "sqlite" ? await artifactPackLayout(connection, "storage_artifacts") : "physical"
           if (options.readonly) {
-            if (existing && Number(existing.version) === 1)
+            if (existing && version === 1)
               throw new StorageIntegrityError(
                 "Storage format upgrade required; run data storage resume before inspection",
               )
@@ -831,9 +1222,14 @@ export class TransactionalStore {
             throw new StorageOwnershipError(
               "The previous PostgreSQL Runtime did not release ownership; verify it has stopped before recovering",
             )
+          // The insert value applies only when the namespace is new. An existing
+          // row keeps its own version: promoting it here would claim a layout the
+          // rows do not have yet, and the rewrite is what stamps 3 once the bytes
+          // are actually in place. A version below 2 is advanced to 2 because this
+          // open has just created the format 2 indexes the store was missing.
           await connection.query(
-            "INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, 2, ?, 'active') ON CONFLICT(namespace) DO UPDATE SET version = excluded.version, owner = excluded.owner, state = excluded.state",
-            [options.namespace, store.owner],
+            "INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, ?, ?, 'active') ON CONFLICT(namespace) DO UPDATE SET version = CASE WHEN storage_namespaces.version >= 2 THEN storage_namespaces.version ELSE 2 END, owner = excluded.owner, state = excluded.state",
+            [options.namespace, options.backend === "sqlite" ? 3 : 2, store.owner],
           )
         },
         { readOnly: options.readonly },
@@ -858,7 +1254,7 @@ export class TransactionalStore {
   /** Reports a store that failed terminally; the host must restart the Runtime
    *  because this instance cannot serve further work. */
   onUnavailable(listener: (error: Error) => void): () => void {
-    return this.driver.onUnavailable?.(listener) ?? (() => {})
+    return this.driver.onUnavailable(listener)
   }
 
   async snapshot<T>(
@@ -868,7 +1264,15 @@ export class TransactionalStore {
     this.check()
     return this.driver.transaction(
       async (connection) => {
-        const snapshot = new StoreTransaction(connection, this.options.namespace, true, this.admission)
+        const snapshot = new StoreTransaction(
+          connection,
+          this.options.namespace,
+          true,
+          this.keyEncoding,
+          this.driver.backend,
+          this.artifactPack,
+          this.admission,
+        )
         try {
           const result = await body(snapshot)
           snapshot.assertHealthy()
@@ -905,10 +1309,18 @@ export class TransactionalStore {
               if (receipt) {
                 if (receipt.request_hash !== options.requestHash)
                   throw new StorageConflictError("Operation ID was already used for different input")
-                return (JSON.parse(String(receipt.result)) as { value: T }).value
+                return RecordCodec.decode<{ value: T }>(recordBody(receipt.result)).value
               }
             }
-            const tx = new StoreTransaction(connection, this.options.namespace, false, this.admission)
+            const tx = new StoreTransaction(
+              connection,
+              this.options.namespace,
+              false,
+              this.keyEncoding,
+              this.driver.backend,
+              this.artifactPack,
+              this.admission,
+            )
             try {
               const result = await body(tx)
               tx.assertHealthy()
@@ -919,7 +1331,7 @@ export class TransactionalStore {
                     this.options.namespace,
                     options.operationID,
                     options.requestHash!,
-                    encode({ value: result }),
+                    RecordCodec.encode({ value: result }, bodyContainer(this.keyEncoding)),
                     Date.now(),
                   ],
                 )
@@ -1006,6 +1418,63 @@ export class TransactionalStore {
         await connection.query(statement, [], { maintenance: operation })
       }),
     )
+  }
+
+  /**
+   * Runs several DDL statements as one atomic unit.
+   *
+   * The format rewrite has to drop a table, rename its replacement and rebuild
+   * the indexes that drop removed. Committing those separately would expose a
+   * window with no records table at all, and running them on the ordinary
+   * deadline would roll the whole swap back on any store large enough for the
+   * index build to outlast a request. SQLite DDL is transactional, so one
+   * transaction leaves the previous table intact unless every statement
+   * succeeds.
+   *
+   * `operation` opts the bundle into the maintenance lifecycle, and through it
+   * the ceiling budget: an index build or rebuild is one engine call whose cost
+   * grows with the store. Omit it for bookkeeping and staging DDL -- a migration
+   * state row, a replacement table created for a batched copy -- which is
+   * bounded by construction and would otherwise announce a lifecycle transition
+   * for every batch of a copy that runs tens of thousands of them.
+   */
+  async maintainDdlTransaction(
+    statements: Array<{ statement: string; values?: SqlValue[] }>,
+    operation?: Extract<StorageMaintenanceOperation, "create-index" | "drop-index">,
+  ): Promise<void> {
+    this.check()
+    if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
+    if (!statements.length) return
+    await this.writes.run(() =>
+      this.driver.transaction(async (connection) => {
+        for (const { statement, values } of statements)
+          await connection.query(statement, values ?? [], operation ? { maintenance: operation } : undefined)
+      }),
+    )
+  }
+
+  /** The key encoding this namespace's key columns currently hold. */
+  get keyEncodedAs() {
+    return this.keyEncoding
+  }
+
+  /**
+   * Adopts the format 3 layout after the swap commits.
+   *
+   * The encoding follows the namespace's recorded format, and the rewrite is the
+   * only transition that changes it. A store must not re-read the version per
+   * statement -- reads declare a single-statement contract -- so the swap flips
+   * this in the same process that performed it.
+   *
+   * The artifact layout comes from the swap because it is not implied by the
+   * format: the rewrite stages the generated column when the engine supports it
+   * and falls back to a physical one when it does not, so the caller that
+   * performed the swap is the one place that already knows which of the two the
+   * renamed table has.
+   */
+  adoptFormatV3(artifactPack: ArtifactPackLayout) {
+    this.keyEncoding = "bytes"
+    this.artifactPack = artifactPack
   }
 
   /**
@@ -1131,7 +1600,7 @@ export class TransactionalStore {
       ]),
     )
     return receipt
-      ? { requestHash: String(receipt.request_hash), result: JSON.parse(String(receipt.result)) as unknown }
+      ? { requestHash: String(receipt.request_hash), result: RecordCodec.decode(recordBody(receipt.result)) }
       : undefined
   }
 
@@ -1155,7 +1624,7 @@ export class TransactionalStore {
       id: String(row.id),
       scopeID: String(row.scope_id),
       type: String(row.type),
-      payload: JSON.parse(String(row.payload)) as unknown,
+      payload: RecordCodec.decode(recordBody(row.payload)),
     }))
   }
 
@@ -1187,15 +1656,118 @@ export class TransactionalStore {
           async (connection) => {
             if (this.driver.backend === "sqlite") {
               const rows = await connection.query("PRAGMA integrity_check", [], {
+                // A physical check is one engine call with no progress callback, so
+                // it cannot be split and its cost grows with the store. The driver
+                // reports the ceiling as this operation's budget on the maintenance
+                // lifecycle, which is the deadline the host waits on for the stage.
                 maintenance: "integrity-check",
               })
               if (rows.length !== 1 || rows[0].integrity_check !== "ok")
                 throw new StorageIntegrityError("SQLite integrity verification failed")
             }
-            const tx = new StoreTransaction(connection, this.options.namespace, true, this.admission)
+            const tx = new StoreTransaction(
+              connection,
+              this.options.namespace,
+              true,
+              this.keyEncoding,
+              this.driver.backend,
+              this.artifactPack,
+              this.admission,
+            )
             const issues: Array<{ key: string[]; reason: string }> = []
             const kinds: Record<string, number> = {}
             let records = 0
+            /**
+             * Nodes whose subtree holds no record at all.
+             *
+             * The test is subtree reachability, not an own-record lookup: an
+             * interior node legitimately holds no record of its own, and the
+             * `LIMIT 1` stops at the first record found, so a healthy subtree
+             * costs one probe. Pages are bounded by node key.
+             *
+             * A tombstoned record counts as a record row. `remove` and
+             * `removeTree` keep a revision tombstone per record -- that fence is
+             * what stops a delayed writer reviving deleted data -- and they drop
+             * the node chain the removal emptied. Those rows therefore retain
+             * their tombstones but not their nodes, which is why the test counts
+             * any record row rather than only a live one. A node with no record
+             * row anywhere beneath it is unreachable garbage, which is what an
+             * interrupted `pruneTree` leaves between its record delete and its
+             * node delete.
+             */
+            /**
+             * Reconstructs each node's full key by walking `parent_id` to the
+             * root.
+             *
+             * Assembling this in JavaScript rather than through a recursive
+             * `json_insert` keeps the prefix order exact: the chain is collected
+             * as rows and ordered by depth, so a node's path is its segments from
+             * the root down. One statement serves a whole page of node keys.
+             */
+            const ancestorPaths = async (nodeKeys: SqlValue[]) => {
+              const paths = new Map<string, string[]>()
+              if (!nodeKeys.length) return paths
+              const rows = await connection.query<{ root: SqlValue; segment: string; depth: bigint | number }>(
+                `WITH RECURSIVE up(root, key_id, parent_id, segment, depth) AS (
+                   SELECT key_id, key_id, parent_id, segment, 0 FROM storage_nodes
+                   WHERE namespace = ? AND key_id IN (${nodeKeys.map(() => "?").join(",")})
+                   UNION ALL
+                   SELECT up.root, p.key_id, p.parent_id, p.segment, up.depth + 1
+                   FROM up JOIN storage_nodes p ON p.namespace = ? AND p.key_id = up.parent_id
+                 )
+                 SELECT root, segment, depth FROM up`,
+                [this.options.namespace, ...nodeKeys, this.options.namespace],
+              )
+              const levels = new Map<string, Array<{ segment: string; depth: number }>>()
+              for (const row of rows) {
+                const root = keyHex(row.root)
+                const chain = levels.get(root) ?? []
+                chain.push({ segment: row.segment, depth: Number(row.depth) })
+                levels.set(root, chain)
+              }
+              for (const [root, chain] of levels)
+                paths.set(
+                  root,
+                  chain.sort((left, right) => right.depth - left.depth).map((level) => level.segment),
+                )
+              return paths
+            }
+            const collectOrphanNodes = async () => {
+              const orphans: Array<{ key: string[]; reason: string }> = []
+              let cursor = keyHexParameter(this.keyEncoding, "")
+              for (;;) {
+                // The orphan test is subtree reachability, not an own-record
+                // lookup: an interior node legitimately holds no record of its
+                // own, and `LIMIT 1` stops at the first live descendant, so a
+                // healthy subtree costs one probe. Pages are bounded by node key.
+                const page = await connection.query<{ key_id: SqlValue }>(
+                  `SELECT n.key_id FROM storage_nodes n
+                   WHERE n.namespace = ? AND n.key_id > ?
+                     AND NOT EXISTS (
+                       WITH RECURSIVE tree(k) AS (
+                         SELECT n.key_id
+                         UNION ALL
+                         SELECT c.key_id FROM tree
+                         JOIN storage_nodes c ON c.namespace = n.namespace AND c.parent_id = tree.k
+                       )
+                       SELECT 1 FROM tree
+                       JOIN storage_records r ON r.namespace = n.namespace AND r.key_id = tree.k
+                       LIMIT 1
+                     )
+                   ORDER BY n.key_id LIMIT 256`,
+                  [this.options.namespace, cursor],
+                )
+                if (!page.length) break
+                const chain = await ancestorPaths(page.map((row) => row.key_id))
+                for (const row of page) {
+                  const path = chain.get(keyHex(row.key_id))
+                  if (!path) continue
+                  orphans.push({ key: path, reason: "node_without_record" })
+                }
+                cursor = keyHexParameter(this.keyEncoding, keyHex(page.at(-1)!.key_id))
+              }
+              return orphans
+            }
             try {
               let batch: StoredRecord<Record<string, unknown>>[] = []
               const verifyBatch = async () => {
@@ -1214,6 +1786,30 @@ export class TransactionalStore {
                 const keys = [...parents.keys()]
                 const values = await tx.readMany([...parents.values()])
                 const present = new Set(keys.filter((_, index) => values[index] !== undefined))
+                // The retired index carried the full path text per level, and the
+                // old check compared that text with the record's key. Format 3
+                // stores no path, so the equivalent check reconstructs it: each
+                // live record's node must exist, and its chain of segments down
+                // from the root must name exactly that record's key. A missing
+                // node row-- or one whose segment or parent link was altered--
+                // fails here, and a live record that traversal cannot reach is
+                // corruption rather than an orphan.
+                const nodeKeys = batch.map(({ key }) => keyColumnValue(this.keyEncoding, key))
+                const indexed = await connection.query<{ key_id: SqlValue }>(
+                  `SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id IN (${nodeKeys.map(() => "?").join(",")})`,
+                  [this.options.namespace, ...nodeKeys],
+                )
+                const presentNodes = new Set(indexed.map((node) => keyHex(node.key_id)))
+                for (const record of batch) {
+                  if (!presentNodes.has(keyID(record.key)))
+                    throw new StorageIntegrityError("Logical storage index integrity verification failed")
+                }
+                const chains = await ancestorPaths(nodeKeys)
+                for (const record of batch) {
+                  const path = chains.get(keyID(record.key))
+                  if (!path || JSON.stringify(path) !== JSON.stringify(record.key))
+                    throw new StorageIntegrityError("Logical storage index integrity verification failed")
+                }
                 for (const record of batch) {
                   records++
                   const meta = metadata(record.key)
@@ -1239,6 +1835,7 @@ export class TransactionalStore {
                 if (batch.length === 256) await verifyBatch()
               }
               if (batch.length) await verifyBatch()
+              for (const orphan of await collectOrphanNodes()) issues.push(orphan)
               recordProgress(work)
               return { backend: this.driver.backend, namespace: this.options.namespace, records, kinds, issues }
             } finally {

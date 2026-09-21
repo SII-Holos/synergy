@@ -5,6 +5,7 @@ import { Storage } from "./storage"
 import { StorageArtifactMigration } from "./artifact-migration"
 import { StorageDropScopeIndex } from "./drop-scope-index"
 import { StorageRecordsOwnerIndex } from "./owner-index"
+import { StorageFormatV3Migration } from "./format-v3-migration"
 import { StorageIncrementalVacuum } from "./incremental-vacuum"
 
 const migrations: Migration[] = [
@@ -79,6 +80,22 @@ const migrations: Migration[] = [
       progress(0, 0, 1)
       await StorageRecordsOwnerIndex.run()
       progress(1, 1, 1)
+    },
+  },
+  {
+    id: StorageFormatV3Migration.id,
+    scope: "global",
+    execution: "maintenance",
+    dependsOn: [StorageIncrementalVacuum.id],
+    startupSafe: () => Storage.current().store.incrementalVacuumEnabled(),
+    description: "Rewrite records, nodes and artifact locators into the format 3 layout",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageFormatV3Migration.run({
+        store: Storage.current().store,
+        progress: (current, total, phase) => progress(current, total, phase),
+      })
     },
   },
 ]

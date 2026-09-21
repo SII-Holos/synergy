@@ -109,10 +109,12 @@ test("retention leaves everything alone while the database is inside its byte bu
   await evidenceSurvives(store, "scope", "ses_under_budget")
 })
 
-// A budget below what the retention window can reach is a configuration
-// problem, not a pruning problem: deleting more cannot converge on it, so a
-// pass must report the condition instead of repeating destructive work forever.
-test("an unreachable budget reports infeasible instead of pruning", async () => {
+// A budget below what the retained evidence needs is a configuration problem,
+// not a pruning problem. `infeasible` now names the narrower condition — a
+// budget that cannot hold even the shortest permitted window — which needs a
+// measured ingress rate to establish; with no measurement the configured window
+// stands and this pass removes nothing.
+test("an unreachable budget prunes nothing and leaves protected evidence intact", async () => {
   await using tmp = await fixture()
   const { store } = tmp
   await writeEvidence(store, "scope", "ses_recent")
@@ -121,7 +123,8 @@ test("an unreachable budget reports infeasible instead of pruning", async () => 
     StorageRetention.run({ retentionMs: RETENTION, maxBytes: 1, liveSessionIDs: [] }),
   )
 
-  expect(report.infeasible).toBe(true)
+  expect(report.infeasible).toBe(false)
+  expect(report.windowReduced).toBe(false)
   expect(report.capped).toBe(true)
   expect(report.pruned).toEqual([])
   expect(report.deletedRecords).toBe(0)

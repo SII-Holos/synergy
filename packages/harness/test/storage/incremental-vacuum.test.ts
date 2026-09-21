@@ -7,6 +7,9 @@ import { TransactionalStore } from "../../src/storage/transactional-store"
 import { Storage } from "../../src/storage/storage"
 import { StorageIncrementalVacuum } from "../../src/storage/incremental-vacuum"
 import { SqliteMaintenance } from "../../src/storage/sqlite-maintenance"
+import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
+
+initializeSqliteEngine()
 
 // Record bodies at or above 512 bytes are stored deflate-compressed when that
 // saves space, and a run of one repeated character compresses to almost

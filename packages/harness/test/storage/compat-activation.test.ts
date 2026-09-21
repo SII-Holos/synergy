@@ -2,9 +2,13 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../support/fixture"
 
-test.each([true, false])(
-  "an eligible cohort activates before history is imported (archived=%s)",
-  async (archived) => {
+test.each([
+  { archived: true, held: false },
+  { archived: false, held: false },
+  { archived: false, held: true },
+])(
+  "an eligible cohort activates before history is imported (%j)",
+  async ({ archived, held }) => {
     await using tmp = await tmpdir()
     const harness = new URL("../../src/", import.meta.url).pathname
     const script = `
@@ -19,6 +23,13 @@ test.each([true, false])(
     import { Scope } from ${JSON.stringify(path.join(harness, "scope/index.ts"))};
     import { ScopeContext } from ${JSON.stringify(path.join(harness, "scope/context.ts"))};
     import { Identifier } from ${JSON.stringify(path.join(harness, "id/id.ts"))};
+    import { SessionPreparingError } from ${JSON.stringify(path.join(harness, "storage/errors.ts"))};
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    if (${held}) MigrationRegistry.register("activation-probe", [{
+      id: "activation-probe", description: "Hold one historical owner behind an explicit release",
+      scope: "session", async up() {}, async upSession() { await gate; }
+    }]);
     const id = Identifier.ascending("session");
     async function write(key, value) {
       const file = path.join(Global.Path.data, ...key) + ".json";
@@ -32,13 +43,25 @@ test.each([true, false])(
     });
     await write(["session_index", id], { sessionID: id, scopeID: "home" });
     for (const [domain, migrations] of MigrationRegistry.list())
-      await write(StoragePath.metaMigrationLogDomain(domain), Object.fromEntries(migrations.filter(m => m.id !== "20260919-settle-orphaned-tool-parts").map(m => [m.id, 1])));
+      await write(StoragePath.metaMigrationLogDomain(domain), Object.fromEntries(migrations.filter(m => !["20260919-settle-orphaned-tool-parts", "activation-probe"].includes(m.id)).map(m => [m.id, 1])));
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Not active");
     if ((await SessionCompat.stats()).pending !== 1) throw new Error("Cold cohort did not remain deferred");
     const created = await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({ title: "new work before history" }) });
     if (!created.id || (await SessionCompat.stats()).pending !== 1) throw new Error("New work waited for old history");
-    await SessionCompat.requireImported(id);
+    let preparing = false;
+    try {
+      await SessionCompat.requireImported(id);
+    } catch (error) {
+      if (!(error instanceof SessionPreparingError)) throw error;
+      preparing = true;
+      const status = await SessionCompat.preparation(id);
+      if (!["preparing", "ready"].includes(status.state)) throw new Error("Preparation stopped unexpectedly");
+    } finally {
+      release();
+    }
+    if (${held} && !preparing) throw new Error("A blocked owner bypassed the foreground preparation budget");
+    await SessionCompat.ensureImported(id);
     if ((await SessionCompat.stats()).imported !== 1) throw new Error("Touch did not converge");
     if ((await handle.store.verify()).issues.length) throw new Error("Imported store is inconsistent");
   `
