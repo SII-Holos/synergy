@@ -1,3 +1,4 @@
+import { SessionCompat } from "@ericsanchezok/synergy-harness/persistence"
 import { cmd } from "../cmd"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Global } from "@ericsanchezok/synergy-harness/global"
@@ -36,6 +37,7 @@ export const DataStorageCommand = cmd({
                 phase: handle.manifest.phase,
                 storeID: handle.manifest.storeID,
                 artifactStoreID: handle.manifest.artifactStoreID,
+                upgrade: await SessionCompat.status(),
                 recoveryRecords: recovery.length,
                 pendingEvents: await handle.store.pendingEventCount(),
               },
@@ -43,6 +45,34 @@ export const DataStorageCommand = cmd({
               2,
             ),
           )
+        },
+      )
+      .command(
+        "history [action] [session]",
+        "inspect or pause background history preparation, or prepare one Session offline",
+        (yargs) =>
+          yargs
+            .positional("action", {
+              type: "string",
+              choices: ["status", "pause", "resume", "prepare", "retry"],
+              default: "status",
+            })
+            .positional("session", { type: "string", describe: "Session ID required by prepare or retry" }),
+        async (args) => {
+          const action = args.action ?? "status"
+          if (action === "prepare" || action === "retry") {
+            if (!args.session) throw new Error("A Session ID is required")
+            await using handle = await StorageMaintenance.open()
+            await SessionCompat.prepare(args.session, action === "retry")
+            await SessionCompat.drain()
+            const result = await SessionCompat.preparation(args.session)
+            console.log(JSON.stringify(result, null, 2))
+            if (result.state !== "ready") process.exitCode = 1
+            return
+          }
+          await using handle = await StorageMaintenance.open({ readonly: true })
+          if (action === "pause" || action === "resume") await SessionCompat.control(action)
+          console.log(JSON.stringify(await SessionCompat.status(), null, 2))
         },
       )
       .command(

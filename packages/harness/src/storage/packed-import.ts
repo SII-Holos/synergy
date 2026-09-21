@@ -56,6 +56,7 @@ export class PackedLegacyImporter {
       store: TransactionalStore
       progress?: (value: ImportProgress) => void
       deferSessions?: boolean
+      excludedRoots?: Array<"snapshot">
     },
   ) {}
 
@@ -89,7 +90,7 @@ export class PackedLegacyImporter {
       largeFiles = 0,
       portableBytes = 0
     progress?.({ stage: "scan", current: 0, total: 0, bytes: 0 })
-    for await (const entry of legacySources(dataRoot)) {
+    for await (const entry of legacySources(dataRoot, this.options.excludedRoots)) {
       files++
       bytes += entry.size
       metadataBytes +=
@@ -140,6 +141,7 @@ export class PackedLegacyImporter {
     const backup = new PackedBackup({
       dataRoot,
       backupRoot,
+      excludedRoots: this.options.excludedRoots,
       capacity: (bytes) => this.capacity(state.reserveBytes + bytes),
       progress: (value) =>
         progress?.({ stage: "backup", current: value.files, total: state.files, bytes: value.bytes }),

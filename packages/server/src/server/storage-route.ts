@@ -10,6 +10,15 @@ import { SessionCompat } from "@ericsanchezok/synergy-harness/persistence"
 const StorageUpgradeStatus = z
   .object({
     ready: z.literal(true),
+    historyReady: z.boolean(),
+    paused: z.boolean(),
+    pauseReason: z.enum(["user", "foreground", "disk", "wal"]).optional(),
+    backup: z.object({
+      complete: z.boolean(),
+      attention: z.boolean().optional(),
+      sealed: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    }),
     pending: z.number().int().nonnegative(),
     partial: z.number().int().nonnegative(),
     imported: z.number().int().nonnegative(),
@@ -17,6 +26,17 @@ const StorageUpgradeStatus = z
     total: z.number().int().nonnegative(),
   })
   .meta({ ref: "StorageUpgradeStatus" })
+
+const StorageSessionPreparation = z
+  .object({
+    sessionID: z.string(),
+    state: z.enum(["ready", "pending", "preparing", "blocked", "failed"]),
+    phase: z.enum(["backup", "import", "migrate", "verify", "publish", "complete"]).optional(),
+    files: z.number().int().nonnegative(),
+    bytes: z.number().int().nonnegative(),
+    error: z.object({ category: z.enum(["retryable", "integrity", "data"]), message: z.string() }).optional(),
+  })
+  .meta({ ref: "StorageSessionPreparation" })
 
 const StorageUpgradeCatalog = z
   .object({
@@ -180,7 +200,7 @@ export const GlobalStorageRoute = new Hono()
         },
       },
     }),
-    async (c) => c.json({ ready: true as const, ...(await SessionCompat.stats()) }),
+    async (c) => c.json(await SessionCompat.status()),
   )
   .get(
     "/upgrade/sessions",
@@ -203,6 +223,72 @@ export const GlobalStorageRoute = new Hono()
       }),
     ),
     async (c) => c.json(await SessionCompat.catalogPage(c.req.valid("query"))),
+  )
+  .post(
+    "/upgrade/control",
+    describeRoute({
+      summary: "Pause or resume background history preparation",
+      operationId: "storage.controlUpgrade",
+      responses: {
+        200: {
+          description: "Updated preparation status",
+          content: { "application/json": { schema: resolver(StorageUpgradeStatus) } },
+        },
+      },
+    }),
+    validator("json", z.object({ action: z.enum(["pause", "resume"]) }).strict()),
+    async (c) => {
+      await SessionCompat.control(c.req.valid("json").action)
+      return c.json(await SessionCompat.status())
+    },
+  )
+  .get(
+    "/upgrade/sessions/:sessionID",
+    describeRoute({
+      summary: "Get historical Session preparation status",
+      operationId: "storage.upgradeSession",
+      responses: {
+        200: {
+          description: "Preparation status without starting work",
+          content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+        },
+      },
+    }),
+    validator("param", z.object({ sessionID: z.string().min(1) })),
+    async (c) => c.json(await SessionCompat.preparation(c.req.valid("param").sessionID)),
+  )
+  .post(
+    "/upgrade/sessions/:sessionID/prepare",
+    describeRoute({
+      summary: "Prioritize historical Session preparation",
+      description: "Returns immediately. Poll status; leaving the page does not cancel durable preparation.",
+      operationId: "storage.prepareSession",
+      responses: {
+        200: {
+          description: "Current preparation status",
+          content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+        },
+      },
+    }),
+    validator("param", z.object({ sessionID: z.string().min(1) })),
+    async (c) => c.json(await SessionCompat.prepare(c.req.valid("param").sessionID)),
+  )
+  .post(
+    "/upgrade/sessions/:sessionID/retry",
+    describeRoute({
+      summary: "Retry interrupted historical Session preparation",
+      description:
+        "Retries from durable checkpoints. Quarantined data requires repair; this operation never discards or overwrites a recovery set.",
+      operationId: "storage.retrySession",
+      responses: {
+        200: {
+          description: "Current preparation status",
+          content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+        },
+      },
+    }),
+    validator("param", z.object({ sessionID: z.string().min(1) })),
+    async (c) => c.json(await SessionCompat.prepare(c.req.valid("param").sessionID, true)),
   )
   .get(
     "/snapshot",

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import { UpgradeWork } from "../storage/upgrade-work"
 import { Storage } from "../storage/storage"
 import type { RecordQuery } from "../storage/transactional-store"
 
@@ -19,7 +20,10 @@ export namespace SessionMigrationTarget {
       ? Promise.resolve(owner.scopeID === scopeID ? [owner.sessionID] : [])
       : Storage.scan(["sessions", scopeID])
   }
-  export function records<T>(query: RecordQuery) {
-    return Storage.records<T>({ ...query, ...target.getStore() })
+  export async function* records<T>(query: RecordQuery) {
+    for await (const record of Storage.records<T>({ ...query, ...target.getStore() })) {
+      await UpgradeWork.checkpoint()
+      yield record
+    }
   }
 }

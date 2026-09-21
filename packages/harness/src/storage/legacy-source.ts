@@ -94,6 +94,7 @@ export async function* legacyRecords(dataRoot: string, visit?: () => void): Asyn
 export async function* legacyFiles(
   root: string,
   segments: string[] = [],
+  excludeRoots: readonly string[] = [],
 ): AsyncGenerator<{ relative: string; size: number; linkTarget?: string }> {
   const directory = await fs.readdir(path.join(root, ...segments), { withFileTypes: true })
   directory.sort((a, b) => {
@@ -103,7 +104,7 @@ export async function* legacyFiles(
   })
   for (const entry of directory) {
     if (entry.name === ".locks" || entry.name.startsWith(".tmp-") || entry.name.endsWith(".tmp")) continue
-    if (segments.length === 0 && ["storage", "agent-artifacts"].includes(entry.name)) continue
+    if (segments.length === 0 && ["storage", "agent-artifacts", ...excludeRoots].includes(entry.name)) continue
     const child = [...segments, entry.name]
     if (entry.isSymbolicLink()) {
       const relative = child.join("/")
@@ -113,7 +114,7 @@ export async function* legacyFiles(
       yield { relative, size: Buffer.byteLength(linkTarget), linkTarget }
       continue
     }
-    if (entry.isDirectory()) yield* legacyFiles(root, child)
+    if (entry.isDirectory()) yield* legacyFiles(root, child, excludeRoots)
     else if (entry.isFile()) {
       const stat = await fs.stat(path.join(root, ...child))
       yield { relative: child.join("/"), size: stat.size }
@@ -123,8 +124,9 @@ export async function* legacyFiles(
 
 export async function* legacySources(
   dataRoot: string,
+  excludeRoots: readonly string[] = [],
 ): AsyncGenerator<{ relative: string; size: number; linkTarget?: string }> {
-  yield* legacyFiles(dataRoot)
+  yield* legacyFiles(dataRoot, [], excludeRoots)
   const config = path.join(dataRoot, "..", "config")
   try {
     for await (const entry of legacyFiles(config)) yield { ...entry, relative: `@home/config/${entry.relative}` }

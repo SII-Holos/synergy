@@ -2,10 +2,12 @@ import { createHash } from "node:crypto"
 import { createReadStream } from "node:fs"
 import fs from "node:fs/promises"
 import { StorageIntegrityError } from "./errors"
+import { UpgradeWork } from "./upgrade-work"
 
 export async function fileDigest(filename: string, expectedSize: number): Promise<string> {
   if (!Number.isSafeInteger(expectedSize) || expectedSize < 0)
     throw new StorageIntegrityError("Invalid expected file size")
+  UpgradeWork.signal()?.throwIfAborted()
   const digest = createHash("sha256")
   let size = 0
   if (expectedSize <= 2 * 1024 * 1024) {
@@ -16,7 +18,7 @@ export async function fileDigest(filename: string, expectedSize: number): Promis
     size = bytes.byteLength
     digest.update(new Uint8Array(bytes))
   } else {
-    for await (const bytes of createReadStream(filename)) {
+    for await (const bytes of createReadStream(filename, { signal: UpgradeWork.signal() })) {
       size += bytes.length
       if (size > expectedSize) throw new StorageIntegrityError("File size changed during integrity verification")
       digest.update(bytes)

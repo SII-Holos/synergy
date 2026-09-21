@@ -22,7 +22,7 @@ export function createUpgradeStatusController(options: {
       const status = await options.load()
       if (disposed) return
       options.publish(status)
-      if (!status || !(status.pending + status.partial)) return
+      if (!status || (!(status.pending + status.partial) && status.backup.complete && !status.backup.attention)) return
     } catch {
       if (disposed) return
     }

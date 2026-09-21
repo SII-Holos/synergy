@@ -97,4 +97,10 @@ When a recovery domain permits skipping malformed bodies, page over indexed iden
 
 Replay committed journal evidence in bounded reads at a captured revision. Test order, gaps and corruption across batch boundaries; reducing read transactions must preserve per-event validation and must never replay tools or provider calls.
 
-For resumable multi-table rewrites, test capacity preflight with metadata-heavy fixtures at the initial phase and an intermediate phase. Count every table still ahead of the cursor, not only the table currently being copied.
+## Historical preparation verification
+
+Use a released writer fixture and its actual completion ledger when changing migration eligibility; deriving the fixture ledger from the current registry hides newly introduced barriers. Verify the qualified dependency graph before executing work. Keep unpublished owners behind the central SQL admission fence, and publish derived indexes with the admission marker in one transaction. Test source drift, publication rollback, process reopen, pinned-pack garbage collection and copied-backup recovery without the original Home. A Git fixture must exercise real absolute alternates and empty repository directories.
+
+Keep foreground preparation distinct from background controls. Never pause a job while it holds a lease needed by foreground work: cancel through its durable checkpoint and release the lease before retrying. Report runtime readiness, historical convergence and independent backup completeness independently. Full VACUUM belongs to an explicit maintenance window; necessary long engine operations must expose their finite budget, with duplicate announcements unable to renew it.
+
+For resumable multi-table rewrites, test capacity preflight with metadata-heavy fixtures at the initial phase and an intermediate phase. Count every table still ahead of the cursor, not only the table currently being copied. When combining storage migrations, verify both released-writer startup admission and deferred maintenance dependencies: a format rewrite must not accidentally stage all historical owners or run before its prerequisite conversion.

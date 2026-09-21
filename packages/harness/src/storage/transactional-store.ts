@@ -2,6 +2,7 @@ import type { StorageEntry } from "./portable"
 import { createHash, randomUUID } from "node:crypto"
 import {
   NotFoundError,
+  SessionPreparingError,
   StorageClosedError,
   StorageConflictError,
   StorageIntegrityError,
@@ -305,6 +306,38 @@ const schemaFor = (backend: StorageBackend) => [
 ]
 
 export class StoreTransaction {
+  private publishedOnly = false
+
+  restrictToPublishedOwners() {
+    this.publishedOnly = this.admission.pending
+  }
+
+  private visibility(alias = "storage_records") {
+    return this.publishedOnly
+      ? ` AND NOT EXISTS (SELECT 1 FROM storage_records pending WHERE pending.namespace = ${alias}.namespace AND pending.kind = 'compat_pending' AND pending.order_key = ${alias}.session_id AND pending.body IS NOT NULL)`
+      : ""
+  }
+
+  private async assertAdmitted(keys: string[][], tree = false) {
+    if (!this.publishedOnly) return
+    const owners = [...new Set(keys.filter((key) => key[0] === "sessions" && key.length >= 3).map((key) => key[2]))]
+    const broad = tree && keys.some((key) => !key.length || (key[0] === "sessions" && key.length < 3))
+    if (!owners.length && !broad) return
+    for (let offset = 0; broad || offset < owners.length; offset += 128) {
+      const batch = owners.slice(offset, offset + 128)
+      const [pending] = await this.connection.query(
+        `SELECT order_key FROM storage_records WHERE namespace = ? AND kind = 'compat_pending' AND body IS NOT NULL${broad ? "" : ` AND order_key IN (${batch.map(() => "?").join(",")})`} LIMIT 1`,
+        [this.namespace, ...(broad ? [] : batch)],
+      )
+      if (pending)
+        throw new SessionPreparingError({
+          sessionID: String(pending.order_key),
+          message: "Historical Session preparation must finish before reading or changing its records",
+        })
+      if (broad) break
+    }
+  }
+
   private active = true
   private failure?: unknown
   private readonly connection: SqlConnection
@@ -328,6 +361,7 @@ export class StoreTransaction {
     private readonly keys: KeyEncoding = "bytes",
     private readonly backend: StorageBackend = "sqlite",
     private readonly artifactPack: ArtifactPackLayout = keys === "bytes" ? "generated" : "physical",
+    private readonly admission = { pending: true },
   ) {
     this.connection = {
       query: async <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[]) => {
@@ -371,6 +405,7 @@ export class StoreTransaction {
 
   private async row(key: string[]) {
     this.check()
+    await this.assertAdmitted([key])
     const [row] = await this.connection.query<RecordRow>(
       "SELECT key_text, body, revision FROM storage_records WHERE namespace = ? AND key_id = ?",
       [this.namespace, keyParameter(this.keys, key)],
@@ -391,6 +426,7 @@ export class StoreTransaction {
 
   async readMany<T = unknown>(keys: string[][]): Promise<(T | undefined)[]> {
     this.check()
+    await this.assertAdmitted(keys)
     const result: (T | undefined)[] = []
     for (let offset = 0; offset < keys.length; offset += 128) {
       const batch = keys.slice(offset, offset + 128)
@@ -411,12 +447,16 @@ export class StoreTransaction {
 
   async write<T>(key: string[], value: T, options: { expectedRevision?: bigint } = {}): Promise<void> {
     this.check(true)
+    await this.assertAdmitted([key])
+    if (key[0] === "compat_pending") this.admission.pending = true
     if (key[0] === "sessions" && key.length >= 4) await this.assertNotDeleted([...key.slice(0, 3), "info"])
     await this.put(key, value, options)
   }
 
   async writeMany(entries: Array<{ key: string[]; value: unknown }>): Promise<void> {
     this.check(true)
+    await this.assertAdmitted(entries.map((entry) => entry.key))
+    if (entries.some((entry) => entry.key[0] === "compat_pending")) this.admission.pending = true
     const unique = new Set<string>()
     const prepared = entries.map(({ key, value }) => {
       if (!key.length) throw new StorageIntegrityError("Cannot write the storage root")
@@ -580,6 +620,7 @@ export class StoreTransaction {
 
   async remove(key: string[]): Promise<void> {
     this.check(true)
+    await this.assertAdmitted([key])
     await this.connection.query(
       "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL",
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
@@ -588,12 +629,26 @@ export class StoreTransaction {
     await this.cleanDanglingNodes(key)
   }
 
+  async removeMany(keys: string[][]): Promise<void> {
+    this.check(true)
+    await this.assertAdmitted(keys)
+    for (let offset = 0; offset < keys.length; offset += 128) {
+      const batch = keys.slice(offset, offset + 128).map(keyID)
+      await this.connection.query(
+        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
+        [Date.now(), this.namespace, ...batch],
+      )
+    }
+  }
+
   // SQLite must drive recursion and record lookups from the frontier; otherwise
   // even an empty prefix can scan every record in the namespace.
   async scan(prefix: string[]): Promise<string[]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { child: string }>(
-      "SELECT child.segment AS child FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = ? AND EXISTS (WITH RECURSIVE tree(key_id) AS (SELECT child.key_id UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT 1 FROM tree CROSS JOIN storage_records record WHERE record.key_id = tree.key_id AND record.namespace = ? AND record.body IS NOT NULL LIMIT 1)",
+      "SELECT child.segment AS child FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = ? AND EXISTS (WITH RECURSIVE tree(key_id) AS (SELECT child.key_id UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT 1 FROM tree CROSS JOIN storage_records record WHERE record.key_id = tree.key_id AND record.namespace = ? AND record.body IS NOT NULL" +
+        this.visibility("record") +
+        " LIMIT 1)",
       [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => row.child).sort()
@@ -602,7 +657,8 @@ export class StoreTransaction {
   async list(prefix: string[]): Promise<string[][]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { key_text: string }>(
-      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT record.key_text FROM tree CROSS JOIN storage_records record WHERE record.key_id = tree.key_id AND record.namespace = ? AND record.body IS NOT NULL",
+      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND parent_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT record.key_text FROM tree CROSS JOIN storage_records record WHERE record.key_id = tree.key_id AND record.namespace = ? AND record.body IS NOT NULL" +
+        this.visibility("record"),
       [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => JSON.parse(row.key_text) as string[]).sort()
@@ -610,6 +666,7 @@ export class StoreTransaction {
 
   async removeTree(prefix: string[]): Promise<void> {
     this.check(true)
+    await this.assertAdmitted([prefix], true)
     let artifactCondition = "namespace = ?"
     const artifactValues: SqlValue[] = [this.namespace]
     if (prefix.length) {
@@ -722,6 +779,7 @@ export class StoreTransaction {
    */
   async pruneTree(prefix: string[]): Promise<number> {
     this.check(true)
+    await this.assertAdmitted([prefix], true)
     if (!prefix.length) throw new StorageIntegrityError("Cannot prune the storage root")
     const text = JSON.stringify(prefix)
     const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
@@ -809,7 +867,7 @@ export class StoreTransaction {
     values.push(limit)
     const direction = input.descending ? "DESC" : "ASC"
     return this.connection.query<Row>(
-      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")} ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`,
+      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")}${this.visibility()} ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`,
       values,
     )
   }
@@ -819,7 +877,9 @@ export class StoreTransaction {
     for (;;) {
       this.check()
       const page = await this.connection.query<RecordRow & { key_id: SqlValue }>(
-        "SELECT r.key_id, r.key_text, r.body, r.revision FROM storage_records r WHERE r.namespace = ? AND r.body IS NOT NULL AND r.key_id > ? ORDER BY r.key_id LIMIT 256",
+        "SELECT r.key_id, r.key_text, r.body, r.revision FROM storage_records r WHERE r.namespace = ? AND r.body IS NOT NULL AND r.key_id > ?" +
+          this.visibility("r") +
+          " ORDER BY r.key_id LIMIT 256",
         [this.namespace, keyHexParameter(this.keys, after)],
       )
       if (!page.length) break
@@ -854,6 +914,7 @@ export class StoreTransaction {
   }
 
   async *exportEntries(): AsyncGenerator<StorageEntry> {
+    await this.assertAdmitted([[]], true)
     for await (const record of this.records())
       yield { type: "record", key: record.key, value: record.value, revision: record.revision.toString() }
     for await (const artifact of this.artifacts()) yield { type: "artifact", ...artifact }
@@ -895,6 +956,7 @@ export class StoreTransaction {
 
   async artifact(key: string[]): Promise<ArtifactLocation> {
     this.check()
+    await this.assertAdmitted([key])
     keyID(key)
     const [row] = await this.connection.query(
       "SELECT location FROM storage_artifacts WHERE namespace = ? AND key_text = ?",
@@ -906,6 +968,7 @@ export class StoreTransaction {
 
   async writeArtifacts(entries: Array<{ key: string[]; location: ArtifactLocation }>) {
     this.check(true)
+    await this.assertAdmitted(entries.map((entry) => entry.key))
     // The pack column is an engine-derived one only in the generated layout, and
     // a writer must not name such a column. Which layout this namespace has is
     // read from its artifact table rather than assumed from the backend or the
@@ -978,6 +1041,7 @@ export class StoreTransaction {
 
   async *artifacts(): AsyncGenerator<{ key: string[]; location: ArtifactLocation }> {
     this.check()
+    await this.assertAdmitted([[]], true)
     let after = ""
     for (;;) {
       const rows = await this.connection.query(
@@ -1078,6 +1142,10 @@ export class StoreTransaction {
 }
 
 export class TransactionalStore {
+  private readonly admission = { pending: true }
+  hasUnpublishedOwners() {
+    return this.admission.pending
+  }
   private readonly writes = new StorageQueue("store.writes")
   private readonly owner = randomUUID()
   private closing?: Promise<void>
@@ -1165,6 +1233,11 @@ export class TransactionalStore {
         },
         { readOnly: options.readonly },
       )
+      const [pending] = await driver.query(
+        "SELECT 1 FROM storage_records WHERE namespace = ? AND kind = 'compat_pending' AND body IS NOT NULL LIMIT 1",
+        [options.namespace],
+      )
+      store.admission.pending = Boolean(pending)
       return store
     } catch (error) {
       await driver.close()
@@ -1197,6 +1270,7 @@ export class TransactionalStore {
           this.keyEncoding,
           this.driver.backend,
           this.artifactPack,
+          this.admission,
         )
         try {
           const result = await body(snapshot)
@@ -1244,6 +1318,7 @@ export class TransactionalStore {
               this.keyEncoding,
               this.driver.backend,
               this.artifactPack,
+              this.admission,
             )
             try {
               const result = await body(tx)
@@ -1438,7 +1513,7 @@ export class TransactionalStore {
     if (this.driver.backend !== "sqlite") return []
     return measureStorageOperation("evidenceOwners", "storage_records", async () => {
       const rows = await this.driver.query(
-        `SELECT scope_id, session_id, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL GROUP BY scope_id, session_id`,
+        `SELECT scope_id, session_id, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL AND NOT EXISTS (SELECT 1 FROM storage_records pending WHERE pending.namespace = storage_records.namespace AND pending.kind = 'compat_pending' AND pending.order_key = storage_records.session_id AND pending.body IS NOT NULL) GROUP BY scope_id, session_id`,
         [this.options.namespace],
       )
       const operations = await this.driver.query(
@@ -1493,6 +1568,19 @@ export class TransactionalStore {
    * consuming a slot would let a long maintenance pass hold every waiting
    * caller past its deadline while the queue still reports itself as free.
    */
+  async walPressure() {
+    this.check()
+    const driver = this.driver
+    if (!(driver instanceof SqliteDriver)) return 0
+    return this.writes.run(() => driver.walPressure())
+  }
+
+  async incrementalVacuumEnabled() {
+    if (this.driver.backend !== "sqlite") return true
+    const [row] = await this.driver.query("PRAGMA auto_vacuum")
+    return Number(row?.auto_vacuum) === 2
+  }
+
   async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
@@ -1583,6 +1671,7 @@ export class TransactionalStore {
               this.keyEncoding,
               this.driver.backend,
               this.artifactPack,
+              this.admission,
             )
             const issues: Array<{ key: string[]; reason: string }> = []
             const kinds: Record<string, number> = {}

@@ -294,7 +294,10 @@ export namespace RuntimeHandle {
         residentStarted = true
         await services.resident.start(config)
       }
-      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
+      if (await SessionCompat.isActive())
+        stopCompat = SessionCompat.startBackgroundMigrator({
+          busy: () => SessionManager.runtimeStats().runningCount > 0,
+        })
       return { server, migration, config, shutdownTimeoutMs, closeAdmission, close, [Symbol.asyncDispose]: close }
     } catch (error) {
       try {

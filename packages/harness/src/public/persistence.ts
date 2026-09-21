@@ -5,3 +5,5 @@ export { TransactionalStore, StoreTransaction } from "../storage/transactional-s
 export type { StoreOptions, TransactionOptions, StoredRecord, RecordQuery } from "../storage/transactional-store"
 export { StorageBootstrap } from "../storage/bootstrap"
 export { SessionCompat } from "../session/compat-import"
+
+export { SessionPreparingError } from "../storage/errors"

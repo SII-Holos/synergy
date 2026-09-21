@@ -1,3 +1,4 @@
+import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
@@ -145,7 +146,9 @@ export default function Page() {
       <ResourceOpenProvider>
         <PromptProvider>
           <BuiltinWorkbenchPanelsProvider>
-            <SessionPageContent />
+            <SessionPreparation>
+              <SessionPageContent />
+            </SessionPreparation>
           </BuiltinWorkbenchPanelsProvider>
         </PromptProvider>
       </ResourceOpenProvider>

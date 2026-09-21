@@ -407,6 +407,15 @@ export class SqliteDriver implements SqlDriver {
     })
   }
 
+  async walPressure() {
+    return this.writerQueue.run(async () => {
+      const { rows } = await this.request({ action: "query", statement: "PRAGMA wal_checkpoint(PASSIVE)" })
+      const { rows: sizes } = await this.request({ action: "query", statement: "PRAGMA page_size" })
+      const pending = Math.max(0, Number(rows[0]?.log ?? 0) - Number(rows[0]?.checkpointed ?? 0))
+      return pending * Number(sizes[0]?.page_size ?? 4096)
+    })
+  }
+
   async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
     // Converting a store to incremental auto-vacuum rewrites every page with one
     // `VACUUM`, which cannot be split, so `statementBudget` bounds it by the

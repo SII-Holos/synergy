@@ -40,6 +40,7 @@ import {
   type RootNavSectionKey,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
+import { createCompletionNoticeClearer } from "./completion-notice"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import { planPrefetchApply } from "./prefetch-apply"
@@ -1204,21 +1205,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
     }
 
-    async function clearCompletionNotice(directory: string, sessionID: string) {
-      const entry = navEntryForSession(directory, sessionID)
-      if (!entry?.completionNotice.unread) return
-      setNavEntryCompletionNotice(directory, sessionID, { unread: false, unreadCount: 0 })
-      try {
-        await globalSdk.client.session.update({
+    const clearCompletionNotice = createCompletionNoticeClearer({
+      server: () => server.url,
+      read: (directory, sessionID) => navEntryForSession(directory, sessionID)?.completionNotice,
+      write: setNavEntryCompletionNotice,
+      ready: async (sessionID) =>
+        (await globalSdk.client.storage.upgradeSession({ sessionID }, { throwOnError: true })).data?.state === "ready",
+      update: (directory, sessionID) =>
+        globalSdk.client.session.update({
           ...scopeRequest(directory),
           sessionID,
           completionNotice: { unread: false },
-        })
-      } catch (err) {
-        console.warn("Failed to clear session completion notice", err)
-        if (entry) setNavEntryCompletionNotice(directory, sessionID, entry.completionNotice)
-      }
-    }
+        }),
+      failed: (error) => console.warn("Failed to clear session completion notice", error),
+    })
 
     async function archiveSession(session: Session) {
       const scopeKey = scopeKeyForSession(session)

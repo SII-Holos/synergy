@@ -46,6 +46,11 @@ export const MigrationCommand = cmd({
               describe: "migration domain to run (default: all)",
               type: "string",
             })
+            .option("maintenance", {
+              describe: "include optional blocking database maintenance; requires an idle maintenance window",
+              type: "boolean",
+              default: false,
+            })
             .option("dry-run", {
               describe: "show what would run without executing",
               type: "boolean",
@@ -54,6 +59,7 @@ export const MigrationCommand = cmd({
         async (args) => {
           await runMigrations({
             dryRun: args.dryRun as boolean,
+            maintenance: args.maintenance as boolean,
             targetDomain: args.domain as string | undefined,
             output: "interactive",
           })
