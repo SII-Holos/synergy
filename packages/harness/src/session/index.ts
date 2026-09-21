@@ -759,10 +759,18 @@ export namespace Session {
     })
   })
 
-  export async function updateWorkspace(sessionID: string, workspace: import("./types").Workspace): Promise<Info> {
-    return update(sessionID, (draft) => {
-      draft.workspace = workspace
-    })
+  export async function updateWorkspace(
+    sessionID: string,
+    workspace: import("./types").Workspace,
+    options?: { preserveActivityAt?: boolean },
+  ): Promise<Info> {
+    return updateInternal(
+      sessionID,
+      (draft) => {
+        draft.workspace = workspace
+      },
+      options,
+    )
   }
 
   export async function updateControlProfile(
@@ -1051,7 +1059,7 @@ export namespace Session {
       const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         before = structuredClone(draft)
         editor(draft)
-        draft.time.updated = Date.now()
+        if (!options?.preserveActivityAt) draft.time.updated = Date.now()
       })
       if (!before) throw new Error(`Session ${id} was not available before mutation`)
 
@@ -1063,8 +1071,14 @@ export namespace Session {
       if (result.parentID) {
         await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
       }
-      const shouldPreserveActivityAt =
-        options?.preserveActivityAt ?? (before.pendingReply === true && result.pendingReply === true)
+      // Freeze nav activity while the turn is unfinished, in either sense: an
+      // in-flight turn (the runtime still owns it) or one that stopped and is
+      // waiting for the user. Ordered writes to a running session's title must
+      // not churn the sidebar ordering, and a paused session's activity
+      // timestamp is the moment it stopped, not the moment its latch was last
+      // re-described.
+      const unfinished = SessionManager.isRunning(id) || (!!before.paused && !!result.paused)
+      const shouldPreserveActivityAt = options?.preserveActivityAt ?? unfinished
       const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
         preserveActivityAt: shouldPreserveActivityAt,
       })

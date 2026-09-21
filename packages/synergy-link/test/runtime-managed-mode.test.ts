@@ -68,32 +68,39 @@ describe("synergy-link managed mode", () => {
       return await originalLogin()
     }
 
-    const startPromise = runtime.start()
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    let startupFailure: { cause: unknown } | undefined
+    const startPromise = runtime.start().catch((cause: unknown) => {
+      startupFailure = { cause }
+    })
+    try {
+      const deadline = performance.now() + 10_000
+      while (!startupFailure && runtime.state?.service.runtimeStatus !== "running" && performance.now() < deadline) {
+        await Bun.sleep(10)
+      }
+      if (startupFailure) throw startupFailure.cause
 
-    expect(loginCalled).toBe(false)
-    expect(runtime.state?.runtimeMode).toBe("managed")
-    expect(runtime.state?.connectionStatus).toBe("disconnected")
-    expect(runtime.state?.service.runtimeStatus).toBe("running")
-    expect(runtime.state?.ownerRegistry.local.activeOwnerID).toBe("synergy:test")
-    expect(runtime.state?.service.startedAt).toBeGreaterThan(staleStartedAt + 50_000)
+      expect(loginCalled).toBe(false)
+      expect(runtime.state?.runtimeMode).toBe("managed")
+      expect(runtime.state?.connectionStatus).toBe("disconnected")
+      expect(runtime.state?.service.runtimeStatus).toBe("running")
+      expect(runtime.state?.ownerRegistry.local.activeOwnerID).toBe("synergy:test")
+      expect(runtime.state?.service.startedAt).toBeGreaterThan(staleStartedAt + 50_000)
 
-    process.env.SYNERGY_TEST_HOME = synergyHome
-    const status = await runtime.getStatusPayload()
-    expect(status.mode).toBe("managed")
-    expect(status.auth.loggedIn).toBe(false)
-    expect(status.auth.source).toBe(null)
-    expect(status.ownership.local.owned).toBe(true)
+      process.env.SYNERGY_TEST_HOME = synergyHome
+      const status = await runtime.getStatusPayload()
+      expect(status.mode).toBe("managed")
+      expect(status.auth.loggedIn).toBe(false)
+      expect(status.auth.source).toBe(null)
+      expect(status.ownership.local.owned).toBe(true)
 
-    const reconnect = await runtime.reconnect()
-    expect(reconnect.requested).toBe(false)
-    expect(reconnect.reason).toBe("Holos is disabled in managed mode")
-
-    await runtime.stopServerProcess()
-    await Promise.race([
-      startPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("runtime.start did not settle after stop")), 2_000)),
-    ])
+      const reconnect = await runtime.reconnect()
+      expect(reconnect.requested).toBe(false)
+      expect(reconnect.reason).toBe("Holos is disabled in managed mode")
+    } finally {
+      await runtime.stopServerProcess()
+      await startPromise
+      if (startupFailure) throw startupFailure.cause
+    }
   })
 
   test("startup recovers managed state without an active owner back to standalone", async () => {

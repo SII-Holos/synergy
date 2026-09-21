@@ -83,12 +83,8 @@ import type {
   BlueprintLoopGetResponses,
   BlueprintLoopListErrors,
   BlueprintLoopListResponses,
-  BlueprintLoopResumeErrors,
-  BlueprintLoopResumeResponses,
   BlueprintLoopStartErrors,
   BlueprintLoopStartResponses,
-  BlueprintLoopWaitErrors,
-  BlueprintLoopWaitResponses,
   BossSessionOpenErrors,
   BossSessionOpenResponses,
   BossSessionTreeErrors,
@@ -299,8 +295,6 @@ import type {
   LatticeRunGetResponses,
   LatticeRunListErrors,
   LatticeRunListResponses,
-  LatticeRunPauseErrors,
-  LatticeRunPauseResponses,
   LatticeRunResumeErrors,
   LatticeRunResumeResponses,
   LatticeSessionGetRunErrors,
@@ -593,6 +587,8 @@ import type {
   SecretsUpdatePolicyErrors,
   SecretsUpdatePolicyResponses,
   ServerUpdateStartInput,
+  SessionAbandonErrors,
+  SessionAbandonResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionAgendaErrors,
@@ -603,6 +599,8 @@ import type {
   SessionChildrenResponses,
   SessionCommandErrors,
   SessionCommandResponses,
+  SessionContinueErrors,
+  SessionContinueResponses,
   SessionCreateErrors,
   SessionCreateResponses,
   SessionDagErrors,
@@ -687,6 +685,17 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StorageControlUpgradeErrors,
+  StorageControlUpgradeResponses,
+  StorageMaintenanceStatusErrors,
+  StorageMaintenanceStatusResponses,
+  StoragePrepareSessionErrors,
+  StoragePrepareSessionResponses,
+  StorageReclaimControlErrors,
+  StorageReclaimControlInput,
+  StorageReclaimControlResponses,
+  StorageRetrySessionErrors,
+  StorageRetrySessionResponses,
   StorageSnapshotCleanErrors,
   StorageSnapshotCleanInput,
   StorageSnapshotCleanResponses,
@@ -700,6 +709,8 @@ import type {
   StorageSnapshotUsageResponses,
   StorageUpgradeCatalogErrors,
   StorageUpgradeCatalogResponses,
+  StorageUpgradeSessionErrors,
+  StorageUpgradeSessionResponses,
   StorageUpgradeStatusErrors,
   StorageUpgradeStatusResponses,
   SynergyLinkTargetCreateErrors,
@@ -2630,9 +2641,73 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Continue a paused session
+   *
+   * Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.
+   */
+  public continue<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionContinueResponses, SessionContinueErrors, ThrowOnError>({
+      url: "/session/{sessionID}/continue",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Abandon a stopped session
+   *
+   * Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.
+   */
+  public abandon<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionAbandonResponses, SessionAbandonErrors, ThrowOnError>({
+      url: "/session/{sessionID}/abandon",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Abort session
    *
-   * Abort an active session and stop any ongoing AI processing or command execution.
+   * Stop an active session's ongoing AI processing or command execution. A user stop leaves the session paused and awaiting an explicit continue or abandon, so the work is not restarted behind the user's back.
    */
   public abort<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2696,7 +2771,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.
+   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3849,7 +3924,7 @@ export class Global extends HeyApiClient {
   /**
    * Get global activity
    *
-   * Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, recovering) and in-flight loop background jobs both count; a session still queued for recovery after a restart counts once it begins executing. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
+   * Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, paused) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.
    */
   public activity<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalActivityResponses, GlobalActivityErrors, ThrowOnError>({
@@ -4460,6 +4535,43 @@ export class Snapshot extends HeyApiClient {
 
 export class Storage extends HeyApiClient {
   /**
+   * Get storage format and reclamation status
+   */
+  public maintenanceStatus<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageMaintenanceStatusResponses,
+      StorageMaintenanceStatusErrors,
+      ThrowOnError
+    >({ url: "/global/storage/maintenance", ...options })
+  }
+
+  /**
+   * Pause or resume background storage reclamation
+   */
+  public reclaimControl<ThrowOnError extends boolean = false>(
+    parameters?: {
+      storageReclaimControlInput?: StorageReclaimControlInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageReclaimControlInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageReclaimControlResponses,
+      StorageReclaimControlErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/reclaim/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Get historical data upgrade progress
    *
    * The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.
@@ -4504,6 +4616,97 @@ export class Storage extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Pause or resume background history preparation
+   */
+  public controlUpgrade<ThrowOnError extends boolean = false>(
+    parameters?: {
+      action?: "pause" | "resume"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "action" }] }])
+    return (options?.client ?? this.client).post<
+      StorageControlUpgradeResponses,
+      StorageControlUpgradeErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get historical Session preparation status
+   */
+  public upgradeSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      StorageUpgradeSessionResponses,
+      StorageUpgradeSessionErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/sessions/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Prioritize historical Session preparation
+   *
+   * Returns immediately. Poll status; leaving the page does not cancel durable preparation.
+   */
+  public prepareSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).post<
+      StoragePrepareSessionResponses,
+      StoragePrepareSessionErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/sessions/{sessionID}/prepare",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Retry interrupted historical Session preparation
+   *
+   * Retries from durable checkpoints. Quarantined data requires repair; this operation never discards or overwrites a recovery set.
+   */
+  public retrySession<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).post<StorageRetrySessionResponses, StorageRetrySessionErrors, ThrowOnError>(
+      {
+        url: "/global/storage/upgrade/sessions/{sessionID}/retry",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   snapshot = new Snapshot({ client: this.client })
@@ -10447,72 +10650,6 @@ export class Loop extends HeyApiClient {
   }
 
   /**
-   * Wait BlueprintLoop (running → waiting)
-   *
-   * Transition a BlueprintLoop from running to waiting.
-   */
-  public wait<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopWaitResponses, BlueprintLoopWaitErrors, ThrowOnError>({
-      url: "/blueprint/loop/{id}/wait",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Resume BlueprintLoop (waiting → running)
-   *
-   * Transition a BlueprintLoop from waiting back to running.
-   */
-  public resume<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopResumeResponses, BlueprintLoopResumeErrors, ThrowOnError>(
-      {
-        url: "/blueprint/loop/{id}/resume",
-        ...options,
-        ...params,
-      },
-    )
-  }
-
-  /**
    * Get BlueprintLoop activity
    *
    * Get derived activity metrics for a BlueprintLoop (derived from session state).
@@ -10643,45 +10780,6 @@ export class Run extends HeyApiClient {
       url: "/lattice/run/{id}/events",
       ...options,
       ...params,
-    })
-  }
-
-  /**
-   * Pause a Lattice Run
-   */
-  public pause<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      body?: {
-        [key: string]: never
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<LatticeRunPauseResponses, LatticeRunPauseErrors, ThrowOnError>({
-      url: "/lattice/run/{id}/pause",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
     })
   }
 

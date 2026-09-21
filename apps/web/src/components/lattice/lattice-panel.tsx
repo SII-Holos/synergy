@@ -88,7 +88,7 @@ export function LatticePanel(props: {
   const [actionError, setActionError] = createSignal<string>()
   const [approvalConflict, setApprovalConflict] = createSignal(false)
   const [approvalQueued, setApprovalQueued] = createSignal(false)
-  const [busyAction, setBusyAction] = createSignal<"pause" | "resume" | "cancel" | "approve">()
+  const [busyAction, setBusyAction] = createSignal<"cancel" | "approve">()
   let generation = 0
 
   const modeLabel = (mode: LatticeRunView["mode"]) =>
@@ -226,7 +226,7 @@ export function LatticePanel(props: {
   const stepByID = createMemo(() => new Map((run()?.pathway ?? []).map((step) => [step.id, step])))
 
   const invoke = async (
-    action: "pause" | "resume" | "cancel" | "approve",
+    action: "cancel" | "approve",
     request: (input: { id: string }) => Promise<{ data?: unknown }>,
   ) => {
     const current = run()
@@ -861,28 +861,6 @@ export function LatticePanel(props: {
                       >
                         <Button variant="primary" onClick={() => props.onConfigure?.({ confirmRestart: true })}>
                           {_({ id: "app.lattice.panel.startNew", message: "Start new run" })}
-                        </Button>
-                      </Show>
-                      <Show when={controls().pause}>
-                        <Button
-                          variant="ghost"
-                          onClick={() => void invoke("pause", (input) => props.sdk.client.lattice.run.pause(input))}
-                          disabled={!!busyAction()}
-                        >
-                          {busyAction() === "pause"
-                            ? _({ id: "app.lattice.panel.pausing", message: "Pausing…" })
-                            : _({ id: "app.lattice.panel.pause", message: "Pause" })}
-                        </Button>
-                      </Show>
-                      <Show when={controls().resume}>
-                        <Button
-                          variant="primary"
-                          onClick={() => void invoke("resume", (input) => props.sdk.client.lattice.run.resume(input))}
-                          disabled={!!busyAction()}
-                        >
-                          {busyAction() === "resume"
-                            ? _({ id: "app.lattice.panel.resuming", message: "Resuming…" })
-                            : _({ id: "app.lattice.panel.resume", message: "Resume" })}
                         </Button>
                       </Show>
                       <Show when={controls().approve}>

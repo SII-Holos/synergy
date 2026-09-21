@@ -5,6 +5,9 @@ import type { ImportProgress } from "../storage/legacy-import"
 import { StorageBootstrap } from "../storage/bootstrap"
 import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
+import { StorageReclamation } from "../storage/format-reclamation"
+import { observeStorageMaintenance } from "../storage/maintenance-progress"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -64,7 +67,7 @@ export interface RuntimeServices {
 export namespace RuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
-  export async function open(options: {
+  export interface OpenOptions {
     experiment?: Experiment.File
     storage?: Storage.Handle
     mode: "server" | "oneshot"
@@ -72,9 +75,28 @@ export namespace RuntimeHandle {
     services?: RuntimeServices
     reporter?: MigrationReporter
     storageReporter?: (progress: ImportProgress) => void
+    maintenanceReporter?: (event: StorageMaintenanceEvent) => void
     migrationOutput?: RunOptions["output"]
     recoveryReporter?: { progress(current: number): void; completed(): void }
-  }) {
+  }
+
+  export async function open(options: OpenOptions) {
+    let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
+    try {
+      return await observeStorageMaintenance(
+        async () => (runtime = await openRuntime(options)),
+        (event) => {
+          log.info("storage maintenance", event)
+          options.maintenanceReporter?.(event)
+        },
+      )
+    } catch (error) {
+      await runtime?.close().catch(() => {})
+      throw error
+    }
+  }
+
+  async function openRuntime(options: OpenOptions) {
     const services = options.services ?? {}
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
     let storage: StorageBootstrap.Prepared | undefined
@@ -82,6 +104,7 @@ export namespace RuntimeHandle {
     let server: RuntimeServer | undefined
     let residentStarted = false
     let stopCompat: (() => Promise<void>) | undefined
+    let stopReclamation: (() => Promise<void>) | undefined
     let stopVaultSync: (() => void) | undefined
     let vaultSync = Promise.resolve()
     let closing: Promise<void> | undefined
@@ -106,6 +129,7 @@ export namespace RuntimeHandle {
           }
         }
         await cleanup(() => StorageRetention.stop())
+        await cleanup(() => stopReclamation?.())
         await cleanup(() => stopCompat?.())
         await cleanup(async () => {
           stopVaultSync?.()
@@ -125,7 +149,13 @@ export namespace RuntimeHandle {
         await cleanup(async () => {
           const results = await Promise.allSettled(
             sessions.map((session) =>
-              ScopeContext.provide({ scope: session.scope, fn: () => SessionAbort.abort(session.id) }),
+              // Shutdown is an interruption, not the user asking this session
+              // to hold still: the reason distinguishes "the host went away"
+              // from "I pressed stop" on the paused session after restart.
+              ScopeContext.provide({
+                scope: session.scope,
+                fn: () => SessionAbort.abort(session.id, { pauseReason: "interrupted" }),
+              }),
             ),
           )
           for (const result of results) if (result.status === "rejected") errors.push(result.reason)
@@ -188,12 +218,8 @@ export namespace RuntimeHandle {
         options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
       )
       if (storage && storage.manifest.phase !== "active")
-        await StorageRecovery.validate((current, timeoutMs) =>
-          options.storageReporter?.(
-            timeoutMs === undefined
-              ? { stage: "validate", current, total: 0, bytes: 0 }
-              : { stage: "validate-engine", current: 0, total: 0, bytes: 0, timeoutMs },
-          ),
+        await StorageRecovery.validate((current) =>
+          options.storageReporter?.({ stage: "validate", current, total: 0, bytes: 0 }),
         )
       await storage?.activate()
       await StorageRecovery.recoverOwners()
@@ -277,7 +303,14 @@ export namespace RuntimeHandle {
         residentStarted = true
         await services.resident.start(config)
       }
-      if (await SessionCompat.isActive()) stopCompat = SessionCompat.startBackgroundMigrator()
+      if (await SessionCompat.isActive())
+        stopCompat = SessionCompat.startBackgroundMigrator({
+          busy: () => SessionManager.runtimeStats().runningCount > 0,
+        })
+      if (options.mode === "server")
+        stopReclamation = StorageReclamation.start(Storage.current().store, {
+          busy: () => SessionManager.activeRuntimeCount() > 0 || LoopJob.activeBackgroundCount() > 0,
+        })
       return { server, migration, config, shutdownTimeoutMs, closeAdmission, close, [Symbol.asyncDispose]: close }
     } catch (error) {
       try {

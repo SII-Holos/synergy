@@ -4,7 +4,8 @@ import fs from "node:fs/promises"
 import { Hono } from "hono"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
 import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-store"
-import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Storage, SessionCompat, TransactionalStore } from "@ericsanchezok/synergy-harness/persistence"
+import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -93,6 +94,55 @@ interface CompactBatch {
 }
 
 describe("GlobalStorageRoute", () => {
+  test("pause and resume persist independently of database readiness", async () => {
+    const store = Storage.current().store
+    await store.maintainDdlTransaction([
+      {
+        statement:
+          "CREATE TABLE IF NOT EXISTS storage_format_v3_state(namespace TEXT PRIMARY KEY, state TEXT NOT NULL)",
+      },
+    ])
+    await store.transaction((tx) =>
+      tx.raw.query("INSERT INTO storage_format_v3_state(namespace, state) VALUES (?, ?)", [
+        store.options.namespace,
+        JSON.stringify({ version: 3, phase: "reclaim", recordsCursor: "", nodesCursor: "", artifactsCursor: "" }),
+      ]),
+    )
+    try {
+      for (const action of ["pause", "resume"] as const) {
+        const response = await app().request("/global/storage/reclaim/control", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({
+          format: { current: 3, maintenanceRequired: false },
+          reclaim: { pending: true, paused: action === "pause" },
+        })
+        const read = await app().request("/global/storage/maintenance")
+        expect(await read.json()).toMatchObject({ reclaim: { pending: true, paused: action === "pause" } })
+      }
+    } finally {
+      await store.transaction((tx) =>
+        tx.raw.query("DELETE FROM storage_format_v3_state WHERE namespace = ?", [store.options.namespace]),
+      )
+    }
+  })
+  test("maintenance status is independent of historical preparation and rejects invalid reclaim controls", async () => {
+    const response = await app().request("/global/storage/maintenance")
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      format: { current: 3, target: 3, maintenanceRequired: false },
+      reclaim: { pending: false, running: false },
+    })
+    const invalid = await app().request("/global/storage/reclaim/control", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "rewrite" }),
+    })
+    expect(invalid.status).toBe(400)
+  })
   test("GET snapshot reports the per-scope usage shape", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
@@ -505,5 +555,174 @@ describe("GlobalStorageRoute", () => {
         expect(await SnapshotStore.optional(StoragePath.snapshotDeletion(scope.id, deleting))).toBeUndefined()
       },
     })
+  })
+})
+
+test("upgrade status is available independently of history and the catalog validates bounds", async () => {
+  const response = await GlobalStorageRoute.request("http://localhost/upgrade")
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({
+    ready: true,
+    historyReady: true,
+    paused: false,
+    backup: { complete: true },
+    pending: 0,
+    partial: 0,
+    imported: 0,
+    quarantined: 0,
+    total: 0,
+  })
+  const invalid = await GlobalStorageRoute.request("http://localhost/upgrade/sessions?limit=101")
+  expect(invalid.status).toBe(400)
+  const page = await GlobalStorageRoute.request("http://localhost/upgrade/sessions?limit=1")
+  expect(await page.json()).toEqual({ items: [] })
+})
+
+test("history controls validate actions and per-session preparation returns without a long request", async () => {
+  const request = (action: string) =>
+    GlobalStorageRoute.request("http://localhost/upgrade/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    })
+  expect((await request("unknown")).status).toBe(400)
+  expect(await (await request("pause")).json()).toMatchObject({ paused: true, pauseReason: "user", ready: true })
+  expect(await (await request("resume")).json()).toMatchObject({ paused: false })
+  expect(
+    await (
+      await GlobalStorageRoute.request("http://localhost/upgrade/sessions/new/prepare", { method: "POST" })
+    ).json(),
+  ).toMatchObject({ sessionID: "new", state: "ready" })
+})
+
+async function withHistoricalSessions(
+  body: (fixture: { store: TransactionalStore; data: string; ids: string[] }) => Promise<void>,
+) {
+  await using tmp = await tmpdir()
+  const data = path.join(tmp.path, "data")
+  const ids = [Identifier.ascending("session"), Identifier.ascending("session")]
+  for (const [index, id] of ids.entries()) {
+    await Bun.write(
+      path.join(data, "sessions", "home", id, "info.json"),
+      JSON.stringify({
+        id,
+        scope: { id: "home", type: "home" },
+        title: `History ${index}`,
+        version: "3.0.22",
+        time: { created: index + 1, updated: index + 2 },
+        completionNotice: { unread: false, silent: false, unreadCount: 0 },
+      }),
+    )
+  }
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace: crypto.randomUUID(),
+    filename: path.join(tmp.path, "target.sqlite"),
+  })
+  try {
+    await StorageCompat.seedLocators(store, data)
+    await Storage.provide({ store, artifactDirectory: data }, async () => {
+      try {
+        await body({ store, data, ids })
+      } finally {
+        await SessionCompat.drain()
+      }
+    })
+  } finally {
+    await store.close()
+  }
+}
+
+test("historical status and paginated catalog remain read-only, while foreground preparation works during pause", async () => {
+  await withHistoricalSessions(async ({ store, data, ids }) => {
+    const [first, second] = ids
+    const status = await GlobalStorageRoute.request(`/upgrade/sessions/${first}`)
+    expect(status.status).toBe(200)
+    expect(await status.json()).toMatchObject({ sessionID: first, state: "pending", files: 0, bytes: 0 })
+    const page = await (await GlobalStorageRoute.request("/upgrade/sessions?scopeID=home&limit=1")).json()
+    expect(page.items).toEqual([{ sessionID: second, scopeID: "home", status: "pending" }])
+    const query = new URLSearchParams({ scopeID: "home", limit: "1" })
+    for (const part of page.next) query.append("after", part)
+    expect(await (await GlobalStorageRoute.request(`/upgrade/sessions?${query}`)).json()).toMatchObject({
+      items: [{ sessionID: first, scopeID: "home", status: "pending" }],
+    })
+    expect(await (await GlobalStorageRoute.request("/upgrade/sessions?scopeID=other")).json()).toEqual({ items: [] })
+    expect((await StorageCompat.readLocator(store, first))?.status).toBe("pending")
+    expect(await Bun.file(path.join(data, "sessions", "home", first!, "info.json")).exists()).toBe(true)
+
+    const paused = await GlobalStorageRoute.request("/upgrade/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "pause" }),
+    })
+    expect(await paused.json()).toMatchObject({ ready: true, historyReady: false, paused: true, pending: 2 })
+    const requests = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        GlobalStorageRoute.request(`/upgrade/sessions/${first}/prepare`, { method: "POST" }),
+      ),
+    )
+    for (const response of requests) {
+      expect(response.status).toBe(200)
+      expect(["pending", "preparing", "ready"]).toContain((await response.json()).state)
+    }
+    await SessionCompat.drain()
+    expect(await (await GlobalStorageRoute.request(`/upgrade/sessions/${first}`)).json()).toMatchObject({
+      state: "ready",
+    })
+    expect(await (await GlobalStorageRoute.request("/upgrade")).json()).toMatchObject({
+      paused: true,
+      historyReady: false,
+      pending: 1,
+      imported: 1,
+      total: 2,
+    })
+    expect((await StorageCompat.readLocator(store, second!))?.status).toBe("pending")
+    expect(await store.read(["sessions", "home", first!, "info"])).toMatchObject({ title: "History 0" })
+    expect((await store.verify()).issues).toEqual([])
+  })
+})
+
+test("retry resumes failed preparation, preserves unrelated history and cannot bypass quarantine", async () => {
+  await withHistoricalSessions(async ({ store, data, ids }) => {
+    const [first, second] = ids
+    const locator = await StorageCompat.readLocator(store, first!)
+    await StorageCompat.writeLocator(store, {
+      ...locator!,
+      error: { category: "retryable", message: "Temporary storage failure" },
+      retryAfter: Date.now() + 60_000,
+    })
+    expect(
+      await (await GlobalStorageRoute.request(`/upgrade/sessions/${first}/prepare`, { method: "POST" })).json(),
+    ).toMatchObject({
+      state: "failed",
+      error: { category: "retryable" },
+    })
+    expect(await Bun.file(path.join(data, "sessions", "home", first!, "info.json")).exists()).toBe(true)
+    const retried = await GlobalStorageRoute.request(`/upgrade/sessions/${first}/retry`, { method: "POST" })
+    expect(retried.status).toBe(200)
+    await SessionCompat.drain()
+    expect(await (await GlobalStorageRoute.request(`/upgrade/sessions/${first}`)).json()).toMatchObject({
+      state: "ready",
+    })
+    expect(await StorageCompat.readLocator(store, first!)).toMatchObject({ status: "imported" })
+
+    const source = path.join(data, "sessions", "home", second!, "info.json")
+    await Bun.write(source, "{broken original")
+    await GlobalStorageRoute.request(`/upgrade/sessions/${second}/prepare`, { method: "POST" })
+    await SessionCompat.drain()
+    const blocked = await (await GlobalStorageRoute.request(`/upgrade/sessions/${second}`)).json()
+    expect(blocked).toMatchObject({ state: "blocked" })
+    expect(
+      await (await GlobalStorageRoute.request(`/upgrade/sessions/${second}/retry`, { method: "POST" })).json(),
+    ).toEqual(blocked)
+    expect(await Bun.file(source).text()).toBe("{broken original")
+    expect(await (await GlobalStorageRoute.request("/upgrade")).json()).toMatchObject({
+      ready: true,
+      historyReady: false,
+      imported: 1,
+      quarantined: 1,
+      pending: 0,
+    })
+    expect(await store.read(["sessions", "home", first!, "info"])).toMatchObject({ title: "History 0" })
   })
 })

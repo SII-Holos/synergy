@@ -10,7 +10,7 @@ function Fixture() {
       "invalid-fixture",
       "/plugin-assets/invalid.js",
       "default",
-      params.get("version") ?? "5.0",
+      params.get("version") ?? "6.0",
       params.get("hash")!,
     )
     .then(

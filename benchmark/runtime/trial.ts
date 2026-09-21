@@ -51,7 +51,11 @@ const args = [
   "json",
   "--non-interactive",
   "--timeout",
-  String(options.timeout_seconds),
+  String(
+    options.timeout_seconds +
+      (options.execution_marker ? options.startup_timeout_seconds : 0) +
+      options.cleanup_seconds,
+  ),
 ]
 if (options.variant) args.push("--variant", options.variant)
 if (options.experiment) args.push("--experiment", options.experiment)

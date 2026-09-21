@@ -2,6 +2,7 @@ import { cmd } from "./cmd"
 import { runMigrations, rollbackMigrations, getMigrationStatus } from "@ericsanchezok/synergy-harness/migration"
 import { UI } from "../../util/ui"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { currentMaintenance } from "../maintenance-progress"
 
 export const MigrationCommand = cmd({
   command: "migration",
@@ -46,16 +47,25 @@ export const MigrationCommand = cmd({
               describe: "migration domain to run (default: all)",
               type: "string",
             })
+            .option("maintenance", {
+              describe: "include optional blocking database maintenance; requires an idle maintenance window",
+              type: "boolean",
+              default: false,
+            })
             .option("dry-run", {
               describe: "show what would run without executing",
               type: "boolean",
               default: false,
             }),
         async (args) => {
+          const context = currentMaintenance()
           await runMigrations({
-            dryRun: args.dryRun as boolean,
-            targetDomain: args.domain as string | undefined,
-            output: "interactive",
+            dryRun: args.dryRun,
+            maintenance: args.maintenance,
+            targetDomain: args.domain,
+            output: context?.reporter ? "silent" : "interactive",
+            signal: context?.signal,
+            reporter: context?.reporter,
           })
         },
       )

@@ -62,7 +62,7 @@ describe("LatticeStore v2", () => {
       const sessionID = Identifier.ascending("session")
       const initial = await LatticeStore.create({ sessionID, mode: "auto" })
       const paused = await LatticeStore.updateByRunID(scopeID, initial.id, (draft) =>
-        LatticeMachine.pause(draft, "user_paused"),
+        LatticeMachine.pause(draft, "blueprint_unavailable"),
       )
       const resumed = await LatticeStore.updateByRunID(scopeID, initial.id, (draft) => LatticeMachine.resume(draft))
 
@@ -283,12 +283,12 @@ describe("LatticeStore v2", () => {
       const first = await LatticeStore.appendEvent(scopeID, run, {
         kind: "run_paused",
         state: run.state,
-        message: "user_paused",
+        message: "blueprint_unavailable",
       })
       const retried = await LatticeStore.appendEvent(scopeID, run, {
         kind: "run_paused",
         state: run.state,
-        message: "user_paused",
+        message: "blueprint_unavailable",
       })
 
       expect(retried.id).toBe(first.id)

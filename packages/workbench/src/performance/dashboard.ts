@@ -276,7 +276,7 @@ export namespace PerformanceDashboard {
           until,
           scopeID: input.scopeID,
         }),
-        pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
+        pendingSessions: diagnostics?.sessions.paused.length ?? 0,
       },
       resources: {
         rssBytes: resources?.memory_rss_bytes ?? undefined,
@@ -349,7 +349,7 @@ export namespace PerformanceDashboard {
         mirrorFiles: diagnostics?.traces.files.length ?? 0,
         traceFiles: diagnostics?.traces.files.length ?? 0,
         recentErrors: diagnostics?.traces.recentErrors.length ?? 0,
-        pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
+        pendingSessions: diagnostics?.sessions.paused.length ?? 0,
         sessionRuntimes: runtimeStats,
         execution: {
           agentWorkers,

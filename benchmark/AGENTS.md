@@ -2,6 +2,8 @@
 
 Own local research orchestration, frozen source inputs, task catalogs, runtime compositions and experiment records here. Product execution, accounting and rollout remain owned by their runtime packages.
 
+Offline trajectory diagnostics also live here: preserve unknown usage, separate formal trials from probes, and keep analysis output outside retained evidence. Payload sizes are bytes, not token or quota attribution.
+
 - Use public workspace exports. Never duplicate the Synergy CLI parser, agent loop or accounting.
 - Keep the workspace registered as private and independently versioned in the unified release catalog.
 - Keep runner identity separate from the source under test. Never run a mutable checkout during a trial.

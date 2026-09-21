@@ -232,9 +232,7 @@ describe("session input acceptance", () => {
         const session = await Session.create({ title: "Running Input" })
         const lease = SessionManager.acquire(session.id)
         if (!lease) throw new Error("Expected to acquire the session")
-        await Session.update(session.id, (draft) => {
-          draft.pendingReply = true
-        })
+
         const activityBeforeInput = (await SessionNav.queryScope(scope.id, { limit: 1 })).items[0]?.lastActivityAt
         if (activityBeforeInput === undefined) throw new Error("Expected running session navigation activity")
         await Bun.sleep(5)

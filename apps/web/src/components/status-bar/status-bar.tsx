@@ -98,12 +98,13 @@ function serverStatusLabel(healthy: boolean | undefined, i18n: ReturnType<typeof
   return i18n._(copy.serverUnknown)
 }
 
-function iconButtonClass(tone?: "base" | "danger" | "success") {
+function iconButtonClass(tone?: "base" | "danger" | "success" | "paused") {
   return {
     "relative size-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-surface-raised-base-hover": true,
     "text-icon-base": !tone || tone === "base",
     "text-icon-critical-base": tone === "danger",
     "text-icon-success-base": tone === "success",
+    "text-icon-warning-base": tone === "paused",
   }
 }
 
@@ -236,10 +237,16 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
   const runtimeState = createMemo(() => resolveRuntimeIconState(props.status, props.waiting, i18n))
   const copyRetryError = createCopyController({
     text: () => runtimeState().copyText,
-    copyLabel: i18n._(copy.copyRetryError),
-    failureDescription: i18n._(copy.copyRetryErrorFailed),
+    get copyLabel() {
+      return i18n._(runtimeState().tone === "paused" ? copy.copyPauseReason : copy.copyRetryError)
+    },
+    get failureDescription() {
+      return i18n._(copy.copyRuntimeDetailsFailed)
+    },
   })
-  const tooltip = createMemo(() => (runtimeState().copyText ? copyRetryError.tooltip() : runtimeState().tooltip))
+  const tooltip = createMemo(() =>
+    copyRetryError.state() === "idle" ? runtimeState().tooltip : copyRetryError.tooltip(),
+  )
   const icon = createMemo(() =>
     runtimeState().copyText && copyRetryError.state() !== "idle" ? copyRetryError.icon() : runtimeState().icon,
   )
@@ -253,10 +260,14 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
         onClick={() => {
           if (runtimeState().copyText) void copyRetryError.copy()
         }}
-        aria-label={runtimeState().copyText ? i18n._(copy.copyRetryError) : runtimeState().tooltip}
+        aria-label={
+          runtimeState().copyText
+            ? i18n._(runtimeState().tone === "paused" ? copy.copyPauseReason : copy.copyRetryError)
+            : runtimeState().tooltip
+        }
       >
         <span classList={{ "sb-session-icon-pulse": runtimeState().pulse }}>
-          <Icon name={icon()} size="small" class="translate-y-0.5" />
+          <Icon name={icon()} size="small" class="translate-y-0.5 text-inherit!" />
         </span>
       </button>
     </Tooltip>

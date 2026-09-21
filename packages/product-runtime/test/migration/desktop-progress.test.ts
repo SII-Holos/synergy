@@ -4,6 +4,7 @@ import { runMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import {
+  createManagedMaintenanceReporter,
   createManagedMigrationReporter,
   createManagedRecoveryReporter,
   createManagedStorageReporter,
@@ -22,6 +23,45 @@ afterEach(async () => {
 })
 
 describe("desktop migration reporting", () => {
+  test("forwards real migration counts with an unknown total", async () => {
+    const lines: string[] = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "uncounted-copy",
+        description: "Copy records",
+        async up(progress) {
+          progress(0, 0, 1)
+          progress(256, 0, 1)
+          progress(512, 0, 1)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: createManagedMigrationReporter((line) => lines.push(line)),
+    })
+    expect(lines.map((line) => JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length)))).toContainEqual({
+      phase: "migration",
+      step: 2,
+      current: 512,
+      total: 0,
+    })
+  })
+  test("preserves every maintenance transition without throttling or adding private data", () => {
+    const lines: string[] = []
+    const reporter = createManagedMaintenanceReporter((line) => lines.push(line))
+    const events = [
+      { phase: "maintenance", id: 1, state: "started", operation: "vacuum", timeoutMs: 690000 },
+      { phase: "maintenance", id: 1, state: "stage", stage: "rewrite" },
+      { phase: "maintenance", id: 1, state: "completed", elapsedMs: 123 },
+    ] as const
+    for (const event of events) reporter(event)
+    expect(
+      lines.map((line) => RuntimeStartupProgress.parse(JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length)))),
+    ).toEqual([...events])
+  })
+
   test("streams real storage bootstrap and activation as bounded aggregate records", async () => {
     await using tmp = await tmpdir()
     const root = path.join(tmp.path, ".synergy")
@@ -41,13 +81,10 @@ describe("desktop migration reporting", () => {
       },
     })
     try {
-      await prepared.store.verify((current, timeoutMs) =>
-        reporter(
-          timeoutMs === undefined
-            ? { stage: "validate", current, total: 0, bytes: 0 }
-            : { stage: "validate-engine", current: 0, total: 0, bytes: 0, timeoutMs },
-        ),
-      )
+      await prepared.store.verify((current) => {
+        now += 31_000
+        reporter({ stage: "validate", current, total: 0, bytes: 0 })
+      })
       await prepared.activate()
       const records = lines.map((line) =>
         RuntimeStartupProgress.parse(JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length))),
@@ -59,10 +96,6 @@ describe("desktop migration reporting", () => {
       expect(
         records.some((record) => record.phase === "storage" && record.stage === "activate" && record.current === 1),
       ).toBe(true)
-      const engine = records.find((record) => record.phase === "storage" && record.stage === "validate-engine")
-      expect(engine).toMatchObject({ phase: "storage", current: 0, total: 0, bytes: 0 })
-      if (engine?.phase !== "storage") throw new Error("Missing engine verification progress")
-      expect(engine.timeoutMs).toBeGreaterThanOrEqual(600_000)
       const checked = records.find(
         (record) => record.phase === "storage" && record.stage === "validate" && record.current > 0,
       )

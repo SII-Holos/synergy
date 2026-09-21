@@ -57,6 +57,7 @@ export namespace SnapshotTransfer {
     private constructor(
       readonly target: string,
       readonly directory: string,
+      private readonly selective = false,
     ) {
       initializeSqliteEngine()
       this.db = new Database(path.join(directory, "inventory.sqlite"))
@@ -65,11 +66,12 @@ export namespace SnapshotTransfer {
       )
     }
 
-    static async create(target: string, signal?: AbortSignal) {
+    static async create(target: string, signal?: AbortSignal, options: { selective?: boolean } = {}) {
       const root = path.join(Global.Path.cache, "snapshot-transfer")
       await fs.mkdir(root, { recursive: true })
-      const catalog = new Catalog(target, await fs.mkdtemp(path.join(root, "inventory-")))
+      const catalog = new Catalog(target, await fs.mkdtemp(path.join(root, "inventory-")), options.selective)
       try {
+        if (options.selective) return catalog
         const insert = catalog.db.prepare("INSERT OR IGNORE INTO known VALUES (?)")
         for await (const oid of SnapshotGit.lines(
           target,
@@ -120,6 +122,30 @@ export namespace SnapshotTransfer {
       for (const oid of options.requiredTrees ?? []) {
         if (!SnapshotStore.OID.test(oid)) throw new SnapshotStore.StorageError("Invalid required snapshot tree")
         insert.run(oid, "tree")
+      }
+      // Probe only this owner's closure; --batch-check reports missing objects without scanning the shared pool.
+      // Provenance: https://git-scm.com/docs/git-cat-file (batch output).
+      if (this.selective) {
+        const candidates = path.join(this.directory, "candidates")
+        const writer = Bun.file(candidates).writer()
+        try {
+          let count = 0
+          for (const row of this.db.query<{ oid: string }, []>("SELECT oid FROM incoming").iterate()) {
+            writer.write(row.oid + "\n")
+            if (++count % 1024 === 0) await writer.flush()
+          }
+        } finally {
+          await writer.end()
+        }
+        const known = this.db.prepare("INSERT OR IGNORE INTO known VALUES (?)")
+        for await (const line of SnapshotGit.lines(
+          this.target,
+          ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+          { signal: options.signal, input: candidates },
+        )) {
+          const [oid, type] = line.split(" ")
+          if (["tree", "blob", "commit", "tag"].includes(type)) known.run(oid)
+        }
       }
       const inventory = path.join(this.directory, "missing")
       await Bun.write(inventory, "")

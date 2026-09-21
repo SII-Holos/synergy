@@ -10,7 +10,7 @@ The Kanban board shows many sessions at once, but each pane's header is a unifor
 
 Kanban pane headers tint by the session's resolved visual state. The pane derives the status through the same resolution the sidebar rows use (`resolveSessionVisualState`) plus the raw session status, and maps it to one of three tints in `apps/web/src/components/kanban/model/head-status.ts`:
 
-- **working** — warning-toned header: status `busy`, `retry`, or `recovering`, or the `active` / `blueprint-running` / pulsing `blueprint-audit` visual tones (a running Blueprint or child task).
+- **working** — warning-toned header: status `busy` or `retry`, or the `active` / `blueprint-running` / pulsing `blueprint-audit` visual tones (a running Blueprint or child task).
 - **waiting** — info-toned header: the `waiting` / `blueprint-waiting` tones (a permission or question is pending on the user). Waiting outranks working because it demands attention.
 - **completed** — success-toned header: an idle session whose persisted completion notice is unread, reusing the exact same signal as the sidebar completion dot so "finished" never means different things in the two surfaces.
 
@@ -34,4 +34,4 @@ The change is confined to `apps/web`: a new model function plus tests, the pane 
 - The status meaning is shared with the sidebar: the completed tint uses the same persisted completion-notice signal, and the working/waiting tints reuse the same visual-state resolution, so the two surfaces never disagree about what a session is doing.
 - Cost: a new pure function and behavioral tests in the Kanban model, plus a `data-status` attribute and scoped CSS in the pane; the legacy per-tone dot colors remain defined but are overridden inside tinted headers, so the dot and the bar stay on one semantic. See the [board feature record](../../implemented/feature/2026-08-18-session-kanban.md) for the board's overall design.
 
-Recovering Blueprint audit sessions retain the working tint even without an audit pulse; the raw recovery status takes precedence over an unread completion notice.
+A Blueprint audit session retains the working tint even without an audit pulse; the raw audit status takes precedence over an unread completion notice. A session stopped mid-work is excluded from the working tint: it is paused rather than progressing, so it keeps the paused treatment instead of the warning tint that a running Blueprint or child task earns. The vocabulary this line referred to also changed — see [session paused state authority](../../implemented/architecture/2026-09-20-session-paused-state-authority.md).

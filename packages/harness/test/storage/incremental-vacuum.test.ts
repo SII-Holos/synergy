@@ -7,6 +7,9 @@ import { TransactionalStore } from "../../src/storage/transactional-store"
 import { Storage } from "../../src/storage/storage"
 import { StorageIncrementalVacuum } from "../../src/storage/incremental-vacuum"
 import { SqliteMaintenance } from "../../src/storage/sqlite-maintenance"
+import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
+
+initializeSqliteEngine()
 
 // Record bodies at or above 512 bytes are stored deflate-compressed when that
 // saves space, and a run of one repeated character compresses to almost
@@ -114,5 +117,33 @@ test("a postgres store reports nothing to maintain instead of failing", async ()
     })
   } finally {
     await store.close()
+  }
+})
+
+test("ordinary startup defers a blocking vacuum without claiming its migration completed", async () => {
+  const directory = await root()
+  const filename = path.join(directory, "deferred.sqlite")
+  const legacy = new Database(filename, { create: true })
+  legacy.exec("CREATE TABLE seed (id INTEGER)")
+  legacy.close(true)
+  const store = await TransactionalStore.open({ backend: "sqlite", namespace: "deferred", filename })
+  try {
+    await Storage.provide({ store, artifactDirectory: directory }, async () => {
+      const { runMigrations } = await import("../../src/migration")
+      const { StoragePath } = await import("../../src/storage/path")
+      await runMigrations({ targetDomain: "storage", output: "silent" })
+      expect(await store.incrementalVacuumEnabled()).toBe(false)
+      expect(
+        await store.read<Record<string, number>>(StoragePath.metaMigrationLogDomain("storage")),
+      ).not.toHaveProperty(StorageIncrementalVacuum.id)
+      await runMigrations({ targetDomain: "storage", maintenance: true, output: "silent" })
+      expect(await store.incrementalVacuumEnabled()).toBe(true)
+      expect(await store.read<Record<string, number>>(StoragePath.metaMigrationLogDomain("storage"))).toHaveProperty(
+        StorageIncrementalVacuum.id,
+      )
+    })
+  } finally {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
   }
 })

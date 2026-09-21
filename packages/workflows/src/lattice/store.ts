@@ -8,6 +8,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { LatticeError } from "./error"
 import { LatticeEvent } from "./event"
 import { LatticeMachine } from "./machine"
+import { LatticeSessionPause } from "./session-pause"
 import { LatticeTypes } from "./types"
 
 export namespace LatticeStore {
@@ -223,44 +224,42 @@ export namespace LatticeStore {
   }
 
   export async function updateByRunID(scopeID: string, runID: string, editor: Editor): Promise<LatticeTypes.Run> {
-    return Storage.transaction(async () => {
+    const { before, result } = await Storage.transaction(async () => {
       const before = await getByRunID(scopeID, runID)
       if (!before) throw new LatticeError.NotFound({ runID })
-      let result!: UpdateResult
-      {
-        result = await updateRecordUnlocked(scopeID, runID, editor)
-      }
+      const result = await updateRecordUnlocked(scopeID, runID, editor)
       if (result.changed) await Bus.publish(LatticeEvent.Updated, { run: LatticeTypes.toRunView(result.run) })
-      return result.run
+      return { before, result }
     })
+    if (result.changed) await LatticeSessionPause.sync(before, result.run)
+    return result.run
   }
 
   export async function update(scopeID: string, sessionID: string, editor: Editor): Promise<LatticeTypes.Run> {
-    return Storage.transaction(async () => {
-      let result!: UpdateResult
-      {
-        const pointer = await readPointer(scopeID, sessionID)
-        let current = pointer ? await getByRunID(scopeID, pointer.runID) : undefined
-        if (current?.sessionID !== sessionID) current = undefined
-        if (!current) {
-          const candidates = await listBySession(scopeID, sessionID)
-          const nonTerminal = candidates.filter((run) => !LatticeTypes.isTerminalRun(run.status))
-          if (nonTerminal.length > 1) {
-            const conflict = newest(nonTerminal)!
-            throw new LatticeError.StateConflict({
-              state: conflict.state,
-              reason: "multiple non-terminal Runs require pointer reconciliation before update",
-            })
-          }
-          current = nonTerminal[0] ?? newest(candidates)
-          if (!current) throw new LatticeError.NotFound({ sessionID })
-          await writePointer(scopeID, sessionID, current.id)
+    const { before, result } = await Storage.transaction(async () => {
+      const pointer = await readPointer(scopeID, sessionID)
+      let current = pointer ? await getByRunID(scopeID, pointer.runID) : undefined
+      if (current?.sessionID !== sessionID) current = undefined
+      if (!current) {
+        const candidates = await listBySession(scopeID, sessionID)
+        const nonTerminal = candidates.filter((run) => !LatticeTypes.isTerminalRun(run.status))
+        if (nonTerminal.length > 1) {
+          const conflict = newest(nonTerminal)!
+          throw new LatticeError.StateConflict({
+            state: conflict.state,
+            reason: "multiple non-terminal Runs require pointer reconciliation before update",
+          })
         }
-        result = await updateRecordUnlocked(scopeID, current.id, editor)
+        current = nonTerminal[0] ?? newest(candidates)
+        if (!current) throw new LatticeError.NotFound({ sessionID })
+        await writePointer(scopeID, sessionID, current.id)
       }
+      const result = await updateRecordUnlocked(scopeID, current.id, editor)
       if (result.changed) await Bus.publish(LatticeEvent.Updated, { run: LatticeTypes.toRunView(result.run) })
-      return result.run
+      return { before: current, result }
     })
+    if (result.changed) await LatticeSessionPause.sync(before, result.run)
+    return result.run
   }
 
   export const updateCurrent = update
@@ -287,8 +286,8 @@ export namespace LatticeStore {
     sessionID: string,
     runIDs: string[],
   ): Promise<LatticeTypes.Run | undefined> {
-    return Storage.transaction(async () => {
-      const changed: LatticeTypes.Run[] = []
+    const { transitions, selected } = await Storage.transaction(async () => {
+      const transitions: Array<{ before: LatticeTypes.Run; after: LatticeTypes.Run }> = []
       let selected: LatticeTypes.Run | undefined
       {
         const pointer = await readPointer(scopeID, sessionID)
@@ -308,7 +307,7 @@ export namespace LatticeStore {
               const result = await updateRecordUnlocked(scopeID, conflict.id, (draft) =>
                 LatticeMachine.quarantineDuplicate(draft, conflict.id === newestActive.id),
               )
-              if (result.changed) changed.push(result.run)
+              if (result.changed) transitions.push({ before: conflict, after: result.run })
               if (result.run.id === newestActive.id) selected = result.run
             }
           } else {
@@ -323,11 +322,13 @@ export namespace LatticeStore {
           }
         }
       }
-      for (const run of changed) {
-        await Bus.publish(LatticeEvent.Updated, { run: LatticeTypes.toRunView(run) })
+      for (const transition of transitions) {
+        await Bus.publish(LatticeEvent.Updated, { run: LatticeTypes.toRunView(transition.after) })
       }
-      return selected
+      return { transitions, selected }
     })
+    for (const transition of transitions) await LatticeSessionPause.sync(transition.before, transition.after)
+    return selected
   }
 
   export async function appendEvent(

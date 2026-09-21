@@ -89,7 +89,11 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
                 variant = plan["variants"][item["variant"]]
                 gateway = None
                 if variant.get("model_profile"):
-                    gateway = Gateway(ModelProfile.model_validate(variant["model_profile"]), attempt / "wire")
+                    gateway = Gateway(
+                        ModelProfile.model_validate(variant["model_profile"]),
+                        attempt / "wire",
+                        stream_timeout=plan["config"]["request_idle_timeout_seconds"],
+                    )
                     gateway.url = "http://host.docker.internal:1/v1"
                 config, trial_dir, _ = trial_configuration(
                     root, plan, item, attempt, gateway=gateway, reference="BENCH_PREWARM_UNDISPATCHABLE"

@@ -292,7 +292,7 @@ describe("SessionNav.buildNavIndex", () => {
 
         await Bun.sleep(5)
         const pending = await Session.update(session.id, (draft) => {
-          draft.pendingReply = true
+          draft.paused = { reason: "aborted", since: Date.now() }
           draft.title = "Running Session Started"
         })
         const started = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
@@ -313,7 +313,7 @@ describe("SessionNav.buildNavIndex", () => {
 
         await Bun.sleep(5)
         await Session.update(session.id, (draft) => {
-          draft.pendingReply = undefined
+          draft.paused = undefined
           draft.completionNotice.unread = true
           draft.completionNotice.unreadCount = 1
         })
@@ -524,7 +524,7 @@ describe("SessionNav timestamps", () => {
 })
 
 describe("SessionNav updatedAt authority", () => {
-  test("updatedAt tracks info time.updated while lastActivityAt stays frozen during pendingReply", async () => {
+  test("updatedAt tracks info time.updated while lastActivityAt stays frozen during a pause", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -533,9 +533,9 @@ describe("SessionNav updatedAt authority", () => {
     await ScopeContext.provide({
       scope,
       fn: async () => {
-        session = await Session.create({ title: "Pending Reply Freeze" })
+        session = await Session.create({ title: "Paused Freeze" })
         await Session.update(session.id, (draft) => {
-          draft.pendingReply = true
+          draft.paused = { reason: "aborted", since: Date.now() }
         })
         const afterReply = await SessionNav.readNavIndex(scope.id)
         const frozen = afterReply.entries.find((e) => e.id === session!.id)!

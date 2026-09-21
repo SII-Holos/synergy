@@ -1,7 +1,7 @@
 import z from "zod"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 
-export const LoopStatus = z.enum(["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"])
+export const LoopStatus = z.enum(["armed", "running", "auditing", "completed", "failed", "cancelled"])
 
 export const Info = z
   .object({

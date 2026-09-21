@@ -177,9 +177,29 @@ export const PI = {
   startingSession: { id: "prompt.startingSession", message: "Starting session" },
   stopping: { id: "prompt.stopping", message: "Stopping..." },
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
-  stopRunControl: { id: "prompt.stopRun.control", message: "Stop the run and cancel its workflow" },
-  stopRunFailed: { id: "prompt.stopRun.failed", message: "Failed to stop the run" },
   sendMessage: { id: "prompt.sendMessage", message: "Send message" },
+  controlFailed: { id: "prompt.control.failed", message: "Could not update execution" },
+  pauseControl: { id: "prompt.control.pause", message: "Pause" },
+  continueControl: { id: "prompt.control.continue", message: "Continue" },
+  sendAndContinue: { id: "prompt.control.sendAndContinue", message: "Send and continue" },
+  steerHint: { id: "prompt.control.steerHint", message: "Adjust the current task before continuing" },
+  queueMessage: { id: "prompt.control.queueMessage", message: "Add to queue" },
+  abandoning: { id: "prompt.control.abandoning", message: "Abandoning…" },
+  abandonHolding: { id: "prompt.control.abandonHolding", message: "Keep holding to abandon · Release to cancel" },
+  abandonExecution: { id: "prompt.control.abandonExecution", message: "Abandon current execution" },
+  abandonDescription: {
+    id: "prompt.control.abandonDescription",
+    message:
+      "Stop current execution, cancel its workflow and queued messages. History, generated files and your unsent draft will be kept.",
+  },
+  abandonConfirm: { id: "prompt.control.abandonConfirm", message: "Abandon execution" },
+  abandonBack: { id: "prompt.control.abandonBack", message: "Go back" },
+  pauseControlHint: { id: "prompt.control.pauseHint", message: "Stop the current turn; the session pauses" },
+  continueControlHint: { id: "prompt.control.continueHint", message: "Resume from the breakpoint" },
+  disabledControlHint: { id: "prompt.control.disabledHint", message: "Write a message to send" },
+  abandonHint: { id: "prompt.control.abandonHint", message: "Hold 3 seconds to abandon" },
+  abandonDone: { id: "prompt.control.abandonDone", message: "Execution abandoned" },
+  abandonFailed: { id: "prompt.control.abandonFailed", message: "Failed to abandon the session" },
   selectAgent: { id: "prompt.selectAgent", message: "Select agent" },
   externalAgentBlocked: {
     id: "prompt.externalAgentBlocked",
@@ -195,31 +215,6 @@ export const PI = {
   toolbarWorkspace: { id: "prompt.toolbar.workspace", message: "Workspace" },
   toolbarWorktree: { id: "prompt.toolbar.worktree", message: "Worktree" },
   toolbarWorktreeDesc: { id: "prompt.toolbar.worktreeDesc", message: "Isolated checkout" },
-
-  // prompt-input.tsx — blueprint slot status labels
-  bpSlotReady: { id: "prompt.bpSlot.ready", message: "Blueprint ready to start" },
-  bpSlotEquipped: { id: "prompt.bpSlot.equipped", message: "Blueprint equipped" },
-  bpSlotRunning: { id: "prompt.bpSlot.running", message: "Blueprint running" },
-  bpSlotWaiting: { id: "prompt.bpSlot.waiting", message: "Blueprint waiting" },
-  bpSlotAuditing: { id: "prompt.bpSlot.auditing", message: "Blueprint in review" },
-  bpSlotCompleted: { id: "prompt.bpSlot.completed", message: "Blueprint completed" },
-  bpSlotFailed: { id: "prompt.bpSlot.failed", message: "Blueprint needs attention" },
-  bpSlotCancelled: { id: "prompt.bpSlot.cancelled", message: "Blueprint unequipped" },
-
-  // prompt-input.tsx — blueprint slot hold labels
-  bpHoldStopRun: { id: "prompt.bpHold.stopRun", message: "Hold for 2 seconds to stop this Blueprint run." },
-  bpHoldCancelLoop: { id: "prompt.bpHold.cancelLoop", message: "Hold for 2 seconds to cancel this BlueprintLoop." },
-  bpHoldUnequip: { id: "prompt.bpHold.unequip", message: "Hold for 2 seconds to unequip." },
-
-  // prompt-input.tsx — blueprint slot aria labels
-  bpAriaHoldStop: { id: "prompt.bpAria.holdStop", message: "Hold to stop Blueprint run: {title}" },
-  bpAriaHoldCancel: { id: "prompt.bpAria.holdCancel", message: "Hold to cancel BlueprintLoop: {title}" },
-  bpAriaHoldUnequip: { id: "prompt.bpAria.holdUnequip", message: "Hold to unequip Blueprint: {title}" },
-
-  // prompt-input.tsx — blueprint failure titles
-  bpFailUnequip: { id: "prompt.bpFail.unequip", message: "Failed to unequip Blueprint" },
-  bpFailStoppedEquipped: { id: "prompt.bpFail.stoppedEquipped", message: "Session stopped, Blueprint still equipped" },
-  bpFailStopRun: { id: "prompt.bpFail.stopRun", message: "Failed to stop Blueprint run" },
 
   // prompt-input.tsx — generic error / request failed
   genericRequestFailed: { id: "prompt.generic.requestFailed", message: "Request failed" },

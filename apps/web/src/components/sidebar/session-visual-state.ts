@@ -6,6 +6,9 @@ import type { NavEntry } from "@/context/layout"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { classifySessionActivity } from "@/utils/session-status"
 
+/** `circle-pause` has no semantic token yet; the icon catalog lives outside this app. */
+const PAUSED_ICON: IconName = "circle-pause"
+
 export type SessionVisualState = {
   icon: IconName
   label: MessageDescriptor
@@ -14,6 +17,7 @@ export type SessionVisualState = {
     | "active"
     | "retry"
     | "waiting"
+    | "paused"
     | "worktree"
     | "muted"
     | "blueprint"
@@ -99,6 +103,13 @@ export function resolveSessionVisualState(input: SessionVisualInput): SessionVis
         tone: "blueprint-running",
         pulse: true,
       }
+    if (activity === "paused")
+      return {
+        icon: PAUSED_ICON,
+        label: { id: "session.state.pausedBlueprint", message: "Blueprint session paused" },
+        tone: "paused",
+        completionUnread: unread || undefined,
+      }
     return {
       icon: blueprintIcon,
       label: { id: "session.state.blueprint", message: "Blueprint session" },
@@ -122,6 +133,13 @@ export function resolveSessionVisualState(input: SessionVisualInput): SessionVis
         tone: "loop",
         pulse: true,
       }
+    if (activity === "paused")
+      return {
+        icon: PAUSED_ICON,
+        label: { id: "session.state.pausedLoop", message: "Light Loop paused" },
+        tone: "paused",
+        completionUnread: unread || undefined,
+      }
     return {
       icon: getSemanticIcon("prompt.lightLoop"),
       label: unread
@@ -140,12 +158,20 @@ export function resolveSessionVisualState(input: SessionVisualInput): SessionVis
       pulse: true,
     }
 
-  if (input.status?.type === "retry" || input.status?.type === "recovering")
+  if (input.status?.type === "retry")
     return {
       icon: getSemanticIcon("session.retry"),
-      label: { id: "session.state.recovering", message: "Session recovering" },
+      label: { id: "session.state.retrying", message: "Session retrying" },
       tone: "retry",
       pulse: true,
+    }
+
+  if (activity === "paused")
+    return {
+      icon: PAUSED_ICON,
+      label: { id: "session.state.paused", message: "Session paused" },
+      tone: "paused",
+      completionUnread: unread || undefined,
     }
 
   if (activity === "working" || childTasksRunning)

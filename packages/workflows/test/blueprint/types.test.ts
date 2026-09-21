@@ -5,15 +5,10 @@ import { LoopError } from "../../src/blueprint/error"
 
 describe("Blueprint types", () => {
   describe("LoopStatus", () => {
-    test("includes all seven contracted states", () => {
-      // Use safeParse + runtime includes to avoid TypeScript compile errors
-      // on values not yet in the enum (RED signal at test runtime instead)
-      const options = LoopStatus.options as readonly string[]
-      const expected = ["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"]
-      for (const status of expected) {
-        expect(options).toContain(status)
-      }
-      expect(options.length).toBe(7)
+    test("exposes exactly the six contracted states", () => {
+      const options: readonly string[] = [...LoopStatus.options].sort()
+      const expected: readonly string[] = ["armed", "auditing", "cancelled", "completed", "failed", "running"]
+      expect(options).toEqual(expected)
     })
 
     test("rejects invalid status values", () => {
@@ -31,9 +26,9 @@ describe("Blueprint types", () => {
       }
     })
 
-    test("accepts waiting as a valid status", () => {
+    test("rejects the retired waiting status", () => {
       const result = LoopStatus.safeParse("waiting")
-      expect(result.success).toBe(true)
+      expect(result.success).toBe(false)
     })
   })
 
@@ -126,15 +121,15 @@ describe("Blueprint types", () => {
       expect(result.success).toBe(true)
     })
 
-    test("validates loop in waiting status", () => {
+    test("validates loop in auditing status", () => {
       const loop = {
-        id: "bll_waiting1",
+        id: "bll_auditing1",
         noteID: "note_abc",
-        title: "Waiting Loop",
+        title: "Auditing Loop",
         sessionID: "ses_xyz",
         auditAgent: "supervisor",
         scopeID: "scp_test",
-        status: "waiting" as const,
+        status: "auditing",
         source: "user" as const,
         time: {
           created: Date.now(),
@@ -212,7 +207,7 @@ describe("Blueprint types", () => {
     })
 
     test("InvalidTransition is instance checkable", () => {
-      const err = new LoopError.InvalidTransition({ from: "running", to: "waiting" })
+      const err = new LoopError.InvalidTransition({ from: "auditing", to: "running" })
       expect(LoopError.InvalidTransition.isInstance(err)).toBe(true)
     })
   })

@@ -17,7 +17,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="empty"></div><script type="module" src="/main.ts"></script>',
+      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><script type="module" src="/main.ts"></script>',
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
@@ -94,6 +94,15 @@ beforeAll(async () => {
           label,
         })
 
+        const pausedVisual = (label: string) => ({
+          visual: {
+            icon: "circle-pause",
+            label: { id: "session.state.paused", message: label },
+            tone: "paused",
+          },
+          label,
+        })
+
         render(
           () =>
             createComponent(MobileDrawerRecent, {
@@ -111,6 +120,23 @@ beforeAll(async () => {
               onLoadMore: () => loadMoreCalls++,
             }),
           document.querySelector("#recent")!,
+        )
+
+        render(
+          () =>
+            createComponent(MobileDrawerRecent, {
+              label: "Paused",
+              emptyLabel: "No recent sessions",
+              loadMoreLabel: "Load more",
+              untitledLabel: "Untitled",
+              draftLabel: "Draft",
+              entries: [entry("ses_paused", "Paused session")],
+              visualFor: () => pausedVisual("Session paused"),
+              hasMore: false,
+              onSelect: () => {},
+              onLoadMore: () => {},
+            }),
+          document.querySelector("#paused")!,
         )
 
         render(
@@ -228,6 +254,15 @@ describe("mobile drawer root navigation", () => {
       await expect(row.locator('[data-slot="icon-svg"].text-icon-success-base').count()).resolves.toBe(0)
       expect(await row.locator("span.text-13-medium").textContent()).toBe("Worktree session")
       await expect(section.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(1)
+    })
+  })
+
+  test("gives a paused session its own tint instead of falling through to resting", async () => {
+    await withFixture(async (page) => {
+      const row = page.locator('#paused [data-session-id="ses_paused"]')
+      await expect(row.locator('[data-slot="icon-svg"].text-icon-warning-base').count()).resolves.toBe(1)
+      await expect(row.locator("span.sb-session-icon-pulse").count()).resolves.toBe(0)
+      await expect(page.locator("#paused").locator(".sr-only", { hasText: "Session paused" }).count()).resolves.toBe(1)
     })
   })
 

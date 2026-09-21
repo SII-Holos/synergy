@@ -197,7 +197,7 @@ describe("server request scope boundaries", () => {
         artifacts: {
           generation: "generation-one",
           ui: {
-            apiVersion: "5.0",
+            apiVersion: "6.0",
             entry: "ui/index.js",
             sha256: new Bun.CryptoHasher("sha256").update(assetSource).digest("hex"),
             resources: [],

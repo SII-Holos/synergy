@@ -13,7 +13,7 @@ import {
 export { WorkflowConflictError }
 
 function activeLoopStatus(status: string): boolean {
-  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+  return status === "armed" || status === "running" || status === "auditing"
 }
 
 async function activeBlueprintLoop(session: Session.Info) {

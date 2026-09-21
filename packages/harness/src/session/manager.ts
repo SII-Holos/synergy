@@ -8,7 +8,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SessionCompat } from "./compat-import"
 import type { MessageV2 } from "./message-v2"
-import { BusyError } from "./error"
+import { BusyError, PausedTurnAbort } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -16,13 +16,20 @@ import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
-import { RolloutContinuationRecovery } from "./rollout/continuation-recovery"
+import { SessionLifecycle } from "./lifecycle"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { SessionProjectHealth } from "./project-health"
 
 const log = Log.create({ service: "session.manager" })
 
 export namespace SessionManager {
+  const leaseReleases = new WeakMap<LoopLease, ReturnType<typeof Promise.withResolvers<void>>>()
+  const sessionCompletions = new Map<string, Promise<void>>()
+
+  export async function waitForIdle(sessionID: string): Promise<void> {
+    const lease = getRuntime(sessionID)?.owner?.lease
+    await Promise.all([sessionCompletions.get(sessionID), lease ? leaseReleases.get(lease)?.promise : undefined])
+  }
   export namespace SessionMail {
     export interface Model {
       providerID: string
@@ -76,8 +83,6 @@ export namespace SessionManager {
     controller: AbortController
     phase: LoopPhase
     rootID?: string
-    /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
-    recoverQueuedTasks?: boolean
     /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
      *  discards items queued before this timestamp at the loop boundary, preserving mail delivered
      *  after the cancelled acknowledgement, and release stops requesting follow-up work unless such
@@ -386,6 +391,7 @@ export namespace SessionManager {
     let completed = false
     const completion = Promise.withResolvers<void>()
     running.add(completion.promise)
+    sessionCompletions.set(sessionID, completion.promise)
 
     try {
       const session = await requireSession(sessionID)
@@ -429,12 +435,8 @@ export namespace SessionManager {
       try {
         if (options?.releaseLease !== false) {
           // Capture before finish(): release() aborts the controller and clears
-          // the owner. signal.aborted alone cannot distinguish a user abort from
-          // internal cancellation (Boss/Lattice/Cortex abort before removing
-          // inbox items), so only an abort that marked recoverQueuedTasks may
-          // drive pending-work recovery — release cannot race that cleanup.
+          // the owner, so the fenced path must be read from the live owner here.
           const owner = runtime?.owner && owns(runtime, lease) ? runtime.owner : undefined
-          const recoverQueuedTasks = owner?.recoverQueuedTasks === true
           const fenced = owner?.fenceQueuedWork === true
           const fenceQueuedBefore = owner?.fenceQueuedBefore
           const postFenceWork =
@@ -442,13 +444,12 @@ export namespace SessionManager {
               ? await SessionInbox.hasRunnableItem(sessionID, { createdAfter: fenceQueuedBefore }).catch(() => false)
               : false
           await finish(lease, {
-            requestNextWork:
-              (!fenced || postFenceWork) &&
-              (completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false),
+            requestNextWork: (!fenced || postFenceWork) && (completed || options?.requestNextWorkOnFailure !== false),
           })
         }
       } finally {
         running.delete(completion.promise)
+        if (sessionCompletions.get(sessionID) === completion.promise) sessionCompletions.delete(sessionID)
         completion.resolve()
       }
     }
@@ -492,6 +493,7 @@ export namespace SessionManager {
       signal: controller.signal,
     }
     runtime.owner = { lease, controller, phase: "starting" }
+    leaseReleases.set(lease, Promise.withResolvers<void>())
     transitionExecutionPhase(runtime, "queued_agent")
     runtime.status = { type: "busy" }
     return lease
@@ -515,7 +517,18 @@ export namespace SessionManager {
 
   export function signalAbort(
     sessionID: string,
-    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
+    options?: {
+      fenceQueuedWork?: boolean
+      fenceQueuedBefore?: number
+      rootID?: string
+      /**
+       * Stop the turn so it can be resumed instead of ended. The intent rides on
+       * the abort itself, so a writer that terminalizes the interrupted turn
+       * reads it from the signal it is already reacting to rather than from a
+       * flag written by a concurrent repair.
+       */
+      pauseTurn?: boolean
+    },
   ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
@@ -526,14 +539,14 @@ export namespace SessionManager {
     // before removing its own inbox items; a later abort arriving while that
     // cleanup is in flight must not re-enable the release drive, or it would
     // materialize the very items being cancelled.
+    if (options?.fenceQueuedWork) {
+      owner.fenceQueuedWork = true
+      owner.fenceQueuedBefore ??= options.fenceQueuedBefore
+    }
     if (owner.phase === "stopping") return "already_stopping"
-
-    owner.recoverQueuedTasks = options?.recoverQueuedTasks === true || undefined
-    owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
-    owner.fenceQueuedBefore = options?.fenceQueuedBefore
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
-    owner.controller.abort()
+    owner.controller.abort(options?.pauseTurn ? new PausedTurnAbort() : undefined)
     cancelWaiters(runtime)
     return "signaled"
   }
@@ -557,9 +570,11 @@ export namespace SessionManager {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false
 
+    const pausedTurn = PausedTurnAbort.is(runtime.owner!.lease.signal.reason)
     runtime.owner!.controller.abort()
     cancelWaiters(runtime)
     runtime.owner = undefined
+    leaseReleases.get(lease)?.resolve()
     transitionExecutionPhase(runtime, undefined)
     runtime.status = { type: "idle" }
     emitStatus(runtime, runtime.status)
@@ -567,7 +582,7 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    if (accepting && options.requestNextWork !== false) {
+    if (accepting && !pausedTurn && options.requestNextWork !== false) {
       const { SessionDrive } = await import("./drive")
       await SessionDrive.request(lease.sessionID, "release")
     }
@@ -625,18 +640,33 @@ export namespace SessionManager {
     timer.unref()
   }
 
-  export async function wake(sessionID: string): Promise<void> {
+  /**
+   * Drive a session, synchronously.
+   *
+   * Two gates sit in front of the loop, and neither is bypassable:
+   *
+   * - A paused interactive session is never driven. This is defence in depth
+   *   behind `SessionDrive.arbitrate`; a wake that skipped it would restart the
+   *   very work the user stopped.
+   * - Discovery normally decides whether there is anything to do. `force` skips
+   *   only that check, for an explicit user continue whose resume point the
+   *   discovery heuristics cannot see.
+   */
+  export async function wake(sessionID: string, options: { force?: boolean } = {}): Promise<void> {
     if (isRunning(sessionID)) return
-    if (!(await SessionInbox.hasRunnableItem(sessionID)) && !(await RolloutContinuationRecovery.pending(sessionID)))
-      return
+    const session = await getSession(sessionID).catch(() => undefined)
+    if (await SessionLifecycle.blocksDrive(session)) return
+    if (!options.force && !(await SessionInbox.hasRunnableItem(sessionID))) return
     const { SessionInvoke } = await import("./invoke")
-    // Repair is best-effort: loop() surfaces its own terminal errors to the
-    // retry chain, so a failed repair must not keep queued work undriven.
-    await SessionInvoke.repairAfterAbort(sessionID).catch((error) => {
-      log.warn("session repair before wake failed", { sessionID, error })
-    })
+    // A queued item behind an interrupted turn needs that turn settled before
+    // the loop can consume it, but settlement must not latch a pause: this wake
+    // exists precisely because there is more work to do.
+    if (!options.force) {
+      await SessionInvoke.settleInterruptedTurn(sessionID).catch((error) => {
+        log.warn("session repair before wake failed", { sessionID, error })
+      })
+    }
     await SessionInvoke.loop(sessionID)
-    await RolloutContinuationRecovery.pending(sessionID)
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {
@@ -833,17 +863,6 @@ export namespace SessionManager {
 
     log.info("mail queued (session idle), processing", { sessionID: session.id })
     await wake(session.id)
-  }
-
-  // --- Pending Reply ---
-
-  export async function listPendingReply(scopeID?: string): Promise<string[]> {
-    const sessionIDs: string[] = []
-    for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
-      if (!info?.time || info.time.archived || info.pendingReply !== true) continue
-      sessionIDs.push(info.id)
-    }
-    return sessionIDs
   }
 
   export async function listInterruptedCortexDelegations(scopeID?: string): Promise<string[]> {

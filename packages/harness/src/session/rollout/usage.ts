@@ -161,4 +161,55 @@ export namespace RolloutUsage {
           result.output.total !== null
     return result
   }
+
+  /**
+   * Normalize an AI SDK `LanguageModelUsage` payload.
+   *
+   * Transport recording is best-effort: a request can reach the provider
+   * through a path that bypasses the recording fetch while the SDK result still
+   * carries usage, which `finishCall` persists on the call record. Those field
+   * names are camelCase, unlike the provider wire format `normalize` parses, so
+   * they need their own mapping.
+   */
+  export function normalizeSdk(raw: unknown, sdk = "@ai-sdk/openai"): Info | null {
+    const usage = object(raw)
+    const input = count(usage.inputTokens)
+    const google = sdk === "@ai-sdk/google" || sdk === "@ai-sdk/google-vertex"
+    const reasoning = count(usage.reasoningTokens)
+    // The locked Google SDK maps candidatesTokenCount and thoughtsTokenCount separately.
+    const output = google
+      ? (difference(count(usage.totalTokens), input) ?? sum(count(usage.outputTokens), reasoning))
+      : count(usage.outputTokens)
+    if (input === null && output === null) return null
+    const exclusiveInput =
+      sdk === "@ai-sdk/anthropic" || sdk === "@ai-sdk/google-vertex/anthropic" || sdk === "@ai-sdk/amazon-bedrock"
+    // Anthropic and Bedrock SDK input excludes cache reads and writes; LanguageModelUsage omits writes.
+    const cacheRead = count(usage.cachedInputTokens) ?? (exclusiveInput || input === null ? null : 0)
+    const result: Info = {
+      version: 1,
+      protocol: google
+        ? "google"
+        : exclusiveInput
+          ? sdk === "@ai-sdk/amazon-bedrock"
+            ? "unknown"
+            : "anthropic"
+          : "openai",
+      raw: (raw ?? null) as Info["raw"],
+      input: { total: exclusiveInput ? null : input, uncached: null, cacheRead, cacheWrite: exclusiveInput ? null : 0 },
+      output: { total: output, reasoning },
+      cacheWrites: {},
+      units: [],
+      billing: "tokens",
+      reported: null,
+      complete: false,
+    }
+    result.input.uncached = exclusiveInput ? input : difference(input, cacheRead, 0)
+    result.complete =
+      result.input.total !== null &&
+      result.input.uncached !== null &&
+      result.input.cacheRead !== null &&
+      result.input.cacheWrite !== null &&
+      result.output.total !== null
+    return result
+  }
 }

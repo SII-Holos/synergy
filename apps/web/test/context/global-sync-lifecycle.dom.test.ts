@@ -24,7 +24,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     let listener
     export const emit = (key,seq)=>listener({name:key,details:{type:"session.status",epoch:"test-epoch",seq,properties:{sessionID:"fixture-session",status:{type:"idle"}}}})
     const ok = data => Promise.resolve({data})
-    export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-recovering":{type:"recovering"}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
+    export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
         scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve})) },
@@ -127,7 +127,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       beginContextProjection(key: string, sessionID: string): number
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
-      sessionStatus: Record<string, { type?: string }>
+      sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
       scope: { loadSessions(key: string): Promise<void> }
     }
     const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as {
@@ -153,7 +153,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       // The cross-Scope snapshot is the only source for a session that was
       // already running before this client connected, in a project it has not
       // leased — no status event of its own ever arrives — and the only path by
-      // which `recovering` reaches a client at all. Bootstrap must fetch it
+      // which a paused latch reaches a client at all. Bootstrap must fetch it
       // instead of waiting for a lease.
       const waitForIndex = async (sessionID: string) => {
         const deadline = Date.now() + 5000
@@ -164,7 +164,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       }
       await waitForIndex("remote-runner")
       expect(api.sessionStatus["remote-runner"]).toEqual({ type: "busy" })
-      expect(api.sessionStatus["remote-recovering"]).toEqual({ type: "recovering" })
+      expect(api.sessionStatus["remote-paused"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
       let eviction = 0
       const evictInactive = async () => {
         for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${eviction++}`)

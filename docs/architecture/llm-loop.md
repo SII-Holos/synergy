@@ -8,14 +8,14 @@ The loop is not an in-memory conversation object. Durable messages and session s
 
 ## Entry and Ownership
 
-New direct input is either materialized as a root user message or queued in `SessionInbox`. When a reply is required, the session records `pendingReply` and enters `SessionManager.run()`.
+New direct input is either materialized as a root user message or queued in `SessionInbox`. When a reply is required, the session enters `SessionManager.run()`. Sending new input is also how a paused session resumes, so the send path clears the pause latch through `SessionLifecycle.clear` rather than requiring a separate action.
 
 `SessionManager.run()` acquires a generation-tagged lease synchronously, before session lookup or workspace setup can yield. The lease is the loop's owner identity and carries its abort signal. Its runtime phase moves from `starting` to `running`; cancellation moves it to `stopping` without clearing ownership. Only the exact owner lease can complete waiters or release the runtime, so a stale loop cannot abort, complete, or release a newer owner. Other callers attach waiters to the occupied runtime.
 
 During ownership:
 
 - the lease abort signal is shared by the session run;
-- status changes are published as busy, retry, idle, or recovering;
+- status changes are published as busy, retry, paused, or idle;
 - the loop-scoped message cache holds the compaction-aware model working set;
 - all loop writes update that cache and durable storage;
 - cache and recall state are released when the loop exits.
@@ -219,7 +219,7 @@ Models with an explicit input limit (for example 400k context / 272k input / 128
 
 Before each provider call, the per-request maximum output is clamped to the configured output and to the context remaining after the measured input and margin, so a long prompt cannot push the request past the window. An explicit per-request output limit remains effective when context metadata is unavailable. If no response space remains, automatic compaction runs first when enabled; Synergy permits one hard-overflow recovery attempt for the root before the next provider turn, then records a local actionable error instead of repeatedly compacting or sending a guaranteed-to-fail provider request.
 
-After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider.
+After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider. The baseline is only reused for the provider and model that reported it, the delta counts every part that reaches the provider — including reasoning traces — and calibration withdraws itself in favor of a full measurement once that delta grows large relative to the baseline.
 
 ## Context Usage Snapshots
 
@@ -334,7 +334,7 @@ When the inner loop reaches a terminal assistant:
 
 - post-step jobs run;
 - the next queued task may start in the outer loop;
-- when no runnable work remains, `pendingReply` is cleared;
+- when no runnable work remains, the loop yields and the session resolves to idle unless a pause latch is set;
 - completion notification state is updated;
 - waiters receive the selected terminal assistant.
 
@@ -342,7 +342,7 @@ Provider, auth, output-length, timeout, abort, and unknown failures are persiste
 
 Startup reconciliation, Abort, and the pre-wake guard share one root-anchored, idempotent terminal repair. It canonicalizes a failed assistant that has an error or completion time but lacks a terminal finish without replacing its structured error, terminalizes a genuinely incomplete assistant with an aborted error, or creates one terminal aborted assistant when the latest reply-required root has none. Repair also settles that turn's non-terminal tool parts to `error`, in every branch, because a process that died mid-call can leave a part running on a message that is already terminal; [Sessions and Messages](session-and-messages.md#recovery) owns that behavior. Repair clears stale `pendingReply` and never invokes the model or tools.
 
-Abort never publishes lifecycle idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress, while the client may project immediate local stopping feedback during the request. Abort carries explicit `recoverQueuedTasks` intent, recorded on the loop owner when the first abort wins: only the user-facing abort entries (the abort route and the `session_control` abort action) set it, and release then schedules the pending-work drive so task-mode inbox items queued during the run are recovered by the release-driven arbitration instead of stranding until the next user message. Internal cancellations — Boss task cancel, Lattice run cancel/pause, Cortex timeouts — abort before removing their own inbox items, so they leave the intent unset and release never races that cleanup. Ordinary loop failures keep the suppressed no-hammering release behavior.
+Abort never publishes lifecycle idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress, while the client may project immediate local stopping feedback during the request. A user stop latches `session.paused` through `SessionInvoke.repairAbortState`, so the session stays stopped until an explicit Continue or Abandon and no automatic drive path restarts it; `internalCancel` is the single opt-out, reserved for cancellations a domain performs on work it owns. The `recoverQueuedTasks` intent this paragraph used to describe is retired.
 
 ## Invariants
 

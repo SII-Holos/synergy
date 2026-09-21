@@ -33,8 +33,8 @@ describe("BlueprintLoop session phase projection", () => {
       await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
       expect((await Session.get(execution.id)).blueprint?.phase).toBe("running")
 
-      await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "waiting" })
-      expect((await Session.get(execution.id)).blueprint?.phase).toBe("waiting")
+      await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "auditing" })
+      expect((await Session.get(execution.id)).blueprint?.phase).toBe("auditing")
       expect((await Session.get(execution.id)).blueprint?.loopRole).toBe("execution")
 
       await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
@@ -136,14 +136,14 @@ describe("SessionNav Blueprint identity", () => {
       })
       await bindLoopSession(execution.id, loop.id, "execution")
       await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
-      await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "waiting" })
+      await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "auditing" })
 
       const live = (await SessionNav.readNavIndex(scopeID)).entries.find((entry) => entry.id === execution.id)
       const rebuilt = (await SessionNav.buildNavIndex(scopeID)).entries.find((entry) => entry.id === execution.id)
       const expected: NonNullable<SessionNavEntry["blueprint"]> = {
         loopID: loop.id,
         loopRole: "execution",
-        phase: "waiting",
+        phase: "auditing",
       }
       expect(live?.blueprint).toEqual(expected)
       expect(rebuilt?.blueprint).toEqual(live?.blueprint)
