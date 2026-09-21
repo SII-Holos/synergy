@@ -13,6 +13,7 @@ import {
 import { ServerProcessLock } from "../util/server-process-lock"
 import { StorageQueue } from "./queue"
 import { sqlParameterBytes } from "./sql-contract"
+import { beginStorageMaintenance } from "./maintenance-progress"
 import type {
   SqlConnection,
   SqlDriver,
@@ -45,6 +46,7 @@ type PendingRequest = {
   dispatchedAt: number
   deadline: number
   timeout?: ReturnType<typeof setTimeout>
+  maintenance?: ReturnType<typeof beginStorageMaintenance>
 }
 
 export class SqliteDriver implements SqlDriver {
@@ -76,6 +78,10 @@ export class SqliteDriver implements SqlDriver {
       stderr: "inherit",
       ipc: (message: SqliteResponse) => {
         if (!this.pending.has(message.id)) return
+        if (message.stage) {
+          this.pending.get(message.id)?.maintenance?.stage(message.stage)
+          return
+        }
         if (message.error)
           this.settle(message.id, { error: Object.assign(new Error(message.error.message), message.error) })
         else this.settle(message.id, { rows: message.rows ?? [], maintain: message.maintain })
@@ -88,12 +94,8 @@ export class SqliteDriver implements SqlDriver {
           return
         }
         this.closed = true
-        for (const pending of this.pending.values()) {
-          if (pending.timeout) clearTimeout(pending.timeout)
-          pending.reject(new Error(`SQLite worker exited with code ${code}`))
-        }
-        this.pending.clear()
-        this.queuedBytes = 0
+        for (const id of this.pending.keys())
+          this.settle(id, { error: new Error(`SQLite worker exited with code ${code}`) })
       },
     })
   }
@@ -149,6 +151,7 @@ export class SqliteDriver implements SqlDriver {
     if (pending.timeout) clearTimeout(pending.timeout)
     this.pending.delete(id)
     this.queuedBytes -= pending.bytes
+    pending.maintenance?.finish("error" in result ? "failed" : "completed")
     if ("error" in result) pending.reject(result.error)
     else pending.resolve({ rows: result.rows, maintain: result.maintain })
   }
@@ -159,12 +162,7 @@ export class SqliteDriver implements SqlDriver {
     this.closed = true
     this.stopping = true
     this.worker.kill()
-    for (const pending of [...this.pending.values()]) {
-      if (pending.timeout) clearTimeout(pending.timeout)
-      pending.reject(error)
-    }
-    this.pending.clear()
-    this.queuedBytes = 0
+    for (const id of this.pending.keys()) this.settle(id, { error })
     for (const listener of [...this.unavailableListeners]) listener(error)
   }
 
@@ -181,12 +179,11 @@ export class SqliteDriver implements SqlDriver {
 
   private async request(
     request: Omit<SqliteRequest, "id">,
-    onMaintenanceBudget?: (timeoutMs: number) => void,
   ): Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }> {
     if (this.unavailableError) return Promise.reject(this.unavailableError)
     if (this.closed) return Promise.reject(new StorageClosedError())
     let deadline = 30_000
-    if (request.maintenance || request.action === "maintain") {
+    if (request.maintenance) {
       // Offline maintenance may rewrite every page; the finite deadline scales
       // with the current snapshot size, including uncheckpointed WAL growth.
       const { rows: pages } = await this.request({
@@ -203,15 +200,28 @@ export class SqliteDriver implements SqlDriver {
       if (!Number.isSafeInteger(bytes) || bytes < 0)
         throw new StorageIntegrityError("SQLite maintenance size is invalid")
       // Full integrity checks revisit every index entry (https://sqlite.org/pragma.html#pragma_integrity_check).
-      deadline = Math.min(2_147_483_647, 600_000 + Math.ceil(bytes / 1024 ** 2) * 1000)
-      onMaintenanceBudget?.(deadline)
+      deadline = Math.min(
+        2_147_483_647 - PROBE_ATTEMPTS * PROBE_TIMEOUT_MS,
+        600_000 + Math.ceil(bytes / 1024 ** 2) * 1000,
+      )
     }
     const bytes = sqlParameterBytes(request.values ?? [])
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
+    const maintenance = request.maintenance
+      ? beginStorageMaintenance(request.maintenance, deadline + PROBE_ATTEMPTS * PROBE_TIMEOUT_MS)
+      : undefined
     const promise = new Promise<{ rows: SqlRow[]; maintain?: SqliteMaintenanceResult }>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, bytes, probe: false, dispatchedAt: performance.now(), deadline })
+      this.pending.set(id, {
+        resolve,
+        reject,
+        bytes,
+        probe: false,
+        dispatchedAt: performance.now(),
+        deadline,
+        maintenance,
+      })
     })
     this.queuedBytes += bytes
     this.arm(id, this.pending.get(id)!, deadline)
@@ -297,9 +307,22 @@ export class SqliteDriver implements SqlDriver {
     })
   }
 
+  async walPressure() {
+    return this.writerQueue.run(async () => {
+      const { rows } = await this.request({ action: "query", statement: "PRAGMA wal_checkpoint(PASSIVE)" })
+      const { rows: sizes } = await this.request({ action: "query", statement: "PRAGMA page_size" })
+      const pending = Math.max(0, Number(rows[0]?.log ?? 0) - Number(rows[0]?.checkpointed ?? 0))
+      return pending * Number(sizes[0]?.page_size ?? 4096)
+    })
+  }
+
   async maintain(request: SqliteMaintenanceRequest): Promise<SqliteMaintenanceResult> {
     const result = await this.writerQueue.run(() =>
-      this.request({ action: "maintain", maintain: request, maintenance: true }),
+      this.request({
+        action: "maintain",
+        maintain: request,
+        maintenance: request.operation === "enable-incremental-vacuum" ? "vacuum" : "reclaim",
+      }),
     )
     if (!result.maintain) throw new StorageIntegrityError("SQLite maintenance returned no result")
     return result.maintain
@@ -311,10 +334,7 @@ export class SqliteDriver implements SqlDriver {
     options?: SqlQueryOptions,
   ): Promise<Row[]> {
     const result = await this.readerQueue.run(() =>
-      this.request(
-        { action: "query", reader: true, statement, values, maintenance: options?.maintenance },
-        options?.onMaintenanceBudget,
-      ),
+      this.request({ action: "query", reader: true, statement, values, maintenance: options?.maintenance }),
     )
     return result.rows as Row[]
   }
@@ -328,16 +348,13 @@ export class SqliteDriver implements SqlDriver {
         queryOptions?: SqlQueryOptions,
       ) =>
         (
-          await this.request(
-            {
-              action: "query",
-              reader: options.readOnly,
-              statement,
-              values,
-              maintenance: queryOptions?.maintenance,
-            },
-            queryOptions?.onMaintenanceBudget,
-          )
+          await this.request({
+            action: "query",
+            reader: options.readOnly,
+            statement,
+            values,
+            maintenance: queryOptions?.maintenance,
+          })
         ).rows as Row[]
       // A declared single statement is already atomic, so BEGIN/COMMIT would
       // cost this worker two extra IPC round trips for no consistency gain.

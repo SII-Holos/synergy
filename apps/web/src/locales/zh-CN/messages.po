@@ -8825,8 +8825,64 @@ msgid "app.upgrade.attention"
 msgstr "有 {count} 个历史会话需要修复"
 
 #. js-lingui-explicit-id
+msgid "app.upgrade.backup"
+msgstr "正在完成恢复备份：{done}/{total}"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.backupAttention"
+msgstr "恢复备份需要检查"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.controlFailed"
+msgstr "无法更新准备状态，请重试。"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.leave"
+msgstr "返回工作区"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.pause"
+msgstr "暂停"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.paused"
+msgstr "历史记录准备已暂停"
+
+#. js-lingui-explicit-id
 msgid "app.upgrade.progress"
 msgstr "正在准备历史记录：{done}/{total}"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.resume"
+msgstr "继续"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionAttention"
+msgstr "这段会话需要处理"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionFiles"
+msgstr "已准备 {count} 个文件"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionPreparing"
+msgstr "正在准备这段会话"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionRepair"
+msgstr "校验发现问题。原始数据和恢复文件均已保留，请检查存储诊断信息后再重试。"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionRetryHelp"
+msgstr "准备未能完成。请检查连接和可用磁盘空间，然后重试。"
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionWait"
+msgstr "正在检查并升级历史记录。你可以离开此页面，继续使用其他会话。"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.add.bottomPanel"

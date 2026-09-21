@@ -1,3 +1,4 @@
+import { SessionPreparingError } from "@ericsanchezok/synergy-harness/persistence"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
@@ -444,6 +445,10 @@ export namespace Server {
     appInitialized = true
     return app
       .onError((err, c) => {
+        if (err instanceof SessionPreparingError) {
+          c.header("Retry-After", "2")
+          return c.json(err.toObject(), 409)
+        }
         if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
           return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })

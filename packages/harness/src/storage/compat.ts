@@ -30,6 +30,10 @@ export namespace StorageCompat {
     failures?: number
     retryAfter?: number
     activity?: number
+    phase?: "backup" | "import" | "migrate" | "verify" | "publish" | "complete"
+    files?: number
+    bytes?: number
+    error?: { category: "retryable" | "integrity" | "data"; message: string }
   }
 
   export function deferRelative(relative: string) {
@@ -93,6 +97,8 @@ export namespace StorageCompat {
       { key: locatorKey(locator.sessionID), value: locator },
       { key: infoKey, value: { ...current, boundary, counts } },
     ])
+    if (locator.status === "imported") await tx.remove(["compat_pending", locator.sessionID])
+    else await tx.write(["compat_pending", locator.sessionID], { scopeID: locator.scopeID })
     if (locator.status === "imported") await tx.remove(catalogKey(locator))
     else await tx.write(catalogKey(locator), { ...locator, info: info ?? (catalog as Catalog | undefined)?.info })
   }

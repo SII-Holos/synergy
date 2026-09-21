@@ -29,6 +29,7 @@ type Network = import("@ericsanchezok/synergy-harness/lifecycle").RuntimeNetwork
 
 export interface RuntimeOptions {
   storageReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["storageReporter"]
+  maintenanceReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["maintenanceReporter"]
   migrationReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["reporter"]
   migrationOutput?: Parameters<typeof ProductRuntimeHandle.open>[0]["migrationOutput"]
   recoveryReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["recoveryReporter"]
@@ -51,6 +52,7 @@ export async function run(options: RuntimeOptions) {
     migrationOutput: options.migrationOutput,
     recoveryReporter: options.recoveryReporter,
     storageReporter: options.storageReporter,
+    maintenanceReporter: options.maintenanceReporter,
   })
   const server = handle.server
   reporter?.migration(handle.migration)

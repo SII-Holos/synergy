@@ -1,5 +1,17 @@
-import { runtimeStartupLine, type StorageStartupProgress } from "@ericsanchezok/synergy-util/runtime-startup"
+import {
+  runtimeStartupLine,
+  type StorageStartupProgress,
+  type StorageMaintenanceEvent,
+} from "@ericsanchezok/synergy-util/runtime-startup"
 import type { MigrationReporter } from "@ericsanchezok/synergy-harness/migration/types"
+
+export function createManagedMaintenanceReporter(
+  write: (line: string) => void = (line) => {
+    process.stdout.write(line)
+  },
+) {
+  return (event: StorageMaintenanceEvent) => write(runtimeStartupLine(event))
+}
 
 export function createManagedRecoveryReporter(
   write: (line: string) => void = (line) => {

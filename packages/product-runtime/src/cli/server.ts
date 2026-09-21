@@ -2,6 +2,7 @@ import {
   createManagedMigrationReporter,
   createManagedRecoveryReporter,
   createManagedStorageReporter,
+  createManagedMaintenanceReporter,
 } from "./managed-startup"
 import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "@ericsanchezok/synergy-cli/cli/network"
@@ -40,6 +41,7 @@ export const ServerCommand = cmd({
 
       await runServerRuntime({
         storageReporter: managed ? createManagedStorageReporter() : undefined,
+        maintenanceReporter: managed ? createManagedMaintenanceReporter() : undefined,
         migrationReporter: managed ? createManagedMigrationReporter() : undefined,
         migrationOutput: managed ? "silent" : "interactive",
         recoveryReporter: managed ? createManagedRecoveryReporter() : undefined,

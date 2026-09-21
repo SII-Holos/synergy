@@ -208,7 +208,8 @@ class ExperimentConfig(StrictModel):
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
-    timeout_seconds: int | None = Field(default=None, gt=0)
+    timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | Literal["native"] = 10_800
+    request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
 
     @model_validator(mode="after")
     def validate_names(self) -> ExperimentConfig:
@@ -337,7 +338,8 @@ def resolve_plan(config: ExperimentConfig, tasks: list[dict[str, Any]]) -> list[
 def normalize_legacy(
     value: dict[str, Any], models: dict[str, Any], bindings: dict[str, str], base: Path
 ) -> dict[str, Any]:
-    legacy = ExperimentConfig.model_validate(value)
+    deadline = value.get("timeout_seconds")
+    legacy = ExperimentConfig.model_validate({**value, "timeout_seconds": "native" if deadline is None else deadline})
     if legacy.version != 1:
         raise ValueError("Only version 1 configurations require normalization")
     harnesses = {}

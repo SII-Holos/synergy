@@ -117,22 +117,23 @@ def request_summary(rows: list[Row], *, terminal: bool = True) -> Row:
     return result
 
 
-def grouped(rows: list[Row], key: str) -> list[Row]:
+def grouped(rows: list[Row], key: str, *, terminal: bool = True) -> list[Row]:
     groups: dict[str, list[Row]] = defaultdict(list)
     for row in rows:
         groups[str(row.get(key, "unknown"))].append(row)
-    return [{key: value, **request_summary(items)} for value, items in sorted(groups.items())]
+    return [{key: value, **request_summary(items, terminal=terminal)} for value, items in sorted(groups.items())]
 
 
 def stream_profile(path: Path) -> Row:
     result: Row = {
-        "response_reasoning_bytes": 0,
-        "response_text_bytes": 0,
-        "response_tool_argument_bytes": 0,
-        "response_tool_calls": 0,
-        "stream_usage_frames": 0,
+        "response_reasoning_bytes": None,
+        "response_text_bytes": None,
+        "response_tool_argument_bytes": None,
+        "response_tool_calls": None,
+        "stream_usage_frames": None,
         "stream_invalid_lines": 0,
-        "finish_reasons": "",
+        "finish_reasons": None,
+        "stream_framing": "unknown",
     }
     reasons: set[str] = set()
     calls: set[tuple[int, int]] = set()
@@ -148,6 +149,18 @@ def stream_profile(path: Path) -> Row:
             except (ValueError, UnicodeDecodeError):
                 result["stream_invalid_lines"] += 1
                 continue
+            if not isinstance(event, dict) or not isinstance(event.get("choices"), list):
+                result["stream_invalid_lines"] += 1
+                continue
+            if result["stream_framing"] == "unknown":
+                result["stream_framing"] = "sse"
+                for key in (
+                    "response_reasoning_bytes",
+                    "response_text_bytes",
+                    "response_tool_argument_bytes",
+                    "stream_usage_frames",
+                ):
+                    result[key] = 0
             if event.get("usage"):
                 result["stream_usage_frames"] += 1
             for choice in event.get("choices", []):
@@ -159,8 +172,9 @@ def stream_profile(path: Path) -> Row:
                     result["response_tool_argument_bytes"] += content_bytes(call.get("function", {}).get("arguments"))
                 if choice.get("finish_reason"):
                     reasons.add(choice["finish_reason"])
-    result["response_tool_calls"] = len(calls)
-    result["finish_reasons"] = ",".join(sorted(reasons))
+    if result["stream_framing"] == "sse":
+        result["response_tool_calls"] = len(calls)
+        result["finish_reasons"] = ",".join(sorted(reasons))
     return result
 
 
@@ -601,7 +615,15 @@ def analyze_run(root: Path) -> Row:
             "attempts": len(attempts),
             "execution_seconds": quantiles(a["execution_seconds"] for a in attempts),
         }
-    tables["by_purpose"] = grouped([r for r in tables["requests"] if r["group"] == "trials"], "purpose")
+    tables["by_purpose"] = grouped(
+        [r for r in tables["requests"] if r["group"] == "trials"],
+        "purpose",
+        terminal=all(
+            a["terminal_evidence"] and not a["missing_wire_attempts"]
+            for a in tables["attempts"]
+            if a["group"] == "trials"
+        ),
+    )
     tables["by_tool"] = []
     for name in sorted(tool_counts):
         rows = [t for t in tables["tools"] if t["tool"] == name and t["group"] == "trials"]
@@ -642,7 +664,7 @@ def write_analysis(result: Row, output: Path, source: Path) -> None:
     output = output.resolve()
     source = source.resolve()
     if output == source or source in output.parents or output in source.parents:
-        raise ValueError("Analysis output must be outside the input evidence tree")
+        raise ValueError("Analysis output must be outside and disjoint from the input evidence tree")
     output.mkdir(parents=True, exist_ok=True)
     atomic_json(output / "analysis.json", result)
     for name, rows in result.items():
@@ -665,8 +687,9 @@ def main() -> None:
     parser.add_argument("run", type=Path, help="包含 plan.json 的运行目录")
     parser.add_argument("--output", type=Path, required=True, help="证据目录之外的输出目录")
     args = parser.parse_args()
-    if args.output.resolve() == args.run.resolve() or args.run.resolve() in args.output.resolve().parents:
-        parser.error("--output must be outside the input evidence tree")
+    output, source = args.output.resolve(), args.run.resolve()
+    if output == source or source in output.parents or output in source.parents:
+        parser.error("--output must be outside and disjoint from the input evidence tree")
     result = analyze_run(args.run)
     write_analysis(result, args.output, args.run)
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))

@@ -9,13 +9,11 @@ from synergy_bench.storage import atomic_json, read_json
 
 
 @pytest.mark.parametrize("filename", ["glm53-acceptance.yaml", "glm53-long-session.yaml"])
-@pytest.mark.parametrize("native_seconds", [900, 10800])
-def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tmp_path, filename, native_seconds):
+def test_comparison_presets_keep_the_five_harness_sampling_population(filename):
     path = Path(__file__).parents[1] / "configs" / filename
     config = load_config(path)
     tasks = read_json(path.parent / config.suite)["tasks"]
-    schedule = resolve_plan(config, tasks)
-    assert len(schedule) == 50
+    assert len(resolve_plan(config, tasks)) == 50
     assert {variant.harness for variant in config.variants.values()} == {
         "synergy",
         "codex",
@@ -23,7 +21,18 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
         "pi",
         "deepseek",
     }
-    expected = native_seconds if filename == "glm53-acceptance.yaml" else 10800
+
+
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).parents[1] / "configs").glob("*.yaml")), ids=lambda path: path.name
+)
+@pytest.mark.parametrize("native_seconds", [900, 10800])
+def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tmp_path, path, native_seconds):
+    config = load_config(path)
+    tasks = read_json(path.parent / config.suite)["tasks"]
+    schedule = resolve_plan(config, tasks)
+    assert schedule
+    expected = native_seconds if config.timeout_seconds == "native" else config.timeout_seconds
     root = tmp_path / "run-12345678"
     for name, variant in config.variants.items():
         atomic_json(root / "inputs" / name / "config.json", {})
@@ -60,11 +69,10 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
         assert task["agent_seconds"] == native_seconds
         if variant.harness == "opencode":
             env = options["native"]["env"]
-            if filename == "glm53-long-session.yaml":
-                assert name == "opencode-jitless__glm53flash-max"
-                assert env["BUN_JSC_useJIT"] == "0"
-            else:
+            if variant.bun_jit is None:
                 assert "BUN_JSC_useJIT" not in env
+            else:
+                assert env["BUN_JSC_useJIT"] == str(int(variant.bun_jit))
 
 
 @pytest.mark.parametrize(

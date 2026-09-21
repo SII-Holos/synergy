@@ -375,6 +375,10 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/session-preparation.tsx",
+          "reason": "Solid presentation is exercised in test/components/session/session-preparation.dom.test.tsx with real Chromium, readiness gating, retries, quarantine, navigation/server cancellation and reactive localization. Bun cannot instrument Vite/browser execution; session-preparation-controller.ts remains measured by unit tests."
+        },
+        {
           "glob": "src/components/session/dialog-fork-confirm.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
