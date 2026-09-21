@@ -117,11 +117,11 @@ def request_summary(rows: list[Row], *, terminal: bool = True) -> Row:
     return result
 
 
-def grouped(rows: list[Row], key: str) -> list[Row]:
+def grouped(rows: list[Row], key: str, *, terminal: bool = True) -> list[Row]:
     groups: dict[str, list[Row]] = defaultdict(list)
     for row in rows:
         groups[str(row.get(key, "unknown"))].append(row)
-    return [{key: value, **request_summary(items)} for value, items in sorted(groups.items())]
+    return [{key: value, **request_summary(items, terminal=terminal)} for value, items in sorted(groups.items())]
 
 
 def stream_profile(path: Path) -> Row:
@@ -615,7 +615,15 @@ def analyze_run(root: Path) -> Row:
             "attempts": len(attempts),
             "execution_seconds": quantiles(a["execution_seconds"] for a in attempts),
         }
-    tables["by_purpose"] = grouped([r for r in tables["requests"] if r["group"] == "trials"], "purpose")
+    tables["by_purpose"] = grouped(
+        [r for r in tables["requests"] if r["group"] == "trials"],
+        "purpose",
+        terminal=all(
+            a["terminal_evidence"] and not a["missing_wire_attempts"]
+            for a in tables["attempts"]
+            if a["group"] == "trials"
+        ),
+    )
     tables["by_tool"] = []
     for name in sorted(tool_counts):
         rows = [t for t in tables["tools"] if t["tool"] == name and t["group"] == "trials"]

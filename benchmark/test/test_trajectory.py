@@ -301,3 +301,17 @@ def test_sibling_sessions_can_reuse_provider_tool_call_ids():
     assert [t["output_bytes"] for t in tools] == [1, 6]
     assert [t["is_root"] for t in tools] == [True, False]
     assert len(owners) == 2
+
+
+def test_purpose_totals_preserve_missing_terminal_evidence(tmp_path):
+    root = retained_run(tmp_path / "run")
+    attempt = root / "trials/0000/attempt-001"
+    for path in (attempt / "wire").glob("*/request.json"):
+        record = json.loads(path.read_text())
+        record["usage"] = {"prompt_tokens": 100, "completion_tokens": 20}
+        atomic_json(path, record)
+    (attempt / "evidence.json").unlink()
+    result = analyze_run(root)
+    assert result["summary"]["trials"]["total_tokens"] is None
+    assert result["by_purpose"][0]["known_total"] == 360
+    assert result["by_purpose"][0]["total_tokens"] is None
