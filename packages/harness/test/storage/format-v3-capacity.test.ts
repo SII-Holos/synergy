@@ -10,6 +10,47 @@ import { createV2Store, compressible } from "./format-v3-fixture"
 const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "format-v3-capacity-"))
 const stores: TransactionalStore[] = []
 
+test.each(["records", "nodes"])("the %s preflight includes artifact copies that have not started", async (phase) => {
+  const namespace = `artifacts-${phase}`
+  const dir = await fs.mkdtemp(path.join(root, `${namespace}-`))
+  const filename = path.join(dir, "agent.sqlite")
+  createV2Store({
+    filename,
+    namespace,
+    records: [{ key: ["sessions", "scope", "session", "info"], body: JSON.stringify({ id: "session" }) }],
+    artifacts: Array.from({ length: 400 }, (_, index) => ({
+      key: ["artifacts", `artifact-${index}`],
+      pack: `pack-${index}`,
+    })),
+    incrementalVacuum: true,
+  })
+  const store = await TransactionalStore.open({ backend: "sqlite", namespace, filename })
+  stores.push(store)
+  if (phase === "nodes") {
+    await expect(
+      StorageFormatV3Migration.run({
+        store,
+        progress: (_current, _total, stage) => {
+          if (stage === 2) throw new Error("interrupt-before-nodes")
+        },
+      }),
+    ).rejects.toThrow("interrupt-before-nodes")
+  }
+  using _disk = spyOn(fs, "statfs").mockImplementation((async () => ({
+    bavail: 16n,
+    bsize: 4096n,
+  })) as unknown as typeof fs.statfs)
+  await expect(StorageFormatV3Migration.run({ store })).rejects.toThrow("of free space")
+  const [record] = await store.snapshot(
+    (tx) =>
+      tx.raw.query<{ version: number | bigint }>("SELECT version FROM storage_namespaces WHERE namespace = ?", [
+        namespace,
+      ]),
+    { singleStatement: true },
+  )
+  expect(Number(record.version)).toBe(2)
+})
+
 afterAll(async () => {
   await Promise.all(stores.map((store) => store.close().catch(() => {})))
   await fs.rm(root, { recursive: true, force: true })

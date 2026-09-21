@@ -96,3 +96,5 @@ Recovery discovery should query the indexed record kind before reading candidate
 When a recovery domain permits skipping malformed bodies, page over indexed identities before decoding so an entirely corrupt page cannot hide later valid work. Preserve bounded batch reads for healthy data, log isolated failures, and test unreadable candidate owners as well as records. Query and store-availability failures must still propagate; do not make ordinary authority reads silently tolerant.
 
 Replay committed journal evidence in bounded reads at a captured revision. Test order, gaps and corruption across batch boundaries; reducing read transactions must preserve per-event validation and must never replay tools or provider calls.
+
+For resumable multi-table rewrites, test capacity preflight with metadata-heavy fixtures at the initial phase and an intermediate phase. Count every table still ahead of the cursor, not only the table currently being copied.

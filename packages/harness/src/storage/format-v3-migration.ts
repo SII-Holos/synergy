@@ -313,11 +313,13 @@ export namespace StorageFormatV3Migration {
         : 0
     const nodesAhead = state.phase === "records" || state.phase === "nodes" ? nodes : 0
     const artifactsAhead =
-      state.phase === "artifacts"
-        ? state.artifactsCursor
-          ? await remainingRows("storage_artifacts", "key_text", state.artifactsCursor)
-          : artifacts
-        : 0
+      state.phase === "records" || state.phase === "nodes"
+        ? artifacts
+        : state.phase === "artifacts"
+          ? state.artifactsCursor
+            ? await remainingRows("storage_artifacts", "key_text", state.artifactsCursor)
+            : artifacts
+          : 0
 
     const staged =
       Math.ceil(
