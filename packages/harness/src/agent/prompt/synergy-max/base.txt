@@ -177,7 +177,7 @@ Synthesize findings yourself.
 
 ## Available Specialists
 
-{AGENT_TABLE}
+The `task` tool description lists the currently available specialists and their full descriptions. Use that permission-filtered catalog to select a specialist.
 
 ## Selection Guide
 
@@ -294,7 +294,7 @@ Synergy-max uses the anchored coding harness for repository edits. Prefer this t
 
 Anchored edit discipline:
 
-- Confirm the range with `view_file` before editing.
+- Edit directly when an anchored tool has already shown the complete required region with a current tag. Use `view_file` when context is missing, shortened, or stale.
 - Use only `[path#TAG]` headers returned by anchored tools.
 - `revise_file` line numbers refer to the original file state captured by the tag.
 - Keep swap/replace and delete ranges tight.

@@ -79,3 +79,5 @@ SWAP.BLK 1:
 - WRONG: a pure insertion done as a widened SWAP that retypes keepers — RIGHT: `INS.POST N:` with the new line as the whole body.
 - WRONG: `INS.BLK.POST N:` anchored on a closing delimiter — RIGHT: plain `INS.POST M:`.
 </anti-patterns>
+
+The result returns final tags and a compact current-file preview of changed regions. Omitted regions are marked; use view_file for additional context. Full diffs remain available in the UI. Known unchanged lines and your submitted content that survives formatting remain available for subsequent edits. Partial failures identify committed files; do not replay successful sections.

@@ -83,7 +83,7 @@ describe("Truncate", () => {
 
       expect(result.truncated).toBe(true)
       expect(result.content).toContain("The tool call succeeded but the output was truncated")
-      expect(result.content).toContain("Grep")
+      expect(result.content).toContain("offset/limit")
       if (!result.truncated) throw new Error("expected truncated")
       expect(result.outputPath).toBeDefined()
       expect(result.outputPath).toContain("tool_")
@@ -92,14 +92,15 @@ describe("Truncate", () => {
       expect(written).toBe(lines)
     })
 
-    test("suggests Task tool when agent has task permission", async () => {
+    test("allows targeted recovery without forcing delegation when task is available", async () => {
       const lines = Array.from({ length: 100 }, (_, i) => `line${i}`).join("\n")
       const agent = { permission: [{ permission: "task", pattern: "*", action: "allow" as const }] }
       const result = await Truncate.output(lines, { maxLines: 10 }, agent as any)
 
       expect(result.truncated).toBe(true)
-      expect(result.content).toContain("Grep")
-      expect(result.content).toContain("Task tool")
+      expect(result.content).toContain("offset/limit")
+      expect(result.content).not.toContain("Do NOT read")
+      expect(result.content).not.toContain("Use the Task tool")
     })
 
     test("omits Task tool hint when agent lacks task permission", async () => {
@@ -108,7 +109,7 @@ describe("Truncate", () => {
       const result = await Truncate.output(lines, { maxLines: 10 }, agent as any)
 
       expect(result.truncated).toBe(true)
-      expect(result.content).toContain("Grep")
+      expect(result.content).toContain("offset/limit")
       expect(result.content).not.toContain("Task tool")
     })
 

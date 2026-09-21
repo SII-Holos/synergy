@@ -238,7 +238,7 @@ export class Patcher {
 
   #assertSeenLines(section: PatchSection, canonicalPath: string, expected: string): void {
     const seen = this.snapshots.byHash(canonicalPath, expected)?.seenLines
-    if (!seen || seen.size === 0) return
+    if (!seen) return
     const unseen = section.collectAnchorLines().filter((line) => !seen.has(line))
     if (unseen.length === 0) return
     throw new Error(unseenLinesMessage(section.path, unseen, expected))

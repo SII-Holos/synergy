@@ -1,0 +1,31 @@
+# Decision Record: Bounded coding tool observations
+
+Status: implemented
+
+## Problem
+
+File tools applied inconsistent output budgets. Explicit small reads were widened to 120 lines, disjoint ranges could exceed the byte budget, and successful anchored edits replayed entire files. Search tools minted usable tags while their instructions required another read. Specialist descriptions appeared in both the primary prompt and task tool catalog.
+
+## Decision
+
+Read and search tools share UTF-8 output accounting across ranges and files. Explicit read limits are honored; the default remains 2,000 lines. Omitted source has a recovery location and never becomes displayed-line evidence. Search context can supply enough evidence for direct anchored editing.
+
+Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. The task tool owns full specialist descriptions; the primary keeps selection policy. Truncation recovery permits targeted inspection without requiring delegation.
+
+Provenance: [Pi bounded reading](https://github.com/earendil-works/pi/blob/890f920884f6d21fc7617d236ef9e1cc5d7a0ef8/packages/coding-agent/src/core/tools/read.ts), [OMP edit previews](https://github.com/can1357/oh-my-pi/blob/d716bcf60ab0a2e7ece1fdf382c0d143fef1f307/crates/pi-edit/src/session.rs#L364).
+
+Local adaptation: retain Synergy's zero-based offsets, hashline language, formatter lifecycle, permissions and UI metadata. Reuse the previously ported compact-preview algorithm with final-file numbered diffs.
+
+## Alternatives considered
+
+**Smaller fixed default windows.** A smaller window can cause repeated reads and more model calls. The default is unchanged; explicit requests and aggregate budgets are enforced instead.
+
+**Success-only edit acknowledgements.** These omit useful final-file evidence after formatting. Compact previews retain nearby context without replaying unrelated code.
+
+**History rewriting or learned compression.** Both require separate long-task and provider-protocol validation. This change shapes new observations before they enter history.
+
+**Deferred specialist tools by default.** Discovery can introduce another model round trip. This change removes duplicate descriptions without changing capability visibility.
+
+## Consequences
+
+Output volume is bounded independently of match count. Large selections may require targeted continuation, and a single oversized line cannot supply a partial editable anchor. Tests cover UTF-8 boundaries, exact limits, search-to-edit and consecutive edits. Byte reductions alone do not establish token, billing, latency or task-quality improvements; model-backed comparisons must count all calls and recovery reads.
