@@ -55,6 +55,30 @@ def test_model_profile_controls_all_sampling_including_absent_native_defaults(tm
     assert "seed" not in payload
 
 
+def test_frozen_thinking_switch_overrides_native_reasoning_defaults(tmp_path):
+    profile = model("http://provider.invalid/v1").model_copy(
+        update={"parameters": {"enable_thinking": False, "temperature": 1}}
+    )
+    gateway = Gateway(profile, tmp_path)
+    payload, _ = gateway.effective(
+        {
+            "model": "fixture-one",
+            "messages": [],
+            "enable_thinking": True,
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": "max",
+        },
+        "chat-completions",
+    )
+    assert payload["enable_thinking"] is False
+    assert "thinking" not in payload
+    assert "reasoning_effort" not in payload
+    without_switch, _ = Gateway(model("http://provider.invalid/v1"), tmp_path).effective(
+        {"model": "fixture-one", "messages": [], "enable_thinking": True}, "chat-completions"
+    )
+    assert "enable_thinking" not in without_switch
+
+
 async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkeypatch):
     monkeypatch.setenv("FIXTURE_KEY", "upstream-private-test-key")
     bodies = []
@@ -80,7 +104,14 @@ async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkey
         await response.write(b"data: [DONE]\n\n")
         return response
 
-    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+    async with (
+        provider(handler) as url,
+        Gateway(
+            model(url).model_copy(update={"parameters": {"temperature": 0.2, "enable_thinking": False}}),
+            tmp_path,
+            bind="127.0.0.1",
+        ) as gateway,
+    ):
         async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
             for inputs in [
                 [{"role": "user", "content": "read"}],
@@ -95,6 +126,7 @@ async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkey
                     json={
                         "model": "fixture-one",
                         "stream": True,
+                        "enable_thinking": True,
                         "tools": [{"type": "function", "name": "read", "parameters": {"type": "object"}}],
                         "input": inputs,
                     },
@@ -103,9 +135,11 @@ async def test_real_stream_tool_roundtrip_has_one_bill_per_call(tmp_path, monkey
                     assert "response.completed" in await response.text()
     assert len(bodies) == 2
     assert all(body["temperature"] == 0.2 and body["max_tokens"] == 2048 for body in bodies)
+    assert all(body["enable_thinking"] is False for body in bodies)
     records = read_ledger(tmp_path)
     assert aggregate_usage(records)["tokens"]["total"]["total"] == 26
     assert len(records) == 2
+    assert all(row["parameter_overrides"]["enable_thinking"] == {"native": True, "effective": False} for row in records)
     assert len({row["downstream_response_id"] for row in records}) == 2
     for row in records:
         raw = (tmp_path / row["id"] / "downstream-response.bin").read_text()

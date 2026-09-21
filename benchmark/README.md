@@ -65,6 +65,8 @@ bun bench clean /absolute/path/to/run
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
+Chat Completions profile 支持严格布尔值 `enable_thinking`；使用服务商实际接受的开关，不把 `false` 当成启用 reasoning 的信号。网关从原生请求移除所有受管参数后应用冻结 profile，因此辅助调用不能自行启用思考。[Boyue 编码观察预设](configs/coding-observations-boyue.yaml) 固定关闭思考及三道原生筛查题；运行前将占位端点写入私有配置，并通过 `BOYUE_API_KEY` 注入凭据。端点、凭据和直连配置保持在本地，完整评测另建实验并移除选题限制。参数语义见[开关决策](../docs/decisions/implemented/architecture/2026-09-21-benchmark-explicit-thinking-switches.md)。
+
 启用思考的模型 profile 必须同时声明 `reasoning_effort`；思考档位是实验条件，不是实现细节。[GLM-5.3](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3) 始终思考、只接受 `thinking.type: enabled`，并通过 `reasoning_effort` 暴露 `low`、`high`、`max` 三档且以 `max` 为服务商默认值，因此省略该参数等于静默选用最深档位。预设把档位写进模型键名（`glm53flash-max`）并显式设值，使该条件同时体现在 variant 名（`synergy-max-full__glm53flash-max`）、冻结的 `plan.json` 和账本保留的有效请求参数中。更低的档位是各自独立、各有证据的条件，不能用来重新解释已完成的运行。该规则由[预设契约](test/test_experiment_presets.py)强制，取舍见[档位决策](../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md)。
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。

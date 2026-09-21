@@ -42,11 +42,14 @@ def harness_configuration(
     protocol = "responses" if kind == "codex" else model.protocol
     api = "openai-completions" if protocol == "chat-completions" else "openai-responses"
     name = model.model
-    reasoning = bool(
-        model.parameters.get("reasoning_effort")
-        or model.parameters.get("reasoning")
-        or model.parameters.get("thinking")
-    )
+    effort = model.parameters.get("reasoning_effort")
+    if "reasoning" in model.parameters:
+        effort = model.parameters["reasoning"].get("effort", "medium")
+    reasoning = effort is not None and effort != "none"
+    if "thinking" in model.parameters:
+        reasoning = model.parameters["thinking"]["type"] == "enabled"
+    if "enable_thinking" in model.parameters:
+        reasoning = model.parameters["enable_thinking"]
     model_spec = {
         "id": name,
         "name": name,
