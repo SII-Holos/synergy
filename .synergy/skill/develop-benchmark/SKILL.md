@@ -50,6 +50,14 @@ description: Change or validate the repository benchmark evaluator, native harne
 4. Compare only matching model/task/repeat/conditions. Expose missing or unpairable samples. Use seeded task-cluster bootstrap and only produce precise token differences for reconciled complete usage.
 5. Update this workflow, package documentation and an implemented decision record when their behavior changes. Run skill, documentation, decision, test-layout and workspace-boundary gates; follow `git-guide` for publication.
 
+## Diagnose retained trajectories
+
+1. Use the offline `synergy_bench.trajectory` module documented in [benchmark ownership](../../../benchmark/README.md#离线轨迹诊断). Keep derived files outside the evidence tree and preserve the original evaluator and scores.
+2. Separate trial and preflight latency distributions. Count each retry and child/auxiliary dispatch; retain interrupted HTTP 200 requests without usage as unknown, independently of rate-limit responses. Missing wire records cannot establish zero consumption. Apply missing terminal/wire evidence to grouped totals as well as overall totals; retain known lower bounds in both.
+3. Measure prompt regions and repeated tool results in bytes unless the actual provider supplies token attribution. Exact content repetition or unchanged history does not prove removable work or a provider cache hit. Keep request-body duplicate association explicitly weaker than a unique match.
+4. Use interval unions for parallel model/tool time. Do not add nested spans, streaming checkpoints, or repeated telemetry gauges as independent work. Native token metrics may use different cache inclusion rules from wire usage.
+5. Separate observed quota debits from estimates under dated public plan coefficients. Do not infer the user's plan generation from the API endpoint or equate a subscription unit with one model call. Read failing native test details before attributing unsuccessful tasks to runtime overhead.
+
 ## Runtime cache boundaries
 
 Synergy's prepared runtime key covers TypeScript sources and the shared `deadline.mjs`; external CLIs use separate Node bundles keyed by every file in `engines.NATIVE_RUNTIME`. Adding an executed dependency requires updating its owning key and invalidation regression. Frozen bundles still verify their complete recorded bytes; external CLI observers copied into a Synergy bundle are not executed by Synergy.
@@ -57,3 +65,5 @@ Synergy's prepared runtime key covers TypeScript sources and the shared `deadlin
 ## Secret detector experiments
 
 Use the [secret-detection package](../../../packages/secret-detection/README.md) for offline span quality and detector timing, and the Harness `benchmark:secrets` command for isolated capture costs. Keep corpus labels independent of predictions; never pass gold spans to adapters. Report incomplete scans and failures separately, retain failed positives in recall denominators, and use completed negatives for false-positive rates. Freeze corpus, detector/model/configuration identity and evaluator source before comparisons. Split future training and holdout by source/template and credential family. Keep real credentials and private transcripts out of fixtures and reports; record timing, counts and sanitized failure codes instead of matched values. These microbenchmarks do not establish task-level or user-visible latency improvements.
+
+离线 wire 诊断必须测试非流式 JSON、错误正文、缺失响应与畸形 SSE。未识别的 framing 不得生成看似精确的零值内容指标；CLI 与导出层应使用一致的证据目录保护规则。
