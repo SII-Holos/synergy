@@ -132,3 +132,19 @@ test("a verifier pins immutable packs while a concurrent deletion commits", asyn
     expect(await Storage.collectArtifactGarbage()).toBe(1)
   })
 })
+
+test("durable import pins preserve orphan packs and queued garbage across collection", async () => {
+  await using handle = await fixture()
+  await Storage.provide(handle, async () => {
+    const key = ["blobs", "imported"]
+    await Storage.writeBinary(key, Buffer.from("durable recovery bytes"))
+    const location = await handle.store.snapshot((tx) => tx.artifact(key))
+    const pin = ["storage_pack_pins", location.pack, "pending-owner"]
+    await Storage.write(pin, { backupID: "recovery" })
+    await Storage.removeTree(["blobs"])
+    expect(await Storage.collectArtifactGarbage({ scanOrphans: true })).toBe(0)
+    expect(await Bun.file(path.join(handle.artifactDirectory, "agent-artifacts", location.pack)).exists()).toBe(true)
+    await Storage.remove(pin)
+    expect(await Storage.collectArtifactGarbage({ scanOrphans: true })).toBe(1)
+  })
+})

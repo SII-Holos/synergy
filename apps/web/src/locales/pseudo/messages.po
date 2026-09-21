@@ -8801,7 +8801,63 @@ msgid "app.upgrade.attention"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.upgrade.backup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.backupAttention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.controlFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.leave"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.pause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.upgrade.progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.resume"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionAttention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionPreparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionRepair"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionRetryHelp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.upgrade.sessionWait"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────

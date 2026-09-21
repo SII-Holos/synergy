@@ -1117,6 +1117,15 @@ export type PerfBrowserMetricBatch = {
 
 export type StorageUpgradeStatus = {
   ready: true
+  historyReady: boolean
+  paused: boolean
+  pauseReason?: "user" | "foreground" | "disk" | "wal"
+  backup: {
+    complete: boolean
+    attention?: boolean
+    sealed: number
+    total: number
+  }
   pending: number
   partial: number
   imported: number
@@ -1131,6 +1140,18 @@ export type StorageUpgradeCatalog = {
     status: "pending" | "partial" | "imported" | "quarantined"
   }>
   next?: Array<string>
+}
+
+export type StorageSessionPreparation = {
+  sessionID: string
+  state: "ready" | "pending" | "preparing" | "blocked" | "failed"
+  phase?: "backup" | "import" | "migrate" | "verify" | "publish" | "complete"
+  files: number
+  bytes: number
+  error?: {
+    category: "retryable" | "integrity" | "data"
+    message: string
+  }
 }
 
 export type StorageSnapshotOwnerCounts = {
@@ -11639,6 +11660,114 @@ export type StorageUpgradeCatalogResponses = {
 }
 
 export type StorageUpgradeCatalogResponse = StorageUpgradeCatalogResponses[keyof StorageUpgradeCatalogResponses]
+
+export type StorageControlUpgradeData = {
+  body?: {
+    action: "pause" | "resume"
+  }
+  path?: never
+  query?: never
+  url: "/global/storage/upgrade/control"
+}
+
+export type StorageControlUpgradeErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageControlUpgradeError = StorageControlUpgradeErrors[keyof StorageControlUpgradeErrors]
+
+export type StorageControlUpgradeResponses = {
+  /**
+   * Updated preparation status
+   */
+  200: StorageUpgradeStatus
+}
+
+export type StorageControlUpgradeResponse = StorageControlUpgradeResponses[keyof StorageControlUpgradeResponses]
+
+export type StorageUpgradeSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}"
+}
+
+export type StorageUpgradeSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeSessionError = StorageUpgradeSessionErrors[keyof StorageUpgradeSessionErrors]
+
+export type StorageUpgradeSessionResponses = {
+  /**
+   * Preparation status without starting work
+   */
+  200: StorageSessionPreparation
+}
+
+export type StorageUpgradeSessionResponse = StorageUpgradeSessionResponses[keyof StorageUpgradeSessionResponses]
+
+export type StoragePrepareSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}/prepare"
+}
+
+export type StoragePrepareSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StoragePrepareSessionError = StoragePrepareSessionErrors[keyof StoragePrepareSessionErrors]
+
+export type StoragePrepareSessionResponses = {
+  /**
+   * Current preparation status
+   */
+  200: StorageSessionPreparation
+}
+
+export type StoragePrepareSessionResponse = StoragePrepareSessionResponses[keyof StoragePrepareSessionResponses]
+
+export type StorageRetrySessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}/retry"
+}
+
+export type StorageRetrySessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageRetrySessionError = StorageRetrySessionErrors[keyof StorageRetrySessionErrors]
+
+export type StorageRetrySessionResponses = {
+  /**
+   * Current preparation status
+   */
+  200: StorageSessionPreparation
+}
+
+export type StorageRetrySessionResponse = StorageRetrySessionResponses[keyof StorageRetrySessionResponses]
 
 export type StorageSnapshotUsageData = {
   body?: never

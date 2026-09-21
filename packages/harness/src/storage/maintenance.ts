@@ -34,7 +34,7 @@ export namespace StorageMaintenance {
         manifest = await segmented.restore(path.join(temporary, "data"))
       } else {
         const sealed = await backup.manifest()
-        if (!sealed || sealed.selection !== "home")
+        if (!sealed || sealed.selection !== "home" || sealed.excludedRoots?.length)
           throw new StorageIntegrityError("Restore requires a sealed Home backup or a recoverable segmented backup")
         await backup.restore(path.join(temporary, "data"))
         manifest = sealed

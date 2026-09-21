@@ -476,6 +476,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260920-blueprint-loop-retired-waiting-status",
+    execution: "startup",
     description: "Convert the retired waiting BlueprintLoop status and move its hold onto the session pause latch",
     domain: "blueprint_loop",
     dependsOn: ["20260715-blueprint-loop-source-plugin"],

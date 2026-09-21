@@ -522,21 +522,12 @@ function isNonTerminalToolState(state: unknown): boolean {
  * which SessionInvoke repair owns.
  */
 async function migrateOrphanedToolParts(progress: (current: number, total: number) => void) {
-  const candidates: Array<{ key: string[]; part: Record<string, unknown> }> = []
-  for await (const record of SessionMigrationTarget.records<unknown>({ kind: "part" })) {
-    const part = asRecord(record.value)
-    if (!part || part.type !== "tool") continue
-    if (!isNonTerminalToolState(part.state)) continue
-    candidates.push({ key: [...record.key], part })
-  }
-  // Report the scanned total even when there is nothing to rewrite, so a
-  // progress reporter shows a completed pass rather than silence.
-  progress(0, candidates.length)
-  if (candidates.length === 0) return
-
   let done = 0
   let settled = 0
-  for (const { key, part } of candidates) {
+  progress(0, 0)
+  for await (const { key, value } of SessionMigrationTarget.records<unknown>({ kind: "part" })) {
+    const part = asRecord(value)
+    if (!part || part.type !== "tool" || !isNonTerminalToolState(part.state)) continue
     try {
       const [, scopeID, sessionID, , messageID] = key
       const info = await Storage.read<MessageV2.Info>(
@@ -548,7 +539,7 @@ async function migrateOrphanedToolParts(progress: (current: number, total: numbe
       ).catch(missingHistoricalRecord)
       if (info?.role !== "assistant" || !SessionProgress.isTerminalAssistant(info)) {
         done++
-        progress(done, candidates.length)
+        progress(done, 0)
         continue
       }
       const state = asRecord(part.state)!
@@ -571,9 +562,10 @@ async function migrateOrphanedToolParts(progress: (current: number, total: numbe
       throw error
     }
     done++
-    progress(done, candidates.length)
+    progress(done, 0)
   }
-  log.info("orphaned tool part migration complete", { candidates: candidates.length, settled })
+  progress(done, done)
+  log.info("orphaned tool part migration complete", { candidates: done, settled })
 }
 
 async function migrateSessionAttachmentParts(progress: (current: number, total: number) => void) {
@@ -2243,6 +2235,12 @@ export const migrations: Migration[] = [
 
   {
     id: "20260907-snapshot-shared-store",
+    scope: "session",
+    execution: "session",
+    async upSession(owner) {
+      const { SnapshotMaintenance } = await import("./snapshot-maintenance")
+      await SnapshotMaintenance.registerLegacy(undefined, owner.scopeID, owner.sessionID)
+    },
     dependsOn: ["20260619-snapshot-per-session"],
     description: "Register legacy snapshot owners before enabling Scope-shared storage",
     async up(progress) {
@@ -2252,6 +2250,8 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260907-snapshot-release-orphan-owners",
+    scope: "global",
+    execution: "after-convergence",
     dependsOn: ["20260907-snapshot-shared-store"],
     description: "Release legacy owner records that the shared-store migration created for orphan directories",
     async up(progress) {

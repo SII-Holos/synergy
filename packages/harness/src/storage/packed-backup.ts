@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
-import { createReadStream } from "node:fs"
+import { createReadStream, createWriteStream } from "node:fs"
+import { pipeline } from "node:stream/promises"
+import { UpgradeWork } from "./upgrade-work"
 import path from "node:path"
 import { promisify } from "node:util"
 import { gzip as gzipCallback, gunzipSync } from "node:zlib"
@@ -13,7 +15,7 @@ import { legacyBinaryKey, legacyFiles, legacySources, sourcePath } from "./legac
 const MAX_GROUP_BYTES = 4 * 1024 * 1024
 const MAX_GROUP_FILES = 1024
 const gzip = promisify(gzipCallback)
-const COMPRESSION_FLIGHTS = 8
+const COMPRESSION_FLIGHTS = 2
 const Entry = z
   .object({
     relative: z.string(),
@@ -40,8 +42,10 @@ const Manifest = z
     selection: z.union([
       z.enum(["home", "artifacts"]),
       z.object({ scopeID: z.string(), sessionID: z.string() }).strict(),
+      z.object({ prefix: z.string() }).strict(),
     ]),
     source: z.string().regex(/^[a-f0-9]{64}$/),
+    excludedRoots: z.array(z.literal("snapshot")).optional(),
     groups: z.number().int().nonnegative(),
     files: z.number().int().nonnegative(),
     bytes: z.number().int().nonnegative().safe(),
@@ -96,6 +100,7 @@ export class PackedBackup {
       dataRoot: string
       backupRoot: string
       selection?: PackedBackupManifest["selection"]
+      excludedRoots?: Array<"snapshot">
       capacity?: (bytes: number) => Promise<void>
       progress?: (value: { files: number; bytes: number; storedBytes: number }) => void
     },
@@ -241,12 +246,17 @@ export class PackedBackup {
   private async *sources() {
     const selection = this.options.selection
     if (typeof selection === "object") {
-      const prefix = `sessions/${selection.scopeID}/${selection.sessionID}`
+      const prefix = "prefix" in selection ? selection.prefix : `sessions/${selection.scopeID}/${selection.sessionID}`
       const directory = sourcePath(this.options.dataRoot, prefix)
-      for await (const entry of legacyFiles(directory)) yield { ...entry, relative: `${prefix}/${entry.relative}` }
+      const stat = await fs.lstat(directory)
+      if (stat.isSymbolicLink()) throw new StorageIntegrityError("Segment root cannot be a symbolic link")
+      if (stat.isDirectory()) {
+        for await (const entry of legacyFiles(directory)) yield { ...entry, relative: `${prefix}/${entry.relative}` }
+      } else if (stat.isFile()) yield { relative: prefix, size: stat.size }
+      else throw new StorageIntegrityError("Unsupported segment root")
       return
     }
-    for await (const entry of legacySources(this.options.dataRoot))
+    for await (const entry of legacySources(this.options.dataRoot, this.options.excludedRoots))
       if (this.options.selection !== "artifacts" || legacyBinaryKey(entry.relative)) yield entry
   }
 
@@ -254,6 +264,7 @@ export class PackedBackup {
     const { dataRoot, backupRoot, progress } = this.options
     const source = hash(await fs.realpath(dataRoot))
     const selection = this.options.selection ?? "home"
+    const excluded = this.options.excludedRoots?.length ? { excludedRoots: this.options.excludedRoots } : {}
     await fs.mkdir(path.join(backupRoot, "chunks"), { recursive: true, mode: 0o700 })
     await fs.mkdir(path.join(backupRoot, "groups"), { recursive: true, mode: 0o700 })
     const sealed = await this.manifest()
@@ -261,9 +272,15 @@ export class PackedBackup {
       throw new StorageIntegrityError("Packed backup source identity changed")
     const identity = path.join(backupRoot, "source.json")
     const previousIdentity = await optionalJSON(identity)
-    if (previousIdentity !== undefined && JSON.stringify(previousIdentity) !== JSON.stringify({ source, selection }))
+    if (
+      previousIdentity !== undefined &&
+      JSON.stringify(previousIdentity) !== JSON.stringify({ source, selection, ...excluded })
+    )
       throw new StorageIntegrityError("Packed backup source identity changed")
-    await AtomicFile.writeJsonAtomic(identity, JSON.stringify({ source, selection }), { private: true, durable: true })
+    await AtomicFile.writeJsonAtomic(identity, JSON.stringify({ source, selection, ...excluded }), {
+      private: true,
+      durable: true,
+    })
     const names = (await fs.readdir(path.join(backupRoot, "groups")))
       .filter((name) => /^\d{10}\.json$/.test(name))
       .sort()
@@ -299,6 +316,7 @@ export class PackedBackup {
         storedBytes += result.group.storedBytes
         groups++
         progress?.({ files, bytes, storedBytes })
+        await UpgradeWork.checkpoint()
       }
       let frames: Buffer[] = [],
         frameBytes = 0,
@@ -314,6 +332,7 @@ export class PackedBackup {
         storedBytes += group.storedBytes
         groups++
         progress?.({ files, bytes, storedBytes })
+        await UpgradeWork.checkpoint()
       }
       const flush = async () => {
         if (!groupFiles) return
@@ -368,6 +387,7 @@ export class PackedBackup {
         groupFiles++
       }
       for (;;) {
+        UpgradeWork.signal()?.throwIfAborted()
         const next = await sourceFiles.next()
         if (next.done) break
         if (sealed) throw new StorageIntegrityError("New legacy data appeared after the backup was sealed")
@@ -379,7 +399,9 @@ export class PackedBackup {
           await this.options.capacity?.(entry.size + 16_384)
           const temporary = this.chunk(groups) + ".tmp-" + randomUUID()
           try {
-            await fs.copyFile(filename, temporary)
+            await pipeline(createReadStream(filename), createWriteStream(temporary, { flags: "wx", mode: 0o600 }), {
+              signal: UpgradeWork.signal(),
+            })
             const stat = await fs.stat(temporary)
             if (stat.size !== entry.size) throw new StorageIntegrityError("Legacy data changed during backup")
             await fs.chmod(temporary, 0o600)
@@ -411,7 +433,7 @@ export class PackedBackup {
         }
         if (flights.length >= COMPRESSION_FLIGHTS) await drainOne()
         flights.push(
-          (async () => {
+          UpgradeWork.compress(async () => {
             const data = entry.linkTarget === undefined ? await fs.readFile(filename) : Buffer.alloc(0)
             if ((entry.linkTarget === undefined ? data.length : Buffer.byteLength(entry.linkTarget)) !== entry.size)
               throw new StorageIntegrityError("Legacy data changed during backup")
@@ -427,7 +449,7 @@ export class PackedBackup {
               stored,
               size: metadataBytes + data.length,
             }
-          })().catch((error: unknown) => {
+          }).catch((error: unknown) => {
             failure ??= error
             return undefined
           }),
@@ -438,6 +460,7 @@ export class PackedBackup {
       const manifest: PackedBackupManifest = {
         version: 2,
         selection,
+        ...excluded,
         source,
         groups,
         files,

@@ -28,6 +28,8 @@ The Note Blueprint policy allows Blueprint creation and modification only in Pla
 
 ## BlueprintLoop State Machine
 
+The retired waiting-status upgrade runs at startup over global BlueprintLoop records. Its matching owner-local session migration preserves the workflow pause when historical sessions are imported; unrelated history remains deferred.
+
 A BlueprintLoop persists:
 
 - Blueprint note ID and optional version

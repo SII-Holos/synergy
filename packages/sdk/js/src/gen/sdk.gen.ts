@@ -685,6 +685,12 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StorageControlUpgradeErrors,
+  StorageControlUpgradeResponses,
+  StoragePrepareSessionErrors,
+  StoragePrepareSessionResponses,
+  StorageRetrySessionErrors,
+  StorageRetrySessionResponses,
   StorageSnapshotCleanErrors,
   StorageSnapshotCleanInput,
   StorageSnapshotCleanResponses,
@@ -698,6 +704,8 @@ import type {
   StorageSnapshotUsageResponses,
   StorageUpgradeCatalogErrors,
   StorageUpgradeCatalogResponses,
+  StorageUpgradeSessionErrors,
+  StorageUpgradeSessionResponses,
   StorageUpgradeStatusErrors,
   StorageUpgradeStatusResponses,
   SynergyLinkTargetCreateErrors,
@@ -4566,6 +4574,97 @@ export class Storage extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Pause or resume background history preparation
+   */
+  public controlUpgrade<ThrowOnError extends boolean = false>(
+    parameters?: {
+      action?: "pause" | "resume"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "action" }] }])
+    return (options?.client ?? this.client).post<
+      StorageControlUpgradeResponses,
+      StorageControlUpgradeErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get historical Session preparation status
+   */
+  public upgradeSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      StorageUpgradeSessionResponses,
+      StorageUpgradeSessionErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/sessions/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Prioritize historical Session preparation
+   *
+   * Returns immediately. Poll status; leaving the page does not cancel durable preparation.
+   */
+  public prepareSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).post<
+      StoragePrepareSessionResponses,
+      StoragePrepareSessionErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/upgrade/sessions/{sessionID}/prepare",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Retry interrupted historical Session preparation
+   *
+   * Retries from durable checkpoints. Quarantined data requires repair; this operation never discards or overwrites a recovery set.
+   */
+  public retrySession<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).post<StorageRetrySessionResponses, StorageRetrySessionErrors, ThrowOnError>(
+      {
+        url: "/global/storage/upgrade/sessions/{sessionID}/retry",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   snapshot = new Snapshot({ client: this.client })
