@@ -20,7 +20,7 @@ describe("TimeoutConfig", () => {
 
     await expect(TimeoutConfig.resolve()).resolves.toMatchObject({
       invokeMs: 21_600_000,
-      providerTtfbMs: 15_000,
+      providerTtfbMs: 300_000,
       providerIdleMs: 120_000,
       providerWallMs: 1_800_000,
       toolDefaultMs: 7_200_000,
@@ -72,7 +72,7 @@ describe("TimeoutConfig.forProvider", () => {
     installConfig({})
 
     await expect(TimeoutConfig.forProvider({ providerID: "boyue" })).resolves.toEqual({
-      providerTtfbMs: 15_000,
+      providerTtfbMs: 300_000,
       providerIdleMs: 120_000,
       providerWallMs: 1_800_000,
     })
@@ -102,7 +102,7 @@ describe("TimeoutConfig.forProvider", () => {
 
     await expect(TimeoutConfig.forProvider({ providerID: "boyue", legacyIdle: 450_000 })).resolves.toMatchObject({
       providerIdleMs: 450_000,
-      providerTtfbMs: 15_000,
+      providerTtfbMs: 300_000,
     })
   })
 

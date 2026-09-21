@@ -41,6 +41,16 @@ async function until(predicate: () => boolean, timeoutMs = 2_000) {
   }
 }
 
+async function drain(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) return chunks
+    chunks.push(value)
+  }
+}
+
 describe("Provider.createTimeoutFetch TTFB clear point", () => {
   test("stays armed when the response headers arrive and no body byte follows", async () => {
     using metrics = spyOn(ObservabilityMetrics, "record")
@@ -227,5 +237,78 @@ describe("Provider.createTimeoutFetch idle and wall watchdogs", () => {
     expect(fired).toHaveLength(1)
     expect(fired[0]).toMatchObject({ value: 1, unit: "count", labels: { kind: "wall" } })
     await reader.cancel().catch(() => {})
+  })
+})
+
+describe("Provider.createTimeoutFetch TTFB is one-shot, idle covers the stream", () => {
+  test("is never re-armed: chunks spaced beyond the TTFB budget do not fire it", async () => {
+    using metrics = spyOn(ObservabilityMetrics, "record")
+    let sent = 0
+    // One byte up front disarms TTFB; every later chunk then arrives after a
+    // gap far longer than the TTFB budget. If TTFB were re-armed per chunk (the
+    // behaviour a long reasoning prefill would depend on), this would abort.
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (sent === 0) {
+          sent++
+          controller.enqueue(encoder.encode("data: 思考开始\n\n"))
+          return
+        }
+        if (sent < 5) {
+          sent++
+          await Bun.sleep(120)
+          controller.enqueue(encoder.encode("data: 更多思考\n\n"))
+          return
+        }
+        controller.close()
+      },
+    })
+    const timeoutFetch = Provider.createTimeoutFetch({
+      fetchFn: async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      noProxy: false,
+      // TTFB budget 40ms, idle budget 500ms: the 120ms inter-chunk gaps are
+      // 3x the TTFB budget but far under idle, so only a re-armed TTFB could fire.
+      timeouts: { providerTtfbMs: 40, providerIdleMs: 500, providerWallMs: false },
+      labels: { provider: "test-provider", model: "test-model" },
+    })
+
+    const response = await timeoutFetch("https://provider.invalid/v1/chat/completions", {})
+
+    await expect(drain(response.body!)).resolves.toHaveLength(5)
+
+    expect(recordedRows(metrics, "llm.watchdog.fired")).toHaveLength(0)
+    // The first byte still reports the phase boundary exactly once.
+    expect(recordedRows(metrics, "llm.fetch.first_byte")).toHaveLength(1)
+  })
+
+  test("the idle watchdog protects a long prefill after the first byte, not TTFB", async () => {
+    using metrics = spyOn(ObservabilityMetrics, "record")
+    let sent = 0
+    // Models a reasoning model that emits a keep-warm first frame and then
+    // thinks for a long time. TTFB is already satisfied, so only idle applies.
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (sent > 0) return
+        sent++
+        controller.enqueue(encoder.encode("data: 首帧\n\n"))
+      },
+    })
+    const timeoutFetch = Provider.createTimeoutFetch({
+      fetchFn: async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      noProxy: false,
+      // TTFB budget 30ms is already spent; idle 150ms is what must eventually fire.
+      timeouts: { providerTtfbMs: 30, providerIdleMs: 150, providerWallMs: false },
+      labels: { provider: "test-provider", model: "test-model" },
+    })
+
+    const response = await timeoutFetch("https://provider.invalid/v1/chat/completions", {})
+    const reader = response.body!.getReader()
+    await reader.read()
+    await expect(reader.read()).rejects.toMatchObject({ name: "TimeoutError" })
+
+    const fired = recordedRows(metrics, "llm.watchdog.fired")
+    expect(fired).toHaveLength(1)
+    // The long silence is attributed to idle, never to TTFB.
+    expect(fired[0]).toMatchObject({ unit: "count", labels: { kind: "idle" } })
   })
 })

@@ -561,11 +561,12 @@ const CoreInfo = z
               .positive()
               .optional()
               .describe(
-                "Max seconds from request start to the first response body byte. " +
-                  "This covers both the wait for response headers and the gap between headers and the " +
-                  "first model token, where a gateway can accept a request and then hold it open. " +
-                  "Raise per provider (provider.<id>.timeout.ttfb_sec) for slow reasoning models " +
-                  "such as o1-pro or deepseek-r1. Default: 15",
+                "Max seconds from request start until the response body begins to flow. A gateway that " +
+                  "does not flush response headers early reports headers and the first body byte " +
+                  "together, so this budget also covers prompt prefill and has to exceed the slowest " +
+                  "legitimate prefill rather than only the network round trip. Measured prefill grows " +
+                  "with context size (roughly 3s at 65k tokens, 12s at 260k, 28s at 520k). Raise per " +
+                  "provider (provider.<id>.timeout.ttfb_sec) when a provider needs more. Default: 300",
               ),
             idle_sec: z
               .union([z.number().min(0), z.literal(false)])

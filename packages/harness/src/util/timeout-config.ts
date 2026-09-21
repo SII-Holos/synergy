@@ -19,7 +19,7 @@ export namespace TimeoutConfig {
 
   const DEFAULTS: Resolved = {
     invokeMs: 21_600_000,
-    providerTtfbMs: 15_000,
+    providerTtfbMs: 300_000,
     providerIdleMs: 120_000,
     providerWallMs: 1_800_000,
     toolDefaultMs: 7_200_000,
