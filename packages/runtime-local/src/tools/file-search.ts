@@ -120,12 +120,17 @@ export const FileSearchTool = Tool.define("file_search", {
     const kinds = ["path", "content", "symbol"] as const
     const budget = new OutputBudget()
     const unique = new Set<string>()
+    let resultLimited = filesResult.truncated || contentTruncated || symbolTruncated
     let budgetLimited = false
     for (let index = 0; index < Math.max(...groups.map((group) => group.length)); index++) {
       for (let channel = 0; channel < groups.length; channel++) {
         const row = groups[channel][index]
         if (row === undefined || unique.has(row)) continue
-        if (merged.length >= limit || !budget.take(row)) {
+        if (merged.length >= limit) {
+          resultLimited = true
+          continue
+        }
+        if (!budget.take(row)) {
           budgetLimited = true
           continue
         }
@@ -144,12 +149,16 @@ Tips:
 - Try a shorter query or partial filename
 - For content searches, try fewer words
 - New files may still be indexing — try searching again`
+    const guidance = [
+      resultLimited ? "[Results omitted by the result limit. Increase limit or narrow the query or scope.]" : "",
+      budgetLimited ? "[Results omitted by the shared budget. Narrow the query or scope for more evidence.]" : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
 
     return {
       title: params.query || "Search",
-      output: budgetLimited
-        ? `${output}\n[Results omitted by the shared budget. Narrow the query or scope for more evidence.]`
-        : output,
+      output: guidance ? `${output}\n${guidance}` : output,
       metadata: {
         query: params.query,
         pathCount: pathItems.length,
@@ -157,7 +166,7 @@ Tips:
         symbolCount: symbolItems.length,
         count: merged.length,
         displayedCounts,
-        truncated: budgetLimited || filesResult.truncated || contentTruncated || symbolTruncated,
+        truncated: budgetLimited || resultLimited,
         nextCursor: filesResult.nextCursor,
       },
     }

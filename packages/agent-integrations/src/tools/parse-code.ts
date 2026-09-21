@@ -149,7 +149,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       const startLine = match.range.start.line + 1
       const endLine = match.range.end.line + 1
       const lastLine = Math.max(startLine, endLine - (match.range.end.column === 0 ? 1 : 0))
-      entry.lines.push(startLine)
+      if (!entry.lines.includes(startLine)) entry.lines.push(startLine)
       entry.windows.push({ start: startLine - (params.context ?? 0), end: lastLine + (params.context ?? 0) })
       entry.ranges.push(`${startLine}:${match.range.start.column + 1}-${endLine}:${match.range.end.column + 1}`)
       byFile.set(match.file, entry)
