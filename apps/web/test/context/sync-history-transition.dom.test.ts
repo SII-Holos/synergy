@@ -13,7 +13,7 @@ type Harness = {
   dispose: () => void
 }
 
-test("history transitions replace earlier rewind branches and their parts without a reconnect", async () => {
+test("history transitions replace dropped branches and restore effective messages and parts without a reconnect", async () => {
   const dir = await mkdtemp(path.join(import.meta.dir, ".sync-history-"))
   const entry = path.join(dir, "main.tsx"),
     stub = path.join(dir, "stub.tsx")
@@ -43,7 +43,7 @@ export const useGlobalSync=()=>({
 });
 export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};
 export const updatePlanBlueprintOfferState=()=>{};
-let ids=['root-old','answer-old'];
+let ids=['root-old','answer-old','injection'];
 export const setPage = value => {ids=value};
 const page=()=>({data:{items:ids.map((id,index)=>({info:{id,sessionID:'ses_probe',role:'user',time:{created:index}},parts:[{id:'part-'+id,type:'text',text:'fixture'}]})),referencedRoots:[],nextCursor:null,hasMore:false,total:ids.length},response:{headers:{get:()=>null}}});
 export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isHome:true,client:{
@@ -71,7 +71,7 @@ export const harness={calls,dispose,run:async()=>{
   await api.session.sync('ses_probe');snapshot();
   setPage(['root-retry','answer-retry']);
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
-  setPage(['root-new']);
+  setPage(['injection','root-new']);
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
   setPage(['root-retry','answer-retry']);
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
@@ -112,9 +112,9 @@ export const harness={calls,dispose,run:async()=>{
     })
     harness = ((await import(pathToFileURL(path.join(dir, "dist/fixture.js")).href)) as { harness: Harness }).harness
     expect(await harness.run()).toEqual([
-      { messages: ["root-old", "answer-old"], parts: ["answer-old", "root-old"] },
+      { messages: ["root-old", "answer-old", "injection"], parts: ["answer-old", "injection", "root-old"] },
       { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"] },
-      { messages: ["root-new"], parts: ["root-new"] },
+      { messages: ["injection", "root-new"], parts: ["injection", "root-new"] },
       { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"] },
     ])
     expect(harness.calls.messagePage).toHaveLength(4)

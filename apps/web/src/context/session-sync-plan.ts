@@ -23,6 +23,7 @@ export type SessionSyncWatchKey = readonly [
   ready: boolean,
   reconnectVersion: number,
   historyID: string | undefined,
+  canUnrollback: boolean,
 ]
 
 export function sessionSyncWatchKey(input: {
@@ -31,8 +32,16 @@ export function sessionSyncWatchKey(input: {
   ready: boolean
   reconnectVersion: number
   historyID?: string
+  canUnrollback?: boolean
 }): SessionSyncWatchKey {
-  return [input.sessionID, input.connected, input.ready, input.reconnectVersion, input.historyID]
+  return [
+    input.sessionID,
+    input.connected,
+    input.ready,
+    input.reconnectVersion,
+    input.historyID,
+    input.canUnrollback === true,
+  ]
 }
 
 export function shouldRunSessionSync(current: SessionSyncWatchKey, previous?: SessionSyncWatchKey) {

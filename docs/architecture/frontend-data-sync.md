@@ -134,7 +134,7 @@ Each asynchronous latest-page request also captures a per-session projection rev
 
 ### History transitions
 
-The active session watches the server-owned rollback identity as well as connection and reconnect recovery state. A rewind or redo identity change requests a `history-transition` sync, forcing the authoritative effective latest message window even when redo is unavailable. Applying that window replaces old branch messages and removes their part buckets through the existing message-page reconciliation path. The latest rollback summary supports immediate local filtering, including known dropped IDs outside the loaded cut boundary, but cannot represent every earlier rollback. Ordinary session metadata updates do not trigger this history reload.
+The active session watches the server-owned rollback identity and redo validity as well as connection and reconnect recovery state. A rewind or redo identity change requests a `history-transition` sync, forcing the authoritative effective latest message window even when redo is unavailable. Applying that window replaces old branch messages and removes their part buckets through the existing message-page reconciliation path. The latest rollback summary supports immediate local filtering, including known dropped IDs outside the loaded cut boundary, but cannot represent every earlier rollback. Ordinary session metadata updates do not trigger this history reload.
 
 ### History mode
 

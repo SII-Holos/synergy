@@ -23,8 +23,8 @@ describe("session sync watch key", () => {
     const before = key({})
     const after = key({ reconnectVersion: 5 })
 
-    expect(before).toEqual(["ses_1", true, true, 4, undefined])
-    expect(after).toEqual(["ses_1", true, true, 5, undefined])
+    expect(before).toEqual(["ses_1", true, true, 4, undefined, false])
+    expect(after).toEqual(["ses_1", true, true, 5, undefined, false])
     expect(after).not.toEqual(before)
   })
 
@@ -43,6 +43,14 @@ describe("session sync watch key", () => {
 
   test("runs for an initially ready session", () => {
     expect(shouldRunSessionSync(key({}))).toBe(true)
+  })
+
+  test("reloads when a new root invalidates redo without changing the rollback ID", () => {
+    const input = { sessionID: "ses_1", connected: true, ready: true, reconnectVersion: 4, historyID: "rollback_1" }
+    const before = sessionSyncWatchKey({ ...input, canUnrollback: true })
+    const after = sessionSyncWatchKey({ ...input, canUnrollback: false })
+    expect(after).not.toEqual(before)
+    expect(shouldRunSessionSync(after, before)).toBe(true)
   })
 
   test("ignores metadata updates that preserve the history and connection identity", () => {

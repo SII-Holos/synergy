@@ -8,7 +8,7 @@ A retained frontend window can contain messages from multiple earlier rollback b
 
 ## Decision
 
-The active session observes rollback identity changes and requests a history transition sync. That trigger forces the canonical latest message page, using existing replacement, freshness and part-eviction behavior. Immediate filtering also honors known dropped IDs when the cut root is outside the window. See [history transitions](../../../architecture/frontend-data-sync.md#history-transitions).
+The active session observes rollback identity and redo-validity changes and requests a history transition sync. That trigger forces the canonical latest message page, using existing replacement, freshness and part-eviction behavior. Immediate filtering also honors known dropped IDs when the cut root is outside the window. See [history transitions](../../../architecture/frontend-data-sync.md#history-transitions).
 
 ## Alternatives considered
 
