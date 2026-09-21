@@ -1531,6 +1531,15 @@ export namespace SessionProcessor {
                         labels: { provider: input.model.providerID, model: input.model.id },
                       })
                       ObservabilityMetrics.record({
+                        name: "llm.tokens.cached_input",
+                        value: usage.tokens.cache.read,
+                        unit: "tokens",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      ObservabilityMetrics.record({
                         name: "llm.request.count",
                         value: 1,
                         unit: "count",
@@ -1665,6 +1674,12 @@ export namespace SessionProcessor {
                       break
 
                     case "finish":
+                      if (
+                        input.assistantMessage.finish === "stop" &&
+                        streamStats.text.outputChars === 0 &&
+                        deferredToolCalls.length === 0
+                      )
+                        throw new MessageV2.EmptyResponseError({ message: "Provider returned an empty response" })
                       break
 
                     case "abort":

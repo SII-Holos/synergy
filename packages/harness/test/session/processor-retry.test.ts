@@ -46,7 +46,23 @@ function testModel(): Provider.Model {
   }
 }
 
-async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cancel" | "tls") {
+const testUsage = { inputTokens: 1, outputTokens: 0, totalTokens: 1 }
+
+async function run(
+  mode:
+    | "stream"
+    | "dispatch"
+    | "exhausted"
+    | "reused"
+    | "cancel"
+    | "tls"
+    | "empty"
+    | "empty-then-text"
+    | "reasoning-only"
+    | "tools"
+    | "tools-stop"
+    | "length",
+) {
   await using tmp = await tmpdir({ git: true })
   return ScopeContext.provide({
     scope: await tmp.scope(),
@@ -102,6 +118,42 @@ async function run(mode: "stream" | "dispatch" | "exhausted" | "reused" | "cance
           },
           async () => ({
             fullStream: (async function* () {
+              if (mode === "empty" || mode === "empty-then-text" || mode === "reasoning-only" || mode === "length") {
+                yield { type: "start-step" as const }
+                if (mode === "empty-then-text") {
+                  yield { type: "text-start" as const, id: "text" }
+                  if (attempt > 1) yield { type: "text-delta" as const, id: "text", text: "recovered answer" }
+                  yield { type: "text-end" as const, id: "text" }
+                }
+                if (mode === "reasoning-only") {
+                  yield { type: "reasoning-start" as const, id: "reasoning" }
+                  yield { type: "reasoning-delta" as const, id: "reasoning", text: "internal deliberation" }
+                  yield { type: "reasoning-end" as const, id: "reasoning" }
+                }
+                yield {
+                  type: "finish-step" as const,
+                  finishReason: mode === "length" ? "length" : "stop",
+                  usage: testUsage,
+                }
+                yield { type: "finish" as const }
+                return
+              }
+              if (mode === "tools" || mode === "tools-stop") {
+                yield { type: "start-step" as const }
+                yield {
+                  type: "tool-call" as const,
+                  toolCallId: `call-${attempt}`,
+                  toolName: "probe",
+                  input: { attempt },
+                }
+                yield {
+                  type: "finish-step" as const,
+                  finishReason: mode === "tools-stop" ? "stop" : "tool-calls",
+                  usage: testUsage,
+                }
+                yield { type: "finish" as const }
+                return
+              }
               const failed =
                 ((mode === "stream" || mode === "reused" || mode === "cancel") && attempt === 1) ||
                 mode === "exhausted" ||
@@ -318,4 +370,74 @@ test("derives endpointHost from provider-level baseURL when the provider is prox
   } finally {
     getProvider.mockRestore()
   }
+})
+
+// The reported incident: a provider completed a turn with `finishReason: "stop"`
+// but streamed no text and called no tool, so the turn succeeded invisibly.
+test("a response that completes with no text and no tool calls retries as empty_response", async () => {
+  const result = await run("empty")
+  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+  expect(result.message.info).toMatchObject({
+    finish: "error",
+    error: {
+      name: "APIError",
+      data: { isRetryable: true, metadata: { code: "empty_response" } },
+    },
+  })
+})
+
+test("an exhausted empty response persists only the terminal error", async () => {
+  const result = await run("empty")
+  expect(result.message.parts.filter((part) => part.type === "text")).toHaveLength(0)
+  expect(result.message.parts.filter((part) => part.type === "tool")).toHaveLength(0)
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.finish).toBe("error")
+  expect(result.message.info.error?.name).toBe("APIError")
+})
+
+test("a pure tool step is not treated as an empty response", async () => {
+  const result = await run("tools")
+  expect(result.calls).toBe(1)
+  expect(result.effects).toBe(1)
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.finish).toBe("tool-calls")
+  expect(result.message.info.error).toBeUndefined()
+})
+
+test("an empty response retries and keeps the recovered answer", async () => {
+  const result = await run("empty-then-text")
+  expect(result.calls).toBe(2)
+  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+    "recovered answer",
+  ])
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.finish).toBe("stop")
+  expect(result.message.info.error).toBeUndefined()
+})
+
+test("a tool call reported with finishReason stop is not treated as an empty response", async () => {
+  const result = await run("tools-stop")
+  expect(result.calls).toBe(1)
+  expect(result.effects).toBe(1)
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.finish).toBe("stop")
+  expect(result.message.info.error).toBeUndefined()
+})
+
+test("a step that produces only reasoning is treated as an empty response", async () => {
+  const result = await run("reasoning-only")
+  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.error).toMatchObject({
+    name: "APIError",
+    data: { isRetryable: true, metadata: { code: "empty_response" } },
+  })
+})
+
+test("a length-limited step is not treated as an empty response", async () => {
+  const result = await run("length")
+  expect(result.calls).toBe(1)
+  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+  expect(result.message.info.finish).toBe("length")
+  expect(result.message.info.error).toBeUndefined()
 })
