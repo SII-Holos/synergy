@@ -633,11 +633,12 @@ export class StoreTransaction {
     this.check(true)
     await this.assertAdmitted(keys)
     for (let offset = 0; offset < keys.length; offset += 128) {
-      const batch = keys.slice(offset, offset + 128).map(keyID)
+      const batch = keys.slice(offset, offset + 128)
       await this.connection.query(
         `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
-        [Date.now(), this.namespace, ...batch],
+        [Date.now(), this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
+      for (const key of batch) await this.cleanDanglingNodes(key)
     }
   }
 

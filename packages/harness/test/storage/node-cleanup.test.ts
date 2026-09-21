@@ -32,6 +32,53 @@ const message = (id: string, messageID: string) => ({
   value: { id: messageID },
 })
 
+for (const format of [2, 3]) {
+  test(`removeMany preserves atomic deletion and node cleanup in format ${format}`, async () => {
+    const filename = path.join(root, `remove-many-v${format}.sqlite`)
+    if (format === 2) createV2Store({ filename, namespace: NAMESPACE, records: [] })
+    const store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
+    stores.push(store)
+    const keys = Array.from({ length: 130 }, (_, index) => ["checkpoints", "retired", String(index)])
+    const survivor = ["checkpoints", "live"]
+    await store.transaction((tx) =>
+      tx.writeMany([
+        ...keys.map((key) => ({ key, value: { retained: false } })),
+        { key: survivor, value: { retained: true } },
+      ]),
+    )
+    const before = await store.versioned(keys[0])
+    await expect(
+      store.transaction(async (tx) => {
+        await tx.removeMany(keys)
+        throw new Error("rollback deletion")
+      }),
+    ).rejects.toThrow("rollback deletion")
+    expect((await store.readMany(keys)).every((value) => value !== undefined)).toBe(true)
+    await store.transaction((tx) => tx.removeMany(keys))
+    expect(await store.readMany(keys)).toEqual(keys.map(() => undefined))
+    expect(await store.read<{ retained: boolean }>(survivor)).toEqual({ retained: true })
+    expect(await store.scan(["checkpoints"])).toEqual(["live"])
+    await expect(
+      store.transaction((tx) => tx.write(keys[0], { retained: false }, { expectedRevision: before.revision })),
+    ).rejects.toThrow("Storage revision changed")
+    expect((await store.verify()).issues).toEqual([])
+    await store.close()
+    const database = new Database(filename, { readonly: true })
+    try {
+      expect(database.query("SELECT COUNT(*) AS count FROM storage_nodes WHERE namespace = ?").get(NAMESPACE)).toEqual({
+        count: 2,
+      })
+      expect(
+        database
+          .query("SELECT COUNT(*) AS count FROM storage_records WHERE namespace = ? AND body IS NULL")
+          .get(NAMESPACE),
+      ).toEqual({ count: keys.length })
+    } finally {
+      database.close()
+    }
+  })
+}
+
 /**
  * Reads the tables directly, because neither row class is visible through the
  * query surface: a node row a removal emptied is not returned by `scan`/`list`,
