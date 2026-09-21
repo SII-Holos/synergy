@@ -1,6 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import { ConfigExtensions } from "./extensions"
-import { AsyncLocalStorage } from "node:async_hooks"
+import { Context } from "../util/context"
 import { createHash } from "node:crypto"
 import z from "zod"
 import { CoreInfo, Info as ConfigSchema } from "./schema"
@@ -92,7 +92,7 @@ export namespace Experiment {
     .strict()
     .meta({ ref: "ExperimentSnapshot" })
   export type Snapshot = z.infer<typeof Snapshot>
-  const storage = new AsyncLocalStorage<Snapshot>()
+  const storage = Context.create<Snapshot>("experiment")
   const runtimeState = RuntimeContext.state(() => ({
     runtimeConfig: undefined as z.infer<typeof Runtime> | undefined,
     runtimeOverrides: undefined as z.infer<typeof Runtime> | undefined,
@@ -194,12 +194,12 @@ export namespace Experiment {
     Object.freeze(value)
   }
   export function current() {
-    return storage.getStore()
+    return storage.tryUse()
   }
   export function provide<T>(snapshot: Snapshot, action: () => T): T {
     const copy = Snapshot.parse(snapshot)
     freeze(copy)
-    return storage.run(copy, action)
+    return storage.provide(copy, action)
   }
   // apply() composes and parses the configuration, and the turn path resolves it
   // on every round. The memo is keyed by the identity of all three inputs — the

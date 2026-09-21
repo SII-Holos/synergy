@@ -1,27 +1,27 @@
 import { RolloutProcess } from "./process"
 import { RolloutContext } from "./context"
-import { AsyncLocalStorage } from "node:async_hooks"
+import { Context } from "../../util/context"
 import { RolloutArtifact } from "./artifact"
 import { RolloutLedger } from "./ledger"
 import { record, RolloutRecordingError } from "./error"
 import { SecretMask } from "../../secrets/mask"
 
 export namespace RolloutTool {
-  const context = new AsyncLocalStorage<{
+  const context = Context.create<{
     authorize(value: unknown): Promise<void>
     capture(value: unknown): Promise<void>
     openProcess(id: string): Promise<RolloutProcess.Writer>
     afterCommit(action: () => void): void
-  }>()
+  }>("rollout.tool")
 
   export async function authorize(value: unknown) {
-    const current = context.getStore()
+    const current = context.tryUse()
     if (!current) throw new Error("Tool authorization has no execution owner")
     await current.authorize(value)
   }
 
   export async function capture(value: unknown) {
-    const current = context.getStore()
+    const current = context.tryUse()
     if (!current) throw new Error("Tool evidence has no execution owner")
     if (value && typeof value === "object" && !Array.isArray(value)) {
       await SecretMask.transformResult(value as Record<string, unknown>, RolloutContext.current()?.signal)
@@ -30,13 +30,13 @@ export namespace RolloutTool {
   }
 
   export async function openProcess(id: string) {
-    const current = context.getStore()
+    const current = context.tryUse()
     if (!current) throw new Error("Process evidence has no tool execution owner")
     return current.openProcess(id)
   }
 
   export function afterCommit(action: () => void) {
-    const current = context.getStore()
+    const current = context.tryUse()
     if (!current) throw new Error("Tool completion has no execution owner")
     current.afterCommit(action)
   }
@@ -89,7 +89,7 @@ export namespace RolloutTool {
     try {
       const result = await RolloutContext.provide(
         { owner: input.owner, runID: input.runID, signal: RolloutContext.current()?.signal },
-        () => context.run(state, action),
+        () => context.provide(state, action),
       )
       await state.capture(result)
       tool.observation = await artifact(result)

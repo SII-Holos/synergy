@@ -1,7 +1,37 @@
 import { expect, test } from "bun:test"
 import { RuntimeContext } from "../../src/lifecycle/context"
+import { Experiment } from "../../src/config/experiment"
+import { SessionMigrationTarget } from "../../src/migration/session-target"
+import { Storage } from "../../src/storage/storage"
+import { testRuntime } from "../support/runtime"
 
 const host = (home: string) => ({ home, root: `${home}/.synergy`, env: { SYNERGY_TEST_HOME: home } })
+
+test("a nested Runtime resolves its own task configuration without inherited experiment overrides", async () => {
+  await using a = await testRuntime()
+  await using b = await testRuntime()
+  const snapshot = a.run(() => Experiment.capture({ model: "test/a" }))
+  a.run(() =>
+    Experiment.provide(snapshot, () => {
+      expect(b.run(() => Experiment.apply({ model: "test/b" })).model).toBe("test/b")
+      expect(RuntimeContext.exit(() => Experiment.current())).toBeUndefined()
+      expect(Experiment.apply({ model: "test/changed" }).model).toBe("test/a")
+    }),
+  )
+})
+
+test("a per-session migration target cannot narrow reads in another Runtime", async () => {
+  await using a = await testRuntime()
+  await using b = await testRuntime()
+  await b.run(() => Storage.write(["sessions", "scope-b", "session-b", "info"], { id: "session-b" }))
+  await a.run(() =>
+    SessionMigrationTarget.provide({ scopeID: "scope-a", sessionID: "session-a" }, async () => {
+      expect(await b.run(() => SessionMigrationTarget.scopes())).toEqual(["scope-b"])
+      expect(await b.run(() => SessionMigrationTarget.sessions("scope-b"))).toEqual(["session-b"])
+      expect(await SessionMigrationTarget.scopes()).toEqual(["scope-a"])
+    }),
+  )
+})
 
 test("runtime state is isolated across interleaved work and restored after nesting", async () => {
   const a = RuntimeContext.create(host("/isolated/a"))
