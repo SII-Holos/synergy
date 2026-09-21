@@ -197,3 +197,31 @@ describe("tool.parse_code", () => {
     })
   })
 })
+
+test("AST matches include their complete multiline region and bounded surrounding context", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "code.ts"),
+        "// before\nfunction target() {\n  return 42\n}\n// after\n// hidden\n",
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const tool = await ParseCodeTool.init()
+      const result = await tool.execute({ pattern: "function target() { $$$ }", lang: "typescript", context: 1 }, ctx)
+      expect(result.output).toContain("1:// before")
+      expect(result.output).toContain("3:  return 42")
+      expect(result.output).toContain("5:// after")
+      expect(result.output).not.toContain("6:// hidden")
+      const hugeContext = await tool.execute(
+        { pattern: "function target() { $$$ }", lang: "typescript", context: 1_000_000_000 },
+        ctx,
+      )
+      expect(hugeContext.output).toContain("6:// hidden")
+    },
+  })
+})

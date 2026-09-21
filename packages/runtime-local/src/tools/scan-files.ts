@@ -9,6 +9,7 @@ import {
   recordHashlineSnapshot,
   OutputBudget,
   selectDisplayLines,
+  displayLineNumbers,
   markFileRead,
   readTextFileUnderSnapshotCap,
   resolveFilePath,
@@ -227,17 +228,12 @@ export const ScanFilesTool = Tool.define("scan_files", {
       const lines = lineWindow(entry.lines)
       const header = `Matches in [${pathLabel}#${tag}]: ${lines.join(", ")}`
       const context = Math.min(params.context ?? 0, contentLines.length)
-      const selectedNumbers =
+      const selectedNumbers = displayLineNumbers(
         outputMode === "files"
-          ? contentLines.map((_, index) => index + 1)
-          : lineWindow(
-              lines.flatMap((line) =>
-                Array.from(
-                  { length: Math.min(contentLines.length, line + context) - Math.max(1, line - context) + 1 },
-                  (_, i) => Math.max(1, line - context) + i,
-                ),
-              ),
-            )
+          ? [{ start: 1, end: contentLines.length }]
+          : lines.map((line) => ({ start: line - context, end: line + context })),
+        contentLines.length,
+      )
       const selected = selectDisplayLines(contentLines, selectedNumbers, budget)
       budgetLimited ||= selected.omitted.length > 0
       const title = outputMode === "files" ? `[${pathLabel}#${tag}]` : header

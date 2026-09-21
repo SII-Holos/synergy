@@ -86,11 +86,11 @@ export const ReadTool = Tool.define("read", {
       output += content.join("\n")
       if (truncatedByBytes && raw.length === 0)
         output += `\nLine ${offset + 1} exceeds the output budget. Inspect it with a bounded shell command; repeating this offset cannot reveal the full line.`
-      if (truncatedByBytes) {
+      if (truncatedByBytes && raw.length > 0) {
         output += `\n\n(Output truncated at ${MAX_BYTES} bytes. Use offset=${lastReadLine} to continue)`
-      } else if (hasMoreLines) {
+      } else if (hasMoreLines && !truncatedByBytes) {
         output += `\n\n(Document has more lines. Use offset=${lastReadLine} to continue)`
-      } else {
+      } else if (!truncatedByBytes) {
         output += `\n\n(End of document - total ${totalLines} lines)`
       }
       output += "\n</file>"
@@ -153,11 +153,11 @@ export const ReadTool = Tool.define("read", {
     const hasMoreLines = totalLines > lastReadLine
     const truncated = hasMoreLines || truncatedByBytes
 
-    if (truncatedByBytes) {
+    if (truncatedByBytes && raw.length > 0) {
       output += `\n\n(Output truncated at ${MAX_BYTES} bytes. Use offset=${lastReadLine} to continue)`
-    } else if (hasMoreLines) {
+    } else if (hasMoreLines && !truncatedByBytes) {
       output += `\n\n(File has more lines. Use offset=${lastReadLine} to continue)`
-    } else {
+    } else if (!truncatedByBytes) {
       output += `\n\n(End of file - total ${totalLines} lines)`
     }
     output += "\n</file>"
