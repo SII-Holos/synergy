@@ -19,3 +19,5 @@ The BlueprintLoop migration explicitly runs at startup. It converts global loop 
 ## Consequences
 
 The released 3.0.22 fixture and its real completion ledger remain the eligibility baseline. A second fixture adds the retired waiting loop and bound session shape, verifies the loop and pause conversion, admits new work while unrelated history remains pending, and then imports that history explicitly. No migration IDs or completion-ledger semantics change.
+
+The released-fixture test accepts the typed foreground preparing outcome and awaits that owner before checking convergence; unrelated errors remain fatal. The product preparation deadline is unchanged.

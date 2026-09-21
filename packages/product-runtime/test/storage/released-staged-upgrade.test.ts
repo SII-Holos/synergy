@@ -62,6 +62,7 @@ for (const held of [false, true]) {
     const { Session } = await import(${JSON.stringify(path.join(harness, "session/index.ts"))});
     const { Scope } = await import(${JSON.stringify(path.join(harness, "scope/index.ts"))});
     const { ScopeContext } = await import(${JSON.stringify(path.join(harness, "scope/context.ts"))});
+    const { SessionPreparingError } = await import(${JSON.stringify(path.join(harness, "storage/errors.ts"))});
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Global authority did not activate");
     if ((await SessionCompat.stats()).pending !== 1) throw new Error("Release upgrade waited for all history");
@@ -71,7 +72,12 @@ for (const held of [false, true]) {
     }
     await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({ title: "New work" }) });
     if ((await SessionCompat.stats()).pending !== 1) throw new Error("Creating new work imported unrelated history");
-    await SessionCompat.requireImported(${JSON.stringify(fixture.records[0].value.id)});
+    try {
+      await SessionCompat.requireImported(${JSON.stringify(fixture.records[0].value.id)});
+    } catch (error) {
+      if (!(error instanceof SessionPreparingError)) throw error;
+      await SessionCompat.ensureImported(${JSON.stringify(fixture.records[0].value.id)});
+    }
     if ((await SessionCompat.stats()).imported !== ${held ? 2 : 1}) throw new Error("Requested history did not converge");
     if (${held}) {
       const info = await handle.store.read(["sessions", "home", ${JSON.stringify(heldSessionID)}, "info"]);
