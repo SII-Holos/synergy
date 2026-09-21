@@ -13,6 +13,7 @@ import { RolloutCall } from "../../src/session/rollout/call"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { ToolScheduler } from "../../src/session/tool-scheduler"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { tmpdir } from "../support/fixture"
 
 afterEach(async () => {
@@ -440,4 +441,25 @@ test("a length-limited step is not treated as an empty response", async () => {
   if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
   expect(result.message.info.finish).toBe("length")
   expect(result.message.info.error).toBeUndefined()
+})
+
+test("records the cached-input token metric alongside the other step tokens", async () => {
+  using metrics = spyOn(ObservabilityMetrics, "record")
+  const result = await run("tools")
+  expect(result.calls).toBe(1)
+
+  const rows = (
+    metrics as unknown as {
+      mock: { calls: Array<Array<{ name?: string; value?: number; unit?: string }>> }
+    }
+  ).mock.calls.map((call) => call[0])
+
+  const cached = rows.filter((row) => row.name === "llm.tokens.cached_input")
+  expect(cached).toHaveLength(1)
+  expect(cached[0].unit).toBe("tokens")
+  expect(typeof cached[0].value).toBe("number")
+  // Recorded at the same finish-step boundary as the input and output counters,
+  // so a cold prefill is distinguishable from a genuine stall.
+  expect(rows.filter((row) => row.name === "llm.tokens.input")).toHaveLength(1)
+  expect(rows.filter((row) => row.name === "llm.tokens.output")).toHaveLength(1)
 })
