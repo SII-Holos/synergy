@@ -2511,6 +2511,23 @@ export type ProviderConfig = {
     timeout?: number | false
     [key: string]: unknown | string | boolean | number | false | undefined
   }
+  /**
+   * Provider-specific request timeouts in seconds, overriding timeout.provider.<key> for this provider only
+   */
+  timeout?: {
+    /**
+     * Max seconds from request start to the first response body byte for this provider
+     */
+    ttfb_sec?: number
+    /**
+     * Idle timeout in seconds for this provider (0/false = disable)
+     */
+    idle_sec?: number | false
+    /**
+     * Hard wall-clock timeout per HTTP request in seconds for this provider (0 = disable)
+     */
+    wall_sec?: number
+  }
 }
 
 /**
@@ -4345,15 +4362,15 @@ export type Config = {
     invoke_sec?: number
     provider?: {
       /**
-       * Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h
+       * Max seconds from request start to the first response body byte. This covers both the wait for response headers and the gap between headers and the first model token, where a gateway can accept a request and then hold it open. Raise per provider (provider.<id>.timeout.ttfb_sec) for slow reasoning models such as o1-pro or deepseek-r1. Default: 15
        */
       ttfb_sec?: number
       /**
-       * Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.
+       * Idle timeout in seconds (0/false = disable, default: 120). Resets on each data chunk.
        */
       idle_sec?: number | false
       /**
-       * Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB
+       * Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 1800). Bounds a stream that keeps sending keep-alive traffic without ever producing content, which would otherwise defeat the idle timeout indefinitely
        */
       wall_sec?: number
     }
