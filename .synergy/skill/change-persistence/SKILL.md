@@ -29,6 +29,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 Background maintenance may update session metadata without representing conversation activity. Carry the owning session mutation's activity-preservation option through cleanup helpers, retaining canonical activity timestamps as well as navigation `lastActivityAt` while publishing changed metadata. Test normal reclamation, missing-resource reconciliation and navigation index reconstruction with real session records, and verify new conversation activity still advances recency.
 
+When changing worker liveness or shutdown, close a real worker while a blocking query has entered its busy state. Verify probing exits within the teardown budget and deliberate shutdown emits no terminal-unavailability notification. Recheck driver and request ownership after awaited probes; a closed driver can make retries resolve immediately and starve shutdown timers.
+
 ### SQLite and other domain stores
 
 1. Keep fresh-install schema creation in the owning database initialization.

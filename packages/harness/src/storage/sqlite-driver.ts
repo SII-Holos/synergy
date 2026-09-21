@@ -350,7 +350,9 @@ export class SqliteDriver implements SqlDriver {
     // The worker is probed until it answers or the silence outlasts the
     // ceiling. `probeAttempts` is how many unanswered probes it takes to call
     // the worker occupied; the ceiling is what finally calls it wedged.
-    if (await this.monitorWorker()) {
+    const responsive = await this.monitorWorker()
+    if (this.closed || this.unavailableError || !this.pending.has(id)) return
+    if (responsive) {
       // The worker answered, so only this request exceeded its budget.
       this.settle(id, { error: new StorageBusyError("SQLite worker exceeded its request deadline") })
       return
@@ -369,6 +371,7 @@ export class SqliteDriver implements SqlDriver {
       try {
         const budgets = StorageBudgets.current()
         for (let consecutive = 0; ; consecutive++) {
+          if (this.closed || this.unavailableError) return false
           if (await this.ping()) return true
           if (consecutive + 1 >= budgets.probeAttempts) this.enterBusy()
           const silent = performance.now() - (this.unresponsiveSince ?? performance.now())
