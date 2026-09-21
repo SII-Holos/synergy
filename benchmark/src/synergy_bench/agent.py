@@ -173,7 +173,11 @@ class SynergyAgent(BaseAgent):
                 )
                 # Pier 0.3.1 InstalledAgent._exec applies agent egress only to the agent process.
                 # Provenance and pinned dependency: benchmark/third_party/pier/NOTICE.
-                result = await environment.exec(invocation, env=environment.agent_process_env(None))
+                process_env = environment.agent_process_env(None)
+                bun_jit = self.settings.get("bun_jit")
+                if self.settings.get("harness", "synergy") == "synergy" and bun_jit is not None:
+                    process_env = {**(process_env or {}), "BUN_JSC_useJIT": str(int(bun_jit))}
+                result = await environment.exec(invocation, env=process_env)
                 if result.return_code:
                     raise NonZeroAgentExitCodeError(f"Synergy exited with code {result.return_code}")
         except asyncio.CancelledError:
