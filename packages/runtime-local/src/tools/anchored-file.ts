@@ -42,20 +42,29 @@ export function selectDisplayLines(
   const rows: string[] = []
   const seen: number[] = []
   const omitted: number[] = []
-  let exhausted = false
   for (const line of numbers) {
     if (line < 1 || line > lines.length || displayed.has(line)) continue
     const row = `${line}:${lines[line - 1]}`
-    if (exhausted || !budget.take(row)) {
-      exhausted = true
+    if (!budget.take(row)) {
       omitted.push(line)
-      continue
+      break
     }
     displayed.add(line)
     seen.push(line)
     rows.push(row)
   }
   return { output: rows.join("\n"), seen, omitted }
+}
+
+export function* displayLineNumbers(ranges: { start: number; end: number }[], total: number): Generator<number> {
+  let previous = 0
+  for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+    const end = Math.min(total, range.end)
+    for (let line = Math.max(previous + 1, 1, range.start); line <= end; line++) {
+      previous = line
+      yield line
+    }
+  }
 }
 
 export function resolveFilePath(filePath: string): string {

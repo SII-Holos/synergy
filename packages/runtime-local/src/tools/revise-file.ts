@@ -256,8 +256,8 @@ export const ReviseFileTool = Tool.define("revise_file", {
         continue
       }
 
+      let result: PatchSectionResult | undefined
       try {
-        let result: PatchSectionResult | undefined
         await FileTime.withLock(
           p.canonicalPath,
           async () => {
@@ -294,6 +294,14 @@ export const ReviseFileTool = Tool.define("revise_file", {
         if (result) committedResults.push(result)
       } catch (error) {
         firstError = error instanceof Error ? error : new Error(String(error))
+        if (result) {
+          committedResults.push(result)
+          snapshots.invalidate(p.canonicalPath)
+          firstError = new Error(
+            `Write completed for ${result.path}, but post-write verification failed: ${firstError.message}. The preview describes the last committed write; its tag is invalidated. Read this file again before further edits`,
+            { cause: firstError },
+          )
+        }
         break
       }
     }

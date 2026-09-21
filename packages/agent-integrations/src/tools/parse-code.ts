@@ -10,6 +10,7 @@ import {
   recordHashlineSnapshot,
   OutputBudget,
   selectDisplayLines,
+  displayLineNumbers,
   markFileRead,
   readTextFileUnderSnapshotCap,
   resolveFilePath,
@@ -106,7 +107,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       lang: params.lang,
       paths: params.paths,
       globs: params.globs,
-      context: params.context,
+      context: 0,
       cwd: ScopeContext.current.directory,
       signal: ctx.abort,
     })
@@ -138,20 +139,18 @@ export const ParseCodeTool = Tool.define("parse_code", {
     const selectedMatches = result.matches.slice(skip, skip + limit)
     const limitReached = result.truncated || result.matches.length > skip + limit
     const nextSkip = result.matches.length > skip + limit ? skip + limit : undefined
-    const byFile = new Map<string, { count: number; lines: number[]; ranges: string[] }>()
+    const byFile = new Map<
+      string,
+      { count: number; lines: number[]; ranges: string[]; windows: { start: number; end: number }[] }
+    >()
     for (const match of selectedMatches) {
-      const entry = byFile.get(match.file) ?? { count: 0, lines: [], ranges: [] }
+      const entry = byFile.get(match.file) ?? { count: 0, lines: [], ranges: [], windows: [] }
       entry.count++
       const startLine = match.range.start.line + 1
       const endLine = match.range.end.line + 1
       const lastLine = Math.max(startLine, endLine - (match.range.end.column === 0 ? 1 : 0))
-      for (
-        let line = Math.max(1, startLine - (params.context ?? 0));
-        line <= lastLine + (params.context ?? 0);
-        line++
-      ) {
-        if (!entry.lines.includes(line)) entry.lines.push(line)
-      }
+      entry.lines.push(startLine)
+      entry.windows.push({ start: startLine - (params.context ?? 0), end: lastLine + (params.context ?? 0) })
       entry.ranges.push(`${startLine}:${match.range.start.column + 1}-${endLine}:${match.range.end.column + 1}`)
       byFile.set(match.file, entry)
     }
@@ -185,7 +184,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       markFileRead(ctx.sessionID, filePath)
       const conflict = detectConflicts(content)
       const warning = conflictWarning(conflict)
-      const selected = selectDisplayLines(contentLines, lines, budget)
+      const selected = selectDisplayLines(contentLines, displayLineNumbers(entry.windows, contentLines.length), budget)
       budgetLimited ||= selected.omitted.length > 0
       blocks.push(
         `${warning ? `${warning}\n` : ""}AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${selected.output}${selected.omitted.length ? `\n[Code budget reached. Use view_file with filePath=${JSON.stringify(filePath)}, offset=${selected.omitted[0] - 1}.]` : ""}`,

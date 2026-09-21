@@ -59,13 +59,16 @@ export const FileSearchTool = Tool.define("file_search", {
       const items = candidates.filter((item) =>
         budget.take(`${item.type === "directory" ? "dir " : "file"} ${item.path}`),
       )
-      const output = items.length
+      const listing = items.length
         ? items.map((item) => `${item.type === "directory" ? "dir " : "file"} ${item.path}`).join("\n")
         : "No matching files found."
 
       return {
         title: params.query || "Files",
-        output,
+        output:
+          result.truncated || items.length < candidates.length
+            ? `${listing}\nResults limited; narrow the include filter to inspect remaining paths.`
+            : listing,
         metadata: {
           query: params.query,
           pathCount: items.length,
