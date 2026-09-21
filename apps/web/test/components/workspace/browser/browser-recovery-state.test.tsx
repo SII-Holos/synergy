@@ -81,7 +81,7 @@ beforeAll(async () => {
         store.setSession("page", pageState)
         store.setSession("connectionStatus", "connected")
         const nativePresentation = {
-          protocolVersion: 2,
+          protocolVersion: 3,
           kind: "native",
           capabilities: { native: true, webrtc: true },
           reason: "desktop-local",

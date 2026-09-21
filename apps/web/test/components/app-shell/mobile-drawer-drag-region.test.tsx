@@ -98,7 +98,7 @@ const stubModules: Record<string, string> = {
   `,
   "stub-global-sdk.ts": `
     export function useGlobalSDK() {
-      return { url: "", client: {}, connected: () => true }
+      return { drafts: { hasDraftSession: () => false }, url: "", client: {}, connected: () => true }
     }
   `,
   "stub-workbench.ts": `

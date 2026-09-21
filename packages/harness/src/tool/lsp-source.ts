@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9d LSP source port: the L1 tool domain warms LSP clients and reads
  * diagnostics through this registry instead of importing the lsp product
@@ -30,13 +31,22 @@ export namespace ToolLspSource {
     diagnostics(): Promise<DiagnosticsSnapshot>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source | undefined): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("tool/lsp-source")
+    if (instanceState.source && value) throw new Error("tool/lsp-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

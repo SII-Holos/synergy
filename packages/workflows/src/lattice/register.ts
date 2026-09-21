@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -15,7 +16,7 @@ import { LatticeRunService } from "./run-service"
 import { LatticeStore } from "./store"
 import { LatticePrompt } from "./prompt"
 import { LatticeModelCalls } from "./model-calls"
-import { LatticeController } from "./controller"
+import { LatticeController, registerLatticeController } from "./controller"
 import { PathwayReadTool } from "./tools/pathway-read"
 import { PathwayWriteTool } from "./tools/pathway-write"
 import { LatticeSubmitTool } from "./tools/lattice-submit"
@@ -25,7 +26,9 @@ import { LatticeSubmitTool } from "./tools/lattice-submit"
  * contribution with the full session-loop lifecycle + domain tools). Loaded
  * through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 async function activeBlueprintLoop(session: SessionInfo) {
   const loopID = session.blueprint?.loopID
@@ -109,8 +112,11 @@ async function enableLatticeWorkflow(
 }
 
 export function registerLatticeDomain(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
+  registerLatticeController()
 
   ContinuationKernel.registerProvider("lattice", () => [LatticeContinuationPolicy])
 

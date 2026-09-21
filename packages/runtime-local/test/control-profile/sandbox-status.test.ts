@@ -1,20 +1,27 @@
 import { describe, expect, test } from "bun:test"
 import { SandboxBackend } from "../../src/sandbox/backend"
+import { testRuntime } from "../support/runtime"
 
 describe("SandboxBackend platformInfo", () => {
-  test("platformInfo returns deterministic status", () => {
-    const info = SandboxBackend.platformInfo()
-    expect(info).toBeDefined()
-    expect(typeof info.platform).toBe("string")
-    expect(typeof info.available).toBe("boolean")
-    // backend is either null (unsupported) or a string (supported)
-    expect(info.backend === null || typeof info.backend === "string").toBe(true)
+  test("platformInfo returns deterministic status", async () => {
+    await using runtime = await testRuntime()
+    runtime.run(() => {
+      const info = SandboxBackend.platformInfo()
+      expect(info).toBeDefined()
+      expect(typeof info.platform).toBe("string")
+      expect(typeof info.available).toBe("boolean")
+      // backend is either null (unsupported) or a string (supported)
+      expect(info.backend === null || typeof info.backend === "string").toBe(true)
+    })
   })
 
-  test("platformInfo is idempotent", () => {
-    const a = SandboxBackend.platformInfo()
-    const b = SandboxBackend.platformInfo()
-    expect(a).toEqual(b)
+  test("platformInfo is idempotent", async () => {
+    await using runtime = await testRuntime()
+    runtime.run(() => {
+      const a = SandboxBackend.platformInfo()
+      const b = SandboxBackend.platformInfo()
+      expect(a).toEqual(b)
+    })
   })
 })
 

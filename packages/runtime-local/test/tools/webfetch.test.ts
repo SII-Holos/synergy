@@ -1,6 +1,9 @@
 import { afterAll, expect, test } from "bun:test"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { WebFetchTool } from "../../src/tools/webfetch"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const html =
   "<html><head><style>hidden-style</style><script>hidden-script</script></head><body><h1>Research methods</h1><p>A reproducible experiment measures the same phenomenon with independent observations.</p></body></html>"
@@ -55,7 +58,7 @@ const server = Bun.serve({
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } })
   },
 })
-afterAll(() => server.stop(true))
+afterAll(() => runtime.run(() => server.stop(true)))
 function context(signal = new AbortController().signal) {
   const permissions: string[] = []
   const ctx: Tool.Context = {
@@ -73,157 +76,171 @@ function context(signal = new AbortController().signal) {
 const tool = await WebFetchTool.init()
 const url = (pathname: string) => new URL(pathname, server.url).href
 
-test("fetches HTML through permissions and converts requested representations", async () => {
-  for (const format of ["markdown", "text", "html"] as const) {
-    const { ctx, permissions } = context()
-    const result = await tool.execute({ url: url("/article"), format }, ctx)
-    expect(permissions).toEqual([url("/article")])
-    expect(result.metadata).toMatchObject({
-      contentType: "text/html; charset=utf-8",
-      contentLength: new TextEncoder().encode(html).length,
-    })
-    expect(result.output).toContain("Research methods")
-    expect(requests.at(-1)?.accept).toContain(
-      format === "markdown" ? "text/markdown;q=1.0" : `text/${format === "text" ? "plain" : "html"};q=1.0`,
-    )
-    if (format === "html") expect(result.output).toContain(html)
-    else {
-      expect(result.output).not.toContain("hidden-script")
-      expect(result.output).not.toContain("hidden-style")
-      expect(result.output).not.toContain("<h1>")
-      if (format === "markdown") expect(result.output).toContain("# Research methods")
+test("fetches HTML through permissions and converts requested representations", () =>
+  runtime.run(async () => {
+    for (const format of ["markdown", "text", "html"] as const) {
+      const { ctx, permissions } = context()
+      const result = await tool.execute({ url: url("/article"), format }, ctx)
+      expect(permissions).toEqual([url("/article")])
+      expect(result.metadata).toMatchObject({
+        contentType: "text/html; charset=utf-8",
+        contentLength: new TextEncoder().encode(html).length,
+      })
+      expect(result.output).toContain("Research methods")
+      expect(requests.at(-1)?.accept).toContain(
+        format === "markdown" ? "text/markdown;q=1.0" : `text/${format === "text" ? "plain" : "html"};q=1.0`,
+      )
+      if (format === "html") expect(result.output).toContain(html)
+      else {
+        expect(result.output).not.toContain("hidden-script")
+        expect(result.output).not.toContain("hidden-style")
+        expect(result.output).not.toContain("<h1>")
+        if (format === "markdown") expect(result.output).toContain("# Research methods")
+      }
     }
-  }
-})
-test("preserves non-HTML bodies and labels empty content quality", async () => {
-  for (const format of ["markdown", "text"] as const) {
-    const result = await tool.execute({ url: url("/plain"), format }, context().ctx)
-    expect(result.output).toContain("Independent observations")
-    expect(result.metadata.contentType).toBe("text/plain")
-  }
-  const empty = await tool.execute({ url: url("/empty"), format: "text" }, context().ctx)
-  expect(empty.metadata.searchFailureType).toBe("low_quality_results")
-  expect(empty.metadata.contentLength).toBe(0)
-})
-test("rejects invalid URLs before approval and avoids repeat network requests", async () => {
-  const { ctx, permissions } = context()
-  await expect(tool.execute({ url: "file:///private/file", format: "text" }, ctx)).rejects.toThrow(
-    "http:// or https://",
-  )
-  expect(permissions).toEqual([])
-  await tool.execute({ url: url("/plain"), format: "text" }, ctx)
-  const requestCount = requests.length
-  const duplicate = await tool.execute({ url: url("/plain"), format: "text" }, ctx)
-  expect(duplicate.metadata.searchFailureType).toBe("duplicate_query")
-  expect(requests.length).toBe(requestCount)
-  expect(permissions).toHaveLength(1)
-})
-test("classifies upstream failures and enforces declared and streamed response limits", async () => {
-  for (const [pathname, failure] of [
-    ["/missing", "404 (http_404)"],
-    ["/forbidden", "403 (http_403)"],
-    ["/huge", "exceeds 5MB limit"],
-    ["/chunked-huge", "exceeds 5MB limit"],
-  ] as const) {
-    await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow(failure)
-  }
-})
-test("aborts slow requests at configured timeout and honors caller cancellation", async () => {
-  await expect(
-    tool.execute({ url: url("/slow"), format: "text", timeoutSeconds: 0.01 }, context().ctx),
-  ).rejects.toThrow("Request timed out")
-  const controller = new AbortController()
-  const reason = new DOMException("Cancelled by caller", "AbortError")
-  controller.abort(reason)
-  await expect(tool.execute({ url: url("/slow"), format: "text" }, context(controller.signal).ctx)).rejects.toThrow(
-    "Cancelled by caller",
-  )
-})
+  }))
+test("preserves non-HTML bodies and labels empty content quality", () =>
+  runtime.run(async () => {
+    for (const format of ["markdown", "text"] as const) {
+      const result = await tool.execute({ url: url("/plain"), format }, context().ctx)
+      expect(result.output).toContain("Independent observations")
+      expect(result.metadata.contentType).toBe("text/plain")
+    }
+    const empty = await tool.execute({ url: url("/empty"), format: "text" }, context().ctx)
+    expect(empty.metadata.searchFailureType).toBe("low_quality_results")
+    expect(empty.metadata.contentLength).toBe(0)
+  }))
+test("rejects invalid URLs before approval and avoids repeat network requests", () =>
+  runtime.run(async () => {
+    const { ctx, permissions } = context()
+    await expect(tool.execute({ url: "file:///private/file", format: "text" }, ctx)).rejects.toThrow(
+      "http:// or https://",
+    )
+    expect(permissions).toEqual([])
+    await tool.execute({ url: url("/plain"), format: "text" }, ctx)
+    const requestCount = requests.length
+    const duplicate = await tool.execute({ url: url("/plain"), format: "text" }, ctx)
+    expect(duplicate.metadata.searchFailureType).toBe("duplicate_query")
+    expect(requests.length).toBe(requestCount)
+    expect(permissions).toHaveLength(1)
+  }))
+test("classifies upstream failures and enforces declared and streamed response limits", () =>
+  runtime.run(async () => {
+    for (const [pathname, failure] of [
+      ["/missing", "404 (http_404)"],
+      ["/forbidden", "403 (http_403)"],
+      ["/huge", "exceeds 5MB limit"],
+      ["/chunked-huge", "exceeds 5MB limit"],
+    ] as const) {
+      await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow(failure)
+    }
+  }))
+test("aborts slow requests at configured timeout and honors caller cancellation", () =>
+  runtime.run(async () => {
+    await expect(
+      tool.execute({ url: url("/slow"), format: "text", timeoutSeconds: 0.01 }, context().ctx),
+    ).rejects.toThrow("Request timed out")
+    const controller = new AbortController()
+    const reason = new DOMException("Cancelled by caller", "AbortError")
+    controller.abort(reason)
+    await expect(tool.execute({ url: url("/slow"), format: "text" }, context(controller.signal).ctx)).rejects.toThrow(
+      "Cancelled by caller",
+    )
+  }))
 
 test.each([408, 429, 500, 502, 503, 504])(
   "retries HTTP %s reads within one permission and search attempt",
-  async (status) => {
+  runtime.bind(async (status) => {
     const pathname = `/retry/${status}/${crypto.randomUUID()}`
     const { ctx, permissions } = context()
     const result = await tool.execute({ url: url(pathname), format: "text" }, ctx)
     expect(result.output).toBe("Recovered complete page")
     expect(retryRequests.get(pathname)).toBe(2)
     expect(permissions).toEqual([url(pathname)])
-  },
+  }),
 )
 
-test.each([403, 404, 501, 505])("does not retry HTTP %s reads", async (status) => {
-  const pathname = `/retry/${status}/${crypto.randomUUID()}`
-  await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow(
-    `status code: ${status}`,
-  )
-  expect(retryRequests.get(pathname)).toBe(1)
-})
+test.each([403, 404, 501, 505])(
+  "does not retry HTTP %s reads",
+  runtime.bind(async (status) => {
+    const pathname = `/retry/${status}/${crypto.randomUUID()}`
+    await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow(
+      `status code: ${status}`,
+    )
+    expect(retryRequests.get(pathname)).toBe(1)
+  }),
+)
 
-test("bounds attempts and includes body reading and backoff in the total deadline", async () => {
-  const pathname = `/retry/503/always-${crypto.randomUUID()}`
-  await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow("503")
-  expect(retryRequests.get(pathname)).toBe(3)
-  const waiting = `/retry/429/wait-${crypto.randomUUID()}`
-  await expect(
-    tool.execute({ url: url(waiting), format: "text", timeoutSeconds: 0.05 }, context().ctx),
-  ).rejects.toThrow("Request timed out")
-  expect(retryRequests.get(waiting)).toBe(1)
-  await expect(
-    tool.execute({ url: url("/slow-body"), format: "text", timeoutSeconds: 0.05 }, context().ctx),
-  ).rejects.toThrow("Request timed out")
-})
+test("bounds attempts and includes body reading and backoff in the total deadline", () =>
+  runtime.run(async () => {
+    const pathname = `/retry/503/always-${crypto.randomUUID()}`
+    await expect(tool.execute({ url: url(pathname), format: "text" }, context().ctx)).rejects.toThrow("503")
+    expect(retryRequests.get(pathname)).toBe(3)
+    const waiting = `/retry/429/wait-${crypto.randomUUID()}`
+    await expect(
+      tool.execute({ url: url(waiting), format: "text", timeoutSeconds: 0.05 }, context().ctx),
+    ).rejects.toThrow("Request timed out")
+    expect(retryRequests.get(waiting)).toBe(1)
+    await expect(
+      tool.execute({ url: url("/slow-body"), format: "text", timeoutSeconds: 0.05 }, context().ctx),
+    ).rejects.toThrow("Request timed out")
+  }))
 
 // The shared classifier reports an unmapped certificate verification failure as indeterminate rather
 // than a proven transport failure; webfetch accepts it but keeps its own attempt and deadline budget.
-test("retries an unmapped certificate verification failure within its existing budget", async () => {
-  const original = globalThis.fetch
-  const calls: string[] = []
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-    calls.push(target)
-    if (calls.length === 1) throw new Error("unknown certificate verification error")
-    return new Response("Recovered secure page", { headers: { "content-type": "text/plain" } })
-  }) as unknown as typeof fetch
-  try {
-    const result = await tool.execute({ url: url("/tls-recover"), format: "text" }, context().ctx)
-    expect(calls).toHaveLength(2)
-    expect(result.output).toContain("Recovered secure page")
-  } finally {
-    globalThis.fetch = original
-  }
-})
+test("retries an unmapped certificate verification failure within its existing budget", () =>
+  runtime.run(async () => {
+    const original = globalThis.fetch
+    const calls: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+      calls.push(target)
+      if (calls.length === 1) throw new Error("unknown certificate verification error")
+      return new Response("Recovered secure page", { headers: { "content-type": "text/plain" } })
+    }) as unknown as typeof fetch
+    try {
+      const result = await tool.execute({ url: url("/tls-recover"), format: "text" }, context().ctx)
+      expect(calls).toHaveLength(2)
+      expect(result.output).toContain("Recovered secure page")
+    } finally {
+      globalThis.fetch = original
+    }
+  }))
 
-test("does not retry a mapped certificate failure", async () => {
-  const original = globalThis.fetch
-  let calls = 0
-  globalThis.fetch = (async () => {
-    calls++
-    throw Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" })
-  }) as unknown as typeof fetch
-  try {
-    await expect(tool.execute({ url: url("/tls-expired"), format: "text" }, context().ctx)).rejects.toThrow(
-      "certificate has expired",
-    )
-    expect(calls).toBe(1)
-  } finally {
-    globalThis.fetch = original
-  }
-})
+test("does not retry a mapped certificate failure", () =>
+  runtime.run(async () => {
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      throw Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" })
+    }) as unknown as typeof fetch
+    try {
+      await expect(tool.execute({ url: url("/tls-expired"), format: "text" }, context().ctx)).rejects.toThrow(
+        "certificate has expired",
+      )
+      expect(calls).toBe(1)
+    } finally {
+      globalThis.fetch = original
+    }
+  }))
 
-test("exhausts the opaque certificate retry budget and honors the total deadline", async () => {
-  const original = globalThis.fetch
-  let calls = 0
-  globalThis.fetch = (async () => {
-    calls++
-    throw new Error("unknown certificate verification error")
-  }) as unknown as typeof fetch
-  try {
-    await expect(tool.execute({ url: url("/tls-always"), format: "text" }, context().ctx)).rejects.toThrow(
-      "unknown certificate verification error",
-    )
-    expect(calls).toBe(3)
-  } finally {
-    globalThis.fetch = original
-  }
-})
+test("exhausts the opaque certificate retry budget and honors the total deadline", () =>
+  runtime.run(async () => {
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      throw new Error("unknown certificate verification error")
+    }) as unknown as typeof fetch
+    try {
+      await expect(tool.execute({ url: url("/tls-always"), format: "text" }, context().ctx)).rejects.toThrow(
+        "unknown certificate verification error",
+      )
+      expect(calls).toBe(3)
+    } finally {
+      globalThis.fetch = original
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

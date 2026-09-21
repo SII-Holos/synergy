@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
 import { TelemetryProtocol } from "./telemetry-protocol"
@@ -10,97 +11,110 @@ export namespace ObservabilityTelemetryClient {
   const RESTART_BACKOFF_BASE_MS = 250
   const RESTART_BACKOFF_MAX_MS = 30_000
 
-  let started = false
-  let worker: Bun.Subprocess | undefined
-  let workerReady = false
-  let restarts = 0
-  let failures = 0
-  let restartTimer: ReturnType<typeof setTimeout> | undefined
-  let flushTimer: ReturnType<typeof setTimeout> | undefined
-  let nextAckId = 0
-  let dropped = 0
-  let lastError: string | undefined
-  let currentInput: { dbPath: string; config: TelemetryProtocol.WorkerConfig } | undefined
-  const pending: TelemetryProtocol.BatchRow[] = []
-  const sentBatches: number[] = []
-  const ackWaiters = new Map<number, () => void>()
-  const bufferedControls: Array<() => void> = []
-  let lastWorkerCommitted = 0
-  let lastWorkerDropped = 0
-  const statusMirror = {
-    capExceededBytes: 0,
-    maintenanceDeferred: false,
-    lastFlushDurationMs: 0,
-  }
+  const runtimeState = RuntimeContext.state(() => ({
+    started: false,
+    worker: undefined as Bun.Subprocess | undefined,
+    workerReady: false,
+    stopping: undefined as Promise<void> | undefined,
+    restarts: 0,
+    failures: 0,
+    restartTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    flushTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    nextAckId: 0,
+    dropped: 0,
+    lastError: undefined as string | undefined,
+    currentInput: undefined as { dbPath: string; config: TelemetryProtocol.WorkerConfig } | undefined,
+    pending: [] as TelemetryProtocol.BatchRow[],
+    sentBatches: [] as number[],
+    ackWaiters: new Map<number, () => void>(),
+    bufferedControls: [] as Array<() => void>,
+    lastWorkerCommitted: 0,
+    lastWorkerDropped: 0,
+    statusMirror: {
+      capExceededBytes: 0,
+      maintenanceDeferred: false,
+      lastFlushDurationMs: 0,
+    },
+  }))
 
   export function start(input: { dbPath: string; config: TelemetryProtocol.WorkerConfig }): void {
-    if (started) return
-    started = true
+    const instanceState = runtimeState()
+
+    if (instanceState.stopping) throw new Error("Telemetry worker is stopping")
+    if (instanceState.started) return
+    instanceState.started = true
     // Fresh client lifecycles reset the counters so tests and long-running
     // re-enables observe restart behavior from a clean baseline.
-    restarts = 0
-    failures = 0
-    currentInput = input
+    instanceState.restarts = 0
+    instanceState.failures = 0
+    instanceState.currentInput = input
     spawnWorker(input)
   }
 
   export function enqueue(row: TelemetryProtocol.BatchRow): void {
-    pending.push(row)
-    if (pending.length >= MAX_PENDING) {
+    const instanceState = runtimeState()
+
+    if (!instanceState.started) return
+    instanceState.pending.push(row)
+    if (instanceState.pending.length >= MAX_PENDING) {
       const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
-      pending.splice(0, dropCount)
-      dropped += dropCount
+      instanceState.pending.splice(0, dropCount)
+      instanceState.dropped += dropCount
     }
-    if (!flushTimer) {
-      flushTimer = setTimeout(flushPending, FLUSH_DELAY_MS)
-      flushTimer.unref()
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flushPending, FLUSH_DELAY_MS)
+      instanceState.flushTimer.unref()
     }
   }
 
   export function flushPending(): void {
-    if (flushTimer) {
-      clearTimeout(flushTimer)
-      flushTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.flushTimer) {
+      clearTimeout(instanceState.flushTimer)
+      instanceState.flushTimer = undefined
     }
-    if (!workerReady || !started) return
-    while (pending.length) {
+    if (!instanceState.workerReady || !instanceState.started) return
+    while (instanceState.pending.length) {
       const chunk: TelemetryProtocol.BatchRow[] = []
       let chunkBytes = 0
-      while (pending.length && chunk.length < TelemetryProtocol.BATCH_CHUNK_ROWS) {
-        const rowBytes = TelemetryProtocol.estimateRowBytes(pending[0])
+      while (instanceState.pending.length && chunk.length < TelemetryProtocol.BATCH_CHUNK_ROWS) {
+        const rowBytes = TelemetryProtocol.estimateRowBytes(instanceState.pending[0])
         if (chunk.length > 0 && chunkBytes + rowBytes > TelemetryProtocol.BATCH_MAX_BYTES) break
-        chunk.push(pending.shift()!)
+        chunk.push(instanceState.pending.shift()!)
         chunkBytes += rowBytes
       }
-      sentBatches.push(chunk.length)
+      instanceState.sentBatches.push(chunk.length)
       send({ type: "batch", rows: chunk })
     }
   }
 
   export async function flushAndWait(timeoutMs = 5000): Promise<void> {
+    const instanceState = runtimeState()
+
     flushPending()
-    if (!pending.length && !workerReady) return
+    if (!instanceState.pending.length && !instanceState.workerReady) return
     const deadline = Date.now() + timeoutMs
-    while (pending.length && !workerReady && Date.now() < deadline) {
+    while (instanceState.pending.length && !instanceState.workerReady && Date.now() < deadline) {
       await Bun.sleep(25)
     }
     flushPending()
-    if (!workerReady) {
+    if (!instanceState.workerReady) {
       killWorker()
       return
     }
-    const ackId = nextAckId++
+    const ackId = instanceState.nextAckId++
     send({ type: "flush", ackId })
     await new Promise<void>((resolve) => {
       const timer = setTimeout(
         () => {
-          ackWaiters.delete(ackId)
+          instanceState.ackWaiters.delete(ackId)
           killWorker()
           resolve()
         },
         Math.max(0, deadline - Date.now()),
       )
-      ackWaiters.set(ackId, () => {
+      instanceState.ackWaiters.set(ackId, () => {
         clearTimeout(timer)
         resolve()
       })
@@ -120,86 +134,109 @@ export namespace ObservabilityTelemetryClient {
   }
 
   export function sendReconfigure(config: TelemetryProtocol.WorkerConfig): void {
-    if (currentInput) currentInput = { ...currentInput, config }
+    const instanceState = runtimeState()
+
+    if (instanceState.currentInput) instanceState.currentInput = { ...instanceState.currentInput, config }
     enqueueControl({ type: "reconfigure", config })
   }
 
-  export async function stop(graceMs = 5000): Promise<void> {
-    if (!started) return
-    if (restartTimer) {
-      clearTimeout(restartTimer)
-      restartTimer = undefined
+  export function stop(graceMs = 5000): Promise<void> {
+    const state = runtimeState()
+    return (state.stopping ??= stopWorker(graceMs).finally(() => {
+      state.stopping = undefined
+    }))
+  }
+
+  async function stopWorker(graceMs: number): Promise<void> {
+    const instanceState = runtimeState()
+
+    if (!instanceState.started) return
+    if (instanceState.restartTimer) {
+      clearTimeout(instanceState.restartTimer)
+      instanceState.restartTimer = undefined
     }
-    if (flushTimer) {
-      clearTimeout(flushTimer)
-      flushTimer = undefined
+    if (instanceState.flushTimer) {
+      clearTimeout(instanceState.flushTimer)
+      instanceState.flushTimer = undefined
     }
-    bufferedControls.length = 0
+    instanceState.bufferedControls.length = 0
     // Drain while the client is still active; flushPending() checks `started`.
     flushPending()
-    started = false
-    const active = worker
-    if (active && workerReady) {
+    instanceState.started = false
+    const active = instanceState.worker
+    if (active && instanceState.workerReady) {
       try {
         active.send({ type: "shutdown" } satisfies TelemetryProtocol.HostToWorker)
       } catch {
         active.kill()
         await active.exited.catch(() => undefined)
-        worker = undefined
-        workerReady = false
+        instanceState.worker = undefined
+        instanceState.workerReady = false
         failAllWaiters()
       }
     }
     if (active) {
+      let timeout: ReturnType<typeof setTimeout> | undefined
       const exited = await Promise.race([
         active.exited.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), graceMs)),
-      ])
+        new Promise<boolean>((resolve) => {
+          timeout = setTimeout(() => resolve(false), graceMs)
+        }),
+      ]).finally(() => clearTimeout(timeout))
       if (!exited) {
         active.kill()
         await active.exited.catch(() => undefined)
       }
     }
-    dropped += pending.length + sentBatches.reduce((total, rows) => total + rows, 0)
-    pending.length = 0
-    sentBatches.length = 0
-    lastWorkerCommitted = 0
-    lastWorkerDropped = 0
-    if (worker === active) {
-      worker = undefined
-      workerReady = false
+    instanceState.dropped +=
+      instanceState.pending.length + instanceState.sentBatches.reduce((total, rows) => total + rows, 0)
+    instanceState.pending.length = 0
+    instanceState.sentBatches.length = 0
+    instanceState.lastWorkerCommitted = 0
+    instanceState.lastWorkerDropped = 0
+    if (instanceState.worker === active) {
+      instanceState.worker = undefined
+      instanceState.workerReady = false
       failAllWaiters()
     }
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     return {
-      pending: pending.length,
-      unconfirmed: sentBatches.reduce((total, rows) => total + rows, 0),
-      dropped,
-      workerReady,
-      restarts,
-      lastError,
-      capExceededBytes: statusMirror.capExceededBytes,
-      maintenanceDeferred: statusMirror.maintenanceDeferred,
-      lastFlushDurationMs: statusMirror.lastFlushDurationMs,
+      pending: instanceState.pending.length,
+      unconfirmed: instanceState.sentBatches.reduce((total, rows) => total + rows, 0),
+      dropped: instanceState.dropped,
+      workerReady: instanceState.workerReady,
+      restarts: instanceState.restarts,
+      lastError: instanceState.lastError,
+      capExceededBytes: instanceState.statusMirror.capExceededBytes,
+      maintenanceDeferred: instanceState.statusMirror.maintenanceDeferred,
+      lastFlushDurationMs: instanceState.statusMirror.lastFlushDurationMs,
     }
   }
 
   export function active(): boolean {
-    return started && process.env.SYNERGY_OBSERVABILITY_INLINE !== "1"
+    const instanceState = runtimeState()
+
+    return instanceState.started && RuntimeContext.current().host.env.SYNERGY_OBSERVABILITY_INLINE !== "1"
   }
 
   export function workerProcess(): Bun.Subprocess | undefined {
-    return worker
+    const instanceState = runtimeState()
+
+    return instanceState.worker
   }
 
   function spawnWorker(input: { dbPath: string; config: TelemetryProtocol.WorkerConfig }): void {
+    const instanceState = runtimeState()
+
     const command = fs.existsSync(runnerPath)
       ? [process.execPath, "run", runnerPath]
       : [process.execPath, "__observability-worker-runner"]
     const env: Record<string, string | undefined> = {
-      ...process.env,
+      ...RuntimeContext.current().host.env,
       SYNERGY_OBSERVABILITY_PARENT_PID: String(process.pid),
       SYNERGY_OBSERVABILITY_WORKER: "1",
     }
@@ -208,7 +245,7 @@ export namespace ObservabilityTelemetryClient {
     const processHandle = Bun.spawn({
       cmd: command,
       env,
-      ipc(message: unknown) {
+      ipc: RuntimeContext.current().bind((message: unknown) => {
         let parsed: TelemetryProtocol.WorkerToHost | undefined
         try {
           parsed = TelemetryProtocol.parseWorkerToHost(typeof message === "string" ? JSON.parse(message) : message)
@@ -217,27 +254,27 @@ export namespace ObservabilityTelemetryClient {
         }
         if (!parsed) return
         onMessage(parsed)
-      },
+      }),
       stdout: "ignore",
       stderr: "ignore",
-      onExit: () => {
-        if (worker !== processHandle) return
-        worker = undefined
-        workerReady = false
+      onExit: RuntimeContext.current().bind(() => {
+        if (instanceState.worker !== processHandle) return
+        instanceState.worker = undefined
+        instanceState.workerReady = false
         // Batches that left the queue but were never confirmed by this
         // worker are lost: count them as dropped so diagnostics stay honest.
-        dropped += sentBatches.reduce((total, rows) => total + rows, 0)
-        sentBatches.length = 0
-        lastWorkerCommitted = 0
-        lastWorkerDropped = 0
+        instanceState.dropped += instanceState.sentBatches.reduce((total, rows) => total + rows, 0)
+        instanceState.sentBatches.length = 0
+        instanceState.lastWorkerCommitted = 0
+        instanceState.lastWorkerDropped = 0
         failAllWaiters()
-        if (!started) return
-        restarts++
-        failures++
+        if (!instanceState.started) return
+        instanceState.restarts++
+        instanceState.failures++
         scheduleRestart()
-      },
+      }),
     })
-    worker = processHandle
+    instanceState.worker = processHandle
     // Bun buffers IPC messages until the child registers its handler, so the
     // start message can be sent immediately; the worker replies with ready
     // once the database is open.
@@ -245,31 +282,39 @@ export namespace ObservabilityTelemetryClient {
   }
 
   function onMessage(message: TelemetryProtocol.WorkerToHost): void {
+    const instanceState = runtimeState()
+
     switch (message.type) {
       case "ready":
-        workerReady = true
-        failures = 0
-        lastWorkerCommitted = 0
-        lastWorkerDropped = 0
+        if (!instanceState.started) {
+          instanceState.worker?.send({ type: "shutdown" } satisfies TelemetryProtocol.HostToWorker)
+          break
+        }
+        instanceState.workerReady = true
+        instanceState.failures = 0
+        instanceState.lastWorkerCommitted = 0
+        instanceState.lastWorkerDropped = 0
         flushPending()
-        for (const control of bufferedControls.splice(0)) control()
+        for (const control of instanceState.bufferedControls.splice(0)) control()
         break
       case "ack": {
-        const waiter = ackWaiters.get(message.ackId)
-        ackWaiters.delete(message.ackId)
+        const waiter = instanceState.ackWaiters.get(message.ackId)
+        instanceState.ackWaiters.delete(message.ackId)
         waiter?.()
         break
       }
       case "status":
-        statusMirror.capExceededBytes = message.counters.capExceededBytes
-        statusMirror.maintenanceDeferred = message.counters.maintenanceDeferred
-        statusMirror.lastFlushDurationMs = message.counters.lastFlushDurationMs
-        if (message.counters.lastError) lastError = message.counters.lastError
+        instanceState.statusMirror.capExceededBytes = message.counters.capExceededBytes
+        instanceState.statusMirror.maintenanceDeferred = message.counters.maintenanceDeferred
+        instanceState.statusMirror.lastFlushDurationMs = message.counters.lastFlushDurationMs
+        if (message.counters.lastError) instanceState.lastError = message.counters.lastError
         confirmSentRows(
-          message.counters.committed - lastWorkerCommitted + (message.counters.dropped - lastWorkerDropped),
+          message.counters.committed -
+            instanceState.lastWorkerCommitted +
+            (message.counters.dropped - instanceState.lastWorkerDropped),
         )
-        lastWorkerCommitted = message.counters.committed
-        lastWorkerDropped = message.counters.dropped
+        instanceState.lastWorkerCommitted = message.counters.committed
+        instanceState.lastWorkerDropped = message.counters.dropped
         break
     }
   }
@@ -278,48 +323,60 @@ export namespace ObservabilityTelemetryClient {
   // committed/dropped counters advance. Batches are processed in send order,
   // so the queue head always matches the next unconfirmed batch.
   function confirmSentRows(confirmed: number): void {
+    const instanceState = runtimeState()
+
     let remaining = confirmed
-    while (remaining > 0 && sentBatches.length) {
-      const head = sentBatches[0]
+    while (remaining > 0 && instanceState.sentBatches.length) {
+      const head = instanceState.sentBatches[0]
       if (head <= remaining) {
-        sentBatches.shift()
+        instanceState.sentBatches.shift()
         remaining -= head
       } else {
-        sentBatches[0] = head - remaining
+        instanceState.sentBatches[0] = head - remaining
         remaining = 0
       }
     }
   }
 
   function enqueueControl(message: TelemetryProtocol.HostToWorker): void {
-    if (workerReady) {
+    const instanceState = runtimeState()
+
+    if (instanceState.workerReady) {
       send(message)
       return
     }
-    bufferedControls.push(() => send(message))
+    instanceState.bufferedControls.push(() => send(message))
   }
 
   function send(message: TelemetryProtocol.HostToWorker): void {
-    worker?.send(message)
+    const instanceState = runtimeState()
+
+    instanceState.worker?.send(message)
   }
 
   function failAllWaiters(): void {
-    for (const waiter of ackWaiters.values()) waiter()
-    ackWaiters.clear()
+    const instanceState = runtimeState()
+
+    for (const waiter of instanceState.ackWaiters.values()) waiter()
+    instanceState.ackWaiters.clear()
   }
 
   function scheduleRestart(): void {
-    if (restartTimer) return
-    const delay = Math.min(RESTART_BACKOFF_MAX_MS, RESTART_BACKOFF_BASE_MS * 2 ** failures)
-    restartTimer = setTimeout(() => {
-      restartTimer = undefined
-      if (currentInput) spawnWorker(currentInput)
+    const instanceState = runtimeState()
+
+    if (instanceState.restartTimer) return
+    const delay = Math.min(RESTART_BACKOFF_MAX_MS, RESTART_BACKOFF_BASE_MS * 2 ** instanceState.failures)
+    instanceState.restartTimer = setTimeout(() => {
+      instanceState.restartTimer = undefined
+      if (instanceState.currentInput) spawnWorker(instanceState.currentInput)
     }, delay)
-    restartTimer.unref()
+    instanceState.restartTimer.unref()
   }
 
   function killWorker(): void {
-    const active = worker
+    const instanceState = runtimeState()
+
+    const active = instanceState.worker
     if (!active) return
     try {
       active.kill(9)

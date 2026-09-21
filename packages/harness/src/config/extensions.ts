@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 import type { ConfigExtensionShape } from "./schema"
 
@@ -23,60 +24,65 @@ export namespace ConfigExtensions {
     redact?(config: Record<string, unknown>, helpers: SecretHelpers): void
     restore?(config: Record<string, unknown>, stored: Record<string, unknown>, helpers: SecretHelpers): void
   }
-  const contributions = new Map<string, Contribution>()
+  const state = RuntimeContext.state(() => ({
+    contributions: new Map<string, Contribution>(),
+    generation: 0,
+    complete: false,
+    locked: false,
+    schemas: new WeakMap<object, { generation: number; schema: z.ZodObject }>(),
+  }))
   const schemaResolvers = new WeakMap<object, () => z.ZodObject>()
-  let generation = 0
-  let complete = false
-  let locked = false
 
   export function lock(): void {
-    locked = true
+    state().locked = true
   }
 
   export function assertRegistrationOpen(id: string): void {
-    if (locked) throw new ConfigRegistrationLockedError(id)
+    if (state().locked) throw new ConfigRegistrationLockedError(id)
   }
 
   export function isComplete() {
-    return complete
+    return state().complete
   }
 
   export function completeRegistration() {
-    if (complete) return
+    if (state().complete) return
     assertRegistrationOpen("composition")
-    complete = true
-    generation++
+    state().complete = true
+    state().generation++
   }
 
   export function register(id: string, contribution: Contribution): void {
-    if (contributions.get(id) === contribution) return
+    const existing = state().contributions.get(id)
+    if (existing === contribution) return
+    if (existing) throw new Error(`Config domain ${id} is already registered`)
     assertRegistrationOpen(id)
-    for (const [otherID, other] of contributions) {
+    for (const [otherID, other] of state().contributions) {
       if (otherID === id) continue
       for (const key of Object.keys(contribution.shape)) {
         if (key in other.shape) throw new Error(`Config field ${key} is already owned by ${otherID}`)
       }
     }
-    contributions.set(id, contribution)
-    generation++
+    state().contributions.set(id, contribution)
+    state().generation++
   }
 
   export function schema<S extends z.ZodRawShape>(base: z.ZodObject<S>): z.ZodObject<S> {
-    let seen = -1
-    let current: z.ZodObject = base
     function resolved() {
-      if (seen === generation) return current
+      const instance = state()
+      const cached = instance.schemas.get(base)
+      if (cached?.generation === instance.generation) return cached.schema
       const shape = { ...base.shape }
-      for (const contribution of contributions.values()) {
+      for (const contribution of state().contributions.values()) {
         for (const key of Object.keys(contribution.shape)) {
           if (key in base.shape) throw new Error(`Config field ${key} is already owned by the harness`)
         }
         Object.assign(shape, contribution.shape)
       }
       const composed = z.object(shape)
-      current = (complete ? composed.strict() : composed.passthrough()).meta({ ref: "Config" })
-      seen = generation
-      return current
+      const schema = (instance.complete ? composed.strict() : composed.passthrough()).meta({ ref: "Config" })
+      instance.schemas.set(base, { generation: instance.generation, schema })
+      return schema
     }
     const proxy = dynamicSchema(resolved) as z.ZodObject<S>
     z.globalRegistry.add(proxy, { ref: "Config" })
@@ -118,7 +124,7 @@ export namespace ConfigExtensions {
 
   export function field<K extends string>(key: K): z.ZodOptional<Field<K>> {
     return dynamicSchema(() => {
-      for (const contribution of contributions.values()) {
+      for (const contribution of state().contributions.values()) {
         const schema = contribution.shape[key] as z.ZodType | undefined
         if (schema) return schema.optional().meta(schema.meta() ?? {})
       }
@@ -127,32 +133,34 @@ export namespace ConfigExtensions {
   }
 
   export function readField<K extends string>(config: Record<string, unknown>, key: K): z.output<Field<K>> | undefined {
-    for (const contribution of contributions.values()) {
+    for (const contribution of state().contributions.values()) {
       if (contribution.shape[key]) return z.parse(contribution.shape[key], config[key]) as z.output<Field<K>>
     }
   }
 
   export function references(config: Record<string, unknown>, providerID: string): string[] {
-    return [...contributions.values()].flatMap((contribution) => contribution.references?.(config, providerID) ?? [])
+    return [...state().contributions.values()].flatMap(
+      (contribution) => contribution.references?.(config, providerID) ?? [],
+    )
   }
 
   export function normalize(config: Record<string, unknown>) {
-    for (const contribution of contributions.values()) contribution.normalize?.(config)
+    for (const contribution of state().contributions.values()) contribution.normalize?.(config)
   }
   export function merge(
     current: Record<string, unknown>,
     patch: Record<string, unknown>,
     result: Record<string, unknown>,
   ) {
-    for (const contribution of contributions.values()) contribution.merge?.(current, patch, result)
+    for (const contribution of state().contributions.values()) contribution.merge?.(current, patch, result)
   }
   export function resolve(config: Record<string, unknown>, filepath: string) {
-    for (const contribution of contributions.values()) contribution.resolve?.(config, filepath)
+    for (const contribution of state().contributions.values()) contribution.resolve?.(config, filepath)
   }
   export function redact(config: Record<string, unknown>, helpers: SecretHelpers) {
-    for (const contribution of contributions.values()) contribution.redact?.(config, helpers)
+    for (const contribution of state().contributions.values()) contribution.redact?.(config, helpers)
   }
   export function restore(config: Record<string, unknown>, stored: Record<string, unknown>, helpers: SecretHelpers) {
-    for (const contribution of contributions.values()) contribution.restore?.(config, stored, helpers)
+    for (const contribution of state().contributions.values()) contribution.restore?.(config, stored, helpers)
   }
 }

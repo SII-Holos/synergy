@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import os from "os"
 import fs from "fs/promises"
@@ -60,6 +61,7 @@ const TOKEN_REQUEST_TIMEOUT_MS = 10_000
 const ACCOUNT_DRAIN_TIMEOUT_MS = 30_000
 
 type FeishuCardActionHandler = (data: unknown, accountId: string) => Promise<unknown>
+const cardActionHandlers = RuntimeContext.state(() => new Set<FeishuCardActionHandler>())
 
 export async function routeFeishuCardAction(input: {
   data: unknown
@@ -412,12 +414,11 @@ export class FeishuProvider
 
   private accounts = new Map<string, AccountState>()
 
-  private static cardActionHandlers: FeishuCardActionHandler[] = []
-
-  static onCardAction(handler: (data: unknown, accountId: string) => Promise<unknown>): () => void {
-    FeishuProvider.cardActionHandlers.push(handler)
+  static onCardAction(handler: FeishuCardActionHandler): () => void {
+    const handlers = cardActionHandlers()
+    handlers.add(handler)
     return () => {
-      FeishuProvider.cardActionHandlers = FeishuProvider.cardActionHandlers.filter((h) => h !== handler)
+      handlers.delete(handler)
     }
   }
 
@@ -566,7 +567,9 @@ export class FeishuProvider
       return
     }
 
-    await feishuDedup.warmup(accountId).catch((err) => log.warn("dedup warmup failed", { accountId, error: err }))
+    await feishuDedup()
+      .warmup(accountId)
+      .catch((err) => log.warn("dedup warmup failed", { accountId, error: err }))
     await FeishuStreamingState.reconcileAccount({
       accountId,
       apiBase,
@@ -607,10 +610,12 @@ export class FeishuProvider
     })
     runtime.debouncer = debouncer
 
+    const owner = RuntimeContext.current()
+    const handlers = cardActionHandlers()
     const eventDispatcher = new Lark.EventDispatcher({ logger }).register<{
       "card.action.trigger"?: (data: unknown) => Promise<unknown> | unknown
     }>({
-      "im.message.receive_v1": (data: unknown) => {
+      "im.message.receive_v1": owner.bind((data: unknown) => {
         const payload = data as FeishuEventPayload
         const message = payload.message ?? payload.event?.message
         const sender = payload.sender ?? payload.event?.sender
@@ -628,7 +633,7 @@ export class FeishuProvider
               log.warn("feishu message ignored during account drain", { accountId, messageId: rawMessageId })
               return
             }
-            if (await feishuDedup.isDuplicate(accountId, rawMessageId)) {
+            if (await feishuDedup().isDuplicate(accountId, rawMessageId)) {
               log.warn("duplicate message ignored", { messageId: rawMessageId })
               return
             }
@@ -651,17 +656,17 @@ export class FeishuProvider
         })()
         runtime.inboundTasks.add(processing)
         void processing.finally(() => runtime.inboundTasks.delete(processing))
-      },
-      "card.action.trigger": async (data: unknown) => {
+      }),
+      "card.action.trigger": owner.bind(async (data: unknown) => {
         log.info("feishu card action received", { accountId })
         return routeFeishuCardAction({
           data,
           accountId,
           onResponseCardAction,
           onQuestionCardAction,
-          pluginHandlers: FeishuProvider.cardActionHandlers,
+          pluginHandlers: [...handlers],
         })
-      },
+      }),
     })
 
     const wsClient = new Lark.WSClient({
@@ -820,7 +825,7 @@ export class FeishuProvider
 
     const senderNamePromise =
       account && (accountConfig.resolveSenderNames ?? true)
-        ? senderNameCache
+        ? senderNameCache()
             .resolve({ apiBase: account.apiBase, getAccessToken: () => this.getAccessToken(accountId) }, senderId)
             .catch(() => undefined)
         : Promise.resolve(undefined)
@@ -849,7 +854,9 @@ export class FeishuProvider
 
     const chatNamePromise =
       account && filterResult.isGroup && msg.chat_id
-        ? chatNameCache.resolve(apiCtx!, msg.chat_id!).catch(() => undefined)
+        ? chatNameCache()
+            .resolve(apiCtx!, msg.chat_id!)
+            .catch(() => undefined)
         : Promise.resolve(undefined)
 
     const [senderName, quotedMessage, attachments, resolvedChatName] = await Promise.all([
@@ -1300,18 +1307,4 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
   ownsTerminalDelivery(): boolean {
     return true
   }
-}
-
-// Expose card action registration globally so plugins can register handlers
-// without importing FeishuProvider (which uses @/ path aliases not available in plugins).
-;(globalThis as any).__synergy_feishu_onCardAction = FeishuProvider.onCardAction.bind(FeishuProvider)
-
-// Consume any pending card action handler that was stored by a plugin before this module loaded.
-// This handles the timing issue where Plugin.init() runs before GlobalRuntime starts channels.
-const pendingHandler = (globalThis as any).__synergy_feishu_pendingCardActionHandler as
-  | ((data: unknown, accountId: string) => Promise<unknown>)
-  | undefined
-if (pendingHandler) {
-  FeishuProvider.onCardAction(pendingHandler)
-  delete (globalThis as any).__synergy_feishu_pendingCardActionHandler
 }

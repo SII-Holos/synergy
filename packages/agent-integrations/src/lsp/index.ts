@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
@@ -57,8 +58,10 @@ export namespace LSP {
   // Each client is stamped on use; a per-scope sweeper shuts down clients idle
   // beyond the timeout. Reaping is transparent — getClients re-spawns on the
   // next request. Controlled by execution.lspIdleReap.
-  const lastUsedAt = new WeakMap<LSPClient.Info, number>()
-  const worktreeClients = new WeakSet<LSPClient.Info>()
+  const runtimeState = RuntimeContext.state(() => ({
+    lastUsedAt: new WeakMap<LSPClient.Info, number>(),
+  }))
+  const worktreeClients = RuntimeContext.state(() => new WeakSet<LSPClient.Info>())
   const LSP_IDLE_MS = 30 * 60 * 1000
   const LSP_WORKTREE_IDLE_MS = 5 * 60 * 1000
   const LSP_SWEEP_MS = 5 * 60 * 1000
@@ -70,11 +73,13 @@ export namespace LSP {
   // client actively serving a concurrent session is never shut down mid-request.
   const LSP_CAPACITY_REAP_MIN_IDLE_MS = 30 * 1000
   function touchClient(client: LSPClient.Info) {
-    lastUsedAt.set(client, Date.now())
+    const instanceState = runtimeState()
+
+    instanceState.lastUsedAt.set(client, Date.now())
   }
 
   function clientIdleMs(client: LSPClient.Info) {
-    return worktreeClients.has(client) ? LSP_WORKTREE_IDLE_MS : LSP_IDLE_MS
+    return worktreeClients().has(client) ? LSP_WORKTREE_IDLE_MS : LSP_IDLE_MS
   }
 
   const state = ScopedState.create(
@@ -136,7 +141,7 @@ export namespace LSP {
                 cwd: root,
                 detached: process.platform !== "win32",
                 env: {
-                  ...process.env,
+                  ...RuntimeContext.current().host.env,
                   ...item.env,
                 },
               }),
@@ -156,9 +161,11 @@ export namespace LSP {
         cfg.execution?.lspIdleReap === false
           ? undefined
           : setInterval(() => {
+              const instanceState = runtimeState()
+
               const now = Date.now()
               for (const client of [...clients]) {
-                if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
+                if (now - (instanceState.lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
                 void reapClient(clients, client, "idle")
               }
             }, LSP_SWEEP_MS)
@@ -265,7 +272,7 @@ export namespace LSP {
       }
 
       s.clients.push(client)
-      if (ScopeContext.current.workspace?.type === "git_worktree") worktreeClients.add(client)
+      if (ScopeContext.current.workspace?.type === "git_worktree") worktreeClients().add(client)
       touchClient(client)
       if (handle.process.pid) {
         LSPPid.track(handle.process.pid)
@@ -334,17 +341,22 @@ export namespace LSP {
   }
 
   async function reapForCapacity(clients: LSPClient.Info[], serverID: string) {
+    const instanceState = runtimeState()
+
     const matches = clients.filter((client) => client.serverID === serverID)
     if (matches.length < LSP_MAX_CLIENTS_PER_SERVER) return
     const now = Date.now()
-    const oldest = matches.toSorted((a, b) => (lastUsedAt.get(a) ?? 0) - (lastUsedAt.get(b) ?? 0))[0]
+    const oldest = matches.toSorted((a, b) => {
+      const instanceState = runtimeState()
+      return (instanceState.lastUsedAt.get(a) ?? 0) - (instanceState.lastUsedAt.get(b) ?? 0)
+    })[0]
     // Only evict a client that has been idle past the grace window. touchClient
     // stamps a client on every getClients/run, so a recently-stamped client is
     // likely serving an in-flight request on another concurrent session —
     // shutting it down mid-request would fail that request. When every client is
     // hot, tolerate briefly exceeding the cap instead; the idle sweeper reclaims
     // them once they cool down.
-    if (!oldest || now - (lastUsedAt.get(oldest) ?? 0) < LSP_CAPACITY_REAP_MIN_IDLE_MS) return
+    if (!oldest || now - (instanceState.lastUsedAt.get(oldest) ?? 0) < LSP_CAPACITY_REAP_MIN_IDLE_MS) return
     await reapClient(clients, oldest, "capacity")
   }
 

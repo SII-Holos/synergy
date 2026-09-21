@@ -5,6 +5,9 @@ import os from "os"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Embedding } from "../src/vector/embedding"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "./support/runtime"
+const runtime = await testRuntime()
 
 const originalConfigCurrent = Config.current
 
@@ -25,275 +28,297 @@ function extractor() {
   )
 }
 
-beforeEach(async () => {
-  await Embedding.dispose()
-  ;(Config.current as typeof Config.current) = mock(async () => localConfig())
-})
+beforeEach(() =>
+  runtime.run(async () => {
+    await Embedding.dispose()
+    ;(Config.current as typeof Config.current) = mock(async () => localConfig())
+  }),
+)
 
-afterEach(async () => {
-  Embedding.setLocalRuntimeControlsForTest()
-  await Embedding.dispose()
-  ;(Config.current as typeof Config.current) = originalConfigCurrent
-})
+afterEach(() =>
+  runtime.run(async () => {
+    Embedding.setLocalRuntimeControlsForTest()
+    await Embedding.dispose()
+    ;(Config.current as typeof Config.current) = originalConfigCurrent
+  }),
+)
 
 describe("local embedding config", () => {
-  test("keeps the zero-config default and accepts built-in download sources", () => {
-    expect(LibraryConfigSchema.EmbeddingConfig.safeParse(undefined).success).toBe(true)
-    expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "huggingface" } }).success).toBe(true)
-    expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "hf-mirror" } }).success).toBe(true)
-  })
+  test("keeps the zero-config default and accepts built-in download sources", () =>
+    runtime.run(() => {
+      expect(LibraryConfigSchema.EmbeddingConfig.safeParse(undefined).success).toBe(true)
+      expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "huggingface" } }).success).toBe(true)
+      expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "hf-mirror" } }).success).toBe(true)
+    }))
 
-  test("requires a dedicated origin for custom download sources", () => {
-    expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "custom" } }).success).toBe(false)
-    expect(
-      LibraryConfigSchema.EmbeddingConfig.safeParse({
-        local: { source: "custom", remoteHost: "https://models.example" },
-      }).success,
-    ).toBe(true)
-  })
+  test("requires a dedicated origin for custom download sources", () =>
+    runtime.run(() => {
+      expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "custom" } }).success).toBe(false)
+      expect(
+        LibraryConfigSchema.EmbeddingConfig.safeParse({
+          local: { source: "custom", remoteHost: "https://models.example" },
+        }).success,
+      ).toBe(true)
+    }))
 
-  test("rejects custom sources that are not public HTTPS origins", () => {
-    for (const remoteHost of [
-      "http://models.example",
-      "https://127.0.0.1",
-      "https://[fe90::1]",
-      "https://models.example/path",
-    ]) {
-      expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "custom", remoteHost } }).success).toBe(
-        false,
+  test("rejects custom sources that are not public HTTPS origins", () =>
+    runtime.run(() => {
+      for (const remoteHost of [
+        "http://models.example",
+        "https://127.0.0.1",
+        "https://[fe90::1]",
+        "https://models.example/path",
+      ]) {
+        expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { source: "custom", remoteHost } }).success).toBe(
+          false,
+        )
+      }
+    }))
+
+  test("tolerates a retained custom origin after switching back to a built-in source", () =>
+    runtime.run(() => {
+      expect(
+        LibraryConfigSchema.EmbeddingConfig.safeParse({
+          local: { source: "huggingface", remoteHost: "https://models.example" },
+        }).success,
+      ).toBe(true)
+    }))
+
+  test("accepts a custom cache directory", () =>
+    runtime.run(() => {
+      expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { cacheDir: "/custom/models" } }).success).toBe(
+        true,
       )
-    }
-  })
-
-  test("tolerates a retained custom origin after switching back to a built-in source", () => {
-    expect(
-      LibraryConfigSchema.EmbeddingConfig.safeParse({
-        local: { source: "huggingface", remoteHost: "https://models.example" },
-      }).success,
-    ).toBe(true)
-  })
-
-  test("accepts a custom cache directory", () => {
-    expect(LibraryConfigSchema.EmbeddingConfig.safeParse({ local: { cacheDir: "/custom/models" } }).success).toBe(true)
-  })
+    }))
 })
 
 describe("local embedding asset", () => {
-  test("single-flights concurrent local initialization and reports aggregate progress", async () => {
-    let resolvePipeline: ((value: ReturnType<typeof extractor>) => void) | undefined
-    const pipeline = mock(
-      async (
-        _task: string,
-        _model: string,
-        options: {
-          dtype: "q8"
-          progress_callback: (info: { status?: string; progress?: number; loaded?: number; total?: number }) => void
+  test("single-flights concurrent local initialization and reports aggregate progress", () =>
+    runtime.run(async () => {
+      let resolvePipeline: ((value: ReturnType<typeof extractor>) => void) | undefined
+      const pipeline = mock(
+        async (
+          _task: string,
+          _model: string,
+          options: {
+            dtype: "q8"
+            progress_callback: (info: { status?: string; progress?: number; loaded?: number; total?: number }) => void
+          },
+        ) => {
+          options.progress_callback?.({
+            status: "progress_total",
+            progress: 25,
+            loaded: 20,
+            total: 80,
+          })
+          return await new Promise<ReturnType<typeof extractor>>((resolve) => {
+            resolvePipeline = resolve
+          })
         },
-      ) => {
-        options.progress_callback?.({
-          status: "progress_total",
-          progress: 25,
-          loaded: 20,
-          total: 80,
-        })
-        return await new Promise<ReturnType<typeof extractor>>((resolve) => {
-          resolvePipeline = resolve
-        })
-      },
-    )
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        pipeline,
-        isCached: mock(async () => false),
-        configure() {},
-      }),
-    })
-
-    const first = Embedding.warmup()
-    const second = Embedding.warmup()
-    await Bun.sleep(0)
-
-    expect(pipeline).toHaveBeenCalledTimes(1)
-    expect(await Embedding.status()).toMatchObject({
-      mode: "local",
-      asset: "downloading",
-      runtime: "loading",
-      progress: { loadedBytes: 20, totalBytes: 80, percent: 25 },
-    })
-
-    resolvePipeline?.(extractor())
-    await Promise.all([first, second])
-
-    expect(await Embedding.status()).toMatchObject({
-      mode: "local",
-      asset: "cached",
-      runtime: "ready",
-      progress: { loadedBytes: 80, totalBytes: 80, percent: 100 },
-    })
-  })
-
-  test("falls back to the disk cache after a network load failure", async () => {
-    const ready = extractor()
-    const pipeline = mock(async (_task: string, _model: string, options: { local_files_only?: true }) => {
-      if (!options.local_files_only) throw new Error("hub unavailable")
-      return ready
-    })
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        pipeline,
-        isCached: mock(async () => true),
-        configure() {},
-      }),
-    })
-
-    await expect(Embedding.warmup()).resolves.toBeUndefined()
-
-    // huggingface.co attempt → hf-mirror fallback → disk cache
-    expect(pipeline).toHaveBeenCalledTimes(3)
-    expect(pipeline.mock.calls[2]?.[2]).toMatchObject({ local_files_only: true })
-    expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
-  })
-
-  test("allows a failed explicit download to retry in the same process", async () => {
-    const ready = extractor()
-    const pipeline = mock(async () => {
-      // First 3 calls fail: huggingface.co, hf-mirror fallback, disk cache.
-      // Retry succeeds on the 4th call.
-      if (pipeline.mock.calls.length <= 3) throw new Error("hub unavailable")
-      return ready
-    })
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        pipeline,
-        isCached: mock(async () => false),
-        configure() {},
-      }),
-    })
-
-    await expect(Embedding.warmup()).rejects.toThrow("hub unavailable")
-    expect(await Embedding.status()).toMatchObject({
-      mode: "local",
-      asset: "failed",
-      runtime: "unloaded",
-      error: { message: "hub unavailable" },
-    })
-
-    await expect(Embedding.warmup()).resolves.toBeUndefined()
-    expect(pipeline).toHaveBeenCalledTimes(4)
-    expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
-  })
-
-  test("uses the configured mirror before checking cache or loading the pipeline", async () => {
-    ;(Config.current as typeof Config.current) = mock(async () => localConfig({ source: "hf-mirror" }))
-    const order: string[] = []
-    let configuredHost = ""
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        configure(input) {
-          configuredHost = input.remoteHost
-          order.push("configure")
-        },
-        isCached: mock(async () => {
-          order.push("cache")
-          return true
+      )
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          pipeline,
+          isCached: mock(async () => false),
+          configure() {},
         }),
-        pipeline: mock(async () => {
-          order.push("pipeline")
-          return extractor()
-        }),
-      }),
-    })
+      })
 
-    await Embedding.warmup()
+      const first = Embedding.warmup()
+      const second = Embedding.warmup()
+      await Bun.sleep(0)
 
-    expect(configuredHost).toBe("https://hf-mirror.com/")
-    expect(order).toEqual(["configure", "cache", "pipeline"])
-    expect(await Embedding.status()).toMatchObject({ source: "hf-mirror", asset: "cached", runtime: "ready" })
-  })
+      expect(pipeline).toHaveBeenCalledTimes(1)
+      expect(await Embedding.status()).toMatchObject({
+        mode: "local",
+        asset: "downloading",
+        runtime: "loading",
+        progress: { loadedBytes: 20, totalBytes: 80, percent: 25 },
+      })
 
-  test("rejects unsafe custom mirror origins before loading runtime assets", async () => {
-    ;(Config.current as typeof Config.current) = mock(async () =>
-      localConfig({ source: "custom", remoteHost: "http://127.0.0.1:8080" }),
-    )
-    const loadRuntime = mock(async () => {
-      throw new Error("must not load")
-    })
-    Embedding.setLocalRuntimeControlsForTest({ loadRuntime })
+      resolvePipeline?.(extractor())
+      await Promise.all([first, second])
 
-    await expect(Embedding.warmup()).rejects.toThrow("public HTTPS origin")
-    expect(loadRuntime).not.toHaveBeenCalled()
-  })
-
-  test("reports remote mode without inspecting or loading local assets", async () => {
-    ;(Config.current as typeof Config.current) = mock(async () => ({
-      embedding: { apiKey: "secret", baseURL: "https://embedding.example/v1", model: "embed-model" },
+      expect(await Embedding.status()).toMatchObject({
+        mode: "local",
+        asset: "cached",
+        runtime: "ready",
+        progress: { loadedBytes: 80, totalBytes: 80, percent: 100 },
+      })
     }))
-    const loadRuntime = mock(async () => {
-      throw new Error("must not load")
-    })
-    Embedding.setLocalRuntimeControlsForTest({ loadRuntime })
 
-    expect(await Embedding.status()).toEqual({
-      mode: "remote",
-      model: "embed-model",
-      baseURL: "https://embedding.example/v1",
-    })
-    expect(loadRuntime).not.toHaveBeenCalled()
-  })
+  test("falls back to the disk cache after a network load failure", () =>
+    runtime.run(async () => {
+      const ready = extractor()
+      const pipeline = mock(async (_task: string, _model: string, options: { local_files_only?: true }) => {
+        if (!options.local_files_only) throw new Error("hub unavailable")
+        return ready
+      })
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          pipeline,
+          isCached: mock(async () => true),
+          configure() {},
+        }),
+      })
+
+      await expect(Embedding.warmup()).resolves.toBeUndefined()
+
+      // huggingface.co attempt → hf-mirror fallback → disk cache
+      expect(pipeline).toHaveBeenCalledTimes(3)
+      expect(pipeline.mock.calls[2]?.[2]).toMatchObject({ local_files_only: true })
+      expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
+    }))
+
+  test("allows a failed explicit download to retry in the same process", () =>
+    runtime.run(async () => {
+      const ready = extractor()
+      const pipeline = mock(async () => {
+        // First 3 calls fail: huggingface.co, hf-mirror fallback, disk cache.
+        // Retry succeeds on the 4th call.
+        if (pipeline.mock.calls.length <= 3) throw new Error("hub unavailable")
+        return ready
+      })
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          pipeline,
+          isCached: mock(async () => false),
+          configure() {},
+        }),
+      })
+
+      await expect(Embedding.warmup()).rejects.toThrow("hub unavailable")
+      expect(await Embedding.status()).toMatchObject({
+        mode: "local",
+        asset: "failed",
+        runtime: "unloaded",
+        error: { message: "hub unavailable" },
+      })
+
+      await expect(Embedding.warmup()).resolves.toBeUndefined()
+      expect(pipeline).toHaveBeenCalledTimes(4)
+      expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
+    }))
+
+  test("uses the configured mirror before checking cache or loading the pipeline", () =>
+    runtime.run(async () => {
+      ;(Config.current as typeof Config.current) = mock(async () => localConfig({ source: "hf-mirror" }))
+      const order: string[] = []
+      let configuredHost = ""
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          configure(input) {
+            configuredHost = input.remoteHost
+            order.push("configure")
+          },
+          isCached: mock(async () => {
+            order.push("cache")
+            return true
+          }),
+          pipeline: mock(async () => {
+            order.push("pipeline")
+            return extractor()
+          }),
+        }),
+      })
+
+      await Embedding.warmup()
+
+      expect(configuredHost).toBe("https://hf-mirror.com/")
+      expect(order).toEqual(["configure", "cache", "pipeline"])
+      expect(await Embedding.status()).toMatchObject({ source: "hf-mirror", asset: "cached", runtime: "ready" })
+    }))
+
+  test("rejects unsafe custom mirror origins before loading runtime assets", () =>
+    runtime.run(async () => {
+      ;(Config.current as typeof Config.current) = mock(async () =>
+        localConfig({ source: "custom", remoteHost: "http://127.0.0.1:8080" }),
+      )
+      const loadRuntime = mock(async () => {
+        throw new Error("must not load")
+      })
+      Embedding.setLocalRuntimeControlsForTest({ loadRuntime })
+
+      await expect(Embedding.warmup()).rejects.toThrow("public HTTPS origin")
+      expect(loadRuntime).not.toHaveBeenCalled()
+    }))
+
+  test("reports remote mode without inspecting or loading local assets", () =>
+    runtime.run(async () => {
+      ;(Config.current as typeof Config.current) = mock(async () => ({
+        embedding: { apiKey: "secret", baseURL: "https://embedding.example/v1", model: "embed-model" },
+      }))
+      const loadRuntime = mock(async () => {
+        throw new Error("must not load")
+      })
+      Embedding.setLocalRuntimeControlsForTest({ loadRuntime })
+
+      expect(await Embedding.status()).toEqual({
+        mode: "remote",
+        model: "embed-model",
+        baseURL: "https://embedding.example/v1",
+      })
+      expect(loadRuntime).not.toHaveBeenCalled()
+    }))
 })
 
 describe("local embedding cache directory", () => {
-  test("passes the configured cache directory to the transformers runtime", async () => {
-    ;(Config.current as typeof Config.current) = mock(async () => localConfig({ cacheDir: "/custom/models" }))
-    let configuredCacheDir = ""
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        configure(input) {
-          configuredCacheDir = input.cacheDir
-        },
-        isCached: mock(async () => true),
-        pipeline: mock(async () => extractor()),
-      }),
-    })
+  test("passes the configured cache directory to the transformers runtime", () =>
+    runtime.run(async () => {
+      ;(Config.current as typeof Config.current) = mock(async () => localConfig({ cacheDir: "/custom/models" }))
+      let configuredCacheDir = ""
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          configure(input) {
+            configuredCacheDir = input.cacheDir
+          },
+          isCached: mock(async () => true),
+          pipeline: mock(async () => extractor()),
+        }),
+      })
 
-    await Embedding.warmup()
+      await Embedding.warmup()
 
-    expect(configuredCacheDir).toBe("/custom/models")
-    expect(await Embedding.status()).toMatchObject({ source: "huggingface", asset: "cached", runtime: "ready" })
-  })
+      expect(configuredCacheDir).toBe("/custom/models")
+      expect(await Embedding.status()).toMatchObject({ source: "huggingface", asset: "cached", runtime: "ready" })
+    }))
 
-  test("expands a leading tilde in the configured cache directory", async () => {
-    ;(Config.current as typeof Config.current) = mock(async () => localConfig({ cacheDir: "~/custom/models" }))
-    let configuredCacheDir = ""
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        configure(input) {
-          configuredCacheDir = input.cacheDir
-        },
-        isCached: mock(async () => true),
-        pipeline: mock(async () => extractor()),
-      }),
-    })
+  test("expands a leading tilde in the configured cache directory", () =>
+    runtime.run(async () => {
+      ;(Config.current as typeof Config.current) = mock(async () => localConfig({ cacheDir: "~/custom/models" }))
+      let configuredCacheDir = ""
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          configure(input) {
+            configuredCacheDir = input.cacheDir
+          },
+          isCached: mock(async () => true),
+          pipeline: mock(async () => extractor()),
+        }),
+      })
 
-    await Embedding.warmup()
+      await Embedding.warmup()
 
-    expect(configuredCacheDir).toBe(path.join(os.homedir(), "custom", "models"))
-  })
+      expect(configuredCacheDir).toBe(path.join(os.homedir(), "custom", "models"))
+    }))
 
-  test("falls back to the default data path when no cache directory is configured", async () => {
-    let configuredCacheDir = ""
-    Embedding.setLocalRuntimeControlsForTest({
-      loadRuntime: async () => ({
-        configure(input) {
-          configuredCacheDir = input.cacheDir
-        },
-        isCached: mock(async () => true),
-        pipeline: mock(async () => extractor()),
-      }),
-    })
+  test("falls back to the default data path when no cache directory is configured", () =>
+    runtime.run(async () => {
+      let configuredCacheDir = ""
+      Embedding.setLocalRuntimeControlsForTest({
+        loadRuntime: async () => ({
+          configure(input) {
+            configuredCacheDir = input.cacheDir
+          },
+          isCached: mock(async () => true),
+          pipeline: mock(async () => extractor()),
+        }),
+      })
 
-    await Embedding.warmup()
+      await Embedding.warmup()
 
-    expect(configuredCacheDir).toBe(Global.Path.embeddingModels)
-  })
+      expect(configuredCacheDir).toBe(Global.Path.embeddingModels)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

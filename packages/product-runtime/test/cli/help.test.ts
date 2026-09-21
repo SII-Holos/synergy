@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function cliHelp(args: string[], env?: Record<string, string>) {
   const proc = Bun.spawn([process.execPath, "--conditions=browser", "src/index.ts", ...args], {
@@ -19,67 +22,76 @@ async function cliHelp(args: string[], env?: Record<string, string>) {
 }
 
 describe("product CLI help", () => {
-  test("help and version leave broken configuration, caches and migration state untouched", async () => {
-    await using tmp = await tmpdir()
-    const cache = `${tmp.path}/.synergy/cache`
-    const config = `${tmp.path}/.synergy/config/synergy.d/120-runtime.jsonc`
-    await Bun.write(`${cache}/version`, "outdated")
-    await Bun.write(`${cache}/keep`, "sentinel")
-    await Bun.write(config, "{ invalid }")
-    await Bun.write(`${tmp.path}/.synergy/plugin.lock`, "{ invalid }")
-    const files = () =>
-      Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: tmp.path, onlyFiles: true, dot: true })).then((files) =>
-        files.sort(),
-      )
-    const before = await files()
-    for (const args of [["--help"], ["send", "--help"], ["--version"]])
-      await cliHelp(args, { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path })
-    expect(await files()).toEqual(before)
-    expect(await Bun.file(`${cache}/version`).text()).toBe("outdated")
-    expect(await Bun.file(`${cache}/keep`).text()).toBe("sentinel")
-    expect(await Bun.file(config).text()).toBe("{ invalid }")
-  })
-  test("snapshot maintenance exposes scope selection and explicit collection controls", async () => {
-    const group = await cliHelp(["data", "snapshots", "--help"])
-    for (const action of ["inspect", "check", "migrate", "compact", "clean"]) expect(group).toContain(action)
-    const compact = await cliHelp(["data", "snapshots", "compact", "--help"])
-    for (const flag of ["--scope", "--json", "--apply", "--prune"]) expect(compact).toContain(flag)
-  })
-  test("does not persist the launch directory while discovering plugin commands", async () => {
-    await using tmp = await tmpdir()
+  test("help and version leave broken configuration, caches and migration state untouched", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const cache = `${tmp.path}/.synergy/cache`
+      const config = `${tmp.path}/.synergy/config/synergy.d/120-runtime.jsonc`
+      await Bun.write(`${cache}/version`, "outdated")
+      await Bun.write(`${cache}/keep`, "sentinel")
+      await Bun.write(config, "{ invalid }")
+      await Bun.write(`${tmp.path}/.synergy/plugin.lock`, "{ invalid }")
+      const files = () =>
+        Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: tmp.path, onlyFiles: true, dot: true })).then((files) =>
+          files.sort(),
+        )
+      const before = await files()
+      for (const args of [["--help"], ["send", "--help"], ["--version"]])
+        await cliHelp(args, { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path })
+      expect(await files()).toEqual(before)
+      expect(await Bun.file(`${cache}/version`).text()).toBe("outdated")
+      expect(await Bun.file(`${cache}/keep`).text()).toBe("sentinel")
+      expect(await Bun.file(config).text()).toBe("{ invalid }")
+    }))
+  test("snapshot maintenance exposes scope selection and explicit collection controls", () =>
+    runtime.run(async () => {
+      const group = await cliHelp(["data", "snapshots", "--help"])
+      for (const action of ["inspect", "check", "migrate", "compact", "clean"]) expect(group).toContain(action)
+      const compact = await cliHelp(["data", "snapshots", "compact", "--help"])
+      for (const flag of ["--scope", "--json", "--apply", "--prune"]) expect(compact).toContain(flag)
+    }))
+  test("does not persist the launch directory while discovering plugin commands", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
 
-    await cliHelp(["--help"], { SYNERGY_CWD: tmp.path })
+      await cliHelp(["--help"], { SYNERGY_CWD: tmp.path })
 
-    expect((await Scope.list()).some((scope) => scope.worktree === tmp.path)).toBe(false)
-  })
+      expect((await Scope.list()).some((scope) => scope.local!.worktree === tmp.path)).toBe(false)
+    }))
 
-  test("does not expose source checkout dev commands", async () => {
-    const help = await cliHelp(["--help"])
+  test("does not expose source checkout dev commands", () =>
+    runtime.run(async () => {
+      const help = await cliHelp(["--help"])
 
-    expect(help).not.toContain("synergy prepare")
-    expect(help).not.toContain("synergy build")
-  })
+      expect(help).not.toContain("synergy prepare")
+      expect(help).not.toContain("synergy build")
+    }))
 
-  test("send documents explicit scope selection and cwd fallback", async () => {
-    const help = await cliHelp(["send", "--help"])
+  test("send documents explicit scope selection and cwd fallback", () =>
+    runtime.run(async () => {
+      const help = await cliHelp(["send", "--help"])
 
-    expect(help).toContain("--scope")
-    expect(help).toContain("registered scope id")
-    expect(help).toContain("current directory")
-  })
+      expect(help).toContain("--scope")
+      expect(help).toContain("registered scope id")
+      expect(help).toContain("current directory")
+    }))
 
-  test("send documents the lightloop workflow option", async () => {
-    const help = await cliHelp(["send", "--help"])
+  test("send documents the lightloop workflow option", () =>
+    runtime.run(async () => {
+      const help = await cliHelp(["send", "--help"])
 
-    expect(help).toContain("--workflow")
-    expect(help).toContain("lightloop")
-  })
+      expect(help).toContain("--workflow")
+      expect(help).toContain("lightloop")
+    }))
 
-  test("web command opens a running server and no longer starts Vite", async () => {
-    const help = await cliHelp(["web", "--help"])
+  test("web command opens a running server and no longer starts Vite", () =>
+    runtime.run(async () => {
+      const help = await cliHelp(["web", "--help"])
 
-    expect(help).toContain("--attach")
-    expect(help).not.toContain("--dev")
-    expect(help).not.toContain("Vite")
-  })
+      expect(help).toContain("--attach")
+      expect(help).not.toContain("--dev")
+      expect(help).not.toContain("Vite")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

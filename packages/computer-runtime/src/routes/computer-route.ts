@@ -5,7 +5,7 @@ import { describeRoute } from "hono-openapi"
 import { COMPUTER_MAX_MESSAGE_BYTES } from "@ericsanchezok/synergy-computer"
 import { computerBroker, type ComputerBroker } from "../broker"
 
-export function createComputerRoute(broker: ComputerBroker = computerBroker) {
+export function createComputerRoute(broker: ComputerBroker = computerBroker()) {
   return new Hono().get(
     "/computer/host/broker",
     describeRoute({
@@ -49,4 +49,3 @@ export function createComputerRoute(broker: ComputerBroker = computerBroker) {
     }),
   )
 }
-export const ComputerRoute = createComputerRoute()

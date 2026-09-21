@@ -1,56 +1,49 @@
 import { expect, test } from "bun:test"
-import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
-import { Session } from "@ericsanchezok/synergy-harness/session"
-import { createLocalClient } from "../src/client"
-import { registerLocalRuntime } from "../src/register"
+import { createLocalClient, openLocalRuntime } from "../src"
 
 test("in-process client creates and lists sessions in its explicit Scope", async () => {
-  registerLocalRuntime()
-  await using directory = await tmpdir({ git: true })
-  const scope = await directory.scope()
-  await ScopeRuntime.ensure(scope)
-  await ScopeContext.provide({
-    scope,
-    fn: async () => {
-      const client = createLocalClient()
-      const { data: session } = await client.session.create({
-        title: "Research session",
-        workspace: { mode: "current" },
-      })
-      try {
-        expect(session.scope.id).toBe(scope.id)
-        expect(session.title).toBe("Research session")
-        expect((await client.scope.current()).data.id).toBe(scope.id)
-        expect((await client.session.list()).data.data.some((item) => item.id === session.id)).toBe(true)
-      } finally {
-        await Session.remove(session.id)
-      }
-    },
-  })
-  await ScopeRuntime.disposeAll()
+  await using fixture = await runtimeHome()
+  await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot" })
+  const directory = path.join(fixture.host.home, "project")
+  await fs.mkdir(directory)
+  const client = createLocalClient(runtime, { directory })
+  const { data: session } = await client.session.create({ title: "Research session", workspace: { mode: "current" } })
+  expect(session.title).toBe("Research session")
+  expect(session.workspace?.path).toBe(directory)
+  expect((await client.scope.current()).data.id).toBe(session.scope.id)
+  expect((await client.session.list()).data.data.some((item) => item.id === session.id)).toBe(true)
 })
 
-test("in-process events stream existing bus events and abort closes a pending read", async () => {
-  await using directory = await tmpdir()
-  await ScopeContext.provide({
-    scope: await directory.scope(),
-    fn: async () => {
-      const controller = new AbortController()
-      const { stream } = await createLocalClient().event.subscribe({}, { signal: controller.signal })
-      const next = stream.next()
-      await Bus.publish(SessionEvent.Error, { sessionID: "ses_probe", error: { message: "probe" } })
-      expect((await next).value).toEqual({
-        type: "session.error",
-        properties: { sessionID: "ses_probe", error: { message: "probe" } },
-      })
-      const pending = stream.next()
-      controller.abort()
-      expect((await pending).done).toBe(true)
-    },
+for (const close of ["caller", "runtime"] as const) {
+  test(`in-process event stream closes a pending read when ${close} aborts`, async () => {
+    await using fixture = await runtimeHome()
+    await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot" })
+    const controller = new AbortController()
+    const { stream } = await createLocalClient(runtime, { scopeID: "home" }).event.subscribe(
+      {},
+      { signal: controller.signal },
+    )
+    const next = stream.next()
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: () => Bus.publish(SessionEvent.Error, { sessionID: "ses_probe", error: { message: "probe" } }),
+      }),
+    )
+    expect((await next).value).toEqual({
+      type: "session.error",
+      properties: { sessionID: "ses_probe", error: { message: "probe" } },
+    })
+    const pending = stream.next()
+    if (close === "runtime") await runtime.close()
+    else controller.abort()
+    expect((await pending).done).toBe(true)
   })
-  await ScopeRuntime.disposeAll()
-})
+}

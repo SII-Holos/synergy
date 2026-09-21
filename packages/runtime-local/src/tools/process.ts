@@ -36,23 +36,27 @@ const parameters = z
   })
   .strict()
 
-export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>("process", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params, ctx) {
-    const linkIDSupplied = Object.hasOwn(params, "linkID")
-    const target = await SynergyLinkExecution.resolveExecutionTarget({
-      targetID: params.targetID,
-      targetIDSupplied: Object.hasOwn(params, "targetID"),
-      linkID: params.linkID,
-      linkIDSupplied,
-      tool: "process",
-      agent: ctx.agent,
-    })
-    if (target.kind === "remote") {
-      return RemoteProcessBackend.execute(params, target)
-    }
+export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>(
+  "process",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params, ctx) {
+      const linkIDSupplied = Object.hasOwn(params, "linkID")
+      const target = await SynergyLinkExecution.resolveExecutionTarget({
+        targetID: params.targetID,
+        targetIDSupplied: Object.hasOwn(params, "targetID"),
+        linkID: params.linkID,
+        linkIDSupplied,
+        tool: "process",
+        agent: ctx.agent,
+      })
+      if (target.kind === "remote") {
+        return RemoteProcessBackend.execute(params, target)
+      }
 
-    return LocalProcessBackend.execute(params as ProcessParams, ctx)
+      return LocalProcessBackend.execute(params as ProcessParams, ctx)
+    },
   },
-})
+  { requiresWorkspace: true },
+)

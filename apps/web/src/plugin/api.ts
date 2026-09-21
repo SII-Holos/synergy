@@ -21,7 +21,7 @@ export async function fetchUIContributions(
   const sdk = createSynergyClient({
     baseUrl: serverUrl,
     throwOnError: true,
-    ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
+    scopeID: scopeKey,
   })
   const response = await sdk.plugin.listUiContributions(undefined, { signal })
   return (response.data ?? []) as PluginContribution[]

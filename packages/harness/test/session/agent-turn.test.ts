@@ -4,98 +4,105 @@ import { runInProcessStream } from "../../src/session/agent-turn/in-process"
 import { AgentWorkerPool } from "../../src/session/agent-turn/worker-pool"
 import { ContextUsage } from "../../src/session/context-usage"
 import { LLM } from "../../src/session/llm"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("starts Context Usage estimation only after the Agent worker starts", async () => {
-  const originalPrepare = LLM.prepare
-  const originalRun = AgentWorkerPool.prototype.run
-  const originalMeasureDraft = ContextUsage.measureDraft
-  const started = Promise.withResolvers<AgentTurn.Stream>()
-  let estimationStarts = 0
-  const operationID = crypto.randomUUID()
+test("starts Context Usage estimation only after the Agent worker starts", () =>
+  runtime.run(async () => {
+    const originalPrepare = LLM.prepare
+    const originalRun = AgentWorkerPool.prototype.run
+    const originalMeasureDraft = ContextUsage.measureDraft
+    const started = Promise.withResolvers<AgentTurn.Stream>()
+    let estimationStarts = 0
+    const operationID = crypto.randomUUID()
 
-  try {
-    await AgentTurn.stop()
-    AgentTurn.configure({ minIdle: 0 })
-    AgentTurn.setInProcessStream(undefined)
-    ;(LLM.prepare as any) = mock(async () => ({
-      system: ["prepared system"],
-      baseSystemLength: 1,
-      provider: {
-        options: {},
-        timeouts: { ttfbMs: 1_000, idleMs: false, wallMs: false },
-      },
-      params: { options: {} },
-    }))
-    ;(AgentWorkerPool.prototype.run as any) = mock(() => started.promise)
-    ;(ContextUsage.measureDraft as any) = mock(async () => {
-      estimationStarts++
-      return undefined
-    })
-
-    const pending = AgentTurn.stream({
-      user: { id: "msg_user" },
-      sessionID: "ses_test",
-      recording: { owner: { kind: "operation", scopeID: "home", operationID }, runID: operationID, purpose: "test" },
-      model: { id: "test-model", providerID: "test-provider", limit: {} },
-      agent: { name: "synergy" },
-      system: [],
-      messages: [],
-      abort: new AbortController().signal,
-      toolDefinitions: [],
-      contextUsageProvenance: {
-        categories: {
-          conversation: [{ text: "queued prompt" }],
-          toolActivity: [],
-          filesReferences: [],
-          instructions: [],
+    try {
+      await AgentTurn.stop()
+      AgentTurn.configure({ minIdle: 0 })
+      AgentTurn.setInProcessStream(undefined)
+      ;(LLM.prepare as any) = mock(async () => ({
+        system: ["prepared system"],
+        baseSystemLength: 1,
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 1_000, idleMs: false, wallMs: false },
         },
-        items: { conversation: 1, toolActivity: 0, filesReferences: 0, instructions: 0 },
-      },
-    } as any)
+        params: { options: {} },
+      }))
+      ;(AgentWorkerPool.prototype.run as any) = mock(() => started.promise)
+      ;(ContextUsage.measureDraft as any) = mock(async () => {
+        estimationStarts++
+        return undefined
+      })
 
-    await Bun.sleep(0)
-    expect(estimationStarts).toBe(0)
+      const pending = AgentTurn.stream({
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        recording: { owner: { kind: "operation", scopeID: "home", operationID }, runID: operationID, purpose: "test" },
+        model: { id: "test-model", providerID: "test-provider", limit: {} },
+        agent: { name: "synergy" },
+        system: [],
+        messages: [],
+        abort: new AbortController().signal,
+        toolDefinitions: [],
+        contextUsageProvenance: {
+          categories: {
+            conversation: [{ text: "queued prompt" }],
+            toolActivity: [],
+            filesReferences: [],
+            instructions: [],
+          },
+          items: { conversation: 1, toolActivity: 0, filesReferences: 0, instructions: 0 },
+        },
+      } as any)
 
-    started.resolve({
-      fullStream: (async function* () {})(),
-      usage: Promise.resolve(undefined),
-      async dispose() {},
-    })
-    const stream = await pending
+      await Bun.sleep(0)
+      expect(estimationStarts).toBe(0)
 
-    expect(estimationStarts).toBe(1)
-    expect(stream.contextUsageDraft).toBeDefined()
-    await stream.contextUsageDraft
-    await stream.dispose()
-  } finally {
-    ;(LLM.prepare as any) = originalPrepare
-    ;(AgentWorkerPool.prototype.run as any) = originalRun
-    ;(ContextUsage.measureDraft as any) = originalMeasureDraft
-    AgentTurn.setInProcessStream(runInProcessStream)
-    await AgentTurn.stop()
-    AgentTurn.configure()
-  }
-})
+      started.resolve({
+        fullStream: (async function* () {})(),
+        usage: Promise.resolve(undefined),
+        async dispose() {},
+      })
+      const stream = await pending
 
-test("prewarm creates the worker pool eagerly and stays a no-op for the in-process adapter", async () => {
-  try {
-    await AgentTurn.stop()
-    AgentTurn.configure({ size: 1, minIdle: 0 })
-    AgentTurn.setInProcessStream(undefined)
-    expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
+      expect(estimationStarts).toBe(1)
+      expect(stream.contextUsageDraft).toBeDefined()
+      await stream.contextUsageDraft
+      await stream.dispose()
+    } finally {
+      ;(LLM.prepare as any) = originalPrepare
+      ;(AgentWorkerPool.prototype.run as any) = originalRun
+      ;(ContextUsage.measureDraft as any) = originalMeasureDraft
+      AgentTurn.setInProcessStream(runInProcessStream)
+      await AgentTurn.stop()
+      AgentTurn.configure()
+    }
+  }))
 
-    AgentTurn.prewarm()
-    expect(() => AgentTurn.configure()).toThrow("cannot be reconfigured")
-    expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
+test("prewarm creates the worker pool eagerly and stays a no-op for the in-process adapter", () =>
+  runtime.run(async () => {
+    try {
+      await AgentTurn.stop()
+      AgentTurn.configure({ size: 1, minIdle: 0 })
+      AgentTurn.setInProcessStream(undefined)
+      expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
 
-    await AgentTurn.stop()
-    AgentTurn.configure({ size: 1, minIdle: 0 })
-    AgentTurn.setInProcessStream(runInProcessStream)
-    AgentTurn.prewarm()
-    expect(() => AgentTurn.configure()).not.toThrow()
-  } finally {
-    AgentTurn.setInProcessStream(runInProcessStream)
-    await AgentTurn.stop()
-    AgentTurn.configure()
-  }
-})
+      AgentTurn.prewarm()
+      expect(() => AgentTurn.configure()).toThrow("cannot be reconfigured")
+      expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
+
+      await AgentTurn.stop()
+      AgentTurn.configure({ size: 1, minIdle: 0 })
+      AgentTurn.setInProcessStream(runInProcessStream)
+      AgentTurn.prewarm()
+      expect(() => AgentTurn.configure()).not.toThrow()
+    } finally {
+      AgentTurn.setInProcessStream(runInProcessStream)
+      await AgentTurn.stop()
+      AgentTurn.configure()
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

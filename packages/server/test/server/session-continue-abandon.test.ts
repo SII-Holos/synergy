@@ -1,3 +1,15 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+let failingSessionID: string | undefined
+const runtime = await testRuntime(undefined, () =>
+  SessionExecutionContributions.register({
+    id: "abandon-failure-test",
+    abandonWorkflow: async (owner) => {
+      if (owner.id === failingSessionID) throw new Error("Cancellation unavailable")
+      return false
+    },
+  }),
+)
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -17,7 +29,7 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 /** A reply-required root with no terminal assistant: the persisted shape of a
  *  turn that stopped mid-work, which is what abandon exists to finish off. */
@@ -48,119 +60,119 @@ async function createInterruptedTurn(sessionID: string) {
 }
 
 describe("POST /session/:sessionID/continue", () => {
-  test("clears the pause latch and reports the drive result", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Continue me" })
-        expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })).toBe(true)
-        expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+  test("clears the pause latch and reports the drive result", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Continue me" })
+          expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })).toBe(true)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
 
-        const response = await Server.App().request(`/session/${session.id}/continue`, { method: "POST" })
+          const response = await Server.App().request(`/session/${session.id}/continue`, { method: "POST" })
 
-        expect(response.status).toBe(200)
-        const body = (await response.json()) as { handled: boolean }
-        expect(typeof body.handled).toBe("boolean")
-        // The session is taking a user action, so the latch must not survive the
-        // call — otherwise a later drive would keep refusing the resumed work.
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-      },
-    })
-  })
+          expect(response.status).toBe(200)
+          const body = (await response.json()) as { handled: boolean }
+          expect(typeof body.handled).toBe("boolean")
+          // The session is taking a user action, so the latch must not survive the
+          // call — otherwise a later drive would keep refusing the resumed work.
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        },
+      })
+    }))
 
-  test("is legal on a session that was never paused", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Never paused" })
+  test("is legal on a session that was never paused", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Never paused" })
 
-        const response = await Server.App().request(`/session/${session.id}/continue`, { method: "POST" })
+          const response = await Server.App().request(`/session/${session.id}/continue`, { method: "POST" })
 
-        expect(response.status).toBe(200)
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-      },
-    })
-  })
+          expect(response.status).toBe(200)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        },
+      })
+    }))
 })
 
 describe("POST /session/:sessionID/abandon", () => {
-  test("reports cancellation failure, retains the pause and permits an explicit retry", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await createInterruptedTurn(session.id)
-        SessionExecutionContributions.register({
-          id: "abandon-failure-test",
-          abandonWorkflow: async (owner) => {
-            if (owner.id === session.id) throw new Error("Cancellation unavailable")
-            return false
-          },
-        })
-        try {
+  test("reports cancellation failure, retains the pause and permits an explicit retry", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await createInterruptedTurn(session.id)
+          failingSessionID = session.id
+          try {
+            const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+            expect(response.status).toBe(409)
+            expect(await response.json()).toMatchObject({ name: "SessionAbandonError" })
+            expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+          } finally {
+            failingSessionID = undefined
+          }
+          const retry = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          expect(retry.status).toBe(200)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        },
+      })
+    }))
+  test("cancels queued work even when the paused execution has already exited", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await createInterruptedTurn(session.id)
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+          const queued = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [{ type: "text", text: "Queued task" }],
+          })
           const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
-          expect(response.status).toBe(409)
-          expect(await response.json()).toMatchObject({ name: "SessionAbandonError" })
-          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
-        } finally {
-          SessionExecutionContributions.register({ id: "abandon-failure-test" })
-        }
-        const retry = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
-        expect(retry.status).toBe(200)
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-      },
-    })
-  })
-  test("cancels queued work even when the paused execution has already exited", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await createInterruptedTurn(session.id)
-        await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
-        const queued = await SessionInbox.enqueueUser({
-          sessionID: session.id,
-          parts: [{ type: "text", text: "Queued task" }],
-        })
-        const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
-        expect(response.status).toBe(200)
-        expect(await SessionInbox.list(session.id)).toEqual([])
-        expect((await RolloutLedger.getRun(RolloutLifecycle.owner(session), queued.messageID)).status).toBe("cancelled")
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-      },
-    })
-  })
-  test("retains the pause when an abort hook fails", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const unregister = SessionAbort.registerHook((sessionID) => {
-          if (sessionID === session.id) throw new Error("Cancellation hook unavailable")
-        })
-        try {
-          const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
-          expect(response.status).toBe(409)
-          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
-        } finally {
-          unregister()
-        }
-        const retry = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
-        expect(retry.status).toBe(200)
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-      },
-    })
-  })
-  test.each([false, true])(
-    "terminalizes the interrupted turn and leaves the session resting (paused=%s)",
-    async (paused) => {
+          expect(response.status).toBe(200)
+          expect(await SessionInbox.list(session.id)).toEqual([])
+          expect((await RolloutLedger.getRun(RolloutLifecycle.owner(session), queued.messageID)).status).toBe(
+            "cancelled",
+          )
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        },
+      })
+    }))
+  test("retains the pause when an abort hook fails", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const unregister = SessionAbort.registerHook((sessionID) => {
+            if (sessionID === session.id) throw new Error("Cancellation hook unavailable")
+          })
+          try {
+            const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+            expect(response.status).toBe(409)
+            expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+          } finally {
+            unregister()
+          }
+          const retry = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          expect(retry.status).toBe(200)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        },
+      })
+    }))
+  test.each([false, true])("terminalizes the interrupted turn and leaves the session resting (paused=%s)", (paused) =>
+    runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
       await ScopeContext.provide({
@@ -195,28 +207,31 @@ describe("POST /session/:sessionID/abandon", () => {
           expect(assistant!.finish).toBe("error")
         },
       })
-    },
+    }),
   )
 
-  test("is idempotent and reports honestly on a repeat call", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Already abandoned" })
-        await createInterruptedTurn(session.id)
+  test("is idempotent and reports honestly on a repeat call", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Already abandoned" })
+          await createInterruptedTurn(session.id)
 
-        await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
-        const repeated = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          const repeated = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
 
-        expect(repeated.status).toBe(200)
-        const body = (await repeated.json()) as { repaired: boolean }
-        // Nothing was left to terminalize, and the route says so instead of
-        // failing or claiming a change it did not make.
-        expect(body.repaired).toBe(false)
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-      },
-    })
-  })
+          expect(repeated.status).toBe(200)
+          const body = (await repeated.json()) as { repaired: boolean }
+          // Nothing was left to terminalize, and the route says so instead of
+          // failing or claiming a change it did not make.
+          expect(body.repaired).toBe(false)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

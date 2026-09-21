@@ -2,20 +2,24 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { compilePluginManifest, definePlugin, capability } from "@ericsanchezok/synergy-plugin"
 import { executePluginHostService } from "@ericsanchezok/synergy-plugin-host/plugin/host-services-runtime"
 // Product domains (including the blueprint host adapter) register via the L4 manifest
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const LIGHTLOOP_CAP = "lightloop.delegate"
 const BLUEPRINT_CAP = "blueprint.delegate"
 
 describe("LightLoop role-tool Host input acceptance", () => {
   const cleaned: string[] = []
-  afterEach(async () => {
-    const ids = cleaned.splice(0)
-    await Promise.all(ids.map((id) => Session.remove(id).catch(() => {})))
-  })
+  afterEach(() =>
+    runtime.run(async () => {
+      const ids = cleaned.splice(0)
+      await Promise.all(ids.map((id) => Session.remove(id).catch(() => {})))
+    }),
+  )
 
   function trackCleanup(sessionID: string) {
     cleaned.push(sessionID)
@@ -73,68 +77,72 @@ describe("LightLoop role-tool Host input acceptance", () => {
     }
   }
 
-  test("executionTools and reviewTools are accepted as valid Host input fields", async () => {
-    // The actual startLightLoop will fail due to missing plugin.json/agents,
-    // but the contract test proves executionTools is read as a valid field.
-    const s = await setup()
-    let error: Error | undefined
-    try {
-      await s.invoke({
-        instructions: "test",
-        correlationId: "c1",
-        executionAgent: "nonexistent",
-        reviewAgent: "nonexistent",
-        executionTools: { plugin__truthward__context_query: true },
-        reviewTools: { plugin__truthward__context_query: true, plugin__truthward__n03_artifact_get: true },
-        budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
-      })
-    } catch (e: any) {
-      error = e
-    }
-    // Must not fail due to old `tools` field being missing.
-    expect(error?.message).not.toContain("tools")
-  })
-
-  test("lifecycle actor without explicit parent fails with TASK_PARENT_REQUIRED, not tools error", async () => {
-    const s = await setup()
-    try {
-      await executePluginHostService({
-        pluginId: s.manifest.id,
-        pluginDir: s.tmp.path,
-        manifest: s.manifest,
-        invocation: {
-          scopeId: s.scope.id,
-          sessionId: s.parentSessionID,
-          directory: s.tmp.path,
-          actor: { type: "lifecycle" },
-        },
-        method: "lightloop.start" as any,
-        params: {
+  test("executionTools and reviewTools are accepted as valid Host input fields", () =>
+    runtime.run(async () => {
+      // The actual startLightLoop will fail due to missing plugin.json/agents,
+      // but the contract test proves executionTools is read as a valid field.
+      const s = await setup()
+      let error: Error | undefined
+      try {
+        await s.invoke({
           instructions: "test",
           correlationId: "c1",
           executionAgent: "nonexistent",
           reviewAgent: "nonexistent",
           executionTools: { plugin__truthward__context_query: true },
-          reviewTools: { plugin__truthward__context_query: true },
+          reviewTools: { plugin__truthward__context_query: true, plugin__truthward__n03_artifact_get: true },
           budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        signal: AbortSignal.timeout(5000),
-      })
-      // Should fail with parent-required, not with tool/parameter errors
-      expect.unreachable("should have thrown")
-    } catch (e: any) {
-      expect(e.message).toContain("requires a parent Session")
-    }
-  })
+          parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
+        })
+      } catch (e: any) {
+        error = e
+      }
+      // Must not fail due to old `tools` field being missing.
+      expect(error?.message).not.toContain("tools")
+    }))
+
+  test("lifecycle actor without explicit parent fails with TASK_PARENT_REQUIRED, not tools error", () =>
+    runtime.run(async () => {
+      const s = await setup()
+      try {
+        await executePluginHostService({
+          pluginId: s.manifest.id,
+          pluginDir: s.tmp.path,
+          manifest: s.manifest,
+          invocation: {
+            scopeId: s.scope.id,
+            sessionId: s.parentSessionID,
+            directory: s.tmp.path,
+            actor: { type: "lifecycle" },
+          },
+          method: "lightloop.start" as any,
+          params: {
+            instructions: "test",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            reviewAgent: "nonexistent",
+            executionTools: { plugin__truthward__context_query: true },
+            reviewTools: { plugin__truthward__context_query: true },
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          signal: AbortSignal.timeout(5000),
+        })
+        // Should fail with parent-required, not with tool/parameter errors
+        expect.unreachable("should have thrown")
+      } catch (e: any) {
+        expect(e.message).toContain("requires a parent Session")
+      }
+    }))
 })
 
 describe("Blueprint role-tool Host input acceptance", () => {
   const cleaned: string[] = []
-  afterEach(async () => {
-    const ids = cleaned.splice(0)
-    await Promise.all(ids.map((id) => Session.remove(id).catch(() => {})))
-  })
+  afterEach(() =>
+    runtime.run(async () => {
+      const ids = cleaned.splice(0)
+      await Promise.all(ids.map((id) => Session.remove(id).catch(() => {})))
+    }),
+  )
 
   function trackCleanup(sessionID: string) {
     cleaned.push(sessionID)
@@ -192,44 +200,12 @@ describe("Blueprint role-tool Host input acceptance", () => {
     }
   }
 
-  test("executionTools and auditTools are accepted as valid Host input fields", async () => {
-    const s = await setup()
-    let error: Error | undefined
-    try {
-      await s.invoke({
-        title: "Test",
-        markdown: "# Test",
-        sourceDigest: "abc",
-        correlationId: "c1",
-        executionAgent: "nonexistent",
-        auditAgent: "nonexistent",
-        executionTools: { plugin__truthward__context_query: true },
-        auditTools: { plugin__truthward__context_query: true },
-        budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
-      })
-    } catch (e: any) {
-      error = e
-    }
-    // Must not fail with "tools" (old field) or unrecognized field error
-    expect(error?.message).not.toContain('"tools"')
-  })
-
-  test("lifecycle actor without parent fails with TASK_PARENT_REQUIRED", async () => {
-    const s = await setup()
-    try {
-      await executePluginHostService({
-        pluginId: s.manifest.id,
-        pluginDir: s.tmp.path,
-        manifest: s.manifest,
-        invocation: {
-          scopeId: s.scope.id,
-          sessionId: s.parentSessionID,
-          directory: s.tmp.path,
-          actor: { type: "lifecycle" },
-        },
-        method: "blueprint.start" as any,
-        params: {
+  test("executionTools and auditTools are accepted as valid Host input fields", () =>
+    runtime.run(async () => {
+      const s = await setup()
+      let error: Error | undefined
+      try {
+        await s.invoke({
           title: "Test",
           markdown: "# Test",
           sourceDigest: "abc",
@@ -239,12 +215,48 @@ describe("Blueprint role-tool Host input acceptance", () => {
           executionTools: { plugin__truthward__context_query: true },
           auditTools: { plugin__truthward__context_query: true },
           budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        signal: AbortSignal.timeout(5000),
-      })
-      expect.unreachable("should have thrown")
-    } catch (e: any) {
-      expect(e.message).toContain("requires a parent Session")
-    }
-  })
+          parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
+        })
+      } catch (e: any) {
+        error = e
+      }
+      // Must not fail with "tools" (old field) or unrecognized field error
+      expect(error?.message).not.toContain('"tools"')
+    }))
+
+  test("lifecycle actor without parent fails with TASK_PARENT_REQUIRED", () =>
+    runtime.run(async () => {
+      const s = await setup()
+      try {
+        await executePluginHostService({
+          pluginId: s.manifest.id,
+          pluginDir: s.tmp.path,
+          manifest: s.manifest,
+          invocation: {
+            scopeId: s.scope.id,
+            sessionId: s.parentSessionID,
+            directory: s.tmp.path,
+            actor: { type: "lifecycle" },
+          },
+          method: "blueprint.start" as any,
+          params: {
+            title: "Test",
+            markdown: "# Test",
+            sourceDigest: "abc",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            auditAgent: "nonexistent",
+            executionTools: { plugin__truthward__context_query: true },
+            auditTools: { plugin__truthward__context_query: true },
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          signal: AbortSignal.timeout(5000),
+        })
+        expect.unreachable("should have thrown")
+      } catch (e: any) {
+        expect(e.message).toContain("requires a parent Session")
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

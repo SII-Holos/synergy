@@ -693,8 +693,6 @@ export namespace ConfigSetup {
     }
   }
 
-  const CONFIG_SCHEMA = Global.Path.configSchemaUrl
-
   const MODEL_KEYS = [
     "model",
     "vision_model",
@@ -1433,7 +1431,7 @@ export namespace ConfigSetup {
   function applySetupDraft(base: Config.Info, draft: SetupDraft): Config.Info {
     const next: Config.Info = {
       ...base,
-      $schema: base.$schema ?? CONFIG_SCHEMA,
+      $schema: base.$schema ?? Global.Path.configSchemaUrl,
     }
 
     for (const key of MODEL_KEYS) {
@@ -1522,7 +1520,7 @@ export namespace ConfigSetup {
     return { filepath, validation: resolvedValidation }
   }
 
-  const TOP_LEVEL_KEYS = ConfigDomain.definitions.flatMap((domain) => domain.ownedKeys.map(String))
+  const topLevelKeys = () => ConfigDomain.definitions().flatMap((domain) => domain.ownedKeys.map(String))
 
   function suggestKey(key: string, candidates: string[]): string | undefined {
     let best: string | undefined
@@ -1561,7 +1559,7 @@ export namespace ConfigSetup {
       const keys = (issue as any).keys as string[]
       const parts: string[] = []
       for (const key of keys) {
-        const candidates = issue.path.length === 0 ? TOP_LEVEL_KEYS : []
+        const candidates = issue.path.length === 0 ? topLevelKeys() : []
         const suggestion = candidates.length > 0 ? suggestKey(key, candidates) : undefined
         let msg = `"${key}"`
         if (suggestion) msg += ` (did you mean "${suggestion}"?)`
@@ -1629,7 +1627,7 @@ export namespace ConfigSetup {
       throw new Error("Invalid config: " + result.warnings.join(", "))
     }
 
-    const out: Record<string, unknown> = { $schema: CONFIG_SCHEMA }
+    const out: Record<string, unknown> = { $schema: Global.Path.configSchemaUrl }
     for (const [key, value] of Object.entries(result.config)) {
       if (value !== undefined && value !== null) out[key] = value
     }

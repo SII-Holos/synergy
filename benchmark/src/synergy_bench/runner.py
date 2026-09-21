@@ -741,6 +741,8 @@ def handoff_environment(root: Path, record: Path) -> None:
                             "--rm",
                             "--pull",
                             "never",
+                            "--platform",
+                            read_json(root / "plan.json")["config"]["platform"],
                             "--cidfile",
                             str(identifier),
                             "--network",

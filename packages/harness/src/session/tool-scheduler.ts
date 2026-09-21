@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { ModelMessage, Tool as AITool, ToolCallOptions } from "ai"
 import { availableParallelism } from "os"
 import { Log } from "../util/log"
@@ -389,7 +390,7 @@ export class ToolTaskScheduler {
       if (this.activeTasks.get(task.key) === task) this.activeTasks.delete(task.key)
       if (this.activeControllers.get(task.key) === controller) this.activeControllers.delete(task.key)
       const memory = SessionMemoryPressure.currentSnapshot()
-      const thresholds = SessionMemoryPressure.resolveThresholds(process.env, memory)
+      const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, memory)
       if (SessionMemoryPressure.processPressureLevel(memory, thresholds) !== "normal") {
         SessionMemoryPressure.signalRelease({
           phase: "tool.execution.complete",
@@ -466,15 +467,19 @@ export const DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS: ToolTaskSchedulerOptions = {
 }
 
 export namespace ToolScheduler {
-  let options: ToolTaskSchedulerOptions = DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS
-  let scheduler: ToolTaskScheduler | undefined
-  let accepting = true
-  let stopPromise: Promise<void> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    options: DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS as ToolTaskSchedulerOptions,
+    scheduler: undefined as ToolTaskScheduler | undefined,
+    accepting: true,
+    stopPromise: undefined as Promise<void> | undefined,
+  }))
 
   export function configure(input: Partial<ToolTaskSchedulerOptions> = {}): void {
-    if (scheduler) throw new Error("Tool scheduler cannot be reconfigured after it has started")
-    accepting = true
-    options = {
+    const instanceState = runtimeState()
+
+    if (instanceState.scheduler) throw new Error("Tool scheduler cannot be reconfigured after it has started")
+    instanceState.accepting = true
+    instanceState.options = {
       ...DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
       executorConcurrency: {
@@ -485,24 +490,30 @@ export namespace ToolScheduler {
   }
 
   export function closeAdmission(): void {
-    accepting = false
+    const instanceState = runtimeState()
+
+    instanceState.accepting = false
   }
 
   export function dispatch(input: ToolTaskInput, parentCallID?: string): Promise<ToolTaskResult> {
-    if (!accepting) return Promise.reject(new Error("Tool scheduler is stopping"))
-    scheduler ??= new ToolTaskScheduler(options)
-    return scheduler.dispatch(input, parentCallID)
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting) return Promise.reject(new Error("Tool scheduler is stopping"))
+    instanceState.scheduler ??= new ToolTaskScheduler(instanceState.options)
+    return instanceState.scheduler.dispatch(input, parentCallID)
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     return (
-      scheduler?.stats() ?? {
+      instanceState.scheduler?.stats() ?? {
         active: 0,
         queued: 0,
         tracked: 0,
-        maxConcurrent: options.maxConcurrent,
-        maxQueued: options.maxQueued,
-        maxQueuedBytes: options.maxQueuedBytes,
+        maxConcurrent: instanceState.options.maxConcurrent,
+        maxQueued: instanceState.options.maxQueued,
+        maxQueuedBytes: instanceState.options.maxQueuedBytes,
         queuedBytes: 0,
         byExecutor: {},
       }
@@ -510,20 +521,22 @@ export namespace ToolScheduler {
   }
 
   export async function stop(): Promise<void> {
+    const instanceState = runtimeState()
+
     closeAdmission()
-    if (stopPromise) return stopPromise
-    const current = scheduler
-    stopPromise = (async () => {
+    if (instanceState.stopPromise) return instanceState.stopPromise
+    const current = instanceState.scheduler
+    instanceState.stopPromise = (async () => {
       try {
         await current?.stop()
       } finally {
-        if (scheduler === current) scheduler = undefined
+        if (instanceState.scheduler === current) instanceState.scheduler = undefined
       }
     })()
     try {
-      await stopPromise
+      await instanceState.stopPromise
     } finally {
-      stopPromise = undefined
+      instanceState.stopPromise = undefined
     }
   }
 }

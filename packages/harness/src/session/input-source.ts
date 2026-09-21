@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { SymbolRange } from "./symbol-range"
 
 /**
@@ -20,14 +21,23 @@ export namespace SessionInputResources {
 
   type Reader = (clientName: string, uri: string) => Promise<McpResourceResult | undefined>
 
-  let reader: Reader | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    reader: undefined as Reader | undefined,
+  }))
 
   export function registerMcpResourceReader(value: Reader): void {
-    reader = value
+    const instanceState = runtimeState()
+
+    if (instanceState.reader === value) return
+    RuntimeContext.assertCompositionOpen("session/input-source")
+    if (instanceState.reader && value !== undefined) throw new Error("session/input-source is already registered")
+    instanceState.reader = value
   }
 
   export function readMcpResource(clientName: string, uri: string): Promise<McpResourceResult | undefined> {
-    return reader?.(clientName, uri) ?? Promise.resolve(undefined)
+    const instanceState = runtimeState()
+
+    return instanceState.reader?.(clientName, uri) ?? Promise.resolve(undefined)
   }
 }
 
@@ -41,13 +51,22 @@ export namespace SessionSymbolLookup {
 
   type Lookup = (uri: string) => Promise<SymbolHit[]>
 
-  let lookup: Lookup | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    lookup: undefined as Lookup | undefined,
+  }))
 
   export function registerDocumentSymbols(value: Lookup): void {
-    lookup = value
+    const instanceState = runtimeState()
+
+    if (instanceState.lookup === value) return
+    RuntimeContext.assertCompositionOpen("session/input-source")
+    if (instanceState.lookup && value !== undefined) throw new Error("session/input-source is already registered")
+    instanceState.lookup = value
   }
 
   export function documentSymbols(uri: string): Promise<SymbolHit[]> {
-    return lookup?.(uri) ?? Promise.resolve([])
+    const instanceState = runtimeState()
+
+    return instanceState.lookup?.(uri) ?? Promise.resolve([])
   }
 }

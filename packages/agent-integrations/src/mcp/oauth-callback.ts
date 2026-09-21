@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { OAUTH_CALLBACK_PATH, getOAuthCallbackPort } from "./oauth-provider"
 
@@ -61,9 +62,11 @@ interface PendingAuth {
 }
 
 export namespace McpOAuthCallback {
-  let server: ReturnType<typeof Bun.serve> | undefined
-  const pendingAuths = new Map<string, PendingAuth>()
-  const stateByMcpName = new Map<string, string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    server: undefined as ReturnType<typeof Bun.serve> | undefined,
+    pendingAuths: new Map<string, PendingAuth>(),
+    stateByMcpName: new Map<string, string>(),
+  }))
 
   const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
   const PORT_WAIT_TIMEOUT_MS = 1_000
@@ -85,17 +88,21 @@ export namespace McpOAuthCallback {
   }
 
   function removePending(oauthState: string): PendingAuth | undefined {
-    const pending = pendingAuths.get(oauthState)
+    const instanceState = runtimeState()
+
+    const pending = instanceState.pendingAuths.get(oauthState)
     if (!pending) return undefined
-    pendingAuths.delete(oauthState)
-    if (stateByMcpName.get(pending.mcpName) === oauthState) {
-      stateByMcpName.delete(pending.mcpName)
+    instanceState.pendingAuths.delete(oauthState)
+    if (instanceState.stateByMcpName.get(pending.mcpName) === oauthState) {
+      instanceState.stateByMcpName.delete(pending.mcpName)
     }
     clearTimeout(pending.timeout)
     return pending
   }
 
   export function handleRequest(req: Request): Response {
+    const instanceState = runtimeState()
+
     const url = new URL(req.url)
 
     if (url.pathname !== OAUTH_CALLBACK_PATH) {
@@ -136,9 +143,9 @@ export namespace McpOAuthCallback {
     }
 
     // Validate state parameter
-    if (!pendingAuths.has(state)) {
+    if (!instanceState.pendingAuths.has(state)) {
       const errorMsg = "Invalid or expired state parameter - potential CSRF attack"
-      log.error("oauth callback with invalid state", { pendingCount: pendingAuths.size })
+      log.error("oauth callback with invalid state", { pendingCount: instanceState.pendingAuths.size })
       return new Response(HTML_ERROR(errorMsg), {
         status: 400,
         headers: { "Content-Type": "text/html" },
@@ -154,7 +161,9 @@ export namespace McpOAuthCallback {
   }
 
   export async function ensureRunning(): Promise<void> {
-    if (server) return
+    const instanceState = runtimeState()
+
+    if (instanceState.server) return
 
     const port = getOAuthCallbackPort()
     const portFreed = await waitForPortInUse(false)
@@ -164,7 +173,7 @@ export namespace McpOAuthCallback {
       )
     }
 
-    server = Bun.serve({
+    instanceState.server = Bun.serve({
       port,
       fetch: handleRequest,
     })
@@ -175,19 +184,23 @@ export namespace McpOAuthCallback {
   export function waitForCallback(oauthState: string, mcpName = oauthState): Promise<string> {
     cancelPending(mcpName, undefined, "superseded by a new OAuth flow")
     return new Promise((resolve, reject) => {
+      const instanceState = runtimeState()
+
       const timeout = setTimeout(() => {
         const pending = removePending(oauthState)
         pending?.reject(new Error("OAuth callback timeout - authorization took too long"))
       }, CALLBACK_TIMEOUT_MS)
       if (typeof timeout === "object" && "unref" in timeout) timeout.unref()
 
-      stateByMcpName.set(mcpName, oauthState)
-      pendingAuths.set(oauthState, { mcpName, resolve, reject, timeout })
+      instanceState.stateByMcpName.set(mcpName, oauthState)
+      instanceState.pendingAuths.set(oauthState, { mcpName, resolve, reject, timeout })
     })
   }
 
   export function cancelPending(mcpName: string, expectedState?: string, reason = "cancelled"): void {
-    const oauthState = stateByMcpName.get(mcpName)
+    const instanceState = runtimeState()
+
+    const oauthState = instanceState.stateByMcpName.get(mcpName)
     if (!oauthState || (expectedState !== undefined && oauthState !== expectedState)) return
     const pending = removePending(oauthState)
     if (pending) {
@@ -219,22 +232,26 @@ export namespace McpOAuthCallback {
   }
 
   export async function stop(): Promise<void> {
-    if (server) {
-      server.stop()
-      server = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.server) {
+      instanceState.server.stop()
+      instanceState.server = undefined
       await waitForPortInUse(false)
       log.info("oauth callback server stopped")
     }
 
-    for (const pending of pendingAuths.values()) {
+    for (const pending of instanceState.pendingAuths.values()) {
       clearTimeout(pending.timeout)
       pending.reject(new Error("OAuth callback server stopped"))
     }
-    pendingAuths.clear()
-    stateByMcpName.clear()
+    instanceState.pendingAuths.clear()
+    instanceState.stateByMcpName.clear()
   }
 
   export function isRunning(): boolean {
-    return server !== undefined
+    const instanceState = runtimeState()
+
+    return instanceState.server !== undefined
   }
 }

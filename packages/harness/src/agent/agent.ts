@@ -217,7 +217,7 @@ export namespace Agent {
       dagpatch: "deny",
       external_directory: {
         "*": "ask",
-        [Truncate.DIR]: "allow",
+        [Truncate.directory()]: "allow",
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
@@ -336,18 +336,18 @@ export namespace Agent {
       }
     }
 
-    // Ensure Truncate.DIR is allowed unless explicitly configured
+    // Ensure Truncate.directory() is allowed unless explicitly configured
 
     for (const name in result) {
       const agent = result[name]
       const explicit = agent.permission.some(
-        (r) => r.permission === "external_directory" && r.pattern === Truncate.DIR && r.action === "deny",
+        (r) => r.permission === "external_directory" && r.pattern === Truncate.directory() && r.action === "deny",
       )
       if (explicit) continue
 
       result[name].permission = PermissionNext.merge(
         result[name].permission,
-        PermissionNext.fromConfig({ external_directory: { [Truncate.DIR]: "allow" } }),
+        PermissionNext.fromConfig({ external_directory: { [Truncate.directory()]: "allow" } }),
       )
     }
 

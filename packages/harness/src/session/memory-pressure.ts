@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import { ServiceMemory } from "../process/service-memory"
 
@@ -80,33 +81,35 @@ export namespace SessionMemoryPressure {
     reject: (error: unknown) => void
   }
 
-  let lastGCAt = 0
-  let lastFullGCAt = 0
-  let activeStreamCount = 0
-  let collectionInFlight: ActiveCollection | undefined
-  let pendingCollection: PendingCollection | undefined
-  let pendingRelease: { count: number; input: CollectionInput } | undefined
-  let releaseTimer: ReturnType<typeof setTimeout> | undefined
-  let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
-  let lastAssessment:
-    | {
-        at: number
-        pressure: PressureLevel
-        processPressure: PressureLevel
-        servicePressure: PressureLevel
-        decision: Decision
-      }
-    | undefined
-  let lastRecovery:
-    | {
-        action: "gc"
-        reason: string
-        at: number
-        beforeBytes: number
-        afterBytes: number
-        reclaimedBytes: number
-      }
-    | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    lastGCAt: 0,
+    lastFullGCAt: 0,
+    activeStreamCount: 0,
+    collectionInFlight: undefined as ActiveCollection | undefined,
+    pendingCollection: undefined as PendingCollection | undefined,
+    pendingRelease: undefined as { count: number; input: CollectionInput } | undefined,
+    releaseTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    releaseFlushInFlight: undefined as Promise<ReleaseResult | undefined> | undefined,
+    lastAssessment: undefined as
+      | {
+          at: number
+          pressure: PressureLevel
+          processPressure: PressureLevel
+          servicePressure: PressureLevel
+          decision: Decision
+        }
+      | undefined,
+    lastRecovery: undefined as
+      | {
+          action: "gc"
+          reason: string
+          at: number
+          beforeBytes: number
+          afterBytes: number
+          reclaimedBytes: number
+        }
+      | undefined,
+  }))
 
   export function currentSnapshot(): Snapshot {
     const memory = process.memoryUsage()
@@ -130,7 +133,10 @@ export namespace SessionMemoryPressure {
     }
   }
 
-  export function resolveThresholds(env: NodeJS.ProcessEnv = process.env, snapshot?: Snapshot): Thresholds {
+  export function resolveThresholds(
+    env: NodeJS.ProcessEnv = RuntimeContext.current().host.env,
+    snapshot?: Snapshot,
+  ): Thresholds {
     const cgroupCriticalDefault =
       finitePositive(snapshot?.cgroupHighBytes) ??
       (finitePositive(snapshot?.cgroupMaxBytes) ? Math.floor(snapshot!.cgroupMaxBytes! * 0.9) : undefined) ??
@@ -201,11 +207,13 @@ export namespace SessionMemoryPressure {
   }
 
   export function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
+    const instanceState = runtimeState()
+
     const priority = collectionPriority(input)
-    const active = collectionInFlight
+    const active = instanceState.collectionInFlight
     if (!active) return startCollection(input)
 
-    const queued = pendingCollection
+    const queued = instanceState.pendingCollection
     if (queued) {
       if (priority >= queued.priority) {
         queued.input = input
@@ -221,23 +229,27 @@ export namespace SessionMemoryPressure {
       resolve = resolvePromise
       reject = rejectPromise
     })
-    pendingCollection = { input, priority, promise, resolve, reject }
+    instanceState.pendingCollection = { input, priority, promise, resolve, reject }
     return promise
   }
 
   function startCollection(input: CollectionInput): Promise<CollectionResult> {
+    const instanceState = runtimeState()
+
     const promise = collectOnce(input)
-    collectionInFlight = { promise }
+    instanceState.collectionInFlight = { promise }
     const finish = () => completeCollection(promise)
     void promise.then(finish, finish)
     return promise
   }
 
   function completeCollection(promise: Promise<CollectionResult>) {
-    if (collectionInFlight?.promise !== promise) return
-    collectionInFlight = undefined
-    const queued = pendingCollection
-    pendingCollection = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.collectionInFlight?.promise !== promise) return
+    instanceState.collectionInFlight = undefined
+    const queued = instanceState.pendingCollection
+    instanceState.pendingCollection = undefined
     if (!queued) return
     void startCollection(queued.input).then(queued.resolve, queued.reject)
   }
@@ -247,6 +259,8 @@ export namespace SessionMemoryPressure {
   }
 
   async function collectOnce(input: CollectionInput): Promise<CollectionResult> {
+    const instanceState = runtimeState()
+
     const now = input.now?.() ?? Date.now()
     const before = input.snapshot ? await input.snapshot() : currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
@@ -258,11 +272,11 @@ export namespace SessionMemoryPressure {
       snapshot: before,
       thresholds,
       now,
-      lastGCAt,
+      lastGCAt: instanceState.lastGCAt,
       gcAvailable: input.collect !== undefined || typeof Bun.gc === "function",
     })
     const platform = input.platform ?? process.platform
-    const fullEligibleAt = lastFullGCAt + thresholds.fullMinIntervalMs
+    const fullEligibleAt = instanceState.lastFullGCAt + thresholds.fullMinIntervalMs
     const linuxRelease = platform === "linux" && input.releaseBoundary === true
     const linuxServiceOnly = platform === "linux" && processPressure === "normal" && servicePressure !== "normal"
     if (linuxServiceOnly && decision.action !== "unavailable") {
@@ -281,9 +295,9 @@ export namespace SessionMemoryPressure {
     const linuxReleaseFull =
       platform === "linux" &&
       input.releaseBoundary === true &&
-      activeStreamCount === 0 &&
+      instanceState.activeStreamCount === 0 &&
       processPressure === "critical" &&
-      (lastFullGCAt === 0 || now >= fullEligibleAt)
+      (instanceState.lastFullGCAt === 0 || now >= fullEligibleAt)
     if (linuxReleaseFull && decision.action !== "unavailable" && decision.action !== "skip") {
       decision = {
         action: "linux_release_full",
@@ -293,7 +307,7 @@ export namespace SessionMemoryPressure {
     }
 
     if (decision.action === "skip" || decision.action === "unavailable") {
-      lastAssessment = { at: now, pressure, processPressure, servicePressure, decision }
+      instanceState.lastAssessment = { at: now, pressure, processPressure, servicePressure, decision }
       log.debug("gc skipped", {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -307,11 +321,11 @@ export namespace SessionMemoryPressure {
 
     const synchronous = decision.action === "linux_release_full"
     await collect(synchronous)
-    lastGCAt = now
-    if (synchronous) lastFullGCAt = now
+    instanceState.lastGCAt = now
+    if (synchronous) instanceState.lastFullGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
-    lastAssessment = { at: now, pressure, processPressure, servicePressure, decision }
-    lastRecovery = {
+    instanceState.lastAssessment = { at: now, pressure, processPressure, servicePressure, decision }
+    instanceState.lastRecovery = {
       action: "gc",
       reason: decision.reason,
       at: now,
@@ -336,57 +350,66 @@ export namespace SessionMemoryPressure {
   }
 
   export function signalRelease(input: CollectionInput) {
+    const instanceState = runtimeState()
+
     if (input.linuxOnly && (input.platform ?? process.platform) !== "linux") return
     input = { ...input, releaseBoundary: true }
-    if (pendingRelease) {
-      pendingRelease.count++
-      pendingRelease.input = input
+    if (instanceState.pendingRelease) {
+      instanceState.pendingRelease.count++
+      instanceState.pendingRelease.input = input
     } else {
-      pendingRelease = { count: 1, input }
+      instanceState.pendingRelease = { count: 1, input }
     }
     scheduleReleaseFlush()
   }
 
   function scheduleReleaseFlush() {
-    if (!pendingRelease || releaseTimer || releaseFlushInFlight) return
-    const delay = envNumber(pendingRelease.input.env?.SYNERGY_SESSION_GC_RELEASE_COALESCE_MS) ?? RELEASE_COALESCE_MS
-    releaseTimer = setTimeout(() => {
-      releaseTimer = undefined
+    const instanceState = runtimeState()
+
+    if (!instanceState.pendingRelease || instanceState.releaseTimer || instanceState.releaseFlushInFlight) return
+    const delay =
+      envNumber(instanceState.pendingRelease.input.env?.SYNERGY_SESSION_GC_RELEASE_COALESCE_MS) ?? RELEASE_COALESCE_MS
+    instanceState.releaseTimer = setTimeout(() => {
+      instanceState.releaseTimer = undefined
       void flushReleaseSignals().catch((error) => {
         log.warn("release-triggered gc failed", { error })
       })
     }, delay)
-    releaseTimer.unref()
+    instanceState.releaseTimer.unref()
   }
 
   async function flushReleaseSignals(): Promise<ReleaseResult | undefined> {
-    if (releaseFlushInFlight) return releaseFlushInFlight
-    const pending = pendingRelease
+    const instanceState = runtimeState()
+
+    if (instanceState.releaseFlushInFlight) return instanceState.releaseFlushInFlight
+    const pending = instanceState.pendingRelease
     if (!pending) return
-    pendingRelease = undefined
+    instanceState.pendingRelease = undefined
 
     const flush = (async () => {
       const result = await maybeCollect(pending.input)
       return { ...result, releaseCount: pending.count }
     })()
-    releaseFlushInFlight = flush
+    instanceState.releaseFlushInFlight = flush
     try {
       return await flush
     } finally {
-      if (releaseFlushInFlight === flush) releaseFlushInFlight = undefined
+      if (instanceState.releaseFlushInFlight === flush) instanceState.releaseFlushInFlight = undefined
       scheduleReleaseFlush()
     }
   }
 
   export async function flushReleaseSignalsForTest() {
-    if (releaseTimer) {
-      clearTimeout(releaseTimer)
-      releaseTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.releaseTimer) {
+      clearTimeout(instanceState.releaseTimer)
+      instanceState.releaseTimer = undefined
     }
-    if (releaseFlushInFlight) await releaseFlushInFlight
-    if (releaseTimer) {
-      clearTimeout(releaseTimer)
-      releaseTimer = undefined
+    if (instanceState.releaseFlushInFlight) await instanceState.releaseFlushInFlight
+    if (instanceState.releaseTimer) {
+      clearTimeout(instanceState.releaseTimer)
+      instanceState.releaseTimer = undefined
     }
     return flushReleaseSignals()
   }
@@ -400,29 +423,37 @@ export namespace SessionMemoryPressure {
   }
 
   export function stats() {
-    return { lastAssessment, lastRecovery }
+    const instanceState = runtimeState()
+
+    return { lastAssessment: instanceState.lastAssessment, lastRecovery: instanceState.lastRecovery }
   }
 
   export function streamStarted() {
-    activeStreamCount++
+    const instanceState = runtimeState()
+
+    instanceState.activeStreamCount++
   }
 
   export function streamDisposed() {
-    activeStreamCount = Math.max(0, activeStreamCount - 1)
+    const instanceState = runtimeState()
+
+    instanceState.activeStreamCount = Math.max(0, instanceState.activeStreamCount - 1)
   }
 
   export function resetForTest(lastRunAt = 0, lastFullRunAt = 0) {
-    if (releaseTimer) clearTimeout(releaseTimer)
-    lastGCAt = lastRunAt
-    lastFullGCAt = lastFullRunAt
-    activeStreamCount = 0
-    collectionInFlight = undefined
-    pendingCollection = undefined
-    pendingRelease = undefined
-    releaseTimer = undefined
-    releaseFlushInFlight = undefined
-    lastAssessment = undefined
-    lastRecovery = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.releaseTimer) clearTimeout(instanceState.releaseTimer)
+    instanceState.lastGCAt = lastRunAt
+    instanceState.lastFullGCAt = lastFullRunAt
+    instanceState.activeStreamCount = 0
+    instanceState.collectionInFlight = undefined
+    instanceState.pendingCollection = undefined
+    instanceState.pendingRelease = undefined
+    instanceState.releaseTimer = undefined
+    instanceState.releaseFlushInFlight = undefined
+    instanceState.lastAssessment = undefined
+    instanceState.lastRecovery = undefined
   }
 
   async function defaultCollect(synchronous: boolean) {

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * Codex Remote Compaction V2 (private protocol) helpers.
  *
@@ -713,36 +714,46 @@ export function applyReplaySplice(
 // and cancellation all flow through the runner's terminal path), so a
 // long-lived worker never retains per-session artifacts between turns.
 
-const replayRegistry = new Map<string, CodexReplayPlan>()
-const sessionReplayKeys = new Map<string, string>()
+const runtimeState = RuntimeContext.state(() => ({
+  replayRegistry: new Map<string, CodexReplayPlan>(),
+  sessionReplayKeys: new Map<string, string>(),
+}))
 
 export function setReplayPlan(sessionID: string, cacheKey: string, plan: CodexReplayPlan | undefined): void {
-  const previousKey = sessionReplayKeys.get(sessionID)
-  if (previousKey !== undefined) replayRegistry.delete(previousKey)
+  const instanceState = runtimeState()
+
+  const previousKey = instanceState.sessionReplayKeys.get(sessionID)
+  if (previousKey !== undefined) instanceState.replayRegistry.delete(previousKey)
   if (plan === undefined) {
-    sessionReplayKeys.delete(sessionID)
+    instanceState.sessionReplayKeys.delete(sessionID)
     return
   }
-  sessionReplayKeys.set(sessionID, cacheKey)
-  replayRegistry.set(cacheKey, plan)
+  instanceState.sessionReplayKeys.set(sessionID, cacheKey)
+  instanceState.replayRegistry.set(cacheKey, plan)
 }
 
 export function getReplayPlan(cacheKey: string): CodexReplayPlan | undefined {
-  return replayRegistry.get(cacheKey)
+  const instanceState = runtimeState()
+
+  return instanceState.replayRegistry.get(cacheKey)
 }
 
 /** Release the plan registered for a session (called when its turn ends). */
 export function clearReplayPlan(sessionID: string): void {
-  const cacheKey = sessionReplayKeys.get(sessionID)
-  sessionReplayKeys.delete(sessionID)
-  if (cacheKey !== undefined) replayRegistry.delete(cacheKey)
+  const instanceState = runtimeState()
+
+  const cacheKey = instanceState.sessionReplayKeys.get(sessionID)
+  instanceState.sessionReplayKeys.delete(sessionID)
+  if (cacheKey !== undefined) instanceState.replayRegistry.delete(cacheKey)
 }
 
 /** Release a plan by its resolved prompt-cache key (replay rejection path). */
 export function clearReplayPlanForCacheKey(cacheKey: string): void {
-  replayRegistry.delete(cacheKey)
-  for (const [sessionID, key] of sessionReplayKeys) {
-    if (key === cacheKey) sessionReplayKeys.delete(sessionID)
+  const instanceState = runtimeState()
+
+  instanceState.replayRegistry.delete(cacheKey)
+  for (const [sessionID, key] of instanceState.sessionReplayKeys) {
+    if (key === cacheKey) instanceState.sessionReplayKeys.delete(sessionID)
   }
 }
 

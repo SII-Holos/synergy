@@ -1,12 +1,21 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { SessionContextContributions } from "./context-contributions"
 export const RECALL_TIMEOUT_MS = SessionContextContributions.DEFAULT_TIMEOUT_MS
-const recallCache = new Map<string, SessionContextContributions.Collected>()
+const runtimeState = RuntimeContext.state(() => ({
+  recallCache: new Map<string, SessionContextContributions.Collected>(),
+}))
 export function cacheResult(sessionID: string, result: SessionContextContributions.Collected) {
-  recallCache.set(sessionID, result)
+  const instanceState = runtimeState()
+
+  instanceState.recallCache.set(sessionID, result)
 }
 export function getCachedResult(sessionID: string) {
-  return recallCache.get(sessionID)
+  const instanceState = runtimeState()
+
+  return instanceState.recallCache.get(sessionID)
 }
 export function evictRecallCache(sessionID: string) {
-  recallCache.delete(sessionID)
+  const instanceState = runtimeState()
+
+  instanceState.recallCache.delete(sessionID)
 }

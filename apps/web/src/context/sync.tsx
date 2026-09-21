@@ -271,7 +271,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const promise = retry(() =>
         sdk.client.session.dag({
           sessionID,
-          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+          scopeID: sdk.scopeID,
         }),
       )
         .then((result) => {
@@ -294,7 +294,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const dagRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "dag")
       await retry(() =>
         sdk.client.session.volatileBatch({
-          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+          scopeID: sdk.scopeID,
           sessionVolatileBatchInput: { sessionIDs: [sessionID] },
         }),
       )

@@ -13,10 +13,10 @@ function bridge(overrides: Partial<BrowserNativeViewBridge> = {}): BrowserNative
     async resizeView() {},
     async retryPage() {},
     async presentationCapability() {
-      return { protocolVersion: 2, managedLocal: true, status: "ready" }
+      return { protocolVersion: 3, managedLocal: true, status: "ready" }
     },
     async createPresentationTicket() {
-      return { ok: true, protocolVersion: 2, ticket: "native-ticket" }
+      return { ok: true, protocolVersion: 3, ticket: "native-ticket" }
     },
     ...overrides,
   }
@@ -31,7 +31,7 @@ describe("native presentation coordinator", () => {
       await resolveBrowserClientPresentation({
         bridge: bridge({
           async presentationCapability() {
-            return { protocolVersion: 2, managedLocal: false, status: "failed" }
+            return { protocolVersion: 3, managedLocal: false, status: "failed" }
           },
         }),
         serverUrl: "https://remote.example.com",
@@ -80,7 +80,7 @@ describe("native presentation coordinator", () => {
         async presentationCapability() {
           capabilityCalls++
           return {
-            protocolVersion: 2,
+            protocolVersion: 3,
             managedLocal: true,
             status: capabilityCalls === 1 ? "connecting" : "ready",
           }
@@ -103,7 +103,7 @@ describe("native presentation coordinator", () => {
     const coordinator = new NativePresentationCoordinator({
       bridge: bridge({
         async presentationCapability() {
-          return { protocolVersion: 2, managedLocal: true, status: "connecting" }
+          return { protocolVersion: 3, managedLocal: true, status: "connecting" }
         },
       }),
       serverUrl: "http://127.0.0.1:4096",

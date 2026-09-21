@@ -221,7 +221,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
 
         const entry = createRoot((dispose) => ({
-          value: createModelVariantSession(dir, id),
+          value: createModelVariantSession(Persist.scopeKey(sdk.url, dir), id),
           dispose,
         }))
 

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityConfig } from "../observability/config"
 
 /**
@@ -67,17 +68,24 @@ export namespace StorageBudgets {
     teardownBudgetMs: number
   }
 
-  let cachedSource: unknown
-  let cachedTimings: Timings | undefined
+  const cache = new WeakMap<object, Timings>()
+
+  export function capture(): () => Timings {
+    const runtime = RuntimeContext.tryCurrent()
+    if (runtime) return runtime.bind(current)
+    const defaults = resolve(ObservabilityConfig.defaults.storage)
+    return () => defaults
+  }
 
   export function current(): Timings {
     // `ObservabilityConfig.current()` hands back one object until it is
     // refreshed, so identity is a valid cache key on this hot path.
     const storage = ObservabilityConfig.current().storage
-    if (cachedSource === storage && cachedTimings) return cachedTimings
-    cachedSource = storage
-    cachedTimings = resolve(storage)
-    return cachedTimings
+    const existing = cache.get(storage)
+    if (existing) return existing
+    const timings = resolve(storage)
+    cache.set(storage, timings)
+    return timings
   }
 
   function resolve(storage: {

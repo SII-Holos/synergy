@@ -7,7 +7,6 @@ import { Cortex } from "@ericsanchezok/synergy-harness/cortex/manager"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 // Product domains register continuation policy providers via the L4 manifest
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
@@ -16,24 +15,32 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+const runtime = await testRuntime()
 
 const model = { providerID: "test-provider", modelID: "test-model" }
 const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
 
 let originalGetTasksForSession: typeof Cortex.getTasksForSession
 
-beforeEach(() => {
-  Cortex.reset()
-  SessionDrive.reset()
-  originalGetTasksForSession = Cortex.getTasksForSession
-  ;(Cortex.getTasksForSession as any) = mock(() => [])
-})
-afterEach(() => {
-  ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
-  Cortex.reset()
-  SessionDrive.reset()
-  ContinuationKernel.reset()
-})
+beforeEach(() =>
+  runtime.run(() => {
+    Cortex.reset()
+    SessionDrive.reset()
+    originalGetTasksForSession = Cortex.getTasksForSession
+    ;(Cortex.getTasksForSession as any) = mock(() => [])
+  }),
+)
+afterEach(() =>
+  runtime.run(() => {
+    ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
+    Cortex.reset()
+    SessionDrive.reset()
+    ContinuationKernel.reset()
+  }),
+)
 
 async function terminalSession() {
   const session = await Session.create({})
@@ -99,464 +106,526 @@ async function completeChildSession(sessionID: string) {
 }
 
 describe("ContinuationKernel arbitration", () => {
-  test("higher-priority policy consumes the idle; lower one is not consulted", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        const calls: string[] = []
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "low",
-          priority: 10,
-          async handle() {
-            calls.push("low")
-            return { kind: "handled" }
+  test(
+    "higher-priority policy consumes the idle; lower one is not consulted",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            const calls: string[] = []
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "low",
+              priority: 10,
+              async handle() {
+                calls.push("low")
+                return { kind: "handled" }
+              },
+            })
+            ContinuationKernel.register({
+              id: "high",
+              priority: 100,
+              async handle() {
+                calls.push("high")
+                return { kind: "handled" }
+              },
+            })
+
+            const handled = await ContinuationKernel.evaluate(session.id)
+            expect(handled).toBe(true)
+            expect(calls).toEqual(["high"])
           },
         })
-        ContinuationKernel.register({
-          id: "high",
-          priority: 100,
-          async handle() {
-            calls.push("high")
-            return { kind: "handled" }
+      }),
+    15_000,
+  )
+
+  test(
+    "declining policy falls through to the next",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            const calls: string[] = []
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "high",
+              priority: 100,
+              async handle() {
+                calls.push("high")
+                return undefined
+              },
+            })
+            ContinuationKernel.register({
+              id: "low",
+              priority: 10,
+              async handle() {
+                calls.push("low")
+                return { kind: "handled" }
+              },
+            })
+            const handled = await ContinuationKernel.evaluate(session.id)
+            expect(handled).toBe(true)
+            expect(calls).toEqual(["high", "low"])
           },
         })
+      }),
+    15_000,
+  )
 
-        const handled = await ContinuationKernel.evaluate(session.id)
-        expect(handled).toBe(true)
-        expect(calls).toEqual(["high"])
-      },
-    })
-  }, 15_000)
-
-  test("declining policy falls through to the next", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        const calls: string[] = []
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "high",
-          priority: 100,
-          async handle() {
-            calls.push("high")
-            return undefined
+  test(
+    "same terminal assistant is not delivered twice for the same policy",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            let count = 0
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "once",
+              priority: 50,
+              async handle() {
+                count++
+                return { kind: "handled" }
+              },
+            })
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+            expect(count).toBe(1)
           },
         })
-        ContinuationKernel.register({
-          id: "low",
-          priority: 10,
-          async handle() {
-            calls.push("low")
-            return { kind: "handled" }
+      }),
+    15_000,
+  )
+
+  test(
+    "policy revision keys allow reconciliation after durable workflow state changes",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            let revision = "review-task-one"
+            let count = 0
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "stateful-review",
+              priority: 50,
+              revisionKey() {
+                return revision
+              },
+              async handle() {
+                count++
+                return { kind: "handled" }
+              },
+            })
+
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+
+            revision = "review-task-two"
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+            expect(count).toBe(2)
           },
         })
-        const handled = await ContinuationKernel.evaluate(session.id)
-        expect(handled).toBe(true)
-        expect(calls).toEqual(["high", "low"])
-      },
-    })
-  }, 15_000)
+      }),
+    15_000,
+  )
 
-  test("same terminal assistant is not delivered twice for the same policy", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        let count = 0
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "once",
-          priority: 50,
-          async handle() {
-            count++
-            return { kind: "handled" }
+  test(
+    "revision key failures fall through to the next policy",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            const calls: string[] = []
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "broken",
+              priority: 100,
+              revisionKey() {
+                throw new Error("storage unavailable")
+              },
+              async handle() {
+                calls.push("broken")
+                return { kind: "handled" }
+              },
+            })
+            ContinuationKernel.register({
+              id: "fallback",
+              priority: 10,
+              async handle() {
+                calls.push("fallback")
+                return { kind: "handled" }
+              },
+            })
+
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+            expect(calls).toEqual(["fallback"])
           },
         })
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
-        expect(count).toBe(1)
-      },
-    })
-  }, 15_000)
+      }),
+    15_000,
+  )
 
-  test("policy revision keys allow reconciliation after durable workflow state changes", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        let revision = "review-task-one"
-        let count = 0
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "stateful-review",
-          priority: 50,
-          revisionKey() {
-            return revision
-          },
-          async handle() {
-            count++
-            return { kind: "handled" }
+  test(
+    "no continuation while Cortex work is active",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            ;(Cortex.getTasksForSession as any) = mock(() => [{ status: "running" }])
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "p",
+              priority: 50,
+              async handle() {
+                return { kind: "handled" }
+              },
+            })
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
           },
         })
+      }),
+    15_000,
+  )
+  test(
+    "resumes LightLoop when the last silent Cortex task becomes terminal",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const originalInvokeInternal = SessionInvoke.invokeInternal
+            const originalLoop = SessionInvoke.loop
+            const childMayFinish = Promise.withResolvers<void>()
+            const parentWoke = Promise.withResolvers<void>()
+            let parentSessionID = ""
 
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+            ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
+            ;(SessionInvoke.invokeInternal as any) = mock(
+              async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+                await childMayFinish.promise
+                return completeChildSession(input.sessionID)
+              },
+            )
+            ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+              if (sessionID === parentSessionID) parentWoke.resolve()
+            })
 
-        revision = "review-task-two"
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
-        expect(count).toBe(2)
-      },
-    })
-  }, 15_000)
+            try {
+              const session = await terminalSession()
+              parentSessionID = session.id
+              await Session.update(session.id, (draft) => {
+                draft.workflow = { kind: "lightloop", instructions: "Finish the task" }
+              })
+              await Cortex.launch({
+                description: "Silent delegated work",
+                prompt: "Finish delegated work",
+                agent: "developer",
+                parentSessionID: session.id,
+                parentMessageID: "msg_test01234567890abc",
+                model,
+                visibility: "hidden",
+                notifyParentOnComplete: false,
+              })
 
-  test("revision key failures fall through to the next policy", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        const calls: string[] = []
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "broken",
-          priority: 100,
-          revisionKey() {
-            throw new Error("storage unavailable")
-          },
-          async handle() {
-            calls.push("broken")
-            return { kind: "handled" }
-          },
-        })
-        ContinuationKernel.register({
-          id: "fallback",
-          priority: 10,
-          async handle() {
-            calls.push("fallback")
-            return { kind: "handled" }
-          },
-        })
+              expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
 
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
-        expect(calls).toEqual(["fallback"])
-      },
-    })
-  }, 15_000)
+              childMayFinish.resolve()
+              const continuation = await Promise.race([
+                (async () => {
+                  for (let attempt = 0; attempt < 100; attempt++) {
+                    const item = (await SessionInbox.list(session.id)).find(
+                      (candidate) => candidate.message?.metadata?.source === "light_loop_continuation",
+                    )
+                    if (item) return item
+                    await Bun.sleep(10)
+                  }
+                  return undefined
+                })(),
+                Bun.sleep(2_000).then(() => undefined),
+              ])
 
-  test("no continuation while Cortex work is active", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        ;(Cortex.getTasksForSession as any) = mock(() => [{ status: "running" }])
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "p",
-          priority: 50,
-          async handle() {
-            return { kind: "handled" }
-          },
-        })
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
-      },
-    })
-  }, 15_000)
-  test("resumes LightLoop when the last silent Cortex task becomes terminal", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalInvokeInternal = SessionInvoke.invokeInternal
-        const originalLoop = SessionInvoke.loop
-        const childMayFinish = Promise.withResolvers<void>()
-        const parentWoke = Promise.withResolvers<void>()
-        let parentSessionID = ""
-
-        ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
-        ;(SessionInvoke.invokeInternal as any) = mock(
-          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-            await childMayFinish.promise
-            return completeChildSession(input.sessionID)
-          },
-        )
-        ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
-          if (sessionID === parentSessionID) parentWoke.resolve()
-        })
-
-        try {
-          const session = await terminalSession()
-          parentSessionID = session.id
-          await Session.update(session.id, (draft) => {
-            draft.workflow = { kind: "lightloop", instructions: "Finish the task" }
-          })
-          await Cortex.launch({
-            description: "Silent delegated work",
-            prompt: "Finish delegated work",
-            agent: "developer",
-            parentSessionID: session.id,
-            parentMessageID: "msg_test01234567890abc",
-            model,
-            visibility: "hidden",
-            notifyParentOnComplete: false,
-          })
-
-          expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
-
-          childMayFinish.resolve()
-          const continuation = await Promise.race([
-            (async () => {
-              for (let attempt = 0; attempt < 100; attempt++) {
-                const item = (await SessionInbox.list(session.id)).find(
-                  (candidate) => candidate.message?.metadata?.source === "light_loop_continuation",
-                )
-                if (item) return item
-                await Bun.sleep(10)
-              }
-              return undefined
-            })(),
-            Bun.sleep(2_000).then(() => undefined),
-          ])
-
-          expect(continuation?.message?.summary?.title).toBe("Continue light loop")
-          expect((await SessionInbox.list(session.id)).some((item) => item.source.type === "cortex")).toBe(false)
-          await Promise.race([
-            parentWoke.promise,
-            Bun.sleep(2_000).then(() => {
-              throw new Error("Parent session was not woken for LightLoop continuation")
-            }),
-          ])
-        } finally {
-          childMayFinish.resolve()
-          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-          ;(SessionInvoke.loop as any) = originalLoop
-          if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
-        }
-      },
-    })
-  }, 15_000)
-  test("ordinary Agenda schedules do not block workflow continuation", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        await AgendaStore.create({
-          title: "Scheduled report",
-          prompt: "Prepare the report",
-          triggers: [{ type: "every", interval: "30m" }],
-          wake: true,
-          silent: false,
-          createdBy: "agent",
-          sessionID: session.id,
-        })
-        let count = 0
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "p",
-          priority: 50,
-          async handle() {
-            count++
-            return { kind: "handled" }
+              expect(continuation?.message?.summary?.title).toBe("Continue light loop")
+              expect((await SessionInbox.list(session.id)).some((item) => item.source.type === "cortex")).toBe(false)
+              await Promise.race([
+                parentWoke.promise,
+                Bun.sleep(2_000).then(() => {
+                  throw new Error("Parent session was not woken for LightLoop continuation")
+                }),
+              ])
+            } finally {
+              childMayFinish.resolve()
+              ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+              ;(SessionInvoke.loop as any) = originalLoop
+              if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
+            }
           },
         })
+      }),
+    15_000,
+  )
+  test(
+    "ordinary Agenda schedules do not block workflow continuation",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            await AgendaStore.create({
+              title: "Scheduled report",
+              prompt: "Prepare the report",
+              triggers: [{ type: "every", interval: "30m" }],
+              wake: true,
+              silent: false,
+              createdBy: "agent",
+              sessionID: session.id,
+            })
+            let count = 0
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "p",
+              priority: 50,
+              async handle() {
+                count++
+                return { kind: "handled" }
+              },
+            })
 
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
-        expect(count).toBe(1)
-      },
-    })
-  }, 15_000)
-
-  test("does not continue while an Agenda watch can wake the session", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        await AgendaStore.create({
-          title: "Check experiment",
-          prompt: "Inspect experiment progress",
-          triggers: [{ type: "every", interval: "30m" }],
-          wake: true,
-          silent: false,
-          autoDone: true,
-          createdBy: "agent",
-          sessionID: session.id,
-        })
-        let count = 0
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "p",
-          priority: 50,
-          async handle() {
-            count++
-            return { kind: "handled" }
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+            expect(count).toBe(1)
           },
         })
+      }),
+    15_000,
+  )
 
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
-        expect(count).toBe(0)
-      },
-    })
-  }, 15_000)
-  test("global Agenda items also block continuation for their project session", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        await AgendaStore.create({
-          title: "Global experiment monitor",
-          prompt: "Inspect project experiment progress",
-          triggers: [{ type: "every", interval: "30m" }],
-          wake: true,
-          silent: false,
-          autoDone: true,
-          global: true,
-          createdBy: "agent",
-          sessionID: session.id,
-        })
-        let count = 0
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "p",
-          priority: 50,
-          async handle() {
-            count++
-            return { kind: "handled" }
+  test(
+    "does not continue while an Agenda watch can wake the session",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            await AgendaStore.create({
+              title: "Check experiment",
+              prompt: "Inspect experiment progress",
+              triggers: [{ type: "every", interval: "30m" }],
+              wake: true,
+              silent: false,
+              autoDone: true,
+              createdBy: "agent",
+              sessionID: session.id,
+            })
+            let count = 0
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "p",
+              priority: 50,
+              async handle() {
+                count++
+                return { kind: "handled" }
+              },
+            })
+
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+            expect(count).toBe(0)
           },
         })
+      }),
+    15_000,
+  )
+  test(
+    "global Agenda items also block continuation for their project session",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            await AgendaStore.create({
+              title: "Global experiment monitor",
+              prompt: "Inspect project experiment progress",
+              triggers: [{ type: "every", interval: "30m" }],
+              wake: true,
+              silent: false,
+              autoDone: true,
+              global: true,
+              createdBy: "agent",
+              sessionID: session.id,
+            })
+            let count = 0
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "p",
+              priority: 50,
+              async handle() {
+                count++
+                return { kind: "handled" }
+              },
+            })
 
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
-        expect(count).toBe(0)
-      },
-    })
-  }, 15_000)
-  test("cancelling the last wake Agenda resumes ordinary continuation", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        const agenda = await Agenda.create({
-          title: "Check experiment",
-          prompt: "Inspect experiment progress",
-          triggers: [{ type: "every", interval: "30m" }],
-          wake: true,
-          silent: false,
-          autoDone: true,
-          createdBy: "agent",
-          sessionID: session.id,
-        })
-        let count = 0
-        const resumed = Promise.withResolvers<void>()
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "p",
-          priority: 50,
-          async handle() {
-            count++
-            resumed.resolve()
-            return { kind: "handled" }
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+            expect(count).toBe(0)
           },
         })
-        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+      }),
+    15_000,
+  )
+  test(
+    "cancelling the last wake Agenda resumes ordinary continuation",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            const agenda = await Agenda.create({
+              title: "Check experiment",
+              prompt: "Inspect experiment progress",
+              triggers: [{ type: "every", interval: "30m" }],
+              wake: true,
+              silent: false,
+              autoDone: true,
+              createdBy: "agent",
+              sessionID: session.id,
+            })
+            let count = 0
+            const resumed = Promise.withResolvers<void>()
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "p",
+              priority: 50,
+              async handle() {
+                count++
+                resumed.resolve()
+                return { kind: "handled" }
+              },
+            })
+            expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
 
-        await Agenda.cancel(agenda.id)
-        await Promise.race([
-          resumed.promise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error("continuation did not resume")), 1_000)),
-        ])
+            await Agenda.cancel(agenda.id)
+            await Promise.race([
+              resumed.promise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error("continuation did not resume")), 1_000)),
+            ])
 
-        expect(count).toBe(1)
-      },
-    })
-  }, 15_000)
-  test("one-shot Agenda delivery completes before ordinary continuation resumes", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await terminalSession()
-        const agenda = await AgendaStore.create({
-          title: "Check completed experiment",
-          prompt: "Inspect the final experiment result",
-          triggers: [{ type: "at", at: Date.now() - 1_000 }],
-          wake: true,
-          silent: false,
-          autoDone: true,
-          createdBy: "agent",
-          sessionID: session.id,
-        })
-        const events: string[] = []
-        const resumed = Promise.withResolvers<void>()
-        const originalDeliver = AgendaDelivery.deliver
-        ;(AgendaDelivery.deliver as any) = mock(async () => {
-          events.push("delivery")
-        })
-        ContinuationKernel.reset()
-        ContinuationKernel.register({
-          id: "p",
-          priority: 50,
-          async handle() {
-            events.push("continuation")
-            resumed.resolve()
-            return { kind: "handled" }
+            expect(count).toBe(1)
           },
         })
+      }),
+    15_000,
+  )
+  test(
+    "one-shot Agenda delivery completes before ordinary continuation resumes",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await terminalSession()
+            const agenda = await AgendaStore.create({
+              title: "Check completed experiment",
+              prompt: "Inspect the final experiment result",
+              triggers: [{ type: "at", at: Date.now() - 1_000 }],
+              wake: true,
+              silent: false,
+              autoDone: true,
+              createdBy: "agent",
+              sessionID: session.id,
+            })
+            const events: string[] = []
+            const resumed = Promise.withResolvers<void>()
+            const originalDeliver = AgendaDelivery.deliver
+            ;(AgendaDelivery.deliver as any) = mock(async () => {
+              events.push("delivery")
+            })
+            ContinuationKernel.reset()
+            ContinuationKernel.register({
+              id: "p",
+              priority: 50,
+              async handle() {
+                events.push("continuation")
+                resumed.resolve()
+                return { kind: "handled" }
+              },
+            })
 
-        try {
-          expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
-          await AgendaReactor.execute(
-            { type: "at", source: agenda.id, timestamp: Date.now() },
-            ScopeContext.current.scope.id,
-          )
-          await Promise.race([
-            resumed.promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error("continuation did not resume")), 1_000)),
-          ])
+            try {
+              expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+              await AgendaReactor.execute(
+                { type: "at", source: agenda.id, timestamp: Date.now() },
+                ScopeContext.current.scope.id,
+              )
+              await Promise.race([
+                resumed.promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("continuation did not resume")), 1_000)),
+              ])
 
-          expect((await AgendaStore.get(ScopeContext.current.scope.id, agenda.id)).status).toBe("done")
-          expect(events).toEqual(["delivery", "continuation"])
-        } finally {
-          ;(AgendaDelivery.deliver as any) = originalDeliver
-        }
-      },
-    })
-  }, 15_000)
+              expect((await AgendaStore.get(ScopeContext.current.scope.id, agenda.id)).status).toBe("done")
+              expect(events).toEqual(["delivery", "continuation"])
+            } finally {
+              ;(AgendaDelivery.deliver as any) = originalDeliver
+            }
+          },
+        })
+      }),
+    15_000,
+  )
 })
 
 describe("provider drain reload contract (H5)", () => {
   // H5 reload contract: ContinuationKernel.reset() clears the drained-source
   // markers so registered providers re-drain on the next access — the L1
   // analogue of ToolRegistry.reload() forcing provider re-drain.
-  test("reset() clears drained sources so providers re-drain on next access", () => {
+  test("reset() clears drained sources so providers re-drain on next access", async () => {
     let drains = 0
-    ContinuationKernel.reset()
-    ContinuationKernel.registerProvider("redrain-probe", () => {
-      drains++
-      return []
+    await using fixture = await harnessRuntime({
+      register() {
+        ContinuationKernel.registerProvider("redrain-probe", () => {
+          drains++
+          return []
+        })
+      },
     })
-    try {
+    fixture.run(() => {
+      ContinuationKernel.reset()
       const first = ContinuationKernel.registeredPolicyIDs()
       expect(drains).toBe(1)
       ContinuationKernel.registeredPolicyIDs()
       expect(drains).toBe(1)
-
       ContinuationKernel.reset()
-
       const second = ContinuationKernel.registeredPolicyIDs()
       expect(drains).toBe(2)
       expect(second).toEqual(first)
-    } finally {
-      ContinuationKernel.reset()
-    }
+    })
   })
 })
+
+afterRuntimeTests(() => runtime.close())

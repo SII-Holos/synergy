@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
 import { tmpdir } from "os"
@@ -451,19 +452,23 @@ export namespace Diagnostics {
     }
   }
 
-  let pausedSessionsCache: { at: number; root: string; value: Summary["sessions"]["paused"] } | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    pausedSessionsCache: undefined as { at: number; root: string; value: Summary["sessions"]["paused"] } | undefined,
+  }))
   const PAUSED_SESSIONS_CACHE_MS = 15_000
 
   async function pausedSessions(fresh = false) {
+    const instanceState = runtimeState()
+
     const now = Date.now()
     const root = path.join(Global.Path.data, "sessions")
     if (
       !fresh &&
-      pausedSessionsCache &&
-      pausedSessionsCache.root === root &&
-      now - pausedSessionsCache.at < PAUSED_SESSIONS_CACHE_MS
+      instanceState.pausedSessionsCache &&
+      instanceState.pausedSessionsCache.root === root &&
+      now - instanceState.pausedSessionsCache.at < PAUSED_SESSIONS_CACHE_MS
     ) {
-      return pausedSessionsCache.value
+      return instanceState.pausedSessionsCache.value
     }
     const result: Summary["sessions"]["paused"] = []
     // Only session-level info.json files carry the pause latch; message-level
@@ -480,7 +485,7 @@ export namespace Diagnostics {
       result.push({ sessionID: json.id, path: file, updated: json.time?.updated })
     })
     const value = result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
-    pausedSessionsCache = { at: now, root, value }
+    instanceState.pausedSessionsCache = { at: now, root, value }
     return value
   }
 

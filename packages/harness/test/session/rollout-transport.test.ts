@@ -1,57 +1,62 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import { RolloutTransport } from "../../src/session/rollout/transport"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutTransportRecorder } from "../../src/session/rollout/transport-recorder"
 
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+afterAll(() => runtime.close())
+
 test.each(["network-failure", "empty-response", "stream-response"] as const)(
   "settles a locked upload before %s ends the attempt",
-  async (mode) => {
-    const id = crypto.randomUUID()
-    const call = await RolloutLedger.beginCall({
-      owner: { kind: "operation", scopeID: "test", operationID: id },
-      runID: id,
-      purpose: "test",
-      model: { providerID: "test", modelID: "test", sdk: "test", pricing: null },
-      request: {},
-    })
-    const recorder = RolloutTransportRecorder.create(call)
-    const events: RolloutTransport.Event[] = []
-    const request = new Request("https://fixture.test", { method: "POST", body: "a".repeat(350000) }).clone()
-    const failure = new Error("connection reset during upload")
-    let upload: Promise<unknown> | undefined
-    let uploadReader: ReadableStreamDefaultReader<Uint8Array> | undefined
-    const result = await RolloutTransport.provide(
-      async (event) => {
-        events.push(event)
-        await recorder.emit(event)
-      },
-      () =>
-        RolloutTransport.fetch(async (input) => {
-          const reader = (input as Request).body!.getReader()
-          uploadReader = reader
-          await reader.read()
-          upload = reader.read().then(
-            () => undefined,
-            (error: unknown) => error,
-          )
-          if (mode === "network-failure") throw failure
-          return mode === "empty-response" ? new Response(null, { status: 204 }) : new Response("done")
-        }, request),
-    )
-      .then((response) => response.text())
-      .catch((error: unknown) => error)
-    const uploadResult = await upload
-    uploadReader?.releaseLock()
-    const recording = await recorder.finish().catch((error: unknown) => error)
-    expect(result).toBe(mode === "network-failure" ? failure : mode === "empty-response" ? "" : "done")
-    expect(uploadResult === undefined || uploadResult === failure || uploadResult instanceof DOMException).toBe(true)
-    expect(recording).toBe(false)
-    expect(events.at(-1)).toMatchObject({
-      type: "attempt-end",
-      status: mode === "network-failure" ? "failed" : "completed",
-    })
-    expect(events.filter((event) => event.type === "body-end" && event.channel === "request")).toHaveLength(1)
-  },
+  (mode) =>
+    runtime.run(async () => {
+      const id = crypto.randomUUID()
+      const call = await RolloutLedger.beginCall({
+        owner: { kind: "operation", scopeID: "test", operationID: id },
+        runID: id,
+        purpose: "test",
+        model: { providerID: "test", modelID: "test", sdk: "test", pricing: null },
+        request: {},
+      })
+      const recorder = RolloutTransportRecorder.create(call)
+      const events: RolloutTransport.Event[] = []
+      const request = new Request("https://fixture.test", { method: "POST", body: "a".repeat(350000) }).clone()
+      const failure = new Error("connection reset during upload")
+      let upload: Promise<unknown> | undefined
+      let uploadReader: ReadableStreamDefaultReader<Uint8Array> | undefined
+      const result = await RolloutTransport.provide(
+        async (event) => {
+          events.push(event)
+          await recorder.emit(event)
+        },
+        () =>
+          RolloutTransport.fetch(async (input) => {
+            const reader = (input as Request).body!.getReader()
+            uploadReader = reader
+            await reader.read()
+            upload = reader.read().then(
+              () => undefined,
+              (error: unknown) => error,
+            )
+            if (mode === "network-failure") throw failure
+            return mode === "empty-response" ? new Response(null, { status: 204 }) : new Response("done")
+          }, request),
+      )
+        .then((response) => response.text())
+        .catch((error: unknown) => error)
+      const uploadResult = await upload
+      uploadReader?.releaseLock()
+      const recording = await recorder.finish().catch((error: unknown) => error)
+      expect(result).toBe(mode === "network-failure" ? failure : mode === "empty-response" ? "" : "done")
+      expect(uploadResult === undefined || uploadResult === failure || uploadResult instanceof DOMException).toBe(true)
+      expect(recording).toBe(false)
+      expect(events.at(-1)).toMatchObject({
+        type: "attempt-end",
+        status: mode === "network-failure" ? "failed" : "completed",
+      })
+      expect(events.filter((event) => event.type === "body-end" && event.channel === "request")).toHaveLength(1)
+    }),
 )
 
 test.each(["failure", "early-response"] as const)(

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Tool, JSONSchema7 } from "ai"
 
 /**
@@ -35,13 +36,22 @@ export namespace ToolMcpSource {
     deferredGroupCatalog(): Promise<DeferredGroupCatalog>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("tool/mcp-source")
+    if (instanceState.source && value) throw new Error("tool/mcp-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
 import { ScopeContext } from "../scope/context"
@@ -30,7 +31,9 @@ export namespace ProviderAuthHealth {
     ),
   }
 
-  const observations = new Map<string, Info>()
+  const runtimeState = RuntimeContext.state(() => ({
+    observations: new Map<string, Info>(),
+  }))
 
   function nowSeconds() {
     return Math.floor(Date.now() / 1000)
@@ -104,29 +107,37 @@ export namespace ProviderAuthHealth {
   }
 
   export function fromEntry(providerID: string, entry: Auth.StoreEntry | undefined): Info {
-    return observations.get(providerID) ?? fromStoredEntry(providerID, entry)
+    const instanceState = runtimeState()
+
+    return instanceState.observations.get(providerID) ?? fromStoredEntry(providerID, entry)
   }
 
   export function observe(input: Info) {
-    const previous = observations.get(input.providerID)
+    const instanceState = runtimeState()
+
+    const previous = instanceState.observations.get(input.providerID)
     const next = Info.parse({
       ...input,
       canDisconnect: input.canDisconnect ?? false,
       updatedAt: input.updatedAt ?? Date.now(),
     })
-    observations.set(input.providerID, next)
+    instanceState.observations.set(input.providerID, next)
     return publishIfChanged(previous, next)
   }
 
   export function clearObservation(providerID: string, entry?: Auth.StoreEntry) {
-    const previous = observations.get(providerID)
+    const instanceState = runtimeState()
+
+    const previous = instanceState.observations.get(providerID)
     if (!previous) return Promise.resolve()
-    observations.delete(providerID)
+    instanceState.observations.delete(providerID)
     return publishIfChanged(previous, fromStoredEntry(providerID, entry))
   }
 
   export function commitStored(previous: Info, providerID: string, entry?: Auth.StoreEntry) {
-    observations.delete(providerID)
+    const instanceState = runtimeState()
+
+    instanceState.observations.delete(providerID)
     return publishIfChanged(previous, fromStoredEntry(providerID, entry))
   }
 
@@ -146,7 +157,7 @@ export namespace ProviderAuthHealth {
 
   async function publishIfChanged(previous: Info | undefined, next: Info) {
     if (previous && JSON.stringify(comparable(previous)) === JSON.stringify(comparable(next))) return
-    if (process.env.SYNERGY_AGENT_WORKER === "1") return
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") return
     if (!ScopeContext.tryScope()) return
     await Bus.publish(Event.Updated, { health: next })
   }

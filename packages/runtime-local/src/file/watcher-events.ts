@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { FileIgnore } from "./ignore"
@@ -68,18 +69,26 @@ export namespace FileWatcherEvents {
   // backend. A single ENOSPC therefore disables further Linux watcher startup
   // until an explicit FileWatcher.reload() (which resets the breaker) or a
   // process restart — see the Linux watcher recovery decision record.
-  let linuxInotifyCapacityTripped = false
+  const runtimeState = RuntimeContext.state(() => ({
+    linuxInotifyCapacityTripped: false,
+  }))
 
   export function isLinuxInotifyCapacityTripped() {
-    return linuxInotifyCapacityTripped
+    const instanceState = runtimeState()
+
+    return instanceState.linuxInotifyCapacityTripped
   }
 
   export function tripLinuxInotifyCapacity() {
-    linuxInotifyCapacityTripped = true
+    const instanceState = runtimeState()
+
+    instanceState.linuxInotifyCapacityTripped = true
   }
 
   export function resetLinuxInotifyCapacity() {
-    linuxInotifyCapacityTripped = false
+    const instanceState = runtimeState()
+
+    instanceState.linuxInotifyCapacityTripped = false
   }
 
   /** Terminal error shape for refusing a new subscribe after a process-wide trip. */

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { randomBytes } from "node:crypto"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
 import { BrowserOwner } from "./owner.js"
@@ -13,7 +14,9 @@ interface TicketRecord {
 
 const TTL_MS = 60_000
 const MAX_TICKETS = 2_048
-const tickets = new Map<string, TicketRecord>()
+const runtimeState = RuntimeContext.state(() => ({
+  tickets: new Map<string, TicketRecord>(),
+}))
 
 export namespace BrowserTicket {
   export interface Issued {
@@ -22,22 +25,26 @@ export namespace BrowserTicket {
   }
 
   export function issue(owner: BrowserOwner.Info, pageId: string, role: Role): Issued {
+    const instanceState = runtimeState()
+
     prune()
-    if (tickets.size >= MAX_TICKETS) {
-      const oldest = tickets.keys().next().value
-      if (oldest) tickets.delete(oldest)
+    if (instanceState.tickets.size >= MAX_TICKETS) {
+      const oldest = instanceState.tickets.keys().next().value
+      if (oldest) instanceState.tickets.delete(oldest)
     }
     const ticket = randomBytes(32).toString("base64url")
     const record = { ownerKey: BrowserOwner.key(owner), pageId, role, expiresAt: Date.now() + TTL_MS }
-    tickets.set(ticket, record)
+    instanceState.tickets.set(ticket, record)
     return { ticket, expiresAt: record.expiresAt }
   }
 
   export function consume(owner: BrowserOwner.Info, pageId: string, role: Role, ticket: string | undefined): void {
+    const instanceState = runtimeState()
+
     prune()
     if (!ticket) throw rejected("A Browser signaling ticket is required.")
-    const record = tickets.get(ticket)
-    if (record) tickets.delete(ticket)
+    const record = instanceState.tickets.get(ticket)
+    if (record) instanceState.tickets.delete(ticket)
     if (!record) throw rejected("The Browser signaling ticket is invalid or has already been used.")
     if (record.expiresAt <= Date.now()) throw rejected("The Browser signaling ticket has expired.")
     if (record.ownerKey !== BrowserOwner.key(owner) || record.pageId !== pageId || record.role !== role) {
@@ -46,20 +53,27 @@ export namespace BrowserTicket {
   }
 
   export function revoke(owner: BrowserOwner.Info, pageId?: string): void {
+    const instanceState = runtimeState()
+
     const ownerKey = BrowserOwner.key(owner)
-    for (const [ticket, record] of tickets) {
-      if (record.ownerKey === ownerKey && (!pageId || record.pageId === pageId)) tickets.delete(ticket)
+    for (const [ticket, record] of instanceState.tickets) {
+      if (record.ownerKey === ownerKey && (!pageId || record.pageId === pageId)) instanceState.tickets.delete(ticket)
     }
   }
 
   export function resetForTest(): void {
-    tickets.clear()
+    const instanceState = runtimeState()
+
+    instanceState.tickets.clear()
   }
 }
 
 function prune(): void {
+  const instanceState = runtimeState()
+
   const now = Date.now()
-  for (const [ticket, record] of tickets) if (record.expiresAt <= now) tickets.delete(ticket)
+  for (const [ticket, record] of instanceState.tickets)
+    if (record.expiresAt <= now) instanceState.tickets.delete(ticket)
 }
 
 function rejected(message: string): BrowserProtocolError {

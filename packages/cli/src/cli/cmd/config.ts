@@ -39,7 +39,7 @@ export const ConfigExportCommand = cmd({
       })
       .option("only", {
         type: "array",
-        choices: [...ConfigDomain.byId.keys()],
+        choices: [...ConfigDomain.byId().keys()],
         describe: "Export only this domain; can be repeated",
       })
       .option("scope", {
@@ -132,7 +132,7 @@ async function importConfigFromSource(input: {
     const config = await loadImportSource(source)
     spinner.stop("✓ Config loaded")
 
-    const selected = only.length > 0 ? only : ConfigDomain.definitions.map((domain) => domain.id)
+    const selected = only.length > 0 ? only : ConfigDomain.definitions().map((domain) => domain.id)
     const plan = await ConfigImport.plan({ config, only: selected, mode, scope, source })
 
     prompts.intro("Import Config")
@@ -208,7 +208,7 @@ export const ConfigImportCommand = cmd({
       })
       .option("only", {
         type: "array",
-        choices: [...ConfigDomain.byId.keys()],
+        choices: [...ConfigDomain.byId().keys()],
         describe: "Import only this domain; can be repeated",
       })
       .option("mode", {

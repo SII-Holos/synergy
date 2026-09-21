@@ -43,7 +43,7 @@ export namespace Vcs {
 
   const state = ScopedState.create(
     async () => {
-      if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") {
+      if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.local?.vcs !== "git") {
         return { branch: async () => undefined, unsubscribe: undefined, watcher: undefined }
       }
       const watcher = VcsBranchWatcher.create({

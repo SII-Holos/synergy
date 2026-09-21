@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import { SessionCortexRuntime } from "./cortex-runtime"
 
@@ -15,23 +16,31 @@ export namespace ContinuationWait {
     list(sessionID: string): Promise<Info[]>
   }
 
-  const providers: Provider[] = []
-  let builtinsRegistered = false
+  const runtimeState = RuntimeContext.state(() => ({
+    providers: [] as Provider[],
+    builtinsRegistered: false,
+  }))
 
   export function register(provider: Provider): void {
-    if (providers.some((candidate) => candidate.id === provider.id)) return
-    providers.push(provider)
+    const instanceState = runtimeState()
+
+    if (instanceState.providers.some((candidate) => candidate.id === provider.id)) return
+    instanceState.providers.push(provider)
   }
 
   export function reset(): void {
-    providers.length = 0
-    builtinsRegistered = false
+    const instanceState = runtimeState()
+
+    instanceState.providers.length = 0
+    instanceState.builtinsRegistered = false
   }
 
   export async function list(sessionID: string): Promise<Info[]> {
+    const instanceState = runtimeState()
+
     registerBuiltins()
     const batches = await Promise.all(
-      providers.map((provider) =>
+      instanceState.providers.map((provider) =>
         provider.list(sessionID).catch((error) => {
           log.error("continuation wait provider failed", { provider: provider.id, sessionID, error })
           return []
@@ -46,8 +55,10 @@ export namespace ContinuationWait {
   }
 
   function registerBuiltins(): void {
-    if (builtinsRegistered) return
-    builtinsRegistered = true
+    const instanceState = runtimeState()
+
+    if (instanceState.builtinsRegistered) return
+    instanceState.builtinsRegistered = true
     register({
       id: "cortex",
       async list(sessionID) {

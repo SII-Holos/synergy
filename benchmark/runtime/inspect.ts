@@ -1,3 +1,5 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { createLocalHost } from "@ericsanchezok/synergy-runtime-local"
 import { BenchmarkInputError } from "./input-error"
 import { loadComposition } from "./composition"
 import { Config } from "@ericsanchezok/synergy-harness/config"
@@ -18,7 +20,7 @@ async function inspect() {
   const experiment = process.argv[4] ? Experiment.File.parse(await Bun.file(process.argv[4]).json()) : undefined
   let measured: unknown
   const runtime = process.argv[5] ? await composition.open({ mode: "oneshot" }) : undefined
-  try {
+  const measure = async () => {
     if (process.argv[5])
       measured = await ScopeContext.provide({
         scope: Scope.home(),
@@ -60,19 +62,27 @@ async function inspect() {
         measured,
       }),
     )
+  }
+  try {
+    if (runtime) await runtime.run(measure)
+    else await measure()
   } finally {
     if (runtime) await runtime.close()
     else await ScopeRuntime.disposeAll()
   }
 }
 
-await inspect().catch((error: unknown) => {
-  console.error(error)
-  process.exitCode =
-    error instanceof Error &&
-    (["BenchmarkInputError", "ZodError", "SyntaxError"].includes(error.name) ||
-      Provider.ModelNotFoundError.isInstance(error) ||
-      Provider.ModelUnavailableError.isInstance(error))
-      ? 2
-      : 1
-})
+const context = RuntimeContext.create(createLocalHost())
+await context
+  .run(inspect)
+  .finally(() => context.dispose())
+  .catch((error: unknown) => {
+    console.error(error)
+    process.exitCode =
+      error instanceof Error &&
+      (["BenchmarkInputError", "ZodError", "SyntaxError"].includes(error.name) ||
+        Provider.ModelNotFoundError.isInstance(error) ||
+        Provider.ModelUnavailableError.isInstance(error))
+        ? 2
+        : 1
+  })

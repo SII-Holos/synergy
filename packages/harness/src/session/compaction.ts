@@ -734,7 +734,7 @@ export namespace SessionCompaction {
       : await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
 
     const session = await SessionManager.requireSession(input.sessionID)
-    const directory = (session.scope as Scope).directory
+    const directory = session.workspace?.path ?? null
     const modelMessages = MessageV2.toModelMessage(input.messages)
 
     const msg = (await Session.updateMessage({
@@ -979,46 +979,47 @@ export namespace SessionCompaction {
     }
   }
 
-  LoopJob.register({
-    type: "compaction",
-    phase: "pre",
-    blocking: true,
-    signals: ["compact"],
-    collect() {
-      return []
-    },
-    async execute(ctx) {
-      const part = ctx.lastUserParts.find((p): p is MessageV2.CompactionPart => p.type === "compaction")!
-      const result = await process({
-        messages: ctx.messages,
-        parentID: ctx.lastUser.id,
-        abort: ctx.abort,
-        sessionID: ctx.sessionID,
-        auto: part.auto,
-      })
-      return result
-    },
-  })
-
-  LoopJob.register({
-    type: "prune",
-    phase: "pre",
-    blocking: false,
-    collect(ctx) {
-      if (ctx.step <= 1) return []
-      return [{ type: "prune" }]
-    },
-    capture(ctx) {
-      return { type: "prune", sessionID: ctx.sessionID, modelID: ctx.modelID }
-    },
-    key(input) {
-      return input.sessionID
-    },
-    timeoutMs: 30_000,
-    async execute(input, signal) {
-      const messages = await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal })
-      await prune({ sessionID: input.sessionID, messages, modelID: input.modelID, abort: signal })
-      return "pass"
-    },
-  })
+  export function registerJobs() {
+    LoopJob.register({
+      type: "compaction",
+      phase: "pre",
+      blocking: true,
+      signals: ["compact"],
+      collect() {
+        return []
+      },
+      async execute(ctx) {
+        const part = ctx.lastUserParts.find((p): p is MessageV2.CompactionPart => p.type === "compaction")!
+        const result = await process({
+          messages: ctx.messages,
+          parentID: ctx.lastUser.id,
+          abort: ctx.abort,
+          sessionID: ctx.sessionID,
+          auto: part.auto,
+        })
+        return result
+      },
+    })
+    LoopJob.register({
+      type: "prune",
+      phase: "pre",
+      blocking: false,
+      collect(ctx) {
+        if (ctx.step <= 1) return []
+        return [{ type: "prune" }]
+      },
+      capture(ctx) {
+        return { type: "prune", sessionID: ctx.sessionID, modelID: ctx.modelID }
+      },
+      key(input) {
+        return input.sessionID
+      },
+      timeoutMs: 30_000,
+      async execute(input, signal) {
+        const messages = await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal })
+        await prune({ sessionID: input.sessionID, messages, modelID: input.modelID, abort: signal })
+        return "pass"
+      },
+    })
+  }
 }

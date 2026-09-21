@@ -41,21 +41,21 @@ describe("workspace file preview URL", () => {
 
 describe("workspace file browser URL", () => {
   test("builds a path-based raw URL against the server base", () => {
-    expect(buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "docs/page.html")).toBe(
+    expect(buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "docs/page.html", { scopeID: "home" })).toBe(
       "http://127.0.0.1:4096/workspace/files/raw/home/docs/page.html",
     )
   })
 
   test("strips a trailing slash from the base URL", () => {
-    expect(buildWorkspaceFileBrowserUrl("https://example.test/proxy/4096/", "index.htm")).toBe(
+    expect(buildWorkspaceFileBrowserUrl("https://example.test/proxy/4096/", "index.htm", { scopeID: "home" })).toBe(
       "https://example.test/proxy/4096/workspace/files/raw/home/index.htm",
     )
   })
 
   test("encodes spaces and special characters per segment but keeps slashes", () => {
-    expect(buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "my dir/hello & world.html")).toBe(
-      "http://127.0.0.1:4096/workspace/files/raw/home/my%20dir/hello%20%26%20world.html",
-    )
+    expect(
+      buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "my dir/hello & world.html", { scopeID: "home" }),
+    ).toBe("http://127.0.0.1:4096/workspace/files/raw/home/my%20dir/hello%20%26%20world.html")
   })
 
   test("encodes the scope directory as a base64url token", () => {
@@ -80,4 +80,15 @@ describe("workspace file browser URL", () => {
       }),
     ).toBe("http://127.0.0.1:4096/workspace/files/raw/home/index.html")
   })
+})
+
+test("requires an owner and keeps a project file link stable when its directory changes", () => {
+  expect(() => buildWorkspaceFileBrowserUrl("http://localhost", "file.html")).toThrow("Scope")
+  const first = buildWorkspaceFileBrowserUrl("http://localhost", "file.html", { scopeID: "project", directory: "/old" })
+  const moved = buildWorkspaceFileBrowserUrl("http://localhost", "file.html", {
+    scopeID: "project",
+    directory: "/moved",
+  })
+  expect(first).toBe(moved)
+  expect(first).toContain("/raw/cHJvamVjdA/")
 })

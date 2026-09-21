@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityEvents } from "../observability/events"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { SessionMemoryPressure } from "./memory-pressure"
@@ -51,9 +52,11 @@ export namespace LLMTurnMemory {
     release(): void
   }
 
-  const active = new Map<string, Entry>()
-  const recent: ReturnType<typeof snapshotEntry>[] = []
-  let snapshotForTest: (() => Snapshot) | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    active: new Map<string, Entry>(),
+    recent: [] as ReturnType<typeof snapshotEntry>[],
+    snapshotForTest: undefined as (() => Snapshot) | undefined,
+  }))
 
   export function begin(input: {
     sessionID: string
@@ -63,8 +66,10 @@ export namespace LLMTurnMemory {
     historyBeforeBytes: number
     baseline?: Snapshot
   }): Handle {
+    const instanceState = runtimeState()
+
     const id = `${input.sessionID}:${input.messageID}`
-    active.get(id)?.timer && clearInterval(active.get(id)!.timer)
+    instanceState.active.get(id)?.timer && clearInterval(instanceState.active.get(id)!.timer)
     const baseline = input.baseline ?? currentSnapshot()
     const entry: Entry = {
       ...input,
@@ -84,7 +89,7 @@ export namespace LLMTurnMemory {
       streamActive: false,
       pressurePending: false,
     }
-    active.set(id, entry)
+    instanceState.active.set(id, entry)
     checkpoint(entry, "history.before_projection", baseline)
     let released = false
     const handle: Handle = {
@@ -149,9 +154,9 @@ export namespace LLMTurnMemory {
         entry.timer = undefined
         entry.streamActive = false
         checkpoint(entry, "turn.released")
-        recent.unshift(snapshotEntry(entry))
-        recent.length = Math.min(recent.length, 20)
-        active.delete(id)
+        instanceState.recent.unshift(snapshotEntry(entry))
+        instanceState.recent.length = Math.min(instanceState.recent.length, 20)
+        instanceState.active.delete(id)
       },
       [Symbol.dispose]() {
         handle.release()
@@ -161,22 +166,28 @@ export namespace LLMTurnMemory {
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     return {
-      activeTurnCount: active.size,
-      activeStreamCount: [...active.values()].filter((entry) => entry.streamActive).length,
+      activeTurnCount: instanceState.active.size,
+      activeStreamCount: [...instanceState.active.values()].filter((entry) => entry.streamActive).length,
     }
   }
 
   export function activeSnapshot(limit = 20) {
+    const instanceState = runtimeState()
+
     const activeStreamCount = stats().activeStreamCount
-    return [...active.values()]
+    return [...instanceState.active.values()]
       .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, Math.max(0, limit))
       .map((entry) => snapshotEntry(entry, activeStreamCount))
   }
 
   export function incidentSnapshot(limit = 20) {
-    return [...activeSnapshot(limit), ...recent].slice(0, Math.max(0, limit))
+    const instanceState = runtimeState()
+
+    return [...activeSnapshot(limit), ...instanceState.recent].slice(0, Math.max(0, limit))
   }
 
   export function estimateBytes(value: unknown, limit = ESTIMATE_LIMIT_BYTES) {
@@ -236,17 +247,21 @@ export namespace LLMTurnMemory {
   }
 
   export function setSnapshotForTest(snapshot: (() => Snapshot) | undefined) {
-    snapshotForTest = snapshot
+    const instanceState = runtimeState()
+
+    instanceState.snapshotForTest = snapshot
   }
 
   export function resetForTest() {
-    for (const entry of active.values()) {
+    const instanceState = runtimeState()
+
+    for (const entry of instanceState.active.values()) {
       if (entry.timer) clearInterval(entry.timer)
       if (entry.streamActive) SessionMemoryPressure.streamDisposed()
     }
-    active.clear()
-    recent.length = 0
-    snapshotForTest = undefined
+    instanceState.active.clear()
+    instanceState.recent.length = 0
+    instanceState.snapshotForTest = undefined
   }
 
   function checkpoint(entry: Entry, phase: Phase, observed = currentSnapshot()) {
@@ -300,7 +315,7 @@ export namespace LLMTurnMemory {
 
   async function checkPressure(entry: Entry, phase: Phase) {
     if (entry.pressurePending) return
-    const thresholds = SessionMemoryPressure.resolveThresholds(process.env, entry.latest)
+    const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, entry.latest)
     if (SessionMemoryPressure.pressureLevel(entry.latest, thresholds) === "normal") return
     entry.pressurePending = true
     try {
@@ -317,7 +332,9 @@ export namespace LLMTurnMemory {
   }
 
   function currentSnapshot() {
-    return snapshotForTest?.() ?? SessionMemoryPressure.currentSnapshot()
+    const instanceState = runtimeState()
+
+    return instanceState.snapshotForTest?.() ?? SessionMemoryPressure.currentSnapshot()
   }
 
   function snapshotEntry(entry: Entry, activeStreamCount = 0) {

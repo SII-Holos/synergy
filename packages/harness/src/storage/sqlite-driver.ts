@@ -55,6 +55,7 @@ type PendingRequest = {
 
 export class SqliteDriver implements SqlDriver {
   readonly backend = "sqlite" as const
+  private readonly budgets = StorageBudgets.capture()
   private readonly worker: Bun.Subprocess
   private readonly writerQueue = new StorageQueue("sqlite.writer")
   private readonly readerQueue = new StorageQueue("sqlite.reader")
@@ -224,7 +225,7 @@ export class SqliteDriver implements SqlDriver {
    * ceiling, which is what the ceiling exists to bound.
    */
   private statementBudget(operation?: StorageMaintenanceOperation): number {
-    const budgets = StorageBudgets.current()
+    const budgets = this.budgets()
     if (!operation) return budgets.requestDeadlineMs
     return operation === "reclaim" ? budgets.chunkBudgetMs : budgets.engineBudgetMs
   }
@@ -246,7 +247,7 @@ export class SqliteDriver implements SqlDriver {
     if (this.queuedBytes + bytes > 32 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Authoritative storage byte queue is full"))
     const id = ++this.sequence
-    const budgets = StorageBudgets.current()
+    const budgets = this.budgets()
     const maintenance = request.maintenance
       ? beginStorageMaintenance(request.maintenance, deadline + budgets.probeAttempts * budgets.probeTimeoutMs)
       : undefined
@@ -310,7 +311,7 @@ export class SqliteDriver implements SqlDriver {
   private enterBusy() {
     if (this.state === "busy" || this.state === "latched") return
     this.state = "busy"
-    const budgets = StorageBudgets.current()
+    const budgets = this.budgets()
     log.warn("SQLite worker is busy; storage is degraded until it answers", {
       ceilingMs: budgets.hardCeilingMs,
     })
@@ -369,7 +370,7 @@ export class SqliteDriver implements SqlDriver {
     if (this.monitoring) return this.monitoring
     const run = (async (): Promise<boolean> => {
       try {
-        const budgets = StorageBudgets.current()
+        const budgets = this.budgets()
         for (let consecutive = 0; ; consecutive++) {
           if (this.closed || this.unavailableError) return false
           if (await this.ping()) return true
@@ -389,7 +390,7 @@ export class SqliteDriver implements SqlDriver {
     // A probe is pointless once this driver already gave up on the worker; the
     // terminal failure was reported when it happened.
     if (this.unavailableError || this.closed) return Promise.resolve(false)
-    const timeoutMs = StorageBudgets.current().probeTimeoutMs
+    const timeoutMs = this.budgets().probeTimeoutMs
     const id = ++this.sequence
     return new Promise<boolean>((resolve) => {
       const pending: PendingRequest = {
@@ -493,7 +494,7 @@ export class SqliteDriver implements SqlDriver {
       // every step here draws from one small shared budget: bounding each step by
       // the ceiling separately would let the sequence outlive the process that
       // requested it, and the worker is killed once the budget runs out.
-      const deadlineAt = performance.now() + StorageBudgets.current().teardownBudgetMs
+      const deadlineAt = performance.now() + this.budgets().teardownBudgetMs
       const remaining = () => Math.max(1, deadlineAt - performance.now())
       try {
         await this.within(Promise.all([this.writerQueue.close(), this.readerQueue.close()]), remaining(), "queue drain")

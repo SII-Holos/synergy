@@ -202,7 +202,7 @@ function makeStep(
   const input = parsedInput(part)
   const metadata = record(part.state.metadata)
   const family = activityFamilyForTool(part.tool, input, metadata)
-  const scope = activityScopeForTool(input, metadata, { family, workspaceRoot: message.path.root })
+  const scope = activityScopeForTool(input, metadata, { family, workspaceRoot: message.path.root ?? undefined })
   let info: ReturnType<ActivityToolInfoResolver>
   try {
     info = resolveToolInfo(part.tool, input, metadata)

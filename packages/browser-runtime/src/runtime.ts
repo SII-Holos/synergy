@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { isSessionResourceTerminalEvent } from "@ericsanchezok/synergy-harness/session/event"
@@ -18,33 +19,43 @@ interface BrowserCommandExecutor {
   clear(): void
 }
 
-let commandExecutor: BrowserCommandExecutor | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  commandExecutor: undefined as BrowserCommandExecutor | undefined,
+}))
 
 /** BrowserCommandService owns owner-scoped disposal queues; it registers its
  * executor at module load so the runtime never imports it back. */
 export function registerBrowserCommandExecutor(executor: BrowserCommandExecutor): void {
-  commandExecutor = executor
+  const instanceState = runtimeState()
+
+  instanceState.commandExecutor = executor
 }
 
 function requireCommandExecutor(): BrowserCommandExecutor {
-  if (!commandExecutor) throw new Error("Browser command executor is not registered")
-  return commandExecutor
+  const instanceState = runtimeState()
+
+  if (!instanceState.commandExecutor) throw new Error("Browser command executor is not registered")
+  return instanceState.commandExecutor
 }
 
 export namespace BrowserRuntime {
   const log = Log.create({ service: "browser.runtime" })
 
-  const sessions = new Map<string, BrowserSession>()
-  const sessionPromises = new Map<string, Promise<BrowserSession>>()
-  const disposalPromises = new Map<string, Promise<void>>()
-  let running = false
-  let driver: BrowserDriver.Driver | null = null
+  const runtimeState = RuntimeContext.state(() => ({
+    sessions: new Map<string, BrowserSession>(),
+    sessionPromises: new Map<string, Promise<BrowserSession>>(),
+    disposalPromises: new Map<string, Promise<void>>(),
+    running: false,
+    driver: null as BrowserDriver.Driver | null,
+    reaperInstalled: false,
+  }))
 
-  let reaperInstalled = false
   function installSessionReaper() {
-    if (reaperInstalled) return
-    reaperInstalled = true
-    GlobalBus.on("event", (event) => {
+    const instanceState = runtimeState()
+
+    if (instanceState.reaperInstalled) return
+    instanceState.reaperInstalled = true
+    GlobalBus().on("event", (event) => {
       const payload = event?.payload
       const info = payload?.properties?.info
       if (!info?.id) return
@@ -64,46 +75,52 @@ export namespace BrowserRuntime {
   }
 
   export async function ensure(): Promise<void> {
-    if (running) return
+    const instanceState = runtimeState()
+
+    if (instanceState.running) return
     installSessionReaper()
 
     const pwDriver = new PlaywrightBrowserDriver()
     await pwDriver.ensure()
-    driver = pwDriver
-    running = true
+    instanceState.driver = pwDriver
+    instanceState.running = true
   }
 
   export async function stop(): Promise<void> {
+    const instanceState = runtimeState()
+
     const failures: unknown[] = []
-    collectFailures(await Promise.allSettled(Array.from(disposalPromises.values())), failures)
-    collectFailures(await Promise.allSettled(Array.from(sessionPromises.values())), failures)
+    collectFailures(await Promise.allSettled(Array.from(instanceState.disposalPromises.values())), failures)
+    collectFailures(await Promise.allSettled(Array.from(instanceState.sessionPromises.values())), failures)
     const executor = requireCommandExecutor()
     collectFailures(
       await Promise.allSettled(
-        Array.from(sessions.values(), (session) => executor.disposeOwner(session.owner, () => session.dispose())),
+        Array.from(instanceState.sessions.values(), (session) =>
+          executor.disposeOwner(session.owner, () => session.dispose()),
+        ),
       ),
       failures,
     )
-    for (const session of sessions.values()) {
+    for (const session of instanceState.sessions.values()) {
       BrowserNetworkGateway.revoke(session.owner)
       BrowserBroker.release(session.owner)
       BrowserEvent.remove(session.owner)
     }
-    sessions.clear()
-    sessionPromises.clear()
+    instanceState.sessions.clear()
+    instanceState.sessionPromises.clear()
     executor.clear()
 
-    if (driver) {
+    if (instanceState.driver) {
       try {
-        await driver.stop()
+        await instanceState.driver.stop()
       } catch (error) {
         log.error("browser.playwright.stop.failed", { error })
         failures.push(error)
       }
-      driver = null
+      instanceState.driver = null
     }
 
-    running = false
+    instanceState.running = false
     for (const stop of [() => BrowserNetworkGateway.stop(), () => BrowserHostBrokerProcess.stop()]) {
       try {
         await stop()
@@ -116,24 +133,30 @@ export namespace BrowserRuntime {
 
   /** Dispose a specific BrowserSession. */
   export function disposeSession(owner: BrowserOwner.Info): Promise<void> {
+    const instanceState = runtimeState()
+
     const k = BrowserOwner.key(owner)
-    const active = disposalPromises.get(k)
+    const active = instanceState.disposalPromises.get(k)
     if (active) return active
 
     const operation = disposeSessionOnce(owner, k).finally(() => {
-      if (disposalPromises.get(k) === operation) disposalPromises.delete(k)
+      const instanceState = runtimeState()
+
+      if (instanceState.disposalPromises.get(k) === operation) instanceState.disposalPromises.delete(k)
     })
-    disposalPromises.set(k, operation)
+    instanceState.disposalPromises.set(k, operation)
     return operation
   }
 
   async function disposeSessionOnce(owner: BrowserOwner.Info, key: string): Promise<void> {
-    const pending = sessionPromises.get(key)
+    const instanceState = runtimeState()
+
+    const pending = instanceState.sessionPromises.get(key)
     if (pending) await pending
-    const session = sessions.get(key)
+    const session = instanceState.sessions.get(key)
     if (!session) return
     await requireCommandExecutor().disposeOwner(owner, () => session.dispose())
-    sessions.delete(key)
+    instanceState.sessions.delete(key)
     BrowserNetworkGateway.revoke(owner)
     BrowserBroker.release(owner)
     BrowserEvent.remove(owner)
@@ -141,16 +164,20 @@ export namespace BrowserRuntime {
 
   /** Create or retrieve a BrowserSession for the given owner. */
   export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
+    const instanceState = runtimeState()
+
     BrowserOwner.assertValid(owner)
     installSessionReaper()
     const k = BrowserOwner.key(owner)
-    const disposing = disposalPromises.get(k)
+    const disposing = instanceState.disposalPromises.get(k)
     if (disposing) await disposing
-    const existing = sessions.get(k)
+    const existing = instanceState.sessions.get(k)
     if (existing) return existing
-    const pending = sessionPromises.get(k)
+    const pending = instanceState.sessionPromises.get(k)
     if (pending) return pending
     const create = (async () => {
+      const instanceState = runtimeState()
+
       const { BrowserSessionImpl } = await import("./session.js")
       const session = new BrowserSessionImpl(
         owner,
@@ -171,16 +198,21 @@ export namespace BrowserRuntime {
         },
         () => (BrowserBroker.preference(owner) ? "host" : "headless"),
       )
-      sessions.set(k, session)
+      instanceState.sessions.set(k, session)
       await session.restore()
       return session
-    })().finally(() => sessionPromises.delete(k))
-    sessionPromises.set(k, create)
+    })().finally(() => {
+      const instanceState = runtimeState()
+      return instanceState.sessionPromises.delete(k)
+    })
+    instanceState.sessionPromises.set(k, create)
     return create
   }
 
   export function resourceStats() {
-    const values = [...sessions.values()]
+    const instanceState = runtimeState()
+
+    const values = [...instanceState.sessions.values()]
     const activePages = values.filter((session) => session.page?.isAlive())
     const hostPages = activePages.filter((session) => session.page?.backend === "host")
     const headlessPages = activePages.filter((session) => session.page?.backend === "headless")
@@ -199,9 +231,11 @@ export namespace BrowserRuntime {
   }
 
   async function driverForSession(): Promise<BrowserDriver.Driver> {
+    const instanceState = runtimeState()
+
     await ensure()
-    if (!driver) throw new Error("Browser driver not running")
-    return driver
+    if (!instanceState.driver) throw new Error("Browser driver not running")
+    return instanceState.driver
   }
 
   function collectFailures(results: PromiseSettledResult<unknown>[], failures: unknown[]): void {

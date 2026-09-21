@@ -1,3 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { type IPty } from "bun-pty"
@@ -30,6 +34,7 @@ export namespace Pty {
   export const Info = z
     .object({
       id: Identifier.schema("pty"),
+      sessionID: Identifier.schema("session").optional(),
       title: z.string(),
       command: z.string(),
       args: z.array(z.string()),
@@ -42,6 +47,7 @@ export namespace Pty {
   export type Info = z.infer<typeof Info>
 
   export const CreateInput = z.object({
+    sessionID: Identifier.schema("session").optional(),
     command: z.string().optional(),
     args: z.array(z.string()).optional(),
     cwd: z.string().optional(),
@@ -77,12 +83,15 @@ export namespace Pty {
     subscribers: Set<Client>
     outputBytes: number
     outputTimer?: ReturnType<typeof setTimeout>
+    listeners: Array<{ dispose(): void }>
   }
 
   const state = ScopedState.create(
     () => new Map<string, ActiveSession>(),
     async (sessions) => {
       for (const session of sessions.values()) {
+        clearTimeout(session.outputTimer)
+        for (const listener of session.listeners) listener.dispose()
         try {
           session.process.kill()
         } catch {}
@@ -102,16 +111,26 @@ export namespace Pty {
     return state().get(id)?.info
   }
 
-  export async function create(input: CreateInput) {
+  export async function create(input: CreateInput): Promise<Info> {
+    if (!input.sessionID) return createInWorkspace(input)
+    const session = await Session.get(input.sessionID)
+    const scope = ScopeContext.current.scope
+    if (session.scope.id !== scope.id) throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
+    await Session.assertWorkspaceAvailable(session.id)
+    return ScopeContext.provide({ scope, workspace: session.workspace, fn: () => createInWorkspace(input) })
+  }
+
+  async function createInWorkspace(input: CreateInput): Promise<Info> {
+    const workspaceDirectory = ScopeContext.current.directory
     const id = Identifier.create("pty", false)
     const command = input.command || Shell.preferred()
-    const args = input.args || []
+    const args = [...(input.args ?? [])]
     if (command.endsWith("sh")) {
       args.push("-l")
     }
 
-    const cwd = input.cwd || ScopeContext.current.directory
-    const env = { ...process.env, ...input.env, TERM: "xterm-256color" } as Record<string, string>
+    const cwd = input.cwd || workspaceDirectory
+    const env = { ...RuntimeContext.current().host.env, ...input.env, TERM: "xterm-256color" } as Record<string, string>
     log.info("creating session", { id, cmd: command, args, cwd })
 
     const spawn = await pty()
@@ -124,6 +143,7 @@ export namespace Pty {
     const startTime = Date.now()
     const info = {
       id,
+      sessionID: input.sessionID,
       title: input.title || `Terminal ${id.slice(-4)}`,
       command,
       args,
@@ -137,6 +157,7 @@ export namespace Pty {
       buffer: "",
       subscribers: new Set(),
       outputBytes: 0,
+      listeners: [],
     }
     ObservabilityMetrics.record({
       name: "pty.session.created",
@@ -152,53 +173,57 @@ export namespace Pty {
       },
     })
     state().set(id, session)
-    ptyProcess.onData((data: string) => {
-      session.outputBytes += Buffer.byteLength(data)
-      if (!session.outputTimer) {
-        session.outputTimer = setTimeout(() => {
-          const value = session.outputBytes
-          session.outputBytes = 0
-          session.outputTimer = undefined
-          ObservabilityMetrics.record({
-            name: "pty.output.bytes",
-            value,
-            unit: "bytes",
-            module: "pty",
-            source: "process",
-            processId: id,
-            pid: ptyProcess.pid,
-            labels: { subscribers: session.subscribers.size },
-          })
-        }, 1000)
-        session.outputTimer.unref()
-      }
-      let open = false
-      for (const ws of session.subscribers) {
-        if (ws.readyState !== 1) {
-          session.subscribers.delete(ws)
-          continue
-        }
-        open = true
-        try {
-          ws.send(data)
-        } catch {
-          session.subscribers.delete(ws)
-          ObservabilityMetrics.record({
-            name: "pty.websocket.write_failure",
-            value: 1,
-            unit: "count",
-            module: "pty",
-            source: "process",
-            processId: id,
-            pid: ptyProcess.pid,
-          })
-        }
-      }
-      if (open) return
-      session.buffer += data
-      if (session.buffer.length <= BUFFER_LIMIT) return
-      session.buffer = session.buffer.slice(-BUFFER_LIMIT)
-    })
+    session.listeners.push(
+      ptyProcess.onData(
+        AsyncLocalStorage.bind((data: string) => {
+          session.outputBytes += Buffer.byteLength(data)
+          if (!session.outputTimer) {
+            session.outputTimer = setTimeout(() => {
+              const value = session.outputBytes
+              session.outputBytes = 0
+              session.outputTimer = undefined
+              ObservabilityMetrics.record({
+                name: "pty.output.bytes",
+                value,
+                unit: "bytes",
+                module: "pty",
+                source: "process",
+                processId: id,
+                pid: ptyProcess.pid,
+                labels: { subscribers: session.subscribers.size },
+              })
+            }, 1000)
+            session.outputTimer.unref()
+          }
+          let open = false
+          for (const ws of session.subscribers) {
+            if (ws.readyState !== 1) {
+              session.subscribers.delete(ws)
+              continue
+            }
+            open = true
+            try {
+              ws.send(data)
+            } catch {
+              session.subscribers.delete(ws)
+              ObservabilityMetrics.record({
+                name: "pty.websocket.write_failure",
+                value: 1,
+                unit: "count",
+                module: "pty",
+                source: "process",
+                processId: id,
+                pid: ptyProcess.pid,
+              })
+            }
+          }
+          if (open) return
+          session.buffer += data
+          if (session.buffer.length <= BUFFER_LIMIT) return
+          session.buffer = session.buffer.slice(-BUFFER_LIMIT)
+        }),
+      ),
+    )
     const flushOutputBytes = () => {
       if (session.outputTimer) clearTimeout(session.outputTimer)
       session.outputTimer = undefined
@@ -216,29 +241,34 @@ export namespace Pty {
         labels: { subscribers: session.subscribers.size },
       })
     }
-    ptyProcess.onExit(({ exitCode }) => {
-      log.info("session exited", { id, exitCode })
-      session.info.status = "exited"
-      flushOutputBytes()
-      // The PTY is gone: drop every subscriber so clients stop writing into a
-      // dead process and their reconnect loop can settle (validate → gone).
-      for (const ws of session.subscribers) {
-        ws.close()
-      }
-      session.subscribers.clear()
-      Bus.publish(Event.Exited, { id, exitCode })
-      ObservabilityMetrics.record({
-        name: "pty.session.duration",
-        value: Date.now() - startTime,
-        unit: "ms",
-        module: "pty",
-        source: "process",
-        processId: id,
-        pid: ptyProcess.pid,
-        labels: { exitCode },
-      })
-      state().delete(id)
-    })
+    session.listeners.push(
+      ptyProcess.onExit(
+        AsyncLocalStorage.bind(({ exitCode }) => {
+          log.info("session exited", { id, exitCode })
+          session.info.status = "exited"
+          flushOutputBytes()
+          // The PTY is gone: drop every subscriber so clients stop writing into a
+          // dead process and their reconnect loop can settle (validate → gone).
+          for (const ws of session.subscribers) {
+            ws.close()
+          }
+          session.subscribers.clear()
+          Bus.publish(Event.Exited, { id, exitCode })
+          ObservabilityMetrics.record({
+            name: "pty.session.duration",
+            value: Date.now() - startTime,
+            unit: "ms",
+            module: "pty",
+            source: "process",
+            processId: id,
+            pid: ptyProcess.pid,
+            labels: { exitCode },
+          })
+          state().delete(id)
+          for (const listener of session.listeners) listener.dispose()
+        }),
+      ),
+    )
     Bus.publish(Event.Created, { info })
     return info
   }
@@ -256,12 +286,21 @@ export namespace Pty {
     return session.info
   }
 
+  export async function removeForSession(sessionID: string) {
+    const sessions = state.peek()
+    if (!sessions) return
+    for (const session of sessions.values()) {
+      if (session.info.sessionID === sessionID) await remove(session.info.id)
+    }
+  }
+
   export async function remove(id: string) {
     const session = state().get(id)
     if (!session) return
     log.info("removing session", { id })
     try {
       if (session.outputTimer) clearTimeout(session.outputTimer)
+      for (const listener of session.listeners) listener.dispose()
       session.process.kill()
     } catch {}
     for (const ws of session.subscribers) {

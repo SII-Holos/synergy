@@ -1,13 +1,16 @@
+import { observeStorageMaintenance } from "../storage/maintenance-progress"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
+import { registerHarness } from "./register"
+import { ProviderCatalog } from "../provider/catalog"
+import { ModelsCatalog, startModelCatalogRefresh } from "../provider/models"
+import { RuntimeContext, type RuntimeHost } from "./context"
 import { SessionStaging } from "../session/staging"
 import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
 import type { ImportProgress } from "../storage/legacy-import"
-import { StorageBootstrap } from "../storage/bootstrap"
 import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
 import { StorageReclamation } from "../storage/format-reclamation"
-import { observeStorageMaintenance } from "../storage/maintenance-progress"
-import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -29,12 +32,20 @@ import { RolloutRecovery } from "../session/rollout/recovery"
 import { ProcessRegistry } from "../process/registry"
 import { AgentTurn } from "../session/agent-turn/index"
 import { PolicyWorker } from "../enforcement/policy-worker/index"
+import { ToolResolver } from "../session/tool-resolver"
 import { ToolScheduler } from "../session/tool-scheduler"
-import { Observability, ObservabilityResources, ObservabilityStore } from "../observability/index"
+import {
+  Observability,
+  ObservabilityResources,
+  ObservabilityStore,
+  ObservabilityMetrics,
+  ObservabilityWriter,
+} from "../observability/index"
 import { configureRuntimeEndpoint } from "../util/runtime-endpoint"
 import { configureExecution, resolveExecutionConfiguration } from "../execution/execution-config"
 import { Log } from "../util/log"
 import { Bus } from "../bus"
+import { GlobalBus } from "../bus/global"
 import { SecretVault } from "../secrets/vault"
 
 const log = Log.create({ service: "runtime" })
@@ -64,15 +75,29 @@ export interface RuntimeServices {
   }
 }
 
+export interface RuntimeComposition {
+  register(): void
+  services?(): RuntimeServices
+}
+
+export type RuntimeStorage =
+  | { kind: "owned"; open(): Promise<{ handle: Storage.Handle; activate(): Promise<void>; needsValidation: boolean }> }
+  | { kind: "borrowed"; handle: Storage.Handle }
+
+const storageOwners = new WeakSet<Storage.Handle["store"]>()
+
 export namespace RuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
   export interface OpenOptions {
     experiment?: Experiment.File
-    storage?: Storage.Handle
+    host: RuntimeHost
+    composition: RuntimeComposition
+    storage: RuntimeStorage
+    signal?: AbortSignal
+    logging?: Log.Options
     mode: "server" | "oneshot"
     network?: RuntimeNetwork | (() => Promise<RuntimeNetwork>)
-    services?: RuntimeServices
     reporter?: MigrationReporter
     storageReporter?: (progress: ImportProgress) => void
     maintenanceReporter?: (event: StorageMaintenanceEvent) => void
@@ -81,26 +106,30 @@ export namespace RuntimeHandle {
   }
 
   export async function open(options: OpenOptions) {
-    let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
-    try {
-      return await observeStorageMaintenance(
-        async () => (runtime = await openRuntime(options)),
-        (event) => {
-          log.info("storage maintenance", event)
-          options.maintenanceReporter?.(event)
-        },
-      )
-    } catch (error) {
-      await runtime?.close().catch(() => {})
-      throw error
-    }
+    const instance = RuntimeContext.create(options.host)
+    return instance.run(async () => {
+      let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
+      try {
+        return await observeStorageMaintenance(
+          async () => (runtime = await openRuntime(options, instance)),
+          (event) => {
+            log.info("storage maintenance", event)
+            options.maintenanceReporter?.(event)
+          },
+        )
+      } catch (error) {
+        await runtime?.close().catch(() => {})
+        throw error
+      }
+    })
   }
 
-  async function openRuntime(options: OpenOptions) {
-    const services = options.services ?? {}
-    const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
-    let storage: StorageBootstrap.Prepared | undefined
-    let uninstallStorage: (() => void) | undefined
+  async function openRuntime(options: OpenOptions, instance: RuntimeContext.Instance) {
+    let services: RuntimeServices = {}
+    let phase: "opening" | "ready" | "closing" | "closed" = "opening"
+    let ownership: Awaited<ReturnType<typeof ServerProcessLock.acquire>> | undefined
+    let storage: Awaited<ReturnType<Extract<RuntimeStorage, { kind: "owned" }>["open"]>> | undefined
+    let attached = false
     let server: RuntimeServer | undefined
     let residentStarted = false
     let stopCompat: (() => Promise<void>) | undefined
@@ -108,6 +137,8 @@ export namespace RuntimeHandle {
     let stopVaultSync: (() => void) | undefined
     let vaultSync = Promise.resolve()
     let closing: Promise<void> | undefined
+    const shutdown = new AbortController()
+    const stopBackground: Array<() => void> = []
 
     function closeAdmission() {
       SessionManager.closeAdmission()
@@ -118,16 +149,28 @@ export namespace RuntimeHandle {
     }
 
     function close() {
+      shutdown.abort(new Error("Runtime is closing"))
+      phase = phase === "closed" ? "closed" : "closing"
       closing ??= (async () => {
-        closeAdmission()
         const errors: unknown[] = []
-        async function cleanup(action: () => Promise<unknown> | void) {
+        async function cleanup(action: () => unknown) {
           try {
             await action()
           } catch (error) {
             errors.push(error)
           }
         }
+        await cleanup(closeAdmission)
+        if (!attached) {
+          await cleanup(() => Log.close())
+          await cleanup(() => storage?.handle.store.close())
+          await cleanup(() => ownership?.release())
+          phase = "closed"
+          instance.dispose()
+          if (errors.length) throw new AggregateError(errors, "Synergy runtime cleanup failed")
+          return
+        }
+        for (const stop of stopBackground) await cleanup(stop)
         await cleanup(() => StorageRetention.stop())
         await cleanup(() => stopReclamation?.())
         await cleanup(() => stopCompat?.())
@@ -136,7 +179,7 @@ export namespace RuntimeHandle {
           await vaultSync
         })
         await cleanup(() => services.reload?.stop())
-        closeAdmission()
+        await cleanup(closeAdmission)
         if (residentStarted) await cleanup(() => services.resident?.stop())
         const resolved = await Promise.allSettled(
           SessionManager.listRunningRuntimes().map((runtime) => Session.get(runtime.sessionID)),
@@ -160,9 +203,9 @@ export namespace RuntimeHandle {
           )
           for (const result of results) if (result.status === "rejected") errors.push(result.reason)
         })
-        await cleanup(() => ProcessRegistry.killAllRunning())
+        await cleanup(() => ProcessRegistry.stop())
         await cleanup(() => SessionManager.drain())
-        await cleanup(() => SessionCortexRuntime.drain())
+        await cleanup(() => SessionCortexRuntime.stop())
         for (const session of sessions) {
           await cleanup(() => LoopJob.drain(session.id))
         }
@@ -172,43 +215,63 @@ export namespace RuntimeHandle {
         await cleanup(() => LoopJob.cancelDetachedAll())
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
+        await cleanup(() => ToolResolver.stop())
         await cleanup(() => LoopJob.drainAll())
         await cleanup(() => Session.flushPartWrites())
-        await cleanup(() => services.disposeExtensions?.())
-        await cleanup(() => ScopeRuntime.disposeAll())
         await cleanup(async () => {
           await server?.stop(true)
           configureRuntimeEndpoint(undefined)
         })
+        await cleanup(() => ModelsCatalog.stop())
+        await cleanup(() => ProviderCatalog.stop())
+        await cleanup(() => ScopeRuntime.stop())
+        await cleanup(() => services.disposeExtensions?.())
         await cleanup(() => SessionCompat.drain())
+        await cleanup(() => ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" }))
+        await cleanup(() => ObservabilityResources.stop())
+        await cleanup(() => Observability.flush())
+        await cleanup(() => ObservabilityWriter.stop())
+        await cleanup(() => ObservabilityMetrics.stop())
+        await cleanup(() => ObservabilityStore.stop())
+        await cleanup(() => GlobalBus().removeAllListeners())
+        await cleanup(() => Log.close())
         await cleanup(async () => {
-          // Re-arm only after execution and transport have both stopped;
-          // any cleanup failure keeps owners listed for startup recovery.
           if (errors.length === 0) await RolloutRecovery.settle()
         })
-        ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" })
-        ObservabilityResources.stop()
-        await cleanup(() => Observability.flush())
-        await cleanup(() => ObservabilityStore.close())
-        await cleanup(() => storage?.store.close())
-        uninstallStorage?.()
-        await cleanup(() => ownership.release())
-        ScopeStartup.configure("server")
-        Experiment.configureRuntime()
+        await cleanup(() => storage?.handle.store.close())
+        if (attached && instance.storage) storageOwners.delete(instance.storage.store)
+        instance.storage = undefined
+        await cleanup(() => ownership?.release())
+        phase = "closed"
+        instance.dispose()
         if (errors.length) throw new AggregateError(errors, "Synergy runtime cleanup failed")
       })()
       return closing
     }
 
     try {
+      options.signal?.throwIfAborted()
+      registerHarness()
+      options.composition.register()
+      ScopeStartup.plan()
+      services = options.composition.services?.() ?? {}
+      ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
+      RuntimeContext.sealComposition()
       MigrationRegistry.lock()
       ConfigExtensions.lock()
-      await Global.initialize({ configSchemaPath: options.services?.configSchemaPath })
-      if (options.storage) uninstallStorage = Storage.install(options.storage)
-      else {
-        storage = await StorageBootstrap.prepare({ root: Global.Path.root, progress: options.storageReporter })
-        uninstallStorage = Storage.install({ store: storage.store, artifactDirectory: Global.Path.data })
+      await Global.initialize({ configSchemaPath: services.configSchemaPath })
+      await Log.init(options.logging ?? { print: false })
+      options.signal?.throwIfAborted()
+      if (options.storage.kind === "owned") storage = await options.storage.open()
+      const handle = options.storage.kind === "borrowed" ? options.storage.handle : storage!.handle
+      if (storageOwners.has(handle.store)) {
+        storage = undefined
+        throw new Error("Another Runtime already owns this storage Handle")
       }
+      storageOwners.add(handle.store)
+      attached = true
+      instance.storage = handle
+      options.signal?.throwIfAborted()
       await SessionStaging.recover()
       const migration = await ensureMigrations({
         output: options.migrationOutput ?? "silent",
@@ -217,7 +280,7 @@ export namespace RuntimeHandle {
       await SessionCompat.prepareRecovery((current, total) =>
         options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
       )
-      if (storage && storage.manifest.phase !== "active")
+      if (storage?.needsValidation)
         await StorageRecovery.validate((current) =>
           options.storageReporter?.({ stage: "validate", current, total: 0, bytes: 0 }),
         )
@@ -226,6 +289,7 @@ export namespace RuntimeHandle {
       await StorageRecovery.load()
       await StorageRecovery.reconcileNotifications()
       options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
+      options.signal?.throwIfAborted()
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested, options.mode)
@@ -291,6 +355,7 @@ export namespace RuntimeHandle {
           await services.initializeExtensions?.()
         },
       })
+      options.signal?.throwIfAborted()
       if (services.transport) {
         const network = (typeof options.network === "function" ? await options.network() : options.network) ?? {
           hostname: "127.0.0.1",
@@ -311,7 +376,35 @@ export namespace RuntimeHandle {
         stopReclamation = StorageReclamation.start(Storage.current().store, {
           busy: () => SessionManager.activeRuntimeCount() > 0 || LoopJob.activeBackgroundCount() > 0,
         })
-      return { server, migration, config, shutdownTimeoutMs, closeAdmission, close, [Symbol.asyncDispose]: close }
+      options.signal?.throwIfAborted()
+      stopBackground.push(SessionManager.startIdleSweep())
+      stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
+      if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
+      phase = "ready"
+      const boundClose = () => closing ?? instance.run(close)
+      return {
+        server,
+        migration,
+        config,
+        shutdownTimeoutMs,
+        signal: shutdown.signal,
+        get status() {
+          return phase
+        },
+        run<T>(body: () => T): T {
+          if (phase !== "ready") throw new Error(`Runtime is ${phase}`)
+          return instance.run(body)
+        },
+        bind<A extends unknown[], R>(body: (...args: A) => R) {
+          return (...args: A) => {
+            if (phase !== "ready") throw new Error(`Runtime is ${phase}`)
+            return instance.run(() => body(...args))
+          }
+        },
+        closeAdmission: instance.bind(closeAdmission),
+        close: boundClose,
+        [Symbol.asyncDispose]: boundClose,
+      }
     } catch (error) {
       try {
         await close()

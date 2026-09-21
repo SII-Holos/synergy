@@ -288,8 +288,7 @@ export function isBundledBwrapAvailable(): boolean {
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
   ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
     ? {
-        [path.join(Global.Path.home, ".synergy", "sandbox-helper", "synergy-sandbox-linux")]:
-          SYNERGY_SANDBOX_HELPER_SHA256,
+        "synergy-sandbox-linux": SYNERGY_SANDBOX_HELPER_SHA256,
       }
     : {}),
 }

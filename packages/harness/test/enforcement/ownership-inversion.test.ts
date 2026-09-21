@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { SYNERGY_CAPABILITY_DETAILS, SYNERGY_PROFILE_CAPABILITIES } from "@ericsanchezok/synergy-util/capability"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
 const { EnforcementGate } = await import("../../src/enforcement/gate")
 const { ShellSafety } = await import("../../src/enforcement/shell-safety")
 
@@ -55,21 +59,30 @@ const HOST_LEVEL_SHAPES = [
 ]
 
 describe("ownership inversion — sandbox-inexpressible shapes stay refused", () => {
-  test.each(HOST_LEVEL_SHAPES)("autonomous refuses %j", async (command) => {
-    const gate = await gateFor("autonomous")
-    expect(gate.evaluate("bash", { command, workdir: WORKSPACE }).decision).toBe("deny")
-  })
+  test.each(HOST_LEVEL_SHAPES)(
+    "autonomous refuses %j",
+    runtime.bind(async (command) => {
+      const gate = await gateFor("autonomous")
+      expect(gate.evaluate("bash", { command, workdir: WORKSPACE }).decision).toBe("deny")
+    }),
+  )
 
-  test.each(HOST_LEVEL_SHAPES)("guarded never silently allows %j", async (command) => {
-    const gate = await gateFor("guarded")
-    expect(gate.evaluate("bash", { command, workdir: WORKSPACE }).decision).not.toBe("allow")
-  })
+  test.each(HOST_LEVEL_SHAPES)(
+    "guarded never silently allows %j",
+    runtime.bind(async (command) => {
+      const gate = await gateFor("guarded")
+      expect(gate.evaluate("bash", { command, workdir: WORKSPACE }).decision).not.toBe("allow")
+    }),
+  )
 
-  test.each(HOST_LEVEL_SHAPES)("the surviving classifier still refuses %j", (command) => {
-    const risk = ShellSafety.classifyBashRisk(command)
-    const refused = risk === "shell_destructive" || risk === "shell_hardline" || ShellSafety.isHardline(command)
-    expect({ command, refused }).toEqual({ command, refused: true })
-  })
+  test.each(HOST_LEVEL_SHAPES)(
+    "the surviving classifier still refuses %j",
+    runtime.bind((command) => {
+      const risk = ShellSafety.classifyBashRisk(command)
+      const refused = risk === "shell_destructive" || risk === "shell_hardline" || ShellSafety.isHardline(command)
+      expect({ command, refused }).toEqual({ command, refused: true })
+    }),
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -91,31 +104,39 @@ const PATH_BEARING_COMMANDS = [
 ]
 
 describe("ownership inversion — bash contributes no file capability", () => {
-  test.each(PATH_BEARING_COMMANDS)("autonomous bash emits no file_* for %j", async (command) => {
-    const gate = await gateFor("autonomous")
-    const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-    expect(fileCapabilities(envelope)).toEqual([])
-  })
+  test.each(PATH_BEARING_COMMANDS)(
+    "autonomous bash emits no file_* for %j",
+    runtime.bind(async (command) => {
+      const gate = await gateFor("autonomous")
+      const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+      expect(fileCapabilities(envelope)).toEqual([])
+    }),
+  )
 
-  test.each(PATH_BEARING_COMMANDS)("guarded bash emits no file_* for %j", async (command) => {
-    const gate = await gateFor("guarded")
-    const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-    expect(fileCapabilities(envelope)).toEqual([])
-  })
+  test.each(PATH_BEARING_COMMANDS)(
+    "guarded bash emits no file_* for %j",
+    runtime.bind(async (command) => {
+      const gate = await gateFor("guarded")
+      const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+      expect(fileCapabilities(envelope)).toEqual([])
+    }),
+  )
 
-  test("the bash workdir argument is not predicted either", async () => {
-    const gate = await gateFor("autonomous")
-    const envelope = gate.evaluate("bash", { command: "ls -la", workdir: "/etc" })
-    expect(fileCapabilities(envelope)).toEqual([])
-  })
+  test("the bash workdir argument is not predicted either", () =>
+    runtime.run(async () => {
+      const gate = await gateFor("autonomous")
+      const envelope = gate.evaluate("bash", { command: "ls -la", workdir: "/etc" })
+      expect(fileCapabilities(envelope)).toEqual([])
+    }))
 
-  test("structured tools keep owning their literal path arguments", async () => {
-    const gate = await gateFor("autonomous")
-    const external = gate.classify("read", { filePath: "/etc/passwd" })
-    expect(external.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(true)
-    const inside = gate.classify("write", { filePath: `${WORKSPACE}/out.txt` })
-    expect(inside.capabilities.some((cap: any) => cap.class === "file_write")).toBe(true)
-  })
+  test("structured tools keep owning their literal path arguments", () =>
+    runtime.run(async () => {
+      const gate = await gateFor("autonomous")
+      const external = gate.classify("read", { filePath: "/etc/passwd" })
+      expect(external.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(true)
+      const inside = gate.classify("write", { filePath: `${WORKSPACE}/out.txt` })
+      expect(inside.capabilities.some((cap: any) => cap.class === "file_write")).toBe(true)
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -166,14 +187,14 @@ const RELEASED_FALSE_POSITIVES: Array<{ record: string; command: string }> = [
 describe("ownership inversion — historical false positives stay released", () => {
   test.each(RELEASED_FALSE_POSITIVES.map((item) => [item.record, item.command]))(
     "autonomous allows %s with no file capability",
-    async (_record: string, command: string) => {
+    runtime.bind(async (_record: string, command: string) => {
       const gate = await gateFor("autonomous")
       const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
       expect(envelope.decision).toBe("allow")
       expect(fileCapabilities(envelope)).toEqual([])
       expect(envelope.capabilities.some((cap: any) => cap.class === "shell_destructive")).toBe(false)
       expect(envelope.capabilities.some((cap: any) => cap.class === "shell_hardline")).toBe(false)
-    },
+    }),
   )
 })
 
@@ -194,30 +215,37 @@ const SANDBOX_OWNED_SHAPES = [
 ]
 
 describe("ownership inversion — filesystem-only shapes move to the sandbox", () => {
-  test.each(SANDBOX_OWNED_SHAPES)("autonomous no longer refuses %j", async (command) => {
-    const gate = await gateFor("autonomous")
-    const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-    expect(envelope.decision).toBe("allow")
-    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_destructive")).toBe(false)
-  })
+  test.each(SANDBOX_OWNED_SHAPES)(
+    "autonomous no longer refuses %j",
+    runtime.bind(async (command) => {
+      const gate = await gateFor("autonomous")
+      const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.capabilities.some((cap: any) => cap.class === "shell_destructive")).toBe(false)
+    }),
+  )
 
-  test.each(SANDBOX_OWNED_SHAPES)("the classifier no longer marks %j destructive", (command) => {
-    const risk = ShellSafety.classifyBashRisk(command)
-    expect({ command, risk }).toEqual({ command, risk: risk === "shell" ? "shell" : risk })
-    expect(risk).toBe("shell")
-  })
+  test.each(SANDBOX_OWNED_SHAPES)(
+    "the classifier no longer marks %j destructive",
+    runtime.bind((command) => {
+      const risk = ShellSafety.classifyBashRisk(command)
+      expect({ command, risk }).toEqual({ command, risk: risk === "shell" ? "shell" : risk })
+      expect(risk).toBe("shell")
+    }),
+  )
 
   // The external-target half of the accepted handover: the gate stops emitting
   // an external-write capability, and the OS sandbox is what refuses the write
   // outside the workspace (packages/runtime-local/test/sandbox/
   // containment-baseline.test.ts asserts the runtime EPERM side).
-  test("an external target in the same shape carries no predicted capability", async () => {
-    const gate = await gateFor("autonomous")
-    for (const command of ["rm -rf /etc/foo", "find /etc -delete", "rm -rf ../outside"]) {
-      const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-      expect(fileCapabilities(envelope)).toEqual([])
-    }
-  })
+  test("an external target in the same shape carries no predicted capability", () =>
+    runtime.run(async () => {
+      const gate = await gateFor("autonomous")
+      for (const command of ["rm -rf /etc/foo", "find /etc -delete", "rm -rf ../outside"]) {
+        const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+        expect(fileCapabilities(envelope)).toEqual([])
+      }
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -237,50 +265,57 @@ describe("ownership inversion — full_access parity", () => {
     "git status > /tmp/out",
   ]
 
-  test.each(FULL_ACCESS_ALLOWED)("full_access allows %j", async (command) => {
-    const gate = await gateFor("full_access")
-    const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-    expect(envelope.decision).toBe("allow")
-    expect(envelope.refusal).toBeUndefined()
-  })
+  test.each(FULL_ACCESS_ALLOWED)(
+    "full_access allows %j",
+    runtime.bind(async (command) => {
+      const gate = await gateFor("full_access")
+      const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.refusal).toBeUndefined()
+    }),
+  )
 
-  test("full_access sandbox policy is untouched", async () => {
-    const gate = await gateFor("full_access")
-    expect(gate.getSandbox()).toMatchObject({ mode: "none", fallback: "allow" })
-  })
+  test("full_access sandbox policy is untouched", () =>
+    runtime.run(async () => {
+      const gate = await gateFor("full_access")
+      expect(gate.getSandbox()).toMatchObject({ mode: "none", fallback: "allow" })
+    }))
 })
 
 // ---------------------------------------------------------------------------
 // 6. The shell_read capability is retired from the table and the classifier.
 // ---------------------------------------------------------------------------
 describe("ownership inversion — shell_read is retired", () => {
-  test("the capability table no longer declares shell_read", () => {
-    expect(Object.keys(SYNERGY_CAPABILITY_DETAILS)).not.toContain("shell_read")
-    expect(SYNERGY_PROFILE_CAPABILITIES as readonly string[]).not.toContain("shell_read")
-  })
+  test("the capability table no longer declares shell_read", () =>
+    runtime.run(() => {
+      expect(Object.keys(SYNERGY_CAPABILITY_DETAILS)).not.toContain("shell_read")
+      expect(SYNERGY_PROFILE_CAPABILITIES as readonly string[]).not.toContain("shell_read")
+    }))
 
-  test("no profile resolves a shell_read rule", async () => {
-    for (const profileId of ["guarded", "autonomous", "full_access"] as const) {
-      const gate = await gateFor(profileId)
-      const permissions = gate.getProfileInfo().ruleset.map((item: any) => item.permission)
-      expect(permissions).not.toContain("shell_read")
-    }
-  })
+  test("no profile resolves a shell_read rule", () =>
+    runtime.run(async () => {
+      for (const profileId of ["guarded", "autonomous", "full_access"] as const) {
+        const gate = await gateFor(profileId)
+        const permissions = gate.getProfileInfo().ruleset.map((item: any) => item.permission)
+        expect(permissions).not.toContain("shell_read")
+      }
+    }))
 
   test.each(["ls -la", "pwd", "git log --oneline", "ls | grep foo", "ls && git log"])(
     "the classifier no longer mints shell_read for %j",
-    (command) => {
+    runtime.bind((command) => {
       expect(ShellSafety.classifyBashRisk(command)).toBe("shell")
-    },
+    }),
   )
 
-  test("no bash evaluation mints a shell_read capability", async () => {
-    const gate = await gateFor("autonomous")
-    for (const command of ["ls -la", "cat file.txt", "git status", "echo hi"]) {
-      const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
-      expect(envelope.capabilities.map((cap: any) => cap.class)).not.toContain("shell_read")
-    }
-  })
+  test("no bash evaluation mints a shell_read capability", () =>
+    runtime.run(async () => {
+      const gate = await gateFor("autonomous")
+      for (const command of ["ls -la", "cat file.txt", "git status", "echo hi"]) {
+        const envelope = gate.evaluate("bash", { command, workdir: WORKSPACE })
+        expect(envelope.capabilities.map((cap: any) => cap.class)).not.toContain("shell_read")
+      }
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -299,24 +334,32 @@ describe("ownership inversion — privilege escalation stays owned by the classi
     "xargs sudo rm -rf",
   ]
 
-  test.each(SUDO_SHAPES)("the classifier still detects privilege escalation in %j", (command) => {
-    expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
-    expect(ShellSafety.classifyBashRisk(command)).toBe("shell_destructive")
-  })
+  test.each(SUDO_SHAPES)(
+    "the classifier still detects privilege escalation in %j",
+    runtime.bind((command) => {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+      expect(ShellSafety.classifyBashRisk(command)).toBe("shell_destructive")
+    }),
+  )
 
-  test("a quoted mention of sudo is still not privilege escalation", () => {
-    expect(ShellSafety.hasSudoInvocation("echo sudo make install")).toBe(false)
-    expect(ShellSafety.hasSudoInvocation(`python3 -c 'print("sudo")'`)).toBe(false)
-  })
+  test("a quoted mention of sudo is still not privilege escalation", () =>
+    runtime.run(() => {
+      expect(ShellSafety.hasSudoInvocation("echo sudo make install")).toBe(false)
+      expect(ShellSafety.hasSudoInvocation(`python3 -c 'print("sudo")'`)).toBe(false)
+    }))
 
-  test("irreversible destruction of a system location stays destructive", () => {
-    expect(ShellSafety.classifyBashRisk("shred /etc/passwd")).toBe("shell_destructive")
-    expect(ShellSafety.classifyBashRisk("truncate -s 0 /etc/hosts")).toBe("shell_destructive")
-  })
+  test("irreversible destruction of a system location stays destructive", () =>
+    runtime.run(() => {
+      expect(ShellSafety.classifyBashRisk("shred /etc/passwd")).toBe("shell_destructive")
+      expect(ShellSafety.classifyBashRisk("truncate -s 0 /etc/hosts")).toBe("shell_destructive")
+    }))
 
-  test("remote and branch risk classes survive", () => {
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_publish")
-    expect(ShellSafety.classifyBashRisk("git push --force origin main")).toBe("shell_remote_write")
-    expect(ShellSafety.classifyBashRisk("git checkout main")).toBe("shell_branch_mutation")
-  })
+  test("remote and branch risk classes survive", () =>
+    runtime.run(() => {
+      expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_publish")
+      expect(ShellSafety.classifyBashRisk("git push --force origin main")).toBe("shell_remote_write")
+      expect(ShellSafety.classifyBashRisk("git checkout main")).toBe("shell_branch_mutation")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

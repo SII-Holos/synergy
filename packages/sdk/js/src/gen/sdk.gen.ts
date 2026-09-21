@@ -663,6 +663,8 @@ import type {
   SessionStatusResponses,
   SessionSummarizeErrors,
   SessionSummarizeResponses,
+  SessionTagQuery,
+  SessionTags,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionUnrollbackErrors,
@@ -2054,6 +2056,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       category?: "project" | "home" | "channel" | "background" | "github"
+      tag?: SessionTagQuery
       parentOnly?: "true" | "false"
       includeArchived?: "true" | "false"
       limit?: number
@@ -2070,6 +2073,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "category" },
+            { in: "query", key: "tag" },
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },
             { in: "query", key: "limit" },
@@ -2203,6 +2207,7 @@ export class Session extends HeyApiClient {
       since?: number
       before?: number
       pinned?: boolean
+      tag?: SessionTagQuery
       parentOnly?: boolean
     },
     options?: Options<never, ThrowOnError>,
@@ -2220,6 +2225,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "since" },
             { in: "query", key: "before" },
             { in: "query", key: "pinned" },
+            { in: "query", key: "tag" },
             { in: "query", key: "parentOnly" },
           ],
         },
@@ -2243,6 +2249,7 @@ export class Session extends HeyApiClient {
       scopeID?: string
       parentID?: string
       title?: string
+      tags?: SessionTags
       id?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
       workspace?: SessionWorkspaceSelection
@@ -2261,6 +2268,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
+            { in: "body", key: "tags" },
             { in: "body", key: "id" },
             { in: "body", key: "controlProfile" },
             { in: "body", key: "workspace" },
@@ -2386,6 +2394,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       title?: string
+      tags?: SessionTags
       pinned?: number
       controlProfile?: "guarded" | "autonomous" | "full_access"
       resolvePendingPermissions?: boolean
@@ -2411,6 +2420,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "body", key: "title" },
+            { in: "body", key: "tags" },
             { in: "body", key: "pinned" },
             { in: "body", key: "controlProfile" },
             { in: "body", key: "resolvePendingPermissions" },
@@ -3832,6 +3842,7 @@ export class Nav extends HeyApiClient {
       includeArchived?: boolean
       category?: "project" | "home" | "channel" | "background" | "github"
       channelType?: string
+      tag?: SessionTagQuery
       search?: string
       limit?: number
       cursorLastActivityAt?: number
@@ -3848,6 +3859,7 @@ export class Nav extends HeyApiClient {
             { in: "query", key: "includeArchived" },
             { in: "query", key: "category" },
             { in: "query", key: "channelType" },
+            { in: "query", key: "tag" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursorLastActivityAt" },
@@ -6373,6 +6385,7 @@ export class Pty extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
+      sessionID?: string
       command?: string
       args?: Array<string>
       cwd?: string
@@ -6390,6 +6403,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "sessionID" },
             { in: "body", key: "command" },
             { in: "body", key: "args" },
             { in: "body", key: "cwd" },
@@ -6710,15 +6724,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6760,15 +6774,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6817,15 +6831,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -7075,15 +7089,15 @@ export class Config extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
         | Array<
             | "general"
@@ -7094,15 +7108,15 @@ export class Config extends HeyApiClient {
             | "permissions"
             | "runtime"
             | "storage"
-            | "plugins"
+            | "skills"
+            | "worktree"
+            | "mcp"
+            | "library"
             | "channels"
             | "holos"
             | "email"
             | "github"
-            | "library"
-            | "mcp"
-            | "skills"
-            | "worktree"
+            | "plugins"
             | "voice"
           >
       includeSecrets?: string

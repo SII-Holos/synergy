@@ -51,7 +51,8 @@ type SessionAttachmentPart = {
   type: "session"
   id: string
   sessionId: string
-  directory: string
+  scopeID: string | null
+  legacyDirectory?: string
   title: string
   updatedAt?: number
 }
@@ -267,12 +268,18 @@ function restoreLegacyPromptDraft(parts: Part[], opts?: { directory?: string }):
 
     if (filePart.metadata?.kind === "session") {
       const metadata = filePart.metadata
-      if (typeof metadata.sessionId === "string" && typeof metadata.directory === "string") {
+      if (
+        typeof metadata.sessionId === "string" &&
+        (typeof metadata.scopeID === "string" || typeof metadata.directory === "string")
+      ) {
         sessionAttachments.push({
           type: "session",
           id: filePart.id,
           sessionId: metadata.sessionId,
-          directory: metadata.directory,
+          scopeID: typeof metadata.scopeID === "string" ? metadata.scopeID : null,
+          ...(typeof metadata.scopeID !== "string" && typeof metadata.directory === "string"
+            ? { legacyDirectory: metadata.directory }
+            : {}),
           title: typeof metadata.title === "string" ? metadata.title : (filePart.filename ?? "Untitled"),
           updatedAt: typeof metadata.updatedAt === "number" ? metadata.updatedAt : undefined,
         })

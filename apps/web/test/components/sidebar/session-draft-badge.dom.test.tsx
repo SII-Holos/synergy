@@ -11,7 +11,8 @@ let page: Page
 let server: ViteDevServer
 let fixtureDirectory: string
 
-const DIR = "/tmp/draft-dom-fixture"
+const CONNECTION = "http://127.0.0.1:4401"
+const DIR = Persist.scopeKey(CONNECTION, "project")
 const dirtyPromptState = JSON.stringify({
   prompt: [{ type: "text", content: "unsent input", start: 0, end: 12 }],
   context: { items: [] },
@@ -34,12 +35,14 @@ beforeAll(async () => {
       `
         import { render } from "solid-js/web"
         import { SessionDraftBadge } from ${JSON.stringify(`/@fs/${badgePath}`)}
-        import { markDraftSession, rebuildDraftSessionIndex } from ${JSON.stringify(`/@fs/${draftIndexPath}`)}
+        import { createDraftSessionIndex } from ${JSON.stringify(`/@fs/${draftIndexPath}`)}
+
+        const { markDraftSession, rebuildDraftSessionIndex, hasDraftSession } = createDraftSessionIndex('http://127.0.0.1:4401')
 
         function DraftRow(props: { sessionID: string; title: string }) {
           return (
             <button type="button" data-row={props.sessionID}>
-              <SessionDraftBadge sessionID={props.sessionID} label="Draft" />
+              <SessionDraftBadge dirty={hasDraftSession(props.sessionID)} sessionID={props.sessionID} label="Draft" />
               <span class="row-title">{props.title}</span>
             </button>
           )

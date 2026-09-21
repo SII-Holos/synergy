@@ -4,6 +4,9 @@ import path from "path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function withWorkspace<T>(init: (dir: string) => Promise<void>, fn: (dir: string) => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true, init })
@@ -21,38 +24,42 @@ async function withWorkspace<T>(init: (dir: string) => Promise<void>, fn: (dir: 
 }
 
 describe("WorkspaceFileStatus", () => {
-  test("does not read large untracked files for line counts", async () => {
-    await withWorkspace(
-      async (dir) => {
-        await Bun.write(path.join(dir, "large-untracked.txt"), "x".repeat(300 * 1024))
-      },
-      async () => {
-        const summary = await WorkspaceFileStatus.summary({ force: true })
-        const file = summary.files.find((item) => item.path === "large-untracked.txt")
-        expect(file).toMatchObject({ path: "large-untracked.txt", status: "untracked" })
-        expect(file?.added).toBeUndefined()
-        expect(file?.removed).toBeUndefined()
-      },
-    )
-  })
+  test("does not read large untracked files for line counts", () =>
+    runtime.run(async () => {
+      await withWorkspace(
+        async (dir) => {
+          await Bun.write(path.join(dir, "large-untracked.txt"), "x".repeat(300 * 1024))
+        },
+        async () => {
+          const summary = await WorkspaceFileStatus.summary({ force: true })
+          const file = summary.files.find((item) => item.path === "large-untracked.txt")
+          expect(file).toMatchObject({ path: "large-untracked.txt", status: "untracked" })
+          expect(file?.added).toBeUndefined()
+          expect(file?.removed).toBeUndefined()
+        },
+      )
+    }))
 
-  test("skips untracked line counts when the untracked set is too large", async () => {
-    await withWorkspace(
-      async (dir) => {
-        await fs.mkdir(path.join(dir, "many"), { recursive: true })
-        await Promise.all(
-          Array.from({ length: 201 }, (_, index) =>
-            Bun.write(path.join(dir, "many", `file-${index}.txt`), "one\ntwo\n"),
-          ),
-        )
-      },
-      async () => {
-        const summary = await WorkspaceFileStatus.summary({ force: true })
-        const file = summary.files.find((item) => item.path === "many/file-0.txt")
-        expect(file).toMatchObject({ path: "many/file-0.txt", status: "untracked" })
-        expect(file?.added).toBeUndefined()
-        expect(file?.removed).toBeUndefined()
-      },
-    )
-  })
+  test("skips untracked line counts when the untracked set is too large", () =>
+    runtime.run(async () => {
+      await withWorkspace(
+        async (dir) => {
+          await fs.mkdir(path.join(dir, "many"), { recursive: true })
+          await Promise.all(
+            Array.from({ length: 201 }, (_, index) =>
+              Bun.write(path.join(dir, "many", `file-${index}.txt`), "one\ntwo\n"),
+            ),
+          )
+        },
+        async () => {
+          const summary = await WorkspaceFileStatus.summary({ force: true })
+          const file = summary.files.find((item) => item.path === "many/file-0.txt")
+          expect(file).toMatchObject({ path: "many/file-0.txt", status: "untracked" })
+          expect(file?.added).toBeUndefined()
+          expect(file?.removed).toBeUndefined()
+        },
+      )
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

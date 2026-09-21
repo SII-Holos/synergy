@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
 import { Log } from "../util/log"
 import {
@@ -401,7 +402,7 @@ export namespace LLM {
   export function stream(input: StreamInput): Promise<StreamOutput>
   export function stream(input: PreparedStreamInput): Promise<StreamOutput>
   export async function stream(input: StreamInput | PreparedStreamInput): Promise<StreamOutput> {
-    if (process.env.SYNERGY_AGENT_WORKER && !input.prepared) {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER && !input.prepared) {
       throw new Error("Agent worker requires a Control Plane-prepared provider request")
     }
     // Provider-payload safety net: the vault masks registered values in the
@@ -421,7 +422,7 @@ export namespace LLM {
     })
     const langTimer = l.time("provider.getLanguage")
     const prepared = input.prepared ?? (await prepare(input as StreamInput))
-    if (process.env.SYNERGY_AGENT_WORKER === "1") {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") {
       await Provider.configureWorkerProvider(input.model, prepared.provider)
     }
     const language = await Provider.getLanguage(input.model)

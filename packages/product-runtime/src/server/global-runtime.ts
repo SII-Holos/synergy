@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Agenda } from "@ericsanchezok/synergy-workflows/agenda"
 import { AnimaSchedule } from "../runtime/anima-schedule"
 import { ChannelOutbound } from "@ericsanchezok/synergy-connections/channel/outbound"
@@ -20,14 +21,20 @@ import { PushBridge } from "@ericsanchezok/synergy-workbench/push/bridge"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
-  let started: Promise<void> | undefined
-  let disposePushBridge: (() => void) | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    started: undefined as Promise<void> | undefined,
+    disposePushBridge: undefined as (() => void) | undefined,
+  }))
 
   export async function start(config: Config.Info) {
-    if (!started) {
-      started = ScopeContext.provide({
+    const instanceState = runtimeState()
+
+    if (!instanceState.started) {
+      instanceState.started = ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
+          const instanceState = runtimeState()
+
           log.info("starting")
           await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
@@ -38,7 +45,7 @@ export namespace GlobalRuntime {
             log.warn("response-card expired registration cleanup failed", { error })
           })
           await startChannels(config)
-          disposePushBridge = PushBridge.init()
+          instanceState.disposePushBridge = PushBridge.init()
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
@@ -53,16 +60,18 @@ export namespace GlobalRuntime {
         },
       })
     }
-    return started
+    return instanceState.started
   }
 
   export async function stop() {
+    const instanceState = runtimeState()
+
     Agenda.stop()
     // Stop accepting new pushes and wait for queued fan-outs before the
     // storage/services they rely on are torn down.
-    if (disposePushBridge) {
-      disposePushBridge()
-      disposePushBridge = undefined
+    if (instanceState.disposePushBridge) {
+      instanceState.disposePushBridge()
+      instanceState.disposePushBridge = undefined
     }
     await PushBridge.flush().catch(() => undefined)
     await Promise.all([
@@ -73,7 +82,7 @@ export namespace GlobalRuntime {
         },
       }),
     ])
-    started = undefined
+    instanceState.started = undefined
   }
 
   async function startChannels(cfg: Config.Info) {

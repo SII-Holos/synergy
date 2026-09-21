@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
 import { fileURLToPath } from "url"
 import { stat, realpath } from "fs/promises"
@@ -226,7 +227,7 @@ function resolveCandidate(raw: string, cwd: string): string | undefined {
   }
 
   if (value.startsWith("~/")) {
-    return path.join(process.env.HOME ?? "", value.slice(2))
+    return path.join(RuntimeContext.current().host.env.HOME ?? "", value.slice(2))
   }
   if (path.isAbsolute(value)) return value
   return path.resolve(cwd, value)

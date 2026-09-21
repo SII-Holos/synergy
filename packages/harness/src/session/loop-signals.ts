@@ -69,53 +69,229 @@ function detectToolFailurePattern(
 
 // ─── compact signal ────────────────────────────────────────────────
 
-LoopJob.defineSignal({
-  type: "compact",
-  detect(ctx) {
-    return SessionCompaction.hasPendingCompaction(ctx.lastUserParts, ctx.messages, ctx.lastUser.id)
-  },
-})
+export function registerLoopSignals() {
+  LoopJob.defineSignal({
+    type: "compact",
+    detect(ctx) {
+      return SessionCompaction.hasPendingCompaction(ctx.lastUserParts, ctx.messages, ctx.lastUser.id)
+    },
+  })
+  LoopJob.defineSignal({
+    type: "error_loop",
+    detect(ctx) {
+      if (ctx.step < ERROR_LOOP_THRESHOLD) return false
+
+      const recent = recentAssistants(ctx, ERROR_LOOP_THRESHOLD)
+      if (recent.length < ERROR_LOOP_THRESHOLD) return false
+
+      const errorSignatures: string[] = []
+      for (const msg of recent) {
+        const errorParts = msg.parts.filter(
+          (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "error",
+        )
+        if (errorParts.length === 0) return false
+
+        const sig = errorParts
+          .map((p) => {
+            const errorText = p.state.status === "error" ? p.state.error : ""
+            return `${p.tool}:${extractErrorName(errorText)}`
+          })
+          .sort()
+          .join("|")
+        errorSignatures.push(sig)
+      }
+
+      const allSame = errorSignatures.every((sig) => sig === errorSignatures[0])
+      if (allSame) {
+        log.warn("error loop detected", {
+          sessionID: ctx.sessionID,
+          step: ctx.step,
+          signature: errorSignatures[0],
+        })
+      }
+      return allSame
+    },
+  })
+  LoopJob.register({
+    type: "error_loop_breaker",
+    phase: "pre",
+    blocking: true,
+    signals: ["error_loop"],
+    collect() {
+      return []
+    },
+    async execute(ctx) {
+      const msg = lastAssistant(ctx)
+
+      const errorParts = msg?.parts.filter(
+        (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "error",
+      )
+
+      const errorSummary = errorParts?.length
+        ? errorParts
+            .map((p) => {
+              const errorText = p.state.status === "error" ? p.state.error : ""
+              return `${p.tool}: ${errorText.slice(0, 200)}`
+            })
+            .join("; ")
+        : "unknown error"
+
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: ctx.lastUser.id,
+        sessionID: ctx.sessionID,
+        type: "text",
+        text: `[Tool error loop detected] The same tool has failed ${ERROR_LOOP_THRESHOLD} times in a row with the same error class. Stopping to avoid wasting further resources. Last error: ${errorSummary}`,
+        time: { start: Date.now(), end: Date.now() },
+        synthetic: true,
+      })
+
+      return "stop"
+    },
+  })
+  LoopJob.defineSignal({
+    type: "repeat_loop",
+    detect(ctx) {
+      const recent = recentAssistants(ctx, REPEAT_LOOP_THRESHOLD)
+      if (recent.length < REPEAT_LOOP_THRESHOLD) return false
+
+      const sigs: string[] = []
+      for (const msg of recent) {
+        const successfulParts = msg.parts.filter(
+          (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "completed",
+        )
+        if (successfulParts.length === 0) return false
+        sigs.push(successfulParts.map(toolCallKey).sort().join("|"))
+      }
+
+      const allSame = sigs.every((s) => s === sigs[0])
+      if (allSame) {
+        log.warn("repeat loop detected", {
+          sessionID: ctx.sessionID,
+          step: ctx.step,
+          signature: sigs[0],
+        })
+      }
+      return allSame
+    },
+  })
+  LoopJob.register({
+    type: "repeat_loop_injector",
+    phase: "pre",
+    blocking: true,
+    signals: ["repeat_loop"],
+    collect() {
+      return []
+    },
+    async execute(ctx) {
+      const msg = lastAssistant(ctx)
+
+      const toolParts = msg?.parts.filter(
+        (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "completed",
+      )
+      if (!toolParts?.length) return "pass"
+
+      const toolSummary = toolParts
+        .map((p) => {
+          const args = JSON.stringify(p.state.input).slice(0, 120)
+          return `  - ${p.tool}(${args})`
+        })
+        .join("\n")
+
+      const warning = [
+        `[Tool repeat loop detected] The same tool has been called successfully with the same arguments ${REPEAT_LOOP_THRESHOLD} times in a row. This may indicate an infinite loop.`,
+        `Before continuing, verify that the tool is making progress. If stuck, try a different approach or report the situation to the user.`,
+        `Last successful calls:`,
+        toolSummary,
+      ].join("\n")
+
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: ctx.lastUser.id,
+        sessionID: ctx.sessionID,
+        type: "text",
+        text: warning,
+        time: { start: Date.now(), end: Date.now() },
+        synthetic: true,
+      })
+
+      return "pass"
+    },
+  })
+  LoopJob.defineSignal({
+    type: "tool_failure_pattern",
+    detect(ctx) {
+      return detectToolFailurePattern(ctx) !== null
+    },
+  })
+  LoopJob.register({
+    type: "tool_failure_pattern_injector",
+    phase: "pre",
+    blocking: true,
+    signals: ["tool_failure_pattern"],
+    collect() {
+      return []
+    },
+    async execute(ctx) {
+      const result = detectToolFailurePattern(ctx)
+      if (!result) return "pass"
+
+      const { analyzer, pattern } = result
+      const text = analyzer.buildIntervention(pattern)
+
+      // Inject as a synthetic part on the current user message.
+      // Uses the same mechanism as error_loop_breaker and repeat_loop_injector
+      // (Session.updatePart) so the marker is immediately visible to both
+      // hasInjectedMarker on the next detect cycle and the frontend renderer.
+      const part = (await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: ctx.lastUser.id,
+        sessionID: ctx.sessionID,
+        type: "text",
+        text,
+        synthetic: true,
+        time: { start: Date.now(), end: Date.now() },
+      })) as MessageV2.Part
+
+      ctx.lastUserParts.push(part)
+      const userMessage = ctx.messages.find((msg) => msg.info.id === ctx.lastUser.id)
+      if (userMessage && userMessage.parts !== ctx.lastUserParts) userMessage.parts.push(part)
+
+      return "pass"
+    },
+  })
+  LoopJob.register({
+    type: "git_health_cache_invalidator",
+    phase: "post",
+    blocking: false,
+    collect(ctx) {
+      const assistant = lastAssistant(ctx)
+      if (!assistant) return []
+      const ranBash = assistant.parts.some(
+        (p): p is MessageV2.ToolPart => p.type === "tool" && p.tool === "bash" && p.state.status !== "pending",
+      )
+      return ranBash ? [{ type: "git_health_cache_invalidator" }] : []
+    },
+    capture(ctx) {
+      return {
+        type: "git_health_cache_invalidator",
+        sessionID: ctx.sessionID,
+        directory: ScopeContext.current.directory,
+      }
+    },
+    key(input) {
+      return input.directory
+    },
+    async execute(input, _signal) {
+      SessionProjectHealth.invalidateGitHealth(input.directory)
+      return "pass"
+    },
+  })
+}
 
 // ─── error loop: same tool + same error class, all failed ──────────
 
 const ERROR_LOOP_THRESHOLD = 10
-
-LoopJob.defineSignal({
-  type: "error_loop",
-  detect(ctx) {
-    if (ctx.step < ERROR_LOOP_THRESHOLD) return false
-
-    const recent = recentAssistants(ctx, ERROR_LOOP_THRESHOLD)
-    if (recent.length < ERROR_LOOP_THRESHOLD) return false
-
-    const errorSignatures: string[] = []
-    for (const msg of recent) {
-      const errorParts = msg.parts.filter(
-        (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "error",
-      )
-      if (errorParts.length === 0) return false
-
-      const sig = errorParts
-        .map((p) => {
-          const errorText = p.state.status === "error" ? p.state.error : ""
-          return `${p.tool}:${extractErrorName(errorText)}`
-        })
-        .sort()
-        .join("|")
-      errorSignatures.push(sig)
-    }
-
-    const allSame = errorSignatures.every((sig) => sig === errorSignatures[0])
-    if (allSame) {
-      log.warn("error loop detected", {
-        sessionID: ctx.sessionID,
-        step: ctx.step,
-        signature: errorSignatures[0],
-      })
-    }
-    return allSame
-  },
-})
 
 function extractErrorName(error: string): string {
   const colonIndex = error.indexOf(":")
@@ -126,44 +302,6 @@ function extractErrorName(error: string): string {
   return "UnknownError"
 }
 
-LoopJob.register({
-  type: "error_loop_breaker",
-  phase: "pre",
-  blocking: true,
-  signals: ["error_loop"],
-  collect() {
-    return []
-  },
-  async execute(ctx) {
-    const msg = lastAssistant(ctx)
-
-    const errorParts = msg?.parts.filter(
-      (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "error",
-    )
-
-    const errorSummary = errorParts?.length
-      ? errorParts
-          .map((p) => {
-            const errorText = p.state.status === "error" ? p.state.error : ""
-            return `${p.tool}: ${errorText.slice(0, 200)}`
-          })
-          .join("; ")
-      : "unknown error"
-
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: ctx.lastUser.id,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text: `[Tool error loop detected] The same tool has failed ${ERROR_LOOP_THRESHOLD} times in a row with the same error class. Stopping to avoid wasting further resources. Last error: ${errorSummary}`,
-      time: { start: Date.now(), end: Date.now() },
-      synthetic: true,
-    })
-
-    return "stop"
-  },
-})
-
 // ─── repeat loop: same tool + same params, all successful ──────────
 
 const REPEAT_LOOP_THRESHOLD = 3
@@ -171,77 +309,6 @@ const REPEAT_LOOP_THRESHOLD = 3
 function toolCallKey(part: MessageV2.ToolPart): string {
   return `${part.tool}::${JSON.stringify(part.state.input)}`
 }
-
-LoopJob.defineSignal({
-  type: "repeat_loop",
-  detect(ctx) {
-    const recent = recentAssistants(ctx, REPEAT_LOOP_THRESHOLD)
-    if (recent.length < REPEAT_LOOP_THRESHOLD) return false
-
-    const sigs: string[] = []
-    for (const msg of recent) {
-      const successfulParts = msg.parts.filter(
-        (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "completed",
-      )
-      if (successfulParts.length === 0) return false
-      sigs.push(successfulParts.map(toolCallKey).sort().join("|"))
-    }
-
-    const allSame = sigs.every((s) => s === sigs[0])
-    if (allSame) {
-      log.warn("repeat loop detected", {
-        sessionID: ctx.sessionID,
-        step: ctx.step,
-        signature: sigs[0],
-      })
-    }
-    return allSame
-  },
-})
-
-LoopJob.register({
-  type: "repeat_loop_injector",
-  phase: "pre",
-  blocking: true,
-  signals: ["repeat_loop"],
-  collect() {
-    return []
-  },
-  async execute(ctx) {
-    const msg = lastAssistant(ctx)
-
-    const toolParts = msg?.parts.filter(
-      (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "completed",
-    )
-    if (!toolParts?.length) return "pass"
-
-    const toolSummary = toolParts
-      .map((p) => {
-        const args = JSON.stringify(p.state.input).slice(0, 120)
-        return `  - ${p.tool}(${args})`
-      })
-      .join("\n")
-
-    const warning = [
-      `[Tool repeat loop detected] The same tool has been called successfully with the same arguments ${REPEAT_LOOP_THRESHOLD} times in a row. This may indicate an infinite loop.`,
-      `Before continuing, verify that the tool is making progress. If stuck, try a different approach or report the situation to the user.`,
-      `Last successful calls:`,
-      toolSummary,
-    ].join("\n")
-
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: ctx.lastUser.id,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text: warning,
-      time: { start: Date.now(), end: Date.now() },
-      synthetic: true,
-    })
-
-    return "pass"
-  },
-})
 
 // ─── tool failure pattern: category-specific escalations ───────────
 //
@@ -252,76 +319,4 @@ LoopJob.register({
 // Current analyzers (auto-registered in search-guard.ts):
 //   - search: scholar agent search/fetch failures → reflection → early stop
 
-LoopJob.defineSignal({
-  type: "tool_failure_pattern",
-  detect(ctx) {
-    return detectToolFailurePattern(ctx) !== null
-  },
-})
-
-LoopJob.register({
-  type: "tool_failure_pattern_injector",
-  phase: "pre",
-  blocking: true,
-  signals: ["tool_failure_pattern"],
-  collect() {
-    return []
-  },
-  async execute(ctx) {
-    const result = detectToolFailurePattern(ctx)
-    if (!result) return "pass"
-
-    const { analyzer, pattern } = result
-    const text = analyzer.buildIntervention(pattern)
-
-    // Inject as a synthetic part on the current user message.
-    // Uses the same mechanism as error_loop_breaker and repeat_loop_injector
-    // (Session.updatePart) so the marker is immediately visible to both
-    // hasInjectedMarker on the next detect cycle and the frontend renderer.
-    const part = (await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: ctx.lastUser.id,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text,
-      synthetic: true,
-      time: { start: Date.now(), end: Date.now() },
-    })) as MessageV2.Part
-
-    ctx.lastUserParts.push(part)
-    const userMessage = ctx.messages.find((msg) => msg.info.id === ctx.lastUser.id)
-    if (userMessage && userMessage.parts !== ctx.lastUserParts) userMessage.parts.push(part)
-
-    return "pass"
-  },
-})
-
 // ─── git health cache invalidation ─────────────────────────────────
-
-LoopJob.register({
-  type: "git_health_cache_invalidator",
-  phase: "post",
-  blocking: false,
-  collect(ctx) {
-    const assistant = lastAssistant(ctx)
-    if (!assistant) return []
-    const ranBash = assistant.parts.some(
-      (p): p is MessageV2.ToolPart => p.type === "tool" && p.tool === "bash" && p.state.status !== "pending",
-    )
-    return ranBash ? [{ type: "git_health_cache_invalidator" }] : []
-  },
-  capture(ctx) {
-    return {
-      type: "git_health_cache_invalidator",
-      sessionID: ctx.sessionID,
-      directory: ScopeContext.current.directory,
-    }
-  },
-  key(input) {
-    return input.directory
-  },
-  async execute(input, _signal) {
-    SessionProjectHealth.invalidateGitHealth(input.directory)
-    return "pass"
-  },
-})

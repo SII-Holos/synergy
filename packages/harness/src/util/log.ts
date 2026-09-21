@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
@@ -18,10 +19,24 @@ export namespace Log {
     ERROR: 3,
   }
 
-  let level: Level = "INFO"
+  const runtimeState = RuntimeContext.state(() => ({
+    level: "INFO" as Level,
+    logpath: "",
+    initialized: false,
+    closed: false,
+    buffered: [] as string[],
+    pending: [] as string[],
+    flushTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    write: defaultWrite,
+    currentWriter: undefined as { writer: ReturnType<ReturnType<typeof Bun.file>["writer"]>; path: string } | undefined,
+    mirroring: false,
+    last: Date.now(),
+  }))
 
   function shouldLog(input: Level): boolean {
-    return levelPriority[input] >= levelPriority[level]
+    const instanceState = runtimeState()
+
+    return !instanceState.closed && levelPriority[input] >= levelPriority[instanceState.level]
   }
 
   export type Logger = {
@@ -54,9 +69,21 @@ export namespace Log {
     level?: Level
   }
 
-  let logpath = ""
   export function file() {
-    return logpath
+    const instanceState = runtimeState()
+
+    return instanceState.logpath
+  }
+
+  export async function close() {
+    const state = runtimeState()
+    if (state.closed) return
+    state.closed = true
+    if (state.flushTimer) clearInterval(state.flushTimer)
+    state.flushTimer = undefined
+    flush()
+    await state.currentWriter?.writer.end()
+    state.currentWriter = undefined
   }
 
   export function devFile() {
@@ -68,62 +95,68 @@ export namespace Log {
   }
 
   const FLUSH_INTERVAL_MS = 250
-  let initialized = false
-  const buffered: string[] = []
-  let pending: string[] = []
-  let flushTimer: ReturnType<typeof setInterval> | undefined
-  let write = (msg: string) => {
-    if (!initialized) {
-      buffered.push(msg)
+
+  function defaultWrite(msg: string) {
+    const instanceState = runtimeState()
+
+    if (!instanceState.initialized) {
+      instanceState.buffered.push(msg)
       return
     }
     process.stderr.write(msg)
   }
 
-  let currentWriter: { writer: ReturnType<ReturnType<typeof Bun.file>["writer"]>; path: string } | undefined
-
   export async function init(options: Options) {
-    if (options.level) level = options.level
+    const instanceState = runtimeState()
+
+    instanceState.closed = false
+    if (options.level) instanceState.level = options.level
     cleanup(Global.Path.log).catch(() => {})
     if (options.print) {
-      write = (msg: string) => {
+      instanceState.write = (msg: string) => {
         process.stderr.write(msg)
       }
-      initialized = true
+      instanceState.initialized = true
       flushBuffered()
       flush()
       return
     }
-    logpath = path.join(
+    instanceState.logpath = path.join(
       Global.Path.log,
       options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
     )
     if (options.dev) {
-      await archiveDevLog(logpath)
+      await archiveDevLog(instanceState.logpath)
     }
-    await openWriter(logpath)
-    initialized = true
+    await openWriter(instanceState.logpath)
+    instanceState.initialized = true
     flushBuffered()
     flush()
   }
 
   function flushBuffered() {
-    if (buffered.length === 0) return
-    const queued = buffered.splice(0)
-    for (const msg of queued) write(msg)
+    const instanceState = runtimeState()
+
+    if (instanceState.buffered.length === 0) return
+    const queued = instanceState.buffered.splice(0)
+    for (const msg of queued) instanceState.write(msg)
   }
 
   function scheduleFlush() {
-    if (flushTimer) return
-    flushTimer = setInterval(flush, FLUSH_INTERVAL_MS)
-    flushTimer.unref?.()
+    const instanceState = runtimeState()
+
+    if (instanceState.closed || instanceState.flushTimer) return
+    instanceState.flushTimer = setInterval(flush, FLUSH_INTERVAL_MS)
+    instanceState.flushTimer.unref?.()
   }
 
   async function openWriter(filePath: string) {
+    const instanceState = runtimeState()
+
     flush()
-    if (currentWriter) {
+    if (instanceState.currentWriter) {
       try {
-        currentWriter.writer.end()
+        instanceState.currentWriter.writer.end()
       } catch {}
     }
     try {
@@ -131,14 +164,16 @@ export namespace Log {
       await fs.truncate(filePath).catch(() => {})
       const logfile = Bun.file(filePath)
       const writer = logfile.writer()
-      currentWriter = { writer, path: filePath }
-      write = (msg: string) => {
-        pending.push(msg)
+      instanceState.currentWriter = { writer, path: filePath }
+      instanceState.write = (msg: string) => {
+        const instanceState = runtimeState()
+
+        instanceState.pending.push(msg)
         scheduleFlush()
       }
     } catch {
-      currentWriter = undefined
-      write = (msg: string) => {
+      instanceState.currentWriter = undefined
+      instanceState.write = (msg: string) => {
         process.stderr.write(msg)
       }
     }
@@ -184,15 +219,19 @@ export namespace Log {
   }
 
   export async function reopenWriter() {
-    if (!logpath) return
-    await openWriter(logpath)
+    const instanceState = runtimeState()
+
+    if (!instanceState.logpath) return
+    await openWriter(instanceState.logpath)
   }
 
   export function flush() {
-    if (pending.length === 0) return
-    const batch = pending.join("")
-    pending = []
-    const writer = currentWriter?.writer
+    const instanceState = runtimeState()
+
+    if (instanceState.pending.length === 0) return
+    const batch = instanceState.pending.join("")
+    instanceState.pending = []
+    const writer = instanceState.currentWriter?.writer
     if (!writer) {
       process.stderr.write(batch)
       return
@@ -204,10 +243,6 @@ export namespace Log {
       process.stderr.write(batch)
     }
   }
-
-  // Buffered lines are flushed from the process exit hook so an abrupt exit
-  // still reaches the log file; the server runtime also calls flush().
-  process.once("exit", flush)
 
   async function cleanup(dir: string) {
     const glob = new Bun.Glob("????-??-??T??????.log")
@@ -263,8 +298,6 @@ export namespace Log {
       .replace(/\n/g, "\\n")
   }
 
-  let mirroring = false
-
   function moduleForService(service: unknown): ObservabilitySchema.Module {
     if (typeof service !== "string") return "observability"
     const root = service.split(".")[0]
@@ -281,12 +314,14 @@ export namespace Log {
   // info stay file-only unless the caller opts in with `mirror: true` and the
   // observability.logMirror switch is enabled.
   function mirror(level: Level, tags: Record<string, any>, message: any, extra?: Record<string, any>) {
-    if (mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
+    const instanceState = runtimeState()
+
+    if (instanceState.mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
     if (level === "DEBUG" || level === "INFO") {
       const optedIn = tags["mirror"] === true || extra?.["mirror"] === true
       if (!optedIn || !ObservabilityConfig.logMirror()) return
     }
-    mirroring = true
+    instanceState.mirroring = true
     try {
       const data: Record<string, unknown> = { ...tags, ...(extra ?? {}) }
       delete data["mirror"]
@@ -298,11 +333,10 @@ export namespace Log {
       }).catch(() => {})
     } catch {
     } finally {
-      mirroring = false
+      instanceState.mirroring = false
     }
   }
 
-  let last = Date.now()
   function createLogger(tags: Record<string, any>, cache: boolean): Logger {
     const frozen = { ...tags }
 
@@ -315,6 +349,8 @@ export namespace Log {
     }
 
     function build(message: any, extra?: Record<string, any>) {
+      const instanceState = runtimeState()
+
       const prefix = Object.entries({
         ...frozen,
         ...extra,
@@ -324,8 +360,8 @@ export namespace Log {
         .filter(Boolean)
         .join(" ")
       const next = new Date()
-      const diff = next.getTime() - last
-      last = next.getTime()
+      const diff = next.getTime() - instanceState.last
+      instanceState.last = next.getTime()
       return (
         [next.toISOString().split(".")[0], "+" + diff + "ms", prefix, cleanMessage(message)].filter(Boolean).join(" ") +
         "\n"
@@ -334,26 +370,38 @@ export namespace Log {
 
     const result: Logger = {
       debug(message?: any, extra?: Record<string, any>) {
+        if (!RuntimeContext.tryCurrent()) return
+        const instanceState = runtimeState()
+
         if (shouldLog("DEBUG")) {
-          write("DEBUG " + build(message, extra))
+          instanceState.write("DEBUG " + build(message, extra))
           mirror("DEBUG", frozen, message, extra)
         }
       },
       info(message?: any, extra?: Record<string, any>) {
+        if (!RuntimeContext.tryCurrent()) return
+        const instanceState = runtimeState()
+
         if (shouldLog("INFO")) {
-          write("INFO  " + build(message, extra))
+          instanceState.write("INFO  " + build(message, extra))
           mirror("INFO", frozen, message, extra)
         }
       },
       error(message?: any, extra?: Record<string, any>) {
+        if (!RuntimeContext.tryCurrent()) return
+        const instanceState = runtimeState()
+
         if (shouldLog("ERROR")) {
-          write("ERROR " + build(message, extra))
+          instanceState.write("ERROR " + build(message, extra))
           mirror("ERROR", frozen, message, extra)
         }
       },
       warn(message?: any, extra?: Record<string, any>) {
+        if (!RuntimeContext.tryCurrent()) return
+        const instanceState = runtimeState()
+
         if (shouldLog("WARN")) {
-          write("WARN  " + build(message, extra))
+          instanceState.write("WARN  " + build(message, extra))
           mirror("WARN", frozen, message, extra)
         }
       },

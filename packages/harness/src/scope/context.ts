@@ -3,31 +3,31 @@ import { Filesystem } from "../util/filesystem"
 import { Scope } from "."
 
 const scopeContext = Context.create<Scope>("scope")
-const workspaceContext = Context.create<import("../session/types").Workspace>("scope.workspace")
+const workspaceContext = Context.create<import("../session/types").Workspace | null>("scope.workspace")
 
 export namespace ScopeContext {
   export async function provide<R>(input: {
     scope: Scope
     fn: () => R | Promise<R>
-    workspace?: import("../session/types").Workspace
+    workspace?: import("../session/types").Workspace | null
   }): Promise<Awaited<R>> {
-    return (await scopeContext.provide(input.scope, async () => {
-      if (input.workspace) {
-        return (await workspaceContext.provide(input.workspace, input.fn)) as Awaited<R>
-      }
-      return (await input.fn()) as Awaited<R>
-    })) as Awaited<R>
+    const workspace = input.workspace === undefined ? ScopeContext.defaultWorkspace(input.scope) : input.workspace
+    return (await scopeContext.provide(input.scope, () => workspaceContext.provide(workspace, input.fn))) as Awaited<R>
+  }
+
+  export function defaultWorkspace(scope: Scope): import("../session/types").Workspace | null {
+    return scope.local ? { type: "main", path: scope.local.directory, scopeID: scope.id } : null
   }
 
   export function tryScope(): Scope | undefined {
     return scopeContext.tryUse()
   }
 
-  export function tryWorkspace(): import("../session/types").Workspace | undefined {
+  export function tryWorkspace(): import("../session/types").Workspace | null | undefined {
     return workspaceContext.tryUse()
   }
 
-  export function refreshWorkspace(workspace: import("../session/types").Workspace): void {
+  export function refreshWorkspace(workspace: import("../session/types").Workspace | null): void {
     if (workspaceContext.tryUse() === undefined) return
     workspaceContext.update(workspace)
   }
@@ -38,7 +38,7 @@ export namespace ScopeContext {
     const roots = Scope.Root.trustRoots(scope, ws)
     if (roots.some((root) => Filesystem.contains(root, targetPath))) return true
     if (ws) return Filesystem.contains(ws.path, targetPath)
-    return Scope.contains(scope, targetPath)
+    return false
   }
 
   export const current = {
@@ -47,13 +47,18 @@ export namespace ScopeContext {
     },
     get directory(): string {
       const ws = workspaceContext.tryUse()
-      return ws?.path ?? scopeContext.use().directory
+      if (!ws)
+        throw new Scope.WorkspaceRequiredError({
+          message: "A local workspace is required for this operation.",
+          scopeID: scopeContext.use().id,
+        })
+      return ws.path
     },
-    get workspace(): import("../session/types").Workspace | undefined {
-      return workspaceContext.tryUse()
+    get workspace(): import("../session/types").Workspace | null {
+      return workspaceContext.use()
     },
     get worktree(): string {
-      return scopeContext.use().worktree
+      return Scope.requireLocal(scopeContext.use()).worktree
     },
   }
 }

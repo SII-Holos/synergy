@@ -41,7 +41,7 @@ export namespace DataTransfer {
         cmd: existsSync(entry)
           ? [process.execPath, "run", entry, "__storage-maintenance-runner"]
           : [process.execPath, "__storage-maintenance-runner"],
-        env: { ...process.env, SYNERGY_HOME: path.dirname(root), SYNERGY_MAINTENANCE_ROOT: root },
+        env: { ...process.env, SYNERGY_HOME: path.dirname(root), SYNERGY_RUNTIME_ROOT: root },
         stdout: "ignore",
         stderr: "pipe",
       })

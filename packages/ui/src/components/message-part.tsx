@@ -136,7 +136,7 @@ function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   return a.every((x, i) => x === b[i])
 }
 
-function relativizeProjectPaths(text: string, directory?: string) {
+function relativizeProjectPaths(text: string, directory?: string | null) {
   if (!text) return ""
   if (!directory) return text
   return text.split(directory).join("")

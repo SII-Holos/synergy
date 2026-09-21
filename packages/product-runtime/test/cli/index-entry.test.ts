@@ -17,7 +17,8 @@ test("index.ts bootstrap reaches the CLI and completes", async () => {
     exitCalls.push(code ?? 0)
   }) as never
   try {
-    await expect(import("@ericsanchezok/synergy-product-runtime")).resolves.toBeTruthy()
+    const { main } = await import("../../src/index")
+    await main()
   } finally {
     process.exit = originalExit
   }

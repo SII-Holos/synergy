@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 /**
  * S9d symbol source port: the L1 workspace-file search reaches LSP client
  * availability and workspace symbols through this registered source instead
@@ -22,13 +23,19 @@ export namespace WorkspaceFileSymbolSource {
     workspaceSymbol(query: string): Promise<Symbol[]>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source | undefined): void {
-    source = value
+    const instanceState = runtimeState()
+
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

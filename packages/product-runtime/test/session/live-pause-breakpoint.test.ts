@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, mock, test } from "bun:test"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -25,19 +28,7 @@ import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { ExperienceEncoder } from "@ericsanchezok/synergy-library/experience-encoder"
 import { abandonSession, continueSession } from "@ericsanchezok/synergy-runtime-local/session-api"
 
-import { registerSkillDomain } from "@ericsanchezok/synergy-runtime-local/skill/register"
-import { registerCommandDomain } from "@ericsanchezok/synergy-runtime-local/command/register"
-import { registerCommandSessionRuntime } from "@ericsanchezok/synergy-runtime-local/command/session-runtime"
-import { registerLibrarySessionRecall } from "@ericsanchezok/synergy-library/session-recall"
-import { registerProjectSessionHealth } from "@ericsanchezok/synergy-workbench/project/session-health"
-
-registerSkillDomain()
-registerCommandDomain()
-registerCommandSessionRuntime()
-registerLibrarySessionRecall()
-registerProjectSessionHealth()
-
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 const model = {
   id: "test-model",
@@ -212,146 +203,152 @@ async function latestAssistant(sessionID: string) {
 }
 
 describe("a live user stop preserves the resume breakpoint", () => {
-  test("the interrupted assistant stays non-terminal and Continue issues a model call", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const harness = installLiveTurnMocks()
-    try {
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await createSessionWithRoot()
-          try {
-            const turn = SessionInvoke.loop.force(session.id)
-            await harness.firstTurnStarted
+  test("the interrupted assistant stays non-terminal and Continue issues a model call", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const harness = installLiveTurnMocks()
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await createSessionWithRoot()
+            try {
+              const turn = SessionInvoke.loop.force(session.id)
+              await harness.firstTurnStarted
 
-            const stop = await SessionAbort.abort(session.id)
-            await turn
+              const stop = await SessionAbort.abort(session.id)
+              await turn
 
-            expect(stop.paused).toBe(true)
-            expect(harness.turnCalls()).toBe(1)
+              expect(stop.paused).toBe(true)
+              expect(harness.turnCalls()).toBe(1)
 
-            // The breakpoint `session.continue` resumes from. `finish:"error"`
-            // and `time.completed` here make needsModelCall false, so Continue
-            // would be the silent no-op this whole design exists to prevent.
-            const interrupted = await latestAssistant(session.id)
-            expect(interrupted).toBeDefined()
-            expect(SessionProgress.isTerminalAssistant(interrupted!)).toBe(false)
-            expect(interrupted!.time.completed).toBeUndefined()
+              // The breakpoint `session.continue` resumes from. `finish:"error"`
+              // and `time.completed` here make needsModelCall false, so Continue
+              // would be the silent no-op this whole design exists to prevent.
+              const interrupted = await latestAssistant(session.id)
+              expect(interrupted).toBeDefined()
+              expect(SessionProgress.isTerminalAssistant(interrupted!)).toBe(false)
+              expect(interrupted!.time.completed).toBeUndefined()
 
-            // No queued work: the resume below is driven by the breakpoint
-            // alone, not by an inbox item the stop happened to leave behind.
-            expect(await SessionInbox.list(session.id)).toHaveLength(0)
+              // No queued work: the resume below is driven by the breakpoint
+              // alone, not by an inbox item the stop happened to leave behind.
+              expect(await SessionInbox.list(session.id)).toHaveLength(0)
 
-            expect(await continueSession(session.id)).toBe(true)
-            expect(harness.turnCalls()).toBe(2)
+              expect(await continueSession(session.id)).toBe(true)
+              expect(harness.turnCalls()).toBe(2)
 
-            const resumed = await latestAssistant(session.id)
-            expect(SessionProgress.isTerminalAssistant(resumed!)).toBe(true)
-            expect(resumed!.finish).toBe("stop")
-          } finally {
-            SessionManager.unregisterRuntime(session.id)
-          }
-        },
-      })
-    } finally {
-      harness.restore()
-    }
-  })
+              const resumed = await latestAssistant(session.id)
+              expect(SessionProgress.isTerminalAssistant(resumed!)).toBe(true)
+              expect(resumed!.finish).toBe("stop")
+            } finally {
+              SessionManager.unregisterRuntime(session.id)
+            }
+          },
+        })
+      } finally {
+        harness.restore()
+      }
+    }))
 
-  test("the abandon path still terminalizes the interrupted turn", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const harness = installLiveTurnMocks()
-    try {
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await createSessionWithRoot()
-          try {
-            const turn = SessionInvoke.loop.force(session.id).catch(() => undefined)
-            await harness.firstTurnStarted
+  test("the abandon path still terminalizes the interrupted turn", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const harness = installLiveTurnMocks()
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await createSessionWithRoot()
+            try {
+              const turn = SessionInvoke.loop.force(session.id).catch(() => undefined)
+              await harness.firstTurnStarted
 
-            await abandonSession(session.id)
-            // The terminal error on the message propagates out of the loop as
-            // the abnormal end it is; the persisted state below is the contract.
-            await turn.catch(() => undefined)
+              await abandonSession(session.id)
+              // The terminal error on the message propagates out of the loop as
+              // the abnormal end it is; the persisted state below is the contract.
+              await turn.catch(() => undefined)
 
-            const abandoned = await latestAssistant(session.id)
-            expect(abandoned).toBeDefined()
-            expect(abandoned!.finish).toBe("error")
-            expect(SessionProgress.isTerminalAssistant(abandoned!)).toBe(true)
-            expect(abandoned!.time.completed).toBeNumber()
-            expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-          } finally {
-            SessionManager.unregisterRuntime(session.id)
-          }
-        },
-      })
-    } finally {
-      harness.restore()
-    }
-  })
+              const abandoned = await latestAssistant(session.id)
+              expect(abandoned).toBeDefined()
+              expect(abandoned!.finish).toBe("error")
+              expect(SessionProgress.isTerminalAssistant(abandoned!)).toBe(true)
+              expect(abandoned!.time.completed).toBeNumber()
+              expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+            } finally {
+              SessionManager.unregisterRuntime(session.id)
+            }
+          },
+        })
+      } finally {
+        harness.restore()
+      }
+    }))
 
-  test("an internal cancellation settles the turn without latching a pause", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const harness = installLiveTurnMocks()
-    try {
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await createSessionWithRoot()
-          try {
-            const turn = SessionInvoke.loop.force(session.id)
-            await harness.firstTurnStarted
+  test("an internal cancellation settles the turn without latching a pause", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const harness = installLiveTurnMocks()
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await createSessionWithRoot()
+            try {
+              const turn = SessionInvoke.loop.force(session.id)
+              await harness.firstTurnStarted
 
-            // Lattice and Light Loop withdraw work they own. That is not the
-            // user asking the session to hold still, so no pause is latched and
-            // the turn keeps its ordinary abnormal-end record.
-            const state = await SessionAbort.abort(session.id, { internalCancel: true })
-            await turn.catch(() => undefined)
+              // Lattice and Light Loop withdraw work they own. That is not the
+              // user asking the session to hold still, so no pause is latched and
+              // the turn keeps its ordinary abnormal-end record.
+              const state = await SessionAbort.abort(session.id, { internalCancel: true })
+              await turn.catch(() => undefined)
 
-            expect(state.paused).toBe(false)
-            expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-            const settled = await latestAssistant(session.id)
-            expect(SessionProgress.isTerminalAssistant(settled!)).toBe(true)
-          } finally {
-            SessionManager.unregisterRuntime(session.id)
-          }
-        },
-      })
-    } finally {
-      harness.restore()
-    }
-  })
-  test("a stop on a session the pause latch cannot hold still settles the turn", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const harness = installLiveTurnMocks()
-    try {
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await createSessionWithRoot({ interaction: { mode: "unattended", source: "test" } })
-          try {
-            const turn = SessionInvoke.loop.force(session.id)
-            await harness.firstTurnStarted
+              expect(state.paused).toBe(false)
+              expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+              const settled = await latestAssistant(session.id)
+              expect(SessionProgress.isTerminalAssistant(settled!)).toBe(true)
+            } finally {
+              SessionManager.unregisterRuntime(session.id)
+            }
+          },
+        })
+      } finally {
+        harness.restore()
+      }
+    }))
+  test("a stop on a session the pause latch cannot hold still settles the turn", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const harness = installLiveTurnMocks()
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await createSessionWithRoot({ interaction: { mode: "unattended", source: "test" } })
+            try {
+              const turn = SessionInvoke.loop.force(session.id)
+              await harness.firstTurnStarted
 
-            const stop = await SessionAbort.abort(session.id)
-            await turn.catch(() => undefined)
+              const stop = await SessionAbort.abort(session.id)
+              await turn.catch(() => undefined)
 
-            // An unattended session is driven by a domain that reconciles its
-            // own work, so a latch would be invisible and disobeyed. Leaving the
-            // turn resumable there would report the stopped task as finished, so
-            // a stop that cannot pause a session still settles the turn.
-            expect(stop.paused).toBe(false)
-            expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-            const settled = await latestAssistant(session.id)
-            expect(SessionProgress.isTerminalAssistant(settled!)).toBe(true)
-          } finally {
-            SessionManager.unregisterRuntime(session.id)
-          }
-        },
-      })
-    } finally {
-      harness.restore()
-    }
-  })
+              // An unattended session is driven by a domain that reconciles its
+              // own work, so a latch would be invisible and disobeyed. Leaving the
+              // turn resumable there would report the stopped task as finished, so
+              // a stop that cannot pause a session still settles the turn.
+              expect(stop.paused).toBe(false)
+              expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+              const settled = await latestAssistant(session.id)
+              expect(SessionProgress.isTerminalAssistant(settled!)).toBe(true)
+            } finally {
+              SessionManager.unregisterRuntime(session.id)
+            }
+          },
+        })
+      } finally {
+        harness.restore()
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

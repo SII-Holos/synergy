@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9d link target port: the L1 remote-execution state machine resolves
  * persisted Synergy Link targets and enforces agent access through this
@@ -19,13 +20,22 @@ export namespace ToolLinkTargetSource {
     assertAgentAccess(target: TargetInfo, agent: string): void
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source | undefined): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("tool/link-target-source")
+    if (instanceState.source && value) throw new Error("tool/link-target-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

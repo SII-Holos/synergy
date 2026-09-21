@@ -163,29 +163,31 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const contribution: ConfigExtensions.Contribution = {
+  shape: ConfigShape,
+  normalize(raw) {
+    const result = raw as ConfigValues
+    result.plugin ??= []
+  },
+  merge(current, patch, merged) {
+    const a = current as ConfigValues,
+      b = patch as ConfigValues,
+      result = merged as ConfigValues
+    if (a.plugin || b.plugin) result.plugin = mergePluginSpecList(a.plugin ?? [], b.plugin ?? [])
+  },
+  resolve(raw, configFilepath) {
+    const result = raw as ConfigValues
+    if (result.plugin)
+      for (let i = 0; i < result.plugin.length; i++) {
+        try {
+          result.plugin[i] = import.meta.resolve!(result.plugin[i], configFilepath)
+        } catch {}
+      }
+  },
+}
+
 export function registerConfig() {
-  ConfigExtensions.register("plugin-host", {
-    shape: ConfigShape,
-    normalize(raw) {
-      const result = raw as ConfigValues
-      result.plugin ??= []
-    },
-    merge(current, patch, merged) {
-      const a = current as ConfigValues,
-        b = patch as ConfigValues,
-        result = merged as ConfigValues
-      if (a.plugin || b.plugin) result.plugin = mergePluginSpecList(a.plugin ?? [], b.plugin ?? [])
-    },
-    resolve(raw, configFilepath) {
-      const result = raw as ConfigValues
-      if (result.plugin)
-        for (let i = 0; i < result.plugin.length; i++) {
-          try {
-            result.plugin[i] = import.meta.resolve!(result.plugin[i], configFilepath)
-          } catch {}
-        }
-    },
-  })
+  ConfigExtensions.register("plugin-host", contribution)
   for (const domain of [
     {
       id: "plugins",
@@ -200,7 +202,6 @@ export function registerConfig() {
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
-registerConfig()
 
 function mergePluginSpecList(current: string[], patch: string[]): string[] {
   const result: string[] = []

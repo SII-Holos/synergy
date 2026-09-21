@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { RolloutTransport } from "../session/rollout/transport"
 import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -19,7 +20,9 @@ export namespace CopilotProvider {
   export const API_TOKEN_REFRESH_MARGIN_SECONDS = 120
 
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-  const runtimeTokens = new Map<string, { githubToken: string; token: string; expiresAt: number }>()
+  const runtimeState = RuntimeContext.state(() => ({
+    runtimeTokens: new Map<string, { githubToken: string; token: string; expiresAt: number }>(),
+  }))
 
   export const AuthError = NamedError.create(
     "CopilotAuthError",
@@ -46,7 +49,7 @@ export namespace CopilotProvider {
 
   function githubBase(enterprise: boolean, enterpriseUrl?: string) {
     return enterprise
-      ? enterpriseUrl || process.env.COPILOT_GITHUB_ENTERPRISE_URL || "https://github.com"
+      ? enterpriseUrl || RuntimeContext.current().host.env.COPILOT_GITHUB_ENTERPRISE_URL || "https://github.com"
       : "https://github.com"
   }
 
@@ -145,7 +148,7 @@ export namespace CopilotProvider {
     const mapped = providerID !== PROVIDER_ID && providerID !== ENTERPRISE_PROVIDER_ID
     if (mapped && stored?.type === "api" && validateGitHubToken(stored.key)) return stored.key
     for (const env of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]) {
-      const value = process.env[env]
+      const value = RuntimeContext.current().host.env[env]
       if (value && validateGitHubToken(value)) return value
     }
     if (stored?.type === "api" && validateGitHubToken(stored.key)) return stored.key
@@ -153,7 +156,9 @@ export namespace CopilotProvider {
   }
 
   export function clearApiToken(providerID = PROVIDER_ID) {
-    runtimeTokens.delete(providerID)
+    const instanceState = runtimeState()
+
+    instanceState.runtimeTokens.delete(providerID)
   }
 
   async function shouldPreferProvidedAuth(providerID: string, auth?: Auth.Info) {
@@ -190,7 +195,7 @@ export namespace CopilotProvider {
         reloginRequired: true,
       })
     }
-    const runtime = runtimeTokens.get(providerID)
+    const runtime = runtimeState().runtimeTokens.get(providerID)
     if (
       !force &&
       runtime?.githubToken === githubToken &&
@@ -222,7 +227,7 @@ export namespace CopilotProvider {
           reloginRequired: true,
         })
       }
-      const latestRuntime = runtimeTokens.get(providerID)
+      const latestRuntime = runtimeState().runtimeTokens.get(providerID)
       if (
         !force &&
         latestRuntime?.githubToken === latestGitHubToken &&
@@ -273,7 +278,11 @@ export namespace CopilotProvider {
           { credentialID: latestSelected.credentialID, source: latestSelected.poolEntry?.source ?? "api" },
         )
       } else {
-        runtimeTokens.set(providerID, { githubToken: latestGitHubToken, token: payload.token, expiresAt })
+        runtimeState().runtimeTokens.set(providerID, {
+          githubToken: latestGitHubToken,
+          token: payload.token,
+          expiresAt,
+        })
       }
       return payload.token
     })

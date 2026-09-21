@@ -14,8 +14,9 @@ import { LocalBashBackend } from "@ericsanchezok/synergy-runtime-local/tools/bas
 import { SandboxBackend } from "../../src/sandbox/backend"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import { SandboxSessionApproval } from "@ericsanchezok/synergy-harness/test/support/internals"
-
-SandboxHost.register(SandboxBackend)
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // B1 regression: profile-auto-allowed bash under autonomous must NOT bypass
@@ -95,221 +96,228 @@ async function resolveBashTool(sessionID: string) {
   }
 }
 
-test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs with controlled TMPDIR", async () => {
-  await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
-        command: input.command,
-        args: input.args,
-        sandboxed: true,
-      }))
-      const session = await Session.create({ controlProfile: "autonomous" })
-      try {
-        const { processor, bash } = await resolveBashTool(session.id)
+test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs with controlled TMPDIR", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
+          command: input.command,
+          args: input.args,
+          sandboxed: true,
+        }))
+        const session = await Session.create({ controlProfile: "autonomous" })
         try {
-          const result = await bash.execute(
-            { command: 'echo "$TMPDIR"', description: "Probe controlled tmp" },
-            { toolCallId: "call_bash_autonomous" },
-          )
-          expect(result.metadata.exit).toBe(0)
-          // The sandbox wrapper was prepared: auto-allow did not bypass.
-          expect(prepare.mock.calls.length).toBeGreaterThan(0)
-          expect(prepare.mock.calls[0][0].sandboxMode).toBe("workspace_write")
-          // TMPDIR pointed into the workspace-controlled temporary root.
-          expect(result.output).toContain(".synergy/tmp")
-          expect(result.output).toContain(tmp.path)
+          const { processor, bash } = await resolveBashTool(session.id)
+          try {
+            const result = await bash.execute(
+              { command: 'echo "$TMPDIR"', description: "Probe controlled tmp" },
+              { toolCallId: "call_bash_autonomous" },
+            )
+            expect(result.metadata.exit).toBe(0)
+            // The sandbox wrapper was prepared: auto-allow did not bypass.
+            expect(prepare.mock.calls.length).toBeGreaterThan(0)
+            expect(prepare.mock.calls[0][0].sandboxMode).toBe("workspace_write")
+            // TMPDIR pointed into the workspace-controlled temporary root.
+            expect(result.output).toContain(".synergy/tmp")
+            expect(result.output).toContain(tmp.path)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
+          prepare.mockRestore()
         }
-      } finally {
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-        prepare.mockRestore()
-      }
-    },
-  })
-})
-test("a session-approved external read is forwarded into the sandbox wrapper read roots", async () => {
-  if (!fs.existsSync("/etc/hosts")) return
-  await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
-        command: input.command,
-        args: input.args,
-        sandboxed: true,
-      }))
-      const session = await Session.create({ controlProfile: "autonomous" })
-      // A sandbox denial is an execution-time boundary: the denied path is not
-      // known when the call is authorized, so it is approved for the session
-      // and carried into the next wrapper through this store. bash predicts no
-      // path, so this store — not gate-side classification — is what forwards
-      // an external read into the sandbox roots.
-      SandboxSessionApproval.remember(session.id, "/etc/hosts", "read")
-      try {
-        const { processor, bash } = await resolveBashTool(session.id)
+      },
+    })
+  }))
+test("a session-approved external read is forwarded into the sandbox wrapper read roots", () =>
+  runtime.run(async () => {
+    if (!fs.existsSync("/etc/hosts")) return
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
+          command: input.command,
+          args: input.args,
+          sandboxed: true,
+        }))
+        const session = await Session.create({ controlProfile: "autonomous" })
+        // A sandbox denial is an execution-time boundary: the denied path is not
+        // known when the call is authorized, so it is approved for the session
+        // and carried into the next wrapper through this store. bash predicts no
+        // path, so this store — not gate-side classification — is what forwards
+        // an external read into the sandbox roots.
+        SandboxSessionApproval.remember(session.id, "/etc/hosts", "read")
         try {
-          const result = await bash.execute(
-            { command: "cat /etc/hosts", description: "probe" },
-            { toolCallId: "call_bash_autonomous_ext_read" },
-          )
-          // Auto-allow never bypasses the sandbox under autonomous.
-          expect(result.metadata.exit).toBe(0)
-          expect(prepare.mock.calls.length).toBeGreaterThan(0)
-          const lastInput = prepare.mock.calls[prepare.mock.calls.length - 1][0]
-          // The session-approved external read reaches the wrapper's read roots.
-          expect(lastInput.extraReadRoots).toContain("/etc/hosts")
-          // The workspace stays readable.
-          expect(lastInput.extraReadRoots).toContain(tmp.path)
-          // The session-scoped controlled temp root is a writable root.
-          expect(
-            (lastInput.extraWritableRoots ?? []).some((root: string) =>
-              root.startsWith(`${tmp.path}/.synergy/tmp/synergy-${process.pid}-`),
-            ),
-          ).toBe(true)
+          const { processor, bash } = await resolveBashTool(session.id)
+          try {
+            const result = await bash.execute(
+              { command: "cat /etc/hosts", description: "probe" },
+              { toolCallId: "call_bash_autonomous_ext_read" },
+            )
+            // Auto-allow never bypasses the sandbox under autonomous.
+            expect(result.metadata.exit).toBe(0)
+            expect(prepare.mock.calls.length).toBeGreaterThan(0)
+            const lastInput = prepare.mock.calls[prepare.mock.calls.length - 1][0]
+            // The session-approved external read reaches the wrapper's read roots.
+            expect(lastInput.extraReadRoots).toContain("/etc/hosts")
+            // The workspace stays readable.
+            expect(lastInput.extraReadRoots).toContain(tmp.path)
+            // The session-scoped controlled temp root is a writable root.
+            expect(
+              (lastInput.extraWritableRoots ?? []).some((root: string) =>
+                root.startsWith(`${tmp.path}/.synergy/tmp/synergy-${process.pid}-`),
+              ),
+            ).toBe(true)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          SandboxSessionApproval.clear(session.id)
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
+          prepare.mockRestore()
         }
-      } finally {
-        SandboxSessionApproval.clear(session.id)
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-        prepare.mockRestore()
-      }
-    },
-  })
-})
+      },
+    })
+  }))
 
-test("full_access keeps the historical sandbox bypass for bash", async () => {
-  await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
-        command: input.command,
-        args: input.args,
-        sandboxed: true,
-      }))
-      const session = await Session.create({ controlProfile: "full_access" })
-      try {
-        const { processor, bash } = await resolveBashTool(session.id)
+test("full_access keeps the historical sandbox bypass for bash", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
+          command: input.command,
+          args: input.args,
+          sandboxed: true,
+        }))
+        const session = await Session.create({ controlProfile: "full_access" })
         try {
-          const result = await bash.execute(
-            { command: "echo bypass-ok", description: "Probe bypass" },
-            { toolCallId: "call_bash_full_access" },
-          )
-          expect(result.metadata.exit).toBe(0)
-          expect(result.output).toContain("bypass-ok")
-          expect(prepare.mock.calls.length).toBe(0)
+          const { processor, bash } = await resolveBashTool(session.id)
+          try {
+            const result = await bash.execute(
+              { command: "echo bypass-ok", description: "Probe bypass" },
+              { toolCallId: "call_bash_full_access" },
+            )
+            expect(result.metadata.exit).toBe(0)
+            expect(result.output).toContain("bypass-ok")
+            expect(prepare.mock.calls.length).toBe(0)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
+          prepare.mockRestore()
         }
-      } finally {
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-        prepare.mockRestore()
-      }
-    },
-  })
-})
+      },
+    })
+  }))
 
-test("real OS sandbox contains a variable-target host tmp write under autonomous (darwin)", async () => {
-  // R1 execution anchor on the host platform: with the B1/B2 chain live (no
-  // wrapper mock), a profile-auto-allowed command whose write target is only
-  // visible at runtime (`out=/tmp/...`) must NOT create a host file. The
-  // sandbox denies the write; the controlled temp root is created inside the
-  // workspace and the workspace stays writable.
-  if (process.platform !== "darwin") return
-  const probe = SandboxBackend.prepareWrapper({
-    command: "/usr/bin/true",
-    args: [],
-    workspace: process.cwd(),
-    sandboxMode: "workspace_write",
-  })
-  if (probe.skipReason) return
+test("real OS sandbox contains a variable-target host tmp write under autonomous (darwin)", () =>
+  runtime.run(async () => {
+    // R1 execution anchor on the host platform: with the B1/B2 chain live (no
+    // wrapper mock), a profile-auto-allowed command whose write target is only
+    // visible at runtime (`out=/tmp/...`) must NOT create a host file. The
+    // sandbox denies the write; the controlled temp root is created inside the
+    // workspace and the workspace stays writable.
+    if (process.platform !== "darwin") return
+    const probe = SandboxBackend.prepareWrapper({
+      command: "/usr/bin/true",
+      args: [],
+      workspace: process.cwd(),
+      sandboxMode: "workspace_write",
+    })
+    if (probe.skipReason) return
 
-  await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const session = await Session.create({ controlProfile: "autonomous" })
-      const hostFile = path.join(os.tmpdir(), `synergy-e2e-${process.pid}-${Date.now()}.txt`)
-      try {
-        const { processor, bash } = await resolveBashTool(session.id)
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const session = await Session.create({ controlProfile: "autonomous" })
+        const hostFile = path.join(os.tmpdir(), `synergy-e2e-${process.pid}-${Date.now()}.txt`)
         try {
-          const result = await bash.execute(
-            {
-              command: `out=${hostFile}; { echo hi; } > "$out" 2>&1; echo done; echo "t=\\"$TMPDIR\\""`,
-              description: "Contained variable-target write probe",
-            },
-            { toolCallId: "call_bash_e2e" },
-          )
-          // The shell survives the denied redirect and reports completion;
-          // the sandboxed child received a workspace-controlled TMPDIR.
-          expect(result.output).toContain("done")
-          expect(result.output).toContain(".synergy/tmp")
-          expect(result.output).toContain(tmp.path)
-          // The host shared temporary directory was NOT written.
-          expect(fs.existsSync(hostFile)).toBe(false)
+          const { processor, bash } = await resolveBashTool(session.id)
+          try {
+            const result = await bash.execute(
+              {
+                command: `out=${hostFile}; { echo hi; } > "$out" 2>&1; echo done; echo "t=\\"$TMPDIR\\""`,
+                description: "Contained variable-target write probe",
+              },
+              { toolCallId: "call_bash_e2e" },
+            )
+            // The shell survives the denied redirect and reports completion;
+            // the sandboxed child received a workspace-controlled TMPDIR.
+            expect(result.output).toContain("done")
+            expect(result.output).toContain(".synergy/tmp")
+            expect(result.output).toContain(tmp.path)
+            // The host shared temporary directory was NOT written.
+            expect(fs.existsSync(hostFile)).toBe(false)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
+          try {
+            fs.unlinkSync(hostFile)
+          } catch {}
         }
-      } finally {
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-        try {
-          fs.unlinkSync(hostFile)
-        } catch {}
-      }
-    },
-  })
-})
+      },
+    })
+  }))
 
-test("real OS sandbox allows workspace writes under autonomous (darwin)", async () => {
-  if (process.platform !== "darwin") return
-  const probe = SandboxBackend.prepareWrapper({
-    command: "/usr/bin/true",
-    args: [],
-    workspace: process.cwd(),
-    sandboxMode: "workspace_write",
-  })
-  if (probe.skipReason) return
+test("real OS sandbox allows workspace writes under autonomous (darwin)", () =>
+  runtime.run(async () => {
+    if (process.platform !== "darwin") return
+    const probe = SandboxBackend.prepareWrapper({
+      command: "/usr/bin/true",
+      args: [],
+      workspace: process.cwd(),
+      sandboxMode: "workspace_write",
+    })
+    if (probe.skipReason) return
 
-  await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const session = await Session.create({ controlProfile: "autonomous" })
-      try {
-        const { processor, bash } = await resolveBashTool(session.id)
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const session = await Session.create({ controlProfile: "autonomous" })
         try {
-          const target = path.join(tmp.path, "ws-e2e.txt")
-          const result = await bash.execute(
-            { command: `echo ws-ok > "${target}" && cat "${target}"`, description: "Workspace write probe" },
-            { toolCallId: "call_bash_e2e_ws" },
-          )
-          expect(result.output).toContain("ws-ok")
-          expect(fs.existsSync(target)).toBe(true)
+          const { processor, bash } = await resolveBashTool(session.id)
+          try {
+            const target = path.join(tmp.path, "ws-e2e.txt")
+            const result = await bash.execute(
+              { command: `echo ws-ok > "${target}" && cat "${target}"`, description: "Workspace write probe" },
+              { toolCallId: "call_bash_e2e_ws" },
+            )
+            expect(result.output).toContain("ws-ok")
+            expect(fs.existsSync(target)).toBe(true)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
         }
-      } finally {
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-      }
-    },
-  })
-})
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

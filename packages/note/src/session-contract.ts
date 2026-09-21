@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 /**
  * S9c source inversion: the L1 session recovery pass reaches blueprint note
  * projections (active-loop binding on notes) through this registry instead
@@ -19,22 +20,32 @@ export namespace SessionNoteAccess {
     setBlueprintActiveLoop(scopeID: string, noteID: string, activeLoopID: string | null): Promise<void>
   }
 
-  let provider: Provider | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    provider: undefined as Provider | undefined,
+  }))
 
   export function register(value: Provider): void {
-    provider = value
+    const instanceState = runtimeState()
+
+    instanceState.provider = value
   }
 
   export function get(): Provider | undefined {
-    return provider
+    const instanceState = runtimeState()
+
+    return instanceState.provider
   }
 
   export async function getBlueprintNote(scopeID: string, noteID: string): Promise<BlueprintNote | undefined> {
-    return provider?.getBlueprintNote(scopeID, noteID).catch(() => undefined)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.getBlueprintNote(scopeID, noteID).catch(() => undefined)
   }
 
   export async function listBlueprintNotes(scopeID: string): Promise<BlueprintNote[]> {
-    return provider?.listBlueprintNotes(scopeID).catch(() => []) ?? []
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.listBlueprintNotes(scopeID).catch(() => []) ?? []
   }
 
   export async function setBlueprintActiveLoop(
@@ -42,6 +53,8 @@ export namespace SessionNoteAccess {
     noteID: string,
     activeLoopID: string | null,
   ): Promise<void> {
-    await provider?.setBlueprintActiveLoop(scopeID, noteID, activeLoopID)
+    const instanceState = runtimeState()
+
+    await instanceState.provider?.setBlueprintActiveLoop(scopeID, noteID, activeLoopID)
   }
 }

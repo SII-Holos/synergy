@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Provider as SDK } from "ai"
 import type { ModelsDev } from "./models-schemas"
 import type { Auth } from "./api-key"
@@ -162,25 +163,31 @@ export namespace ProviderProfile {
     }): Promise<AccountUsage.Snapshot>
   }
 
-  const profiles = new Map<string, Profile>()
-  const aliases = new Map<string, string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    profiles: new Map<string, Profile>(),
+    aliases: new Map<string, string>(),
+  }))
 
   export function register(profile: Profile) {
-    profiles.set(profile.id, profile)
+    const instanceState = runtimeState()
+
+    instanceState.profiles.set(profile.id, profile)
     for (const alias of profile.aliases ?? []) {
-      aliases.set(alias, profile.id)
+      instanceState.aliases.set(alias, profile.id)
     }
     return () => {
-      if (profiles.get(profile.id) !== profile) return
-      profiles.delete(profile.id)
+      if (instanceState.profiles.get(profile.id) !== profile) return
+      instanceState.profiles.delete(profile.id)
       for (const alias of profile.aliases ?? []) {
-        if (aliases.get(alias) === profile.id) aliases.delete(alias)
+        if (instanceState.aliases.get(alias) === profile.id) instanceState.aliases.delete(alias)
       }
     }
   }
 
   export function get(providerID: string): Profile | undefined {
-    return profiles.get(aliases.get(providerID) ?? providerID)
+    const instanceState = runtimeState()
+
+    return instanceState.profiles.get(instanceState.aliases.get(providerID) ?? providerID)
   }
 
   export function resolve(providerID: string, profileID?: string): Profile | undefined {
@@ -188,20 +195,26 @@ export namespace ProviderProfile {
   }
 
   export function all(): Profile[] {
-    return [...profiles.values()]
+    const instanceState = runtimeState()
+
+    return [...instanceState.profiles.values()]
   }
 
   export function clearPluginProfiles() {
-    for (const [providerID, profile] of profiles) {
-      if (profile.origin === "plugin") profiles.delete(providerID)
+    const instanceState = runtimeState()
+
+    for (const [providerID, profile] of instanceState.profiles) {
+      if (profile.origin === "plugin") instanceState.profiles.delete(providerID)
     }
-    for (const [alias, providerID] of aliases) {
-      if (!profiles.has(providerID)) aliases.delete(alias)
+    for (const [alias, providerID] of instanceState.aliases) {
+      if (!instanceState.profiles.has(providerID)) instanceState.aliases.delete(alias)
     }
   }
 
   export function canonicalID(providerID: string): string {
-    return aliases.get(providerID) ?? providerID
+    const instanceState = runtimeState()
+
+    return instanceState.aliases.get(providerID) ?? providerID
   }
 
   export function metadata(profile: Profile): Metadata {

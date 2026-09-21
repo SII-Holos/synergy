@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ProviderPricing } from "@ericsanchezok/synergy-harness/provider/pricing"
 import { experimental_generateSpeech as generateSpeech, experimental_transcribe as transcribeAudio } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
@@ -11,7 +12,9 @@ import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollo
 const DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 type ClientFactory = typeof createOpenAI
-let clientFactory: ClientFactory = createOpenAI
+const runtimeState = RuntimeContext.state(() => ({
+  clientFactory: createOpenAI as ClientFactory,
+}))
 
 export class VoiceNotConfiguredError extends Error {
   constructor(side: "stt" | "tts") {
@@ -26,11 +29,15 @@ export class VoiceNotConfiguredError extends Error {
 
 export namespace Voice {
   export function setClientFactoryForTest(factory: ClientFactory) {
-    clientFactory = factory
+    const instanceState = runtimeState()
+
+    instanceState.clientFactory = factory
   }
 
   export function resetClientFactoryForTest() {
-    clientFactory = createOpenAI
+    const instanceState = runtimeState()
+
+    instanceState.clientFactory = createOpenAI
   }
 
   export async function sttEnabled(): Promise<boolean> {
@@ -49,6 +56,8 @@ export namespace Voice {
     language?: string
     abortSignal?: AbortSignal
   }): Promise<{ text: string }> {
+    const instanceState = runtimeState()
+
     const config = await Config.current()
     const stt = config.voice?.stt
     if (!stt?.model) throw new VoiceNotConfiguredError("stt")
@@ -56,7 +65,7 @@ export namespace Voice {
     const signal = AbortSignal.any(
       [input.abortSignal, RolloutContext.current()?.signal].filter((signal): signal is AbortSignal => !!signal),
     )
-    const client = clientFactory({
+    const client = instanceState.clientFactory({
       baseURL: stt.baseURL ?? DEFAULT_BASE_URL,
       apiKey: stt.apiKey,
       fetch: RolloutTransport.sdkFetch,
@@ -127,6 +136,8 @@ export namespace Voice {
     instructions?: string
     abortSignal?: AbortSignal
   }): Promise<{ data: Uint8Array; mimeType: string }> {
+    const instanceState = runtimeState()
+
     const config = await Config.current()
     const tts = config.voice?.tts
     if (!tts?.model) throw new VoiceNotConfiguredError("tts")
@@ -134,7 +145,7 @@ export namespace Voice {
     const signal = AbortSignal.any(
       [input.abortSignal, RolloutContext.current()?.signal].filter((signal): signal is AbortSignal => !!signal),
     )
-    const client = clientFactory({
+    const client = instanceState.clientFactory({
       baseURL: tts.baseURL ?? DEFAULT_BASE_URL,
       apiKey: tts.apiKey,
       fetch: RolloutTransport.sdkFetch,

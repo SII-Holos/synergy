@@ -125,8 +125,8 @@ type GlobalPaths = {
 type ScopedPath = {
   state: string
   config: string
-  worktree: string
-  directory: string
+  worktree: string | null
+  directory: string | null
   home: string
 }
 
@@ -376,13 +376,13 @@ function createGlobalSync() {
   function createScopedClient(scopeKey: string) {
     return createSynergyClient({
       baseUrl: globalSDK.url,
-      ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
+      scopeID: scopeKey,
       throwOnError: true,
     })
   }
 
   function scopeRequest(scopeKey: string) {
-    return isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+    return { scopeID: scopeKey }
   }
 
   function scopeReconnectVersion(scopeKey: string) {
@@ -519,7 +519,7 @@ function createGlobalSync() {
           modelCatalog: {},
         },
         config: {},
-        path: { state: "", config: "", worktree: "", directory: "", home: "" },
+        path: { state: "", config: "", worktree: null, directory: null, home: "" },
         status: "loading" as const,
         agent: [],
         command: [],
@@ -2129,9 +2129,10 @@ function createGlobalSync() {
       ),
       retry(() =>
         globalSDK.client.scope.list().then(async (result) => {
+          globalSDK.prepareScopeState(result.data ?? [])
           const scopes = (result.data ?? [])
             .filter((scope) => !!scope?.id)
-            .filter((scope) => !!scope.worktree && !isEphemeralTestWorktree(scope.worktree))
+            .filter((scope) => !scope.local || !isEphemeralTestWorktree(scope.local.worktree))
             .filter((scope) => !scope.time?.archived)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
@@ -2236,6 +2237,13 @@ function createGlobalSync() {
     refreshConfig,
     refreshAllConfigs,
     refreshTargeted,
+    refreshScopes: async () => {
+      const response = await globalSDK.client.scope.list()
+      if (!disposed && response.data) {
+        globalSDK.prepareScopeState(response.data)
+        setGlobalStore("scope", reconcile(response.data))
+      }
+    },
     refreshProviders: () => refreshTargeted(["provider"]),
     scope: {
       loadSessions,

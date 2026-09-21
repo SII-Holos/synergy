@@ -11,6 +11,9 @@ import { pluginRuntimeManager } from "../../src/plugin/runtime"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function writeTimeoutHookPlugin(root: string) {
   const pluginDir = path.join(root, "hook-timeout-config-plugin")
@@ -99,41 +102,48 @@ async function waitForFile(filePath: string, timeoutMs = 5_000) {
 }
 
 describe.serial("process plugin hook timeout config", () => {
-  test("hookTimeoutMs config caps a hook handler that exceeds it", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const fixture = await writeTimeoutHookPlugin(tmp.path)
+  test(
+    "hookTimeoutMs config caps a hook handler that exceeds it",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const fixture = await writeTimeoutHookPlugin(tmp.path)
 
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await approve(fixture.manifest)
-        await Config.state.reset()
-        await Config.update({
-          plugin: [pathToFileURL(fixture.pluginDir).href],
-          pluginRuntimePolicy: { limits: { hookTimeoutMs: 300 } },
-        } as Config.Info)
-        await Config.state.reset()
-        expect((await Config.current()).pluginRuntimePolicy?.limits?.hookTimeoutMs).toBe(300)
-        await resetAllPluginState()
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            await approve(fixture.manifest)
+            await Config.state.reset()
+            await Config.update({
+              plugin: [pathToFileURL(fixture.pluginDir).href],
+              pluginRuntimePolicy: { limits: { hookTimeoutMs: 300 } },
+            } as Config.Info)
+            await Config.state.reset()
+            expect((await Config.current()).pluginRuntimePolicy?.limits?.hookTimeoutMs).toBe(300)
+            await resetAllPluginState()
 
-        try {
-          const triggered = Plugin.trigger(
-            "tool.execute.before",
-            { tool: "file_search", sessionID: "ses_hook_timeout", callID: "call_hook_timeout" },
-            { args: { query: "evidence" } },
-          )
-          await waitForFile(fixture.startedPath)
-          // tool.execute.before is a transform with failure "continue": the
-          // timed-out handler is recorded as degraded and the hook resolves.
-          await expect(triggered).resolves.toEqual({ args: { query: "evidence" } })
-          expect(await Bun.file(fixture.completedPath).exists()).toBe(false)
-          const plugin = getCatalogPlugin(fixture.manifest.id)
-          expect(plugin?.contributionHealth.get("hook:first")).toMatchObject({ state: "degraded" })
-        } finally {
-          await pluginRuntimeManager.stop(fixture.manifest.id, 0)
-          await resetAllPluginState()
-        }
-      },
-    })
-  }, 15_000)
+            try {
+              const triggered = Plugin.trigger(
+                "tool.execute.before",
+                { tool: "file_search", sessionID: "ses_hook_timeout", callID: "call_hook_timeout" },
+                { args: { query: "evidence" } },
+              )
+              await waitForFile(fixture.startedPath)
+              // tool.execute.before is a transform with failure "continue": the
+              // timed-out handler is recorded as degraded and the hook resolves.
+              await expect(triggered).resolves.toEqual({ args: { query: "evidence" } })
+              expect(await Bun.file(fixture.completedPath).exists()).toBe(false)
+              const plugin = getCatalogPlugin(fixture.manifest.id)
+              expect(plugin?.contributionHealth.get("hook:first")).toMatchObject({ state: "degraded" })
+            } finally {
+              await pluginRuntimeManager().stop(fixture.manifest.id, 0)
+              await resetAllPluginState()
+            }
+          },
+        })
+      }),
+    15_000,
+  )
 })
+
+afterRuntimeTests(() => runtime.close())

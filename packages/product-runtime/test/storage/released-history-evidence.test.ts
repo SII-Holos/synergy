@@ -67,7 +67,11 @@ test.each(["text", "tool", "recovery"] as const)(
     const harness = new URL("../../../harness/src/", import.meta.url).pathname
     const registration = new URL("../../src/product-registration.ts", import.meta.url).pathname
     const script = `
-    await import(${JSON.stringify(registration)});
+    const { registerProductRuntime } = await import(${JSON.stringify(registration)});
+    const { RuntimeContext } = await import(${JSON.stringify(path.join(harness, "lifecycle/context.ts"))});
+    const runtime = RuntimeContext.create({ home: process.env.SYNERGY_HOME, root: ${JSON.stringify(path.join(tmp.path, ".synergy"))}, env: { ...process.env } });
+    await runtime.run(async () => {
+    registerProductRuntime();
     const { StorageMaintenance } = await import(${JSON.stringify(path.join(harness, "storage/maintenance.ts"))});
     const { SessionCompat } = await import(${JSON.stringify(path.join(harness, "session/compat-import.ts"))});
     const { Session } = await import(${JSON.stringify(path.join(harness, "session/index.ts"))});
@@ -98,6 +102,7 @@ test.each(["text", "tool", "recovery"] as const)(
       if ((await RolloutArtifact.list(owner)).length !== 1) throw new Error("Migration duplicated tool evidence");
     }
     if ((await handle.store.verify()).issues.length) throw new Error("Store verification failed");
+    });
   `
     const env: NodeJS.ProcessEnv = { ...process.env, SYNERGY_HOME: tmp.path }
     delete env.SYNERGY_STORAGE_COMPAT_DEFER

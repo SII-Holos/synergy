@@ -1,3 +1,5 @@
+import { normalizeLocalScope } from "../scope/migration"
+import { RuntimeContext } from "../lifecycle/context"
 import { SessionMigrationTarget } from "../migration/session-target"
 import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
@@ -1896,7 +1898,7 @@ export const migrations: Migration[] = [
 
           await fs.mkdir(sessionRepo, { recursive: true })
           await $`git init`
-            .env({ GIT_DIR: sessionRepo, ...process.env })
+            .env({ GIT_DIR: sessionRepo, ...RuntimeContext.current().host.env })
             .quiet()
             .nothrow()
 
@@ -2231,6 +2233,18 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260921-session-nav-tags",
+    scope: "derived",
+    async upSession(owner) {
+      const { SessionCompat } = await import("./compat-import")
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    description: "Rebuild session nav indexes to backfill canonical session tags",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
   RolloutMigration.migration,
 
   {
@@ -2351,6 +2365,24 @@ export const migrations: Migration[] = [
     },
   },
   {
+    id: "20260921-session-workspace-binding",
+    onAccess: true,
+    scope: "session",
+    description: "Normalize nullable workspace and embedded Scope metadata in each Session ownership transaction",
+    upSession: migrateSessionWorkspaceBinding,
+    async up(progress) {
+      const scopes = await SessionMigrationTarget.scopes()
+      let done = 0
+      for (const scopeID of scopes) {
+        for (const sessionID of await SessionMigrationTarget.sessions(Identifier.asScopeID(scopeID))) {
+          await migrateSessionWorkspaceBinding({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
+  {
     id: "20260920-session-pause-latch",
     scope: "session",
     upSession(owner, progress) {
@@ -2399,4 +2431,45 @@ function canonicalFieldsDiffer(before: any, after: any): boolean {
     JSON.stringify(before?.origin) !== JSON.stringify(after?.origin)
   )
 }
-MigrationRegistry.register("session", migrations)
+export function registerSessionMigrations() {
+  MigrationRegistry.register("session", migrations)
+}
+
+export function normalizeWorkspaceBinding(value: unknown, scope: Record<string, unknown>, scopeID: string) {
+  if (value === null) return null
+  const workspace = asRecord(value)
+  if (workspace) {
+    if (
+      typeof workspace.type !== "string" ||
+      typeof workspace.path !== "string" ||
+      !path.isAbsolute(workspace.path) ||
+      workspace.scopeID !== scopeID
+    )
+      return null
+    if (scopeID === "home" && workspace.type === "main" && workspace.path === scope.directory) return null
+    return workspace
+  }
+  if (value !== undefined || scopeID === "home") return null
+  const local = asRecord(scope.local) ?? (scope.local === null ? undefined : scope)
+  if (typeof local?.directory !== "string" || !path.isAbsolute(local.directory)) return null
+  if (typeof local.worktree === "string" && path.isAbsolute(local.worktree) && local.directory !== local.worktree) {
+    return { type: "git_worktree", path: local.directory, scopeID, originalCheckout: local.worktree }
+  }
+  return { type: "main", path: local.directory, scopeID }
+}
+
+export function normalizeSessionWorkspaceInfo(info: Record<string, unknown>): Record<string, unknown> {
+  const source = asRecord(info.scope)
+  if (!source || typeof source.id !== "string") return info
+  return {
+    ...info,
+    scope: normalizeLocalScope(source),
+    workspace: normalizeWorkspaceBinding(info.workspace, source, source.id),
+  }
+}
+
+async function migrateSessionWorkspaceBinding(owner: { scopeID: string; sessionID: string }) {
+  const key = StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID))
+  const info = await Storage.read<Record<string, unknown>>(key)
+  await Storage.write(key, normalizeSessionWorkspaceInfo(info))
+}

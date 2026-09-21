@@ -1,28 +1,35 @@
+import { RuntimeContext } from "../lifecycle/context"
 export namespace Lock {
-  const locks = new Map<
-    string,
-    {
-      readers: number
-      writer: boolean
-      waitingReaders: (() => void)[]
-      waitingWriters: (() => void)[]
-    }
-  >()
+  const runtimeState = RuntimeContext.state(() => ({
+    locks: new Map<
+      string,
+      {
+        readers: number
+        writer: boolean
+        waitingReaders: (() => void)[]
+        waitingWriters: (() => void)[]
+      }
+    >(),
+  }))
 
   function get(key: string) {
-    if (!locks.has(key)) {
-      locks.set(key, {
+    const instanceState = runtimeState()
+
+    if (!instanceState.locks.has(key)) {
+      instanceState.locks.set(key, {
         readers: 0,
         writer: false,
         waitingReaders: [],
         waitingWriters: [],
       })
     }
-    return locks.get(key)!
+    return instanceState.locks.get(key)!
   }
 
   function process(key: string) {
-    const lock = locks.get(key)
+    const instanceState = runtimeState()
+
+    const lock = instanceState.locks.get(key)
     if (!lock || lock.writer || lock.readers > 0) return
 
     // Prioritize writers to prevent starvation
@@ -40,7 +47,7 @@ export namespace Lock {
 
     // Clean up empty locks
     if (lock.readers === 0 && !lock.writer && lock.waitingReaders.length === 0 && lock.waitingWriters.length === 0) {
-      locks.delete(key)
+      instanceState.locks.delete(key)
     }
   }
 

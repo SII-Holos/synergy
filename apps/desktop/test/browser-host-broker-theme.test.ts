@@ -83,7 +83,7 @@ test("reports connecting, registered, and reconnecting broker states", async () 
   try {
     broker.connect()
     sockets[0].open()
-    sockets[0].message({ type: "host.registered", protocolVersion: 2, hostId: "host-test" })
+    sockets[0].message({ type: "host.registered", protocolVersion: 3, hostId: "host-test" })
     await Promise.resolve()
     sockets[0].close()
     await Promise.resolve()

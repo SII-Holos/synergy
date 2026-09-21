@@ -1,6 +1,9 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
 async function bootstrap(): Promise<void> {
   if (process.argv.includes("__storage-maintenance-runner")) {
-    await import("./product-registration")
+    const { registerProductRuntime } = await import("./product-registration")
+    registerProductRuntime()
     const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
     await using handle = await StorageMaintenance.open({ recover: true })
     return
@@ -55,14 +58,19 @@ async function bootstrap(): Promise<void> {
   }
 
   if (process.argv.includes("__agent-turn-runner")) {
-    await import("./product-registration")
-    await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
+    const { registerProductRuntime } = await import("./product-registration")
+    registerProductRuntime()
+    const { startAgentWorker } = await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
+    startAgentWorker()
     await new Promise(() => {})
     return
   }
 
   if (process.argv.includes("__policy-worker-runner")) {
-    await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
+    const { registerProductRuntime } = await import("./product-registration")
+    registerProductRuntime()
+    const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
+    startPolicyWorker()
     await new Promise(() => {})
     return
   }
@@ -75,7 +83,10 @@ async function bootstrap(): Promise<void> {
     commands: productCommands,
     runtimeFactory: async (options) => (await import("./server/runtime-handle")).ProductRuntimeHandle.openTask(options),
     beforeCommand: async (command) => {
-      if (command !== "send") await import("./product-registration")
+      if (command !== "send") {
+        const { registerProductRuntime } = await import("./product-registration")
+        registerProductRuntime()
+      }
     },
     pluginCommands: async (directory) => {
       const { installedPluginCliMetadata } = await import("@ericsanchezok/synergy-plugin-host/plugin/cli-metadata")
@@ -92,4 +103,8 @@ async function bootstrap(): Promise<void> {
   process.exit(process.exitCode ?? 0)
 }
 
-await bootstrap()
+export async function main() {
+  await RuntimeContext.create(createLocalHost()).run(bootstrap)
+}
+
+if (import.meta.main) await main()

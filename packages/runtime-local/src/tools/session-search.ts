@@ -313,7 +313,7 @@ function formatResult(result: SessionResult): string {
   const scopeLabel =
     scope.type === "home"
       ? "Home"
-      : (scope.name ?? (scope.directory ? path.basename(scope.directory) : undefined) ?? scope.id)
+      : (scope.name ?? (scope.local?.directory ? path.basename(scope.local?.directory) : undefined) ?? scope.id)
   const updated = formatLocalDateTime(result.session.time.updated)
   const lines = [`[${result.session.id}] "${result.session.title}" — ${scopeLabel} (updated ${updated})`]
 

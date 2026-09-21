@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import webpush from "web-push"
 import { PushStore } from "./store"
 import { PushTypes } from "./types"
@@ -24,15 +25,21 @@ export namespace PushService {
 
   export type SendFn = typeof webpush.sendNotification
 
-  let sendFn: SendFn = webpush.sendNotification.bind(webpush)
+  const runtimeState = RuntimeContext.state(() => ({
+    sendFn: webpush.sendNotification.bind(webpush) as SendFn,
+  }))
 
   /** Test seam: replace the transport without touching the real push services. */
   export function setSender(fn: SendFn) {
-    sendFn = fn
+    const instanceState = runtimeState()
+
+    instanceState.sendFn = fn
   }
 
   export function resetSender() {
-    sendFn = webpush.sendNotification.bind(webpush)
+    const instanceState = runtimeState()
+
+    instanceState.sendFn = webpush.sendNotification.bind(webpush)
   }
 
   /**
@@ -72,8 +79,10 @@ export namespace PushService {
     vapid: { publicKey: string; privateKey: string },
     options?: { propagate?: boolean },
   ) {
+    const instanceState = runtimeState()
+
     try {
-      await sendFn({ endpoint: sub.endpoint, keys: sub.keys }, serialized, {
+      await instanceState.sendFn({ endpoint: sub.endpoint, keys: sub.keys }, serialized, {
         TTL: TTL_BY_CATEGORY[category],
         urgency: URGENCY_BY_CATEGORY[category],
         vapidDetails: {

@@ -26,11 +26,8 @@ export function performanceAnalysisStatusDescriptor(status: PerformanceAnalysis[
   }
 }
 
-export function performanceAnalysisSessionPath(input: {
-  sessionID: string
-  scope: Pick<SessionScope, "type" | "directory">
-}) {
-  const scopeKey = input.scope.type === "home" ? HOME_SCOPE_KEY : input.scope.directory
+export function performanceAnalysisSessionPath(input: { sessionID: string; scope: Pick<SessionScope, "id"> }) {
+  const scopeKey = input.scope.id
   if (!scopeKey) return
   return `/${base64Encode(scopeKey)}/session/${input.sessionID}`
 }

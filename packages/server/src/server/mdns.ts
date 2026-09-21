@@ -1,19 +1,24 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Bonjour } from "bonjour-service"
 
 const log = Log.create({ service: "mdns" })
 
 export namespace MDNS {
-  let bonjour: Bonjour | undefined
-  let currentPort: number | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    bonjour: undefined as Bonjour | undefined,
+    currentPort: undefined as number | undefined,
+  }))
 
   export function publish(port: number, name = "synergy") {
-    if (currentPort === port) return
-    if (bonjour) unpublish()
+    const instanceState = runtimeState()
+
+    if (instanceState.currentPort === port) return
+    if (instanceState.bonjour) unpublish()
 
     try {
-      bonjour = new Bonjour()
-      const service = bonjour.publish({
+      instanceState.bonjour = new Bonjour()
+      const service = instanceState.bonjour.publish({
         name,
         type: "http",
         port,
@@ -28,29 +33,31 @@ export namespace MDNS {
         log.error("mDNS service error", { error: err })
       })
 
-      currentPort = port
+      instanceState.currentPort = port
     } catch (err) {
       log.error("mDNS publish failed", { error: err })
-      if (bonjour) {
+      if (instanceState.bonjour) {
         try {
-          bonjour.destroy()
+          instanceState.bonjour.destroy()
         } catch {}
       }
-      bonjour = undefined
-      currentPort = undefined
+      instanceState.bonjour = undefined
+      instanceState.currentPort = undefined
     }
   }
 
   export function unpublish() {
-    if (bonjour) {
+    const instanceState = runtimeState()
+
+    if (instanceState.bonjour) {
       try {
-        bonjour.unpublishAll()
-        bonjour.destroy()
+        instanceState.bonjour.unpublishAll()
+        instanceState.bonjour.destroy()
       } catch (err) {
         log.error("mDNS unpublish failed", { error: err })
       }
-      bonjour = undefined
-      currentPort = undefined
+      instanceState.bonjour = undefined
+      instanceState.currentPort = undefined
       log.info("mDNS service unpublished")
     }
   }

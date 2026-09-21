@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Global } from "@ericsanchezok/synergy-harness/global"
@@ -42,8 +43,10 @@ export namespace ExperienceRecall {
     updatedAt: number
   }
 
-  const pendingRetrievals = new Map<string, string[]>()
-  const committedRetrievals = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    pendingRetrievals: new Map<string, string[]>(),
+    committedRetrievals: new Set<string>(),
+  }))
 
   /**
    * Records that experiences were selected for injection. The persisted
@@ -54,12 +57,16 @@ export namespace ExperienceRecall {
    * completed context is accepted for injection.
    */
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
-    pendingRetrievals.set(sessionID, experienceIDs)
-    committedRetrievals.delete(sessionID)
+    const instanceState = runtimeState()
+
+    instanceState.pendingRetrievals.set(sessionID, experienceIDs)
+    instanceState.committedRetrievals.delete(sessionID)
     setTimeout(
       () => {
-        pendingRetrievals.delete(sessionID)
-        committedRetrievals.delete(sessionID)
+        const instanceState = runtimeState()
+
+        instanceState.pendingRetrievals.delete(sessionID)
+        instanceState.committedRetrievals.delete(sessionID)
       },
       10 * 60 * 1000,
     )
@@ -74,10 +81,12 @@ export namespace ExperienceRecall {
    * assignment.
    */
   export function commitRetrieval(sessionID: string) {
-    if (committedRetrievals.has(sessionID)) return
-    const ids = pendingRetrievals.get(sessionID)
+    const instanceState = runtimeState()
+
+    if (instanceState.committedRetrievals.has(sessionID)) return
+    const ids = instanceState.pendingRetrievals.get(sessionID)
     if (!ids || ids.length === 0) return
-    committedRetrievals.add(sessionID)
+    instanceState.committedRetrievals.add(sessionID)
     try {
       LibraryDB.Experience.incrementRetrievalCounts(ids)
     } catch (err: any) {
@@ -92,7 +101,9 @@ export namespace ExperienceRecall {
    * capture.
    */
   export function captureRetrieval(sessionID: string): string[] {
-    return pendingRetrievals.get(sessionID) ?? []
+    const instanceState = runtimeState()
+
+    return instanceState.pendingRetrievals.get(sessionID) ?? []
   }
 
   /**
@@ -103,9 +114,11 @@ export namespace ExperienceRecall {
    * mutated, so reference equality identifies the captured generation.
    */
   export function consumeRetrieval(sessionID: string, captured?: string[]): string[] {
-    if (captured !== undefined && pendingRetrievals.get(sessionID) !== captured) return captured
-    const ids = pendingRetrievals.get(sessionID)
-    pendingRetrievals.delete(sessionID)
+    const instanceState = runtimeState()
+
+    if (captured !== undefined && instanceState.pendingRetrievals.get(sessionID) !== captured) return captured
+    const ids = instanceState.pendingRetrievals.get(sessionID)
+    instanceState.pendingRetrievals.delete(sessionID)
     return captured ?? ids ?? []
   }
 
@@ -267,8 +280,6 @@ export namespace ExperienceRecall {
     return result
   }
 
-  const DEBUG_LOG = path.join(Global.Path.libraryDebug, "retrieval-debug.jsonl")
-
   export function writeDebugLog(
     sessionID: string,
     scopeID: string,
@@ -293,7 +304,7 @@ export namespace ExperienceRecall {
     const line = JSON.stringify(entry) + "\n"
     ;(async () => {
       const { appendFile } = await import("fs/promises")
-      await appendFile(DEBUG_LOG, line)
+      await appendFile(path.join(Global.Path.libraryDebug, "retrieval-debug.jsonl"), line)
     })().catch(() => {})
   }
 

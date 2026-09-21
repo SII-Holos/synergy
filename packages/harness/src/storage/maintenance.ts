@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { PackedBackup } from "./packed-backup"
@@ -87,31 +88,32 @@ export namespace StorageMaintenance {
   }
 
   export async function open(options: { readonly?: boolean; migrate?: boolean; recover?: boolean } = {}) {
-    if (Storage.available()) throw new StorageIntegrityError("Maintenance cannot replace an installed Runtime Handle")
+    const runtime = RuntimeContext.current()
+    if (Storage.available())
+      throw new StorageIntegrityError("Maintenance cannot replace an attached Runtime storage Handle")
     if (options.readonly) {
       const handle = await StorageBootstrap.inspect(Global.Path.root)
       if (!handle)
         throw new StorageIntegrityError("Storage has not been initialized; run data storage resume before inspection")
-      const uninstall = Storage.install(handle)
+      runtime.storage = handle
       const close = async () => {
         try {
           await handle.store.close()
         } finally {
-          uninstall()
+          runtime.storage = undefined
         }
       }
       return { ...handle, close, [Symbol.asyncDispose]: close }
     }
     const ownership = await ServerProcessLock.acquire(undefined, "oneshot")
     let prepared: StorageBootstrap.Prepared | undefined
-    let uninstall: (() => void) | undefined
     let closing: Promise<void> | undefined
     const close = () =>
       (closing ??= (async () => {
         try {
           await prepared?.store.close()
         } finally {
-          uninstall?.()
+          runtime.storage = undefined
           await ownership.release()
         }
       })())
@@ -120,7 +122,7 @@ export namespace StorageMaintenance {
       if (options.recover) await StorageBootstrap.resumeTargetSwitch(Global.Path.root)
       prepared = await StorageBootstrap.prepare({ root: Global.Path.root, recover: options.recover })
       const handle = { store: prepared.store, artifactDirectory: Global.Path.data }
-      uninstall = Storage.install(handle)
+      runtime.storage = handle
       await SessionStaging.recover()
       const pending = prepared
       const activate = async () => {
