@@ -131,6 +131,7 @@ beforeAll(async () => {
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
               draftLabel: "Draft",
+              hasDraft: () => false,
               entries: [entry("ses_paused", "Paused session")],
               visualFor: () => pausedVisual("Session paused"),
               hasMore: false,
