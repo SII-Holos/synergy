@@ -4,11 +4,11 @@
 
 ## 预先固定的范围
 
-| 原始任务 | 选择理由 | Agent / verifier 时限 |
-| --- | --- | --- |
-| deepswe-1.1/dasel-html-document-format | Go，多文件功能实现和相邻格式实现的阅读；历史运行通过，用于检查质量回归 | 10800 / 1800 秒 |
-| deepswe-1.1/superjson-error-stack-serialization | TypeScript，序列化边界条件和多处编辑；历史运行未通过，避免只选成功题 | 10800 / 1800 秒 |
-| terminal-bench-2.1/large-scale-text-editing | 百万行 CSV、受约束的 Vim 操作；可能主要使用终端，覆盖另一类工作负载 | 1200 / 1200 秒 |
+| 原始任务                                        | 选择理由                                                               | Agent / verifier 时限 |
+| ----------------------------------------------- | ---------------------------------------------------------------------- | --------------------- |
+| deepswe-1.1/dasel-html-document-format          | Go，多文件功能实现和相邻格式实现的阅读；历史运行通过，用于检查质量回归 | 10800 / 1800 秒       |
+| deepswe-1.1/superjson-error-stack-serialization | TypeScript，序列化边界条件和多处编辑；历史运行未通过，避免只选成功题   | 10800 / 1800 秒       |
+| terminal-bench-2.1/large-scale-text-editing     | 百万行 CSV、受约束的 Vim 操作；可能主要使用终端，覆盖另一类工作负载    | 1200 / 1200 秒        |
 
 任务来源、固定提交、目录摘要和原题时限来自 [local-24 清单](../../../benchmark/suites/local-24.json)。不修改 instruction、测试、参考解、镜像语义或原生网络限制；参考解仅用于独立 oracle 环境。
 
