@@ -40,7 +40,7 @@ bun bench clean /absolute/path/to/run
 | 字段                                         | 含义                                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment                |
-| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT                        |
+| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT                  |
 | `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                       |
 | `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                                 |
 | `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                          |
