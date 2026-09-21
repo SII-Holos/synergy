@@ -36,6 +36,10 @@ description: Change or validate the repository benchmark evaluator, native harne
 5. Cross-check every completed provider request against native evidence. Interrupted requests retain unknown usage and any known lower bound. Cache and reasoning tokens have explicit inclusion rules; byte measurements remain bytes.
 6. Read the primary native reward while preserving auxiliary verifier metrics. Require positive test-start evidence separately. Check archive contents and checksums independently of agent outcomes and rewards.
 
+   When native collection reads committed history, check the original task's submission instructions and distinguish committed output from an uncommitted implementation. If the task requires a commit and the agent stops before making it, retain the native empty-patch result as a submission failure; do not commit for the agent or substitute working-tree grading. A stricter native format check also remains part of the frozen score even when the generated artifact executes successfully.
+
+   For delegated acceptance, inspect the actual child trajectory, shared dirty workspace, review count, parent wait and post-review edits/tests. A functional reward or reviewer verdict alone does not prove that findings were resolved. Verify factual claims against independent evidence and retain unresolved findings without changing the native score.
+
    Respect the environment's declared log mounts when delivering instructions: a host file in a mounted log directory is already visible at its container path. Upload it only for non-mounted environments; keep credentials in separate private temporary files. Test both paths with real file contents and retain pre-dispatch transfer failures without calling them model failures.
 
 ## Control resources and cache ownership
