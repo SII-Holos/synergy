@@ -254,15 +254,10 @@ export namespace Storage {
     const bytes = new Uint8Array(content)
     await state.gate.run(async () => {
       const hash = createHash("sha256").update(bytes).digest("hex")
-      const previous = await current()
-        .store.snapshot((tx) => {
-          tx.restrictToPublishedOwners()
-          return tx.artifact(key)
-        })
-        .catch((error: unknown) => {
-          if (error instanceof NotFoundError) return undefined
-          throw error
-        })
+      const previous = await snapshot((tx) => tx.artifact(key)).catch((error: unknown) => {
+        if (error instanceof NotFoundError) return undefined
+        throw error
+      })
       if (previous?.sha256 === hash && previous.size === bytes.byteLength) {
         await state.pack.verify(previous)
         return

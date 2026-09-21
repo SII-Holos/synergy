@@ -472,4 +472,6 @@ Persisted project selection, drafts and other Scope state use the owning connect
 
 The Session route gates message loading on the generated storage preparation API. Its component-owned controller polls only while pending/preparing, backs off while hidden and ignores disposed navigation responses. It does not synthesize message events or replace Scope watermarks. Returning to the workspace leaves durable preparation running. The status bar distinguishes historical convergence from independent backup completion and exposes background pause/resume; quarantined data remains blocked for repair.
 
+An active preparation attempt reports preparing and omits the previous attempt's error so polling continues through a background retry. Once the attempt settles, readiness or the persisted failure becomes visible. Quarantine remains blocked even when an attempt is still draining.
+
 Navigation clears a completion notice only after the owner reports ready. Concurrent clears share an in-flight guard through optimistic rollback so a rejected write cannot feed back into the reactive effect as an unbounded retry. Readiness replies from a previous server cannot mutate the current server or its navigation state.

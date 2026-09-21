@@ -174,23 +174,26 @@ export namespace SessionCompat {
   export const control = UpgradeWork.control
 
   export async function preparation(sessionID: string) {
-    const locator = await StorageCompat.readLocator(Storage.current().store, sessionID)
-    return {
-      sessionID,
-      state:
-        !locator || locator.status === "imported"
-          ? ("ready" as const)
-          : locator.status === "quarantined"
-            ? ("blocked" as const)
+    const store = Storage.current().store
+    const pending = runtimeState().inFlight.get(store)?.get(sessionID)
+    const locator = await StorageCompat.readLocator(store, sessionID)
+    const state =
+      !locator || locator.status === "imported"
+        ? ("ready" as const)
+        : locator.status === "quarantined"
+          ? ("blocked" as const)
+          : pending || runtimeState().inFlight.get(store)?.has(sessionID)
+            ? ("preparing" as const)
             : locator.error
               ? ("failed" as const)
-              : runtimeState().inFlight.get(Storage.current().store)?.has(sessionID)
-                ? ("preparing" as const)
-                : ("pending" as const),
+              : ("pending" as const)
+    return {
+      sessionID,
+      state,
       phase: locator?.phase,
       files: locator?.files ?? 0,
       bytes: locator?.bytes ?? 0,
-      error: locator?.error,
+      error: state === "preparing" ? undefined : locator?.error,
     }
   }
 

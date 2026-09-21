@@ -8,6 +8,37 @@ import { TransactionalStore } from "../../src/storage/transactional-store"
 import { Storage } from "../../src/storage/storage"
 import { StorageCompat } from "../../src/storage/compat"
 
+test("migration can prepare binary evidence while business reads and writes stay fenced", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const store = await TransactionalStore.open({
+      backend: "sqlite",
+      namespace: crypto.randomUUID(),
+      filename: path.join(tmp.path, "db"),
+    })
+    const owner = { sessionID: "old", scopeID: "scope" }
+    const key = ["sessions", owner.scopeID, owner.sessionID, "rollout", "blobs", "output"]
+    const content = new TextEncoder().encode("retained historical output")
+    try {
+      await StorageCompat.writeLocator(store, { ...owner, status: "partial" })
+      await Storage.provide({ store, artifactDirectory: tmp.path }, async () => {
+        await expect(Storage.writeBinary(key, content)).rejects.toThrow("preparation")
+        await Storage.withMigrationRecords(async () => {
+          await Storage.writeBinary(key, content)
+          await Storage.writeBinary(key, content)
+          expect(await Storage.readBinary(key)).toEqual(content)
+        })
+        await expect(Storage.readBinary(key)).rejects.toThrow("preparation")
+        await expect(Storage.writeBinary(key, content)).rejects.toThrow("preparation")
+        await StorageCompat.writeLocator(store, { ...owner, status: "imported" })
+        expect(await Storage.readBinary(key)).toEqual(content)
+        expect((await store.verify()).issues).toEqual([])
+      })
+    } finally {
+      await store.close()
+    }
+  }))
+
 test("unpublished owner records remain invisible and immutable until atomic publication", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
