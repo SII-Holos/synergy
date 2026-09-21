@@ -486,6 +486,17 @@ export namespace ProviderAuthRecovery {
     if (handledFetches.has(fetchFn)) return fetchFn
     const wrapped: FetchLike = async (input, init) => {
       const template = new Request(input, init)
+      // Provenance: https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3 .
+      // Local adaptation: preserve materialized SDK bodies so recording retains known-length uploads.
+      const body = init?.body
+      const bufferedBody =
+        typeof body === "string"
+          ? body
+          : body instanceof ArrayBuffer
+            ? body.slice(0)
+            : ArrayBuffer.isView(body)
+              ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength).slice()
+              : undefined
       const selected = await Auth.select(providerID)
       const environmentValues = ScopeContext.tryScope() ? Env.all() : RuntimeContext.current().host.env
       const environmentKey = options?.environment
@@ -510,7 +521,7 @@ export namespace ProviderAuthRecovery {
             if (headers.has("x-api-key")) headers.set("x-api-key", key)
             if (headers.has("api-key")) headers.set("api-key", key)
           }
-          return RolloutTransport.fetch(fetchFn, request, { ...init, body: undefined, headers })
+          return RolloutTransport.fetch(fetchFn, request, { ...init, body: bufferedBody ?? request.body, headers })
         },
       })
     }
