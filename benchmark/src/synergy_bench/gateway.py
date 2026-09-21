@@ -253,10 +253,7 @@ class Gateway:
                 file.flush()
                 os.fsync(file.fileno())
         record["request_bytes"] = len(payload)
-        record["request_field_bytes"] = {
-            key: len(json_bytes(value))
-            for key, value in effective.items()
-        }
+        record["request_field_bytes"] = {key: len(json_bytes(value)) for key, value in effective.items()}
         record["byte_accounting"] = "UTF-8 JSON field values; non-additive with framing"
         atomic_json(directory / "downstream.json", original)
         atomic_json(directory / "upstream.json", effective)
