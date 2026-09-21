@@ -107,7 +107,7 @@ export const GrepTool = Tool.define("grep", {
       outputLines.push(row)
     }
 
-    outputLines[0] = `Found ${displayedMatches} displayed matches`
+    outputLines[0] = `Found ${displayedMatches} matches`
     if (truncated) {
       outputLines.push("")
       outputLines.push("(Results are truncated. Consider using a more specific path or pattern.)")
