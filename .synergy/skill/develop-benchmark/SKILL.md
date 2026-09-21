@@ -46,6 +46,7 @@ description: Change or validate the repository benchmark evaluator, native harne
    Exercise independent cache roots on the same Docker daemon. Task and inference-proxy image identities must isolate ownership by resolved cache root while preserving warm reuse through path aliases; do not fabricate receipts for another cache's images.
 
    Exclude generated benchmark outputs from repository-wide formatter discovery with a negative input glob; ignore-file rules alone can still traverse unreadable directories. Native Homes can remain container-owned and private during execution; a publication hook must not require widening their permissions or walking their contents.
+
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.
 
