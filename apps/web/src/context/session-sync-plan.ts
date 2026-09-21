@@ -22,6 +22,7 @@ export type SessionSyncWatchKey = readonly [
   connected: boolean,
   ready: boolean,
   reconnectVersion: number,
+  historyID: string | undefined,
 ]
 
 export function sessionSyncWatchKey(input: {
@@ -29,14 +30,16 @@ export function sessionSyncWatchKey(input: {
   connected: boolean
   ready: boolean
   reconnectVersion: number
+  historyID?: string
 }): SessionSyncWatchKey {
-  return [input.sessionID, input.connected, input.ready, input.reconnectVersion]
+  return [input.sessionID, input.connected, input.ready, input.reconnectVersion, input.historyID]
 }
 
 export function shouldRunSessionSync(current: SessionSyncWatchKey, previous?: SessionSyncWatchKey) {
   const [sessionID, connected, ready, reconnectVersion] = current
   if (!sessionID || !connected || !ready) return false
   if (!previous || previous[0] !== sessionID) return true
+  if (current.every((value, index) => value === previous[index])) return false
   const reconnected = previous[1] === false && connected
   const recoveryCompleted = previous[3] !== reconnectVersion
   return !reconnected || recoveryCompleted
@@ -106,7 +109,8 @@ export function planSessionSyncReload(input: SessionSyncPlanInput): SessionSyncP
   const needsDerivedHistoryRefresh = input.canUnrollback
   const sessionTransition = input.trigger !== undefined
   const forceSession = !input.hasSessionRecord || versionStale || needsDerivedHistoryRefresh || sessionTransition
-  const forceMessages = !input.hasMessages || versionStale || needsDerivedHistoryRefresh
+  const forceMessages =
+    !input.hasMessages || versionStale || needsDerivedHistoryRefresh || input.trigger?.type === "history-transition"
   const ready = !forceSession && !forceMessages
   return {
     versionStale,

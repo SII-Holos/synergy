@@ -78,6 +78,8 @@ Derive activity steps and counts from canonical tool parts. Display preferences 
 
 For streaming-sync changes, test a checkpoint followed by a delta in one hidden-page flush, both with and without an existing part. Exercise background repair against the actual store provider while entering history and while compaction is pending. Evaluate all snapshot rejection conditions before advancing a resource watermark; preserve stronger reload ownership when requests share a loader.
 
+Rewind and redo must converge through the server's effective message window, including retained caches with earlier rollback branches. Observe history identity transitions separately from ordinary metadata events, force message reloads after transitions, and verify removed messages also lose their part buckets without reconnecting. A latest rollback summary is only an immediate display filter; it cannot reconstruct the complete history projection.
+
 ## Preserve Loading Boundaries
 
 1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.

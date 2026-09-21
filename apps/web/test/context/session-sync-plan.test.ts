@@ -23,13 +23,30 @@ describe("session sync watch key", () => {
     const before = key({})
     const after = key({ reconnectVersion: 5 })
 
-    expect(before).toEqual(["ses_1", true, true, 4])
-    expect(after).toEqual(["ses_1", true, true, 5])
+    expect(before).toEqual(["ses_1", true, true, 4, undefined])
+    expect(after).toEqual(["ses_1", true, true, 5, undefined])
     expect(after).not.toEqual(before)
+  })
+
+  test("observes rollback and redo independently of reconnects", () => {
+    const input = { sessionID: "ses_1", connected: true, ready: true, reconnectVersion: 4 }
+    const before = sessionSyncWatchKey(input)
+    const rollback = sessionSyncWatchKey({ ...input, historyID: "rollback_1" })
+    const again = sessionSyncWatchKey({ ...input, historyID: "rollback_2" })
+    expect(rollback).not.toEqual(before)
+    expect(again).not.toEqual(rollback)
+    expect(sessionSyncWatchKey(input)).not.toEqual(again)
+    expect(shouldRunSessionSync(rollback, before)).toBe(true)
+    expect(shouldRunSessionSync(again, rollback)).toBe(true)
+    expect(shouldRunSessionSync(before, again)).toBe(true)
   })
 
   test("runs for an initially ready session", () => {
     expect(shouldRunSessionSync(key({}))).toBe(true)
+  })
+
+  test("ignores metadata updates that preserve the history and connection identity", () => {
+    expect(shouldRunSessionSync(key({}), key({}))).toBe(false)
   })
 
   test("waits until the scope is connected and ready", () => {
@@ -95,7 +112,7 @@ describe("planSessionSyncReload (#509)", () => {
     })
   })
 
-  test("refreshes authoritative session metadata after a history transition", () => {
+  test("reloads the effective message window after a history transition", () => {
     expect(
       planSessionSyncReload({
         hasSessionRecord: true,
@@ -109,7 +126,7 @@ describe("planSessionSyncReload (#509)", () => {
       versionStale: false,
       needsDerivedHistoryRefresh: false,
       forceSession: true,
-      forceMessages: false,
+      forceMessages: true,
       ready: false,
     })
   })
