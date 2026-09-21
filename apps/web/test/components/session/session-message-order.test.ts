@@ -72,8 +72,8 @@ describe("rollback message filtering", () => {
     expect(messagesHiddenByRollback(injection, rollback).map((message) => message.id)).toEqual(["msg_1", "msg_2"])
   })
 
-  test("leaves the window unchanged when the cut message is not loaded", () => {
-    expect(messagesHiddenByRollback(history, { ...rollback, cutMessageID: "msg_missing" })).toEqual(history)
+  test("hides known dropped messages when the cut root is outside the loaded window", () => {
+    expect(messagesHiddenByRollback(history.slice(3), rollback)).toEqual([])
   })
 
   test("returns a copy when there is nothing to hide", () => {

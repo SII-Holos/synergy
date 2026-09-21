@@ -33,7 +33,7 @@ export function messagesHiddenByRollback<T extends RollbackMessage>(
     dropped.size === 0 ? [...messages] : messages.filter((message) => !dropped.has(message.id))
   if (!rollback.cutMessageID || !rollback.canUnrollback) return filterDropped()
   const cutIndex = messageIndex(messages, rollback.cutMessageID)
-  if (cutIndex < 0) return [...messages]
+  if (cutIndex < 0) return filterDropped()
   const newBranchLoaded = messages.slice(cutIndex).some((message) => {
     if (dropped.has(message.id) || message.role !== "user") return false
     if (message.isRoot === false) return false
