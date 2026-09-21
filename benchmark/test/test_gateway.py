@@ -3,6 +3,7 @@ import json
 from contextlib import asynccontextmanager
 
 import aiohttp
+import pytest
 from aiohttp import web
 
 from synergy_bench.config import ModelProfile
@@ -34,6 +35,78 @@ def model(url):
         max_output_tokens=2048,
         parameters={"temperature": 0.2},
     )
+
+
+@pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_native_unpaired_utf16_is_forwarded_and_recorded_losslessly(tmp_path, monkeypatch, protocol, streaming):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    content = "中文😀\ud83d/\ude00/\\ud83d"
+    received = []
+
+    async def handler(request):
+        raw = await request.read()
+        body = json.loads(raw)
+        assert body["messages"][0]["content"] == content
+        assert "中文😀" in raw.decode("utf-8")
+        received.append(raw)
+        usage = {"prompt_tokens": 10, "completion_tokens": 3}
+        if not streaming:
+            return web.json_response(
+                {
+                    "id": "fixture",
+                    "model": "fixture-one",
+                    "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                    "usage": usage,
+                }
+            )
+        frames = [
+            {"choices": [{"delta": {"content": content}, "finish_reason": "stop"}]},
+            {"choices": [], "usage": usage},
+        ]
+        payload = "".join("data: " + json.dumps(frame) + "\n\n" for frame in frames) + "data: [DONE]\n\n"
+        return web.Response(text=payload, content_type="text/event-stream")
+
+    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+        async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
+            request = {"model": "fixture-one", "stream": streaming}
+            request.update(
+                {"messages": [{"role": "user", "content": content}]}
+                if protocol == "chat-completions"
+                else {"input": content}
+            )
+            async with client.post(
+                gateway.url + ("/responses" if protocol == "responses" else "/chat/completions"), json=request
+            ) as response:
+                assert response.status == 200
+                text = await response.text()
+                if streaming:
+                    events = [
+                        json.loads(line[6:])
+                        for line in text.splitlines()
+                        if line.startswith("data: ") and line != "data: [DONE]"
+                    ]
+                    observed = (
+                        [event["delta"] for event in events if event.get("type") == "response.output_text.delta"]
+                        if protocol == "responses"
+                        else [
+                            event["choices"][0]["delta"].get("content", "") for event in events if event.get("choices")
+                        ]
+                    )
+                    assert "".join(observed) == content
+                else:
+                    result = json.loads(text)
+                    assert (
+                        result["output"][0]["content"][0]["text"]
+                        if protocol == "responses"
+                        else result["choices"][0]["message"]["content"]
+                    ) == content
+    [record] = read_ledger(tmp_path)
+    retained = tmp_path / record["id"]
+    assert record["status"] == "completed"
+    assert record["usage"] == {"prompt_tokens": 10, "completion_tokens": 3}
+    assert (retained / "upstream.bin").read_bytes() == received[0]
+    assert json.loads((retained / "upstream.json").read_text())["messages"][0]["content"] == content
 
 
 def test_model_profile_controls_all_sampling_including_absent_native_defaults(tmp_path):

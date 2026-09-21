@@ -15,7 +15,9 @@ def test_session_export_release_uses_its_own_public_package_and_rejects_unknown_
         source_protocol(tmp_path, "unverified-history")
 
 
-@pytest.mark.parametrize("name", ["external.mjs", "capture.mjs", "native-outcome.mjs", "session-capture.mjs"])
+@pytest.mark.parametrize(
+    "name", ["external.mjs", "capture.mjs", "native-outcome.mjs", "session-capture.mjs", "session-relay.mjs"]
+)
 def test_session_export_runtime_invalidates_when_an_executed_observer_changes(tmp_path, name):
     from synergy_bench.prepare import synergy_runtime_digest
 

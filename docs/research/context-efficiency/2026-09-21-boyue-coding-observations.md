@@ -4,7 +4,7 @@
 
 ## 预先固定的协议
 
-正式评分基线为 `v3.0.22` release 对应的 `024dd683e091d9fce3d1d26b79b2e188ce636b52`，候选使用本 PR 的优化版本。两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。该对照描述 release 到候选的整体变化，不能把两版本间所有差异仅归因于本 PR 的工具输出调整。正式派发后不改写输入或续跑到其他 evaluator。
+正式评分基线为 `v3.0.22` release 对应的 `024dd683e091d9fce3d1d26b79b2e188ce636b52`，候选使用本 PR 的优化版本。两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。该对照描述 release 到候选的整体变化，不能把两版本间所有差异仅归因于本 PR 的工具输出调整。正式派发后不改写输入或续跑到其他 evaluator。实验期间保持冻结候选，不随 dev 更新反复 rebase 或重跑；合并前才同步最新 dev，并按冲突及行为变化补必要验证。
 
 两侧使用原生 Linux amd64、synergy-max、full runtime、`bun_jit: true`、并发 1、repeat 1、调度 seed 20260921 和 `timeout_seconds: native`。模型为 Boyue `bailian/deepseek-v4.1-flash`，Chat Completions，`enable_thinking: false`，不声明 reasoning tier，temperature 1、context 1000000、max output 393216、developer role disabled。输出上限采用所选模型配置的精确值。主代理、辅助及子代理使用同一 profile。端点、凭据与直连设置仅在私有配置中保存。
 
@@ -41,3 +41,7 @@
 更改基线和输出上限时取消的唯一正式尝试运行了 927.239 秒，共 36 次请求，已知 1070004 token，另有 2 次中断请求用量未知；没有取得 reward。加上三轮旧条件预检，累计 136 次请求、2625210 个已知 token 和 3 次未知用量请求。上述消耗保留在历史成本账本，不进入新 release 对照的配对。
 
 过期的 13 个确定性控制实验已完整压缩归档并逐字节核对后移除展开副本，回收约 5.79 GiB；随后释放失效缓存引用并收集 31 个任务所有的缓存对象。原始付费记录、用量、失败和取消证据均保留，未执行全局 Docker 清理。
+
+release 接入的首轮两协议短控制均通过。随后一项免费预检发现：网关已完整记录 6 个响应，release 直接退出进程使进程内观察器只能独立核对其中 5 个 usage；门禁因此阻止继续派发。观察器改在独立包装进程记录，原生 CLI 生命周期不变，已派发的辅助请求在清理期限内完成观察，取消与超时立即中断。原生运行、观察清理时长分别保留，总墙钟包含清理；取舍见[release 评测决策](../../decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md)。该失败及后续代理隔离回归均保留，付费实验仍须等待新免费控制通过。
+
+独立观察器的两协议短控制通过后，长会话暴露了 release 截断 emoji 留下未配对 UTF-16 的行为：原始 JSON 可传输，但网关重新编码时抛出 UnicodeEncodeError，尚未向上游派发。该免费控制已取消并保留；网关及持久化修复为保留 JSON 转义，不替换字符，也不修改 release 的工具反馈。两协议、流式及非流式回归先复现失败再通过。付费 admission 仍关闭，产品版本不因该评测修复或 dev 更新而改变。

@@ -7,7 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from synergy_bench.storage import atomic_json, locked
+from synergy_bench.storage import atomic_json, locked, read_json
+
+
+def test_atomic_json_preserves_unpaired_utf16_without_changing_unicode(tmp_path: Path) -> None:
+    value = {"text": "中文😀\ud83d/\ude00", "literal": r"\ud83d"}
+    path = tmp_path / "record.json"
+    atomic_json(path, value)
+    assert read_json(path) == value
+    assert "中文😀" in path.read_bytes().decode("utf-8")
 
 
 def test_atomic_replace_flushes_the_parent_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

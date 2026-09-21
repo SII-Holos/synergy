@@ -17,7 +17,7 @@ from aiohttp import web
 
 from .bridge import BRIDGE_VERSION, ResponseStream, chat_to_responses, responses_to_chat, tool_catalog
 from .config import MODEL_PARAMETERS, ModelProfile
-from .storage import atomic_json, digest, read_json
+from .storage import atomic_json, digest, json_bytes, read_json
 
 
 async def stream_lines(content: aiohttp.StreamReader) -> AsyncIterator[bytes]:
@@ -246,7 +246,7 @@ class Gateway:
             "first_byte_at": None,
             "ended_at": None,
         }
-        payload = json.dumps(effective, ensure_ascii=False, separators=(",", ":")).encode()
+        payload = json_bytes(effective)
         for name, retained_bytes in [("upstream.bin", payload), ("downstream.bin", await request.read())]:
             with (directory / name).open("wb") as file:
                 file.write(retained_bytes)
@@ -254,7 +254,7 @@ class Gateway:
                 os.fsync(file.fileno())
         record["request_bytes"] = len(payload)
         record["request_field_bytes"] = {
-            key: len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
+            key: len(json_bytes(value))
             for key, value in effective.items()
         }
         record["byte_accounting"] = "UTF-8 JSON field values; non-additive with framing"
@@ -324,7 +324,7 @@ class Gateway:
 
                 async def emit(event: dict[str, Any]) -> None:
                     prefix = "event: " + event["type"] + "\n" if protocol == "responses" else ""
-                    await write((prefix + "data: " + json.dumps(event, ensure_ascii=False) + "\n\n").encode())
+                    await write((prefix + "data: ").encode() + json_bytes(event) + b"\n\n")
 
                 if bridge and streaming and isinstance(converter, ResponseStream):
                     for event in converter.begin():

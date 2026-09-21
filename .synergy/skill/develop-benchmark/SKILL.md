@@ -73,6 +73,10 @@ Synergy's rollout runtime key covers TypeScript sources and the shared `deadline
 
 Historical source support requires an explicit immutable revision, native CLI/worker launch inspection, model-role validation, independent request reconciliation and actual short/long Docker controls. Do not backport the current loop or fabricate modern rollout records. Archive the native format and disclose release-to-candidate attribution limits; see [the release decision](../../../docs/decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md).
 
+When a native CLI exits before auxiliary transport recording finishes, keep the observer in an independent wrapper and bound its drain by the cleanup deadline. Abort observation on task cancellation or timeout, retain unknown usage, and record native and observation durations separately while including both in total wall time. Exercise native process exit before provider completion and proxy bypass for the loopback observer.
+
+Native JSON can contain escaped unpaired UTF-16 from JavaScript truncation. Preserve it in transport and evidence without replacing or repairing the measured output. Cover both streaming and non-streaming bridges and durable byte accounting; see the release decision above.
+
 ## Secret detector experiments
 
 Use the [secret-detection package](../../../packages/secret-detection/README.md) for offline span quality and detector timing, and the Harness `benchmark:secrets` command for isolated capture costs. Keep corpus labels independent of predictions; never pass gold spans to adapters. Report incomplete scans and failures separately, retain failed positives in recall denominators, and use completed negatives for false-positive rates. Freeze corpus, detector/model/configuration identity and evaluator source before comparisons. Split future training and holdout by source/template and credential family. Keep real credentials and private transcripts out of fixtures and reports; record timing, counts and sanitized failure codes instead of matched values. These microbenchmarks do not establish task-level or user-visible latency improvements.
