@@ -127,7 +127,7 @@ class Gateway:
         bind: str = "0.0.0.0",
         advertised: str = "host.docker.internal",
         connect_timeout: float = 30,
-        stream_timeout: float = 180,
+        stream_timeout: float | None = None,
     ) -> None:
         self.model = model
         self.directory = directory

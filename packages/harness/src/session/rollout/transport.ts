@@ -44,6 +44,7 @@ export namespace RolloutTransport {
     let finishing: Promise<void> | undefined
     let recordingFailure: unknown
     let responseOK = false
+    let cancelRequest: ((reason?: unknown) => Promise<void>) | undefined
     async function emit(event: Event) {
       if (recordingFailure) throw recordingFailure
       try {
@@ -55,14 +56,16 @@ export namespace RolloutTransport {
       }
     }
     function finish(status: "completed" | "failed" | "cancelled", error?: unknown) {
-      finishing ??= recordingFailure
-        ? Promise.reject(recordingFailure)
-        : emit({
-            type: "attempt-end",
-            attemptID,
-            status,
-            error: error instanceof Error ? error.message : undefined,
-          })
+      finishing ??= (async () => {
+        await cancelRequest?.(error)
+        if (recordingFailure) throw recordingFailure
+        await emit({
+          type: "attempt-end",
+          attemptID,
+          status,
+          error: error instanceof Error ? error.message : undefined,
+        })
+      })()
       return finishing
     }
     function body(source: ReadableStream<Uint8Array>, channel: "request" | "response") {
@@ -113,9 +116,11 @@ export namespace RolloutTransport {
           if (timer) clearTimeout(timer)
         }
       }
-      function cancelUpstream(reason?: unknown) {
+      async function cancelUpstream(reason?: unknown) {
         upstreamCancellation ??= reader.cancel(reason)
-        return upstreamCancellation
+        if (channel === "response") return upstreamCancellation
+        // A cloned upload can share cancellation acknowledgement with a live sibling.
+        void upstreamCancellation.catch(() => {})
       }
       function close(complete: boolean, reason?: unknown) {
         closing ??= (async () => {
@@ -151,8 +156,35 @@ export namespace RolloutTransport {
         })()
         return closing
       }
+      let outputController: ReadableStreamDefaultController<Uint8Array>
+      function cancel(reason?: unknown) {
+        cancelling = true
+        cancellation ??= (async () => {
+          try {
+            await cancelUpstream(reason)
+          } catch {
+            // close() reports the same cancellation failure after admitted writes drain.
+          }
+          await pulling
+          await close(false, reason)
+          if (channel === "response") await finish("cancelled", reason)
+        })()
+        return cancellation
+      }
+      if (channel === "request") {
+        cancelRequest = async (reason) => {
+          try {
+            await cancel(reason)
+          } finally {
+            outputController.error(reason ?? new DOMException("Request upload ended", "AbortError"))
+          }
+        }
+      }
       return new ReadableStream<Uint8Array>(
         {
+          start(output) {
+            outputController = output
+          },
           pull(output) {
             pulling = (async () => {
               try {
@@ -172,7 +204,7 @@ export namespace RolloutTransport {
                 let failure = error
                 try {
                   await close(false, error)
-                  if (!RolloutRecordingError.isInstance(error))
+                  if (channel === "response" && !RolloutRecordingError.isInstance(error))
                     await finish(original.signal.aborted ? "cancelled" : "failed", error)
                 } catch (cleanupError) {
                   failure = recordingFailure ?? cleanupError
@@ -182,20 +214,7 @@ export namespace RolloutTransport {
             })()
             return pulling
           },
-          cancel(reason) {
-            cancelling = true
-            cancellation ??= (async () => {
-              try {
-                await cancelUpstream(reason)
-              } catch {
-                // close() reports the same cancellation failure after admitted writes drain.
-              }
-              await pulling
-              await close(false, reason)
-              if (channel === "response") await finish("cancelled", reason)
-            })()
-            return cancellation
-          },
+          cancel,
         },
         { highWaterMark: 0 },
       )
@@ -244,7 +263,6 @@ export namespace RolloutTransport {
       })
     } catch (error) {
       try {
-        if (requestBody && !requestBody.locked) await requestBody.cancel(error)
         if (response?.body && !response.body.locked) await response.body.cancel(error)
       } catch (cleanupError) {
         if (!recordingFailure) throw cleanupError

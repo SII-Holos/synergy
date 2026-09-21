@@ -2,13 +2,39 @@ import {
   RUNTIME_STARTUP_MAX_LINE_LENGTH,
   RUNTIME_STARTUP_PREFIX,
   RuntimeStartupProgress,
+  type StorageMaintenanceEvent,
+  type StorageMaintenanceOperation,
+  type StorageMaintenanceStage,
 } from "@ericsanchezok/synergy-util/runtime-startup"
 import type { DesktopStartupStatus } from "./startup-page.js"
+
+type Maintenance = {
+  operation: StorageMaintenanceOperation
+  stage?: StorageMaintenanceStage
+  startedAt: number
+  deadline: number
+  timeoutMs: number
+}
+const maintenanceLabels: Record<StorageMaintenanceOperation, string> = {
+  vacuum: "Rebuilding the database.",
+  reclaim: "Reclaiming database space.",
+  "integrity-check": "Checking database integrity.",
+  "create-index": "Building a database index.",
+  "drop-index": "Removing a retired database index.",
+}
+const maintenanceStages: Record<StorageMaintenanceStage, string> = {
+  "checkpoint-before": "Preparing the database journal.",
+  rewrite: "Rebuilding the database.",
+  "checkpoint-after": "Finishing the database journal.",
+}
 
 export class DesktopServerStartup {
   private buffer = ""
   private discarded = false
-  private progress: RuntimeStartupProgress | undefined
+  private progress: Exclude<RuntimeStartupProgress, StorageMaintenanceEvent> | undefined
+  private readonly maintenance = new Map<number, Maintenance>()
+  private maintenanceSequence = 0
+  private failure?: Error
   private recoveryCompleted = false
   private storageStep = 0
   private deadline: number
@@ -24,7 +50,7 @@ export class DesktopServerStartup {
       onStatus?: (status: DesktopStartupStatus) => void
     } = {},
   ) {
-    this.now = options.now ?? Date.now
+    this.now = options.now ?? (() => performance.now())
     this.healthTimeoutMs = options.healthTimeoutMs ?? 30_000
     this.migrationIdleMs = options.migrationIdleMs ?? 5 * 60_000
     this.deadline = this.now() + this.healthTimeoutMs
@@ -54,8 +80,13 @@ export class DesktopServerStartup {
       return
     }
     const parsed = RuntimeStartupProgress.safeParse(value)
-    if (!parsed.success || this.recoveryCompleted) return
+    if (!parsed.success || this.failure) return
     const next = parsed.data
+    if (next.phase === "maintenance") {
+      this.receiveMaintenance(next)
+      return
+    }
+    if (this.recoveryCompleted) return
     const previous = this.progress
     if (next.phase === "storage") {
       if (previous?.phase === "recovery" || next.step < this.storageStep) return
@@ -83,10 +114,61 @@ export class DesktopServerStartup {
   }
 
   remainingMs(): number {
-    return this.deadline - this.now()
+    if (this.failure) return 0
+    return (this.currentMaintenance()?.deadline ?? this.deadline) - this.now()
+  }
+
+  private currentMaintenance(): Maintenance | undefined {
+    let current: Maintenance | undefined
+    for (const entry of this.maintenance.values()) if (!current || entry.deadline < current.deadline) current = entry
+    return current
+  }
+
+  private receiveMaintenance(event: StorageMaintenanceEvent) {
+    if (event.state === "started") {
+      if (event.id <= this.maintenanceSequence) return
+      this.maintenanceSequence = event.id
+      if (this.maintenance.size >= 1024) {
+        this.failure = new Error("Too many concurrent startup maintenance operations")
+        return
+      }
+      const startedAt = this.now()
+      this.maintenance.set(event.id, {
+        operation: event.operation,
+        startedAt,
+        timeoutMs: event.timeoutMs,
+        deadline: startedAt + event.timeoutMs + 5000,
+      })
+    } else {
+      const current = this.maintenance.get(event.id)
+      if (!current) return
+      if (event.state === "stage") current.stage = event.stage
+      else {
+        this.maintenance.delete(event.id)
+        if (event.state === "failed")
+          this.failure = new Error(
+            `Synergy database maintenance ${current.operation} failed after ${event.elapsedMs}ms`,
+          )
+        this.deadline =
+          this.now() +
+          (this.progress &&
+          this.progress.phase !== "starting" &&
+          !(this.progress.phase === "storage" && this.progress.stage === "complete")
+            ? this.migrationIdleMs
+            : this.healthTimeoutMs)
+      }
+    }
+    this.options.onStatus?.(this.status())
   }
 
   status(): DesktopStartupStatus {
+    const maintenance = this.currentMaintenance()
+    if (maintenance)
+      return {
+        title: "Updating saved data",
+        detail: maintenance.stage ? maintenanceStages[maintenance.stage] : maintenanceLabels[maintenance.operation],
+        elapsedMs: Math.max(0, this.now() - maintenance.startedAt),
+      }
     const progress = this.progress
     if (progress?.phase === "storage" && progress.stage !== "complete") {
       if (progress.stage === "validate-engine")
@@ -129,6 +211,12 @@ export class DesktopServerStartup {
   }
 
   timeoutError(): Error {
+    if (this.failure) return this.failure
+    const maintenance = this.currentMaintenance()
+    if (maintenance)
+      return new Error(
+        `Synergy database maintenance ${maintenance.operation}${maintenance.stage ? ` (${maintenance.stage})` : ""} exceeded its ${maintenance.timeoutMs}ms waiting budget after ${Math.floor(this.now() - maintenance.startedAt)}ms`,
+      )
     const progress = this.progress
     if (progress?.phase === "storage" && progress.stage === "validate-engine")
       return new Error(`Synergy database integrity check exceeded its ${progress.timeoutMs}ms budget`)

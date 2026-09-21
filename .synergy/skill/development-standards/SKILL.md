@@ -32,6 +32,7 @@ description: Route a Synergy source change to the current repository development
 2. State the behavioral invariant and write the failing test first for new behavior or bug fixes.
 3. Change the smallest coherent set of owners. Include migrations, events, SDK generation, UI registration, or docs only when the contract crosses them.
 4. Run the narrowest verification first, then expand according to the affected workflow.
+5. When a regression repeats after earlier fixes, trace the common owner across every producer and consumer before adding another special case. For startup/persistence changes, load both `change-persistence` and `develop-synergy`; verify real driver operations as well as parsed progress records.
 
 ## Capture New Rules
 

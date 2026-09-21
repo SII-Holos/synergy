@@ -6,6 +6,7 @@ platform: linux/amd64
 seed: 20260914
 repeat: 1
 concurrency: auto
+timeout_seconds: native
 task_repeats:
   terminal-bench-2.1/openssl-selfsigned-cert: 3
   terminal-bench-2.1/polyglot-c-py: 3

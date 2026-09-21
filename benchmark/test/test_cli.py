@@ -82,10 +82,13 @@ def test_cli_declares_matrix_maintenance_commands(capsys, monkeypatch):
         assert command in output
 
 
-def test_legacy_normalization_requires_explicit_model_binding(tmp_path):
+@pytest.mark.parametrize("deadline", ["omitted", None, 60])
+def test_legacy_normalization_requires_explicit_model_binding(tmp_path, deadline):
     from synergy_bench.config import ExperimentConfig, ModelProfile, normalize_legacy
 
     legacy = {"version": 1, "suite": "suite.json", "variants": {"A": {"model": "old/m", "runtime": "full"}}}
+    if deadline != "omitted":
+        legacy["timeout_seconds"] = deadline
     profiles = {
         "m": ModelProfile(
             model="m",
@@ -101,6 +104,7 @@ def test_legacy_normalization_requires_explicit_model_binding(tmp_path):
     result = normalize_legacy(legacy, profiles, {"old/m": "m"}, tmp_path)
     normalized = ExperimentConfig.model_validate(result)
     assert normalized.version == 2
+    assert normalized.timeout_seconds == ("native" if deadline in ("omitted", None) else deadline)
     assert normalized.harnesses["A"].runtime == "full"
     assert normalized.models["m"].api_key_env == "MODEL_KEY"
     assert list(normalized.variants) == ["A__m"]
