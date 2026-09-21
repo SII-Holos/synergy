@@ -33,8 +33,8 @@ def harness_configuration(
         "NODE_USE_ENV_PROXY": "1",
     }
     if bun_jit is not None:
-        if kind != "opencode" or type(bun_jit) is not bool:
-            raise ValueError("bun_jit requires an explicit boolean for opencode")
+        if kind not in {"synergy", "opencode"} or type(bun_jit) is not bool:
+            raise ValueError("bun_jit requires an explicit boolean for synergy or opencode")
         # Provenance: https://github.com/oven-sh/bun/issues/22901
         # Local adaptation: expose Bun's supported override as an explicit experiment
         # condition; do not use the distinct JSC_useJIT variable or auto-detect a fallback.

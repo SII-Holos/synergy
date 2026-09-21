@@ -58,6 +58,8 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
         )
         options = read_json(attempt / "inputs/options.json")
         assert options["timeout_seconds"] == expected
+        assert options["bun_jit"] == variant.bun_jit
+        assert trial.agent.kwargs["settings"]["bun_jit"] == variant.bun_jit
         assert (
             trial.agent.override_timeout_sec
             == expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
@@ -85,3 +87,23 @@ def test_thinking_presets_declare_their_reasoning_tier(path):
             f"{path.name}:{key} enables thinking without declaring reasoning_effort; "
             "the reasoning tier would come from the provider default instead of the experiment"
         )
+
+
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_synergy_jit_condition_reaches_launcher_without_becoming_a_credential_reference(tmp_path, enabled):
+    from synergy_bench.config import ExperimentConfig, Variant
+
+    variant = Variant(model="fixture/model", bun_jit=enabled)
+    root = tmp_path / "run-12345678"
+    atomic_json(root / "inputs/synergy/config.json", {})
+    plan = {
+        "config": ExperimentConfig(version=1, suite="fixture.json", variants={"synergy": variant}).model_dump(),
+        "cache": str(tmp_path / "cache"),
+        "variants": {"synergy": {**variant.model_dump(), "artifact": str(tmp_path), "artifact_id": "fixture"}},
+        "tasks": {"task": {"local_path": str(tmp_path / "task"), "agent_seconds": 90}},
+    }
+    attempt = root / "trials/0000/attempt-001"
+    trial, _, _ = trial_configuration(root, plan, {"variant": "synergy", "task": "task"}, attempt)
+    assert trial.agent.kwargs["settings"]["bun_jit"] is enabled
+    assert trial.agent.kwargs["settings"]["env"] == {}
+    assert read_json(attempt / "inputs/options.json")["bun_jit"] is enabled
