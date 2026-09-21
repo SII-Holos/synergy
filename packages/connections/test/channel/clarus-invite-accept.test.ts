@@ -2,11 +2,7 @@ import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/con
 import { describe, expect, mock, test } from "bun:test"
 import { ChannelHost } from "../../src/channel/host"
 import { ClarusAssignmentStore } from "../../src/channel/provider/clarus/assignment-store"
-import type {
-  ClarusAgentTunnelPort,
-  ClarusObservedEvent,
-  RuntimeTaskAssignedEvent,
-} from "../../src/channel/provider/clarus/agent-tunnel-port"
+import type { ClarusAgentTunnelPort, ClarusObservedEvent } from "../../src/channel/provider/clarus/agent-tunnel-port"
 import { ClarusProvider } from "../../src/channel/provider/clarus"
 import { ClarusResultOutbox } from "../../src/channel/provider/clarus/result-outbox"
 import { createClarusAgentTunnelAdapter } from "../../src/channel/provider/clarus/tunnel-adapter"
@@ -88,17 +84,6 @@ function acceptedMembershipPayload(projectID: string) {
       invited_by_user_id: 3,
       created_at: now,
     },
-  }
-}
-
-function acceptedTaskPayload(event: RuntimeTaskAssignedEvent) {
-  return {
-    run_id: event.runID,
-    project_id: event.projectID,
-    task_id: event.taskID,
-    subtask_id: event.subtaskID,
-    attempt: event.attempt,
-    accepted_at: new Date().toISOString(),
   }
 }
 
@@ -884,8 +869,12 @@ describe("Clarus task acceptance", () => {
         const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
         await host.projects.ensure({ externalProjectId: "project-order", name: "Order project", isActive: true })
         const order: string[] = []
-        let resolveAccept!: (value: unknown) => void
-        const acceptResponse = new Promise((resolve) => {
+        let resolveAccept!: (
+          event: Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>,
+        ) => void
+        const acceptResponse = new Promise<
+          Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>
+        >((resolve) => {
           resolveAccept = resolve
         })
         const event = taskAssignedEvent({
@@ -931,16 +920,48 @@ describe("Clarus task acceptance", () => {
           return true
         })
 
+        const dispatch = handleEvent(instance, connection, event)
         try {
-          const dispatch = handleEvent(instance, connection, event)
-          const completedBeforeAck = await Promise.race([dispatch.then(() => true), Bun.sleep(100).then(() => false)])
-          expect(completedBeforeAck).toBe(true)
-          expect(order).toEqual(["accept", "wake"])
-          resolveAccept({ ...acceptedTaskPayload(event), type: "runtimeTaskAccepted" })
           await dispatch
+          expect(order).toEqual(["accept", "wake"])
+          expect(connection.outboundRequests.has(String(event.requestID))).toBe(true)
+          const located = await ClarusAssignmentStore.findByIdentity({
+            accountId: AGENT_ID,
+            projectID: event.projectID,
+            taskID: event.taskID,
+          })
+          expect(located?.assignment.acceptState).toBe("pending")
         } finally {
-          ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
+          resolveAccept({
+            kind: "known",
+            type: "runtimeTaskAccepted",
+            agentID: AGENT_ID,
+            requestID: String(event.requestID),
+            projectID: event.projectID,
+            runID: event.runID,
+            taskID: event.taskID,
+            subtaskID: event.subtaskID,
+            attempt: event.attempt,
+            acceptedAt: new Date().toISOString(),
+            epoch: 1,
+            generation: 1,
+          })
+          try {
+            await dispatch
+            await waitFor(
+              () => connection.outboundRequests.size,
+              (size) => size === 0,
+            )
+          } finally {
+            ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
+          }
         }
+        const located = await ClarusAssignmentStore.findByIdentity({
+          accountId: AGENT_ID,
+          projectID: event.projectID,
+          taskID: event.taskID,
+        })
+        expect(located?.assignment.acceptState).toBe("acknowledged")
       },
     })
   })
