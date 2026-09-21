@@ -96,3 +96,29 @@ test("SDK usage keeps a missing output count unknown instead of zero", () => {
   expect(usage!.output.total).toBeNull()
   expect(usage!.complete).toBe(false)
 })
+
+test.each(["@ai-sdk/google", "@ai-sdk/google-vertex"])("SDK fallback includes thinking output for %s", (sdk) => {
+  const usage = RolloutUsage.normalizeSdk(
+    { inputTokens: 100, outputTokens: 20, reasoningTokens: 80, totalTokens: 200, cachedInputTokens: 0 },
+    sdk,
+  )
+  expect(usage!.output).toEqual({ total: 100, reasoning: 80 })
+  expect(usage!.protocol).toBe("google")
+  expect(usage!.complete).toBe(true)
+})
+
+test("Google SDK fallback preserves output when only the provider total includes thinking", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20, totalTokens: 200 }, "@ai-sdk/google")
+  expect(usage!.output).toEqual({ total: 100, reasoning: null })
+})
+
+test("Google SDK fallback sums reported output components without an aggregate", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20, reasoningTokens: 80 }, "@ai-sdk/google")
+  expect(usage!.output).toEqual({ total: 100, reasoning: 80 })
+})
+
+test("Google SDK fallback leaves output unknown when thinking and aggregate are both absent", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20 }, "@ai-sdk/google")
+  expect(usage!.output.total).toBeNull()
+  expect(usage!.complete).toBe(false)
+})

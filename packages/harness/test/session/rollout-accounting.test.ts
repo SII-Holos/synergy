@@ -165,3 +165,17 @@ test.each(["@ai-sdk/anthropic", "@ai-sdk/google-vertex/anthropic", "@ai-sdk/amaz
     expect(summary.tokens.total).toEqual({ known: 1050, unknown: 1, total: null })
   },
 )
+
+test.each(["@ai-sdk/google", "@ai-sdk/google-vertex"])(
+  "SDK fallback charges visible and thinking output for %s",
+  async (sdk) => {
+    const fixture = await record("fixture", sdk)
+    await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+      status: "completed",
+      sdkUsage: { inputTokens: 100, outputTokens: 20, reasoningTokens: 80, totalTokens: 200, cachedInputTokens: 0 },
+    })
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.tokens.output).toEqual({ known: 100, unknown: 0, total: 100 })
+    expect(summary.tokens.total).toEqual({ known: 200, unknown: 0, total: 200 })
+  },
+)

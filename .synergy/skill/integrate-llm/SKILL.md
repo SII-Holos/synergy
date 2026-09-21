@@ -121,3 +121,5 @@ Public task cancellation must return after durable cancellation without waiting 
 Historical derived retries must not append to a terminal source rollout. Use explicit operation ownership with source identity in metadata, while preserving the caller signal; reserve causal Session ownership for work still owned by the matching root. Test this under an ambient terminal rollout so accidental context inheritance fails.
 
 SDK usage fallback must not assign a call aggregate to each unmeasured transport retry. Test a failed attempt followed by a successful attempt with call usage, and preserve provider-specific cache inclusion and unknown cache-write counts when only SDK evidence remains.
+
+Verify SDK output inclusion against the locked adapter: Google and Vertex expose candidate output separately from thinking, unlike OpenAI. Test reported aggregates, separate components and missing components before labeling fallback totals complete.

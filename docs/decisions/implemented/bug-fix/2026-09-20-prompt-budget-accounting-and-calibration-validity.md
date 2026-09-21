@@ -24,6 +24,8 @@ The `chars/4` heuristic has a measured error profile that bounds where it may be
 
 Call-level SDK usage is charged only when the call has no recorded transport attempts. A retry that failed before receiving a response remains unknown; assigning the final SDK aggregate to it would count the successful retry twice. SDK input from Anthropic, Vertex Anthropic and Bedrock excludes cache reads and writes, so their fallback retains uncached input and reported cache reads while leaving the unreported cache-write count and full input total unknown.
 
+Google and Vertex map visible candidates to SDK `outputTokens` and thinking to `reasoningTokens`. Their fallback uses `totalTokens - inputTokens`, or sums both output components when no aggregate is available. Missing thinking and aggregate counts leave output unknown. This follows the repository-locked `@ai-sdk/google` adapter and the existing Google wire normalizer; treating this SDK as OpenAI would undercount thinking while marking the result complete.
+
 ## Alternatives considered
 
 **Repair the transport bypass so every attempt is recorded.** This targets the cause rather than the reader and would keep attempt records the single usage source. It lost because transport recording is deliberately best-effort and `noProxy` selects a legitimate transport, not a broken one: making attempt capture mandatory would either fail runs that bypass the recording fetch or grow the transport a second mandatory path. The SDK usage was already durable on the call record, so reading it removes accounting's dependency on transport capture without weakening any recording guarantee.

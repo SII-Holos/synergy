@@ -174,7 +174,12 @@ export namespace RolloutUsage {
   export function normalizeSdk(raw: unknown, sdk = "@ai-sdk/openai"): Info | null {
     const usage = object(raw)
     const input = count(usage.inputTokens)
-    const output = count(usage.outputTokens)
+    const google = sdk === "@ai-sdk/google" || sdk === "@ai-sdk/google-vertex"
+    const reasoning = count(usage.reasoningTokens)
+    // The locked Google SDK maps candidatesTokenCount and thoughtsTokenCount separately.
+    const output = google
+      ? (difference(count(usage.totalTokens), input) ?? sum(count(usage.outputTokens), reasoning))
+      : count(usage.outputTokens)
     if (input === null && output === null) return null
     const exclusiveInput =
       sdk === "@ai-sdk/anthropic" || sdk === "@ai-sdk/google-vertex/anthropic" || sdk === "@ai-sdk/amazon-bedrock"
@@ -182,10 +187,16 @@ export namespace RolloutUsage {
     const cacheRead = count(usage.cachedInputTokens) ?? (exclusiveInput || input === null ? null : 0)
     const result: Info = {
       version: 1,
-      protocol: exclusiveInput ? (sdk === "@ai-sdk/amazon-bedrock" ? "unknown" : "anthropic") : "openai",
+      protocol: google
+        ? "google"
+        : exclusiveInput
+          ? sdk === "@ai-sdk/amazon-bedrock"
+            ? "unknown"
+            : "anthropic"
+          : "openai",
       raw: (raw ?? null) as Info["raw"],
       input: { total: exclusiveInput ? null : input, uncached: null, cacheRead, cacheWrite: exclusiveInput ? null : 0 },
-      output: { total: output, reasoning: count(usage.reasoningTokens) },
+      output: { total: output, reasoning },
       cacheWrites: {},
       units: [],
       billing: "tokens",
