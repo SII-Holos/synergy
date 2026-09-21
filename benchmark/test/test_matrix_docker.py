@@ -22,7 +22,7 @@ from synergy_bench.storage import atomic_json, read_json
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit native Docker matrix")
 
 
-async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None):
+async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None, observation_turn=None):
     body = await request.json()
     responses = request.path.endswith("/responses")
     messages = body["input"] if responses else body["messages"]
@@ -66,6 +66,30 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
         command = command_prefix + command
         field = next((key for key in ["command", "cmd", "code"] if key in properties), "command")
         args[field] = ["sh", "-c", command] if properties.get(field, {}).get("type") == "array" else command
+        if observation_turn is not None:
+            phase = observation_turn % 4
+            if phase in (1, 2):
+                name = "view_file" if phase == 1 else "revise_file"
+                selected = next(tool for tool in functions if tool["name"].split("__")[-1] == name)
+                namespace = selected.get("namespace")
+                if phase == 1:
+                    args = {"filePath": "/app/observation.txt", "limit": 32}
+                else:
+                    headers = re.findall(r"\[[^\]\n]*observation\.txt#([A-Za-z0-9]+)\]", json.dumps(messages))
+                    assert headers, "Native view_file did not return an anchored snapshot"
+                    args = {"input": f"[/app/observation.txt#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
+            else:
+                script = (
+                    "from pathlib import Path; memory=bytearray(8*1024**2); "
+                    "Path('/app/observation.txt').write_text(''.join("
+                    "f'row {i} '+('中😀'*128)+'\\n' for i in range(500))); "
+                    "Path('/app/marker').write_text('verified')"
+                    if phase == 0
+                    else "from pathlib import Path; "
+                    "assert Path('/app/observation.txt').read_text().startswith('changed ')"
+                )
+                command = command_prefix + shlex.join(["python3", "-c", script])
+                args[field] = command
         message = {
             "role": "assistant",
             "tool_calls": [
@@ -229,15 +253,16 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
 
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 @pytest.mark.parametrize("tool_turns", [1, 120], ids=["short", "long"])
-async def test_synergy_jitless_long_sessions_preserve_native_tools_and_usage(
-    tmp_path, monkeypatch, protocol, tool_turns
+@pytest.mark.parametrize("bun_jit", [False, True], ids=["jitless", "jit"])
+async def test_synergy_long_sessions_preserve_native_tools_and_usage(
+    tmp_path, monkeypatch, protocol, tool_turns, bun_jit
 ):
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
-    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True, tool_turns=tool_turns)
+    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True, tool_turns=tool_turns, bun_jit=bun_jit)
 
 
-async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=False, tool_turns=120):
+async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=False, tool_turns=120, bun_jit=False):
     create_matrix_suite(tmp_path)
 
     native_probe = shlex.join(
@@ -258,6 +283,9 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
 
     async def provider_with_runtime_evidence(request):
         body = await request.json()
+        if protocol == "chat-completions":
+            assert body["enable_thinking"] is False
+            assert "reasoning_effort" not in body
         messages = body.get("messages", body.get("input", []))
         count = sum(
             message.get("role") == "tool" or message.get("type") == "function_call_output"
@@ -269,6 +297,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             request,
             command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ' + native_probe + "; ",
             force_tool=count < tool_turns if long_session and not probe else None,
+            observation_turn=count if long_session and not probe else None,
         )
 
     app = web.Application()
@@ -292,7 +321,12 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
     }
     if long_session:
         harnesses = {
-            "synergy-jitless": {**harnesses["synergy"], "runtime": "full", "agent": "synergy-max", "bun_jit": False}
+            "synergy-jit" if bun_jit else "synergy-jitless": {
+                **harnesses["synergy"],
+                "runtime": "full",
+                "agent": "synergy-max",
+                "bun_jit": bun_jit,
+            }
         }
     else:
         for kind in ["synergy", "opencode"]:
@@ -307,6 +341,9 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             "api_key_env": "BENCH_FIXTURE_KEY",
             "context_window": 1000000 if long_session else 32000,
             "max_output_tokens": 8192 if long_session else 2048,
+            "parameters": {"enable_thinking": False}
+            if protocol == "chat-completions"
+            else {"reasoning": {"effort": "none"}},
         }
         for name in ["fixture-one", "fixture-two"]
     }
@@ -316,7 +353,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 1 if long_session else 4,
-        "timeout_seconds": 900 if long_session else None,
+        "timeout_seconds": 900 if long_session else "native",
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
@@ -367,15 +404,16 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
                         continue
                     results.append(result)
                     harness = read_json(attempt / "trial.json")["harness"]
-                    if harness.endswith("-jitless"):
+                    if harness.endswith(("-jitless", "-jit")):
                         options = read_json(attempt / "inputs/options.json")
-                        assert options["bun_jit"] is False
+                        enabled = harness.endswith("-jit")
+                        assert options["bun_jit"] is enabled
                         if harness == "opencode-jitless":
                             assert options["native"]["env"]["BUN_JSC_useJIT"] == "0"
                         events = next(attempt.glob("*/agent/events.jsonl")).read_text()
-                        if harness == "synergy-jitless":
-                            assert "BENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT=0" in events
-                            assert "BENCH_SYNERGY_CLI_BUN_JSC_useJIT=0" in events
+                        if harness.startswith("synergy-"):
+                            assert f"BENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT={int(enabled)}" in events
+                            assert f"BENCH_SYNERGY_CLI_BUN_JSC_useJIT={int(enabled)}" in events
                         else:
                             assert "BENCH_JIT=0" in events
                         if long_session:
@@ -387,6 +425,13 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
                             }
                             assert len(completed) >= tool_turns
                             assert result["wire_usage"]["attempts"] >= tool_turns + 1
+                            if tool_turns >= 4:
+                                assert {"bash", "view_file", "revise_file"} <= {
+                                    event["part"]["tool"]
+                                    for event in records
+                                    if event.get("type") == "tool_use"
+                                    and event["part"]["state"]["status"] == "completed"
+                                }
             return results
 
         results = await asyncio.to_thread(retained_results)

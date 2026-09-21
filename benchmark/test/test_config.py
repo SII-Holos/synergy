@@ -3,7 +3,35 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from synergy_bench.config import ExperimentConfig, resolve_plan
+from synergy_bench.config import ExperimentConfig, ModelProfile, resolve_plan
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_boolean_thinking_switch_survives_freezing(enabled):
+    profile = ModelProfile(
+        model="bailian/deepseek-v4.1-flash",
+        protocol="chat-completions",
+        base_url="http://provider.invalid/v1",
+        api_key_env="BOYUE_API_KEY",
+        context_window=1000000,
+        max_output_tokens=8192,
+        parameters={"enable_thinking": enabled},
+    )
+    assert ModelProfile.model_validate(profile.model_dump()).parameters["enable_thinking"] is enabled
+
+
+@pytest.mark.parametrize("enabled", [None, 0, 1, "false", "true"])
+def test_boolean_thinking_switch_rejects_coercion(enabled):
+    with pytest.raises(ValidationError):
+        ModelProfile(
+            model="fixture",
+            protocol="chat-completions",
+            base_url="http://provider.invalid/v1",
+            api_key_env="KEY",
+            context_window=1000,
+            max_output_tokens=100,
+            parameters={"enable_thinking": enabled},
+        )
 
 
 def config():
