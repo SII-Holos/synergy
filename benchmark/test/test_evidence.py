@@ -220,3 +220,36 @@ def test_evidence_does_not_follow_directory_symlinks(tmp_path: Path) -> None:
     (tmp_path / "linked-home").symlink_to(private, target_is_directory=True)
     result = collect_evidence(tmp_path, {})
     assert not any(name.startswith("linked-home/") for name in result["files"])
+
+
+def test_session_export_release_keeps_native_home_archive_distinct_from_rollout(tmp_path):
+    import hashlib
+    import tarfile
+
+    from synergy_bench.storage import atomic_json
+
+    agent = tmp_path / "agent"
+    (agent / "home").mkdir(parents=True)
+    (agent / "events.jsonl").write_text('{"type":"step_finish","part":{"reason":"stop"}}\n')
+    (agent / "stderr.log").write_text("")
+    atomic_json(
+        agent / "execution.json",
+        {"harness": "synergy", "runtime_protocol": "synergy-session-v1", "outcome": "completed"},
+    )
+    with tarfile.open(agent / "rollout.tar.gz", "w:gz") as archive:
+        for name in ["home", "events.jsonl", "stderr.log", "execution.json"]:
+            archive.add(agent / name, arcname=name)
+    payload = (agent / "rollout.tar.gz").read_bytes()
+    atomic_json(
+        agent / "archive.json",
+        {
+            "format": "native-home-tar-v1",
+            "valid": True,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+            "recording": "complete",
+        },
+    )
+    result = collect_evidence(tmp_path, {})
+    assert result["evidence"]["archive_valid"] is True
+    assert result["evidence"]["recording"] == "complete"

@@ -71,6 +71,8 @@ Chat Completions profile 支持严格布尔值 `enable_thinking`；使用服务�
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。
 
+历史基线 `v3.0.22` 必须使用明确的 release revision，按 `synergy-session-v1` 执行原生单体 CLI，只接受 `full`，不支持实验覆盖。归档保留原生 Home 和事件，请求计量来自继承到工作进程的独立 transport observer；不会生成该版本没有的 rollout/run 记录。其他历史布局须先审计再支持，取舍见[历史 release 评测](../docs/decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md)。
+
 Synergy 和 OpenCode 的 `bun_jit: false` 映射为原生进程的 `BUN_JSC_useJIT=0`；它是运行时执行条件，可能改变延迟和资源消耗。需要比较时声明独立名称，例如 `opencode-native` 和 `opencode-jitless`。该值随配置和每次尝试的有效环境冻结，不改变模型、提示词、工具或压缩策略，也不根据宿主或失败结果自动切换。Synergy 的开关在启动 Bun 包装进程前生效，由 CLI、子进程和导出过程继承；模型密钥引用仍通过独立临时文件传递。其他 harness 使用此选项会报错。运行时适配的取舍见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
 
 人工取消的执行保留首次评分、原生 reward 和全部消耗，并通过 `pairing_exclusions: [cancelled_execution]` 公开排除配对差值。按预先声明期限自然超时的尝试仍属于原实验条件；不能把人工提前结束伪装成相同期限的超时，也不能以取消为由挑选后续更高分的尝试。

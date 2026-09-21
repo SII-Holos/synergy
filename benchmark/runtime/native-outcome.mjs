@@ -18,10 +18,10 @@ export function nativeOutcome(kind, events) {
     if (kind === "codex" && ["turn.completed", "turn.failed"].includes(event.type)) {
       result = { status: event.type === "turn.failed" ? "failed" : "completed", error: event.error?.message ?? null }
     }
-    if (kind === "opencode" && event.type === "error") {
+    if (["opencode", "synergy"].includes(kind) && event.type === "error") {
       result = { status: "failed", error: event.error?.data?.message ?? event.error?.name ?? null }
     }
-    if (kind === "opencode" && event.type === "step_finish" && event.part?.reason === "stop") {
+    if (["opencode", "synergy"].includes(kind) && event.type === "step_finish" && event.part?.reason === "stop") {
       result = { status: "completed", error: null }
     }
   }

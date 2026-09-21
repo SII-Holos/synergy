@@ -15,6 +15,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 5. Keep provider keys in environment references. Exercise the actual container, native harness, inference proxy, observer and streaming recorder before admitting paid tasks. A direct model probe is insufficient.
    Freeze the provider's actual thinking switch, including strict boolean `enable_thinking` where required. Explicitly disabled thinking is not a reasoning capability. Inspect retained upstream requests from primary and auxiliary calls; native reasoning defaults must not survive a disabled profile. Honor endpoint-specific direct transport settings in the isolated evaluator process without changing live configuration.
 
+   Verify context and output limits against the selected model's configuration. A lower output ceiling is a separate declared constraint, not a value to inherit from an earlier pilot. Changing the baseline release or output ceiling requires a fresh experiment; retain cancelled attempts and their costs outside the new scoring population.
+
 ## Preserve execution and evidence
 
 1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and its deadlines. Preparation, execution, export and cleanup have separate deadlines.
@@ -67,7 +69,9 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 ## Runtime cache boundaries
 
-Synergy's prepared runtime key covers TypeScript sources and the shared `deadline.mjs`; external CLIs use separate Node bundles keyed by every file in `engines.NATIVE_RUNTIME`. Adding an executed dependency requires updating its owning key and invalidation regression. Frozen bundles still verify their complete recorded bytes; external CLI observers copied into a Synergy bundle are not executed by Synergy.
+Synergy's rollout runtime key covers TypeScript sources and the shared `deadline.mjs`; external CLIs use separate Node bundles keyed by every file in `engines.NATIVE_RUNTIME`. The audited `synergy-session-v1` release also hashes its executed JavaScript observer, wrapper and inspection files. Adding an executed dependency requires updating its owning key and invalidation regression. Frozen bundles verify their complete recorded bytes.
+
+Historical source support requires an explicit immutable revision, native CLI/worker launch inspection, model-role validation, independent request reconciliation and actual short/long Docker controls. Do not backport the current loop or fabricate modern rollout records. Archive the native format and disclose release-to-candidate attribution limits; see [the release decision](../../../docs/decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md).
 
 ## Secret detector experiments
 

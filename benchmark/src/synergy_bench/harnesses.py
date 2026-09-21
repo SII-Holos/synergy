@@ -23,6 +23,42 @@ PACKAGES = {
 }
 
 
+def session_configuration(settings: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+    if options["runtime"] != "full" or options.get("experiment"):
+        raise ValueError("Session-export releases require full runtime without experiment overlays")
+    provider = options["model"].split("/", 1)[0]
+    endpoint = settings["provider"][provider]["options"]["baseURL"]
+    env = {
+        "SYNERGY_HOME": "/logs/agent/home",
+        "SYNERGY_CONFIG": options["config"],
+        "SYNERGY_CONFIG_CONTENT": "{}",
+        "SYNERGY_DISABLE_AUTOUPDATE": "1",
+        "SYNERGY_DISABLE_DEFAULT_PLUGINS": "1",
+        "SYNERGY_DISABLE_MODELS_FETCH": "1",
+        "MODELS_DEV_API_JSON": "/opt/synergy/source/packages/synergy/test/tool/fixtures/models-api.json",
+        "BENCH_GATEWAY_BASE": endpoint,
+        "BENCH_CAPTURE_DIR": "/logs/agent/home/native-wire",
+        # v3.0.22 process-host.ts inherits this in the native agent-turn workers.
+        "BUN_OPTIONS": "--preload=/opt/synergy/runtime/session-capture.mjs",
+    }
+    if options.get("bun_jit") is not None:
+        env["BUN_JSC_useJIT"] = str(int(options["bun_jit"]))
+    argv = [
+        "/opt/synergy/bin/bun",
+        "/opt/synergy/source/packages/synergy/src/index.ts",
+        "send",
+        "--format",
+        "json",
+        "--model",
+        options["model"],
+        "--agent",
+        options["agent"],
+    ]
+    if options.get("variant"):
+        argv += ["--variant", options["variant"]]
+    return {"argv": argv, "env": env, "files": {}}
+
+
 def harness_configuration(
     kind: str, model: ModelProfile, endpoint: str, home: str, *, bun_jit: bool | None = None
 ) -> dict[str, Any]:

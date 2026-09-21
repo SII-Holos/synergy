@@ -17,7 +17,7 @@ harnesses:
     kind: synergy
     source:
       path: ../..
-      revision: 2717298d48db609a38bbecd93a9d68eb262d6480
+      revision: 024dd683e091d9fce3d1d26b79b2e188ce636b52
     runtime: full
     agent: synergy-max
     bun_jit: true
@@ -35,7 +35,7 @@ models:
     base_url: http://provider.example/v1
     api_key_env: BOYUE_API_KEY
     context_window: 1000000
-    max_output_tokens: 8192
+    max_output_tokens: 393216
     supports_developer_role: false
     parameters:
       temperature: 1

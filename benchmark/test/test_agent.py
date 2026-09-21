@@ -64,10 +64,11 @@ async def test_accounting_is_read_only_after_pier_hands_logs_to_the_host(tmp_pat
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bun_jit", [None, False, True])
+@pytest.mark.parametrize("protocol", ["synergy-rollout-v1", "synergy-session-v1"])
 @pytest.mark.parametrize("mounted", [False, True])
 @pytest.mark.parametrize("proxy", [None, {"HTTPS_PROXY": "http://fixture:token@proxy.invalid:8080"}])
 async def test_runner_receives_instruction_and_environment_agent_network_settings(
-    tmp_path: Path, proxy, mounted, bun_jit
+    tmp_path: Path, proxy, mounted, bun_jit, protocol
 ) -> None:
     from pier.models.agent.context import AgentContext
 
@@ -89,6 +90,7 @@ async def test_runner_receives_instruction_and_environment_agent_network_setting
 
         async def exec(self, command, **kwargs):
             if command.startswith("/opt/synergy/bin/bun"):
+                assert ("runtime/external.mjs" in command) == (protocol == "synergy-session-v1")
                 assert kwargs.get("env") == (
                     proxy if bun_jit is None else {**(proxy or {}), "BUN_JSC_useJIT": str(int(bun_jit))}
                 )
@@ -99,7 +101,7 @@ async def test_runner_receives_instruction_and_environment_agent_network_setting
             return ExecResult(return_code=0, stdout="1000" if command == "id -u" else "")
 
     environment = Environment()
-    agent = SynergyAgent(tmp_path, settings={"env": {}, "bun_jit": bun_jit})
+    agent = SynergyAgent(tmp_path, settings={"env": {}, "bun_jit": bun_jit, "runtime_protocol": protocol})
     await agent.run(instruction, cast(BaseEnvironment, environment), AgentContext())
     assert environment.executed
 

@@ -64,7 +64,7 @@ const env = {
   XDG_CONFIG_HOME: path.join(home, ".config"),
   XDG_DATA_HOME: path.join(home, ".local/share"),
   XDG_CACHE_HOME: path.join(home, ".cache"),
-  PATH: `/opt/synergy/node/bin:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}`,
+  PATH: `/opt/synergy/bin:/opt/synergy/node/bin:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}`,
 }
 const stdout = await open(path.join(logs, "events.jsonl"), "w", 0o600)
 const stderr = await open(path.join(logs, "stderr.log"), "w", 0o600)
@@ -141,10 +141,13 @@ const outcome = interrupted
       ? "failed"
       : ["failed", "cancelled"].includes(nativeResult.status)
         ? nativeResult.status
-        : "completed"
+        : options.runtime_protocol === "synergy-session-v1" && nativeResult.status !== "completed"
+          ? "failed"
+          : "completed"
 await atomic("execution.json", {
   version: 3,
   harness: options.harness,
+  runtime_protocol: options.runtime_protocol ?? null,
   started_at: started,
   ended_at: Date.now(),
   exit_code: result.code,

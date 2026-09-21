@@ -164,6 +164,7 @@ class SynergyAgent(BaseAgent):
                         else "/opt/synergy/node/bin/node",
                         "/opt/synergy/runtime/trial.ts"
                         if self.settings.get("harness", "synergy") == "synergy"
+                        and self.settings.get("runtime_protocol") != "synergy-session-v1"
                         else "/opt/synergy/runtime/external.mjs",
                         "/benchmark-input/options.json",
                         f"{logs}/instruction.md",

@@ -149,7 +149,9 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
                     files[relative] = {"sha256": checksum, "bytes": path.stat().st_size}
             except OSError:
                 missing.append(f"file_unreadable:{relative}")
-    external = execution and execution.get("harness") not in {None, "synergy"}
+    external = execution and (
+        execution.get("harness") not in {None, "synergy"} or execution.get("runtime_protocol") == "synergy-session-v1"
+    )
     payload = files.get("agent/rollout.tar.gz" if external else "agent/rollout.zip")
     structural = bool(
         archive

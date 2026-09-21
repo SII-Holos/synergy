@@ -10,7 +10,7 @@ Chat Completions providers expose different thinking controls. A profile accepti
 
 Model profiles accept strict boolean `enable_thinking` on Chat Completions. The gateway owns it alongside the existing reasoning and sampling parameters: remove native values, apply the frozen profile and retain effective requests and parameter overrides. Harness reasoning capability follows explicit enable/disable values instead of object truthiness. Synergy primary and helper roles resolve to the same frozen model.
 
-The Boyue observation preset uses `bailian/deepseek-v4.1-flash`, disabled thinking, temperature 1, a 1,000,000-token context and an 8,192-token output ceiling. Its endpoint is a placeholder and credentials remain environment references. Actual support requires native CLI, tool roundtrip and retained wire acceptance; configuration validation alone is insufficient.
+The Boyue observation preset uses `bailian/deepseek-v4.1-flash`, disabled thinking, temperature 1, a 1,000,000-token context and the configured native 393,216-token output limit. It compares the `v3.0.22` release commit with the candidate. Output limits are explicit experimental conditions; a smaller historical ceiling cannot silently carry into this comparison. Its endpoint is a placeholder and credentials remain environment references. Actual support requires native CLI, tool roundtrip and retained wire acceptance; configuration validation alone is insufficient.
 
 ## Alternatives considered
 

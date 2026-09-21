@@ -4,11 +4,11 @@
 
 ## 预先固定的协议
 
-正式评分基线为 `3838cf56c34600c7a6f049f3a0197cd48b3f4954`，包含存储 liveness、结构回收及统一 paused 会话状态。候选使用修复后提交；两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。正式派发后不改写输入或续跑到其他 evaluator。
+正式评分基线为 `v3.0.22` release 对应的 `024dd683e091d9fce3d1d26b79b2e188ce636b52`，候选使用本 PR 的优化版本。两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。该对照描述 release 到候选的整体变化，不能把两版本间所有差异仅归因于本 PR 的工具输出调整。正式派发后不改写输入或续跑到其他 evaluator。
 
-两侧使用原生 Linux amd64、synergy-max、full runtime、`bun_jit: true`、并发 1、repeat 1、调度 seed 20260921 和 `timeout_seconds: native`。模型为 Boyue `bailian/deepseek-v4.1-flash`，Chat Completions，`enable_thinking: false`，不声明 reasoning tier，temperature 1、context 1000000、max output 8192、developer role disabled。主代理、辅助及子代理使用同一 profile。端点、凭据与直连设置仅在私有配置中保存。
+两侧使用原生 Linux amd64、synergy-max、full runtime、`bun_jit: true`、并发 1、repeat 1、调度 seed 20260921 和 `timeout_seconds: native`。模型为 Boyue `bailian/deepseek-v4.1-flash`，Chat Completions，`enable_thinking: false`，不声明 reasoning tier，temperature 1、context 1000000、max output 393216、developer role disabled。输出上限采用所选模型配置的精确值。主代理、辅助及子代理使用同一 profile。端点、凭据与直连设置仅在私有配置中保存。
 
-正式实验将缓存上限固定为 384 GiB、磁盘余量保持 20 GiB，以同时保留历史证据引用和完整原题镜像；准备时宿主可用磁盘超过 600 GiB。该条件同时应用于两侧，不改变原生任务的 CPU、内存或解题期限。早期预检使用的 32 GiB 缓存条件单独保留。
+正式实验将缓存上限固定为 384 GiB、磁盘余量保持 20 GiB，以同时保留历史证据引用和完整原题镜像；新实验的实际磁盘余量随准备记录冻结。第三轮历史实验准备时为 632516571136 字节，约 589 GiB。该条件同时应用于两侧，不改变原生任务的 CPU、内存或解题期限。早期预检使用的 32 GiB 缓存条件单独保留。
 
 小样本按[公开预设](../../../benchmark/configs/coding-observations-boyue.yaml)选择 dasel、superjson 和 large-scale-text-editing，每题两侧各一次，共六次正式执行。另用[委派夹具](../../../benchmark/test/fixtures/delegated-review/instruction.md)各执行一次；姓名规范化、Unicode 空白、非 BMP 字母、emoji 的校验在运行前固定。要求恰好一次 maintainability-reviewer 审阅同一工作目录的未提交修改，单列原生功能 reward 与委派次数，不能用其中一项替代另一项。
 
@@ -24,7 +24,9 @@
 
 ## 验收结果
 
-正式评分实验尚未派发。原生 Linux amd64、full runtime、synergy-max、JIT 开启、并发 1 的免费验证已通过：Chat Completions 与 Responses 各使用两个确定性模型，短会话均通过；四个长会话各完成 120 次真实工具往返，覆盖中文／emoji 文件生成、读取、修改与校验，均正常退出并取得原生 reward=1。归档、记录及输入／输出用量完整，逐请求关联匹配；未提供的缓存写入字段保持未知。
+采用 dev 基线 `3838cf56c34600c7a6f049f3a0197cd48b3f4954`、候选 `ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05` 和 8192 输出上限的实验已停止：更改基线及输出上限时，只有第一题开始执行。其取消记录、未知用量和已知消耗单列保留，不参与 release 对照的评分。新的 release 对照尚未派发。
+
+候选的原生 Linux amd64、full runtime、synergy-max、JIT 开启、并发 1 免费验证已通过：Chat Completions 与 Responses 各使用两个确定性模型，短会话均通过；四个长会话各完成 120 次真实工具往返，覆盖中文／emoji 文件生成、读取、修改与校验，均正常退出并取得原生 reward=1。归档、记录及输入／输出用量完整，逐请求关联匹配；未提供的缓存写入字段保持未知。release 接入仍需单独验证，旧版本运行协议不能由候选控制代替。
 
 免费验证保留了准备失败及不完整尝试：Docker 与 BuildKit 未使用代理时的镜像鉴权超时；同时预热另一个实验触发共享缓存回收锁，导致两个任务未派发；并发控制中四题 reward=1，但两次容器清理超时；长历史超过确定性 HTTP provider 默认 1 MiB 上限，两个模型均在完成 102 次工具往返后收到 413。最后一项通过对齐网关的请求体容量修复，修复后最大请求体超过 1 MiB 且四个长会话全部通过。上述失败没有改写，确定性请求不计入 Boyue 用量。
 
@@ -33,3 +35,9 @@
 首轮预检候选产品源码为 `1ca6324da7292fb120a0f8cfaa71a9622d87e7ac`。正式评分前修正审阅发现的搜索条数上限提示和 AST 重复行号；旧预检保留全部用量，修复后另建候选实验，不改写旧身份。长会话控制覆盖的读取、编辑、计量和生命周期实现不受这两处搜索反馈修正影响。小样本、委派回归与完整 local-24 结果仍待后续验收，免费控制及 doctor 不能替代任务质量与效率结论。
 
 第二轮候选 `5b70d2166512632ad27f2ce1129d5778aa236e58` 的一项预检在 120 秒内未收到服务商响应头，其余五项通过。端点直连及后续模型响应恢复后，仅对失败项另建预检 attempt，重验通过；原中断请求的 usage 保持未知。两轮共 62 个请求、947029 个已知输入加输出 token，另有 1 个请求用量未知。两轮均以 `2717298d48db609a38bbecd93a9d68eb262d6480` 为基线，没有正式评分执行；随后 dev 合入会话状态变更，因此正式评分前跟进 rebase 并重新冻结输入，早期预检不替代新基线的运行验收。
+
+第三轮旧条件的六项 doctor 均通过，包含对两项失败的明确重验。首个失败中，基线的第二次主调用耗时 115.80 秒，撞到预检 120 秒期限；另一项候选的首个主调用耗时 85.54 秒，随后工具往返及回答均完成，但 full runtime 的 Library 编码在结束期间等待两个各 30 秒的 embedding 下载，受限网络下未能及时退出。两项失败及其完整核心用量仍保留，不扩展 doctor 或原题期限；重验仅验证连通性，不参与正式评分。本轮全部 38 个请求共 608177 token，含 16 次主调用、15 次标题、7 次意图调用，逐请求参数和核心用量均匹配。三轮预检合计 100 个请求、1555206 个已知 token，另有 1 个请求用量未知，因此不能给出精确总量。
+
+更改基线和输出上限时取消的唯一正式尝试运行了 927.239 秒，共 36 次请求，已知 1070004 token，另有 2 次中断请求用量未知；没有取得 reward。加上三轮旧条件预检，累计 136 次请求、2625210 个已知 token 和 3 次未知用量请求。上述消耗保留在历史成本账本，不进入新 release 对照的配对。
+
+过期的 13 个确定性控制实验已完整压缩归档并逐字节核对后移除展开副本，回收约 5.79 GiB；随后释放失效缓存引用并收集 31 个任务所有的缓存对象。原始付费记录、用量、失败和取消证据均保留，未执行全局 Docker 清理。

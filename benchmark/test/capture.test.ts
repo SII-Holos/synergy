@@ -161,3 +161,53 @@ test("native cancellation completes even if upstream reader cancellation never a
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test("session-export release capture follows inherited Bun worker launches", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bench-session-workers-"))
+  const requests: unknown[] = []
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      requests.push(await request.json())
+      expect(request.headers.get("x-benchmark-client-request")).toMatch(/^[a-f0-9-]{36}$/)
+      return Response.json({ usage: { prompt_tokens: 10, completion_tokens: 3 } })
+    },
+  })
+  try {
+    const worker = path.join(root, "worker.mjs")
+    const parent = path.join(root, "parent.mjs")
+    const invoke = `await (await fetch(process.env.BENCH_GATEWAY_BASE + '/chat/completions', {method:'POST',body:JSON.stringify({role:process.argv[2],text:'中文😀'})})).text()`
+    await Bun.write(worker, invoke)
+    await Bun.write(
+      parent,
+      `${invoke}; const child=Bun.spawn([process.execPath,'run',${JSON.stringify(worker)},'child'],{stdout:'pipe',stderr:'pipe'}); process.exitCode=await child.exited`,
+    )
+    const child = Bun.spawn([process.execPath, "run", parent, "primary"], {
+      env: {
+        PATH: process.env.PATH,
+        BENCH_GATEWAY_BASE: server.url.toString().replace(/\/$/, ""),
+        BENCH_CAPTURE_DIR: path.join(root, "wire"),
+        BUN_OPTIONS: `--preload=${path.resolve(import.meta.dir, "../runtime/session-capture.mjs")}`,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(code, stderr).toBe(0)
+    expect(requests).toEqual([
+      { role: "primary", text: "中文😀" },
+      { role: "child", text: "中文😀" },
+    ])
+    const entries = await readdir(path.join(root, "wire"))
+    expect(entries).toHaveLength(2)
+    for (const id of entries) {
+      const record = await Bun.file(path.join(root, "wire", id, "request.json")).json()
+      expect(record.status).toBe("completed")
+      expect(record.usage).toEqual({ prompt_tokens: 10, completion_tokens: 3 })
+    }
+  } finally {
+    server.stop(true)
+    await rm(root, { recursive: true, force: true })
+  }
+})

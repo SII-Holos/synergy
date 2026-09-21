@@ -272,7 +272,8 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             "from pathlib import Path; "
             "pid=Path('/logs/agent/runner.pid').read_text().strip(); "
             "root=Path('/proc')/pid; "
-            "synergy=b'/opt/synergy/runtime/trial.ts' in (root/'cmdline').read_bytes().split(bytes([0])); "
+            "synergy=any(entry in (root/'cmdline').read_bytes().split(bytes([0])) for entry in "
+            "[b'/opt/synergy/runtime/trial.ts',b'/opt/synergy/runtime/external.mjs']); "
             "children=(root/'task'/pid/'children').read_text().split(); "
             "processes=[('WRAPPER',pid),*[('CLI',child) for child in children]] if synergy else []; "
             "[(print('BENCH_SYNERGY_'+kind+'_'+value.decode())) for kind,child in processes "
@@ -340,7 +341,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             "base_url": f"http://127.0.0.1:{provider.addresses[0][1]}/v1",
             "api_key_env": "BENCH_FIXTURE_KEY",
             "context_window": 1000000 if long_session else 32000,
-            "max_output_tokens": 8192 if long_session else 2048,
+            "max_output_tokens": 393216 if long_session else 2048,
             "parameters": {"enable_thinking": False}
             if protocol == "chat-completions"
             else {"reasoning": {"effort": "none"}},
