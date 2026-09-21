@@ -213,3 +213,5 @@ OOM 通过本地 Unix Docker Engine API 在执行期间持续订阅并落盘，�
 运行时 Home 是私有恢复输入，可能包含密钥库；`evidence.json` 的文件清单不遍历 `agent/home`，也不跟随目录符号链接。可共享的 Synergy 执行证据使用已验证的 `rollout.zip`，恢复过程仍可读取保留的私有 Home。
 
 CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence.py` 收集诊断，只复制明确列出的证据文件，跳过 native home、wire、输入目录与符号链接；单个不可读文件不会丢弃其他诊断，收集错误单独保留。
+
+轨迹分析的输出目录必须与输入证据树互不包含，不能选输入目录、其子目录或祖先目录。缺失响应或未识别的非 SSE 响应标记为 `stream_framing: unknown`，正文与工具流指标保持未知；`stream_invalid_lines` 单独计数解析失败，原始响应字节仍来自 wire 记录。

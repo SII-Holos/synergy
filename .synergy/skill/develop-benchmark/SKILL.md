@@ -65,3 +65,5 @@ Synergy's prepared runtime key covers TypeScript sources and the shared `deadlin
 ## Secret detector experiments
 
 Use the [secret-detection package](../../../packages/secret-detection/README.md) for offline span quality and detector timing, and the Harness `benchmark:secrets` command for isolated capture costs. Keep corpus labels independent of predictions; never pass gold spans to adapters. Report incomplete scans and failures separately, retain failed positives in recall denominators, and use completed negatives for false-positive rates. Freeze corpus, detector/model/configuration identity and evaluator source before comparisons. Split future training and holdout by source/template and credential family. Keep real credentials and private transcripts out of fixtures and reports; record timing, counts and sanitized failure codes instead of matched values. These microbenchmarks do not establish task-level or user-visible latency improvements.
+
+离线 wire 诊断必须测试非流式 JSON、错误正文、缺失响应与畸形 SSE。未识别的 framing 不得生成看似精确的零值内容指标；CLI 与导出层应使用一致的证据目录保护规则。

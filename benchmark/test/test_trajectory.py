@@ -182,6 +182,38 @@ def test_stream_profile_counts_fragmented_tools_and_accepts_done_without_space(t
     assert profile["finish_reasons"] == "tool_calls"
 
 
+@pytest.mark.parametrize(
+    "body", ['{"choices":[{"message":{"content":"answer"}}]}', "upstream unavailable", "", "data: null\n\n"]
+)
+def test_unrecognized_response_framing_keeps_stream_measurements_unknown(tmp_path, body):
+    path = tmp_path / "response.bin"
+    path.write_text(body)
+    profile = stream_profile(path)
+    assert profile["stream_framing"] == "unknown"
+    assert profile["response_text_bytes"] is None
+    assert profile["response_reasoning_bytes"] is None
+    assert profile["response_tool_argument_bytes"] is None
+    assert profile["response_tool_calls"] is None
+    assert profile["stream_usage_frames"] is None
+    assert profile["finish_reasons"] is None
+
+
+def test_missing_response_keeps_stream_measurements_unknown(tmp_path):
+    profile = stream_profile(tmp_path / "missing.bin")
+    assert profile["stream_missing"] is True
+    assert profile["response_text_bytes"] is None
+
+
+def test_cli_rejects_ancestor_output_before_reading_evidence(tmp_path, monkeypatch, capsys):
+    from synergy_bench.trajectory import main
+
+    monkeypatch.setattr("sys.argv", ["trajectory", str(tmp_path / "run"), "--output", str(tmp_path)])
+    with pytest.raises(SystemExit) as error:
+        main()
+    assert error.value.code == 2
+    assert "disjoint" in capsys.readouterr().err
+
+
 def test_retains_retry_unknown_usage_and_timeout_reward(tmp_path):
     result = analyze_run(retained_run(tmp_path / "run"))
     rows = result["requests"]

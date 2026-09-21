@@ -126,13 +126,14 @@ def grouped(rows: list[Row], key: str) -> list[Row]:
 
 def stream_profile(path: Path) -> Row:
     result: Row = {
-        "response_reasoning_bytes": 0,
-        "response_text_bytes": 0,
-        "response_tool_argument_bytes": 0,
-        "response_tool_calls": 0,
-        "stream_usage_frames": 0,
+        "response_reasoning_bytes": None,
+        "response_text_bytes": None,
+        "response_tool_argument_bytes": None,
+        "response_tool_calls": None,
+        "stream_usage_frames": None,
         "stream_invalid_lines": 0,
-        "finish_reasons": "",
+        "finish_reasons": None,
+        "stream_framing": "unknown",
     }
     reasons: set[str] = set()
     calls: set[tuple[int, int]] = set()
@@ -148,6 +149,18 @@ def stream_profile(path: Path) -> Row:
             except (ValueError, UnicodeDecodeError):
                 result["stream_invalid_lines"] += 1
                 continue
+            if not isinstance(event, dict) or not isinstance(event.get("choices"), list):
+                result["stream_invalid_lines"] += 1
+                continue
+            if result["stream_framing"] == "unknown":
+                result["stream_framing"] = "sse"
+                for key in (
+                    "response_reasoning_bytes",
+                    "response_text_bytes",
+                    "response_tool_argument_bytes",
+                    "stream_usage_frames",
+                ):
+                    result[key] = 0
             if event.get("usage"):
                 result["stream_usage_frames"] += 1
             for choice in event.get("choices", []):
@@ -159,8 +172,9 @@ def stream_profile(path: Path) -> Row:
                     result["response_tool_argument_bytes"] += content_bytes(call.get("function", {}).get("arguments"))
                 if choice.get("finish_reason"):
                     reasons.add(choice["finish_reason"])
-    result["response_tool_calls"] = len(calls)
-    result["finish_reasons"] = ",".join(sorted(reasons))
+    if result["stream_framing"] == "sse":
+        result["response_tool_calls"] = len(calls)
+        result["finish_reasons"] = ",".join(sorted(reasons))
     return result
 
 
@@ -642,7 +656,7 @@ def write_analysis(result: Row, output: Path, source: Path) -> None:
     output = output.resolve()
     source = source.resolve()
     if output == source or source in output.parents or output in source.parents:
-        raise ValueError("Analysis output must be outside the input evidence tree")
+        raise ValueError("Analysis output must be outside and disjoint from the input evidence tree")
     output.mkdir(parents=True, exist_ok=True)
     atomic_json(output / "analysis.json", result)
     for name, rows in result.items():
@@ -665,8 +679,9 @@ def main() -> None:
     parser.add_argument("run", type=Path, help="包含 plan.json 的运行目录")
     parser.add_argument("--output", type=Path, required=True, help="证据目录之外的输出目录")
     args = parser.parse_args()
-    if args.output.resolve() == args.run.resolve() or args.run.resolve() in args.output.resolve().parents:
-        parser.error("--output must be outside the input evidence tree")
+    output, source = args.output.resolve(), args.run.resolve()
+    if output == source or source in output.parents or output in source.parents:
+        parser.error("--output must be outside and disjoint from the input evidence tree")
     result = analyze_run(args.run)
     write_analysis(result, args.output, args.run)
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
