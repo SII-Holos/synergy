@@ -177,10 +177,9 @@ export namespace Provider {
     proxyUrl: string | undefined,
     noProxy: boolean,
   ) {
-    const request = input instanceof Request ? input : new Request(input, init)
-    if (noProxy) return directFetch(request, undefined)
-    if (proxyUrl) return fetchFn(request, { proxy: proxyUrl } as RequestInit)
-    return fetchFn(request)
+    if (noProxy) return directFetch(new Request(input, init), undefined)
+    if (proxyUrl) return fetchFn(input, { ...init, proxy: proxyUrl } as RequestInit)
+    return fetchFn(input, init)
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -1173,7 +1172,8 @@ export namespace Provider {
 
         // Combine signals before fetch
         const signals: AbortSignal[] = []
-        if (opts.signal) signals.push(opts.signal)
+        const callerSignal = opts.signal ?? (input instanceof Request ? input.signal : undefined)
+        if (callerSignal) signals.push(callerSignal)
         if (ttfbController) signals.push(ttfbController.signal)
         if (idleController) signals.push(idleController.signal)
         if (wallClockSignal) signals.push(wallClockSignal)
@@ -1187,7 +1187,7 @@ export namespace Provider {
 
         // Disable HTTP keep-alive to avoid reusing connections that may have
         // been silently dropped by NAT / load balancers during idle periods.
-        const headers = new Headers(opts.headers ?? {})
+        const headers = new Headers(opts.headers ?? (input instanceof Request ? input.headers : undefined))
         headers.set("Connection", "close")
 
         const logUrl = typeof input === "string" ? input : input.url
