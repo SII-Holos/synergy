@@ -171,18 +171,20 @@ export namespace RolloutUsage {
    * names are camelCase, unlike the provider wire format `normalize` parses, so
    * they need their own mapping.
    */
-  export function normalizeSdk(raw: unknown): Info | null {
+  export function normalizeSdk(raw: unknown, sdk = "@ai-sdk/openai"): Info | null {
     const usage = object(raw)
     const input = count(usage.inputTokens)
     const output = count(usage.outputTokens)
     if (input === null && output === null) return null
-    // OpenAI-compatible SDKs report `inputTokens` inclusive of cached tokens.
-    const cacheRead = count(usage.cachedInputTokens) ?? (input === null ? null : 0)
+    const exclusiveInput =
+      sdk === "@ai-sdk/anthropic" || sdk === "@ai-sdk/google-vertex/anthropic" || sdk === "@ai-sdk/amazon-bedrock"
+    // Anthropic and Bedrock SDK input excludes cache reads and writes; LanguageModelUsage omits writes.
+    const cacheRead = count(usage.cachedInputTokens) ?? (exclusiveInput || input === null ? null : 0)
     const result: Info = {
       version: 1,
-      protocol: "openai",
+      protocol: exclusiveInput ? (sdk === "@ai-sdk/amazon-bedrock" ? "unknown" : "anthropic") : "openai",
       raw: (raw ?? null) as Info["raw"],
-      input: { total: input, uncached: null, cacheRead, cacheWrite: 0 },
+      input: { total: exclusiveInput ? null : input, uncached: null, cacheRead, cacheWrite: exclusiveInput ? null : 0 },
       output: { total: output, reasoning: count(usage.reasoningTokens) },
       cacheWrites: {},
       units: [],
@@ -190,11 +192,12 @@ export namespace RolloutUsage {
       reported: null,
       complete: false,
     }
-    result.input.uncached = difference(input, cacheRead, 0)
+    result.input.uncached = exclusiveInput ? input : difference(input, cacheRead, 0)
     result.complete =
       result.input.total !== null &&
       result.input.uncached !== null &&
       result.input.cacheRead !== null &&
+      result.input.cacheWrite !== null &&
       result.output.total !== null
     return result
   }

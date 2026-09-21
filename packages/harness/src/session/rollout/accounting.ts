@@ -134,10 +134,10 @@ export namespace RolloutAccounting {
     // token accounting — and the prompt budget's calibration anchor — alive
     // when recording is lost.
     function recordedCallUsage(call: RolloutSchema.CallRecord) {
-      return call.sdkUsage ? (RolloutUsage.normalizeSdk(call.sdkUsage) ?? undefined) : undefined
+      return call.sdkUsage ? (RolloutUsage.normalizeSdk(call.sdkUsage, call.model.sdk) ?? undefined) : undefined
     }
     function charge(call: RolloutSchema.CallRecord, attempt?: RolloutSchema.AttemptRecord) {
-      const usage = attempt?.usage ?? recordedCallUsage(call)
+      const usage = attempt ? attempt.usage : recordedCallUsage(call)
       if (usage?.reported) {
         const { currency, amount } = usage.reported
         result.reported.currencies[currency] = new Decimal(result.reported.currencies[currency] ?? 0)

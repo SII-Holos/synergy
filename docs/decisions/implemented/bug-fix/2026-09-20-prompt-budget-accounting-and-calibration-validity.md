@@ -22,6 +22,8 @@ The `chars/4` heuristic has a measured error profile that bounds where it may be
 
 `isContextExceeded()` in `packages/harness/src/session/compaction.ts` additionally matches `range of input length` and the pair `input length` + `exceeds`.
 
+Call-level SDK usage is charged only when the call has no recorded transport attempts. A retry that failed before receiving a response remains unknown; assigning the final SDK aggregate to it would count the successful retry twice. SDK input from Anthropic, Vertex Anthropic and Bedrock excludes cache reads and writes, so their fallback retains uncached input and reported cache reads while leaving the unreported cache-write count and full input total unknown.
+
 ## Alternatives considered
 
 **Repair the transport bypass so every attempt is recorded.** This targets the cause rather than the reader and would keep attempt records the single usage source. It lost because transport recording is deliberately best-effort and `noProxy` selects a legitimate transport, not a broken one: making attempt capture mandatory would either fail runs that bypass the recording fetch or grow the transport a second mandatory path. The SDK usage was already durable on the call record, so reading it removes accounting's dependency on transport capture without weakening any recording guarantee.
