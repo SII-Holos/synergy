@@ -44,6 +44,10 @@ Canonical configuration lives in the [configuration domains](configuration.md). 
 
 ## Evidence and accounting
 
+Call-level SDK usage contributes only when no transport attempts were recorded. Recorded attempts without usage remain unknown, including retries that failed before a response. Anthropic and Bedrock SDK input excludes cache reads and writes; absent cache-write counts keep the full input total unknown while preserving known components.
+
+Google and Vertex SDK output counts visible candidates separately from thinking. Their fallback uses the provider total minus input, or sums the reported candidate and thinking counts; when neither establishes the full output, that total remains unknown.
+
 Transport attempts settle their request reader and all admitted evidence writes before recording the terminal attempt event, even when the network consumer still holds the upload lock or the provider responds before upload completion. Request cancellation is initiated without waiting for an upstream acknowledgement that can belong to an unread sibling of a cloned request. Interrupted uploads retain partial evidence and the original transport error; upload cleanup failures cannot replace it, while persistence failures remain authoritative.
 
 A logical call contains semantic model input and SDK output. Each actual inference request has its own attempt with the final provider-facing body, response body/stream, safe response headers, timestamps, raw usage and captured pricing basis. Internal retries count independently. Non-chat embeddings, reranking and voice calls use the same ledger; independent background work belongs to a Scope operation rather than a fabricated session.

@@ -5,7 +5,7 @@ import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutTransportRecorder } from "../../src/session/rollout/transport-recorder"
 import { ProviderPricing } from "../../src/provider/pricing"
 
-async function record(providerID = "openai") {
+async function record(providerID = "openai", sdk = "@ai-sdk/openai") {
   const owner = { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
   const call = await RolloutLedger.beginCall({
     owner,
@@ -15,7 +15,7 @@ async function record(providerID = "openai") {
     model: {
       providerID,
       modelID: "test",
-      sdk: "@ai-sdk/openai",
+      sdk,
       pricing: ProviderPricing.resolve({
         providerID,
         modelID: "test",
@@ -25,7 +25,7 @@ async function record(providerID = "openai") {
     },
   })
   const recorder = RolloutTransportRecorder.create(call)
-  async function attempt(usage: unknown) {
+  async function attempt(usage: unknown, failedBeforeResponse = false) {
     const attemptID = crypto.randomUUID()
     await recorder.emit({
       type: "attempt-start",
@@ -35,6 +35,10 @@ async function record(providerID = "openai") {
       mediaType: "application/json",
     })
     await recorder.emit({ type: "body-end", attemptID, channel: "request", complete: true })
+    if (failedBeforeResponse) {
+      await recorder.emit({ type: "attempt-end", attemptID, status: "failed" })
+      return
+    }
     await recorder.emit({ type: "response", attemptID, status: 200, headers: {}, mediaType: "application/json" })
     await recorder.emit({
       type: "chunk",
@@ -102,3 +106,76 @@ test("reported charges stay independent of token estimates, retries and aggregat
   expect(summary.apiEstimate.known).toBe(0.0105)
   expect(RolloutAccounting.merge([summary, summary]).reported).toEqual({ currencies: { USD: 0.04 }, unreported: 2 })
 })
+
+test("usage recorded on the call survives a lost transport recording", async () => {
+  const fixture = await record()
+  await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+    status: "completed",
+    sdkUsage: { inputTokens: 1000, outputTokens: 500, totalTokens: 1500, cachedInputTokens: 200 },
+  })
+  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+  // No attempt was ever recorded, so the call is still counted as unobserved…
+  expect(summary.attempts).toBe(0)
+  expect(summary.unobservedCalls).toBe(1)
+  // …but its provider-reported usage is real, so tokens must not read as unknown.
+  expect(summary.tokens.total.known).toBe(1500)
+  expect(summary.tokens.total.unknown).toBe(0)
+  expect(summary.tokens.input.known).toBe(1000)
+  expect(summary.tokens.cacheRead.known).toBe(200)
+})
+
+test("a recorded attempt still wins over the call-level usage", async () => {
+  const fixture = await record()
+  await fixture.attempt(usage)
+  await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+    status: "completed",
+    sdkUsage: { inputTokens: 999_999, outputTokens: 999_999, totalTokens: 1_999_998 },
+  })
+  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+  expect(summary.attempts).toBe(1)
+  expect(summary.tokens.total.known).toBe(1500)
+})
+
+test("SDK usage cannot be charged again to a retry that failed before its response", async () => {
+  const fixture = await record()
+  await fixture.attempt(null, true)
+  await fixture.attempt(usage)
+  await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+    status: "completed",
+    sdkUsage: { inputTokens: 1000, outputTokens: 500, cachedInputTokens: 0 },
+  })
+  const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+  expect(summary.attempts).toBe(2)
+  expect(summary.tokens.total).toEqual({ known: 1500, unknown: 1, total: null })
+})
+
+test.each(["@ai-sdk/anthropic", "@ai-sdk/google-vertex/anthropic", "@ai-sdk/amazon-bedrock"])(
+  "SDK fallback preserves exclusive input and unknown cache writes for %s",
+  async (sdk) => {
+    const fixture = await record("fixture", sdk)
+    await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+      status: "completed",
+      sdkUsage: { inputTokens: 100, outputTokens: 50, cachedInputTokens: 900 },
+    })
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.tokens.uncached).toEqual({ known: 100, unknown: 0, total: 100 })
+    expect(summary.tokens.cacheRead.known).toBe(900)
+    expect(summary.tokens.cacheWrite.total).toBeNull()
+    expect(summary.tokens.input).toEqual({ known: 1000, unknown: 1, total: null })
+    expect(summary.tokens.total).toEqual({ known: 1050, unknown: 1, total: null })
+  },
+)
+
+test.each(["@ai-sdk/google", "@ai-sdk/google-vertex"])(
+  "SDK fallback charges visible and thinking output for %s",
+  async (sdk) => {
+    const fixture = await record("fixture", sdk)
+    await RolloutLedger.finishCall(fixture.owner, "run", fixture.call.id, {
+      status: "completed",
+      sdkUsage: { inputTokens: 100, outputTokens: 20, reasoningTokens: 80, totalTokens: 200, cachedInputTokens: 0 },
+    })
+    const summary = RolloutAccounting.summarize(await RolloutSnapshot.read(fixture.owner))
+    expect(summary.tokens.output).toEqual({ known: 100, unknown: 0, total: 100 })
+    expect(summary.tokens.total).toEqual({ known: 200, unknown: 0, total: 200 })
+  },
+)
