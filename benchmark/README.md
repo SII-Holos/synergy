@@ -180,7 +180,7 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 
 退出码：0 编排结束且证据有效（包括正常答错）；1 基础设施、导出或记录失败；2 配置或输入无效；130 中断。进度写 stderr，最终 JSON 写 stdout。
 
-120 行读取下限保留，用于减少过小读取引起的多轮工具调用和重复上下文成本。本轮不修改读取策略、提示词或推理效率，也不把单次返回字节较多直接视为 token 缺陷。
+评测器不覆盖被测 harness 的读取策略或提示词；这些行为由冻结源码决定。工具输出字节用于诊断信息暴露，不能直接换算为任务 token 或额度收益。
 
 原生 oracle 记录可通过 `oracle-report RUN --output REPORT.json` 只读导入。报告读取明确的 `reward` 主字段，并保留 DeepSWE 的辅助指标；不会再次执行判题或改写旧记录。
 
