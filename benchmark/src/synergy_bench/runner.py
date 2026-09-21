@@ -554,7 +554,11 @@ def trial_configuration(
     export_timeout = plan["config"]["export_timeout_seconds"]
     configured_timeout = plan["config"]["timeout_seconds"]
     timeout = (
-        120 if probe_instruction else task["agent_seconds"] if configured_timeout == "native" else configured_timeout
+        plan["config"]["preflight_timeout_seconds"]
+        if probe_instruction
+        else task["agent_seconds"]
+        if configured_timeout == "native"
+        else configured_timeout
     )
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},

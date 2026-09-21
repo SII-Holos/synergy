@@ -355,6 +355,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         "models": profiles,
         "concurrency": 1 if long_session else 4,
         "timeout_seconds": 900 if long_session else "native",
+        "preflight_timeout_seconds": 600 if long_session else 120,
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
@@ -443,6 +444,8 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         assert all(result["reconciliation"]["status"] != "mismatch" for result in results), results
         assert all(result["wire_usage"]["tokens"]["total"]["unknown"] == 0 for result in results), results
         assert read_json(root / "doctor.json")["status"] == "completed"
+        for attempt in (root / "probes").glob("*/attempt-*"):
+            assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == config["preflight_timeout_seconds"]
     finally:
         await provider.cleanup()
 

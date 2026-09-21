@@ -219,6 +219,7 @@ class ExperimentConfig(StrictModel):
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
+    preflight_timeout_seconds: int = Field(default=120, ge=1, le=3600, strict=True)
     timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | Literal["native"] = 10_800
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
 

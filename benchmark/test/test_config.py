@@ -77,6 +77,28 @@ def test_request_idle_deadline_is_explicit_and_frozen(deadline):
     assert parsed.model_dump()["request_idle_timeout_seconds"] == deadline
 
 
+def test_preflight_deadline_default_survives_freezing():
+    parsed = ExperimentConfig.model_validate(config())
+    assert parsed.preflight_timeout_seconds == 120
+    assert ExperimentConfig.model_validate(parsed.model_dump()).preflight_timeout_seconds == 120
+
+
+@pytest.mark.parametrize("deadline", [1, 600, 3600])
+def test_explicit_preflight_deadline_is_independent_of_task_deadline(deadline):
+    parsed = ExperimentConfig.model_validate(
+        {**config(), "timeout_seconds": "native", "preflight_timeout_seconds": deadline}
+    )
+    frozen = ExperimentConfig.model_validate(parsed.model_dump())
+    assert frozen.preflight_timeout_seconds == deadline
+    assert frozen.timeout_seconds == "native"
+
+
+@pytest.mark.parametrize("deadline", [None, 0, -1, True, "600", 600.0, 3601])
+def test_invalid_preflight_deadlines_are_rejected(deadline):
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**config(), "preflight_timeout_seconds": deadline})
+
+
 def test_rejects_unknown_fields_and_missing_model():
     with pytest.raises(ValidationError):
         ExperimentConfig.model_validate({**config(), "concurency": 4})

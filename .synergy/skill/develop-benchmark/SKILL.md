@@ -17,6 +17,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 
    Verify context and output limits against the selected model's configuration. A lower output ceiling is a separate declared constraint, not a value to inherit from an earlier pilot. Changing the baseline release or output ceiling requires a fresh experiment; retain cancelled attempts and their costs outside the new scoring population.
 
+   Freeze `preflight_timeout_seconds` independently of the original task deadline. Its default is 120 seconds; a slow provider may require an explicit longer connectivity window. Establish that need from retained response timing, preserve failed preflights and any diagnostic usage, and create a new experiment for the changed condition. Verify that the declared value reaches native doctor launches while formal task and verifier deadlines stay unchanged.
+
 ## Preserve execution and evidence
 
 1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and its deadlines. Preparation, execution, export and cleanup have separate deadlines.

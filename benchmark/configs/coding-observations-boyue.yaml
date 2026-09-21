@@ -7,6 +7,7 @@ seed: 20260921
 repeat: 1
 concurrency: 1
 timeout_seconds: native
+preflight_timeout_seconds: 600
 selection:
   tasks:
     - deepswe-1.1/dasel-html-document-format

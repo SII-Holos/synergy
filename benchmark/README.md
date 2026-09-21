@@ -54,6 +54,7 @@ bun bench clean /absolute/path/to/run
 | `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                       |
 | `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                                     |
 | `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始           |
+| `preflight_timeout_seconds`                  | doctor 工具往返期限，默认 120 秒；1–3600 的严格整数，独立于正式题目期限并随配置冻结        |
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。它显式设置 `timeout_seconds: native` 以保留原题解题期限。平台实现不绑定该模型或智谱端点。
 
@@ -61,7 +62,7 @@ bun bench clean /absolute/path/to/run
 
 新 YAML 应省略解题期限以继承统一研究默认值；只有复现原题或明确改变实验条件时才覆盖。默认值在配置解析时写入冻结的 `plan.json`，每次启动的 `inputs/options.json` 保留最终秒数。所有预设自动纳入[期限传播测试](test/test_experiment_presets.py)，不维护文件名白名单。历史实验仍由冻结的 evaluator 执行；修改默认值不能改写或继续旧实验。v1 配置通过显式迁移命令保留原有期限语义，将遗漏或 null 转换为 `native`。
 
-外层执行时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。网关默认不设读空闲期限，断连仍会报错，连接建立仍有 30 秒期限，整题时钟仍可取消执行；显式的读空闲限制属于独立实验条件。harness 自身的超时不由网关改写。`doctor` 连通性探测保持 120 秒，不能当作题目解题期限。取舍见[研究期限策略](../docs/decisions/implemented/architecture/2026-09-21-benchmark-research-deadline-policy.md)。
+外层执行时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。网关默认不设读空闲期限，断连仍会报错，连接建立仍有 30 秒期限，整题时钟仍可取消执行；显式的读空闲限制属于独立实验条件。harness 自身的超时不由网关改写。`doctor` 使用独立的 `preflight_timeout_seconds`，默认 120 秒；Boyue 预设明确选择 600 秒以容纳已观察到的慢首响应。修改预检期限须新建实验，正式解题及原生 verifier 期限不受该字段影响。取舍见[研究期限策略](../docs/decisions/implemented/architecture/2026-09-21-benchmark-research-deadline-policy.md)。
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
