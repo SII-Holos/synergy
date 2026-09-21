@@ -759,10 +759,18 @@ export namespace Session {
     })
   })
 
-  export async function updateWorkspace(sessionID: string, workspace: import("./types").Workspace): Promise<Info> {
-    return update(sessionID, (draft) => {
-      draft.workspace = workspace
-    })
+  export async function updateWorkspace(
+    sessionID: string,
+    workspace: import("./types").Workspace,
+    options?: { preserveActivityAt?: boolean },
+  ): Promise<Info> {
+    return updateInternal(
+      sessionID,
+      (draft) => {
+        draft.workspace = workspace
+      },
+      options,
+    )
   }
 
   export async function updateControlProfile(

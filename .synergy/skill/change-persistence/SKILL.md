@@ -27,6 +27,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 10. Route every long SQLite operation through typed driver maintenance (`vacuum`, `reclaim`, `integrity-check`, `create-index`, `drop-index`), including schema DDL during first open. Do not add caller-specific startup timers or budget callbacks. Verify the real operation emits begin and exactly one terminal event; preserve finite snapshot budgets, bounded worker probes, failure propagation and PostgreSQL behavior. Read the [startup maintenance contract](../../../docs/decisions/implemented/bug-fix/2026-09-20-startup-maintenance-contract.md) when adding an operation.
 11. Audit direct SQL observers and cross-language test probes when changing record encoding. Prefer the canonical storage reader; isolated probes that must inspect a running container's private database must decode both plain and compressed bodies and retain a real-container regression.
 
+Background maintenance may update session metadata without representing conversation activity. Carry the owning session mutation's activity-preservation option through cleanup helpers, retaining navigation `lastActivityAt` while publishing changed metadata. Test both normal reclamation and missing-resource reconciliation with real session navigation records, and verify new conversation activity still advances recency.
+
 ### SQLite and other domain stores
 
 1. Keep fresh-install schema creation in the owning database initialization.

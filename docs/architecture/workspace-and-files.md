@@ -27,6 +27,8 @@ Worktree use and removal share one in-process lifecycle gate. Session execution 
 
 The Settings worktree browser queries only Git project Scopes and keeps successful project results when another repository is unavailable. List enrichment is concurrency-bounded. Dirty state is reported for live Git worktrees; managed worktrees also report checkout file bytes, excluding shared Git metadata. Main and external worktrees remain visible but read-only in this surface.
 
+Automatic worktree reclamation and missing-registration reconciliation preserve each bound session's navigation `lastActivityAt` while publishing the changed workspace. Maintenance metadata updates do not move historical sessions ahead of recent conversation activity. Explicit workspace operations and new conversation activity retain their normal recency behavior.
+
 ## Web Workspace File Service
 
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
