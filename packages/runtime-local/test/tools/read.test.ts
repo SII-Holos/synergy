@@ -203,8 +203,8 @@ describe("tool.read truncation", () => {
         expect(result.metadata.truncated).toBe(true)
         expect(result.output).toContain("File has more lines")
         expect(result.output).toContain("line0")
-        expect(result.output).toContain("line119")
-        expect(result.output).not.toContain("line120")
+        expect(result.output).toContain("line9")
+        expect(result.output).not.toContain("line10")
       },
     })
   })
@@ -239,14 +239,14 @@ describe("tool.read truncation", () => {
         const read = await ReadTool.init()
         const result = await read.execute({ filePath: path.join(tmp.path, "offset.txt"), offset: 10, limit: 5 }, ctx)
         expect(result.output).toContain("line10")
-        expect(result.output).toContain("line129")
+        expect(result.output).toContain("line14")
         expect(result.output).not.toContain("line0")
-        expect(result.output).not.toContain("line130")
+        expect(result.output).not.toContain("line15")
       },
     })
   })
 
-  test("truncates long lines", async () => {
+  test("preserves long lines within the byte budget", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
         const longLine = "x".repeat(3000)
@@ -258,8 +258,8 @@ describe("tool.read truncation", () => {
       fn: async () => {
         const read = await ReadTool.init()
         const result = await read.execute({ filePath: path.join(tmp.path, "long-line.txt") }, ctx)
-        expect(result.output).toContain("...")
-        expect(result.output.length).toBeLessThan(3000)
+        expect(result.output).toContain("x".repeat(3000))
+        expect(result.metadata.truncated).toBe(false)
       },
     })
   })

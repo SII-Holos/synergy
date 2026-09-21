@@ -7,8 +7,9 @@ import { conflictWarning, detectConflicts } from "@ericsanchezok/synergy-runtime
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import {
   displayPath,
-  formatRecordedBlock,
-  formatSelectedLines,
+  recordHashlineSnapshot,
+  OutputBudget,
+  selectDisplayLines,
   markFileRead,
   readTextFileUnderSnapshotCap,
   resolveFilePath,
@@ -83,7 +84,12 @@ export const ParseCodeTool = Tool.define("parse_code", {
     lang: z.enum(AST_GREP_LANGUAGES).describe("Target language for AST parsing"),
     paths: z.array(z.string()).optional().describe("Paths to search; defaults to the current working directory"),
     globs: z.array(z.string()).optional().describe("Additional include/exclude globs; prefix exclusions with !"),
-    context: z.number().optional().describe("Number of context lines to include around each structural match"),
+    context: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Number of context lines to include around each structural match"),
     limit: z.number().int().min(1).optional().describe("Maximum matches to return; defaults to 50"),
     skip: z.number().int().min(0).optional().describe("Matches to skip for pagination"),
   }),
@@ -138,11 +144,20 @@ export const ParseCodeTool = Tool.define("parse_code", {
       entry.count++
       const startLine = match.range.start.line + 1
       const endLine = match.range.end.line + 1
-      if (!entry.lines.includes(startLine)) entry.lines.push(startLine)
+      const lastLine = Math.max(startLine, endLine - (match.range.end.column === 0 ? 1 : 0))
+      for (
+        let line = Math.max(1, startLine - (params.context ?? 0));
+        line <= lastLine + (params.context ?? 0);
+        line++
+      ) {
+        if (!entry.lines.includes(line)) entry.lines.push(line)
+      }
       entry.ranges.push(`${startLine}:${match.range.start.column + 1}-${endLine}:${match.range.end.column + 1}`)
       byFile.set(match.file, entry)
     }
 
+    const budget = new OutputBudget()
+    let budgetLimited = false
     const blocks: string[] = []
     const files: string[] = []
     const matchLines: Record<string, number[]> = {}
@@ -166,18 +181,20 @@ export const ParseCodeTool = Tool.define("parse_code", {
       }
 
       const contentLines = splitDisplayLines(content)
-      const { tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
+      const tag = recordHashlineSnapshot(ctx.sessionID, filePath, content)
       markFileRead(ctx.sessionID, filePath)
       const conflict = detectConflicts(content)
       const warning = conflictWarning(conflict)
+      const selected = selectDisplayLines(contentLines, lines, budget)
+      budgetLimited ||= selected.omitted.length > 0
       blocks.push(
-        `${warning ? `${warning}\n` : ""}AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${formatSelectedLines(contentLines, lines).output}`,
+        `${warning ? `${warning}\n` : ""}AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${selected.output}${selected.omitted.length ? `\n[Code budget reached. Use view_file with filePath=${JSON.stringify(filePath)}, offset=${selected.omitted[0] - 1}.]` : ""}`,
       )
       files.push(pathLabel)
       matchLines[pathLabel] = lines
       matchRanges[pathLabel] = entry.ranges
       tags[pathLabel] = tag
-      recordSeenSessionLines(ctx.sessionID, filePath, lines, tag)
+      recordSeenSessionLines(ctx.sessionID, filePath, selected.seen, tag)
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
@@ -199,7 +216,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
         matchRanges,
         conflicts,
         tags,
-        truncated: limitReached || oversizedFiles.length > 0,
+        truncated: limitReached || budgetLimited || oversizedFiles.length > 0,
         limitReached,
         nextSkip,
         skip,
