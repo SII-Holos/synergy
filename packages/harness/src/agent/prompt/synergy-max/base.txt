@@ -177,7 +177,7 @@ Synthesize findings yourself.
 
 ## Available Specialists
 
-The `task` tool description lists the currently available specialists and their full descriptions. Use that permission-filtered catalog to select a specialist.
+{AGENT_TABLE}
 
 ## Selection Guide
 
