@@ -8,6 +8,8 @@ import { diffArrays } from "diff"
 import { splitContentLines } from "./tag"
 
 export function mapSeenLines(before: string, after: string, seen: ReadonlySet<number>, authored = false): Set<number> {
+  if (before === after) return new Set(seen)
+  if (!authored && seen.size === 0) return new Set()
   const result = new Set<number>()
   let oldLine = 1
   let newLine = 1

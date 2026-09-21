@@ -121,3 +121,116 @@ test("ranges share a UTF-8 budget, deduplicate rows and record only complete dis
     },
   })
 })
+
+test("oversized rows do not promise a non-progressing read and cannot authorize edits", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "huge.txt"), "中".repeat(20000) + "\ntail")
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const filePath = path.join(tmp.path, "huge.txt")
+      const read = await (await ReadTool.init()).execute({ filePath, limit: 1 }, ctx)
+      expect(read.output).toContain("bounded shell")
+      expect(read.output).not.toContain("Use offset=0 to continue")
+      const view = await (await ViewFileTool.init()).execute({ filePath, limit: 1 }, ctx)
+      expect(SessionHashlineStore.get(ctx.sessionID).byHash(filePath, view.metadata.tag!)?.seenLines?.size).toBe(0)
+      await expect(
+        (await ReviseFileTool.init()).execute({ input: `[huge.txt#${view.metadata.tag}]\nSWAP 1.=1:\n+changed` }, ctx),
+      ).rejects.toThrow()
+    },
+  })
+})
+
+test("oversized snapshots expose only complete prefix rows and honest recovery", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "large.txt"), "first\n" + "x".repeat(5 * 1024 * 1024))
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const result = await (await ViewFileTool.init()).execute({ filePath: path.join(tmp.path, "large.txt") }, ctx)
+      expect(result.output).toContain("1:first")
+      expect(result.output).not.toContain("2:xxx")
+      expect(result.output).not.toContain("narrower view_file")
+      expect(result.metadata.snapshotAvailable).toBe(false)
+    },
+  })
+})
+
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { File } from "../../src/file"
+import { unlink, mkdir } from "node:fs/promises"
+
+test("partial multi-file failure reports the successful edit without repeating it", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "a.txt"), "a\n")
+      await Bun.write(path.join(dir, "b.txt"), "b\n")
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const view = await ViewFileTool.init()
+      const a = await view.execute({ filePath: path.join(tmp.path, "a.txt") }, ctx)
+      const b = await view.execute({ filePath: path.join(tmp.path, "b.txt") }, ctx)
+      const unsubscribe = Bus.subscribe(File.Event.Edited, async (e) => {
+        if (e.properties.file.endsWith("a.txt")) {
+          await unlink(path.join(tmp.path, "b.txt"))
+          await mkdir(path.join(tmp.path, "b.txt"))
+        }
+      })
+      try {
+        const result = await (
+          await ReviseFileTool.init()
+        ).execute(
+          {
+            input: `[a.txt#${a.metadata.tag}]\nSWAP 1.=1:\n+changed a\n[b.txt#${b.metadata.tag}]\nSWAP 1.=1:\n+changed b`,
+          },
+          ctx,
+        )
+        expect(result.metadata.applied).toBe(true)
+        expect(result.metadata.sections).toHaveLength(1)
+        expect(result.output).toContain("Partial failure: 1/2")
+        expect(await Bun.file(path.join(tmp.path, "a.txt")).text()).toContain("changed a")
+      } finally {
+        unsubscribe()
+      }
+    },
+  })
+})
+
+test("post-write verification failure retains truthful write status and invalidates its tag", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "a.txt"), "a\n")
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const filePath = path.join(tmp.path, "a.txt")
+      const a = await (await ViewFileTool.init()).execute({ filePath }, ctx)
+      const unsubscribe = Bus.subscribe(File.Event.Edited, async () => {
+        await unlink(filePath)
+      })
+      try {
+        const result = await (
+          await ReviseFileTool.init()
+        ).execute({ input: `[a.txt#${a.metadata.tag}]\nSWAP 1.=1:\n+changed a` }, ctx)
+        expect(result.metadata.applied).toBe(true)
+        expect(result.output).toContain("post-write verification failed")
+        expect(SessionHashlineStore.get(ctx.sessionID).byHash(filePath, result.metadata.tag)).toBeNull()
+      } finally {
+        unsubscribe()
+      }
+    },
+  })
+})

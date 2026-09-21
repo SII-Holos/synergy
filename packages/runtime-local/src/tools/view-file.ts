@@ -13,7 +13,6 @@ import {
   selectDisplayLines,
   markFileRead,
   normalizeLineLimit,
-  readTextFile,
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
@@ -38,7 +37,7 @@ function cappedPreviewMessage(filePath: string): string {
   return [
     `[Large file: ${displayPath(filePath)} is too large for anchored editing in one call.]`,
     "Only the beginning of the file is displayed. No [path#TAG] header is returned, so revise_file cannot use this output directly.",
-    "Use scan_files or a narrower view_file range after locating the relevant lines.",
+    "The snapshot limit applies to the whole file regardless of range. Use bounded shell reads or classic read for later regions; anchored editing is unavailable.",
   ].join("\n")
 }
 
@@ -76,17 +75,17 @@ export const ViewFileTool = Tool.define("view_file", {
     const snapshotAvailable = content !== undefined
     if (content === undefined) {
       const file = Bun.file(filePath)
-      content = await file.slice(0, DEFAULT_VIEW_BYTES).text()
+      const prefix = await file.slice(0, DEFAULT_VIEW_BYTES).text()
+      content = prefix.slice(0, prefix.lastIndexOf("\n") + 1)
     }
 
-    const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
     const tag = snapshotAvailable ? recordHashlineSnapshot(ctx.sessionID, filePath, content) : undefined
     markFileRead(ctx.sessionID, filePath)
     void ToolLspSource.get()?.touchFile(filePath, false)
 
     const lines = splitDisplayLines(content)
     const display = displayPath(filePath)
-    const conflict = detectConflicts(fullContentForConflict)
+    const conflict = detectConflicts(content)
     const warning = conflictWarning(conflict)
     const header = tag ? `[${display}#${tag}]` : cappedPreviewMessage(filePath)
 
@@ -110,7 +109,7 @@ export const ViewFileTool = Tool.define("view_file", {
             : selected.output,
         )
       }
-      if (limit > 0 && nextLine !== undefined && continuations.length < 8) {
+      if (snapshotAvailable && limit > 0 && nextLine !== undefined && continuations.length < 8) {
         const oversized = Buffer.byteLength(`${nextLine}:${lines[nextLine - 1]}`, "utf8") > DEFAULT_VIEW_BYTES
         continuations.push(
           oversized
@@ -139,7 +138,9 @@ export const ViewFileTool = Tool.define("view_file", {
         offset: params.ranges ? undefined : primary?.offset,
         limit: params.ranges ? undefined : primary?.limit,
         ranges: params.ranges ? rangeMetadata : [],
-        totalLines: lines.length,
+        totalLines: snapshotAvailable ? lines.length : undefined,
+        prefixLines: snapshotAvailable ? undefined : lines.length,
+        conflictsPartial: !snapshotAvailable,
         truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
         truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
         snapshotAvailable,
