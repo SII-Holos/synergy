@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -8,6 +8,9 @@ import { SessionLifecycle } from "../../src/session/lifecycle"
 import { SessionProgress } from "../../src/session/progress"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionHistory } from "../../src/session/history"
+import { SessionManager } from "../../src/session/manager"
+import { SessionInbox } from "../../src/session/inbox"
+import { SessionCortexRuntime } from "../../src/session/cortex-runtime"
 
 /** A reply-required root plus a non-terminal assistant: the persisted shape of
  *  a turn that stopped mid-work. */
@@ -43,6 +46,56 @@ async function latestAssistant(sessionID: string) {
 }
 
 describe("abort leaves an interactive session paused", () => {
+  test("release cannot schedule queued work while user-stop repair is still pending", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Stop before next task" })
+        const item = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          parts: [{ type: "text", text: "Wait for continue" }],
+        })
+        const started = Promise.withResolvers<void>()
+        const repairing = Promise.withResolvers<void>()
+        const cleanup = Promise.withResolvers<void>()
+        const cancelChildren = spyOn(SessionCortexRuntime, "cancelAllForParent").mockImplementation(async () => {
+          repairing.resolve()
+          await cleanup.promise
+        })
+        const schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+        const running = SessionManager.run(session.id, async (lease) => {
+          started.resolve()
+          if (!lease.signal.aborted) {
+            await new Promise<void>((resolve) =>
+              lease.signal.addEventListener("abort", () => resolve(), { once: true }),
+            )
+          }
+        })
+        let stopping: ReturnType<typeof SessionAbort.abort> | undefined
+        try {
+          await started.promise
+          stopping = SessionAbort.abort(session.id)
+          await repairing.promise
+          await running
+          expect(schedule).not.toHaveBeenCalled()
+          expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toContain(item.id)
+          cleanup.resolve()
+          expect((await stopping).paused).toBe(true)
+        } finally {
+          cleanup.resolve()
+          SessionManager.signalAbort(session.id)
+          await running
+          await stopping
+          cancelChildren.mockRestore()
+          schedule.mockRestore()
+        }
+      },
+    })
+  })
+
   test("a user stop pauses the session and reports it", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

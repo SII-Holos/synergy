@@ -44595,7 +44595,7 @@
             "type": "boolean"
           },
           "paused": {
-            "description": "The repair latched a pause; this route clears it in the same call, so the session rests",
+            "description": "False after abandonment; the session is not left paused",
             "type": "boolean"
           },
           "abandoned": {

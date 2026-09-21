@@ -46,9 +46,14 @@ export namespace SessionLifecycle {
       ...(input.description ? { description: input.description } : {}),
       since: Date.now(),
     }
+    let changed = false
     await Session.update(input.sessionID, (draft) => {
+      changed = false
+      if (!latchable(draft) || draft.paused) return
       draft.paused = paused
+      changed = true
     })
+    if (!changed) return false
     log.info("session paused", {
       sessionID: input.sessionID,
       reason: paused.reason,

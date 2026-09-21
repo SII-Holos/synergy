@@ -117,9 +117,8 @@ describe("workflow escape hatch on the abort path", () => {
         expect(refreshed.blueprint?.loopID).toBeUndefined()
         expect(refreshed.blueprint?.loopRole).toBeUndefined()
 
-        // Clearing the latch is what the route does after this call, and only
-        // then does the session genuinely rest.
-        expect(await SessionLifecycle.clear(session.id)).toBe(true)
+        expect(result.paused).toBe(false)
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
         expect(await SessionWorking.resolve(session.id)).toBeUndefined()
       },
     })

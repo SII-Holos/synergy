@@ -6750,7 +6750,7 @@ export type SessionAbandonResult = {
    */
   repaired: boolean
   /**
-   * The repair latched a pause; this route clears it in the same call, so the session rests
+   * False after abandonment; the session is not left paused
    */
   paused: boolean
   /**

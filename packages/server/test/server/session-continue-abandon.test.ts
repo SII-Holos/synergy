@@ -9,6 +9,8 @@ import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecyc
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Server } from "../../src/server/server"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 
 Log.init({ print: false })
 
@@ -81,34 +83,45 @@ describe("POST /session/:sessionID/continue", () => {
 })
 
 describe("POST /session/:sessionID/abandon", () => {
-  test("terminalizes the interrupted turn and leaves the session resting", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Abandon me" })
-        await createInterruptedTurn(session.id)
+  test.each([false, true])(
+    "terminalizes the interrupted turn and leaves the session resting (paused=%s)",
+    async (paused) => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Abandon me" })
+          await createInterruptedTurn(session.id)
+          if (paused) await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+          const statuses: string[] = []
+          const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
+            if (event.properties.sessionID === session.id) statuses.push(event.properties.status.type)
+          })
+          const response = await Promise.resolve(
+            Server.App().request(`/session/${session.id}/abandon`, { method: "POST" }),
+          ).finally(unsubscribe)
 
-        const response = await Server.App().request(`/session/${session.id}/abandon`, { method: "POST" })
+          expect(response.status).toBe(200)
+          const body = (await response.json()) as { repaired: boolean; paused: boolean; abandoned: boolean }
+          expect(body.repaired).toBe(true)
+          expect(body.paused).toBe(false)
+          expect(statuses.at(-1)).toBe("idle")
+          expect(typeof body.abandoned).toBe("boolean")
+          // The route clears the latch in the same call, so the session rests
+          // rather than staying paused on work the user just gave up on.
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
 
-        expect(response.status).toBe(200)
-        const body = (await response.json()) as { repaired: boolean; paused: boolean; abandoned: boolean }
-        expect(body.repaired).toBe(true)
-        expect(typeof body.abandoned).toBe("boolean")
-        // The route clears the latch in the same call, so the session rests
-        // rather than staying paused on work the user just gave up on.
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-
-        const messages = await SessionHistory.modelMessages({ sessionID: session.id })
-        const assistant = messages
-          .map((message) => message.info)
-          .findLast((info): info is MessageV2.Assistant => info.role === "assistant")
-        expect(assistant).toBeDefined()
-        expect(assistant!.finish).toBe("error")
-      },
-    })
-  })
+          const messages = await SessionHistory.modelMessages({ sessionID: session.id })
+          const assistant = messages
+            .map((message) => message.info)
+            .findLast((info): info is MessageV2.Assistant => info.role === "assistant")
+          expect(assistant).toBeDefined()
+          expect(assistant!.finish).toBe("error")
+        },
+      })
+    },
+  )
 
   test("is idempotent and reports honestly on a repeat call", async () => {
     await using tmp = await tmpdir({ git: true })

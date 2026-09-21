@@ -150,12 +150,11 @@ export async function continueSession(sessionID: string): Promise<boolean> {
  */
 export async function abandonSession(sessionID: string): Promise<SessionInvoke.AbortRepairState> {
   await Session.get(sessionID)
-  SessionInvoke.cancel(sessionID)
+  SessionInvoke.cancel(sessionID, { fenceQueuedWork: true })
   const state = await SessionInvoke.repairAbortState(sessionID, {
     terminalize: true,
     abandonWorkflow: true,
     pauseReason: "aborted",
   })
-  await SessionLifecycle.clear(sessionID)
   return state
 }

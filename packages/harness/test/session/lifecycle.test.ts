@@ -40,6 +40,22 @@ async function createInterruptedTurn(sessionID: string) {
 }
 
 describe("SessionLifecycle pause latch", () => {
+  test("concurrent pauses retain the first persisted reason", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Concurrent pause" })
+        const results = await Promise.all([
+          SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" }),
+          SessionLifecycle.pause({ sessionID: session.id, reason: "failed" }),
+        ])
+        expect(results.filter(Boolean)).toHaveLength(1)
+        expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe(results[0] ? "aborted" : "failed")
+      },
+    })
+  })
+
   test("pause records the reason once and later pauses cannot rewrite it", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

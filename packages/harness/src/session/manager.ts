@@ -559,6 +559,7 @@ export namespace SessionManager {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false
 
+    const pausedTurn = PausedTurnAbort.is(runtime.owner!.lease.signal.reason)
     runtime.owner!.controller.abort()
     cancelWaiters(runtime)
     runtime.owner = undefined
@@ -569,7 +570,7 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    if (accepting && options.requestNextWork !== false) {
+    if (accepting && !pausedTurn && options.requestNextWork !== false) {
       const { SessionDrive } = await import("./drive")
       await SessionDrive.request(lease.sessionID, "release")
     }

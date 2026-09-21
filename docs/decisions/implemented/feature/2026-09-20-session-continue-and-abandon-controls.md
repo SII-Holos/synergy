@@ -24,6 +24,8 @@ The composer exposes one primary control whose meaning follows session state rat
 
 Every surface classifies `paused` through the one shared classifier in `apps/web/src/utils/session-status.ts`. `SessionActivity` is `idle`, `working`, `waiting`, or `paused`, and `paused` is explicitly not working: the session is stopped, and counting it as work would restore a spinner that no event can clear. The sidebar, the composer, and the status bar each keep their own glyph, tone, and copy and read the shared decision, so they cannot disagree about what the state means.
 
+Paused-turn release suppresses the automatic next-work request before asynchronous abort repair persists the latch. First-pause-wins is enforced inside the serialized session mutation, including concurrent callers. Abandon fences queued work, clears the latch inside repair before status publication, and returns `paused: false`, so durable state, API output and the final event agree.
+
 ## Alternatives considered
 
 **Continue as clear-the-latch and then a plain drive.** The simplest reading of "resume" is to lift the pause and ask for work, but it fails on the case that matters most. The shared continuation gate requires a terminal assistant on the latest reply-required root, and an interrupted turn is deliberately left non-terminal — that is the breakpoint continue resumes from — so a plain drive would find nothing to do and return a silent no-op on exactly the session the user is trying to resume. `force` exists to skip discovery for this one action, and it cannot manufacture work, because the loop exits before its first model call when there is nothing left to do.

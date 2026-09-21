@@ -229,16 +229,18 @@ export namespace SessionInvoke {
         })
       : false
 
-    const paused = options.internalCancel
-      ? false
-      : await SessionLifecycle.pause({
-          sessionID,
-          reason: options.pauseReason ?? "aborted",
-          description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
-        }).catch((err) => {
-          log.error("session pause failed", { sessionID, error: err })
-          return false
-        })
+    if (options.abandonWorkflow) await SessionLifecycle.clear(sessionID)
+    const paused =
+      options.internalCancel || options.abandonWorkflow
+        ? false
+        : await SessionLifecycle.pause({
+            sessionID,
+            reason: options.pauseReason ?? "aborted",
+            description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
+          }).catch((err) => {
+            log.error("session pause failed", { sessionID, error: err })
+            return false
+          })
 
     await publishResolvedStatus(sessionID)
     return { repaired, paused, abandoned }

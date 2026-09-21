@@ -68,7 +68,7 @@ const SessionAbandonResult = z
   .object({
     repaired: z.boolean().meta({ description: "An interrupted turn was terminalized" }),
     paused: z.boolean().meta({
-      description: "The repair latched a pause; this route clears it in the same call, so the session rests",
+      description: "False after abandonment; the session is not left paused",
     }),
     abandoned: z.boolean().meta({ description: "A workflow bound to the session was cancelled" }),
   })
