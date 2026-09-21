@@ -8,6 +8,8 @@ Status: implemented
 
 `effective()` disables worker-local recording for a real reason: an Agent worker must not open an observability database, spawn a telemetry worker, or write canonical state. The missing piece was a transport for the rows, not permission to write them.
 
+Closing the gap was an explicitly authorized extension of the fetch-phase watchdog change's scope, taken after an independent audit found that the acceptance criteria for that change name metrics which stay unobservable until a transport exists. The authorized alternative — moving those acceptance rows to a follow-up that reads the host-side `session.turn.retry` reason text instead — was not taken here.
+
 ## Decision
 
 The Agent worker forwards metric rows to the Control Plane over the existing Agent turn IPC channel, and the Control Plane records them through the ordinary `ObservabilityMetrics.record` path.
