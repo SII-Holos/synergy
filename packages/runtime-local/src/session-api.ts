@@ -60,7 +60,7 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
 async function takeSessionBack(sessionID: string): Promise<void> {
   const session = await Session.get(sessionID)
   if (session.paused) await SessionManager.waitForIdle(sessionID)
-  if (!SessionManager.isRunning(sessionID)) {
+  if (session.paused && !SessionManager.isRunning(sessionID)) {
     const runID = await SessionInbox.latestRootID(sessionID)
     if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
   }
