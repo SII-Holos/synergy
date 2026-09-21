@@ -67,6 +67,8 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0022 | Optional format rewrite blocked startup | implemented | 2026-09-21 |
 
+| 0023 | Historical preparation blocked its own evidence writes | implemented | 2026-09-21 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.
