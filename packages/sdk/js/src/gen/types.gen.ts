@@ -1027,6 +1027,11 @@ export type PerfConfig = {
     retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
+    requestDeadlineMs: number
+    probeTimeoutMs: number
+    probeAttempts: number
+    hardCeilingMs: number
+    chunkBudgetMs: number
   }
   thresholds: {
     [key: string]: number
@@ -1065,6 +1070,11 @@ export type PerformanceConfigPatch = {
     retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
+    requestDeadlineMs: number
+    probeTimeoutMs: number
+    probeAttempts: number
+    hardCeilingMs: number
+    chunkBudgetMs: number
   }
   thresholds?: {
     [key: string]: number
@@ -2721,14 +2731,34 @@ export type ObservabilityConfig = {
        */
       maxSqliteBytes?: number
       /**
-       * Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.
+       * Byte budget for authoritative storage (default: 40GB). Budgeted pruning only runs while the database exceeds it, and the operative retention window is derived from it and the measured ingress rate, so this value decides how much evidence can actually be retained.
        */
       retentionBytes?: number
       /**
-       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.
+       * Retain authoritative evidence for this long (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). This is a promise the byte budget may shorten, never lengthen: when retentionBytes holds less than this window at the measured ingress rate, pruning uses the shorter budget-derived window and reports it, and a budget that cannot hold even one day raises an unreachable-budget issue without pruning.
        */
       retentionMs?: number
       walCheckpointIntervalMs?: number
+      /**
+       * Budget for one ordinary statement against authoritative storage (default: 30000 ms). Exceeding it retries rather than terminating: the worker's liveness probe reports occupancy separately, so one slow statement cannot restart the runtime.
+       */
+      requestDeadlineMs?: number
+      /**
+       * Budget for one authoritative-storage liveness probe (default: 30000 ms). An unanswered probe marks the worker busy rather than dead, so this value decides how quickly degradation is noticed, not whether the runtime survives.
+       */
+      probeTimeoutMs?: number
+      /**
+       * Unanswered liveness probes in a row before the worker is reported as busy (default: 3). Only sustained silence past hardCeilingMs is terminal, so this value governs when the condition becomes visible.
+       */
+      probeAttempts?: number
+      /**
+       * Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 3600000 ms). Must exceed the longest legitimate statement, because three maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, the physical integrity check is one engine call, and VACUUM rewrites every page. Measured on production-shaped fixtures the check alone took 17-33 s at 920,000 records and 140-280 s at 2,760,000 records, and it runs while a migration activates, so the projection to a much larger store is a range rather than a point. Raising this only delays declaring a real wedge, during which storage already fails new work fast and the runtime keeps serving, so it is the safe direction to err; lower it only if a shorter recovery time matters more than the risk of interrupting a migration.
+       */
+      hardCeilingMs?: number
+      /**
+       * Budget for one maintenance, migration or delete chunk (default: 30000 ms). Every maintenance path is chunked so no single statement grows with the store, and this value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume.
+       */
+      chunkBudgetMs?: number
     }
     thresholds?: {
       [key: string]: number

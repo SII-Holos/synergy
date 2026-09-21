@@ -55,6 +55,11 @@ export namespace ObservabilityConfig {
       retentionBytes?: number
       retentionMs?: number
       walCheckpointIntervalMs?: number
+      requestDeadlineMs?: number
+      probeTimeoutMs?: number
+      probeAttempts?: number
+      hardCeilingMs?: number
+      chunkBudgetMs?: number
     }
     thresholds?: Record<string, number | undefined>
   }
@@ -83,6 +88,11 @@ export namespace ObservabilityConfig {
       retentionBytes: z.number(),
       retentionMs: z.number(),
       walCheckpointIntervalMs: z.number(),
+      requestDeadlineMs: z.number(),
+      probeTimeoutMs: z.number(),
+      probeAttempts: z.number(),
+      hardCeilingMs: z.number(),
+      chunkBudgetMs: z.number(),
     }),
     thresholds: z.record(z.string(), z.number()),
   })
@@ -140,10 +150,43 @@ export namespace ObservabilityConfig {
       // storage overhead, so a 7-day window can exceed this: a budget at or
       // below that is unreachable and makes every sweep delete destructively
       // without converging. A window whose steady state does not fit is
-      // reported as an infeasible budget instead of being pruned in a loop.
+      // reported as a reduced window instead of being pruned in a loop.
       retentionBytes: 40 * 1024 ** 3,
       retentionMs: 7 * 24 * 60 * 60 * 1000,
       walCheckpointIntervalMs: 60_000,
+      requestDeadlineMs: 30_000,
+      // One probe budget mirrors the ordinary request deadline. Probes are
+      // retried because a single unanswered probe only means the worker is
+      // busy; it takes `hardCeilingMs` of sustained silence to mean a wedge.
+      probeTimeoutMs: 30_000,
+      probeAttempts: 3,
+      // This ceiling must exceed the longest *legitimate* statement, because three
+      // maintenance statements cannot be chunked or cancelled: SQLite has no
+      // partial `CREATE INDEX`, `PRAGMA integrity_check` is a single engine call
+      // that `bun:sqlite` offers no progress callback for, and `VACUUM` rewrites
+      // every page of the database.
+      //
+      // The measurement is noisy enough that this has to be read as a range rather
+      // than a number. The physical check took 17-33 s at 920,000 records and
+      // 140-280 s at 2,760,000 records -- a two-fold spread on the *same file*,
+      // because whether the store fits in page cache decides most of the cost.
+      // Extrapolating the slowest run to the 15.1M records of the store this work
+      // came from puts that one statement in the neighbourhood of 22 minutes, and
+      // the spread means the true figure is not pinned. `VACUUM` measured 36 s at
+      // the smaller fixture, which projects to roughly nine minutes at the larger.
+      //
+      // None of the three fits comfortably inside the five minutes the previous
+      // ceiling allowed, and the check runs while a migration is activating, so a
+      // ceiling inside that range could kill a healthy worker finishing exactly
+      // this statement. The ceiling's only cost is how long a genuinely wedged
+      // worker is given before its managed restart: while it is occupied, storage
+      // already fails new work fast and the runtime keeps serving everything else.
+      // Delaying a restart is recoverable; interrupting a migration is not.
+      hardCeilingMs: 3_600_000,
+      // Every maintenance, DDL, delete and migration path must finish one
+      // chunk inside this budget. Kept a full margin below the ceiling so a
+      // chunk can never be what reaches the terminal path.
+      chunkBudgetMs: 30_000,
     },
     thresholds: {
       highRssBytes: 2 * 1024 * 1024 * 1024,
@@ -209,6 +252,15 @@ export namespace ObservabilityConfig {
             : raw.storage.retentionMs <= 0
               ? 0
               : clamp(raw.storage.retentionMs, 60 * 60 * 1000, 90 * 24 * 60 * 60 * 1000),
+        // The worker's ceiling is the only budget that decides the store is
+        // wedged, so it holds a floor well above any legitimate statement. The
+        // chunk budget is then clamped beneath it by `StorageBudgets`, leaving
+        // a fixed margin that raising a chunk budget cannot consume.
+        requestDeadlineMs: Math.max(1_000, raw?.storage?.requestDeadlineMs ?? defaults.storage.requestDeadlineMs),
+        probeTimeoutMs: Math.max(1_000, raw?.storage?.probeTimeoutMs ?? defaults.storage.probeTimeoutMs),
+        probeAttempts: Math.max(1, Math.floor(raw?.storage?.probeAttempts ?? defaults.storage.probeAttempts)),
+        hardCeilingMs: Math.max(10_000, raw?.storage?.hardCeilingMs ?? defaults.storage.hardCeilingMs),
+        chunkBudgetMs: Math.max(1_000, raw?.storage?.chunkBudgetMs ?? defaults.storage.chunkBudgetMs),
       },
       thresholds: { ...defaults.thresholds, ...(raw?.thresholds ?? {}) },
     })

@@ -5,6 +5,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { SqliteDriver } from "../../src/storage/sqlite-driver"
+import { StorageBudgets } from "../../src/storage/budgets"
 import { observeStorageMaintenance } from "../../src/storage/maintenance-progress"
 import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import type { SqlConnection, SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
@@ -47,7 +48,7 @@ test("verification checks logical identities and reports missing parent records"
   expect((await store.verify()).issues).toEqual([])
 })
 
-test("SQLite maintenance budgets grow with the current database while ordinary deadlines stay bounded", async () => {
+test("maintenance statements keep a fixed chunk budget bounded below the worker ceiling", async () => {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "verification-budget-"))
   const driver = await SqliteDriver.open(path.join(root, "agent.sqlite"))
   try {
@@ -74,6 +75,22 @@ test("SQLite maintenance budgets grow with the current database while ordinary d
     ])
     const initial = Math.max(...deadlines)
     expect(budgets).toEqual([initial + 90_000])
+    const current = StorageBudgets.current()
+    // A maintenance statement cannot buy itself a longer budget by growing the
+    // database, which is what a size-derived deadline did. The operation decides
+    // the budget, and the physical check is one of the operations that cannot be
+    // chunked, so it reports the ceiling the driver measures silence against.
+    expect(initial).toBe(current.engineBudgetMs)
+    expect(initial).toBe(current.hardCeilingMs)
+    expect(current.chunkBudgetMs * StorageBudgets.ceilingMargin()).toBeLessThanOrEqual(current.hardCeilingMs)
+    for (const operation of ["vacuum", "create-index", "drop-index"] as const) {
+      deadlines.length = 0
+      await driver.query("PRAGMA integrity_check", [], { maintenance: operation })
+      expect(Math.max(...deadlines)).toBe(current.engineBudgetMs)
+    }
+    deadlines.length = 0
+    await driver.query("SELECT 1 AS value", [], { maintenance: "reclaim" })
+    expect(Math.max(...deadlines)).toBe(current.chunkBudgetMs)
     await driver.transaction((tx) => tx.query("INSERT INTO evidence VALUES (zeroblob(8388608))"))
     deadlines.length = 0
     await observe(() =>
@@ -84,11 +101,14 @@ test("SQLite maintenance budgets grow with the current database while ordinary d
         { readOnly: true },
       ),
     )
-    expect(Math.max(...deadlines)).toBeGreaterThan(initial)
-    expect(budgets).toEqual([initial + 90_000, Math.max(...deadlines) + 90_000])
+    // Growing the database must not extend the deadline: a size-derived budget is
+    // precisely what let one statement outlast the probe budget that decides this
+    // driver's fate.
+    expect(Math.max(...deadlines)).toBe(initial)
+    expect(budgets).toEqual([initial + 90_000, initial + 90_000])
     deadlines.length = 0
     expect(await driver.query("SELECT 1 AS value")).toEqual([{ value: 1n }])
-    expect(deadlines).toEqual([30_000])
+    expect(deadlines).toEqual([current.requestDeadlineMs])
   } finally {
     await driver.close()
     await fs.rm(root, { recursive: true, force: true })
@@ -104,15 +124,17 @@ for (const defect of ["missing-node", "changed-node", "invalid-revision"] as con
     initializeSqliteEngine()
     const database = new Database(data.filename)
     try {
-      const select = database.query<{ key_id: string }, []>(
+      const select = database.query<{ key_id: Uint8Array }, []>(
         "SELECT key_id FROM storage_records WHERE namespace='verify' ORDER BY key_id DESC LIMIT 1",
       )
       const row = select.get()!
       select.finalize()
       if (defect === "missing-node")
         database.run("DELETE FROM storage_nodes WHERE namespace='verify' AND key_id=?", [row.key_id])
+      // Format 3 stores no per-node path text, so the equivalent defect is a node
+      // whose own derived columns no longer name the record it indexes.
       if (defect === "changed-node")
-        database.run("UPDATE storage_nodes SET key_text='[]' WHERE namespace='verify' AND key_id=?", [row.key_id])
+        database.run("UPDATE storage_nodes SET segment='[]' WHERE namespace='verify' AND key_id=?", [row.key_id])
       if (defect === "invalid-revision")
         database.run("UPDATE storage_records SET revision=0 WHERE namespace='verify' AND key_id=?", [row.key_id])
     } finally {
@@ -172,8 +194,18 @@ test("verification reports outside retried transactions and counts repeated scan
     },
   )
   expect(result.records).toBe(600)
+  const budgets_ = StorageBudgets.current()
   expect(budgets).toHaveLength(2)
-  expect(budgets.every((value) => value >= 600_000)).toBe(true)
+  // A physical check is one engine call with no progress callback, so it cannot
+  // be split and its cost grows with the store. Bounding it by the chunk budget
+  // would fail a healthy store's verification, so the lifecycle reports the
+  // ceiling, plus the bounded probe margin the driver adds before the host's
+  // deadline: a probe that is itself answered from the occupied event loop must
+  // have room to time out without the host declaring the stage late.
+  const engineReported = budgets_.engineBudgetMs + budgets_.probeAttempts * budgets_.probeTimeoutMs
+  expect(budgets).toEqual([engineReported, engineReported])
+  expect(budgets_.engineBudgetMs).toBe(budgets_.hardCeilingMs)
+  expect(budgets_.chunkBudgetMs).toBeLessThan(budgets_.engineBudgetMs)
   expect(progress.at(-1)).toBe(1200)
   expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true)
 })
@@ -195,15 +227,9 @@ test("logical index verification stays inside bounded primary-key pages", async 
       (connection) =>
         body({
           async query<Row extends SqlRow>(statement: string, values: SqlValue[] = [], queryOptions?: SqlQueryOptions) {
-            if (
-              statement.startsWith("SELECT") &&
-              statement.includes("storage_records") &&
-              statement.includes("storage_nodes")
-            ) {
+            if (statement.startsWith("SELECT") && /storage_(records|nodes)/.test(statement)) {
               const rows = await connection.query<{ detail: string }>("EXPLAIN QUERY PLAN " + statement, values)
-              plans.push(
-                ...rows.map((row) => row.detail).filter((detail) => /SEARCH (r|storage_records) /.test(detail)),
-              )
+              plans.push(...rows.map((row) => row.detail))
             }
             return connection.query<Row>(statement, values, queryOptions)
           },
@@ -212,8 +238,19 @@ test("logical index verification stays inside bounded primary-key pages", async 
     )) as T
   })
   expect((await data.store.verify()).records).toBe(600)
-  expect(plans.length).toBeGreaterThan(2)
-  expect(plans.every((plan) => /key_id>/.test(plan))).toBe(true)
+  // Format 3 verifies in bounded pages instead of one join per record page: the
+  // record page seeks its primary index, and the nodes for that page are
+  // resolved by key against the node primary index. Neither read is a scan of
+  // either table, which is what keeps verification bounded on a large store.
+  const recordSeeks = plans.filter((plan) => /sqlite_autoindex_storage_records_1/.test(plan))
+  const nodeSeeks = plans.filter((plan) => /sqlite_autoindex_storage_nodes_1/.test(plan))
+  expect(recordSeeks.length).toBeGreaterThan(0)
+  expect(nodeSeeks.length).toBeGreaterThan(0)
+  // The record page walks forward on its primary index, and every node read is
+  // keyed -- either the record page's own node lookup or the orphan walk's
+  // descent. No statement scans either table.
+  expect(recordSeeks.some((plan) => /key_id>/.test(plan))).toBe(true)
+  expect(plans.every((plan) => !/SCAN (r|storage_records|storage_nodes)\b/.test(plan))).toBe(true)
 })
 
 test("physical maintenance announces distinct finite startup budgets outside ordinary queries", async () => {
