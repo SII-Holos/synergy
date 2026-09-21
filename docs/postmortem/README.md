@@ -65,7 +65,9 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0021 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
 
-| 0022 | Historical preparation blocked its own evidence writes | implemented | 2026-09-21 |
+| 0022 | Optional format rewrite blocked startup | implemented | 2026-09-21 |
+
+| 0023 | Historical preparation blocked its own evidence writes | implemented | 2026-09-21 |
 
 ## History rules
 

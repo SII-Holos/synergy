@@ -36,6 +36,7 @@ import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSessionTransition } from "@/context/session-transition"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
@@ -82,9 +83,14 @@ import {
   resolvePromptSubmitIntent,
   shouldAllowPromptSubmit,
   shouldBlockSubmitForUploadingAttachments,
-  showsStopControl,
 } from "@/components/prompt-input/submit-intent"
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
+import {
+  resolvePromptControlState,
+  canLongPressAbandon,
+  ABANDON_HOLD_MS,
+  ABANDON_HOLD_TOLERANCE_PX,
+} from "./control-state"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { resolveBossWorkflowMenuState, resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
@@ -111,6 +117,7 @@ import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
 import { collectDictationContext } from "./voice-dictation-core"
+import { classifySessionActivity, isWorkingStatus } from "@/utils/session-status"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -185,6 +192,7 @@ function WorkflowChip(props: {
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const workflowDialog = useDialog()
+  const confirm = useConfirm()
   const globalSync = useGlobalSync()
   const fullAccessAck = useFullAccessAcknowledgement()
   const sync = useSync()
@@ -231,7 +239,11 @@ export function createPromptInputController(props: PromptInputProps) {
     }),
   )
   const status = createMemo(() => view().statusFor(params.id ?? "") ?? idle)
-  const working = createMemo(() => status()?.type !== "idle")
+  // Explicit state discrimination replaces the folded `type !== "idle"` test:
+  // a paused session is stopped, so it must offer Continue rather than a stop
+  // control, and no surface may infer "running" from "not idle".
+  const activity = createMemo(() => classifySessionActivity({ status: status() }))
+  const working = createMemo(() => isWorkingStatus(status()))
   const [pendingPlan, setPendingPlan] = createSignal(false)
   const [pendingLattice, setPendingLattice] = createSignal<{
     mode: "auto" | "collaborative"
@@ -317,71 +329,26 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
   )
 
-  const getBlueprintSlotStatusLabel = (status: string) => {
-    switch (status) {
-      case "pending":
-        return i18n._(PI.bpSlotReady)
-      case "armed":
-        return i18n._(PI.bpSlotEquipped)
-      case "running":
-        return i18n._(PI.bpSlotRunning)
-      case "waiting":
-        return i18n._(PI.bpSlotWaiting)
-      case "auditing":
-        return i18n._(PI.bpSlotAuditing)
-      case "completed":
-        return i18n._(PI.bpSlotCompleted)
-      case "failed":
-        return i18n._(PI.bpSlotFailed)
-      case "cancelled":
-        return i18n._(PI.bpSlotCancelled)
-      default:
-        return titlecaseStatusLabel(status)
-    }
-  }
-
-  const getBlueprintSlotIconClass = (status: string) => {
-    switch (status) {
-      case "armed":
-      case "pending":
-        return "text-text-interactive-base"
-      case "running":
-        return "text-text-on-success-base"
-      case "auditing":
-        return "text-text-on-warning-base"
-      case "completed":
-        return "text-text-on-success-strong"
-      case "failed":
-      case "cancelled":
-        return "text-text-on-critical-base"
-      default:
-        return "text-icon-base"
-    }
-  }
-
-  const getBlueprintSlotHoldLabel = (slot: BlueprintSlotDisplay) => {
-    if (slot.slot.type === "loop" && working()) return i18n._(PI.bpHoldStopRun)
-    if (slot.mode === "waiting" || slot.mode === "auditing") return i18n._(PI.bpHoldCancelLoop)
-    return i18n._(PI.bpHoldUnequip)
-  }
-
-  const getBlueprintSlotAriaLabel = (slot: BlueprintSlotDisplay) => {
-    if (slot.slot.type === "loop" && working())
-      return i18n._({ ...PI.bpAriaHoldStop, values: { title: slot.slot.title } })
-    if (slot.mode === "waiting" || slot.mode === "auditing")
-      return i18n._({ ...PI.bpAriaHoldCancel, values: { title: slot.slot.title } })
-    return i18n._({ ...PI.bpAriaHoldUnequip, values: { title: slot.slot.title } })
-  }
-
-  const getBlueprintFailureTitle = (stopRunningSession: boolean, stoppedSession: boolean) => {
-    if (!stopRunningSession) return i18n._(PI.bpFailUnequip)
-    if (stoppedSession) return i18n._(PI.bpFailStoppedEquipped)
-    return i18n._(PI.bpFailStopRun)
-  }
-
   const abortSession = async (sessionID = params.id) => {
     if (!sessionID) return
-    await sdk.client.session.abort({ sessionID })
+    const result = await sdk.client.session.abort({ sessionID })
+    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+  }
+
+  /** Resume a paused session from the breakpoint the interruption left behind. */
+  const continueSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    const result = await sdk.client.session.continue({ sessionID })
+    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+  }
+
+  /** The destructive gesture: terminalize the interrupted turn and cancel any
+   *  workflow bound to the session. The route is idempotent, so a repeat reports
+   *  what it changed rather than failing. */
+  const abandonSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    const result = await sdk.client.session.abandon({ sessionID })
+    if (result.error || !result.data) throw new Error(blueprintRequestErrorMessage(result.error))
   }
 
   const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
@@ -411,66 +378,43 @@ export function createPromptInputController(props: PromptInputProps) {
     return loop?.id === loopID && isTerminalBlueprintLoopStatus(loop.status) ? undefined : loopID
   })
 
-  /** One implementation of "stop the current turn and release the workflow
-   *  holding this session". The slot long-press, Esc/Ctrl+G, and the composer's
-   *  stop control all route through here so none of them can interrupt a turn
-   *  while leaving a BlueprintLoop bound to a session it no longer drives.
-   *  The failure is returned rather than thrown so callers keep the partial
-   *  progress (turn stopped, loop still bound) their toasts report. */
-  const stopRun = async (input: {
-    sessionID: string | undefined
-    loopID?: string
-  }): Promise<{ sessionWasWorking: boolean; stoppedSession: boolean; error?: unknown }> => {
-    const sessionWasWorking = working()
-    let stoppedSession = false
-    try {
-      if (sessionWasWorking) {
-        await abortSession(input.sessionID)
-        stoppedSession = true
-      }
-      if (input.loopID) {
-        await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(input.loopID))
-        clearVisibleSessionLoop(input.sessionID, input.loopID)
-      }
-      return { sessionWasWorking, stoppedSession }
-    } catch (error) {
-      return { sessionWasWorking, stoppedSession, error }
-    }
-  }
-
-  /** Turn-only stop. This is the historical contract for Esc, Ctrl+G, the
-   *  plugin's stop(), and the empty-composer primary button, and it must stay
-   *  turn-only: cancelling a workflow is a separate, explicit action. A
-   *  *driverless* loop is released by the backend abort route, which does so
-   *  only when no live runtime owns the session; cancelling here would silently
-   *  turn "stop this turn" into "terminate the workflow" for healthy loops. */
   const abortController = createAbortRequestController({
     request: () => abortSession(params.id),
     setPending: setAbortStopping,
   })
+  const reportControlError = (error: unknown) =>
+    showToast({
+      type: "error",
+      title: i18n._(PI.controlFailed),
+      description: blueprintRequestErrorMessage(error),
+    })
   const abort = () => {
-    abortController.run().catch(() => {})
+    void abortController.run().catch(reportControlError)
   }
-
-  /** Explicit full stop behind the stop control, whose label promises the
-   *  workflow is cancelled as well — the deliberate "cancel" action the slot
-   *  long-press has always been. */
-  const stopRunController = createAbortRequestController({
-    request: async () => {
-      const result = await stopRun({ sessionID: params.id, loopID: boundLoopID() })
-      if (!result.error) return
-      showToast({
-        type: "error",
-        title: i18n._(PI.stopRunFailed),
-        description: blueprintRequestErrorMessage(result.error),
-      })
-      throw result.error
-    },
-    setPending: setAbortStopping,
+  const [continuePending, setContinuePending] = createSignal(false)
+  const continueController = createAbortRequestController({
+    request: () => continueSession(),
+    setPending: setContinuePending,
   })
-  const stopRunAndCancel = () => {
-    stopRunController.run().catch(() => {})
-  }
+  const [abandonPending, setAbandonPending] = createSignal(false)
+  const abandonController = createAbortRequestController({
+    setPending: setAbandonPending,
+    request: async () => {
+      const sessionID = params.id
+      const slot = localArmedLoop()
+      const boundID = boundLoopID()
+      await abandonSession(sessionID)
+      if (slot?.type === "loop" && slot.loopID !== boundID) {
+        const result = await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
+        if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+      }
+      if (params.id !== sessionID) return
+      if (localArmedLoop() === slot) setLocalArmedLoop(null)
+      setPendingLattice(null)
+      setPendingLightLoop(false)
+      showToast({ type: "info", title: i18n._(PI.abandonDone) })
+    },
+  })
 
   const applySessionLoopEvent = (loop: BlueprintLoopInfo) => {
     const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
@@ -495,82 +439,76 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   onCleanup(unsubBlueprintLoopUpdated)
 
-  const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
-  const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
-  let slotLongPressFrame: number | undefined
+  const [abandonPress, setAbandonPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
+  const [abandonProgress, setAbandonProgress] = createSignal(0)
+  let abandonGestureConsumed = false
+  let abandonFrame: number | undefined
+  let abandonOrigin: { x: number; y: number } | undefined
 
-  const startLongPress = (slot: BlueprintSlotDisplay) => {
-    if (slotLongPress()) return
-    const sessionID = params.id
+  /** The destructive gesture on the single composer control: terminalize the
+   *  interrupted turn and cancel any workflow bound to the session. There is no
+   *  confirmation dialog — the ring is the confirmation — so the press must not
+   *  fire during a drag or a scroll. */
+  const startAbandonPress = (event: PointerEvent) => {
+    abandonGestureConsumed = false
+    if (event.button !== 0 || abandonPress() || controlDisabled() || !canAbandon()) return
+    abandonOrigin = { x: event.clientX, y: event.clientY }
+    const owningSession = sessionKey()
     const startedAt = performance.now()
-    const duration = 2000
     const tick = (now: number) => {
-      setSlotLongPressProgress(Math.min(1, (now - startedAt) / duration))
-      slotLongPressFrame = requestAnimationFrame(tick)
-    }
-    setSlotLongPressProgress(0)
-    slotLongPressFrame = requestAnimationFrame(tick)
-    const t = setTimeout(async () => {
-      setSlotLongPress(null)
-      if (slotLongPressFrame !== undefined) cancelAnimationFrame(slotLongPressFrame)
-      slotLongPressFrame = undefined
-      setSlotLongPressProgress(1)
-      let stopRunningSession = false
-      let stoppedSession = false
-      try {
-        if (slot.slot.type === "loop") {
-          const loopID = slot.slot.loopID
-          const isLocalSlot = localArmedLoop() === slot.slot
-          const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
-          const loop = sessionLoop()
-          if (!isLocalSlot && activeLoopID !== loopID) {
-            if (loop?.id === loopID) mutateSessionLoop(null)
-            return
-          }
-          if (!isLocalSlot && isTerminalBlueprintLoopStatus(loop?.status ?? slot.mode)) {
-            clearVisibleSessionLoop(sessionID, loopID)
-            showToast({
-              type: "info",
-              title: i18n._(PI.blueprintUnequipped),
-              description: slot.slot.title,
-            })
-            return
-          }
-          const stop = await stopRun({ sessionID, loopID })
-          stopRunningSession = stop.sessionWasWorking
-          stoppedSession = stop.stoppedSession
-          if (stop.error) throw stop.error
-        }
-        if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
-        showToast({
-          type: "info",
-          title: stopRunningSession ? i18n._(PI.blueprintRunStopped) : i18n._(PI.blueprintUnequipped),
-          description: slot.slot.title,
-        })
-      } catch (err) {
-        showToast({
-          type: "error",
-          title: getBlueprintFailureTitle(stopRunningSession, stoppedSession),
-          description: blueprintRequestErrorMessage(err),
-        })
-      } finally {
-        setSlotLongPressProgress(0)
+      if (now - startedAt >= 250) {
+        abandonGestureConsumed = true
+        setAbandonProgress(Math.min(1, (now - startedAt) / ABANDON_HOLD_MS))
       }
-    }, 2000)
-    setSlotLongPress(t)
+      abandonFrame = requestAnimationFrame(tick)
+    }
+    setAbandonProgress(0)
+    abandonFrame = requestAnimationFrame(tick)
+    setAbandonPress(
+      setTimeout(async () => {
+        setAbandonPress(null)
+        if (abandonFrame !== undefined) cancelAnimationFrame(abandonFrame)
+        abandonFrame = undefined
+        if (sessionKey() !== owningSession || !canAbandon()) return
+        abandonGestureConsumed = true
+        setAbandonProgress(1)
+        try {
+          await abandonController.run()
+        } catch (error) {
+          showToast({
+            type: "error",
+            title: i18n._(PI.abandonFailed),
+            description: blueprintRequestErrorMessage(error),
+          })
+        } finally {
+          setAbandonProgress(0)
+        }
+      }, ABANDON_HOLD_MS),
+    )
+  }
+
+  /** Any pointer travel beyond a few pixels is a drag or a scroll, not a hold. */
+  const trackAbandonPress = (event: PointerEvent) => {
+    if (!abandonOrigin || !abandonPress()) return
+    const travel = Math.hypot(event.clientX - abandonOrigin.x, event.clientY - abandonOrigin.y)
+    if (travel > ABANDON_HOLD_TOLERANCE_PX) {
+      abandonGestureConsumed = true
+      cancelLongPress()
+    }
   }
 
   const cancelLongPress = () => {
-    const t = slotLongPress()
-    if (t) {
-      clearTimeout(t)
-      setSlotLongPress(null)
+    const timer = abandonPress()
+    if (timer) {
+      clearTimeout(timer)
+      setAbandonPress(null)
     }
-    if (slotLongPressFrame !== undefined) {
-      cancelAnimationFrame(slotLongPressFrame)
-      slotLongPressFrame = undefined
+    abandonOrigin = undefined
+    if (abandonFrame !== undefined) {
+      cancelAnimationFrame(abandonFrame)
+      abandonFrame = undefined
     }
-    setSlotLongPressProgress(0)
+    setAbandonProgress(0)
   }
   onCleanup(cancelLongPress)
 
@@ -611,17 +549,122 @@ export function createPromptInputController(props: PromptInputProps) {
       requiresVariant: store.mode === "normal" && !localArmedLoop(),
     })
   })
-  const submitStopsSession = createMemo(() => working() && !promptText().trim())
-  const showsDedicatedStop = createMemo(() =>
-    showsStopControl({ text: promptText(), working: working() && !props.readOnly }),
+  const hasDraft = createMemo(() => promptText().trim().length > 0)
+  const submitStopsSession = createMemo(() => working() && !hasDraft())
+  /** The one control's meaning. Every branch derives from the explicit session
+   *  activity, so a paused session can never render a stop control. */
+  const controlState = createMemo(() =>
+    resolvePromptControlState({
+      hasDraft: hasDraft(),
+      activity: activity(),
+      hasArmedWorkflow: !!displayedBlueprintLoop() && !!localArmedLoop(),
+    }),
   )
-  const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
+  const canAbandon = createMemo(() =>
+    canLongPressAbandon({
+      hasDraft: hasDraft(),
+      activity: activity(),
+      hasBoundWorkflow:
+        !!boundLoopID() ||
+        !!localArmedLoop() ||
+        backendLightLoopActive() ||
+        activeWorkflow()?.kind === "lattice" ||
+        !!pendingLattice() ||
+        pendingLightLoop(),
+    }),
+  )
+  const controlDisabled = createMemo(() => {
+    if (props.readOnly || abortStopping() || submitPending() || abandonPending() || (continuePending() && !working()))
+      return true
+    if (controlState() === "pause" || controlState() === "continue") return false
+    return !canSubmit()
+  })
+  const controlLabel = createMemo(() => {
+    if (abandonPending()) return i18n._(PI.abandoning)
+    if (continuePending() && !working()) return i18n._(PI.startingSession)
+    switch (controlState()) {
+      case "pause":
+        return i18n._(PI.pauseControl)
+      case "continue":
+        return i18n._(PI.continueControl)
+      default:
+        if (attachmentsUploading()) return i18n._(PI.submitWaitUploadsTitle)
+        if (activity() === "paused" && hasDraft()) return i18n._(PI.sendAndContinue)
+        if (working() && hasDraft()) return i18n._(PI.queueMessage)
+        return i18n._(PI.sendMessage)
+    }
+  })
+  const controlIcon = createMemo<IconName>(() => {
+    switch (controlState()) {
+      case "pause":
+        return getSemanticIcon("session.pause")
+      case "continue":
+        return getSemanticIcon("session.continue")
+      default:
+        return getSemanticIcon("prompt.submitArrow")
+    }
+  })
+  const controlHint = createMemo(() => {
+    switch (controlState()) {
+      case "pause":
+        return i18n._(PI.pauseControlHint)
+      case "continue":
+        return i18n._(PI.continueControlHint)
+      case "disabled":
+        return i18n._(PI.disabledControlHint)
+      default:
+        return i18n._(activity() === "paused" ? PI.steerHint : working() ? PI.queueMessage : PI.sendAction)
+    }
+  })
+  /** Pause and Continue are not submits, so they intercept the click; Send lets
+   *  the form's submit path run unchanged. */
+  const handleControlClick = (event: MouseEvent) => {
+    if (abandonGestureConsumed || abandonPending()) {
+      abandonGestureConsumed = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (controlState() === "pause") {
+      event.preventDefault()
+      abort()
+      return
+    }
+    if (controlState() === "continue") {
+      event.preventDefault()
+      void continueController.run().catch(reportControlError)
+    }
+  }
+
+  command.register(() => [
+    {
+      id: "session.abandon",
+      title: i18n._(PI.abandonExecution),
+      description: i18n._(PI.abandonDescription),
+      disabled: props.readOnly || !canAbandon() || abandonPending(),
+      onSelect: () => {
+        const owningSession = sessionKey()
+        confirm.show({
+          title: PI.abandonExecution,
+          description: PI.abandonDescription,
+          confirmLabel: PI.abandonConfirm,
+          cancelLabel: PI.abandonBack,
+          tone: "danger",
+          onConfirm: async () => {
+            if (sessionKey() !== owningSession) return
+            await abandonController.run()
+          },
+        })
+      },
+    },
+  ])
 
   createEffect(
     on(
       () => sessionKey(),
       () => {
         cancelLongPress()
+        abandonGestureConsumed = false
         setLocalArmedLoop(null)
         pendingUploads.clear()
       },
@@ -1847,7 +1890,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }
   }
 
-  const handleSubmit = usePromptSubmit({
+  const submitPrompt = usePromptSubmit({
     props,
     uploadedAttachments,
     noteAttachments,
@@ -1883,6 +1926,13 @@ export function createPromptInputController(props: PromptInputProps) {
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
     beforeSubmit: () => composerDocument!.beforeSubmit(),
   })
+  const handleSubmit = (event: Event) => {
+    if (abandonPending() || (continuePending() && !working())) {
+      event.preventDefault()
+      return
+    }
+    return submitPrompt(event)
+  }
 
   createEffect(() => {
     if (params.id || !prompt.ready()) return
@@ -2174,6 +2224,15 @@ export function createPromptInputController(props: PromptInputProps) {
                 editorRef.focus()
               }}
             />
+            <Show when={lightLoopInstructions()}>
+              {(instructions) => (
+                <LightLoopSubmitControl
+                  instructions={instructions()}
+                  onEdit={openLightLoopDialog}
+                  onCancel={safelyCancelLightLoop}
+                />
+              )}
+            </Show>
             <Show when={!sdk.connected()}>
               <Tooltip placement="top" value={i18n._(PI.connectionLost)}>
                 <div class="flex items-center justify-center size-5">
@@ -2185,202 +2244,70 @@ export function createPromptInputController(props: PromptInputProps) {
                 </div>
               </Tooltip>
             </Show>
-            <Show when={showsDedicatedStop()}>
+            <div class="relative flex items-center">
               <Tooltip
                 placement="top"
-                value={<span>{abortStopping() ? i18n._(PI.stopping) : i18n._(PI.stopRunControl)}</span>}
+                open={abandonProgress() > 0 || abandonPending() ? false : undefined}
+                value={
+                  <div class="flex max-w-72 flex-col gap-1">
+                    <span>
+                      {abortStopping()
+                        ? i18n._(PI.stopping)
+                        : submitPending()
+                          ? i18n._(PI.startingSession)
+                          : controlLabel()}
+                    </span>
+                    <span class="text-10-regular text-text-weak">{controlHint()}</span>
+                    <Show when={canAbandon()}>
+                      <span class="text-10-regular text-text-weak">{i18n._(PI.abandonHint)}</span>
+                    </Show>
+                  </div>
+                }
               >
                 <IconButton
-                  type="button"
-                  aria-label={abortStopping() ? i18n._(PI.stopping) : i18n._(PI.stopRunControl)}
-                  disabled={abortStopping()}
-                  icon={getSemanticIcon("action.stop")}
-                  variant="secondary"
-                  class="size-[34px] rounded-full!"
-                  onClick={stopRunAndCancel}
+                  type="submit"
+                  aria-label={controlLabel()}
+                  disabled={controlDisabled()}
+                  icon={controlIcon()}
+                  variant="primary"
+                  class="prompt-input-submit size-[34px] rounded-full!"
+                  onPointerDown={startAbandonPress}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") abandonGestureConsumed = false
+                  }}
+                  onPointerMove={canAbandon() ? trackAbandonPress : undefined}
+                  onPointerUp={cancelLongPress}
+                  onPointerCancel={() => {
+                    abandonGestureConsumed = true
+                    cancelLongPress()
+                  }}
+                  onPointerLeave={() => {
+                    if (abandonPress()) abandonGestureConsumed = true
+                    cancelLongPress()
+                  }}
+                  onClick={handleControlClick}
                 />
               </Tooltip>
-            </Show>
-            <Switch>
-              <Match when={blueprintSubmitActive() && displayedBlueprintLoop()}>
-                {(bp) => (
-                  <div class="flex h-9 max-w-full items-center rounded-lg border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
-                    <Tooltip
-                      placement="top"
-                      value={
-                        <div class="min-w-56 max-w-72">
-                          <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
-                          <div class="mt-1 text-10-regular text-text-weak">{i18n._(PI.bpReady)}</div>
-                          <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
-                        </div>
-                      }
-                    >
-                      <button
-                        type="button"
-                        class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-md px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
-                        aria-label={getBlueprintSlotAriaLabel(bp())}
-                        onPointerDown={() => startLongPress(bp())}
-                        onPointerUp={cancelLongPress}
-                        onPointerCancel={cancelLongPress}
-                        onPointerLeave={cancelLongPress}
-                      >
-                        <span class="relative flex size-4 shrink-0 items-center justify-center">
-                          <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
-                            <Icon
-                              name={getSemanticIcon("blueprint.main")}
-                              class={getBlueprintSlotIconClass(bp().mode)}
-                              size="small"
-                            />
-                          </span>
-                          <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                            <Icon
-                              name={getSemanticIcon("action.close")}
-                              class="text-text-interactive-base"
-                              size="small"
-                            />
-                          </span>
-                        </span>
-                        <span class="max-w-24 truncate text-11-medium">{i18n._(PI.loopReady)}</span>
-                        <span
-                          class="absolute bottom-0 left-2 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
-                          style={{ width: `${slotLongPressProgress() * 82}%` }}
-                        />
-                      </button>
-                    </Tooltip>
-                    <Tooltip
-                      placement="top"
-                      value={
-                        <div class="flex items-center gap-2">
-                          <span>{i18n._(PI.startBpLoop)}</span>
-                          <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
-                        </div>
-                      }
-                    >
-                      <IconButton
-                        type="submit"
-                        aria-label={i18n._(PI.startBpLoop)}
-                        icon={getSemanticIcon("prompt.blueprintStart")}
-                        variant="primary"
-                        class="prompt-input-submit size-[34px] rounded-full! bg-text-interactive-base!"
-                      />
-                    </Tooltip>
-                  </div>
-                )}
-              </Match>
-              <Match when={true}>
-                <Show when={displayedBlueprintLoop()}>
-                  {(bp) => (
-                    <Tooltip
-                      placement="top"
-                      value={
-                        <div class="min-w-48 max-w-64">
-                          <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
-                          <div class="mt-1 text-10-regular text-text-weak">
-                            {getBlueprintSlotStatusLabel(bp().mode)}
-                          </div>
-                          <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
-                        </div>
-                      }
-                    >
-                      <button
-                        type="button"
-                        class="prompt-input-toolbar-icon-button bp-slot group relative flex items-center justify-center size-8 overflow-hidden cursor-default select-none"
-                        aria-label={getBlueprintSlotAriaLabel(bp())}
-                        onPointerDown={() => startLongPress(bp())}
-                        onPointerUp={cancelLongPress}
-                        onPointerCancel={cancelLongPress}
-                        onPointerLeave={cancelLongPress}
-                      >
-                        <span class="relative flex size-4 shrink-0 items-center justify-center">
-                          <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
-                            <Icon
-                              name={getSemanticIcon("blueprint.main")}
-                              class={getBlueprintSlotIconClass(bp().mode)}
-                              size="small"
-                            />
-                          </span>
-                          <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                            <Icon name={getSemanticIcon("action.close")} class="text-icon-base" size="small" />
-                          </span>
-                        </span>
-                        <span
-                          class="absolute bottom-1 left-1 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
-                          style={{ width: `${slotLongPressProgress() * 75}%` }}
-                        />
-                      </button>
-                    </Tooltip>
-                  )}
-                </Show>
-                <Show when={lightLoopInstructions()}>
-                  {(instructions) => (
-                    <LightLoopSubmitControl
-                      instructions={instructions()}
-                      onEdit={openLightLoopDialog}
-                      onCancel={safelyCancelLightLoop}
-                    />
-                  )}
-                </Show>
-                <Tooltip
-                  placement="top"
-                  inactive={!submitPending() && !canSubmit() && !abortStopping() && !attachmentsUploading()}
-                  value={
-                    <Show
-                      when={!submitPending() && !abortStopping()}
-                      fallback={
-                        <span>
-                          {abortStopping()
-                            ? i18n._(PI.stopping)
-                            : sessionTransitionPending()
-                              ? i18n._(PI.submitTransitionPendingTitle)
-                              : i18n._(PI.startingSession)}
-                        </span>
-                      }
-                    >
-                      <Switch>
-                        <Match when={submitStopsSession()}>
-                          <div class="flex items-center gap-2">
-                            <span>{i18n._(PI.stopAction)}</span>
-                            <span class="text-icon-base text-12-medium text-[10px]!">{i18n._(PI.escKey)}</span>
-                          </div>
-                        </Match>
-                        <Match when={attachmentsUploading()}>
-                          <span>{i18n._(PI.submitWaitUploadsTitle)}</span>
-                        </Match>
-                        <Match when={true}>
-                          <div class="flex items-center gap-2">
-                            <span>{i18n._(PI.sendAction)}</span>
-                            <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
-                          </div>
-                        </Match>
-                      </Switch>
-                    </Show>
-                  }
-                >
-                  <IconButton
-                    type="submit"
-                    aria-label={
-                      abortStopping()
-                        ? i18n._(PI.stopping)
-                        : submitStopsSession()
-                          ? i18n._(PI.stopSession)
-                          : attachmentsUploading()
-                            ? i18n._(PI.submitWaitUploadsTitle)
-                            : i18n._(PI.sendMessage)
-                    }
-                    disabled={abortStopping() || !canSubmit()}
-                    icon={
-                      abortStopping()
-                        ? getSemanticIcon("session.running")
-                        : submitStopsSession()
-                          ? getSemanticIcon("action.stop")
-                          : getSemanticIcon("prompt.submitArrow")
-                    }
-                    variant="primary"
-                    class={`prompt-input-submit size-[34px] rounded-full!${submitStopsSession() ? " bg-text-strong!" : ""}`}
+              <Show when={abandonProgress() > 0 || abandonPending()}>
+                <svg class="prompt-abandon-ring" viewBox="0 0 40 40" aria-hidden="true">
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="18"
+                    pathLength="1"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-dasharray="1"
+                    stroke-dashoffset={1 - abandonProgress()}
+                    transform="rotate(-90 20 20)"
                   />
-                </Tooltip>
-              </Match>
-            </Switch>
+                </svg>
+                <span class="prompt-abandon-feedback" role="status">
+                  {i18n._(abandonPending() ? PI.abandoning : PI.abandonHolding)}
+                </span>
+              </Show>
+            </div>
           </div>
         </div>
       </>

@@ -33,7 +33,7 @@ export namespace GlobalRuntime {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
           await LatticeRuntime.init()
-          await SessionInvoke.resumePending({ scopeID: Scope.home().id })
+          await SessionInvoke.reconcilePausedSessions(Scope.home().id)
           await ResponseCardRuntime.pruneExpired().catch((error) => {
             log.warn("response-card expired registration cleanup failed", { error })
           })

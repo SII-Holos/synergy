@@ -222,7 +222,7 @@ test("transient file reads remain retryable and do not quarantine the aggregate"
 
 test("startup imports recovery-eligible sessions and leaves idle history deferred", async () => {
   await using active = await fixture()
-  await active.write("info.json", { ...active.info, pendingReply: true })
+  await active.write("info.json", { ...active.info, paused: { reason: "aborted", since: 2000 } })
   await active.catalog()
   await active.run(async () => {
     await SessionCompat.prepareRecovery()

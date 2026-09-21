@@ -499,7 +499,7 @@ export type DiagnosticsSummary = {
     }>
   }
   sessions: {
-    pendingReply: Array<{
+    paused: Array<{
       sessionID: string
       path: string
       updated?: number
@@ -1123,6 +1123,28 @@ export type PerfBrowserMetricBatch = {
     duration: number
     attribution?: string
   }>
+}
+
+export type StorageMaintenanceStatus = {
+  format: {
+    current: number
+    target: number
+    maintenanceRequired: boolean
+    phase?: "records" | "nodes" | "artifacts" | "swap" | "reclaim" | "complete"
+    restartRequired: boolean
+  }
+  reclaim: {
+    pending: boolean
+    running: boolean
+    paused: boolean
+    remainingPages?: number
+    releasedPages: number
+    error?: string
+  }
+}
+
+export type StorageReclaimControlInput = {
+  action: "pause" | "resume"
 }
 
 export type StorageUpgradeStatus = {
@@ -1764,7 +1786,7 @@ export type GlobalActivity = {
   backgroundJobs: number
 }
 
-export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
 
 export type SessionStatus =
   | {
@@ -1781,9 +1803,10 @@ export type SessionStatus =
       description?: string
     }
   | {
-      type: "recovering"
-      reason?: SessionRecoveringReason
+      type: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionNavEntry = {
@@ -1822,7 +1845,7 @@ export type SessionNavEntry = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
   workspaceType?: string
   workflow?: {
@@ -2756,7 +2779,7 @@ export type ObservabilityConfig = {
        */
       hardCeilingMs?: number
       /**
-       * Budget for one maintenance, migration or delete chunk (default: 30000 ms). Every maintenance path is chunked so no single statement grows with the store, and this value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume.
+       * Budget for reclaim, the only maintenance operation that can be split: it frees a bounded page count per call, so a fixed budget is enforceable (default: 30000 ms). CREATE INDEX, PRAGMA integrity_check and VACUUM cannot be chunked or cancelled, so they are bounded by hardCeilingMs instead and raising this value does not extend them. This value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume, and requestDeadlineMs and probeTimeoutMs are clamped the same way, because the invariant only holds when every limit that can occupy the worker's loop leaves that margin.
        */
       chunkBudgetMs?: number
     }
@@ -4952,6 +4975,12 @@ export type SessionCompletionNotice = {
   silent: boolean
 }
 
+export type SessionPaused = {
+  reason: SessionPausedReason
+  description?: string
+  since: number
+}
+
 export type SessionInteractionMode = "interactive" | "unattended"
 
 export type SessionInteraction = {
@@ -5062,9 +5091,10 @@ export type SessionWorkingInfo =
       next: number
     }
   | {
-      status: "recovering"
-      reason?: SessionRecoveringReason
+      status: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionWorkspace = {
@@ -5199,7 +5229,7 @@ export type Session = {
    * Per-session agent override set by session control
    */
   agentOverride?: string
-  pendingReply?: boolean
+  paused?: SessionPaused
   interaction?: SessionInteraction
   lastExchange?: {
     user?: string
@@ -5218,7 +5248,7 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
 }
 
@@ -6780,6 +6810,35 @@ export type SessionForkPointMissingError = {
   }
 }
 
+export type SessionContinueResult = {
+  /**
+   * Whether the drive accepted the session; a paused or already-running session reports false
+   */
+  handled: boolean
+}
+
+export type SessionAbandonResult = {
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * False after abandonment; the session is not left paused
+   */
+  paused: boolean
+  /**
+   * A workflow bound to the session was cancelled
+   */
+  abandoned: boolean
+}
+
+export type SessionAbandonError = {
+  name: "SessionAbandonError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionAbortResult = {
   /**
    * Runtime signal result; not_found/idle mean no running turn was stopped
@@ -6794,9 +6853,9 @@ export type SessionAbortResult = {
    */
   abandoned: boolean
   /**
-   * The session settled to idle
+   * The session was left paused, awaiting an explicit continue
    */
-  settled: boolean
+  paused: boolean
 }
 
 export type AttachmentSourceText = {
@@ -6964,6 +7023,10 @@ export type SessionInputResult =
   | {
       status: "queued"
       item: SessionInboxItem
+      /**
+       * Existing task run resumed by this input, when continuing a paused task
+       */
+      runID?: string
     }
 
 export type WorktreeUnavailableError = {
@@ -8670,7 +8733,7 @@ export type BlueprintLoopInfo = {
     reviewToolRecoveryAttempts?: number
   }
   scopeID: string
-  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  status: "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
@@ -10043,6 +10106,19 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+    directory?: string
+  }
+}
+
 export type EventBlueprintLoopCreated = {
   type: "blueprint_loop.created"
   properties: {
@@ -10091,19 +10167,6 @@ export type EventBlueprintLoopRejected = {
   properties: {
     loopID: string
     reason: string
-  }
-}
-
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
-    directory?: string
   }
 }
 
@@ -10679,6 +10742,8 @@ export type EventGlobalDisposed = {
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventScopeUpdated
+  | EventScopeRemoved
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -10686,8 +10751,6 @@ export type Event =
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
   | EventBlueprintLoopRejected
-  | EventScopeUpdated
-  | EventScopeRemoved
   | EventScopeRuntimeDisposed
   | EventNoteCreated
   | EventNoteUpdated
@@ -11606,6 +11669,57 @@ export type PerformanceEventsStreamResponses = {
    */
   200: unknown
 }
+
+export type StorageMaintenanceStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/maintenance"
+}
+
+export type StorageMaintenanceStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageMaintenanceStatusError = StorageMaintenanceStatusErrors[keyof StorageMaintenanceStatusErrors]
+
+export type StorageMaintenanceStatusResponses = {
+  /**
+   * Current storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageMaintenanceStatusResponse =
+  StorageMaintenanceStatusResponses[keyof StorageMaintenanceStatusResponses]
+
+export type StorageReclaimControlData = {
+  body?: StorageReclaimControlInput
+  path?: never
+  query?: never
+  url: "/global/storage/reclaim/control"
+}
+
+export type StorageReclaimControlErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageReclaimControlError = StorageReclaimControlErrors[keyof StorageReclaimControlErrors]
+
+export type StorageReclaimControlResponses = {
+  /**
+   * Updated storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageReclaimControlResponse = StorageReclaimControlResponses[keyof StorageReclaimControlResponses]
 
 export type StorageUpgradeStatusData = {
   body?: never
@@ -15106,6 +15220,92 @@ export type SessionForkResponses = {
 }
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
+
+export type SessionContinueData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/continue"
+}
+
+export type SessionContinueErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionContinueError = SessionContinueErrors[keyof SessionContinueErrors]
+
+export type SessionContinueResponses = {
+  /**
+   * Continue result
+   */
+  200: SessionContinueResult
+}
+
+export type SessionContinueResponse = SessionContinueResponses[keyof SessionContinueResponses]
+
+export type SessionAbandonData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/abandon"
+}
+
+export type SessionAbandonErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Abandonment failed; the session remains paused and can be retried
+   */
+  409: SessionAbandonError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionAbandonError2 = SessionAbandonErrors[keyof SessionAbandonErrors]
+
+export type SessionAbandonResponses = {
+  /**
+   * Abandon result
+   */
+  200: SessionAbandonResult
+}
+
+export type SessionAbandonResponse = SessionAbandonResponses[keyof SessionAbandonResponses]
 
 export type SessionAbortData = {
   body?: never
@@ -19778,88 +19978,6 @@ export type BlueprintLoopStartResponses = {
 
 export type BlueprintLoopStartResponse = BlueprintLoopStartResponses[keyof BlueprintLoopStartResponses]
 
-export type BlueprintLoopWaitData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/wait"
-}
-
-export type BlueprintLoopWaitErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
-
-export type BlueprintLoopWaitResponses = {
-  /**
-   * Waiting BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopWaitResponse = BlueprintLoopWaitResponses[keyof BlueprintLoopWaitResponses]
-
-export type BlueprintLoopResumeData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/resume"
-}
-
-export type BlueprintLoopResumeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
-
-export type BlueprintLoopResumeResponses = {
-  /**
-   * Resumed BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopResumeResponse = BlueprintLoopResumeResponses[keyof BlueprintLoopResumeResponses]
-
 export type BlueprintLoopActivityData = {
   body?: never
   path: {
@@ -20067,60 +20185,6 @@ export type LatticeRunEventsResponses = {
 }
 
 export type LatticeRunEventsResponse = LatticeRunEventsResponses[keyof LatticeRunEventsResponses]
-
-export type LatticeRunPauseData = {
-  body?: {
-    [key: string]: never
-  }
-  path: {
-    /**
-     * Lattice Run ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/lattice/run/{id}/pause"
-}
-
-export type LatticeRunPauseErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: {
-    name: string
-    data: unknown
-  }
-  /**
-   * Internal server error
-   */
-  500: LatticeInternalServerError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type LatticeRunPauseError = LatticeRunPauseErrors[keyof LatticeRunPauseErrors]
-
-export type LatticeRunPauseResponses = {
-  /**
-   * Paused Lattice Run
-   */
-  200: LatticeRunView
-}
-
-export type LatticeRunPauseResponse = LatticeRunPauseResponses[keyof LatticeRunPauseResponses]
 
 export type LatticeRunResumeData = {
   body?: {

@@ -118,7 +118,7 @@ describe("plugin UI asset loading", () => {
   test("loads explicitly declared stylesheets without assuming a sibling filename", async () => {
     const input = contribution("styled")
     input.uiArtifact = {
-      apiVersion: "5.0",
+      apiVersion: "6.0",
       entry: "ui/index.js",
       sha256: "a".repeat(64),
       resources: [{ kind: "stylesheet", entry: "ui/panel.css", sha256: "a".repeat(64) }],
@@ -139,7 +139,7 @@ describe("plugin UI asset loading", () => {
 
   test("does not probe undeclared stylesheets", async () => {
     const input = contribution("plain")
-    input.uiArtifact = { apiVersion: "5.0", entry: "ui/index.js", sha256: "a".repeat(64), resources: [] }
+    input.uiArtifact = { apiVersion: "6.0", entry: "ui/index.js", sha256: "a".repeat(64), resources: [] }
     const requested: string[] = []
     const result = await loadPluginUIAssets([input], {
       serverUrl,
@@ -156,7 +156,7 @@ describe("plugin UI asset loading", () => {
   test("reports stylesheet load failures without dropping theme or icon assets", async () => {
     const input = contribution("broken-css")
     input.uiArtifact = {
-      apiVersion: "5.0",
+      apiVersion: "6.0",
       entry: "ui/index.js",
       sha256: "a".repeat(64),
       resources: [{ kind: "stylesheet", entry: "ui/index.css", sha256: "a".repeat(64) }],

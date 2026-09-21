@@ -17,9 +17,8 @@ type LoopStatus = Info["status"]
 
 const TRANSITIONS: Record<LoopStatus, LoopStatus[]> = {
   armed: ["running", "cancelled"],
-  running: ["waiting", "auditing", "completed", "failed", "cancelled"],
-  waiting: ["running", "cancelled"],
-  auditing: ["running", "completed", "failed", "cancelled", "waiting"],
+  running: ["auditing", "completed", "failed", "cancelled"],
+  auditing: ["running", "completed", "failed", "cancelled"],
   completed: ["completed"],
   failed: [],
   cancelled: [],
@@ -30,7 +29,7 @@ function isValidTransition(from: LoopStatus, to: LoopStatus): boolean {
 }
 
 export function isActiveLoopStatus(status: LoopStatus) {
-  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+  return status === "armed" || status === "running" || status === "auditing"
 }
 
 /** Loop status → the phase a bound session renders. Terminal statuses are
@@ -38,7 +37,6 @@ export function isActiveLoopStatus(status: LoopStatus) {
 const PRESENTATION_PHASE: Partial<Record<LoopStatus, SessionBlueprintPhase>> = {
   armed: "running",
   running: "running",
-  waiting: "waiting",
   auditing: "auditing",
 }
 

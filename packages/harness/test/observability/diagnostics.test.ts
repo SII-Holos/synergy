@@ -53,36 +53,39 @@ describe("Diagnostics", () => {
     expect(summary.resources.pressure.observabilityDroppedWrites).toBeGreaterThanOrEqual(0)
   })
 
-  test("createPackage bypasses the pending-session cache for a fresh snapshot", async () => {
+  test("createPackage bypasses the paused-session cache for a fresh snapshot", async () => {
     const home = process.env.SYNERGY_TEST_HOME!
     const sessionsDir = path.join(home, ".synergy", "data", "sessions", "scope:home", "ses_cached")
     await fs.mkdir(sessionsDir, { recursive: true })
     const infoPath = path.join(sessionsDir, "info.json")
-    await fs.writeFile(infoPath, JSON.stringify({ id: "ses_cached", pendingReply: true, time: { updated: 1 } }))
+    await fs.writeFile(
+      infoPath,
+      JSON.stringify({ id: "ses_cached", paused: { reason: "aborted", since: 1 }, time: { updated: 1 } }),
+    )
 
     // First summary populates the cache.
     const first = await Diagnostics.summary()
-    expect(first.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(true)
+    expect(first.sessions.paused.some((item) => item.sessionID === "ses_cached")).toBe(true)
 
     // A subsequent summary within the TTL reuses the cached list.
     const cached = await Diagnostics.summary()
-    expect(cached.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(true)
+    expect(cached.sessions.paused.some((item) => item.sessionID === "ses_cached")).toBe(true)
 
-    // The session finishes; createPackage must see the fresh state even though
-    // the 15s cache would still hold the stale pending entry.
-    await fs.writeFile(infoPath, JSON.stringify({ id: "ses_cached", pendingReply: false, time: { updated: 2 } }))
+    // The session is resumed; createPackage must see the fresh state even though
+    // the 15s cache would still hold the stale paused entry.
+    await fs.writeFile(infoPath, JSON.stringify({ id: "ses_cached", time: { updated: 2 } }))
     const output = path.join(home, "fresh-diagnostics.tar.gz")
     const result = await Diagnostics.createPackage({ output })
-    expect(result.summary.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(false)
+    expect(result.summary.sessions.paused.some((item) => item.sessionID === "ses_cached")).toBe(false)
   })
 
-  test("pending-session scan survives a transient EPERM on info.json reads", async () => {
+  test("paused-session scan survives a transient EPERM on info.json reads", async () => {
     const home = process.env.SYNERGY_TEST_HOME!
     const sessionsDir = path.join(home, ".synergy", "data", "sessions", "scope:home", "ses_transient")
     await fs.mkdir(sessionsDir, { recursive: true })
     await fs.writeFile(
       path.join(sessionsDir, "info.json"),
-      JSON.stringify({ id: "ses_transient", pendingReply: true, time: { updated: 1 } }),
+      JSON.stringify({ id: "ses_transient", paused: { reason: "interrupted", since: 1 }, time: { updated: 1 } }),
     )
 
     const realReadFile: typeof fs.readFile = fs.readFile.bind(fs)
@@ -97,7 +100,7 @@ describe("Diagnostics", () => {
     using _read = spyOn(fs, "readFile").mockImplementation(impl)
 
     const summary = await Diagnostics.summary({ freshPendingSessions: true })
-    expect(summary.sessions.pendingReply.some((item) => item.sessionID === "ses_transient")).toBe(true)
+    expect(summary.sessions.paused.some((item) => item.sessionID === "ses_transient")).toBe(true)
     expect(calls).toBeGreaterThanOrEqual(2)
   })
 

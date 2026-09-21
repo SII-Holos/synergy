@@ -178,7 +178,7 @@ export function LatticeConfigDialog(props: {
                   <p class="mt-3 text-11-regular leading-4 text-text-weak">
                     {_({
                       id: "app.lattice.config.pausedHint",
-                      message: "Resume or cancel this run from the Lattice panel before changing its settings.",
+                      message: "Continue or cancel this run before changing its settings.",
                     })}
                   </p>
                 </Show>

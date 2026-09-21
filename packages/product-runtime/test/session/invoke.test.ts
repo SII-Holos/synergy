@@ -28,10 +28,12 @@ import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
-import { RolloutContinuationMigration } from "@ericsanchezok/synergy-harness/test/internal/session/rollout/continuation-migration"
 import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/session/rollout/snapshot"
+import { continueSession, submitInput } from "@ericsanchezok/synergy-runtime-local/session-api"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 
 import { registerSkillDomain } from "@ericsanchezok/synergy-runtime-local/skill/register"
 import { registerCommandDomain } from "@ericsanchezok/synergy-runtime-local/command/register"
@@ -1039,15 +1041,17 @@ describe("SessionInvoke pre-stream error handling", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const { session } = await createSessionWithUser()
-          await Session.update(session.id, (draft) => {
-            draft.pendingReply = true
-          })
 
           await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow("plugin tool uses incompatible schema")
 
+          // The turn ended abnormally, so the session records why it stopped
+          // instead of resting as though it had finished. The cause is carried
+          // in the description because that is the text the client renders.
+          const latch = await SessionLifecycle.snapshot(session.id)
+          expect(latch?.reason).toBe("failed")
+          expect(latch?.description).toContain("plugin tool uses incompatible schema")
+
           expect(processCalled).not.toHaveBeenCalled()
-          const refreshed = await Session.get(session.id)
-          expect(refreshed.pendingReply).toBeUndefined()
 
           const messages = await Session.messages({ sessionID: session.id })
           const assistants = messages.filter((message) => message.info.role === "assistant")
@@ -1136,7 +1140,7 @@ describe("SessionInvoke inbox boundaries", () => {
             type: "text",
             text: "old root that must not resume",
           })
-          await Session.updateMessage({
+          const staleAssistant = await Session.updateMessage({
             id: Identifier.ascending("message"),
             role: "assistant",
             sessionID: session.id,
@@ -1150,10 +1154,20 @@ describe("SessionInvoke inbox boundaries", () => {
             modelID: "test-model",
             providerID: "test-provider",
             time: { created: Date.now(), completed: Date.now() },
-            error: new MessageV2.APIError({ message: "old root failed", isRetryable: false }).toObject(),
+            finish: "stop",
           })
-          await Session.update(session.id, (draft) => {
-            draft.pendingReply = true
+          // The process died before this call was settled. The turn itself is
+          // terminal, so the root needs no model call; the orphaned call is what
+          // has to be repaired before the queued task can run.
+          const toolPartID = Identifier.ascending("part")
+          await Session.updatePart({
+            id: toolPartID,
+            sessionID: session.id,
+            messageID: staleAssistant.id,
+            type: "tool",
+            callID: "call_stale_root",
+            tool: "bash",
+            state: { status: "running", input: { command: "echo stale" }, time: { start: Date.now() } },
           })
           const queued = await SessionInbox.enqueueUser({
             sessionID: session.id,
@@ -1164,13 +1178,16 @@ describe("SessionInvoke inbox boundaries", () => {
 
           await SessionManager.wake(session.id)
 
+          // The settled root must not be re-driven just because an old call was
+          // left behind: only the queued task is real work here.
           expect(processedRoots).toEqual([queued.messageID])
-          const messages = await Session.messages({ sessionID: session.id })
-          const repaired = messages.find(
-            (message) => message.info.role === "assistant" && message.info.rootID === root.id,
-          )?.info as MessageV2.Assistant | undefined
-          expect(repaired?.finish).toBe("error")
-          expect(repaired?.error?.name).toBe("APIError")
+
+          // The unsettled call is repaired rather than left as a spinner nothing
+          // will ever clear.
+          const parts = await MessageV2.parts({ sessionID: session.id, messageID: staleAssistant.id })
+          const toolPart = parts.find((part) => part.id === toolPartID)
+          if (toolPart?.type !== "tool") throw new Error("expected tool part")
+          expect(toolPart.state.status).toBe("error")
           expect(await SessionInbox.list(session.id)).toHaveLength(0)
         },
       })
@@ -2274,7 +2291,7 @@ describe("SessionInvoke.cancel", () => {
 })
 
 describe("SessionInvoke abort with queued inbox work", () => {
-  test("schedules pending task work once after an explicit abort", async () => {
+  test("keeps the durable task queued and pauses instead of driving it after a user stop", async () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
     const originalRequest = SessionDrive.request
@@ -2292,7 +2309,7 @@ describe("SessionInvoke abort with queued inbox work", () => {
           model: { providerID: "test-provider", modelID: "test-model" },
           parts: [{ type: "text", text: "queued while the run is active" }],
         })
-        SessionInvoke.cancel(activeSessionID, { recoverQueuedTasks: true })
+        SessionInvoke.cancel(activeSessionID)
         assistant.error = new MessageV2.AbortedError({
           message: "Session aborted during turn",
         }).toObject()
@@ -2308,13 +2325,17 @@ describe("SessionInvoke abort with queued inbox work", () => {
 
           await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
 
+          await SessionAbort.abort(session.id)
+
           const items = await SessionInbox.list(session.id)
           expect(items).toHaveLength(1)
           expect(items[0].mode).toBe("task")
-          // An explicit abort must still schedule the durable task queued
-          // during the run. Without this drive the item strands in the
-          // inbox until the next user message wakes the session.
-          expect(driveRequests).toContain("release")
+
+          // The stop records the pause and deliberately leaves the queued task
+          // exactly where it is. Driving it here would restart the very work the
+          // user just stopped, so the item waits for an explicit continue.
+          expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("aborted")
+          expect(driveRequests).not.toContain("release")
         },
       })
     } finally {
@@ -2324,7 +2345,7 @@ describe("SessionInvoke abort with queued inbox work", () => {
     }
   })
 
-  test("internal cancellation does not schedule the release drive", async () => {
+  test("an internal cancellation leaves no pause behind", async () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
     const originalRequest = SessionDrive.request
@@ -2342,9 +2363,6 @@ describe("SessionInvoke abort with queued inbox work", () => {
           model: { providerID: "test-provider", modelID: "test-model" },
           parts: [{ type: "text", text: "queued while the run is cancelled internally" }],
         })
-        // No recoverQueuedTasks: an internal cancellation (Boss task cancel,
-        // Lattice run cancel, Cortex timeout) removes its own inbox items
-        // after aborting; the release drive would race that cleanup.
         SessionInvoke.cancel(activeSessionID)
         assistant.error = new MessageV2.AbortedError({
           message: "Session cancelled during turn",
@@ -2361,8 +2379,13 @@ describe("SessionInvoke abort with queued inbox work", () => {
 
           await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
 
-          const items = await SessionInbox.list(session.id)
-          expect(items).toHaveLength(1)
+          // Lattice, Light Loop, and Cortex withdraw work they own; "cancelled"
+          // is not "the user asked this session to hold still", so no pause is
+          // recorded and cancelling a workflow does not demand a manual
+          // continue. The queued task is still not auto-driven.
+          await SessionAbort.abort(session.id, { internalCancel: true })
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+          expect((await SessionInbox.list(session.id)).map((item) => item.mode)).toEqual(["task"])
           expect(driveRequests).not.toContain("release")
         },
       })
@@ -2546,15 +2569,217 @@ describe("SessionInvoke detached turn settlement", () => {
   })
 })
 
-for (const phase of ["materializing", "persisted-terminal", "startup-without-task", "startup-retry"] as const) {
-  test(`rollout continuation recovers at ${phase}`, async () => {
+test("rollout continuation recovers when a steer arrives mid-materialization", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const processedRoots: string[] = []
+  let reconciliation: ReturnType<typeof RolloutLifecycle.reconcile> | undefined
+  const restore = installBasicLoopMocks({
+    async onProcess(input) {
+      if (reconciliation) expect((await reconciliation)?.status).toBe("running")
+      processedRoots.push(input.user.id)
+    },
+  })
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            ...(userMessage(rootID).info as MessageV2.User),
+            sessionID: session.id,
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() },
+          })
+          const terminal = assistantMessage(Identifier.ascending("message"), rootID, "Earlier reply")
+          await Session.updateMessage({
+            ...(terminal.info as MessageV2.Assistant),
+            sessionID: session.id,
+            rootID,
+            time: { created: Date.now(), completed: Date.now() },
+          })
+          await RolloutLifecycle.configuration(session, rootID)
+          // The steer lands while the run is still materializing, so the
+          // reconciliation it triggers must not terminalize a run that is about
+          // to receive another segment.
+          const originalMaterialize = SessionInbox.materializeItem
+          using materialize = spyOn(SessionInbox, "materializeItem").mockImplementation(async (...args) => {
+            if (args[0].mode === "steer") reconciliation = RolloutLifecycle.reconcile(session.id, rootID)
+            return originalMaterialize(...args)
+          })
+          await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            model: { providerID: "test-provider", modelID: "test-model" },
+            noReply: true,
+            parts: [{ type: "text", text: "Child task completed" }],
+          })
+          const queued = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            model: { providerID: "test-provider", modelID: "test-model" },
+            parts: [{ type: "text", text: "New task after the stuck continuation" }],
+          })
+          await SessionManager.wake(session.id)
+          expect(processedRoots).toEqual([rootID, queued.messageID])
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+          const messages = await Session.messages({ sessionID: session.id })
+          expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
+          expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
+          expect(messages.filter((message) => message.info.role === "user")).toHaveLength(3)
+          await LoopJob.settleDetached(session.id)
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+          await Session.remove(session.id)
+        }
+      },
+    })
+  } finally {
+    restore()
+  }
+})
+
+test("continue actually resumes a paused session whose rollout was terminalized", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const processedRoots: string[] = []
+  const restore = installBasicLoopMocks({
+    onProcess(input) {
+      processedRoots.push(input.user.id)
+    },
+  })
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            ...(userMessage(rootID).info as MessageV2.User),
+            sessionID: session.id,
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() },
+          })
+          // The breakpoint an abort leaves behind: the run is cancelled, so
+          // materialization would refuse to append to it until continue reopens
+          // it. This is the state Continue most often has to recover from.
+          const owner = RolloutLifecycle.owner(session)
+          await RolloutLifecycle.configuration(session, rootID)
+          await RolloutLedger.requestCancel(owner, rootID)
+          await RolloutLedger.finishRun(owner, rootID, "cancelled")
+          expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("cancelled")
+
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+
+          // A plain automatic drive must not restart the stopped work.
+          expect(await SessionDrive.request(session.id, "continue-probe")).toBe(false)
+
+          // Continue is the explicit user decision, and it has to actually
+          // advance work: the run is reopened and a model call happens. A
+          // handler that returned true without doing this would be the silent
+          // no-op this whole design exists to prevent.
+          expect(await continueSession(session.id)).toBe(true)
+          expect(processedRoots).toEqual([rootID])
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+          expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("running")
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+          await Session.remove(session.id)
+        }
+      },
+    })
+  } finally {
+    restore()
+  }
+})
+
+test("startup reconciliation records the pause without driving the stuck continuation", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const processedRoots: string[] = []
+  const restore = installBasicLoopMocks({
+    onProcess(input) {
+      processedRoots.push(input.user.id)
+    },
+  })
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            ...(userMessage(rootID).info as MessageV2.User),
+            sessionID: session.id,
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() },
+          })
+          // The turn never reached a terminal assistant, so it is genuinely
+          // unfinished work sitting in the durable store.
+          await SessionInbox.deliver({
+            sessionID: session.id,
+            mode: "task",
+            message: {
+              role: "user",
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              parts: [{ type: "text", text: "Interrupted task" }],
+            },
+          })
+          const owner = RolloutLifecycle.owner(session)
+          await RolloutLifecycle.configuration(session, rootID)
+
+          const scopeID = ScopeContext.current.scope.id
+          await SessionInvoke.reconcilePausedSessions(scopeID)
+
+          // Startup records the interruption and stops: nothing is resumed on
+          // the user's behalf, so no model call and no loop was started.
+          expect(processedRoots).toEqual([])
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+          expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("interrupted")
+
+          // Idempotent: a second pass neither re-drives nor rewrites the latch,
+          // so `since` still names the original stoppage.
+          const since = (await SessionLifecycle.snapshot(session.id))?.since
+          await SessionInvoke.reconcilePausedSessions(scopeID)
+          expect((await SessionLifecycle.snapshot(session.id))?.since).toBe(since)
+          expect(processedRoots).toEqual([])
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+          await Session.remove(session.id)
+        }
+      },
+    })
+  } finally {
+    restore()
+  }
+})
+
+/** Fail fast instead of hanging when the behavior under test never happens. */
+async function withDeadline<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+for (const stoppedBy of ["abandonment", "run cancellation"] as const)
+  test(`new input after ${stoppedBy} keeps the old rollout cancelled and starts a new task`, async () => {
     await using tmp = await tmpdir({ git: true })
-    const processedRoots: string[] = []
-    let reconciliation: ReturnType<typeof RolloutLifecycle.reconcile> | undefined
+    const processed = Promise.withResolvers<string>()
     const restore = installBasicLoopMocks({
-      async onProcess(input) {
-        if (reconciliation) expect((await reconciliation)?.status).toBe("running")
-        processedRoots.push(input.user.id)
+      onProcess(input) {
+        processed.resolve(input.user.id)
       },
     })
     try {
@@ -2571,58 +2796,37 @@ for (const phase of ["materializing", "persisted-terminal", "startup-without-tas
               rootID,
               time: { created: Date.now() },
             })
-            const terminal = assistantMessage(Identifier.ascending("message"), rootID, "Earlier reply")
             await Session.updateMessage({
-              ...(terminal.info as MessageV2.Assistant),
+              ...(assistantMessage(Identifier.ascending("message"), rootID, "").info as MessageV2.Assistant),
               sessionID: session.id,
               rootID,
+              finish: "tool-calls",
               time: { created: Date.now(), completed: Date.now() },
             })
             const owner = RolloutLifecycle.owner(session)
             await RolloutLifecycle.configuration(session, rootID)
-            if (phase !== "materializing") await RolloutLedger.finishRun(owner, rootID, "completed")
-            const originalMaterialize = SessionInbox.materializeItem
-            using materialize = spyOn(SessionInbox, "materializeItem").mockImplementation(async (...args) => {
-              if (phase === "materializing" && args[0].mode === "steer") {
-                reconciliation = RolloutLifecycle.reconcile(session.id, rootID)
-              }
-              return originalMaterialize(...args)
-            })
-            await SessionInbox.enqueueUser({
+            await RolloutLifecycle.cancel(session.id, rootID)
+            if (stoppedBy === "abandonment")
+              await SessionAbort.abort(session.id, { terminalize: true, abandonWorkflow: true })
+            expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+
+            const submitted = await submitInput({
               sessionID: session.id,
+              agent: "synergy",
               model: { providerID: "test-provider", modelID: "test-model" },
-              noReply: true,
-              parts: [{ type: "text", text: "Child task completed" }],
+              parts: [{ type: "text", text: "Start a different task" }],
             })
-            if (phase !== "materializing")
-              for (const item of await SessionInbox.peekSteer(session.id))
-                await SessionInbox.materializeItem(item, rootID, { guiding: true })
-            const queued = phase.startsWith("startup")
-              ? undefined
-              : await SessionInbox.enqueueUser({
-                  sessionID: session.id,
-                  model: { providerID: "test-provider", modelID: "test-model" },
-                  parts: [{ type: "text", text: "New task after the stuck continuation" }],
-                })
-            await RolloutContinuationMigration.session(owner)
-            if (phase.startsWith("startup")) {
-              if (phase === "startup-retry") {
-                using wake = spyOn(SessionManager, "wake").mockRejectedValueOnce(new Error("Temporary wake failure"))
-                await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
-                expect(processedRoots).toEqual([])
-              }
-              expect(await SessionInbox.list(session.id)).toHaveLength(0)
-              await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
-              await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
-            } else await SessionManager.wake(session.id)
-            expect(processedRoots).toEqual(queued ? [rootID, queued.messageID] : [rootID])
-            expect(await SessionInbox.list(session.id)).toHaveLength(0)
-            const messages = await Session.messages({ sessionID: session.id })
-            expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
-            if (queued) expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
-            expect(messages.filter((message) => message.info.role === "user")).toHaveLength(queued ? 3 : 2)
-            await LoopJob.settleDetached(session.id)
+            if (submitted.status !== "queued") throw new Error("expected a queued task")
+            const processedRoot = await withDeadline(processed.promise, 5_000, "New task was not processed")
+            await SessionManager.waitForIdle(session.id)
+            expect(submitted.item.mode).toBe("task")
+            expect(submitted.runID).toBeUndefined()
+            expect(processedRoot).toBe(submitted.item.messageID)
+            expect(processedRoot).not.toBe(rootID)
+            expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("cancelled")
           } finally {
+            SessionManager.signalAbort(session.id)
+            await SessionManager.waitForIdle(session.id)
             SessionManager.unregisterRuntime(session.id)
             await Session.remove(session.id)
           }
@@ -2632,4 +2836,90 @@ for (const phase of ["materializing", "persisted-terminal", "startup-without-tas
       restore()
     }
   })
-}
+
+test("paused input steers the original task before its first resumed model call", async () => {
+  await using tmp = await tmpdir({ git: true })
+  let breakpointRootID = ""
+  const processedRoots: string[] = []
+  const processedQueued = Promise.withResolvers<string>()
+  const resumedInputs: string[] = []
+  const restore = installBasicLoopMocks({
+    onProcess(input) {
+      processedRoots.push(input.user.id)
+      resumedInputs.push(JSON.stringify(input.messages))
+      processedQueued.resolve(input.user.id)
+    },
+  })
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const rootID = Identifier.ascending("message")
+          breakpointRootID = rootID
+          await Session.updateMessage({
+            ...(userMessage(rootID).info as MessageV2.User),
+            sessionID: session.id,
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() },
+          })
+          await Session.updateMessage({
+            ...(assistantMessage(Identifier.ascending("message"), rootID, "").info as MessageV2.Assistant),
+            sessionID: session.id,
+            rootID,
+            // A turn stopped between steps: `tool-calls` is deliberately
+            // non-terminal, which is what makes this message the breakpoint.
+            finish: "tool-calls",
+            time: { created: Date.now(), completed: Date.now() },
+          })
+          // The stop terminalized the breakpoint's run, so appending to it is
+          // refused until an explicit user action resumes it. This is exactly
+          // the state `RolloutLifecycle.cancel` leaves behind.
+          const owner = RolloutLifecycle.owner(session)
+          await RolloutLifecycle.configuration(session, rootID)
+          await RolloutLedger.requestCancel(owner, rootID)
+          await RolloutLedger.finishRun(owner, rootID, "cancelled")
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+
+          const submitted = await submitInput({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            parts: [{ type: "text", text: "Continue after cancellation" }],
+          })
+          if (submitted.status !== "queued") throw new Error("expected a queued task")
+
+          // Sending new input is the other way the user takes a stopped session
+          // back, so this message has to reach a model call. A drive that dies on
+          // the interrupted breakpoint leaves it in the inbox forever.
+          const processedRoot = await withDeadline(
+            processedQueued.promise,
+            5_000,
+            "the queued user message never reached a model call",
+          )
+          // The interrupted turn is resumed, not silently discarded.
+          expect(processedRoots).toContain(breakpointRootID)
+          await SessionManager.waitForIdle(session.id)
+          expect(resumedInputs[0]).toContain("Continue after cancellation")
+          expect(submitted.item.mode).toBe("steer")
+          expect(submitted.runID).toBe(breakpointRootID)
+          expect(processedRoot).toBe(breakpointRootID)
+          const guided = await MessageV2.get({ sessionID: session.id, messageID: submitted.item.messageID })
+          expect(guided.info).toMatchObject({ isRoot: false, rootID: breakpointRootID })
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+
+          // Taking the session back also lifts the pause, so the drive the
+          // input scheduled was allowed through the gate in the first place.
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+          await Session.remove(session.id)
+        }
+      },
+    })
+  } finally {
+    restore()
+  }
+})

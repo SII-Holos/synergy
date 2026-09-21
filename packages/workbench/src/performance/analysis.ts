@@ -220,9 +220,6 @@ export namespace PerformanceAnalysis {
           { type: "text", origin: "system", text: buildPrompt(data) },
         ],
       })
-      await Session.update(session.id, (draft) => {
-        draft.pendingReply = true
-      })
       void SessionInvoke.loop(session.id).catch((error) => {
         log.error("performance analysis loop failed", { sessionID: session.id, error })
       })
@@ -252,7 +249,7 @@ export namespace PerformanceAnalysis {
       if (!SessionProgress.findTerminalReply(current.messages, current.root.info.id))
         await writeCancelledAssistant(current)
     }
-    await SessionInvoke.repairAfterAbort(sessionID)
+    await SessionInvoke.repairAfterAbort(sessionID, { internalCancel: true })
     return get(sessionID)
   }
 
@@ -297,10 +294,15 @@ export namespace PerformanceAnalysis {
       })
     }
 
+    // A performance analysis runs in a synthetic background session the user
+    // never converses with. It is owned by this domain, so the only two states
+    // that matter are "still queued" and "stopped before finishing" — the
+    // pause latch is the honest signal for the second, and an internal
+    // cancellation deliberately does not write one.
     const working = await SessionWorking.resolve(input.session.id)
     return PerformanceSchema.AnalysisView.parse({
       sessionID: input.session.id,
-      status: working?.status === "recovering" ? "interrupted" : input.session.pendingReply ? "queued" : "interrupted",
+      status: working?.status === "paused" ? "interrupted" : "queued",
       startedAt: input.root.info.time.created,
     })
   }

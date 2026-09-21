@@ -80,6 +80,13 @@ export namespace AgentCall {
         else input.signal.addEventListener("abort", onCancel, { once: true })
       }
     })
+    // `interruption` is a sentinel consumed only through the `wait` races below.
+    // When the abort or timeout lands while no race is pending — the loop has
+    // already exited, or an await just resolved — nothing observes this
+    // rejection, so it surfaces as an unhandled rejection attributed to
+    // whichever test happens to be running. Claim it at creation; the signal
+    // itself is still delivered by the races and `abort.throwIfAborted()`.
+    promise.catch(() => {})
     return {
       promise,
       dispose() {

@@ -79,7 +79,7 @@ type NoteCardInfo = NoteMetaInfo & {
 type BlueprintVisualState = {
   label: string
   detail: string
-  tone: "idle" | "running" | "waiting" | "auditing" | "failed" | "completed"
+  tone: "idle" | "running" | "auditing" | "failed" | "completed"
   icon: ReturnType<typeof getSemanticIcon>
 }
 
@@ -90,7 +90,6 @@ function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
 function getLoopLabel(lingui: ReturnType<typeof useLingui>, status: LoopStatus) {
   if (status === "armed") return lingui._({ id: N.runQueued.id, message: N.runQueued.message })
   if (status === "running") return lingui._({ id: N.running.id, message: N.running.message })
-  if (status === "waiting") return lingui._({ id: N.needsInput.id, message: N.needsInput.message })
   if (status === "auditing") return lingui._({ id: N.reviewing.id, message: N.reviewing.message })
   if (status === "completed") return lingui._({ id: N.completed.id, message: N.completed.message })
   if (status === "failed") return lingui._({ id: N.failed.id, message: N.failed.message })
@@ -99,7 +98,6 @@ function getLoopLabel(lingui: ReturnType<typeof useLingui>, status: LoopStatus) 
 
 function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
   if (status === "armed" || status === "running") return "running"
-  if (status === "waiting") return "waiting"
   if (status === "auditing") return "auditing"
   if (status === "completed") return "completed"
   if (status === "failed") return "failed"
@@ -126,12 +124,7 @@ function getBlueprintVisualState(
       label: getLoopLabel(lingui, status),
       detail: getRunModeLabel(lingui, runMode),
       tone: getLoopTone(status),
-      icon:
-        status === "auditing"
-          ? getSemanticIcon("command.audit")
-          : status === "waiting"
-            ? getSemanticIcon("session.waiting")
-            : getSemanticIcon("command.start"),
+      icon: status === "auditing" ? getSemanticIcon("command.audit") : getSemanticIcon("command.start"),
     }
   }
   const latest = loops[0]

@@ -16,7 +16,7 @@ export const NavCategory = z.enum(["project", "home", "channel", "background", "
 const NavBlueprintIdentity = z.object({
   loopID: z.string().optional(),
   loopRole: z.enum(["execution", "audit"]).optional(),
-  phase: z.enum(["running", "waiting", "auditing"]).optional(),
+  phase: z.enum(["running", "auditing"]).optional(),
 })
 const NavWorkflowIdentity = z.object({ kind: z.string(), active: z.boolean() })
 export const SessionNavEntry = z

@@ -2981,8 +2981,8 @@ msgid "app.kanban.status.idle"
 msgstr "空闲"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.status.recovering"
-msgstr "恢复中…"
+msgid "app.kanban.status.paused"
+msgstr "已暂停"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.status.retry"
@@ -3090,7 +3090,7 @@ msgstr "尚未开始"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.pausedHint"
-msgstr "请先在 Lattice 面板中恢复或取消此运行，再更改其设置。"
+msgstr "请先继续或取消此运行，再更改其设置。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.previousRun"
@@ -3219,10 +3219,6 @@ msgstr "失败"
 #. js-lingui-explicit-id
 msgid "app.lattice.loop.running"
 msgstr "运行中"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.loop.waiting"
-msgstr "等待中"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.acceptanceCriteria"
@@ -3361,14 +3357,6 @@ msgid "app.lattice.panel.pathway"
 msgstr "Pathway"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.pause"
-msgstr "暂停"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.pausing"
-msgstr "正在暂停…"
-
-#. js-lingui-explicit-id
 msgid "app.lattice.panel.previousStep"
 msgstr "之前的步骤"
 
@@ -3379,14 +3367,6 @@ msgstr "Pathway 进度"
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.recoveryFor"
 msgstr "用于恢复：{steps}"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.resume"
-msgstr "恢复"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.resuming"
-msgstr "正在恢复…"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.retry"
@@ -3455,10 +3435,6 @@ msgstr "模型回合已中断"
 #. js-lingui-explicit-id
 msgid "app.lattice.reason.userExit"
 msgstr "已由你退出"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.reason.userPause"
-msgstr "已由你暂停"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.restart.cancel"
@@ -4612,10 +4588,6 @@ msgstr "失败"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.status.running"
 msgstr "运行中"
-
-#. ── Note panel ───────────────────────────────────────────────────────────────
-msgid "app.note.blueprint.status.waiting"
-msgstr "等待你回复"
 
 #. ── Note bubble menu ─────────────────────────────────────────────────────────
 msgid "app.note.bubble.bold"
@@ -8549,6 +8521,14 @@ msgid "app.statusBar.panel.workspace"
 msgstr "工作区"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.copyDetailsFailed"
+msgstr "无法复制执行详情"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.copyPauseReason"
+msgstr "复制暂停原因"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.runtime.copyRetryError"
 msgstr "复制重试错误"
 
@@ -8565,24 +8545,28 @@ msgid "app.statusBar.runtime.label"
 msgstr "运行时：{label}"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering"
-msgstr "会话正在从未完成的回合中恢复"
+msgid "app.statusBar.runtime.paused"
+msgstr "会话已暂停"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering.incompleteTurn"
-msgstr "会话正在从未完成的回合中恢复"
+msgid "app.statusBar.runtime.paused.aborted"
+msgstr "已被你停止；继续即可恢复"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering.pendingReply"
-msgstr "会话正在等待未回复的答复"
+msgid "app.statusBar.runtime.paused.failed"
+msgstr "因失败而停止；继续即可恢复"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recovering.workflow"
-msgstr "BlueprintLoop 工作流仍占用此会话"
+msgid "app.statusBar.runtime.paused.interrupted"
+msgstr "运行中停止；继续即可恢复"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.runtime.recoveringState"
-msgstr "正在恢复"
+msgid "app.statusBar.runtime.paused.workflow"
+msgstr "在某个工作流驱动本会话时停止"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.runtime.pausedState"
+msgstr "已暂停"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.runtime.retryAttempt"
@@ -10161,113 +10145,6 @@ msgstr "已准备好启动此 BlueprintLoop。"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpAria.holdCancel"
-msgstr "按住以取消 BlueprintLoop：{title}"
-
-#. prompt-input.tsx — blueprint slot aria labels
-msgid "prompt.bpAria.holdStop"
-msgstr "按住以停止 Blueprint 运行：{title}"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpAria.holdUnequip"
-msgstr "按住以停用 Blueprint：{title}"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpFail.stoppedEquipped"
-msgstr "会话已停止，但 Blueprint 仍处于启用状态"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpFail.stopRun"
-msgstr "无法停止 Blueprint 运行"
-
-#. prompt-input.tsx — blueprint failure titles
-msgid "prompt.bpFail.unequip"
-msgstr "无法停用 Blueprint"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpHold.cancelLoop"
-msgstr "按住 2 秒以取消此 BlueprintLoop。"
-
-#. prompt-input.tsx — blueprint slot hold labels
-msgid "prompt.bpHold.stopRun"
-msgstr "按住 2 秒以停止此 Blueprint 运行。"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpHold.unequip"
-msgstr "按住 2 秒即可停用。"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.auditing"
-msgstr "审核中"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.cancelled"
-msgstr "已停用"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.completed"
-msgstr "已完成"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.equipped"
-msgstr "已启用"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.failed"
-msgstr "需要注意"
-
-#. prompt-input.tsx — blueprint slot status labels
-msgid "prompt.bpSlot.ready"
-msgstr "准备开始"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.running"
-msgstr "运行中"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bpSlot.waiting"
-msgstr "等待中"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.cancelBoss"
 msgstr "退出 Boss 模式"
 
@@ -10319,6 +10196,132 @@ msgstr "发送命令失败"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
 msgstr "连接已断开——回复可能延迟"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonBack"
+msgstr "返回"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonConfirm"
+msgstr "放弃执行"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonDescription"
+msgstr "将停止当前执行、取消当前工作流，并取消已排队的消息。会话历史、已生成文件和未发送草稿会保留。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonDone"
+msgstr "已放弃本次执行"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonExecution"
+msgstr "放弃本次执行"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonFailed"
+msgstr "放弃会话失败"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonHint"
+msgstr "按住 3 秒放弃"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandonHolding"
+msgstr "继续按住以放弃 · 松手取消"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.abandoning"
+msgstr "正在放弃…"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continue"
+msgstr "继续"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueHint"
+msgstr "从中断处恢复"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.disabledHint"
+msgstr "输入消息后可发送"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.failed"
+msgstr "无法更新执行状态"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.pause"
+msgstr "暂停"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.pauseHint"
+msgstr "停止当前回合；会话将暂停"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.queueMessage"
+msgstr "加入队列"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.sendAndContinue"
+msgstr "发送并继续"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.steerHint"
+msgstr "先调整当前任务，再继续执行"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -11219,20 +11222,6 @@ msgstr "请先停止会话，再更改工作流模式。"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.stopping"
 msgstr "正在停止…"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.stopRun.control"
-msgstr "停止本次运行并取消其工作流"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.stopRun.failed"
-msgstr "无法停止本次运行"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13808,8 +13797,20 @@ msgid "session.state.loopWaiting"
 msgstr "Light Loop 等待你处理"
 
 #. js-lingui-explicit-id
-msgid "session.state.recovering"
-msgstr "会话恢复中"
+msgid "session.state.paused"
+msgstr "会话已暂停"
+
+#. js-lingui-explicit-id
+msgid "session.state.pausedBlueprint"
+msgstr "Blueprint 会话已暂停"
+
+#. js-lingui-explicit-id
+msgid "session.state.pausedLoop"
+msgstr "轻循环已暂停"
+
+#. js-lingui-explicit-id
+msgid "session.state.retrying"
+msgstr "会话正在重试"
 
 #. js-lingui-explicit-id
 msgid "session.state.running"
@@ -19143,6 +19144,58 @@ msgid "settings.storage.compact.title"
 msgstr "打包共享存储"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.format.external"
+msgstr "在服务器所在的电脑上停止 Synergy，运行以下命令，然后重新启动服务器。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.failed"
+msgstr "无法加载数据库状态，请刷新重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.loading"
+msgstr "正在检查数据库状态…"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.pending"
+msgstr "可以优化存储空间"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.progress"
+msgstr "第 {step} 步：已处理 {current} 项。你可以返回 Synergy，稍后继续。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.ready"
+msgstr "已保存的数据可以使用"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.resume"
+msgstr "继续优化"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.return"
+msgstr "返回 Synergy"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.running"
+msgstr "正在优化已保存的数据…"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.start"
+msgstr "优化存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.description"
+msgstr "你可以继续使用 Synergy，在方便时再优化存储。大型数据库可能需要较长时间。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.status.title"
+msgstr "数据库维护"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.format.stopping"
+msgstr "正在保存进度并返回…"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
 msgstr "inspect 与 check 通过 CLI（synergy data snapshots）执行。migrate 与 compact 也可在此运行，均先展示预演结果；clean 回收无会话拥有的旧版目录。"
 
@@ -19201,6 +19254,38 @@ msgstr "按项目范围查看文件快照存储占用。"
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
 msgstr "存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.control.failed"
+msgstr "空间回收控制失败"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.pause"
+msgstr "暂停"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.resume"
+msgstr "继续"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.done"
+msgstr "没有待回收的空间"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.pending"
+msgstr "等待 Synergy 空闲后回收"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.running"
+msgstr "正在后台运行"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.reclaim.status.title"
+msgstr "空间回收"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.refresh"

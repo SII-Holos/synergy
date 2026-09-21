@@ -13,6 +13,8 @@ import * as SessionWorking from "@ericsanchezok/synergy-harness/session/working"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 
 Log.init({ print: false })
 
@@ -60,60 +62,54 @@ async function createBlueprintNote() {
 }
 
 describe("SessionRecovery.reconcileRuntimeState", () => {
-  test("clears stale pendingReply and preserves a genuine pending reply", async () => {
+  test("leaves the pause latch to the pause reconcile and records it there", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const stale = await Session.create({})
-        await Session.update(stale.id, (draft) => {
-          draft.pendingReply = true
-        })
+        const scopeID = ScopeContext.current.scope.id
+        const session = await Session.create({})
+        await createIncompleteAssistant(session.id)
 
-        const pending = await Session.create({})
-        await createPendingUserMessage(pending.id)
-        await Session.update(pending.id, (draft) => {
-          draft.pendingReply = true
-        })
+        // Workflow-reference reconciliation repairs durable references and
+        // nothing else. A session that merely stopped mid-turn must not be
+        // latched by it, or the two startup steps would own the same fact.
+        await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
 
-        const report = await SessionRecovery.reconcileRuntimeState({
-          scopeID: ScopeContext.current.scope.id,
-          apply: true,
-        })
-
-        expect(report.changed).toBeGreaterThanOrEqual(1)
-        expect((await Session.get(stale.id)).pendingReply).toBeUndefined()
-        expect((await Session.get(pending.id)).pendingReply).toBe(true)
+        // The pause reconcile is the step that records the interruption, and it
+        // records it without resuming anything on the user's behalf.
+        await SessionInvoke.reconcilePausedSessions(scopeID)
+        expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("interrupted")
+        expect(SessionManager.isRunning(session.id)).toBe(false)
       },
     })
   })
 
-  test("keeps incomplete assistant turns as recovering without abort repair", async () => {
+  test("keeps the interrupted turn resumable instead of repairing or driving it", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
         const session = await Session.create({})
         const assistant = await createIncompleteAssistant(session.id)
-        await Session.update(session.id, (draft) => {
-          draft.pendingReply = true
-        })
 
-        await SessionRecovery.reconcileRuntimeState({
-          scopeID: ScopeContext.current.scope.id,
-          apply: true,
-        })
+        await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+        await SessionInvoke.reconcilePausedSessions(scopeID)
 
-        const refreshed = await Session.get(session.id)
-        expect(refreshed.pendingReply).toBe(true)
-
+        // The breakpoint is the whole reason the session is worth continuing:
+        // terminalizing it here would make Continue a silent no-op, so startup
+        // must leave the assistant exactly as the stopped turn left it.
         const messages = await Session.messages({ sessionID: session.id, raw: true })
         const assistantMessage = messages.find((message) => message.info.id === assistant.id)
         assertExists(assistantMessage)
         expect((assistantMessage.info as MessageV2.Assistant).time.completed).toBeUndefined()
+        expect(SessionProgress.isTerminalAssistant(assistantMessage.info as MessageV2.Assistant)).toBe(false)
 
-        const statuses = await SessionManager.listStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toEqual({ type: "recovering", reason: "incomplete-turn" })
+        const statuses = await SessionManager.listStatuses(scopeID)
+        expect(statuses[session.id]?.type).toBe("paused")
+        expect(SessionManager.isRunning(session.id)).toBe(false)
       },
     })
   })
@@ -132,8 +128,9 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
           sessionID: session.id,
           runMode: "current",
         })
-        // A pending stop request is durable evidence that recovery will re-drive
-        // this loop, so it is preserved rather than adjudicated as orphaned.
+        // A pending stop request is durable evidence that this loop still owes a
+        // verdict, so recovery preserves it rather than adjudicating it as
+        // orphaned.
         await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running",
           stopRequest: {
@@ -157,12 +154,13 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
         expect(refreshedSession.blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
         expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
 
-        const statuses = await SessionManager.listStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toEqual({
-          type: "recovering",
-          reason: "workflow",
-          description: "BlueprintLoop active",
-        })
+        // A loop with a live driver is not stopped: the loop record is preserved
+        // and no pause is recorded against the session, because a persisted loop
+        // is a record of intent rather than evidence that a turn is running.
+        const scopeID = ScopeContext.current.scope.id
+        expect((await BlueprintLoopStore.get(scopeID, loop.id)).status).toBe("running")
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+        expect((await SessionManager.listStatuses(scopeID))[session.id]).toBeUndefined()
       },
     })
   })
@@ -204,11 +202,12 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
     })
   })
 
-  test("projects active Lattice workflow sessions as recovering without kicking continuation", async () => {
+  test("projects no status for an active Lattice workflow session and kicks no continuation", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
         const session = await Session.create({})
         const run = await LatticeStore.reset({ sessionID: session.id, mode: "auto", goal: "Recover only" })
         await Session.update(session.id, (draft) => {
@@ -219,26 +218,27 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
           }
         })
 
-        const status = await SessionWorking.resolve(session.id)
-        expect(status).toEqual({
-          status: "recovering",
-          reason: "workflow",
-          description: "Lattice run active",
-        })
+        // Lattice reconciles its own run through its own startup controller, so
+        // session recovery must report nothing for it and must not fabricate a
+        // pause the user never asked for.
+        expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
         const runtime = SessionManager.getRuntime(session.id)
         expect(runtime?.owner).toBeUndefined()
         expect(runtime?.status).toEqual({ type: "idle" })
+        expect((await SessionManager.listStatuses(scopeID))[session.id]).toBeUndefined()
       },
     })
   })
 })
 
-describe("SessionRecovery.resumePendingStopRequests", () => {
-  test("re-drives an unbound Light Loop stop intent", async () => {
+describe("a durable stop intent survives restart without being driven", () => {
+  test("preserves an unbound Light Loop stop intent without resuming it", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
           draft.workflow = {
@@ -252,16 +252,31 @@ describe("SessionRecovery.resumePendingStopRequests", () => {
             },
           }
         })
-        expect(await SessionRecovery.resumePendingStopRequests(ScopeContext.current.scope.id)).toBe(1)
+
+        await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+        await SessionInvoke.reconcilePausedSessions(scopeID)
+
+        // The stop intent is meant to be consumed by the continuation kernel
+        // when the turn next runs, so reconciliation must leave it in place.
+        const recovered = await Session.get(session.id)
+        expect(recovered.workflow?.kind).toBe("lightloop")
+        if (recovered.workflow?.kind !== "lightloop") throw new Error("Light Loop workflow missing")
+        expect(recovered.workflow.stopRequest?.summary).toBe("Task complete")
+
+        // Startup no longer resumes anything: the request is recorded, not acted
+        // on, and the session is neither driven nor paused for it.
+        expect(SessionManager.isRunning(session.id)).toBe(false)
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
       },
     })
   })
 
-  test("re-drives a completed Light Loop review whose terminal review tool did not settle", async () => {
+  test("preserves a completed Light Loop review whose terminal review tool did not settle", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
         const execution = await Session.create({})
         const reviewer = await Session.create({
           parentID: execution.id,
@@ -291,17 +306,25 @@ describe("SessionRecovery.resumePendingStopRequests", () => {
           }
         })
 
-        expect(await SessionRecovery.resumePendingStopRequests(ScopeContext.current.scope.id)).toBe(1)
+        await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+        await SessionInvoke.reconcilePausedSessions(scopeID)
+
+        // A completed review is durable evidence that a verdict is still owed,
+        // so the binding to the reviewer must survive: it is what lets the
+        // continuation kernel finish the review instead of restarting it.
         const recovered = await Session.get(execution.id)
         expect(recovered.workflow?.kind).toBe("lightloop")
         if (recovered.workflow?.kind !== "lightloop") throw new Error("Light Loop workflow missing")
         expect(recovered.workflow.stopRequest?.reviewSessionID).toBe(reviewer.id)
         expect(recovered.workflow.stopRequest?.reviewTaskID).toBe(reviewer.cortex?.taskID)
+
+        expect(SessionManager.isRunning(execution.id)).toBe(false)
+        expect(await SessionLifecycle.snapshot(execution.id)).toBeUndefined()
       },
     })
   })
 
-  test("re-drives an interrupted Blueprint audit without losing its stop intent", async () => {
+  test("preserves an interrupted Blueprint audit without losing its stop intent", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -340,17 +363,25 @@ describe("SessionRecovery.resumePendingStopRequests", () => {
           auditSessionID: reviewer.id,
           auditTaskID: reviewer.cortex?.taskID,
         })
-        expect(await SessionRecovery.resumePendingStopRequests(scopeID)).toBe(1)
+
+        await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+        await SessionInvoke.reconcilePausedSessions(scopeID)
+
+        // The stop intent is a durable driver, so the loop is not adjudicated as
+        // orphaned and the audit binding stays exactly as the audit left it.
         const recovered = await BlueprintLoopStore.get(scopeID, loop.id)
-        expect(recovered.status).toBe("running")
-        expect(recovered.auditSessionID).toBeUndefined()
-        expect(recovered.auditTaskID).toBeUndefined()
+        expect(recovered.status).toBe("auditing")
+        expect(recovered.auditSessionID).toBe(reviewer.id)
+        expect(recovered.auditTaskID).toBe(reviewer.cortex?.taskID)
         expect(recovered.stopRequest?.summary).toBe("Blueprint complete")
+
+        expect(SessionManager.isRunning(execution.id)).toBe(false)
+        expect(await SessionLifecycle.snapshot(execution.id)).toBeUndefined()
       },
     })
   })
 
-  test("re-drives a completed Blueprint audit whose terminal review tool did not settle", async () => {
+  test("preserves a completed Blueprint audit whose terminal review tool did not settle", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -390,23 +421,29 @@ describe("SessionRecovery.resumePendingStopRequests", () => {
           auditTaskID: reviewer.cortex?.taskID,
         })
 
-        expect(await SessionRecovery.resumePendingStopRequests(scopeID)).toBe(1)
+        await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+        await SessionInvoke.reconcilePausedSessions(scopeID)
+
         const recovered = await BlueprintLoopStore.get(scopeID, loop.id)
         expect(recovered.status).toBe("auditing")
         expect(recovered.auditSessionID).toBe(reviewer.id)
         expect(recovered.auditTaskID).toBe(reviewer.cortex?.taskID)
         expect(recovered.stopRequest?.summary).toBe("Blueprint complete")
+
+        expect(SessionManager.isRunning(execution.id)).toBe(false)
+        expect(await SessionLifecycle.snapshot(execution.id)).toBeUndefined()
       },
     })
   })
 })
 
 describe("SessionRecovery.recoverableStatuses", () => {
-  test("returns recovering statuses for sessions with active BlueprintLoops", async () => {
+  test("reports the session's own pause and not a stored loop", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
         const session = await Session.create({})
         const note = await createBlueprintNote()
         const loop = await BlueprintLoopStore.create({
@@ -416,13 +453,26 @@ describe("SessionRecovery.recoverableStatuses", () => {
           sessionID: session.id,
           runMode: "current",
         })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
 
-        const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
-        expect(statuses[session.id]).toEqual({
-          type: "recovering",
+        // A persisted loop is a record of intent, not evidence of work, so it
+        // must project no status on its own. Reporting one here is exactly what
+        // used to pin a dead session in a state no control could clear.
+        expect(await SessionRecovery.recoverableStatuses(scopeID)).toEqual({})
+
+        // Once the session itself is paused, that latch is the status every
+        // other client learns about, because recovery reads storage rather than
+        // runtimes.
+        await SessionLifecycle.pause({
+          sessionID: session.id,
           reason: "workflow",
-          description: "BlueprintLoop active",
+          description: "Stopped by BlueprintLoop; continue or abandon",
+        })
+        const statuses = await SessionRecovery.recoverableStatuses(scopeID)
+        expect(statuses[session.id]).toMatchObject({
+          type: "paused",
+          reason: "workflow",
+          description: "Stopped by BlueprintLoop; continue or abandon",
         })
       },
     })
@@ -444,6 +494,7 @@ describe("SessionRecovery.recoverableStatuses", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
         const execSession = await Session.create({})
         const auditSession = await Session.create({})
         const note = await createBlueprintNote()
@@ -454,7 +505,7 @@ describe("SessionRecovery.recoverableStatuses", () => {
           sessionID: execSession.id,
           runMode: "current",
         })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
           status: "running",
           stopRequest: {
             summary: "Audit this loop after restart",
@@ -463,22 +514,26 @@ describe("SessionRecovery.recoverableStatuses", () => {
             requesterMessageID: "msg_audit_evidence",
           },
         })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
           status: "auditing",
           auditSessionID: auditSession.id,
         })
+        await SessionLifecycle.pause({
+          sessionID: execSession.id,
+          reason: "workflow",
+          description: "Stopped by BlueprintLoop; continue or abandon",
+        })
+        await SessionLifecycle.pause({
+          sessionID: auditSession.id,
+          reason: "workflow",
+          description: "Stopped by BlueprintLoop; continue or abandon",
+        })
 
-        const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
-        expect(statuses[execSession.id]).toEqual({
-          type: "recovering",
-          reason: "workflow",
-          description: "BlueprintLoop active",
-        })
-        expect(statuses[auditSession.id]).toEqual({
-          type: "recovering",
-          reason: "workflow",
-          description: "BlueprintLoop active",
-        })
+        // Both sides of an auditing loop are surfaced, because a pause on either
+        // one is a session the user has to act on.
+        const statuses = await SessionRecovery.recoverableStatuses(scopeID)
+        expect(statuses[execSession.id]).toMatchObject({ type: "paused", reason: "workflow" })
+        expect(statuses[auditSession.id]).toMatchObject({ type: "paused", reason: "workflow" })
       },
     })
   })
@@ -624,7 +679,7 @@ describe("SessionProgress.pendingReplyFor", () => {
 })
 
 describe("SessionWorking resolution after restart", () => {
-  test("returns recovering for lightloop session", async () => {
+  test("projects no status for a Light Loop workflow without a live turn", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -634,9 +689,10 @@ describe("SessionWorking resolution after restart", () => {
           draft.workflow = { kind: "lightloop", instructions: "Recovery test" }
         })
 
-        const result = await SessionWorking.resolve(session.id)
-        assertExists(result)
-        expect(result.status).toBe("recovering")
+        // A stored workflow is intent, not a running turn: projecting it as work
+        // is what let a dead process pin a session forever.
+        expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
 
         // Verify no runtime was spun up
         const runtime = SessionManager.getRuntime(session.id)
@@ -645,7 +701,7 @@ describe("SessionWorking resolution after restart", () => {
     })
   })
 
-  test("returns recovering for active BlueprintLoop session", async () => {
+  test("projects no status for a bound BlueprintLoop session without a latch", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -664,9 +720,7 @@ describe("SessionWorking resolution after restart", () => {
           draft.blueprint = { loopID: loop.id, loopRole: "execution" }
         })
 
-        const result = await SessionWorking.resolve(session.id)
-        assertExists(result)
-        expect(result.status).toBe("recovering")
+        expect(await SessionWorking.resolve(session.id)).toBeUndefined()
 
         const runtime = SessionManager.getRuntime(session.id)
         expect(runtime?.owner).toBeUndefined()

@@ -83,7 +83,6 @@ export function coreCommands(
     },
     {
       command: "diagnostics",
-      storage: "maintenance",
       describe: "create a local diagnostics package",
       load: async () => (await import("./cmd/diagnostics")).DiagnosticsCommand as unknown as CommandModule,
     },

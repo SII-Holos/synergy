@@ -60,10 +60,10 @@ describe("subsession running classification", () => {
   const childState = (status: SessionStatus | undefined, waiting = false) =>
     resolveSubsessionStatus({ waiting, running: isWorkingStatus(status) })
 
-  test("surfaces busy, retry, and recovering child sessions as running", () => {
+  test("surfaces busy and retry child sessions as running", () => {
     expect(childState({ type: "busy" })).toBe("running")
     expect(childState({ type: "retry", attempt: 1, message: "rate limited", next: 1_000 })).toBe("running")
-    expect(childState({ type: "recovering" })).toBe("running")
+    expect(childState({ type: "paused", reason: "interrupted", since: 1 })).toBe("idle")
   })
 
   test("keeps a missing or idle child status out of running", () => {
@@ -72,6 +72,6 @@ describe("subsession running classification", () => {
   })
 
   test("reports a waiting child as waiting instead of running", () => {
-    expect(childState({ type: "recovering" }, true)).toBe("waiting")
+    expect(childState({ type: "paused", reason: "interrupted", since: 1 }, true)).toBe("waiting")
   })
 })

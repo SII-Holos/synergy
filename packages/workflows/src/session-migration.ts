@@ -20,7 +20,7 @@ function compact<T extends Record<string, unknown>>(value: T): T | undefined {
 }
 
 function activeLoopStatus(status: unknown) {
-  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+  return status === "armed" || status === "running" || status === "auditing"
 }
 
 async function sessionHasActiveBlueprintLoop(info: Record<string, unknown>): Promise<boolean> {

@@ -601,6 +601,10 @@
   color: var(--icon-critical-base);
 }
 
+.sb-session-icon-paused-tone {
+  color: var(--icon-warning-base);
+}
+
 .sb-session-icon-waiting-tone {
   color: var(--icon-critical-base);
 }

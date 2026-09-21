@@ -174,6 +174,7 @@ create a local diagnostics package
 
 | Option | Description |
 | --- | --- |
+| `--startup` (boolean) | create bounded startup diagnostics without opening any database |
 | `--session` (string) | include indexed observability events for a specific session |
 | `--since` (string) | include indexed observability events since a duration like 30m, 2h, or 7d |
 | `--output` (string) | path for the generated .tar.gz package |
@@ -714,6 +715,7 @@ inspect, verify, recover, restore backups, and move authoritative Agent storage
 
 | Option | Description |
 | --- | --- |
+| `--json` (boolean) | print only the final status as JSON |
 | `--target` (string) | JSONC configuration file containing the target storage domain; credentials use an environment reference |
 
 ## symbols <query>

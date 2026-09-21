@@ -64,6 +64,7 @@ function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
     "sb-session-icon-active-tone": tone === "active",
     "sb-session-icon-retry-tone": tone === "retry",
     "sb-session-icon-waiting-tone": tone === "waiting",
+    "sb-session-icon-paused-tone": tone === "paused",
     "sb-session-icon-worktree-tone": tone === "worktree",
     "sb-session-icon-muted-tone": tone === "muted",
     "sb-session-icon-blueprint-tone": tone === "blueprint",

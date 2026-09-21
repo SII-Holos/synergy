@@ -9,7 +9,7 @@
 
 Stable desktop updates use `electron-updater` against the GitHub Release metadata files below. The app stores its desktop update preference under Electron `userData`; `auto` downloads in the background, `notify` reports availability, `manual` waits for an explicit check, and `none` disables checks. Settings and the bottom sidebar update prompt show availability, download progress, install readiness, and errors. Installing an already downloaded update stops the managed local server before calling Electron's updater install action.
 
-On first launch after an upgrade, Desktop displays saved-data migration progress and waits for advancing work before opening the application. Verify both a fresh install and an upgrade that exceeds the ordinary startup deadline; see [startup waiting limits](../reference/development.md#development-modes).
+On first launch after an upgrade, Desktop displays saved-data migration progress and waits for advancing work before opening the application. Optional database rewrites require an explicit maintenance action in Settings → Storage or the recovery page. Managed Desktop refuses maintenance while work is active, stops only its own server, uses the matching bundled CLI, and restarts after the format commits. Return to Synergy cancels at a durable boundary and opens the committed data. External-server mode provides host-side instructions. Failed launches offer Retry, Continue maintenance and Export diagnostics; diagnostic export does not open storage. Verify both a fresh install and an upgrade that exceeds the ordinary startup deadline; see [startup waiting limits](../reference/development.md#development-modes).
 
 Runtime environment:
 

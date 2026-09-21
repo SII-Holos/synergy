@@ -22,6 +22,6 @@ CLI operating-system signal listeners bind their registration context before req
 
 ## Consequences
 
-Cancellation waits for already admitted persistence, so orchestration must allocate a separate cleanup deadline. Missing final provider usage remains unknown. Behavioral tests hold reads and writes behind explicit barriers and assert retained prefixes and terminal ordering.
+**Unaffected by the session pause latch.** This decision governs transport-artifact draining, resource-context binding, and CLI signal context, none of which read session pause state. Cancellation still waits for already admitted persistence, so orchestration must allocate a separate cleanup deadline. Missing final provider usage remains unknown. Behavioral tests hold reads and writes behind explicit barriers and assert retained prefixes and terminal ordering. The internal cancellations that reach this path remain internal cancellations under the new model, so they settle without latching a pause; see [delete automatic restart recovery](../../implemented/bug-fix/2026-09-20-delete-automatic-restart-recovery.md).
 
 Oversized upstream chunks can retain an unconsumed tail when an abort makes `reader.cancel()` reject. Closing drains that already admitted tail even when upstream cancellation fails; a 2 MiB behavioral regression verifies the complete received prefix.

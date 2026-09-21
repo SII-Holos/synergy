@@ -116,7 +116,7 @@ msgstr ""
     expect(translations.get("settings.library.memoryCount.full")).toBe("最多")
     expect(translations.get("settings.modelRole.fallbackChain")).toBe("备用顺序")
     expect(translations.get("settings.modelRole.resolution")).toBe("实际使用")
-    expect(translations.get("app.note.blueprint.status.waiting")).toBe("等待你回复")
+    expect(translations.get("app.note.blueprint.status.auditing")).toBe("正在审阅")
     expect(translations.get("app.context.breakdown.title")).toBe("上下文占用分布")
     expect(translations.get("app.context.breakdown.exactInputShare")).toBe("占实际输入的 {percent}")
     expect(translations.get("app.context.details.contextUsage")).toBe("上下文占用")

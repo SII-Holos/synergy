@@ -77,7 +77,9 @@ export function registerLightLoopDomain(): void {
     async cancel(sessionID: string) {
       const session = await Session.get(sessionID)
       if (session.workflow?.kind !== "lightloop") return session
-      await SessionAbort.abort(sessionID)
+      // Light Loop withdrawing its own work is not the user asking the session
+      // to hold still, so no pause is latched.
+      await SessionAbort.abort(sessionID, { internalCancel: true })
       // Use the single terminal path so the authoritative terminal record is
       // persisted and the interactive workflow is cleared consistently with
       // approval, exhaustion, deadline, and failure.

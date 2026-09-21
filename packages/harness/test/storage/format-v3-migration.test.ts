@@ -1,11 +1,11 @@
-import { expect, spyOn, test } from "bun:test"
+import { expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { keyBytes } from "../../src/storage/transactional-store"
-import { ObservabilityIssues } from "../../src/observability/issues"
 import { StorageFormatV3Migration } from "../../src/storage/format-v3-migration"
+import { StorageReclamation } from "../../src/storage/format-reclamation"
 import { createV2Store, inspect, keyHex, compressible } from "./format-v3-fixture"
 
 const NAMESPACE = "formatv3"
@@ -155,7 +155,7 @@ test("migration-resumable: every phase boundary converges to the uninterrupted r
   // aborts the run exactly where that phase first makes progress, and the durable
   // state row is whatever the last completed phase wrote -- so every case below
   // resumes from a different point in the state machine.
-  for (const cut of [1, 2, 3, 4, 5]) {
+  for (const cut of [1, 2, 3, 4]) {
     const dir = await root(`v3-cut-${cut}`)
     const filename = path.join(dir, "agent.sqlite")
     createV2Store({ filename, namespace: NAMESPACE, records: fixtureRecords() })
@@ -323,7 +323,7 @@ test("key-bytes-identity: the stored key column is the sha256 of the key JSON", 
   }
 })
 
-test("reclaim-footprint: the rewrite returns the pages it frees instead of leaving them on the freelist", async () => {
+test("reclaim-footprint: independent reclamation returns the pages freed by a committed rewrite", async () => {
   const dir = await root("v3-footprint")
   const filename = path.join(dir, "agent.sqlite")
   // A store whose record table dwarfs its journal, so the footprint comparison
@@ -337,6 +337,7 @@ test("reclaim-footprint: the rewrite returns the pages it frees instead of leavi
   const store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
   try {
     await StorageFormatV3Migration.run({ store })
+    await StorageReclamation.drain(store)
   } finally {
     await store.close()
   }
@@ -375,30 +376,26 @@ test("reclaim-resumes: an interrupted reclaim continues from the swap instead of
   const filename = path.join(dir, "agent.sqlite")
   createV2Store({ filename, namespace: NAMESPACE, records: reclaimRecords(), incrementalVacuum: true })
   const before = databaseFootprint(filename)
-  const store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
+  let store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
   try {
-    // Interrupt as the reclaim phase starts. The swap has already committed, so
-    // this is precisely the state a crash between the two phases leaves: a valid
-    // format 3 namespace with its freed pages still on the freelist.
-    let interrupted = false
-    await expect(
-      StorageFormatV3Migration.run({
-        store,
-        progress: (_current, _total, phase) => {
-          if (!interrupted && phase === 5) {
-            interrupted = true
-            throw new Error("interrupt-in-reclaim")
-          }
-        },
-      }),
-    ).rejects.toThrow("interrupt-in-reclaim")
+    await StorageFormatV3Migration.run({ store })
     const midway = databaseFootprint(filename)
     expect(midway.freelistPages).toBeGreaterThan(0)
+
+    await expect(
+      StorageReclamation.drain(store, {
+        progress: (current) => {
+          if (current > 0) throw new Error("interrupted after a reclaim checkpoint")
+        },
+      }),
+    ).rejects.toThrow("interrupted after a reclaim checkpoint")
+    await store.close()
+    store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
 
     // The resumed run reports only the reclaim phase, so it cannot have repeated
     // the copy phases, and it converges the freelist to empty.
     const phases: number[] = []
-    await StorageFormatV3Migration.run({ store, progress: (_current, _total, phase) => phases.push(phase) })
+    await StorageReclamation.drain(store, { progress: (_current, _total, phase) => phases.push(phase) })
     expect([...new Set(phases)]).toEqual([5])
     const reclaimed = databaseFootprint(filename)
     expect(reclaimed.freelistPages).toBe(0)
@@ -428,23 +425,16 @@ test("reclaim-bounded: a store that cannot reclaim terminates and reports instea
   // would never terminate.
   createV2Store({ filename, namespace: NAMESPACE, records: reclaimRecords(20, 10), incrementalVacuum: false })
   const store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
-  const raised: Array<{ code: string; evidence?: Record<string, unknown> }> = []
-  using _reported = spyOn(ObservabilityIssues, "raise").mockImplementation(((input: {
-    code: string
-    evidence?: Record<string, unknown>
-  }) => {
-    raised.push({ code: input.code, evidence: input.evidence })
-    return undefined
-  }) as typeof ObservabilityIssues.raise)
   try {
     // A hang here is the defect: this must terminate on its own.
     await StorageFormatV3Migration.run({ store })
+    const result = await StorageReclamation.drain(store)
     const stalled = databaseFootprint(filename)
     expect(stalled.freelistPages).toBeGreaterThan(0)
     // The format is still committed and readable; only the pages are unreturned.
     expect((await store.verify()).issues).toEqual([])
-    expect(raised.map((issue) => issue.code)).toEqual(["STORAGE_FORMAT_V3_RECLAIM_INCOMPLETE"])
-    expect(raised[0]!.evidence).toMatchObject({ reason: "auto-vacuum-none", autoVacuum: "none" })
+    expect(result.reclaim.pending).toBe(true)
+    expect(result.reclaim.error).toContain("explicit maintenance window")
     // The phase stays unclaimed, so a re-run resumes rather than marks it done.
     const resumed = databaseFootprint(filename)
     await StorageFormatV3Migration.run({ store })

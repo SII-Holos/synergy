@@ -22,18 +22,21 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
       `
-        import { createComponent } from "solid-js"
+        import { createComponent, createSignal } from "solid-js"
         import { render } from "solid-js/web"
         import { Tooltip } from ${JSON.stringify(`/@fs/${tooltipPath}`)}
 
         const button = document.createElement("button")
         button.textContent = "Trigger"
+        const [open, setOpen] = createSignal(undefined)
+        Object.assign(window, { setTooltipOpen: setOpen })
         render(
           () => createComponent(Tooltip, {
             value: "Tooltip content",
             placement: "top",
             openDelay: 0,
             closeDelay: 0,
+            get open() { return open() },
             get children() {
               return button
             },
@@ -96,5 +99,21 @@ describe("Tooltip", () => {
     await page.mouse.move(0, 0)
     await page.getByRole("tooltip").waitFor({ state: "detached" })
     expect(await page.getByRole("tooltip").count()).toBe(0)
+  })
+  test("external close suppresses focused content without replacing its trigger", async () => {
+    const trigger = page.getByRole("button", { name: "Trigger" })
+    await trigger.focus()
+    await page.getByRole("tooltip").waitFor({ state: "visible" })
+    await page.evaluate(() => {
+      const controls = window as unknown as { setTooltipOpen: (value: boolean | undefined) => void }
+      controls.setTooltipOpen(false)
+    })
+    await page.getByRole("tooltip").waitFor({ state: "detached", timeout: 1000 })
+    expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
+    await page.evaluate(() => {
+      const controls = window as unknown as { setTooltipOpen: (value: boolean | undefined) => void }
+      controls.setTooltipOpen(undefined)
+    })
+    await page.getByRole("tooltip").waitFor({ state: "visible" })
   })
 })

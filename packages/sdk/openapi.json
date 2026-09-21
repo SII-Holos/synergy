@@ -1648,6 +1648,83 @@
         ]
       }
     },
+    "/global/storage/maintenance": {
+      "get": {
+        "operationId": "storage.maintenanceStatus",
+        "summary": "Get storage format and reclamation status",
+        "responses": {
+          "200": {
+            "description": "Current storage maintenance status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMaintenanceStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.maintenanceStatus({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/storage/reclaim/control": {
+      "post": {
+        "operationId": "storage.reclaimControl",
+        "summary": "Pause or resume background storage reclamation",
+        "responses": {
+          "200": {
+            "description": "Updated storage maintenance status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMaintenanceStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageReclaimControlInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.reclaimControl({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/storage/upgrade": {
       "get": {
         "operationId": "storage.upgradeStatus",
@@ -3146,7 +3223,7 @@
       "get": {
         "operationId": "global.activity",
         "summary": "Get global activity",
-        "description": "Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, recovering) and in-flight loop background jobs both count; a session still queued for recovery after a restart counts once it begins executing. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
+        "description": "Report whether any session or background job is currently working. Non-idle runtimes in this process (busy, retry, paused) and in-flight loop background jobs both count. Read-only and served from memory; clients that must not let the machine idle poll this endpoint.",
         "responses": {
           "200": {
             "description": "Global activity snapshot",
@@ -8779,6 +8856,176 @@
         ]
       }
     },
+    "/session/{sessionID}/continue": {
+      "post": {
+        "operationId": "session.continue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Continue a paused session",
+        "description": "Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.",
+        "responses": {
+          "200": {
+            "description": "Continue result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionContinueResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.continue({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/abandon": {
+      "post": {
+        "operationId": "session.abandon",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Abandon a stopped session",
+        "description": "Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.",
+        "responses": {
+          "200": {
+            "description": "Abandon result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAbandonResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Abandonment failed; the session remains paused and can be retried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAbandonError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.abandon({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/abort": {
       "post": {
         "operationId": "session.abort",
@@ -8807,7 +9054,7 @@
           }
         ],
         "summary": "Abort session",
-        "description": "Abort an active session and stop any ongoing AI processing or command execution.",
+        "description": "Stop an active session's ongoing AI processing or command execution. A user stop leaves the session paused and awaiting an explicit continue or abandon, so the work is not restarted behind the user's back.",
         "responses": {
           "200": {
             "description": "Abort result",
@@ -8970,7 +9217,7 @@
           }
         ],
         "summary": "Submit session input",
-        "description": "Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.",
+        "description": "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.",
         "responses": {
           "200": {
             "description": "Input accepted",
@@ -18627,166 +18874,6 @@
         ]
       }
     },
-    "/blueprint/loop/{id}/wait": {
-      "post": {
-        "operationId": "blueprint.loop.wait",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "BlueprintLoop ID"
-          }
-        ],
-        "summary": "Wait BlueprintLoop (running → waiting)",
-        "description": "Transition a BlueprintLoop from running to waiting.",
-        "responses": {
-          "200": {
-            "description": "Waiting BlueprintLoop",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BlueprintLoopInfo"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.wait({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/blueprint/loop/{id}/resume": {
-      "post": {
-        "operationId": "blueprint.loop.resume",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "BlueprintLoop ID"
-          }
-        ],
-        "summary": "Resume BlueprintLoop (waiting → running)",
-        "description": "Transition a BlueprintLoop from waiting back to running.",
-        "responses": {
-          "200": {
-            "description": "Resumed BlueprintLoop",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BlueprintLoopInfo"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.resume({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/blueprint/loop/{id}/activity": {
       "get": {
         "operationId": "blueprint.loop.activity",
@@ -19209,124 +19296,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.events({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/lattice/run/{id}/pause": {
-      "post": {
-        "operationId": "lattice.run.pause",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "required": true,
-            "description": "Lattice Run ID"
-          }
-        ],
-        "summary": "Pause a Lattice Run",
-        "responses": {
-          "200": {
-            "description": "Paused Lattice Run",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LatticeRunView"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "data": {}
-                  },
-                  "required": ["name", "data"]
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LatticeInternalServerError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.pause({\n  ...\n})"
           }
         ]
       }
@@ -29293,7 +29262,7 @@
           "sessions": {
             "type": "object",
             "properties": {
-              "pendingReply": {
+              "paused": {
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -29312,7 +29281,7 @@
                 }
               }
             },
-            "required": ["pendingReply"]
+            "required": ["paused"]
           }
         },
         "required": ["generatedAt", "logs", "traces", "issues", "inflight", "resources", "processes", "sessions"]
@@ -31523,6 +31492,77 @@
         },
         "required": ["sentAt", "metrics"]
       },
+      "StorageMaintenanceStatus": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "object",
+            "properties": {
+              "current": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "target": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "maintenanceRequired": {
+                "type": "boolean"
+              },
+              "phase": {
+                "type": "string",
+                "enum": ["records", "nodes", "artifacts", "swap", "reclaim", "complete"]
+              },
+              "restartRequired": {
+                "type": "boolean"
+              }
+            },
+            "required": ["current", "target", "maintenanceRequired", "restartRequired"]
+          },
+          "reclaim": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "boolean"
+              },
+              "running": {
+                "type": "boolean"
+              },
+              "paused": {
+                "type": "boolean"
+              },
+              "remainingPages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "releasedPages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["pending", "running", "paused", "releasedPages"]
+          }
+        },
+        "required": ["format", "reclaim"]
+      },
+      "StorageReclaimControlInput": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["pause", "resume"]
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
       "StorageUpgradeStatus": {
         "type": "object",
         "properties": {
@@ -33149,9 +33189,9 @@
         },
         "required": ["active", "sessions", "backgroundJobs"]
       },
-      "SessionRecoveringReason": {
+      "SessionPausedReason": {
         "type": "string",
-        "enum": ["workflow", "incomplete-turn", "pending-reply"]
+        "enum": ["aborted", "failed", "interrupted", "workflow"]
       },
       "SessionStatus": {
         "anyOf": [
@@ -33202,16 +33242,19 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "recovering"
+                "const": "paused"
               },
               "reason": {
-                "$ref": "#/components/schemas/SessionRecoveringReason"
+                "$ref": "#/components/schemas/SessionPausedReason"
               },
               "description": {
                 "type": "string"
+              },
+              "since": {
+                "type": "number"
               }
             },
-            "required": ["type"]
+            "required": ["type", "reason", "since"]
           }
         ]
       },
@@ -33334,7 +33377,7 @@
               },
               "phase": {
                 "type": "string",
-                "enum": ["running", "waiting", "auditing"]
+                "enum": ["running", "auditing"]
               }
             }
           },
@@ -35668,7 +35711,7 @@
                     "maximum": 9007199254740991
                   },
                   "chunkBudgetMs": {
-                    "description": "Budget for one maintenance, migration or delete chunk (default: 30000 ms). Every maintenance path is chunked so no single statement grows with the store, and this value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume.",
+                    "description": "Budget for reclaim, the only maintenance operation that can be split: it frees a bounded page count per call, so a fixed budget is enforceable (default: 30000 ms). CREATE INDEX, PRAGMA integrity_check and VACUUM cannot be chunked or cancelled, so they are bounded by hardCeilingMs instead and raising this value does not extend them. This value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume, and requestDeadlineMs and probeTimeoutMs are clamped the same way, because the invariant only holds when every limit that can occupy the worker's loop leaves that margin.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -39599,6 +39642,21 @@
         },
         "required": ["unread", "unreadCount", "silent"]
       },
+      "SessionPaused": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/SessionPausedReason"
+          },
+          "description": {
+            "type": "string"
+          },
+          "since": {
+            "type": "number"
+          }
+        },
+        "required": ["reason", "since"]
+      },
       "SessionInteractionMode": {
         "type": "string",
         "enum": ["interactive", "unattended"]
@@ -39969,16 +40027,19 @@
             "properties": {
               "status": {
                 "type": "string",
-                "const": "recovering"
+                "const": "paused"
               },
               "reason": {
-                "$ref": "#/components/schemas/SessionRecoveringReason"
+                "$ref": "#/components/schemas/SessionPausedReason"
               },
               "description": {
                 "type": "string"
+              },
+              "since": {
+                "type": "number"
               }
             },
-            "required": ["status"]
+            "required": ["status", "reason", "since"]
           }
         ]
       },
@@ -40383,8 +40444,8 @@
             "description": "Per-session agent override set by session control",
             "type": "string"
           },
-          "pendingReply": {
-            "type": "boolean"
+          "paused": {
+            "$ref": "#/components/schemas/SessionPaused"
           },
           "interaction": {
             "$ref": "#/components/schemas/SessionInteraction"
@@ -40442,7 +40503,7 @@
               },
               "phase": {
                 "type": "string",
-                "enum": ["running", "waiting", "auditing"]
+                "enum": ["running", "auditing"]
               }
             }
           }
@@ -45014,6 +45075,53 @@
         },
         "required": ["name", "data"]
       },
+      "SessionContinueResult": {
+        "type": "object",
+        "properties": {
+          "handled": {
+            "description": "Whether the drive accepted the session; a paused or already-running session reports false",
+            "type": "boolean"
+          }
+        },
+        "required": ["handled"]
+      },
+      "SessionAbandonResult": {
+        "type": "object",
+        "properties": {
+          "repaired": {
+            "description": "An interrupted turn was terminalized",
+            "type": "boolean"
+          },
+          "paused": {
+            "description": "False after abandonment; the session is not left paused",
+            "type": "boolean"
+          },
+          "abandoned": {
+            "description": "A workflow bound to the session was cancelled",
+            "type": "boolean"
+          }
+        },
+        "required": ["repaired", "paused", "abandoned"]
+      },
+      "SessionAbandonError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionAbandonError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "SessionAbortResult": {
         "type": "object",
         "properties": {
@@ -45030,12 +45138,12 @@
             "description": "A driverless workflow was terminalized",
             "type": "boolean"
           },
-          "settled": {
-            "description": "The session settled to idle",
+          "paused": {
+            "description": "The session was left paused, awaiting an explicit continue",
             "type": "boolean"
           }
         },
-        "required": ["outcome", "repaired", "abandoned", "settled"]
+        "required": ["outcome", "repaired", "abandoned", "paused"]
       },
       "AttachmentSourceText": {
         "type": "object",
@@ -45532,6 +45640,11 @@
               },
               "item": {
                 "$ref": "#/components/schemas/SessionInboxItem"
+              },
+              "runID": {
+                "description": "Existing task run resumed by this input, when continuing a paused task",
+                "type": "string",
+                "pattern": "^msg.*"
               }
             },
             "required": ["status", "item"]
@@ -50779,7 +50892,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"]
+            "enum": ["armed", "running", "auditing", "completed", "failed", "cancelled"]
           },
           "runMode": {
             "type": "string",
@@ -54996,6 +55109,41 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.scope.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.blueprint_loop.created": {
         "type": "object",
         "properties": {
@@ -55131,41 +55279,6 @@
               }
             },
             "required": ["loopID", "reason"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.updated"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/Scope"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -56791,6 +56904,12 @@
             "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
+            "$ref": "#/components/schemas/Event.scope.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
             "$ref": "#/components/schemas/Event.blueprint_loop.created"
           },
           {
@@ -56810,12 +56929,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.blueprint_loop.rejected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.removed"
           },
           {
             "$ref": "#/components/schemas/Event.scope.runtime.disposed"

@@ -1,19 +1,19 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk"
-import { classifySessionActivity, isRecoveringStatus, isWorkingStatus } from "../../src/utils/session-status"
+import { classifySessionActivity, isPausedStatus, isWorkingStatus } from "../../src/utils/session-status"
 
 const idle: SessionStatus = { type: "idle" }
 const busy: SessionStatus = { type: "busy" }
 const retry: SessionStatus = { type: "retry", attempt: 1, message: "rate limited", next: 100 }
-const recovering: SessionStatus = { type: "recovering" }
+const paused: SessionStatus = { type: "paused", reason: "interrupted", since: 1 }
 
 describe("isWorkingStatus", () => {
-  test("counts busy, retry, and recovering as working", () => {
+  test("counts only busy and retry as working", () => {
     expect(isWorkingStatus(busy)).toBe(true)
     expect(isWorkingStatus(retry)).toBe(true)
-    // Recovering must count as working even though it has its own activity:
-    // Kanban header tint and ActiveZone rank it with work in progress.
-    expect(isWorkingStatus(recovering)).toBe(true)
+    // A paused session is stopped, not working. Counting it as work is exactly
+    // the spinner that no event can clear.
+    expect(isWorkingStatus(paused)).toBe(false)
   })
 
   test("treats idle and a missing status as not working", () => {
@@ -24,24 +24,24 @@ describe("isWorkingStatus", () => {
   })
 })
 
-describe("isRecoveringStatus", () => {
-  test("only matches recovering", () => {
-    expect(isRecoveringStatus(recovering)).toBe(true)
-    expect(isRecoveringStatus(busy)).toBe(false)
-    expect(isRecoveringStatus(idle)).toBe(false)
-    expect(isRecoveringStatus(undefined)).toBe(false)
+describe("isPausedStatus", () => {
+  test("only matches paused", () => {
+    expect(isPausedStatus(paused)).toBe(true)
+    expect(isPausedStatus(busy)).toBe(false)
+    expect(isPausedStatus(idle)).toBe(false)
+    expect(isPausedStatus(undefined)).toBe(false)
   })
 })
 
 describe("classifySessionActivity", () => {
   test("waiting outranks every runtime status", () => {
-    for (const status of [idle, busy, retry, recovering, undefined]) {
+    for (const status of [idle, busy, retry, paused, undefined]) {
       expect(classifySessionActivity({ status, waiting: true })).toBe("waiting")
     }
   })
 
-  test("recovering stays distinct from ordinary working", () => {
-    expect(classifySessionActivity({ status: recovering })).toBe("recovering")
+  test("paused stays distinct from ordinary working", () => {
+    expect(classifySessionActivity({ status: paused })).toBe("paused")
     expect(classifySessionActivity({ status: busy })).toBe("working")
     expect(classifySessionActivity({ status: retry })).toBe("working")
   })
@@ -52,8 +52,8 @@ describe("classifySessionActivity", () => {
     expect(classifySessionActivity({})).toBe("idle")
   })
 
-  test("recovering outranks working but not waiting", () => {
-    expect(classifySessionActivity({ status: recovering, waiting: false })).toBe("recovering")
-    expect(classifySessionActivity({ status: recovering, waiting: true })).toBe("waiting")
+  test("paused outranks working but not waiting", () => {
+    expect(classifySessionActivity({ status: paused, waiting: false })).toBe("paused")
+    expect(classifySessionActivity({ status: paused, waiting: true })).toBe("waiting")
   })
 })

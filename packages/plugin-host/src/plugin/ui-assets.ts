@@ -3,6 +3,7 @@ import {
   hasUnsupportedSolidRuntimeImport,
   hasUnlinkedSolidRuntimeImport,
 } from "@ericsanchezok/synergy-plugin/loader"
+import { PLUGIN_UI_API_VERSION } from "@ericsanchezok/synergy-plugin/version"
 import path from "node:path"
 import { realpath } from "node:fs/promises"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
@@ -34,7 +35,7 @@ export async function readPluginUIAsset(
     .catch(() => undefined)
   if (!data) return
   if (hashed && new Bun.CryptoHasher("sha256").update(data).digest("hex") !== hashed.sha256) return
-  if (relative === ui?.entry && ui.apiVersion === "5.0") {
+  if (relative === ui?.entry && ui.apiVersion === PLUGIN_UI_API_VERSION) {
     const source = new TextDecoder().decode(data)
     if (
       hasBundledSolidRuntime(source) ||

@@ -281,8 +281,12 @@ describe("performance analysis", () => {
           expect(sessions[0]).toMatchObject({
             agentOverride: "performance-analyst",
             title: "Performance analysis · 1m",
-            pendingReply: true,
           })
+          // A freshly started analysis is queued, not stopped: the retired
+          // `pendingReply` flag used to say this, and the queue status asserted
+          // above is what says it now. The absence of a latch is the same fact
+          // stated negatively.
+          expect(sessions[0]).not.toHaveProperty("paused")
           expect(sessions[0]).not.toHaveProperty("parentID")
           expect(sessions[0]).not.toHaveProperty("cortex")
 
@@ -362,9 +366,8 @@ describe("performance analysis", () => {
             type: "text",
             text: "The runtime is healthy.",
           })
-          await Session.update(session.id, (draft) => {
-            draft.pendingReply = undefined
-          })
+          // Completion is derived from the terminal assistant written above, so
+          // there is no longer a persisted flag to clear here.
 
           expect(await PerformanceAnalysis.get(session.id)).toEqual({
             sessionID: session.id,
@@ -460,7 +463,8 @@ describe("performance analysis", () => {
             | undefined
           expect(assistant?.finish).toBe("error")
           expect(assistant?.error?.name).toBe("MessageAbortedError")
-          expect((await Session.get(analysis.sessionID)).pendingReply).toBeUndefined()
+          // The cancellation is durable in the aborted assistant asserted
+          // above; there is no persisted session flag left to check.
           await Session.remove(analysis.sessionID)
         },
       })

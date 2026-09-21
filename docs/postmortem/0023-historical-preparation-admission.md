@@ -26,7 +26,7 @@ The original released-ledger fixture exercised activation and a text transcript,
 
 - [Admission tests](../../packages/harness/test/storage/compat-admission.test.ts) allow migration evidence writes while rejecting ordinary reads and writes before publication.
 - [Preparation tests](../../packages/harness/test/storage/compat-preparation.test.ts) use a real SQLite writer to hold retries in progress for both error categories.
-- [Released upgrade tests](../../packages/product-runtime/test/storage/released-staged-upgrade.test.ts) cover tool output on demand and during startup recovery, then reopen the process and verify exact evidence bytes without duplication.
+- [Released upgrade tests](../../packages/product-runtime/test/storage/released-history-evidence.test.ts) cover tool output on demand and during startup recovery, then reopen the process and verify exact evidence bytes without duplication.
 - [Persistence workflow](../../.synergy/skill/change-persistence/SKILL.md#historical-preparation-verification) requires these combined cases; the [decision record](../decisions/implemented/bug-fix/2026-09-21-historical-preparation-access-and-status.md) records the chosen repair.
 
 ## Lessons

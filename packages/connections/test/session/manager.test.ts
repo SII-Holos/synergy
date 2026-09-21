@@ -12,6 +12,7 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 Log.init({ print: false })
 
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 describe("SessionManager.getSession", () => {
   describe("by sessionID", () => {
     test("returns session info when session exists in storage", async () => {
@@ -127,20 +128,27 @@ describe("SessionManager.getSession", () => {
       })
     })
 
-    test("listStatuses only reports in-memory runtime status", async () => {
+    test("listStatuses reports a persisted pause even without a runtime", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
       await ScopeContext.provide({
         scope,
         fn: async () => {
           const session = await Session.create({})
-          await Session.update(session.id, (draft) => {
-            draft.pendingReply = true
-          })
           SessionManager.unregisterRuntime(session.id)
 
-          const statuses = await SessionManager.listStatuses(scope.id)
-          expect(statuses[session.id]).toBeUndefined()
+          // Nothing is running and no latch is present, so there is no status
+          // to report at all.
+          expect((await SessionManager.listStatuses(scope.id))[session.id]).toBeUndefined()
+
+          // A pause is durable session state, so it is reported even though no
+          // runtime object exists: this is how another client learns that the
+          // session stopped and awaits an explicit continue.
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+          expect((await SessionManager.listStatuses(scope.id))[session.id]).toMatchObject({
+            type: "paused",
+            reason: "aborted",
+          })
         },
       })
     })
@@ -186,8 +194,10 @@ describe("SessionManager.getSession", () => {
           try {
             const lease = SessionManager.acquire(session.id)
             expect(lease).toBeDefined()
+            // Any durable update while the lease is held republishes the session
+            // with its live runtime projection, which is what the client reads.
             await Session.update(session.id, (draft) => {
-              draft.pendingReply = true
+              draft.title = "Release projection fixture"
             })
             expect(updated.at(-1)?.working?.status).toBe("busy")
 

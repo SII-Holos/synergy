@@ -22,4 +22,4 @@ Preparation status gives an active attempt precedence over a prior error and omi
 
 ## Consequences
 
-The change adds no schema, migration ID or compatibility reader. Released-ledger tests cover deferred tool output, startup recovery and restart idempotence; admission tests retain the ordinary-access restriction. A status sampled during completion may report preparing for one additional poll, while settled failures and quarantine remain visible. The [postmortem](../../../postmortem/0022-historical-preparation-admission.md) records the verification gap.
+The change adds no schema, migration ID or compatibility reader. Released-ledger tests cover deferred tool output, startup recovery and restart idempotence; admission tests retain the ordinary-access restriction. A status sampled during completion may report preparing for one additional poll, while settled failures and quarantine remain visible. The [postmortem](../../../postmortem/0023-historical-preparation-admission.md) records the verification gap.

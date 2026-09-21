@@ -50,7 +50,6 @@ export const STEP_STATUS_DESCRIPTORS = {
 export const LOOP_STATUS_DESCRIPTORS = {
   armed: { id: "app.lattice.loop.armed", message: "Ready" },
   running: { id: "app.lattice.loop.running", message: "Running" },
-  waiting: { id: "app.lattice.loop.waiting", message: "Waiting" },
   auditing: { id: "app.lattice.loop.auditing", message: "Reviewing" },
   completed: { id: "app.lattice.loop.completed", message: "Completed" },
   failed: { id: "app.lattice.loop.failed", message: "Failed" },
@@ -80,7 +79,6 @@ const EVENT_DESCRIPTORS = {
 } satisfies Record<LatticeEvent["kind"], MessageDescriptor>
 
 const PAUSE_REASON_DESCRIPTORS: Record<string, MessageDescriptor> = {
-  user_paused: { id: "app.lattice.reason.userPause", message: "Paused by you" },
   user_exit: { id: "app.lattice.reason.userExit", message: "Exited by you" },
   turn_interrupted: { id: "app.lattice.reason.turnInterrupted", message: "Model turn interrupted" },
   model_turn_interrupted: { id: "app.lattice.reason.turnInterrupted", message: "Model turn interrupted" },
