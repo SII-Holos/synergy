@@ -18,4 +18,4 @@ Session workspace mutations accept the existing activity-preservation option. Th
 
 ## Consequences
 
-Recent ordering remains based on conversation activity during maintenance. Metadata timestamps and workspace events can still advance. Real temporary Git/Scope fixtures cover both cleanup paths and verify that subsequent conversation activity still promotes the session. Existing incorrectly advanced activity is not guessed or rewritten.
+Recent ordering remains based on conversation activity during maintenance. The explicit preservation option also retains canonical `time.updated`, so rebuilding a derived index cannot reintroduce cleanup recency. Workspace changes still publish through the committed event sequence. Real temporary Git/Scope fixtures cover both cleanup paths, index rebuilding and subsequent conversation activity. Existing incorrectly advanced activity is not guessed or rewritten.

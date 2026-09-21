@@ -322,6 +322,10 @@ describe("worktree sweep", () => {
         const after = await SessionNav.readNavIndex(scope.id)
         expect(after.entries.find((entry) => entry.id === older.id)?.lastActivityAt).toBe(activity)
         expect(after.entries.map((entry) => entry.id)).toEqual(before.entries.map((entry) => entry.id))
+        await SessionNav.buildNavIndex(scope.id)
+        expect((await SessionNav.readNavIndex(scope.id)).entries.map((entry) => entry.id)).toEqual(
+          before.entries.map((entry) => entry.id),
+        )
         await Session.recordActivity(older.id)
         expect((await SessionNav.readNavIndex(scope.id)).entries[0].id).toBe(older.id)
         await Session.remove(older.id)

@@ -1059,7 +1059,7 @@ export namespace Session {
       const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         before = structuredClone(draft)
         editor(draft)
-        draft.time.updated = Date.now()
+        if (!options?.preserveActivityAt) draft.time.updated = Date.now()
       })
       if (!before) throw new Error(`Session ${id} was not available before mutation`)
 
