@@ -16,4 +16,4 @@ Search behavior:
 - If path search finds no matches, the file index may be refreshed and path search retried before content and symbol results are merged.
 - Empty or whitespace-only queries do not search content or symbols.
 
-For multi-keyword AND logic, use multiple targeted calls or scan_files with an appropriate regex. For regex content search with anchored editable results, use scan_files. For syntax-aware queries, use parse_code. For file reading, use view_file.
+For multi-keyword AND logic, use multiple targeted file_search calls. Use scan_files, parse_code, and view_file only when available. scan_files supports regex content search with anchored results; parse_code supports syntax-aware queries. Use the available file-reading tool: read or view_file. If a specialized search tool is unavailable, use narrower literal queries and inspect the matching files. Tool expansion does not bypass agent permissions.

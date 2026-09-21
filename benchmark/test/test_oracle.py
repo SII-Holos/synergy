@@ -2,7 +2,7 @@ from synergy_bench.oracle import oracle_configuration, oracle_result
 
 
 def test_oracle_has_native_deadlines_and_no_harness_or_inference_mount(tmp_path):
-    task = {"local_path": str(tmp_path / "task"), "agent_seconds": 51}
+    task = {"local_path": str(tmp_path / "task"), "agent_seconds": 51, "verifier_seconds": 2400}
     config = oracle_configuration(
         tmp_path, task, tmp_path / "attempt-001", cache=tmp_path / "cache", platform="linux/amd64"
     )

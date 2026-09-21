@@ -31,3 +31,40 @@ test("registry folds orchestration tools only for synergy-flash", async () => {
     },
   })
 })
+
+test("shared file-routing descriptions respect native agent tool availability", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const descriptions = await Promise.all(
+        ["synergy-flash", "synergy", "synergy-max"].map(async (name) => {
+          const agent = await Agent.get(name)
+          expect(agent).toBeDefined()
+          const tools = await ToolRegistry.tools("test-provider", agent)
+          return {
+            agent: name,
+            bash: tools.find((tool) => tool.id === "bash")?.description,
+            file_search: tools.find((tool) => tool.id === "file_search")?.description,
+          }
+        }),
+      )
+      for (const description of descriptions) {
+        expect(description.bash, `${description.agent}: unconditional bash routing`).not.toContain(
+          "Prefer dedicated tools over shell equivalents: Glob for file search (not find/ls), Grep for content search (not grep/rg)",
+        )
+        expect(description.file_search, `${description.agent}: unconditional file_search routing`).not.toContain(
+          "For regex content search with anchored editable results, use scan_files. For syntax-aware queries, use parse_code. For file reading, use view_file.",
+        )
+        expect(description.bash).toContain(
+          "When available, prefer Glob for file search and Grep for content search; otherwise use file_search.",
+        )
+        expect(description.file_search).toContain("Use scan_files, parse_code, and view_file only when available.")
+        for (const tool of ["bash", "file_search"] as const) {
+          expect(description[tool]).toContain("Use the available file-reading tool: read or view_file.")
+          expect(description[tool]).toContain("Tool expansion does not bypass agent permissions.")
+        }
+      }
+    },
+  })
+})

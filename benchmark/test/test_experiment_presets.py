@@ -119,3 +119,74 @@ def test_probe_trials_get_an_independent_diagnostic_budget_without_touching_scor
         scoring_trial.agent.override_timeout_sec
         == 900 + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
     )
+
+
+@pytest.mark.parametrize("suite_agent_seconds,suite_verifier_seconds", [(900, 2400), (1200, 1200), (3600, 1800)])
+def test_r9_pairs_native_flash_sources_with_declared_suite_budgets(
+    tmp_path, suite_agent_seconds, suite_verifier_seconds
+):
+    path = Path(__file__).parents[1] / "configs" / "qwen38-iter-r9.yaml"
+    config = load_config(path)
+    tasks = read_json(path.parent / config.suite)["tasks"]
+    schedule = resolve_plan(config, tasks)
+    assert len(schedule) == 10
+    assert config.seed == 20260922
+    assert config.concurrency == 2
+    assert config.repeat == 1
+    assert not config.task_repeats
+    assert config.timeout_seconds is None
+    baseline = config.harnesses["flash-baseline"]
+    candidate = config.harnesses["flash-routing"]
+    assert baseline.source.revision == "3d00b6b1840b454fd446cde670d8a929d50c938c"
+    assert candidate.source.revision is None
+    assert baseline.model_dump(exclude={"source"}) == candidate.model_dump(exclude={"source"})
+    assert baseline.runtime == "core"
+    assert baseline.agent == "synergy-flash"
+    assert baseline.config is None and baseline.experiment is None
+    model = config.models["qwen38"]
+    assert model.parameters == {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "reasoning_effort": "high",
+        "thinking": {"type": "enabled", "clear_thinking": False},
+    }
+    assert model.base_url == "https://inference.example.invalid/v1"
+    assert model.context_window == 262144 and model.max_output_tokens == 65536
+    for offset in range(0, len(schedule), 2):
+        left, right = schedule[offset : offset + 2]
+        assert (left["pair"], left["task"], left["repeat"]) == (right["pair"], right["task"], right["repeat"])
+        assert {left["harness"], right["harness"]} == {"flash-baseline", "flash-routing"}
+    root = tmp_path / "run-12345678"
+    for name, variant in config.variants.items():
+        atomic_json(root / "inputs" / name / "config.json", {})
+        plan = {
+            "config": config.model_dump(),
+            "cache": str(tmp_path / "cache"),
+            "variants": {
+                name: {**variant.model_dump(), "artifact": str(tmp_path / "artifact"), "artifact_id": "fixture"}
+            },
+            "tasks": {
+                "task": {
+                    "local_path": str(tmp_path / "task"),
+                    "agent_seconds": suite_agent_seconds,
+                    "verifier_seconds": suite_verifier_seconds,
+                }
+            },
+        }
+        attempt = root / "trials" / name / "attempt-001"
+        trial, _, _ = trial_configuration(
+            root,
+            plan,
+            {"variant": name, "task": "task"},
+            attempt,
+            gateway=SimpleNamespace(model=model, url="http://gateway.invalid:8080/v1", advertised="gateway.invalid"),
+            reference="FIXTURE_GATEWAY_KEY",
+        )
+        options = read_json(attempt / "inputs/options.json")
+        settings = read_json(attempt / "inputs/config.json")
+        assert options["agent"] == "synergy-flash"
+        assert options["timeout_seconds"] == suite_agent_seconds
+        assert trial.verifier.override_timeout_sec == suite_verifier_seconds
+        assert not trial.verifier.disable
+        assert settings["provider"]["benchmark"]["options"]["mergeSystemMessages"] is True
+        assert "agent" not in settings

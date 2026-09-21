@@ -37,22 +37,22 @@ bun bench clean /absolute/path/to/run
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。
 
-| 字段                                         | 含义                                                                             |
-| -------------------------------------------- | -------------------------------------------------------------------------------- |
-| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment      |
-| `harnesses.<name>.bun_jit`                   | OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭其内嵌 Bun JIT            |
-| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数             |
-| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                       |
-| `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                |
-| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                             |
-| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                       |
-| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                 |
-| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                    |
-| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                     |
-| `timeout_seconds`                            | 可选 agent 期限；省略时保留原题期限                                              |
-| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                             |
-| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                           |
-| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始 |
+| 字段                                         | 含义                                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------------------- |
+| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment     |
+| `harnesses.<name>.bun_jit`                   | OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭其内嵌 Bun JIT           |
+| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数            |
+| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                      |
+| `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及声明的 agent/verifier 期限             |
+| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                            |
+| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                      |
+| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                |
+| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                   |
+| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                    |
+| `timeout_seconds`                            | 可选 agent 期限；省略时使用 suite 声明的期限                                    |
+| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                            |
+| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                          |
+| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；agent 解题时限从首次派发开始 |
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。平台实现不绑定该模型或智谱端点。
 
@@ -61,6 +61,8 @@ bun bench clean /absolute/path/to/run
 [Qwen 验收示例](configs/qwen38-acceptance.yaml) 使用相同任务与重复安排评测 vLLM 部署的 Qwen3.8-27B（262,144 上下文）。该端点拒绝多条前导 system 消息，因此 Synergy 声明 `merge_system_messages: true`（评测器生成的 provider 配置合并前导 system 消息，产品已有行为），模型 profile 声明同名端点能力（网关在协议桥转换后合并前导 system 消息，供 Codex 的 Responses→Chat 桥使用）。两者均为显式命名条件，不改变模型、提示词、工具或压缩策略，也不根据宿主或结果自动切换；错误轴使用会报错。该预设按原生 `linux/amd64` 宿主执行，OpenCode 运行原生 Bun，不含 JITless 变体。
 
 [迭代预设](configs/qwen38-iter-r6.yaml) 展示同窗配对矩阵的用法：`synergy-plain` 与 `synergy-strip` 两个 Synergy 变体交错运行于同一端点窗口，变体间对比不受端点性能漂移影响。`strip_reasoning: true` 声明产品传输层的 `stripReasoning` 行为——发送前剥除回放 assistant 历史中的 reasoning 内容，用于忽略服务端 thinking 控制（接受但不执行 `thinking_budget` / `clear_thinking`）且逐轮输出体积被回放深思主导的端点。思考仍在模型侧发生，只移除其回放。
+
+[Flash R9 开发筛选预设](configs/qwen38-iter-r9.yaml) 将固定基线 revision 与候选工作树分别冻结，比较原生 `synergy-flash` 的工具路由说明；两臂均使用 core runtime，不设置自定义 agent 配置。五道已有开发题各运行一次，seed 为 20260922，并发为 2，保留开发 suite 声明的 agent/verifier 期限，不等同于全部上游原题期限：dasel/fd 为 3600/1800 秒（原题 10800/1800），text-editing 为 1200/1200 秒，certificate/polyglot 为 900/2400 秒（原题 900/900）。原生 oracle 独立使用原题期限，不继承 suite 覆盖值；oracle 和两臂 doctor 均通过后才允许评分。端点是不可访问的示例地址；运行前在 ignored 私有配置副本中绑定实际端点，并重新解析相对路径。模型 profile 明确请求 `reasoning_effort: high`，网关保存生效请求；接受参数不证明服务端执行了该推理档位。该小样本只用于筛选，不证明非劣性或普遍优势；全部 attempts 与预检消耗计入成本，未知用量只能报告下界。
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
@@ -86,7 +88,7 @@ bindings 文件需要完整 `models`，以及旧 `provider/model` 到新模型�
 
 Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree/0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea)、[Terminal-Bench 锁定源码](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b)、[Pier 0.3.1](https://pypi.org/project/datacurve-pier/0.3.1/)。上游内容下载到 ignored cache，完整 checkout 保留许可证。
 
-原始 instruction、镜像语义、资源、期限、网络、collect hook 和 verifier 不被改写。DeepSWE 使用独立 verifier，原生 hook 收集基于 HEAD 的 patch；要求提交的任务不会由评测器代为提交。模型破坏环境后不在判题前偷偷修复。`oracle` 使用 Pier 原生 OracleAgent 在独立环境逐题验证参考解和 verifier，失败题保留在清单中。`oracle-resume --recorded-evaluator` 核对已完成证据或保留中断结果，不自动重新判题。
+原始 instruction、镜像语义、资源、网络、collect hook 和 verifier 不被改写。评分使用 suite 声明的 agent/verifier 期限，配置可再显式覆盖 agent 期限；比较时必须区分 suite、配置和上游原题期限，不能把覆盖值称为原生期限。DeepSWE 使用独立 verifier，原生 hook 收集基于 HEAD 的 patch；要求提交的任务不会由评测器代为提交。模型破坏环境后不在判题前偷偷修复。`oracle` 使用 Pier 原生 OracleAgent 和原题期限在独立环境逐题验证参考解和 verifier，失败题保留在清单中。`oracle-resume --recorded-evaluator` 核对已完成证据或保留中断结果，不自动重新判题。
 
 模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。预检不能预置解题依赖、答案或 oracle 产物。
 

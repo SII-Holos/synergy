@@ -52,6 +52,7 @@ The tool icon registry is separate from the product semantic-token registry. Loa
 2. Keep parameter names consistent across tools: use the same term for the same concept everywhere (for example, always `customer_id`, never `id` in one tool and `identifier` in another).
 3. Make error outputs actionable for agent recovery: state what went wrong, which input was invalid, and how to correct it (expected format plus an example). A generic "failed" message is not acceptable.
 4. Check the new tool against the consolidation principle: if a human cannot definitively say which tool to use for a given situation, the agent cannot either. Merge narrow overlapping tools unless independent invocation is required, and do not over-consolidate past roughly 8-10 parameters.
+5. Qualify cross-tool recommendations by actual availability and provide a usable route for agents with a reduced tool catalog. Test emitted descriptions for each affected native agent; discovery and expansion must never imply that denied tools become authorized.
 
 ## Verify
 
