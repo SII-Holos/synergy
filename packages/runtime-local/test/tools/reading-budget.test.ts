@@ -234,3 +234,42 @@ test("post-write verification failure retains truthful write status and invalida
     },
   })
 })
+
+import { AttachmentTextExtraction } from "@ericsanchezok/synergy-harness/attachment/text-extraction"
+
+test("document read branch honors explicit zero and small windows with UTF-8 budgets", async () => {
+  AttachmentTextExtraction.register({
+    supported: (filename) => filename.endsWith(".fixture-document"),
+    extractText: (filename) => Bun.file(filename).text(),
+  })
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "notes.fixture-document"), "first\n" + "中".repeat(20000) + "\nlast")
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const filePath = path.join(tmp.path, "notes.fixture-document")
+        const read = await ReadTool.init()
+        const first = await read.execute({ filePath, limit: 1 }, ctx)
+        expect(first.output).toContain("00001| first")
+        expect(first.output).not.toContain("00002|")
+        expect(first.metadata.limit).toBe(1)
+        const empty = await read.execute({ filePath, limit: 0 }, ctx)
+        expect(empty.output).not.toContain("00001|")
+        const wide = await read.execute({ filePath, offset: 1, limit: 1 }, ctx)
+        expect(wide.output).toContain("bounded shell")
+        expect(wide.output).not.toContain("Use offset=1 to continue")
+      },
+    })
+  } finally {
+    AttachmentTextExtraction.register({
+      supported: () => false,
+      extractText: async () => {
+        throw new Error("No fixture processor")
+      },
+    })
+  }
+})
