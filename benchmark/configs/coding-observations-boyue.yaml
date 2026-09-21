@@ -17,7 +17,7 @@ harnesses:
     kind: synergy
     source:
       path: ../..
-      revision: 0e9973606a61793f414a54b994d18fe1b50dfd26
+      revision: 2717298d48db609a38bbecd93a9d68eb262d6480
     runtime: full
     agent: synergy-max
     bun_jit: true

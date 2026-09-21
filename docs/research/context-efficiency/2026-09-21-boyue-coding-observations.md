@@ -4,7 +4,7 @@
 
 ## 预先固定的协议
 
-基线为 `0e9973606a61793f414a54b994d18fe1b50dfd26`。候选使用修复后提交；两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。正式派发后不改写输入或续跑到其他 evaluator。
+基线为 `2717298d48db609a38bbecd93a9d68eb262d6480`，包含付费派发前同步的存储 liveness 与结构回收修复。候选使用修复后提交；两侧由同一个冻结 evaluator 准备，准确源码、配方和 evaluator 身份保存在实验 plan 与 receipt。正式派发后不改写输入或续跑到其他 evaluator。
 
 两侧使用原生 Linux amd64、synergy-max、full runtime、`bun_jit: true`、并发 1、repeat 1、调度 seed 20260921 和 `timeout_seconds: native`。模型为 Boyue `bailian/deepseek-v4.1-flash`，Chat Completions，`enable_thinking: false`，不声明 reasoning tier，temperature 1、context 1000000、max output 8192、developer role disabled。主代理、辅助及子代理使用同一 profile。端点、凭据与直连设置仅在私有配置中保存。
 
