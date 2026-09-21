@@ -184,6 +184,197 @@ export namespace Provider {
     return fetchFn(request)
   }
 
+  /**
+   * Build the request-scoped fetch used for provider HTTP calls. The TTFB, idle,
+   * and wall watchdogs, the abort identity they produce, and the metrics that
+   * observe their phase boundaries all live here, so every place that arms or
+   * clears one stays in this function. `timeouts` is already resolved for this
+   * provider by the caller.
+   */
+  export function createTimeoutFetch(spec: {
+    fetchFn: ProviderProfile.FetchLike
+    proxyUrl?: string
+    noProxy: boolean
+    timeouts: {
+      providerTtfbMs: number
+      providerIdleMs: number | false
+      providerWallMs: number | false
+    }
+    labels: { provider: string; model: string }
+  }) {
+    return async (requestInput: any, init?: BunFetchRequestInit): Promise<Response> => {
+      const fetchFn = spec.fetchFn
+      const opts = init ?? {}
+      const timeoutMs = spec.timeouts.providerIdleMs
+
+      let ttfbController: AbortController | null = null
+      let ttfbTimer: ReturnType<typeof setTimeout> | null = null
+      let idleController: AbortController | null = null
+      // A watchdog must never report a fire for a response that already
+      // settled: `AbortSignal.timeout` cannot be cancelled.
+      let watchdogSettled = false
+      const recordWatchdog = (kind: "ttfb" | "idle" | "wall") => {
+        if (watchdogSettled) return
+        watchdogSettled = true
+        ObservabilityMetrics.record({
+          name: "llm.watchdog.fired",
+          value: 1,
+          unit: "count",
+          module: "llm",
+          labels: { ...spec.labels, kind },
+        })
+      }
+      const clearTtfbTimer = () => {
+        if (!ttfbTimer) return
+        clearTimeout(ttfbTimer)
+        ttfbTimer = null
+      }
+
+      // TTFB timeout — covers time from fetch start to the first body byte.
+      // It is cleared by that first byte, not by the response headers: a
+      // gateway can answer with headers promptly and then hold the body open.
+      if (spec.timeouts.providerTtfbMs > 0) {
+        ttfbController = new AbortController()
+        ttfbTimer = setTimeout(() => {
+          recordWatchdog("ttfb")
+          ttfbController!.abort(
+            new DOMException(
+              "TTFB timeout: no response received within " + spec.timeouts.providerTtfbMs + "ms",
+              "TimeoutError",
+            ),
+          )
+        }, spec.timeouts.providerTtfbMs).unref()
+      }
+
+      // Idle AbortController (timer starts on first chunk, not on fetch)
+      if (timeoutMs !== false) {
+        idleController = new AbortController()
+      }
+
+      // Wall-clock timeout: bounds a stream that keeps emitting keep-alive
+      // traffic without ever producing content.
+      const wallClockSignal =
+        spec.timeouts.providerWallMs !== false && spec.timeouts.providerWallMs > 0
+          ? AbortSignal.timeout(spec.timeouts.providerWallMs)
+          : null
+      wallClockSignal?.addEventListener("abort", () => recordWatchdog("wall"), { once: true })
+
+      // Combine signals before fetch
+      const signals: AbortSignal[] = []
+      if (opts.signal) signals.push(opts.signal)
+      if (ttfbController) signals.push(ttfbController.signal)
+      if (idleController) signals.push(idleController.signal)
+      if (wallClockSignal) signals.push(wallClockSignal)
+      opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
+
+      // Clean up all timers when outer signal aborts (e.g. user cancel)
+      const cleanupTimers = () => {
+        watchdogSettled = true
+        clearTtfbTimer()
+      }
+      opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
+
+      // Disable HTTP keep-alive to avoid reusing connections that may have
+      // been silently dropped by NAT / load balancers during idle periods.
+      const headers = new Headers(opts.headers ?? {})
+      headers.set("Connection", "close")
+
+      const logUrl = typeof requestInput === "string" ? requestInput : requestInput.url
+      const safeUrl = (() => {
+        try {
+          const u = new URL(logUrl)
+          return u.origin + u.pathname
+        } catch {
+          return logUrl
+        }
+      })()
+      const fetchStartedAt = Date.now()
+      const fetchTimer = log.time("fetch.request", { url: safeUrl })
+      let response: Response
+      try {
+        response = await fetchWithProxyOptions(
+          fetchFn,
+          requestInput,
+          {
+            ...opts,
+            headers,
+            // Provenance: https://github.com/oven-sh/bun/issues/16682 .
+            // Local adaptation: Bun types reject `timeout: false`; passing it disables the built-in
+            // request timeout so the TTFB/idle timers below own stream aborting.
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          },
+          spec.proxyUrl,
+          spec.noProxy,
+        )
+      } catch (error) {
+        cleanupTimers()
+        fetchTimer.stop({ status: "exception" })
+        log.error("fetch.request.failed", { url: safeUrl, error })
+        throw error
+      }
+      fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
+      ObservabilityMetrics.record({
+        name: "llm.fetch.headers",
+        value: Date.now() - fetchStartedAt,
+        unit: "ms",
+        module: "llm",
+        labels: spec.labels,
+      })
+      if (!response.ok) {
+        log.warn("fetch.request.non-ok", {
+          url: safeUrl,
+          status: response.status,
+          statusText: response.statusText,
+        })
+      }
+
+      const responseBody =
+        response.body && ProviderStream.isSSE(response.headers)
+          ? ProviderStream.enforceSSEEventParserBound(response.body)
+          : response.body
+
+      // Every response body is wrapped, not only SSE ones: the first body byte
+      // is what clears the TTFB watchdog, so a non-SSE body must clear it too
+      // or the watchdog would abort a response that already delivered data.
+      if (responseBody) {
+        const bodyController = idleController ?? new AbortController()
+        const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
+          controller: bodyController,
+          signal: opts.signal ?? bodyController.signal,
+          timeoutMs,
+          observer: {
+            onFirstByte: () => {
+              clearTtfbTimer()
+              ObservabilityMetrics.record({
+                name: "llm.fetch.first_byte",
+                value: Date.now() - fetchStartedAt,
+                unit: "ms",
+                module: "llm",
+                labels: spec.labels,
+              })
+            },
+            onIdleTimeout: () => recordWatchdog("idle"),
+            onSettled: () => {
+              watchdogSettled = true
+              clearTtfbTimer()
+            },
+          },
+        })
+
+        return new Response(wrappedStream, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        })
+      }
+
+      watchdogSettled = true
+      clearTtfbTimer()
+      return response
+    }
+  }
+
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
   type RuntimeProfileState = {
     profile: ProviderProfile.Profile
@@ -1138,183 +1329,13 @@ export namespace Provider {
       // was folded into timeoutCfg above and must not reach the SDK factory.
       delete options["timeout"]
 
-      options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-        const fetchFn = authFetch
-        const opts = init ?? {}
-
-        const proxyUrlForRequest = proxyUrl
-        const noProxyForRequest = noProxy
-
-        // Idle timeout for this request, already layered through
-        // TimeoutConfig.forProvider: provider.<id>.timeout > options.timeout > global.
-        const timeoutMs = timeoutCfg.providerIdleMs
-
-        let ttfbController: AbortController | null = null
-        let ttfbTimer: ReturnType<typeof setTimeout> | null = null
-        let idleController: AbortController | null = null
-        // A watchdog must never report a fire for a response that already
-        // settled: `AbortSignal.timeout` cannot be cancelled.
-        let watchdogSettled = false
-        const recordWatchdog = (kind: "ttfb" | "idle" | "wall") => {
-          if (watchdogSettled) return
-          watchdogSettled = true
-          ObservabilityMetrics.record({
-            name: "llm.watchdog.fired",
-            value: 1,
-            unit: "count",
-            module: "llm",
-            labels: { provider: model.providerID, model: model.id, kind },
-          })
-        }
-        const clearTtfbTimer = () => {
-          if (!ttfbTimer) return
-          clearTimeout(ttfbTimer)
-          ttfbTimer = null
-        }
-
-        // TTFB timeout — covers time from fetch start to the first body byte.
-        // It is cleared by that first byte, not by the response headers: a
-        // gateway can answer with headers promptly and then hold the body open.
-        if (timeoutCfg.providerTtfbMs > 0) {
-          ttfbController = new AbortController()
-          ttfbTimer = setTimeout(() => {
-            recordWatchdog("ttfb")
-            ttfbController!.abort(
-              new DOMException(
-                "TTFB timeout: no response received within " + timeoutCfg.providerTtfbMs + "ms",
-                "TimeoutError",
-              ),
-            )
-          }, timeoutCfg.providerTtfbMs).unref()
-        }
-
-        // Idle AbortController (timer starts on first chunk, not on fetch)
-        if (timeoutMs !== false) {
-          idleController = new AbortController()
-        }
-
-        // Wall-clock timeout: bounds a stream that keeps emitting keep-alive
-        // traffic without ever producing content.
-        const wallClockSignal =
-          timeoutCfg.providerWallMs !== false && timeoutCfg.providerWallMs > 0
-            ? AbortSignal.timeout(timeoutCfg.providerWallMs)
-            : null
-        wallClockSignal?.addEventListener("abort", () => recordWatchdog("wall"), { once: true })
-
-        // Combine signals before fetch
-        const signals: AbortSignal[] = []
-        if (opts.signal) signals.push(opts.signal)
-        if (ttfbController) signals.push(ttfbController.signal)
-        if (idleController) signals.push(idleController.signal)
-        if (wallClockSignal) signals.push(wallClockSignal)
-        opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
-
-        // Clean up all timers when outer signal aborts (e.g. user cancel)
-        const cleanupTimers = () => {
-          watchdogSettled = true
-          clearTtfbTimer()
-        }
-        opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
-
-        // Disable HTTP keep-alive to avoid reusing connections that may have
-        // been silently dropped by NAT / load balancers during idle periods.
-        const headers = new Headers(opts.headers ?? {})
-        headers.set("Connection", "close")
-
-        const logUrl = typeof input === "string" ? input : input.url
-        const safeUrl = (() => {
-          try {
-            const u = new URL(logUrl)
-            return u.origin + u.pathname
-          } catch {
-            return logUrl
-          }
-        })()
-        const fetchStartedAt = Date.now()
-        const fetchTimer = log.time("fetch.request", { url: safeUrl })
-        let response: Response
-        try {
-          response = await fetchWithProxyOptions(
-            fetchFn,
-            input,
-            {
-              ...opts,
-              headers,
-              // Provenance: https://github.com/oven-sh/bun/issues/16682 .
-              // Local adaptation: Bun types reject `timeout: false`; passing it disables the built-in
-              // request timeout so the TTFB/idle timers below own stream aborting.
-              // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-              timeout: false,
-            },
-            proxyUrlForRequest,
-            noProxyForRequest,
-          )
-        } catch (error) {
-          cleanupTimers()
-          fetchTimer.stop({ status: "exception" })
-          log.error("fetch.request.failed", { url: safeUrl, error })
-          throw error
-        }
-        fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
-        ObservabilityMetrics.record({
-          name: "llm.fetch.headers",
-          value: Date.now() - fetchStartedAt,
-          unit: "ms",
-          module: "llm",
-          labels: { provider: model.providerID, model: model.id },
-        })
-        if (!response.ok) {
-          log.warn("fetch.request.non-ok", {
-            url: safeUrl,
-            status: response.status,
-            statusText: response.statusText,
-          })
-        }
-
-        const responseBody =
-          response.body && ProviderStream.isSSE(response.headers)
-            ? ProviderStream.enforceSSEEventParserBound(response.body)
-            : response.body
-
-        // Every response body is wrapped, not only SSE ones: the first body byte
-        // is what clears the TTFB watchdog, so a non-SSE body must clear it too
-        // or the watchdog would abort a response that already delivered data.
-        if (responseBody) {
-          const bodyController = idleController ?? new AbortController()
-          const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
-            controller: bodyController,
-            signal: opts.signal ?? bodyController.signal,
-            timeoutMs,
-            observer: {
-              onFirstByte: () => {
-                clearTtfbTimer()
-                ObservabilityMetrics.record({
-                  name: "llm.fetch.first_byte",
-                  value: Date.now() - fetchStartedAt,
-                  unit: "ms",
-                  module: "llm",
-                  labels: { provider: model.providerID, model: model.id },
-                })
-              },
-              onIdleTimeout: () => recordWatchdog("idle"),
-              onSettled: () => {
-                watchdogSettled = true
-                clearTtfbTimer()
-              },
-            },
-          })
-
-          return new Response(wrappedStream, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          })
-        }
-
-        watchdogSettled = true
-        clearTtfbTimer()
-        return response
-      }
+      options["fetch"] = createTimeoutFetch({
+        fetchFn: authFetch,
+        proxyUrl,
+        noProxy,
+        timeouts: timeoutCfg,
+        labels: { provider: model.providerID, model: model.id },
+      })
 
       // Special case: google-vertex-anthropic uses a subpath import
       const bundledKey =
