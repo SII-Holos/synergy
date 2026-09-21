@@ -78,3 +78,7 @@ Update product or architecture docs when the tool introduces a user-visible conc
 ## Handoff
 
 Report the tool ID, registry/exposure, taxonomy and capabilities, UI registrations, denial/cancellation behavior, migrations, tests, and end-to-end result.
+
+## Measure coding observations
+
+Run `bun test test/tools/coding-observation-probe.test.ts` from `packages/runtime-local` with `SYNERGY_OBSERVATION_REPORT` set to a new absolute JSON output path. The fixed-input probe exercises small reads, sparse edits, disjoint ranges and full-file search; existing reports are never overwritten. Use the identical probe with frozen source versions and retain its identity separately from the measured implementation. Its UTF-8 byte counts establish tool presentation differences only; use native task outcomes and reconciled provider usage for task-level token and latency comparisons.
