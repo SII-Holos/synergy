@@ -1,6 +1,6 @@
 Search code with AST-aware patterns and return anchored file blocks.
 
-Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matched `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. The output also reports match line/range locations for each tagged file.
+Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and the matched source ranges as `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. The output also reports match line/range locations for each tagged file.
 
 Pattern rules:
 - Patterns must be complete, parseable AST nodes in the selected language.
@@ -14,10 +14,11 @@ Examples:
 
 Result control:
 - `limit` caps returned matches; default is 50.
+- `context` adds surrounding lines (default 0). Overlapping ranges are merged; files share a 50 KiB code budget.
 - `skip` continues from a previous limited result.
 - If the result says the limit was reached, continue with `skip` or narrow `paths`, `globs`, or `pattern`.
 
 Critical:
 - A parse error or invalid pattern is a query failure, not evidence that the code is absent.
 - Use `scan_files` for literal text or error-message search; use `parse_code` when syntax structure matters.
-- After finding a match, call `view_file` with the matched range to get a fresh tag before using `revise_file`. The match locations from `parse_code` are accurate line references, but `view_file` provides the definitive tag for editing.
+- A current tag and completely displayed target region can feed `revise_file` directly. Use `view_file` for missing context, omitted regions, or changed files.

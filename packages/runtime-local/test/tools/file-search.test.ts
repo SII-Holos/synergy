@@ -16,6 +16,24 @@ const ctx = {
 }
 
 describe("tool.file_search", () => {
+  test("path matches cannot consume the entire budget before content evidence", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        for (let i = 0; i < 8; i++) await Bun.write(path.join(dir, `needle-${i}.txt`), "unrelated")
+        await Bun.write(path.join(dir, "implementation.ts"), "export const needle = 42")
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await (await FileSearchTool.init()).execute({ query: "needle", limit: 3 }, ctx)
+        expect(result.output).toContain("[content] implementation.ts")
+        expect(result.metadata.truncated).toBe(true)
+        expect(result.metadata.count).toBeLessThanOrEqual(3)
+      },
+    })
+  })
   test("returns fuzzy path matches with metadata", async () => {
     await using tmp = await tmpdir({
       git: true,

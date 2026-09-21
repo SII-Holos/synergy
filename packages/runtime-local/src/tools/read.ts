@@ -5,20 +5,19 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolLspSource } from "@ericsanchezok/synergy-harness/tool/lsp-source"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import DESCRIPTION from "./read.txt"
+import { OutputBudget } from "./anchored-file"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
 
 const DEFAULT_READ_LIMIT = 2000
-const MIN_READ_LIMIT = 120
-const MAX_LINE_LENGTH = 2000
 const MAX_BYTES = 50 * 1024
 
 export const ReadTool = Tool.define("read", {
   description: DESCRIPTION,
   parameters: z.object({
     filePath: z.string().describe("The path to the file to read"),
-    offset: z.coerce.number().describe("The line number to start reading from (0-based)").optional(),
-    limit: z.coerce.number().int().describe("The number of lines to read (defaults to 2000, minimum 120)").optional(),
+    offset: z.coerce.number().int().min(0).describe("The line number to start reading from (0-based)").optional(),
+    limit: z.coerce.number().int().min(0).describe("The maximum number of lines to read (defaults to 2000)").optional(),
   }),
   async execute(params, ctx) {
     let filepath = params.filePath
@@ -58,21 +57,19 @@ export const ReadTool = Tool.define("read", {
     if (filePolicy.extractText) {
       const text = await Attachment.extractTextFromFile(filepath)
       const lines = text.split("\n")
-      const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
+      const limit = params.limit ?? DEFAULT_READ_LIMIT
       const offset = params.offset ?? 0
 
       const raw: string[] = []
-      let bytes = 0
+      const budget = new OutputBudget(MAX_BYTES)
       let truncatedByBytes = false
       for (let i = offset; i < Math.min(lines.length, offset + limit); i++) {
-        const line = lines[i].length > MAX_LINE_LENGTH ? lines[i].substring(0, MAX_LINE_LENGTH) + "..." : lines[i]
-        const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
-        if (bytes + size > MAX_BYTES) {
+        const line = lines[i]
+        if (!budget.take(`${(i + 1).toString().padStart(5, "0")}| ${line}`)) {
           truncatedByBytes = true
           break
         }
         raw.push(line)
-        bytes += size
       }
 
       const content = raw.map((line, index) => {
@@ -87,10 +84,12 @@ export const ReadTool = Tool.define("read", {
 
       let output = "<file>\n"
       output += content.join("\n")
+      if (truncatedByBytes && raw.length === 0)
+        output += `\nLine ${offset + 1} exceeds the output budget. Inspect it with a bounded shell command; repeating this offset cannot reveal the full line.`
       if (truncatedByBytes) {
-        output += `\n\n(Output truncated at ${MAX_BYTES} bytes. Use 'offset' parameter to read beyond line ${lastReadLine})`
+        output += `\n\n(Output truncated at ${MAX_BYTES} bytes. Use offset=${lastReadLine} to continue)`
       } else if (hasMoreLines) {
-        output += `\n\n(Document has more lines. Use 'offset' parameter to read beyond line ${lastReadLine})`
+        output += `\n\n(Document has more lines. Use offset=${lastReadLine} to continue)`
       } else {
         output += `\n\n(End of document - total ${totalLines} lines)`
       }
@@ -123,22 +122,20 @@ export const ReadTool = Tool.define("read", {
     const isBinary = await isBinaryFile(filepath, file)
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
-    const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
+    const limit = params.limit ?? DEFAULT_READ_LIMIT
     const offset = params.offset ?? 0
     const lines = await file.text().then((text) => text.split("\n"))
 
     const raw: string[] = []
-    let bytes = 0
+    const budget = new OutputBudget(MAX_BYTES)
     let truncatedByBytes = false
     for (let i = offset; i < Math.min(lines.length, offset + limit); i++) {
-      const line = lines[i].length > MAX_LINE_LENGTH ? lines[i].substring(0, MAX_LINE_LENGTH) + "..." : lines[i]
-      const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
-      if (bytes + size > MAX_BYTES) {
+      const line = lines[i]
+      if (!budget.take(`${(i + 1).toString().padStart(5, "0")}| ${line}`)) {
         truncatedByBytes = true
         break
       }
       raw.push(line)
-      bytes += size
     }
 
     const content = raw.map((line, index) => {
@@ -148,6 +145,8 @@ export const ReadTool = Tool.define("read", {
 
     let output = "<file>\n"
     output += content.join("\n")
+    if (truncatedByBytes && raw.length === 0)
+      output += `\nLine ${offset + 1} exceeds the output budget. Inspect it with a bounded shell command; repeating this offset cannot reveal the full line.`
 
     const totalLines = lines.length
     const lastReadLine = offset + raw.length
@@ -155,9 +154,9 @@ export const ReadTool = Tool.define("read", {
     const truncated = hasMoreLines || truncatedByBytes
 
     if (truncatedByBytes) {
-      output += `\n\n(Output truncated at ${MAX_BYTES} bytes. Use 'offset' parameter to read beyond line ${lastReadLine})`
+      output += `\n\n(Output truncated at ${MAX_BYTES} bytes. Use offset=${lastReadLine} to continue)`
     } else if (hasMoreLines) {
-      output += `\n\n(File has more lines. Use 'offset' parameter to read beyond line ${lastReadLine})`
+      output += `\n\n(File has more lines. Use offset=${lastReadLine} to continue)`
     } else {
       output += `\n\n(End of file - total ${totalLines} lines)`
     }
@@ -219,7 +218,7 @@ async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolea
   if (fileSize === 0) return false
 
   const bufferSize = Math.min(4096, fileSize)
-  const buffer = await file.arrayBuffer()
+  const buffer = await file.slice(0, bufferSize).arrayBuffer()
   if (buffer.byteLength === 0) return false
   const bytes = new Uint8Array(buffer.slice(0, bufferSize))
 
