@@ -19,10 +19,10 @@ export namespace SessionRetry {
   export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
   export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
   export const RETRY_MAX_ATTEMPTS = 10
-  // An unmapped verification failure is indeterminate rather than proven transient, so it gets a
-  // narrower budget and a shorter backoff ceiling than a classified transport failure.
-  export const RETRY_TLS_VERIFICATION_MAX_ATTEMPTS = 2
-  export const RETRY_TLS_VERIFICATION_MAX_DELAY = 5_000
+  // An unmapped verification failure is indeterminate rather than proven transient, so its attempt
+  // budget stays narrower than a classified transport failure's; backoff shares the transport ceiling.
+  export const RETRY_TLS_VERIFICATION_MAX_ATTEMPTS = 6
+  export const RETRY_TLS_VERIFICATION_MAX_DELAY = 30_000
   export const RETRY_TLS_VERIFICATION_MESSAGE = "Secure connection could not be verified; retrying"
 
   export const sleep = retrySleep

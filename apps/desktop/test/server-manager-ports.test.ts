@@ -53,6 +53,8 @@ async function createFakeRuntime(options: {
   const binaryDirectory = path.join(resourcesPath, "synergy", "bin")
   const binary = path.join(binaryDirectory, "synergy")
 
+  await fsp.mkdir(logDir, { recursive: true })
+  await fsp.writeFile(path.join(logDir, "server.log"), "old-launch-private-error\n")
   await fsp.writeFile(modesFile, JSON.stringify(options.modes ?? {}), "utf8")
   await fsp.mkdir(binaryDirectory, { recursive: true })
   // The manager spawns the packaged runtime when that path exists, so a generated wrapper drives the
@@ -218,6 +220,8 @@ describe("desktop managed server sticky port", () => {
       try {
         await expect(runtime.start()).rejects.toThrow()
         expect(await runtime.attempts()).toEqual([4096])
+        expect(runtime.lastError()).toContain("Another Synergy runtime already owns this Home")
+        expect(runtime.lastError()).not.toContain("old-launch-private-error")
       } finally {
         await runtime.stopAll()
         await runtime.cleanup()

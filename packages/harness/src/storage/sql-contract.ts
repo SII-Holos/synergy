@@ -1,3 +1,5 @@
+import type { StorageMaintenanceOperation, StorageMaintenanceStage } from "@ericsanchezok/synergy-util/runtime-startup"
+
 export type SqlValue = string | number | bigint | Uint8Array | null
 export type SqlRow = Record<string, SqlValue>
 
@@ -11,10 +13,7 @@ export function sqlParameterBytes(values: SqlValue[]): number {
 }
 
 export interface SqlQueryOptions {
-  // Maintenance statements (integrity verification) legitimately run longer
-  // than ordinary operations; engines may extend their deadline.
-  maintenance?: boolean
-  onMaintenanceBudget?: (timeoutMs: number) => void
+  maintenance?: StorageMaintenanceOperation
 }
 
 export interface SqlTransactionOptions {
@@ -71,12 +70,13 @@ export type SqliteRequest = {
   reader?: boolean
   statement?: string
   values?: SqlValue[]
-  maintenance?: boolean
+  maintenance?: StorageMaintenanceOperation
   maintain?: SqliteMaintenanceRequest
 }
 
 export type SqliteResponse = {
   id: number
+  stage?: StorageMaintenanceStage
   rows?: SqlRow[]
   maintain?: SqliteMaintenanceResult
   error?: { name: string; message: string; code?: string }

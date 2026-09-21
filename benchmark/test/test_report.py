@@ -209,6 +209,7 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
         )
         plan["config"].update(
             startup_timeout_seconds=120,
+            request_idle_timeout_seconds=None,
             cleanup_seconds=60,
             export_timeout_seconds=300,
             preparation_timeout_seconds=1800,
@@ -231,7 +232,9 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
         assert len(compared["missing_right"]) == 1
 
 
-@pytest.mark.parametrize("change", [None, "concurrency", "docker", "capacity", "deadline", "policy", "seed", "missing"])
+@pytest.mark.parametrize(
+    "change", [None, "concurrency", "docker", "capacity", "deadline", "idle", "policy", "seed", "missing", "legacy"]
+)
 def test_pairing_requires_matching_declared_execution_conditions(tmp_path, change):
     from synergy_bench.storage import read_json
 
@@ -249,6 +252,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
         )
         plan["config"].update(
             startup_timeout_seconds=120,
+            request_idle_timeout_seconds=None,
             cleanup_seconds=60,
             export_timeout_seconds=300,
             preparation_timeout_seconds=1800,
@@ -261,6 +265,10 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["host"][change]["memory_bytes"] += 1000
             elif change == "deadline":
                 plan["config"]["startup_timeout_seconds"] = 60
+            elif change == "idle":
+                plan["config"]["request_idle_timeout_seconds"] = 180
+            elif change == "legacy":
+                plan["config"].pop("request_idle_timeout_seconds")
             elif change == "policy":
                 plan["config"]["resources"]["reserve_cpus"] = 1
             elif change == "seed":
@@ -271,7 +279,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
     left, right = [report_data(tmp_path / name)["scored"] for name in ["left", "right"]]
     compared = paired_compare(left, right, samples=10)
     assert compared["pairs"] == (1 if change is None else 0)
-    if change == "missing":
+    if change in {"missing", "legacy"}:
         assert len(compared["unpairable_right"]) == 1
     elif change:
         assert len(compared["missing_left"]) == len(compared["missing_right"]) == 1
