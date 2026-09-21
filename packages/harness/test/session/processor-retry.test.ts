@@ -272,7 +272,7 @@ test("cancelling before retry keeps the final partial output and starts no new a
 test("an unmapped certificate verification failure retries within a bounded budget and persists evidence", async () => {
   const result = await run("tls")
   expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
-  expect(result.calls).toBe(3)
+  expect(result.calls).toBe(7)
   expect(result.effects).toBe(0)
   expect(result.message.info).toMatchObject({
     finish: "error",

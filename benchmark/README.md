@@ -37,26 +37,31 @@ bun bench clean /absolute/path/to/run
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。
 
-| 字段                                         | 含义                                                                             |
-| -------------------------------------------- | -------------------------------------------------------------------------------- |
-| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment      |
-| `harnesses.<name>.bun_jit`                   | OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭其内嵌 Bun JIT            |
-| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数             |
-| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                       |
-| `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                |
-| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                             |
-| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                       |
-| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                 |
-| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                    |
-| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                     |
-| `timeout_seconds`                            | 可选 agent 期限；省略时保留原题期限                                              |
-| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                             |
-| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                           |
-| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始 |
+| 字段                                         | 含义                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment                |
+| `harnesses.<name>.bun_jit`                   | OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭其内嵌 Bun JIT                      |
+| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                       |
+| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                                 |
+| `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                          |
+| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                       |
+| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                                 |
+| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                           |
+| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                              |
+| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                               |
+| `timeout_seconds`                            | agent 解题期限，省略统一使用 10800 秒；正整数覆盖，显式 `native` 保留原题期限；不接受 null |
+| `request_idle_timeout_seconds`               | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件              |
+| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                       |
+| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                                     |
+| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始           |
 
-[GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。平台实现不绑定该模型或智谱端点。
+[GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。它显式设置 `timeout_seconds: native` 以保留原题解题期限。平台实现不绑定该模型或智谱端点。
 
-[GLM 长会话研究示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，为每题显式设置 10800 秒解题期限，并使用 `opencode-jitless` 规避已复现的 Bun JIT / Rosetta 停滞路径。准备、排队、导出和独立判题均不占该解题期限；模型在任务中安装依赖属于解题时间。该配置改变 agent 期限及 OpenCode 运行条件，必须创建新实验，不能与原题期限的结果直接配对，也不能替换旧评分。它保留原生 verifier 期限，并非上游运行时缺陷已修复的保证。
+[GLM 长会话研究示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，继承统一的 10800 秒解题期限，并使用 `opencode-jitless` 规避已复现的 Bun JIT / Rosetta 停滞路径。准备、排队、导出和独立判题均不占该解题期限；模型在任务中安装依赖属于解题时间。该配置改变 agent 期限及 OpenCode 运行条件，必须创建新实验，不能与原题期限的结果直接配对，也不能替换旧评分。它保留原生 verifier 期限，并非上游运行时缺陷已修复的保证。
+
+新 YAML 应省略解题期限以继承统一研究默认值；只有复现原题或明确改变实验条件时才覆盖。默认值在配置解析时写入冻结的 `plan.json`，每次启动的 `inputs/options.json` 保留最终秒数。所有预设自动纳入[期限传播测试](test/test_experiment_presets.py)，不维护文件名白名单。历史实验仍由冻结的 evaluator 执行；修改默认值不能改写或继续旧实验。v1 配置通过显式迁移命令保留原有期限语义，将遗漏或 null 转换为 `native`。
+
+外层执行时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。网关默认不设读空闲期限，断连仍会报错，连接建立仍有 30 秒期限，整题时钟仍可取消执行；显式的读空闲限制属于独立实验条件。harness 自身的超时不由网关改写。`doctor` 连通性探测保持 120 秒，不能当作题目解题期限。取舍见[研究期限策略](../docs/decisions/implemented/architecture/2026-09-21-benchmark-research-deadline-policy.md)。
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
@@ -162,7 +167,7 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
+普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。依赖任务到期收尾的故障注入夹具显式选择 `timeout_seconds: native` 或独立短期限，不继承研究默认值。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 

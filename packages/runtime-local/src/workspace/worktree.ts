@@ -878,7 +878,7 @@ export namespace Worktree {
     })
   }
 
-  async function leaveSession(sessionID: string) {
+  async function leaveSession(sessionID: string, options?: { preserveActivityAt?: boolean }) {
     const session = await Session.get(sessionID)
     const previous = session.workspace
     const scope = session.scope as Scope
@@ -888,7 +888,7 @@ export namespace Worktree {
         : undefined
     const mainPath = originalCheckout ?? scope.worktree ?? scope.directory
     const mainWorkspace = { type: "main" as const, path: mainPath, scopeID: scope.id }
-    const result = await Session.updateWorkspace(sessionID, mainWorkspace)
+    const result = await Session.updateWorkspace(sessionID, mainWorkspace, options)
     ScopeContext.refreshWorkspace(mainWorkspace as import("@ericsanchezok/synergy-harness/session/types").Workspace)
     if (previous?.type === "git_worktree" && previous.worktreeID) {
       await updateBinding(
@@ -940,7 +940,11 @@ export namespace Worktree {
     }
   }
 
-  async function leaveBoundSessions(info: Info, extraSessionID?: string, options?: { excludeRunning?: string }) {
+  async function leaveBoundSessions(
+    info: Info,
+    extraSessionID?: string,
+    options?: { excludeRunning?: string; preserveActivityAt?: boolean },
+  ) {
     const bindings = new Set(info.bindings ?? [])
     if (extraSessionID) bindings.add(extraSessionID)
     // The caller's own turn is running by definition. It is still unbound in
@@ -958,7 +962,7 @@ export namespace Worktree {
     for (const sessionID of bindings) {
       const session = await getSession(sessionID)
       if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id) {
-        await leaveSession(sessionID)
+        await leaveSession(sessionID, options)
       } else if (info.managed) {
         await updateBinding(info, sessionID, "remove")
       }
@@ -1345,7 +1349,7 @@ export namespace Worktree {
           },
         )
         if (!missing) continue
-        await leaveBoundSessions(current)
+        await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
         if (!current.stale) {
           const removed = await $`git worktree remove --force ${current.path}`.quiet().nothrow().cwd(repoRoot)
           if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
@@ -1375,7 +1379,7 @@ export namespace Worktree {
           continue
         }
         if (report.removed.length >= excess) continue
-        await leaveBoundSessions(current)
+        await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
         await removeWorktree(current, { force: false, reason: "managed cap" })
         report.removed.push(current.id)
       } catch (error) {

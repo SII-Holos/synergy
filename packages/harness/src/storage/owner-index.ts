@@ -23,6 +23,6 @@ export namespace StorageRecordsOwnerIndex {
   export const index = "storage_records_owner"
 
   export async function run() {
-    await Storage.current().store.maintainDdl(STORAGE_RECORDS_OWNER_INDEX)
+    await Storage.current().store.maintainDdl(STORAGE_RECORDS_OWNER_INDEX, "create-index")
   }
 }

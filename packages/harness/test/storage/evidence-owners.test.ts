@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { Identifier } from "../../src/id/id"
 import { Storage } from "../../src/storage/storage"
 import { StorageRecordsOwnerIndex } from "../../src/storage/owner-index"
+import { StoragePath } from "../../src/storage/path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 
 interface Connection {
@@ -147,6 +149,29 @@ describe("storage owner enumeration", () => {
       { key: "sessions/scope_a/ses_two/rollout", newest: 1_700_000_100_001, records: 2 },
       { key: "sessions/scope_b/ses_three/rollout", newest: 1_700_000_200_000, records: 1 },
     ])
+
+    // The gate: the prefix retention prunes through is the canonical owner
+    // composer's output rather than a re-typed literal, and it addresses the
+    // rows that are actually stored. Pruning is irreversible, so a prefix that
+    // drifted from the key layout would delete a subtree that is not this
+    // evidence.
+    const rolloutOwners = owners.filter((owner) => owner.kind === "session")
+    for (const owner of rolloutOwners) {
+      expect(owner.keyPrefix).toEqual(
+        StoragePath.sessionRolloutRoot(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.ownerID)),
+      )
+    }
+    const stored = await driver(store).query(
+      "SELECT key_text FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL",
+      [store.options.namespace],
+    )
+    expect(stored).toHaveLength(6)
+    for (const row of stored) {
+      const key = JSON.parse(String(row.key_text)) as string[]
+      const owner = rolloutOwners.find((candidate) => candidate.scopeID === key[1] && candidate.ownerID === key[2])
+      expect(owner).toBeDefined()
+      expect(key.slice(0, owner!.keyPrefix.length)).toEqual(owner!.keyPrefix)
+    }
 
     // Operation owners keep their own key-text branch, unchanged.
     expect(owners.filter((owner) => owner.kind === "operation")).toEqual([
