@@ -1,0 +1,31 @@
+# Decision Record: Central benchmark research deadlines
+
+Status: implemented
+
+## Problem
+
+本地研究预设遗漏 `timeout_seconds` 时会静默回到原题期限。一些 Terminal-Bench 任务只有十五分钟，而长会话预设单独声明三小时；复制或新增 YAML 就可能改变解题机会。原生 CLI 另有从执行入口开始的计时器，网关还隐藏着三分钟读空闲截止，外层正确计时也不能保证实际获得声明的解题时间。
+
+## Decision
+
+[配置入口](../../../../benchmark/src/synergy_bench/config.py)统一把省略的解题期限解析为 10800 秒，并写入冻结配置。正整数表示明确覆盖，`native` 表示采用原题期限；null、布尔值和字符串数字均被拒绝。v1 显式迁移在迁移边界把旧的省略或 null 转为 `native`，不在执行器中保留旧隐式分支。
+
+[启动配置](../../../../benchmark/src/synergy_bench/runner.py)从冻结条件解析实际秒数，独立保留原题 agent/verifier 数据。所有 YAML 自动进入[传播测试](../../../../benchmark/test/test_experiment_presets.py)，覆盖每种已声明 harness；新增文件无需手工加入测试清单。原题验收预设明确选择 `native`，研究预设继承默认值。
+
+外层执行时钟从首次模型请求计时，Synergy CLI 的兜底期限包含启动和清理余量。[真实子进程测试](../../../../benchmark/test/lifecycle.test.ts)验证启动耗时超过解题预算后仍能正常完成，也验证首个请求后耗尽预算仍会按 agent 超时结束。
+
+网关的 `request_idle_timeout_seconds` 默认 null，不再额外设置读空闲截止；实验可显式配置正整数，该值进入冻结配置和报告配对条件。连接建立保留原有三十秒期限，断连、取消及整题截止仍有效。原生 harness 自身的超时不在此改写。准备、启动、doctor、导出、清理及原生判题保留各自期限。
+
+此策略替代[矩阵决策](2026-09-14-benchmark-native-harness-matrix.md)中遗漏解题期限时隐式采用原题期限的行为。已有实验的配置和 evaluator 不变，新代码必须新建实验。
+
+## Alternatives considered
+
+**给每个 YAML 补上三小时。** 当时的文件会正确，下一份遗漏字段的文件仍会漂移；默认策略应由配置入口拥有。
+
+**要求每个 YAML 必填数字。** 能发现遗漏，但每个文件仍重复同一默认策略，调整研究默认值时容易留下不一致副本。保留显式原题和自定义覆盖即可表达不同实验。
+
+**保留短读空闲期限作为隐藏保护。** 无数据不等于任务预算耗尽。诊断限制应显式声明，不能静默缩短实际解题机会。
+
+## Consequences
+
+新建实验省略期限时获得统一研究预算，不能直接与原题时限成绩比较。想继续使用原题条件的配置必须显式改为 `native`；旧配置中的 null 不再被新配置解析器接受。取消网关默认读空闲截止后，静默连接可能等待到 harness 或整题期限，换来更忠实的解题机会。历史缺少新增网关条件的报告保留原始证据，但不会获得完整条件下的跨实验配对资格。
