@@ -10,7 +10,7 @@ File tools applied inconsistent output budgets. Explicit small reads were widene
 
 Read and search tools share UTF-8 output accounting across ranges and files. Explicit read limits are honored; the default remains 2,000 lines. Omitted source has a recovery location and never becomes displayed-line evidence. Search context can supply enough evidence for direct anchored editing.
 
-Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. The task tool owns full specialist descriptions; the primary keeps selection policy. Truncation recovery permits targeted inspection without requiring delegation.
+Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. Specialist selection context and the task catalog are retained. Truncation recovery permits targeted inspection without requiring delegation.
 
 Provenance: [Pi bounded reading](https://github.com/earendil-works/pi/blob/890f920884f6d21fc7617d236ef9e1cc5d7a0ef8/packages/coding-agent/src/core/tools/read.ts), [OMP edit previews](https://github.com/can1357/oh-my-pi/blob/d716bcf60ab0a2e7ece1fdf382c0d143fef1f307/crates/pi-edit/src/session.rs#L364).
 
@@ -24,7 +24,7 @@ Local adaptation: retain Synergy's zero-based offsets, hashline language, format
 
 **History rewriting or learned compression.** Both require separate long-task and provider-protocol validation. This change shapes new observations before they enter history.
 
-**Deferred specialist tools by default.** Discovery can introduce another model round trip. This change removes duplicate descriptions without changing capability visibility.
+**Specialist catalog deduplication.** Removing primary-prompt descriptions reduced constant input but the combined pilot regressed on the delegation task in both repetitions. This does not establish causality; retain the original selection context until an isolated change satisfies the quality and efficiency checks. Deferred discovery could also introduce another model round trip.
 
 ## Consequences
 
