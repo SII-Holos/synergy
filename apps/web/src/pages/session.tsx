@@ -934,6 +934,8 @@ function SessionPageContent() {
           connected: sdk.connected(),
           ready: sync.ready,
           reconnectVersion: sync.reconnectVersion,
+          historyID: rollback()?.id,
+          canUnrollback: rollbackActive(),
         }),
       (current, prev) => {
         const [id] = current
@@ -945,7 +947,13 @@ function SessionPageContent() {
         // Protect the viewed session's buckets from LRU eviction.
         sync.markActiveSession(id)
         if (!id || !shouldRunSessionSync(current, prev)) return
-        void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
+        const historyChanged = prevId === id && (prev?.[4] !== current[4] || prev?.[5] !== current[5])
+        void sync.session
+          .sync(id, {
+            refreshVolatile: true,
+            ...(historyChanged ? { trigger: { type: "history-transition" as const } } : {}),
+          })
+          .catch(() => undefined)
       },
     ),
   )

@@ -133,6 +133,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
         config = plan.get("config", {})
         policy_fields = [
             "startup_timeout_seconds",
+            "request_idle_timeout_seconds",
             "cleanup_seconds",
             "export_timeout_seconds",
             "preparation_timeout_seconds",

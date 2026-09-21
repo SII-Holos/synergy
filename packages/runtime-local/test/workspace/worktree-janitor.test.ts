@@ -3,6 +3,7 @@ import { $ } from "bun"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -319,6 +320,44 @@ describe("worktree sweep", () => {
         },
       })
     }))
+
+  test.each(["cap", "missing"])("preserves session recency during %s cleanup", (mode) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.local!.worktree)
+          const older = await Session.create({ title: "Old work" })
+          const created = await Worktree.create({
+            name: "old-work",
+            sessionID: older.id,
+            bind: true,
+            baseRef: "current",
+          })
+          const newer = await Session.create({ title: "Recent work" })
+          const before = await SessionNav.readNavIndex(scope.id)
+          const activity = before.entries.find((entry) => entry.id === older.id)!.lastActivityAt
+          if (mode === "missing") await fs.rm(created.path, { recursive: true, force: true })
+          const report = await Worktree.sweep({ maxManaged: 0 })
+          expect([...report.removed, ...report.reconciled]).toContain(created.id)
+          expect((await Session.get(older.id)).workspace?.type).toBe("main")
+          const after = await SessionNav.readNavIndex(scope.id)
+          expect(after.entries.find((entry) => entry.id === older.id)?.lastActivityAt).toBe(activity)
+          expect(after.entries.map((entry) => entry.id)).toEqual(before.entries.map((entry) => entry.id))
+          await SessionNav.buildNavIndex(scope.id)
+          expect((await SessionNav.readNavIndex(scope.id)).entries.map((entry) => entry.id)).toEqual(
+            before.entries.map((entry) => entry.id),
+          )
+          await Session.recordActivity(older.id)
+          expect((await SessionNav.readNavIndex(scope.id)).entries[0].id).toBe(older.id)
+          await Session.remove(older.id)
+          await Session.remove(newer.id)
+        },
+      })
+    }),
+  )
 
   test("reports blocked worktrees rather than removing extra work to reach the cap", () =>
     runtime.run(async () => {

@@ -17,6 +17,38 @@ def config():
     }
 
 
+def test_new_yaml_inherits_research_deadline_and_freezes_it(tmp_path):
+    import yaml
+
+    from synergy_bench.config import load_config
+
+    path = tmp_path / "new-experiment.yaml"
+    path.write_text(yaml.safe_dump(config()))
+    parsed = load_config(path)
+    assert parsed.timeout_seconds == 10800
+    assert parsed.model_dump()["timeout_seconds"] == 10800
+    assert ExperimentConfig.model_validate(parsed.model_dump()).timeout_seconds == 10800
+    assert parsed.request_idle_timeout_seconds is None
+
+
+@pytest.mark.parametrize("deadline", ["native", 60, 21600])
+def test_explicit_deadline_survives_freezing(deadline):
+    parsed = ExperimentConfig.model_validate({**config(), "timeout_seconds": deadline})
+    assert ExperimentConfig.model_validate(parsed.model_dump()).timeout_seconds == deadline
+
+
+@pytest.mark.parametrize("deadline", [None, 0, -1, True, "10800", "naitve"])
+def test_ambiguous_or_invalid_deadlines_are_rejected(deadline):
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**config(), "timeout_seconds": deadline})
+
+
+@pytest.mark.parametrize("deadline", [None, 900])
+def test_request_idle_deadline_is_explicit_and_frozen(deadline):
+    parsed = ExperimentConfig.model_validate({**config(), "request_idle_timeout_seconds": deadline})
+    assert parsed.model_dump()["request_idle_timeout_seconds"] == deadline
+
+
 def test_rejects_unknown_fields_and_missing_model():
     with pytest.raises(ValidationError):
         ExperimentConfig.model_validate({**config(), "concurency": 4})

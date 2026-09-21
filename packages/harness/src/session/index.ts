@@ -800,16 +800,20 @@ export namespace Session {
   export async function updateWorkspace(
     sessionID: string,
     workspace: import("./types").Workspace | null,
-    options?: { requireIdle?: boolean },
+    options?: { requireIdle?: boolean; preserveActivityAt?: boolean },
   ): Promise<Info> {
-    return update(sessionID, (draft) => {
-      if (options?.requireIdle) SessionManager.assertIdle(sessionID)
-      if (workspace) {
-        Workspace.parse(workspace)
-        if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
-      }
-      draft.workspace = workspace
-    })
+    return updateInternal(
+      sessionID,
+      (draft) => {
+        if (options?.requireIdle) SessionManager.assertIdle(sessionID)
+        if (workspace) {
+          Workspace.parse(workspace)
+          if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+        }
+        draft.workspace = workspace
+      },
+      options,
+    )
   }
 
   export async function updateControlProfile(
@@ -1098,7 +1102,7 @@ export namespace Session {
       const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         before = structuredClone(draft)
         editor(draft)
-        draft.time.updated = Date.now()
+        if (!options?.preserveActivityAt) draft.time.updated = Date.now()
       })
       if (!before) throw new Error(`Session ${id} was not available before mutation`)
 

@@ -16,6 +16,14 @@ from synergy_bench.storage import read_json
 from synergy_bench.usage import aggregate_usage
 
 
+async def test_default_gateway_does_not_add_a_shorter_read_deadline(tmp_path, monkeypatch):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    async with Gateway(model("http://provider.invalid/v1"), tmp_path, bind="127.0.0.1") as gateway:
+        assert gateway.client.timeout.total is None
+        assert gateway.client.timeout.sock_read is None
+        assert gateway.client.timeout.connect == 30
+
+
 @pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
 async def test_provider_failure_is_one_retained_attempt_without_observer_retry(tmp_path, monkeypatch, status):
     monkeypatch.setenv("FIXTURE_KEY", "fixture")
