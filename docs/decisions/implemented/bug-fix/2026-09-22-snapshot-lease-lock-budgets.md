@@ -8,7 +8,7 @@ Snapshot admission exposes a caller-supplied timeout with a 15-second default, b
 
 ## Decision
 
-`SnapshotLease.acquire` uses one deadline across Home and Scope admission. Every metadata-gate attempt receives the remaining budget and the caller's cancellation signal. Admission checks cancellation and deadline again after reading and validating owners, before registering a new owner. Exhausted metadata-gate waits become `SnapshotLease.BusyError`; malformed state and other storage failures remain visible.
+`SnapshotLease.acquire` uses one deadline across Home and Scope admission. Every metadata-gate attempt receives the remaining budget and the caller's cancellation signal. Admission checks cancellation and deadline again after reading and validating owners, before registering a new owner. Exhausted metadata-gate waits become `SnapshotLease.BusyError`; an error that is the caller signal's cancellation reason is preserved unchanged, including a forwarded `FileLockTimeoutError`. Malformed state and other storage failures remain visible.
 
 The shared `withFileLock` utility accepts an optional abort signal and exposes `FileLockTimeoutError`, preserving the lock key and existing default or custom message. Cancellation prevents entering protected work, including cancellation observed immediately after acquisition, and lock release remains protected by `finally`. Retry waits are interruptible and bounded by the remaining acquisition timeout. Existing callers without a signal retain their behavior and process-identity stale-owner checks.
 
