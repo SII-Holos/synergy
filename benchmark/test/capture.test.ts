@@ -130,6 +130,7 @@ test("streamed UTF-8 requests and multi-megabyte responses retain exact bytes", 
 test("native cancellation completes even if upstream reader cancellation never acknowledges", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bench-capture-cancel-"))
   const original = globalThis.fetch
+  let cancelled = false
   globalThis.fetch = Object.assign(
     async () =>
       new Response(
@@ -138,6 +139,7 @@ test("native cancellation completes even if upstream reader cancellation never a
             controller.enqueue(new TextEncoder().encode('data: {"choices":[]}\n\n'))
           },
           cancel() {
+            cancelled = true
             return new Promise(() => {})
           },
         }),
@@ -150,8 +152,8 @@ test("native cancellation completes even if upstream reader cancellation never a
     const response = await fetch("http://fixture.invalid/v1/chat/completions", { method: "POST", body: "{}" })
     const reader = response.body!.getReader()
     await reader.read()
-    const finished = await Promise.race([reader.cancel().then(() => true), Bun.sleep(100).then(() => false)])
-    expect(finished).toBe(true)
+    await reader.cancel()
+    expect(cancelled).toBe(true)
     const [id] = await readdir(root)
     const record = JSON.parse(await readFile(path.join(root, id, "request.json"), "utf8"))
     expect(record.status).toBe("interrupted")
