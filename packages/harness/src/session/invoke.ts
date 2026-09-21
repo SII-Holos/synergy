@@ -88,6 +88,11 @@ export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
   const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
   const maxOutputTokensByMessage = new Map<string, number>()
+  // Calibration adds a cheap chars/4 delta to provider-reported input. That is
+  // only trustworthy while the delta stays small relative to the measured
+  // baseline; past this ratio the heuristic's own error dominates and a
+  // full measurement is cheaper than guessing.
+  const CALIBRATION_MAX_DELTA_RATIO = 0.25
 
   function channelDeliveryMetadata(messages: MessageV2.WithParts[], afterIndex: number) {
     let channelPush = false
@@ -1062,7 +1067,7 @@ export namespace SessionInvoke {
               promptPlanTimer.stop()
               if (!promptPlan) break
 
-              const calibration = buildCalibration(msgs)
+              const calibration = buildCalibration(msgs, model)
               const requestedMaxOutputTokens = maxOutputTokensByMessage.get(R.id)
               const promptDecideTimer = log.time("promptBudgeter.decide")
               let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
@@ -2507,7 +2512,10 @@ export namespace SessionInvoke {
    * new messages, rather than re-tokenizing the entire conversation through
    * a mismatched tokenizer (o200k_base can overestimate by ~2x for Claude).
    */
-  function buildCalibration(msgs: MessageV2.WithParts[]): PromptBudgeter.Calibration | undefined {
+  export function buildCalibration(
+    msgs: MessageV2.WithParts[],
+    model: Provider.Model,
+  ): PromptBudgeter.Calibration | undefined {
     let calibrationIdx = -1
     let calibrationTokens: MessageV2.Assistant["tokens"] | undefined
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -2518,6 +2526,11 @@ export namespace SessionInvoke {
         if (assistant.finish) break
         continue
       }
+      // Provider-reported input is only a valid baseline for the same model: a
+      // model switch changes the system prompt, the tool set, and the
+      // tokenizer, so another model's count is not a starting point for this
+      // prompt. Skipping it falls back to a full measurement instead.
+      if (assistant.providerID !== model.providerID || assistant.modelID !== model.id) continue
       const tokens = assistant.tokens
       if (ModelLimit.actualInput(tokens) > 0) {
         calibrationIdx = i
@@ -2530,12 +2543,21 @@ export namespace SessionInvoke {
     const actualInput = ModelLimit.actualInput(calibrationTokens)
     const outputTokens = calibrationTokens.output
 
+    // Reasoning traces are part of the outgoing prompt: the model projection
+    // keeps `reasoning` parts on the assistant messages, and the compatible SDK
+    // serializes them back to the provider (verified against a recorded request
+    // body, where the provider-reported input only reconciles when reasoning is
+    // counted). They are large and accumulate every turn, so omitting them
+    // under-counts the prompt by an amount that grows with conversation length.
     let deltaChars = 0
     for (let i = calibrationIdx + 1; i < msgs.length; i++) {
       for (const part of msgs[i].parts) {
         switch (part.type) {
           case "text":
             deltaChars += part.text?.length ?? 0
+            break
+          case "reasoning":
+            deltaChars += part.text.length
             break
           case "tool":
             if (part.state.status === "completed") {
@@ -2554,6 +2576,10 @@ export namespace SessionInvoke {
     // between tool steps and starts from provider-reported actual input tokens,
     // so only the small post-calibration delta is approximate.
     const deltaTokens = Math.ceil(deltaChars / 4)
+    // The heuristic is only trustworthy while the delta stays small next to the
+    // baseline it is added to. Once the delta dominates, its error does too;
+    // re-measuring costs a tokenizer pass and removes the guesswork.
+    if (deltaTokens > actualInput * CALIBRATION_MAX_DELTA_RATIO) return undefined
 
     return { actualInput, outputTokens, deltaTokens }
   }

@@ -145,10 +145,11 @@ Behavior:
   including mixed, chained, and piped commands (`echo ok; gh api user`, `gh repo view owner/repo | head`).
 - The injected `GH_TOKEN` is inherited by every process in the invocation —
   any command can read it via `$GH_TOKEN`. An explicit `GH_TOKEN=...` prefix assignment or `export GH_TOKEN=...` earlier in the command takes precedence; use `env -u GH_TOKEN <cmd>` to clear it for a single command. An explicit `GITHUB_TOKEN=...` does not override the injected `GH_TOKEN`, because gh prefers `GH_TOKEN`.
-- When no Synergy GitHub credential is connected, the invocation runs without
-  injection and the bash tool appends a `[GitHub CLI token skipped: ...]` notice to the output.
+- When no Synergy GitHub credential is connected, the invocation runs without injection or an output notice. The CLI can use its own stored login; the macOS sandbox permits the native Keychain service lookup described in [Execution boundaries](../../../docs/architecture/execution-boundaries.md#sandbox-enforcement).
 - If a credential is injected, telemetry emits `bash.github.token.injected`;
   if injection is skipped, `bash.github.token.skipped` records the reason.
+
+For a host login that fails only inside the macOS sandbox, inspect injection metadata and correlate the reproduction with kernel `mach-lookup` denials for `com.apple.SecurityServer`, including the CLI's credential-helper subprocess. The Bash denial collector filters out Mach lookups and selects the direct child PID, so an empty collected denial is not evidence that native auth succeeded. Keep credential output discarded; use [Find logs](../find-logs/SKILL.md) for isolated reproduction and redacted evidence.
 
 ## Maintain Repository Automation
 

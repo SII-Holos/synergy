@@ -99,7 +99,12 @@ export namespace SessionCompaction {
         msg.includes("max_tokens") ||
         (msg.includes("token") && msg.includes("exceed")) ||
         (msg.includes("too long") && msg.includes("context")) ||
-        (msg.includes("request too large") && msg.includes("token")),
+        (msg.includes("request too large") && msg.includes("token")) ||
+        // Alibaba Model Studio returns this for an over-long prompt; the
+        // upstream model's own tokenizer decided it, so nothing else in the
+        // message identifies it as a context overflow.
+        msg.includes("range of input length") ||
+        (msg.includes("input length") && msg.includes("exceeds")),
     )
   }
 
