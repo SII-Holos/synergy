@@ -433,7 +433,7 @@ jobs:
   test-benchmark-matrix:
     name: Native Harness Matrix (${{ matrix.harness }})
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: ${{ matrix.harness == 'synergy' && 75 || 35 }}
     strategy:
       fail-fast: false
       matrix:

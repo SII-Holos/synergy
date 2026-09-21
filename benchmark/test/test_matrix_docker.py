@@ -300,7 +300,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             observation_turn=count if long_session and not probe else None,
         )
 
-    app = web.Application()
+    app = web.Application(client_max_size=128 * 1024**2)
     app.router.add_post("/v1/chat/completions", provider_with_runtime_evidence)
     app.router.add_post("/v1/responses", provider_with_runtime_evidence)
     provider = web.AppRunner(app)
