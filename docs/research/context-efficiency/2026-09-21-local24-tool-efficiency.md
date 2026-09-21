@@ -1,0 +1,27 @@
+# 编码工具优化的 local-24 子集验证
+
+日期：2026-09-21。本实验接续[编码工具输出优化的小任务验证](2026-09-21-coding-observations-pilot.md)，在原始 local-24 中选取三题，以原生任务和判题器检查质量、token 和耗时。以下协议在正式模型执行前固定；准备阶段不构成已完成的 benchmark 结果。
+
+## 预先固定的范围
+
+| 原始任务 | 选择理由 | Agent / verifier 时限 |
+| --- | --- | --- |
+| deepswe-1.1/dasel-html-document-format | Go，多文件功能实现和相邻格式实现的阅读；历史运行通过，用于检查质量回归 | 10800 / 1800 秒 |
+| deepswe-1.1/superjson-error-stack-serialization | TypeScript，序列化边界条件和多处编辑；历史运行未通过，避免只选成功题 | 10800 / 1800 秒 |
+| terminal-bench-2.1/large-scale-text-editing | 百万行 CSV、受约束的 Vim 操作；可能主要使用终端，覆盖另一类工作负载 | 1200 / 1200 秒 |
+
+任务来源、固定提交、目录摘要和原题时限来自 [local-24 清单](../../../benchmark/suites/local-24.json)。不修改 instruction、测试、参考解、镜像语义或原生网络限制；参考解仅用于独立 oracle 环境。
+
+基线提交为 `60dd12d6209b6b2f5b7bff726379cd48990aeef0`；工具优化候选为 `3bff2b0537241d097855c436b32ad011dacbf929`。两组均使用 synergy-max、full runtime、DeepSeek Flash，显式 `thinking.type=disabled`，输出上限 8192、上下文窗口 1000000。主代理和辅助调用均使用同一模型配置。此前 GLM 运行只用于选题背景，不作为本实验对照数据。
+
+每题每组一次，共六次；seed 为 20260921，运行并发为 1。计划顺序为 superjson 基线→候选、large-scale-text-editing 候选→基线、dasel 基线→候选。运行平台为 linux/amd64，在 ARM Docker 主机上执行；模拟开销和小样本限制须随结果保留。模型启动后的失败不得通过重抽样替换。
+
+## 证据和判断规则
+
+正式运行前执行全部三题的独立原生 oracle，以及两个版本在各任务环境中的真实 harness 预检。冻结 evaluator、源码、模型、任务和 repeat 身份；预热任务与 verifier 环境。环境准备、oracle、预检、解题、判题分别计时。全部付费预检及失败尝试纳入总实验用量，不能只统计完成的六个任务。
+
+逐题保留原生 reward、测试是否真实启动、失败阶段、agent 墙钟时间、全部主代理和子代理请求数、输入／输出／缓存 token，以及用量核对状态。缓存属于输入，不能重复相加；只有供应商明确报告缓存字段时才计算输入 token 加权比例。未知 usage 保持未知，不填零，不引入高峰权重或 GLM 积分换算。
+
+主要观察为同题配对结果；同时报告合计，失败更快或更省不能直接视为优化收益。单次运行支持案例分析，不能证明总体质量不降或统计显著改善。工具反馈字节、补读、编辑恢复和调用轮数用于解释轨迹，不能替代实际 task-level usage。
+
+原始模型请求、运行 Home 和环境日志按本地实验权限保存；本页仅维护脱敏协议、结果与限制。执行与证据规则见 [benchmark 文档](../../../benchmark/README.md)。
