@@ -46,6 +46,92 @@ async function latestAssistant(sessionID: string) {
 }
 
 describe("abort leaves an interactive session paused", () => {
+  test("waiting for a stopped execution also waits for its external lease owner", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const lease = SessionManager.acquire(session.id)!
+        const started = Promise.withResolvers<void>()
+        const cleanup = Promise.withResolvers<void>()
+        const running = SessionManager.run(
+          session.id,
+          async () => {
+            started.resolve()
+            await cleanup.promise
+          },
+          { lease, releaseLease: false },
+        )
+        await started.promise
+        let idle = false
+        const waiting = SessionManager.waitForIdle(session.id).then(() => {
+          idle = true
+        })
+        try {
+          cleanup.resolve()
+          await running
+          await Bun.sleep(0)
+          expect(idle).toBe(false)
+          SessionManager.release(lease)
+          await waiting
+          expect(idle).toBe(true)
+        } finally {
+          cleanup.resolve()
+          SessionManager.release(lease)
+          await running
+          await waiting
+        }
+      },
+    })
+  })
+  test("abandon fences old work while descendant cancellation is pending and preserves later input", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await createInterruptedTurn(session.id)
+        await SessionInbox.enqueueUser({ sessionID: session.id, parts: [{ type: "text", text: "Old queued work" }] })
+        const started = Promise.withResolvers<void>()
+        const cancelling = Promise.withResolvers<void>()
+        const cleanup = Promise.withResolvers<void>()
+        const cancelChildren = spyOn(SessionCortexRuntime, "cancelAllForParent").mockImplementation(async () => {
+          cancelling.resolve()
+          await cleanup.promise
+        })
+        const schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+        const running = SessionManager.run(session.id, async (lease) => {
+          started.resolve()
+          await new Promise<void>((resolve) => lease.signal.addEventListener("abort", () => resolve(), { once: true }))
+        })
+        let abandoning: ReturnType<typeof SessionAbort.abort> | undefined
+        try {
+          await started.promise
+          abandoning = SessionAbort.abort(session.id, { terminalize: true, abandonWorkflow: true })
+          await cancelling.promise
+          expect(await SessionInbox.list(session.id)).toEqual([])
+          const later = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [{ type: "text", text: "New request" }],
+          })
+          await running
+          expect(schedule).not.toHaveBeenCalled()
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+          cleanup.resolve()
+          expect((await abandoning).paused).toBe(false)
+          expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([later.id])
+        } finally {
+          cleanup.resolve()
+          SessionManager.signalAbort(session.id)
+          await running
+          await abandoning
+          cancelChildren.mockRestore()
+          schedule.mockRestore()
+        }
+      },
+    })
+  })
   test("release cannot schedule queued work while user-stop repair is still pending", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -168,7 +254,7 @@ describe("abort leaves an interactive session paused", () => {
 
         // The latch already records why the session stopped; a later abort
         // describes the same stoppage and must not churn `since`.
-        expect(result.paused).toBe(false)
+        expect(result.paused).toBe(true)
         const after = await SessionLifecycle.snapshot(session.id)
         expect(after?.reason).toBe("failed")
         expect(after?.since).toBe(before?.since)

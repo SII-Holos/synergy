@@ -23,6 +23,13 @@ import { SessionProjectHealth } from "./project-health"
 const log = Log.create({ service: "session.manager" })
 
 export namespace SessionManager {
+  const leaseReleases = new WeakMap<LoopLease, ReturnType<typeof Promise.withResolvers<void>>>()
+  const sessionCompletions = new Map<string, Promise<void>>()
+
+  export async function waitForIdle(sessionID: string): Promise<void> {
+    const lease = getRuntime(sessionID)?.owner?.lease
+    await Promise.all([sessionCompletions.get(sessionID), lease ? leaseReleases.get(lease)?.promise : undefined])
+  }
   export namespace SessionMail {
     export interface Model {
       providerID: string
@@ -384,6 +391,7 @@ export namespace SessionManager {
     let completed = false
     const completion = Promise.withResolvers<void>()
     running.add(completion.promise)
+    sessionCompletions.set(sessionID, completion.promise)
 
     try {
       const session = await requireSession(sessionID)
@@ -441,6 +449,7 @@ export namespace SessionManager {
         }
       } finally {
         running.delete(completion.promise)
+        if (sessionCompletions.get(sessionID) === completion.promise) sessionCompletions.delete(sessionID)
         completion.resolve()
       }
     }
@@ -484,6 +493,7 @@ export namespace SessionManager {
       signal: controller.signal,
     }
     runtime.owner = { lease, controller, phase: "starting" }
+    leaseReleases.set(lease, Promise.withResolvers<void>())
     transitionExecutionPhase(runtime, "queued_agent")
     runtime.status = { type: "busy" }
     return lease
@@ -529,10 +539,11 @@ export namespace SessionManager {
     // before removing its own inbox items; a later abort arriving while that
     // cleanup is in flight must not re-enable the release drive, or it would
     // materialize the very items being cancelled.
+    if (options?.fenceQueuedWork) {
+      owner.fenceQueuedWork = true
+      owner.fenceQueuedBefore ??= options.fenceQueuedBefore
+    }
     if (owner.phase === "stopping") return "already_stopping"
-
-    owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
-    owner.fenceQueuedBefore = options?.fenceQueuedBefore
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort(options?.pauseTurn ? new PausedTurnAbort() : undefined)
@@ -563,6 +574,7 @@ export namespace SessionManager {
     runtime.owner!.controller.abort()
     cancelWaiters(runtime)
     runtime.owner = undefined
+    leaseReleases.get(lease)?.resolve()
     transitionExecutionPhase(runtime, undefined)
     runtime.status = { type: "idle" }
     emitStatus(runtime, runtime.status)

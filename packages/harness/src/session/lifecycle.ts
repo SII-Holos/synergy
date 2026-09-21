@@ -93,20 +93,15 @@ export namespace SessionLifecycle {
    * gate would have acted on is present: the latest reply-required root never
    * got a terminal assistant, or runnable queued work is still waiting.
    *
-   * Already-paused and machine sessions are excluded. The first because the
-   * latch already records the same fact, the second because a machine session
-   * is never paused at all — reading the same rule as the writer keeps the two
-   * sides from disagreeing about which sessions the latch applies to.
+   * Already-paused sessions remain candidates: a process can die after writing
+   * the latch but before settling tool parts. Machine sessions are excluded.
    */
   export async function listUnfinishedSessions(scopeID?: string): Promise<string[]> {
     const { Storage } = await import("../storage/storage")
     const unfinished: string[] = []
     for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
-      // A session already carrying the latch needs no second signal, and a
-      // session the latch does not apply to must not be reported here.
-      if (info.paused) continue
       if (!latchable(info)) continue
-      if (await hasUnfinishedTurn(info.scope.id, info.id)) unfinished.push(info.id)
+      if (info.paused || (await hasUnfinishedTurn(info.scope.id, info.id))) unfinished.push(info.id)
     }
     return unfinished
   }

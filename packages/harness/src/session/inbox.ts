@@ -616,13 +616,13 @@ export namespace SessionInbox {
     return deliverUniqueWithPreparedMessage(input, writeItem)
   }
 
-  export async function enqueueUser(input: InvokeInput): Promise<Item> {
+  export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
-    const mode: ItemMode = input.noReply === true ? "steer" : "task"
+    const mode: ItemMode = options?.mode ?? (input.noReply === true ? "steer" : "task")
     let taskSession: Info | undefined
     if (mode === "task") {
       taskSession = await readSession(input.sessionID)
@@ -865,7 +865,10 @@ export namespace SessionInbox {
     return items.find((item) => item.mode === "task" && item.status !== "failed")
   }
 
-  export async function fenceQueuedWork(sessionID: string, onFence: (createdBefore: number) => void): Promise<number> {
+  export async function fenceQueuedWork(
+    sessionID: string,
+    onFence: (createdBefore: number, items: StoredItem[]) => void,
+  ): Promise<number> {
     return Storage.transaction(async () => {
       let removed: number
       {
@@ -874,7 +877,12 @@ export namespace SessionInbox {
         const createdBefore =
           SessionManager.fenceQueuedBefore(sessionID) ??
           Math.max(Date.now(), ...items.map((item) => item.time.created)) + 1
-        Storage.afterCommit(() => onFence(createdBefore))
+        Storage.afterCommit(() =>
+          onFence(
+            createdBefore,
+            items.filter((item) => item.time.created < createdBefore),
+          ),
+        )
         removed = await removeByModesUnlocked(sessionID, ["task", "steer", "context"], createdBefore)
       }
       if (removed > 0) await publish(sessionID)

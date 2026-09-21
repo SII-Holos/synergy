@@ -2773,15 +2773,17 @@ async function withDeadline<T>(promise: Promise<T>, ms: number, message: string)
   }
 }
 
-test("a new user message drives past an interrupted breakpoint instead of stranding the queue", async () => {
+test("paused input steers the original task before its first resumed model call", async () => {
   await using tmp = await tmpdir({ git: true })
   let breakpointRootID = ""
   const processedRoots: string[] = []
   const processedQueued = Promise.withResolvers<string>()
+  const resumedInputs: string[] = []
   const restore = installBasicLoopMocks({
     onProcess(input) {
       processedRoots.push(input.user.id)
-      if (input.user.id !== breakpointRootID) processedQueued.resolve(input.user.id)
+      resumedInputs.push(JSON.stringify(input.messages))
+      processedQueued.resolve(input.user.id)
     },
   })
   try {
@@ -2835,7 +2837,12 @@ test("a new user message drives past an interrupted breakpoint instead of strand
           )
           // The interrupted turn is resumed, not silently discarded.
           expect(processedRoots).toContain(breakpointRootID)
-          expect(processedRoot).toBe(submitted.item.messageID)
+          await SessionManager.waitForIdle(session.id)
+          expect(resumedInputs[0]).toContain("Continue after cancellation")
+          expect(submitted.item.mode).toBe("steer")
+          expect(processedRoot).toBe(breakpointRootID)
+          const guided = await MessageV2.get({ sessionID: session.id, messageID: submitted.item.messageID })
+          expect(guided.info).toMatchObject({ isRoot: false, rootID: breakpointRootID })
           expect(await SessionInbox.list(session.id)).toHaveLength(0)
 
           // Taking the session back also lifts the pause, so the drive the

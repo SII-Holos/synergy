@@ -144,7 +144,7 @@ describe("SessionLifecycle pause latch", () => {
 })
 
 describe("SessionLifecycle.listUnfinishedSessions", () => {
-  test("finds interrupted turns and queued work, excluding paused and machine sessions", async () => {
+  test("finds interrupted, queued and already-paused sessions, excluding machine sessions", async () => {
     await using tmp = await tmpdir({ git: true })
     const project = await tmp.scope()
     await ScopeContext.provide({
@@ -175,8 +175,8 @@ describe("SessionLifecycle.listUnfinishedSessions", () => {
         const found = await SessionLifecycle.listUnfinishedSessions(project.id)
         expect(found).toContain(interrupted.id)
         expect(found).toContain(queued.id)
-        // A session that already records the same fact needs no second signal.
-        expect(found).not.toContain(paused.id)
+        // A paused session can still have orphaned tool parts to settle.
+        expect(found).toContain(paused.id)
         // A machine session is never paused, so it must not be reported here.
         expect(found).not.toContain(machine.id)
         // A turn with a terminal assistant has nothing left to reconcile.

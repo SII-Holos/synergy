@@ -661,7 +661,7 @@ export const SessionRoute = new Hono()
     describeRoute({
       summary: "Abandon a stopped session",
       description:
-        "Give up on a session that stopped mid-work. Stops anything running, terminalizes the interrupted turn so the transcript reports an honest end, cancels the workflow bound to the session, and clears the pause latch so the session rests instead of staying paused. Idempotent: a repeat call reports what it changed rather than failing.",
+        "Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.",
       operationId: "session.abandon",
       responses: {
         200: {
@@ -671,6 +671,10 @@ export const SessionRoute = new Hono()
               schema: resolver(SessionAbandonResult),
             },
           },
+        },
+        409: {
+          description: "Abandonment failed; the session remains paused and can be retried",
+          content: { "application/json": { schema: resolver(SessionInvoke.AbandonError.Schema) } },
         },
         ...errors(400, 404),
       },
@@ -682,7 +686,12 @@ export const SessionRoute = new Hono()
       }),
     ),
     async (c) => {
-      return c.json(await abandonSession(c.req.valid("param").sessionID))
+      try {
+        return c.json(await abandonSession(c.req.valid("param").sessionID))
+      } catch (error) {
+        if (SessionInvoke.AbandonError.isInstance(error)) return c.json(error.toObject(), 409)
+        throw error
+      }
     },
   )
   .post(
@@ -750,7 +759,7 @@ export const SessionRoute = new Hono()
     describeRoute({
       summary: "Submit session input",
       description:
-        "Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.",
+        "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.",
       operationId: "session.input",
       responses: {
         200: {

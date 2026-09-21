@@ -1,3 +1,5 @@
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
+import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke, type InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
@@ -35,10 +37,15 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     return { status: "started", messageID }
   }
 
-  const item = await SessionInbox.enqueueUser(input)
-  // The user is taking the session back, before the drive below, which would
-  // otherwise die on the terminal run the stop left behind.
-  await takeSessionBack(input.sessionID)
+  let item: SessionInbox.Item
+  {
+    using control = await Lock.write(`session-control:${input.sessionID}`)
+    const paused = await SessionLifecycle.snapshot(input.sessionID)
+    if (paused) await SessionManager.waitForIdle(input.sessionID)
+    const rootID = paused ? await SessionInbox.latestRootID(input.sessionID) : undefined
+    item = await SessionInbox.enqueueUser(input, rootID ? { mode: "steer" } : undefined)
+    await takeSessionBack(input.sessionID)
+  }
   void SessionDrive.request(input.sessionID, "user-input").catch((error) => {
     log.error("failed to schedule durable user input", {
       sessionID: input.sessionID,
@@ -50,33 +57,14 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
   return { status: "queued", item }
 }
 
-/**
- * Take a stopped session back: lift the pause and make the interrupted
- * breakpoint resumable.
- *
- * Sending new input and pressing Continue are the two ways a user resumes a
- * session that stopped mid-work, so both owe the session the same two steps.
- * The latch is cleared first because the drive gate refuses a paused session
- * even when its request is forced: the pause is the thing being lifted.
- *
- * The latest root's run is resumed second because a stop terminalizes that run,
- * and materialization refuses to append a segment to a terminal rollout — so
- * without the resume the drive dies on the interrupted breakpoint and the
- * user's input strands in the inbox. `resumeRun` is the user-initiated variant;
- * `reopenRun` deliberately refuses a cancelled run so an unattended retry
- * cannot undo a cancellation, which is exactly the state a stop leaves behind.
- * Both steps are idempotent and decide from the persisted record under their
- * own lock, so neither needs a precondition.
- *
- * A live turn owns the run and its release drives the queue, so it is left
- * alone: resuming underneath it would clear a cancellation still landing.
- */
 async function takeSessionBack(sessionID: string): Promise<void> {
   const session = await Session.get(sessionID)
+  if (session.paused) await SessionManager.waitForIdle(sessionID)
+  if (!SessionManager.isRunning(sessionID)) {
+    const runID = await SessionInbox.latestRootID(sessionID)
+    if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
+  }
   await SessionLifecycle.clear(sessionID)
-  if (SessionManager.isRunning(sessionID)) return
-  const runID = await SessionInbox.latestRootID(sessionID)
-  if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
 }
 
 export async function createSession(
@@ -131,9 +119,13 @@ export async function submitCommand(input: Parameters<typeof SessionInvoke.comma
  * is treated as a precondition.
  */
 export async function continueSession(sessionID: string): Promise<boolean> {
-  await takeSessionBack(sessionID)
-  const messages = await SessionHistory.modelMessages({ sessionID })
-  const interrupted = SessionProgress.pendingReply(messages)
+  let interrupted: boolean
+  {
+    using control = await Lock.write(`session-control:${sessionID}`)
+    await takeSessionBack(sessionID)
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    interrupted = SessionProgress.pendingReply(messages)
+  }
   return SessionDrive.request(sessionID, "user-continue", {
     ...(interrupted ? { force: true } : {}),
     waitForProcessing: true,
@@ -150,11 +142,10 @@ export async function continueSession(sessionID: string): Promise<boolean> {
  */
 export async function abandonSession(sessionID: string): Promise<SessionInvoke.AbortRepairState> {
   await Session.get(sessionID)
-  SessionInvoke.cancel(sessionID, { fenceQueuedWork: true })
-  const state = await SessionInvoke.repairAbortState(sessionID, {
+  const state = await SessionAbort.abort(sessionID, {
     terminalize: true,
     abandonWorkflow: true,
     pauseReason: "aborted",
   })
-  return state
+  return { repaired: state.repaired, paused: state.paused, abandoned: state.abandoned }
 }

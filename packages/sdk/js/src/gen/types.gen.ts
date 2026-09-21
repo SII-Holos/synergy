@@ -6810,6 +6810,13 @@ export type SessionAbandonResult = {
   abandoned: boolean
 }
 
+export type SessionAbandonError = {
+  name: "SessionAbandonError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionAbortResult = {
   /**
    * Runtime signal result; not_found/idle mean no running turn was stopped
@@ -15203,12 +15210,16 @@ export type SessionAbandonErrors = {
    */
   404: NotFoundError
   /**
+   * Abandonment failed; the session remains paused and can be retried
+   */
+  409: SessionAbandonError
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
 }
 
-export type SessionAbandonError = SessionAbandonErrors[keyof SessionAbandonErrors]
+export type SessionAbandonError2 = SessionAbandonErrors[keyof SessionAbandonErrors]
 
 export type SessionAbandonResponses = {
   /**

@@ -2670,7 +2670,7 @@ export class Session extends HeyApiClient {
   /**
    * Abandon a stopped session
    *
-   * Give up on a session that stopped mid-work. Stops anything running, terminalizes the interrupted turn so the transcript reports an honest end, cancels the workflow bound to the session, and clears the pause latch so the session rests instead of staying paused. Idempotent: a repeat call reports what it changed rather than failing.
+   * Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.
    */
   public abandon<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2766,7 +2766,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.
+   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {

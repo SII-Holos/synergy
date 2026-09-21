@@ -179,6 +179,8 @@ export namespace SessionInvoke {
     abandoned: boolean
   }
 
+  export const AbandonError = NamedError.create("SessionAbandonError", z.object({ message: z.string() }))
+
   export interface AbortRepairOptions {
     /**
      * True when the preceding stop signal interrupted a live turn.
@@ -221,31 +223,40 @@ export namespace SessionInvoke {
     sessionID: string,
     options: AbortRepairOptions = {},
   ): Promise<AbortRepairState> {
+    if (options.abandonWorkflow) await SessionLifecycle.pause({ sessionID, reason: options.pauseReason ?? "aborted" })
     const repaired = await repairIncompleteAssistant(sessionID, { terminalize: options.terminalize === true }).catch(
       (err) => {
         log.error("assistant repair after abort failed", { sessionID, error: err })
+        if (options.abandonWorkflow)
+          throw new AbandonError(
+            { message: "Could not settle the interrupted execution. Retry abandoning the session." },
+            { cause: err },
+          )
         return false
       },
     )
     const abandoned = options.abandonWorkflow
       ? await abandonBoundWorkflow(sessionID).catch((err) => {
           log.error("workflow abandonment failed", { sessionID, error: err })
-          return false
+          throw new AbandonError(
+            { message: "Could not cancel the bound workflow. The session remains paused; retry abandoning it." },
+            { cause: err },
+          )
         })
       : false
 
     if (options.abandonWorkflow) await SessionLifecycle.clear(sessionID)
-    const paused =
-      options.internalCancel || options.abandonWorkflow
-        ? false
-        : await SessionLifecycle.pause({
-            sessionID,
-            reason: options.pauseReason ?? "aborted",
-            description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
-          }).catch((err) => {
-            log.error("session pause failed", { sessionID, error: err })
-            return false
-          })
+    if (!options.internalCancel && !options.abandonWorkflow) {
+      await SessionLifecycle.pause({
+        sessionID,
+        reason: options.pauseReason ?? "aborted",
+        description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
+      }).catch((err) => {
+        log.error("session pause failed", { sessionID, error: err })
+        return false
+      })
+    }
+    const paused = !!(await SessionLifecycle.snapshot(sessionID))
 
     await publishResolvedStatus(sessionID)
     return { repaired, paused, abandoned }
@@ -2437,6 +2448,7 @@ export namespace SessionInvoke {
       if (SessionManager.isRunning(sessionID)) continue
       try {
         await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
+        await repairIncompleteAssistant(sessionID, { terminalize: false })
       } catch (error) {
         log.warn("session pause reconcile failed", { sessionID, error })
       }
