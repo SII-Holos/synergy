@@ -79,7 +79,7 @@ export function SessionTagMenu(props: {
           }}
         />
         <Show when={failed()}>
-          <div role="alert" class="text-text-critical-base text-12-regular py-1">
+          <div role="alert" class="text-text-on-critical-base text-12-regular py-1">
             {_(sessionTags.saveFailed)}
           </div>
         </Show>
