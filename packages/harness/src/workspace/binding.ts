@@ -6,6 +6,13 @@ import { WorkspaceLocation } from "./location"
 import type { Workspace } from "../session/workspace-schema"
 
 export namespace WorkspaceBinding {
+  export async function register(scopeID: string, directory: string): Promise<WorkspaceCatalog.Info> {
+    if (!path.isAbsolute(directory)) throw new Error("Workspace location must be absolute")
+    const source = WorkspaceLocation.source()
+    const location = await source.identify(directory)
+    return WorkspaceCatalog.register({ scopeID, type: "directory", hostID: await source.hostID(), ...location })
+  }
+
   export async function importHistory(
     workspace: Workspace,
     scopeID: string,

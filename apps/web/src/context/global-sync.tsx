@@ -5,6 +5,7 @@ import {
   type Part,
   type Config,
   type Scope,
+  type Path,
   type FileDiff,
   type Todo,
   type ProviderListResponse,
@@ -122,14 +123,6 @@ type GlobalPaths = {
   log: string
 }
 
-type ScopedPath = {
-  state: string
-  config: string
-  worktree: string | null
-  directory: string | null
-  home: string
-}
-
 type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
@@ -137,7 +130,7 @@ type State = {
   scopeID: string
   provider: ProviderListResponse
   config: Config
-  path: ScopedPath
+  path: Path
   session: Session[]
   session_diff: {
     [sessionID: string]: FileDiff[]
@@ -519,7 +512,7 @@ function createGlobalSync() {
           modelCatalog: {},
         },
         config: {},
-        path: { state: "", config: "", worktree: null, directory: null, home: "" },
+        path: { state: "", config: "", worktree: null, directory: null, workspace: null, home: "" },
         status: "loading" as const,
         agent: [],
         command: [],

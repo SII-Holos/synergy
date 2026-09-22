@@ -2615,6 +2615,10 @@ msgstr "切换文件树"
 msgid "app.file.toolbar.viewMode"
 msgstr "文件查看模式"
 
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.workspace.missing"
+msgstr "请从文件所属的工作区重新打开此文件。"
+
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.action.closeTree"
 msgstr "关闭文件树"

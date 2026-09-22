@@ -2615,6 +2615,10 @@ msgstr ""
 msgid "app.file.toolbar.viewMode"
 msgstr ""
 
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.workspace.missing"
+msgstr ""
+
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.action.closeTree"
 msgstr ""

@@ -2,7 +2,7 @@ import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
-import { Global } from "@ericsanchezok/synergy-harness/global"
+import { ScopePath } from "./scope-path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -11,16 +11,6 @@ import { describeRoute, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { listProvidersForClient, ProviderListResponse } from "./provider-view"
-
-const BootstrapPath = z
-  .object({
-    home: z.string(),
-    state: z.string(),
-    config: z.string(),
-    worktree: z.string().nullable(),
-    directory: z.string().nullable(),
-  })
-  .meta({ ref: "ScopeBootstrapPath" })
 
 const BootstrapSessions = z
   .object({
@@ -44,7 +34,7 @@ export const ScopeBootstrapResponse = z
     provider: ProviderListResponse,
     agent: Agent.Info.array(),
     config: Config.Info,
-    path: BootstrapPath.optional(),
+    path: ScopePath.Schema.optional(),
     command: Command.Info.array().optional(),
     sessionStatus: z.record(z.string(), Session.StatusInfo).optional(),
     sessions: BootstrapSessions.optional(),
@@ -127,16 +117,7 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
       }))
       const Cortex = import("@ericsanchezok/synergy-harness/cortex/manager").then((module) => module.Cortex)
       const optionalRequests = [
-        optional(
-          "path",
-          Promise.resolve({
-            home: Global.Path.home,
-            state: Global.Path.state,
-            config: Global.Path.config,
-            worktree: scope.local?.worktree ?? null,
-            directory: ScopeContext.current.workspace?.path ?? null,
-          }),
-        ),
+        optional("path", Promise.resolve(ScopePath.current())),
         optional("command", Command.list()),
         optional("sessionStatus", SessionManager.listStatuses(scope.id)),
         optional("sessions", sessionPageRequest),

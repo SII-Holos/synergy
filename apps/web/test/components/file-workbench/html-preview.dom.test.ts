@@ -31,7 +31,11 @@ beforeAll(async () => {
     Bun.write(
       fileStubPath,
       `
+        export const FileWorkspaceProvider = (props) => props.children
         export const useFile = () => ({
+          workspace: { id: "wsp_demo", generation: 1, scopeID: "home", path: "/workspace/demo", type: "directory" },
+          reference: () => ({ workspaceID: "wsp_demo", workspaceGeneration: 1 }),
+          resourceKey: "demo",
           get: () => ({
             loading: false,
             stale: false,
@@ -117,7 +121,7 @@ beforeAll(async () => {
               i18n,
               children: () =>
                 createComponent(FileWorkbenchContent, {
-                  tab: { id: "file", type: "file", title: file, resourceId: file },
+                  tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "home", path: "/workspace/demo", type: "directory" } } },
                   onRequestClose: () => {},
                 }),
             }),

@@ -4957,12 +4957,22 @@ export type Config = {
   }
 }
 
-export type ScopeBootstrapPath = {
+export type SessionWorkspace = {
+  id?: string
+  generation?: number
+  type: string
+  path: string
+  scopeID: string
+  [key: string]: unknown | string | number | string | undefined
+}
+
+export type Path = {
   home: string
   state: string
   config: string
   worktree: string | null
   directory: string | null
+  workspace: SessionWorkspace | null
 }
 
 export type Command = {
@@ -5150,15 +5160,6 @@ export type SessionWorkingInfo =
       description?: string
       since: number
     }
-
-export type SessionWorkspace = {
-  id?: string
-  generation?: number
-  type: string
-  path: string
-  scopeID: string
-  [key: string]: unknown | string | number | string | undefined
-}
 
 export type WorkflowExtension = {
   kind: string
@@ -5487,7 +5488,7 @@ export type ScopeBootstrapResponse = {
   provider: ProviderListResponse
   agent: Array<Agent>
   config: Config
-  path?: ScopeBootstrapPath
+  path?: Path
   command?: Array<Command>
   sessionStatus?: {
     [key: string]: SessionStatus
@@ -5996,14 +5997,6 @@ export type ToolListItem = {
 }
 
 export type ToolList = Array<ToolListItem>
-
-export type Path = {
-  home: string
-  state: string
-  config: string
-  worktree: string | null
-  directory: string | null
-}
 
 export type Worktree = {
   id: string
@@ -6851,6 +6844,11 @@ export type SessionWorkspaceSelection =
     }
   | {
       mode: "current"
+    }
+  | {
+      mode: "workspace"
+      workspaceID: string
+      workspaceGeneration: number
     }
   | {
       mode: "existing"
@@ -8290,13 +8288,6 @@ export type WorkspaceFileStatusSummary = {
   }>
 }
 
-export type WorkspaceFileContentError = {
-  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileUnsupportedPreviewError" | "WorkspaceFileTooLargeError"
-  data: {
-    message: string
-  }
-}
-
 export type WorkspaceFileWriteResult = {
   path: string
   mtime: number
@@ -8311,6 +8302,46 @@ export type WorkspaceFileWriteFileInput = {
   createParents?: boolean
   conflictPolicy?: "fail" | "overwrite"
   expectedMtime?: number
+}
+
+export type WorkspaceInfo = {
+  id: string
+  scopeID: string
+  type: string
+  revision: number
+  binding: {
+    state: "bound" | "unbound"
+    hostID: string
+    path: string
+    physicalID?: string
+    generation: number
+  }
+  metadata: {
+    [key: string]: unknown
+  }
+  sharedWritableWorkspaceIDs: Array<string>
+  lifecycle: "active" | "deleting" | "deleted"
+  createdAt: number
+  updatedAt: number
+  [key: string]:
+    | unknown
+    | string
+    | number
+    | {
+        state: "bound" | "unbound"
+        hostID: string
+        path: string
+        physicalID?: string
+        generation: number
+      }
+    | {
+        [key: string]: unknown
+      }
+    | Array<string>
+    | "active"
+    | "deleting"
+    | "deleted"
+    | number
 }
 
 export type EmbeddingStatus =
@@ -17963,9 +17994,11 @@ export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUr
 export type WorkspaceFilesChildrenData = {
   body?: never
   path?: never
-  query?: {
+  query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
     path?: string
     limit?: number
     cursor?: string
@@ -17977,6 +18010,10 @@ export type WorkspaceFilesChildrenData = {
 
 export type WorkspaceFilesChildrenErrors = {
   /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
    * Forbidden
    */
   403: WorkspaceFileWriteError
@@ -17984,6 +18021,13 @@ export type WorkspaceFilesChildrenErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -18007,6 +18051,8 @@ export type WorkspaceFilesReadData = {
   query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
     path: string
     range?: string
     offset?: number
@@ -18019,6 +18065,10 @@ export type WorkspaceFilesReadData = {
 
 export type WorkspaceFilesReadErrors = {
   /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
    * Forbidden
    */
   403: WorkspaceFileWriteError
@@ -18026,6 +18076,13 @@ export type WorkspaceFilesReadErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -18049,12 +18106,18 @@ export type WorkspaceFilesStatData = {
   query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
     path: string
   }
   url: "/workspace/files/stat"
 }
 
 export type WorkspaceFilesStatErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
   /**
    * Forbidden
    */
@@ -18063,6 +18126,13 @@ export type WorkspaceFilesStatErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -18086,6 +18156,8 @@ export type WorkspaceFilesSearchData = {
   query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
     query: string
     kind?: "files" | "content" | "symbol"
     limit?: number
@@ -18117,9 +18189,11 @@ export type WorkspaceFilesSearchResponse = WorkspaceFilesSearchResponses[keyof W
 export type WorkspaceFilesStatusData = {
   body?: never
   path?: never
-  query?: {
+  query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
   }
   url: "/workspace/files/status"
 }
@@ -18148,6 +18222,8 @@ export type WorkspaceFilesContentData = {
   query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
     path: string
   }
   url: "/workspace/files/content"
@@ -18157,7 +18233,7 @@ export type WorkspaceFilesContentErrors = {
   /**
    * Bad request
    */
-  400: WorkspaceFileContentError
+  400: BadRequestError
   /**
    * Forbidden
    */
@@ -18166,6 +18242,13 @@ export type WorkspaceFilesContentErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -18184,9 +18267,11 @@ export type WorkspaceFilesContentResponses = {
 export type WorkspaceFilesWriteData = {
   body?: WorkspaceFileWriteFileInput
   path?: never
-  query?: {
+  query: {
     directory?: string
     scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
   }
   url: "/workspace/files/write"
 }
@@ -18224,6 +18309,87 @@ export type WorkspaceFilesWriteResponses = {
 }
 
 export type WorkspaceFilesWriteResponse = WorkspaceFilesWriteResponses[keyof WorkspaceFilesWriteResponses]
+
+export type WorkspaceListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace"
+}
+
+export type WorkspaceListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceListError = WorkspaceListErrors[keyof WorkspaceListErrors]
+
+export type WorkspaceListResponses = {
+  /**
+   * Workspace catalog
+   */
+  200: Array<WorkspaceInfo>
+}
+
+export type WorkspaceListResponse = WorkspaceListResponses[keyof WorkspaceListResponses]
+
+export type WorkspaceRegisterData = {
+  body?: {
+    path: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace"
+}
+
+export type WorkspaceRegisterErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceRegisterError = WorkspaceRegisterErrors[keyof WorkspaceRegisterErrors]
+
+export type WorkspaceRegisterResponses = {
+  /**
+   * Registered Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceRegisterResponse = WorkspaceRegisterResponses[keyof WorkspaceRegisterResponses]
 
 export type LibraryEmbeddingStatusData = {
   body?: never

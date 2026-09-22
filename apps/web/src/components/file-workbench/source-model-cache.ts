@@ -28,8 +28,8 @@ export function pruneFileSourceModels(protectedUri: string) {
   }
 }
 
-export function releaseFileSourceScope(scopeKey: string) {
-  const authority = encodeURIComponent(scopeKey)
+export function releaseFileSourceWorkspace(resourceKey: string) {
+  const authority = encodeURIComponent(resourceKey)
   for (const [uri, entry] of models) {
     if (entry.model.uri.authority !== authority) continue
     entry.model.dispose()

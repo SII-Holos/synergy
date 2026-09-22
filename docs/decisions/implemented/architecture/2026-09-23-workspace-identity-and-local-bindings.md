@@ -28,6 +28,8 @@ LSP process recovery verifies host, owner process identity and child process ide
 
 Local bindings and their indexes are persisted separately from Session history. Consumers must resolve an explicit Workspace and retain its generation for execution. A directory that is missing or has been replaced cannot be made usable merely by finding another directory at the stored pathname.
 
+File API requests carry an explicit Workspace and generation. Open file tabs retain their owner across session selection and rebinding; server-side generation validation is also applied to raw document assets. Scope and Workspace caches remain separate so same-named files cannot alias across directories.
+
 ## Verification
 
 Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.
@@ -35,3 +37,5 @@ Resource tests interleave Workspace startup, shared Sessions, rebinding and Scop
 Catalog tests exercise concurrent registration, host separation, generation rejection, cross-Scope lookup, and stale conditional updates against real SQLite. Filesystem tests verify persistent namespace convergence and directory replacement with real temporary directories.
 
 Session tests cover shared parent/child references, rebinding, null workspaces, canonical writes, unbound transcript imports, Rollout archives, unknown owner data, old metadata, navigation repair after restart, deferred-owner isolation and transaction rollback. Runtime Local tests remove a historical directory before reopening and verify that metadata remains readable while execution fails.
+
+Server route tests use two real directories in one Scope, Home-owned Workspaces, cross-Scope references, stale generations, removed directories, and raw relative resources. Browser tests hold an old read response across Workspace selection, verify independent cache recovery and watcher filtering, and retain the generation of a captured file handle.

@@ -35,6 +35,10 @@ Automatic worktree reclamation and missing-registration reconciliation preserve 
 
 ## Web Workspace File Service
 
+`GET /workspace` lists the Scope-owned catalog and `POST /workspace` registers an existing local directory. Session selection can name a Workspace ID and expected binding generation without changing its Scope. `/path` and Scope bootstrap use the same path projection, including the canonical default Workspace descriptor.
+
+File API queries require `workspaceID` and `workspaceGeneration` alongside Scope resolution. A missing selection is a validation error, another Scope's ID is not found, and an unavailable or stale binding is a conflict. Raw document and download URLs retain the Scope, Workspace ID, and generation in their path prefix so relative assets cannot retarget after rebinding.
+
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
 
 Directory results can hide ignored and dot-prefixed entries, are sorted with directories first, and use bounded cursor pages. Reads distinguish:

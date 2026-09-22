@@ -31,7 +31,11 @@ beforeAll(async () => {
     Bun.write(
       fileStubPath,
       `
+        export const FileWorkspaceProvider = (props) => props.children
         export const useFile = () => ({
+          workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" },
+          reference: () => ({ workspaceID: "wsp_demo", workspaceGeneration: 1 }),
+          resourceKey: "demo",
           get: () => ({ loading: true, content: undefined }),
           load: async () => {},
           save: async () => {},
@@ -64,7 +68,7 @@ beforeAll(async () => {
     ),
     Bun.write(
       sdkStubPath,
-      `export const useSDK = () => ({ url: "http://127.0.0.1:4096", scopeID: undefined, directory: "/workspace/demo" })`,
+      `export const useSDK = () => ({ url: "http://127.0.0.1:4096", scopeID: "project", directory: "/workspace/demo" })`,
     ),
     Bun.write(
       localeStubPath,
@@ -117,7 +121,7 @@ beforeAll(async () => {
               i18n,
               children: () =>
                 createComponent(FileWorkbenchContent, {
-                  tab: { id: "file", type: "file", title: file, resourceId: file },
+                  tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
                   onRequestClose: () => {},
                 }),
             }),
@@ -218,7 +222,7 @@ describe("file workbench open-in-browser action", () => {
     await button.click()
     await page.waitForFunction(() => ((window as any).__openedUrls?.length ?? 0) > 0)
     const urls = await page.evaluate(() => (window as any).__openedUrls as string[])
-    expect(urls).toEqual(["http://127.0.0.1:4096/workspace/files/raw/L3dvcmtzcGFjZS9kZW1v/docs/index.html"])
+    expect(urls).toEqual(["http://127.0.0.1:4096/workspace/files/raw/cHJvamVjdA/wsp_demo/1/docs/index.html"])
   }, 60000)
 
   test("treats .htm files as HTML too", async () => {

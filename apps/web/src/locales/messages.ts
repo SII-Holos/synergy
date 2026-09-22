@@ -348,6 +348,7 @@ export const assetsPanel = {
 // ── File workbench ───────────────────────────────────────────────────────────
 
 export const fileWorkbench = {
+  workspaceMissing: { id: "app.file.workspace.missing", message: "Reopen this file from its Workspace to continue." },
   openAFile: { id: "app.file.empty.openAFile", message: "Open a file" },
   chooseFromTree: { id: "app.file.empty.chooseFromTree", message: "Choose a file from the workspace tree." },
   loading: { id: "app.file.loading", message: "Loading {path}…" },

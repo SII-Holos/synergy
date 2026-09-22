@@ -8,10 +8,11 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { useFile } from "@/context/file"
+import { FileWorkspaceProvider, useFile } from "@/context/file"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
+import { workspaceFileOwner, workspaceFilePath } from "@/context/file/workspace"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
@@ -98,7 +99,7 @@ function MarkdownPreview(props: { path: string; content: string }) {
         if (path) void file.openWorkspaceFile(path)
       }}
     >
-      <Markdown text={props.content} cacheKey={`file-preview:${props.path}`} />
+      <Markdown text={props.content} cacheKey={`file-preview:${file.resourceKey}:${props.path}`} />
     </div>
   )
 }
@@ -136,6 +137,7 @@ function SvgPreview(props: { path: string; content: string }) {
 // origin, which Vite proxies to the server. The version query forces a reload
 // when the file changes on disk (watcher events, edits, focus refresh).
 function HtmlPreview(props: { path: string; version?: { mtime: number; size: number } }) {
+  const file = useFile()
   const sdk = useSDK()
   const lingui = useLingui()
   const [loaded, setLoaded] = createSignal(false)
@@ -146,7 +148,7 @@ function HtmlPreview(props: { path: string; version?: { mtime: number; size: num
       props.path,
       {
         scopeID: sdk.scopeID,
-        directory: sdk.directory,
+        ...file.reference(),
       },
       props.version,
     ),
@@ -341,13 +343,40 @@ function FilePdfPreview(props: {
 }
 
 export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const lingui = useLingui()
+  const file = useFile()
+  const owner = createMemo(() => workspaceFileOwner(props.tab) ?? (!props.tab.resourceId ? file.workspace : undefined))
+  const resource = createMemo(() => {
+    const workspace = owner()
+    return workspace && JSON.stringify([workspace.id, workspace.generation, props.tab.resourceId])
+  })
+  return (
+    <Show
+      when={resource()}
+      keyed
+      fallback={
+        <div class="file-workbench-empty">
+          {lingui._({ id: F.workspaceMissing.id, message: F.workspaceMissing.message })}
+        </div>
+      }
+    >
+      {(_resource) => (
+        <FileWorkspaceProvider workspace={owner()!}>
+          <WorkspaceFileContent {...props} />
+        </FileWorkspaceProvider>
+      )}
+    </Show>
+  )
+}
+
+function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
   const platform = usePlatform()
   const sdk = useSDK()
   const prompt = usePrompt()
   const { fmt } = useLocale()
   const lingui = useLingui()
-  const path = createMemo(() => props.tab.resourceId ?? "")
+  const path = createMemo(() => workspaceFilePath(props.tab.resourceId))
   const isHtml = createMemo(() => /\.html?$/i.test(path()))
   const documentState = createMemo(() => file.get(path()))
   const content = createMemo(() => documentState()?.content)
@@ -589,7 +618,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               class="file-open-in-browser"
               onClick={() =>
                 platform.openLink(
-                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory }),
+                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() }),
                 )
               }
             >
@@ -600,7 +629,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
           <Show when={path()}>
             <a
               class="file-download"
-              href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory })}?download=1`}
+              href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}?download=1`}
               download={breadcrumb().at(-1)}
               target="_blank"
               rel="noopener noreferrer"

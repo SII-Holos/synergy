@@ -135,22 +135,15 @@ Scope ownership and the current execution directory are related but distinct:
 
 ## Session Workspace
 
-Every session persists a required `workspace` field. `null` means no filesystem workspace; a non-null binding contains at least:
+Sessions persist a canonical `workspaceID` reference, with `null` representing no filesystem workspace. Their public `workspace` descriptor projects the current catalog binding and metadata. Missing catalog entries retain their ID and expose an error rather than becoming workspace-free. The [Workspace and files](workspace-and-files.md) contract defines catalog identity, generation and native-resource ownership.
 
-```ts
-{
-  type: string
-  path: string
-  scopeID: string
-}
-```
-
-The schema permits workspace-specific metadata. New sessions default to the Scope local directory, or `null` for Home and other nonlocal Scopes. Child sessions inherit their parent Scope and workspace, including `null`, unless the caller explicitly changes them. Bindings must belong to the session Scope.
+New sessions default to the Scope local directory, or `null` for Home and other nonlocal Scopes. Child sessions inherit their parent Scope and Workspace, including `null`, unless the caller explicitly changes them. Bindings must belong to the session Scope.
 
 Workspace selection supports:
 
 - `none` — persist `null` and retain the session Scope
 - `current` — use the Scope local directory; reject a Scope with no local binding
+- `workspace` — select a registered Workspace ID with an expected binding generation
 - `existing` — bind to an existing worktree target
 - `create` — create an isolated worktree, optionally from the current or a fresh base
 

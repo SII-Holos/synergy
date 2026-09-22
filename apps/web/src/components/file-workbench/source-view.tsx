@@ -133,7 +133,7 @@ export function FileSourceView(props: {
     void loadMonaco().then((monaco) => {
       if (disposed) return
       monacoInstance = monaco
-      const scope = encodeURIComponent(sdk.scopeKey)
+      const scope = encodeURIComponent(file.resourceKey)
       const uri = monaco.Uri.parse(`synergy-file://${scope}/${props.path.split("/").map(encodeURIComponent).join("/")}`)
       const key = uri.toString()
       let cached = getFileSourceModel(key)

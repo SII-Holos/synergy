@@ -269,6 +269,11 @@ export namespace Session {
         mode: z.literal("current"),
       }),
       z.object({
+        mode: z.literal("workspace"),
+        workspaceID: z.string().min(1),
+        workspaceGeneration: z.number().int().positive(),
+      }),
+      z.object({
         mode: z.literal("existing"),
         target: z.string().min(1),
         force: z.boolean().optional(),
@@ -637,6 +642,15 @@ export namespace Session {
   ): Promise<Info & { working?: WorkingInfoType }> {
     const session = await get(sessionID)
     if (!selection || (selection.mode === "current" && session.workspace)) return session
+    if (selection.mode === "workspace") {
+      SessionManager.assertIdle(sessionID)
+      const workspace = await WorkspaceBinding.validate(
+        selection.workspaceID,
+        session.scope.id,
+        selection.workspaceGeneration,
+      )
+      return updateWorkspace(sessionID, workspace, { requireIdle: true })
+    }
     if (selection.mode === "none" || selection.mode === "current") {
       SessionManager.assertIdle(sessionID)
       const workspace = selection.mode === "none" ? null : ScopeContext.defaultWorkspace(session.scope)

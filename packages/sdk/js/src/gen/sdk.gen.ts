@@ -766,6 +766,10 @@ import type {
   WorkspaceFilesWriteErrors,
   WorkspaceFilesWriteResponses,
   WorkspaceFileWriteFileInput,
+  WorkspaceListErrors,
+  WorkspaceListResponses,
+  WorkspaceRegisterErrors,
+  WorkspaceRegisterResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -1479,9 +1483,11 @@ export class Files extends HeyApiClient {
    * List direct children for a workspace directory with lazy-loading friendly pagination.
    */
   public children<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path?: string
       limit?: number
       cursor?: string
@@ -1497,6 +1503,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursor" },
@@ -1526,6 +1534,8 @@ export class Files extends HeyApiClient {
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path: string
       range?: string
       offset?: number
@@ -1542,6 +1552,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
             { in: "query", key: "range" },
             { in: "query", key: "offset" },
@@ -1568,6 +1580,8 @@ export class Files extends HeyApiClient {
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1579,6 +1593,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
           ],
         },
@@ -1600,6 +1616,8 @@ export class Files extends HeyApiClient {
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       query: string
       kind?: "files" | "content" | "symbol"
       limit?: number
@@ -1616,6 +1634,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "query" },
             { in: "query", key: "kind" },
             { in: "query", key: "limit" },
@@ -1643,9 +1663,11 @@ export class Files extends HeyApiClient {
    * Return git-backed file status for the current workspace.
    */
   public status<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1656,6 +1678,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
           ],
         },
       ],
@@ -1674,12 +1698,14 @@ export class Files extends HeyApiClient {
   /**
    * Read workspace file bytes
    *
-   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.
+   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{workspaceID}/{workspaceGeneration}/{path} instead.
    */
   public content<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1691,6 +1717,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
           ],
         },
@@ -1713,9 +1741,11 @@ export class Files extends HeyApiClient {
    * Write content to an existing workspace file with optional optimistic concurrency control.
    */
   public write<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1727,6 +1757,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { key: "workspaceFileWriteFileInput", map: "body" },
           ],
         },
@@ -9346,6 +9378,69 @@ export class Skill extends HeyApiClient {
 }
 
 export class Workspace extends HeyApiClient {
+  /**
+   * List Workspaces in a Scope
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceListResponses, WorkspaceListErrors, ThrowOnError>({
+      url: "/workspace",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Register an existing local directory as a Workspace
+   */
+  public register<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceRegisterResponses, WorkspaceRegisterErrors, ThrowOnError>({
+      url: "/workspace",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   files = new Files({ client: this.client })
 }
 

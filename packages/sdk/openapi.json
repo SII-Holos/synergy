@@ -14625,6 +14625,25 @@
           },
           {
             "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -14676,6 +14695,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -14692,6 +14721,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -14732,6 +14778,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           },
           {
             "in": "query",
@@ -14797,6 +14862,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -14813,6 +14888,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -14856,6 +14948,25 @@
           },
           {
             "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -14876,6 +14987,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -14892,6 +15013,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -14932,6 +15070,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           },
           {
             "in": "query",
@@ -15030,6 +15187,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           }
         ],
         "summary": "Get workspace file status",
@@ -15084,6 +15260,25 @@
           },
           {
             "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -15092,7 +15287,7 @@
           }
         ],
         "summary": "Read workspace file bytes",
-        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.",
+        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{workspaceID}/{workspaceGeneration}/{path} instead.",
         "responses": {
           "200": {
             "description": "PDF file bytes"
@@ -15102,7 +15297,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceFileContentError"
+                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15127,6 +15322,23 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -15146,7 +15358,7 @@
         ]
       }
     },
-    "/workspace/files/raw/{token}/{path}": {},
+    "/workspace/files/raw/{token}/{workspaceID}/{workspaceGeneration}/{path}": {},
     "/workspace/files/write": {
       "post": {
         "operationId": "workspace.files.write",
@@ -15164,6 +15376,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           }
         ],
         "summary": "Write workspace file",
@@ -15243,6 +15474,180 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.write({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace": {
+      "get": {
+        "operationId": "workspace.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List Workspaces in a Scope",
+        "responses": {
+          "200": {
+            "description": "Workspace catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "workspace.register",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Register an existing local directory as a Workspace",
+        "responses": {
+          "200": {
+            "description": "Registered Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["path"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.register({\n  ...\n})"
           }
         ]
       }
@@ -39906,7 +40311,34 @@
         },
         "additionalProperties": false
       },
-      "ScopeBootstrapPath": {
+      "SessionWorkspace": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["type", "path", "scopeID"],
+        "additionalProperties": {}
+      },
+      "Path": {
         "type": "object",
         "properties": {
           "home": {
@@ -39937,9 +40369,19 @@
                 "type": "null"
               }
             ]
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionWorkspace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["home", "state", "config", "worktree", "directory"]
+        "required": ["home", "state", "config", "worktree", "directory", "workspace"]
       },
       "Command": {
         "type": "object",
@@ -40568,33 +41010,6 @@
             "required": ["status", "reason", "since"]
           }
         ]
-      },
-      "SessionWorkspace": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "generation": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "type": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "scopeID": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": ["type", "path", "scopeID"],
-        "additionalProperties": {}
       },
       "WorkflowExtension": {
         "type": "object",
@@ -41624,7 +42039,7 @@
             "$ref": "#/components/schemas/Config"
           },
           "path": {
-            "$ref": "#/components/schemas/ScopeBootstrapPath"
+            "$ref": "#/components/schemas/Path"
           },
           "command": {
             "type": "array",
@@ -42860,41 +43275,6 @@
         "items": {
           "$ref": "#/components/schemas/ToolListItem"
         }
-      },
-      "Path": {
-        "type": "object",
-        "properties": {
-          "home": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string"
-          },
-          "config": {
-            "type": "string"
-          },
-          "worktree": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "directory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["home", "state", "config", "worktree", "directory"]
       },
       "Worktree": {
         "type": "object",
@@ -45597,6 +45977,25 @@
               }
             },
             "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "workspace"
+              },
+              "workspaceID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workspaceGeneration": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["mode", "workspaceID", "workspaceGeneration"]
           },
           {
             "type": "object",
@@ -49930,29 +50329,6 @@
         },
         "required": ["files"]
       },
-      "WorkspaceFileContentError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "enum": [
-              "WorkspaceFileAccessDeniedError",
-              "WorkspaceFileUnsupportedPreviewError",
-              "WorkspaceFileTooLargeError"
-            ]
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
-      },
       "WorkspaceFileWriteResult": {
         "type": "object",
         "properties": {
@@ -50003,6 +50379,90 @@
           }
         },
         "required": ["path", "content"]
+      },
+      "WorkspaceInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "binding": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": ["bound", "unbound"]
+              },
+              "hostID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "physicalID": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["state", "hostID", "path", "generation"]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "sharedWritableWorkspaceIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["active", "deleting", "deleted"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "scopeID",
+          "type",
+          "revision",
+          "binding",
+          "metadata",
+          "sharedWritableWorkspaceIDs",
+          "lifecycle",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": {}
       },
       "EmbeddingStatus": {
         "anyOf": [

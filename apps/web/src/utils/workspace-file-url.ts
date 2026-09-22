@@ -1,13 +1,17 @@
-export function buildWorkspaceFileBrowserUrl(
-  baseUrl: string,
-  path: string,
-  scope?: { scopeID?: string; directory?: string },
-): string {
+export type WorkspaceFileUrlScope = { scopeID: string; workspaceID: string; workspaceGeneration: number }
+
+export function buildWorkspaceFileBrowserUrl(baseUrl: string, path: string, scope?: WorkspaceFileUrlScope): string {
   const normalizedBase = baseUrl.replace(/\/$/, "")
-  if (!scope?.scopeID && !scope?.directory) throw new Error("A Scope is required to open a workspace file")
-  const token = scope.scopeID === "home" ? "home" : base64UrlEncode(scope.scopeID ?? scope.directory!)
+  if (
+    !scope?.scopeID ||
+    !scope.workspaceID ||
+    !Number.isSafeInteger(scope.workspaceGeneration) ||
+    scope.workspaceGeneration < 1
+  )
+    throw new Error("A Scope and Workspace binding are required to open a workspace file")
+  const token = scope.scopeID === "home" ? "home" : base64UrlEncode(scope.scopeID)
   const encodedPath = path.split("/").map(encodeURIComponent).join("/")
-  return `${normalizedBase}/workspace/files/raw/${token}/${encodedPath}`
+  return `${normalizedBase}/workspace/files/raw/${token}/${encodeURIComponent(scope.workspaceID)}/${scope.workspaceGeneration}/${encodedPath}`
 }
 
 // The raw route sets X-Frame-Options: SAMEORIGIN, so the preview iframe must
@@ -20,7 +24,7 @@ export function buildWorkspaceFilePreviewUrl(
   baseUrl: string,
   appOrigin: string,
   path: string,
-  scope?: { scopeID?: string; directory?: string },
+  scope?: WorkspaceFileUrlScope,
   version?: { mtime: number; size: number },
 ): string {
   let base = appOrigin
