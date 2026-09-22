@@ -2,15 +2,15 @@
 
 2026-09-22。本次审计回答：三题 release 对照的失败是否来自本地运行器，以及固定的 24 道题是否具备开展新一轮比较的条件。审计只使用保留轨迹、确定性本地 provider、原生参考解与不计分的诊断，没有追加真实模型请求。原六次筛查、两次委派、失败准入及历史费用保持不变，见[Boyue 实验报告](2026-09-21-boyue-coding-observations.md)。
 
-审计发现四处本地评测器缺陷，并发现一道原生参考解在现有依赖下失败。因此不能把三道题的 0 分全部归因于模型，也不能据此宣称整个 benchmark 已经可靠。修复、原题检查与产品质量是三个独立结论；24 题检查完成后仍须披露已知失败，不能用后续成功覆盖它们。
+审计发现环境、请求关联、调度和清理准入四类问题，共六处本地评测器缺陷，并发现两道原生参考解在现有依赖下失败。因此不能把三道题的 0 分全部归因于模型，也不能据此宣称整个 benchmark 已经可靠。修复、原题检查与产品质量是三个独立结论；24 题检查已经完成：原生参考解 22/24 通过，两侧镜像预检 47/48 通过。已知失败保持原样，后续独立诊断不替换首次结果。
 
 ## 审计边界
 
 被测产品固定为 v3.0.22 `024dd683e091d9fce3d1d26b79b2e188ce636b52` 与候选 `ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05`，没有追赶 dev 或修改产品执行循环。新的基础设施控制采用原生 Linux amd64、full runtime、synergy-max、JIT 开启。确定性 provider 的 usage 是合成测试数据，不是 Boyue token 或账单；其成功也不预测真实模型正确率。
 
-三道已完成原题 oracle 只读导入；其余 21 道各执行一次原生 OracleAgent。另在全部 24 个原题镜像上，对两个固定产品各做一次确定性 doctor，共计划 48 次免费预检。这些预检使用新的临时环境，只验证原生 CLI、网络、工具、导出和请求核对，不执行原题解题过程，也不会向模型环境提供参考答案。
+三道已完成原题 oracle 只读导入；其余 21 道各执行一次原生 OracleAgent。另在全部 24 个原题镜像上，对两个固定产品各做一次确定性 doctor，共完成 48 次免费预检。这些预检使用新的临时环境，只验证原生 CLI、网络、工具、导出和请求核对，不执行原题解题过程，也不会向模型环境提供参考答案。
 
-参考解审计、原生环境控制和全镜像 doctor 分别冻结各自 evaluator；它们不是同一批正式评分。串行调度和 doctor 门禁修复发生在部分控制启动后，运行中的冻结 evaluator 不被替换。新的门禁可以只读检查旧证据，但不能重写旧 probe 状态。
+参考解审计、原生环境控制和全镜像 doctor 分别冻结各自 evaluator；它们不是同一批正式评分。串行调度、doctor 门禁、清理错误传播及 oracle 门禁修复发生在不同控制启动后，运行中的冻结 evaluator 不被替换。新的门禁可以只读检查旧证据，但不能重写旧 probe 状态。
 
 ## 已确认的本地缺陷
 
@@ -20,6 +20,8 @@
 | 相同请求体没有独立派发身份  | dasel 候选三个完成请求的请求体相同，唯一关联保持 245/248；聚合用量相等不能区分每次派发              | 网关返回原生公开导出已支持的 `X-Request-ID`，同时核对请求体与逐请求 usage；相同请求、交换 usage、重复或错误 ID、缺失请求体均有回归      |
 | 并发 1 不遵守冻结清单顺序   | 旧六次筛查实际启动顺序为 `0, 2, 4, 1, 3, 5`；每对各侧仍有先后，但配对间交错                         | 串行路径直接遍历完整清单；完成项恢复后不重复执行，0 分不会改变顺序。原始顺序另行保留                                                    |
 | doctor 忽略无效终态证据     | bandit 基线工具往返及用量核对完成，但容器清理超时，`valid: false` 与 doctor 的 `completed` 同时出现 | 门禁要求终态证据有效且无基础设施错误。真实失败证据经新门禁只读核查被拒绝，原文件哈希不变；有效 partial recording 和未知中断用量保持原样 |
+| Docker 普通清理错误被吞掉   | Pier 只记录非零 stop/down 错误，不向调用者传播；独立回归注入退出码 17 时没有终态失败记录            | 评测器执行最小清理路径并传播失败；保护共享镜像，诊断失败后仍执行清理。新身份的 bandit 两侧诊断均通过，旧失败不被覆盖                    |
+| oracle 汇总遗漏清理失败     | 原生得分为 1、清理失败标记存在时，汇总及只读导入仍可显示 passed                                     | 检查已校验的清理标记并拒绝审计准入，保留原生 reward 和历史 recorded_status；失败回归修复后通过                                          |
 
 修复不改变原题 instruction、判题器、期限、评分或产品提示词。实现与取舍见[决策记录](../../decisions/implemented/bug-fix/2026-09-22-benchmark-execution-evidence-integrity.md)，漏测原因见[事后分析](../../postmortem/0022-benchmark-execution-evidence-integrity.md)。
 
@@ -43,15 +45,58 @@ HOME 缺陷证明基线遇到的部分依赖错误由适配器引入，因而旧
 
 参考解日志记录安装了未锁定的 `planarity 1.0.0` 和 `networkx 3.7`。pyknotid 0.5.3 的[图重建代码](https://github.com/SPOCKnots/pyknotid/blob/441c807dbec2ee32e1da572e24e58d52a4eb7afa/pyknotid/representations/representation.py#L338)访问 `pos/start/end`；[planarity 1.0.0](https://pypi.org/project/planarity/1.0.0/)实际返回 `vertex_position/vertex_start/vertex_end`。独立、不计分的诊断使用原源码及相同三叶结交叉数据，复现 `KeyError: 'pos'`。两次先行诊断被旧字符串解析器阻断，也保留记录；没有重跑原生 oracle 或挑选新 reward。
 
-原生报告未完整展开嵌套 pytest 的异常栈，独立诊断使用 Python 3.12，而原题环境为 Python 3.13，因此该诊断证明具体依赖兼容缺陷，不能替代原生失败记录或完整参考解复验。任务源码固定不代表运行时下载的传递依赖也固定。参考解失败不证明任务不可解或判题器错误；模型仍可能修复兼容性。这道题在依赖问题得到版本化处理和新验证前，不能作为已通过可靠性检查的题目。
+原生报告未完整展开嵌套 pytest 的异常栈。首次独立诊断使用 Python 3.12；随后在原题相同镜像、Python 3.13.7、numpy 2.3.0、networkx 3.7、planarity 1.0.0 下，使用只读原源码再次复现同一 KeyError。这些不计分诊断证明具体依赖兼容缺陷，不能替代原生失败记录。任务源码固定不代表运行时下载的传递依赖也固定。参考解失败不证明任务不可解或判题器错误；模型仍可能修复兼容性。这道题在依赖问题得到版本化处理和新验证前，不能作为已通过可靠性检查的题目。
+
+另建的 `build-cython-ext-planarity06` 参考解诊断只修改 `solution/solve.sh` 的依赖安装行，明确固定 `planarity==0.6`；原题 instruction、镜像配方、资源、期限及 verifier 全部逐文件保持一致。原仓库测试在该诊断中通过，但固定的 setuptools 80.9.0 安装出现“找不到匹配版本”，构建阶段随后缺少 setuptools，五项扩展检查失败，最终 6/11、reward 0。公共包元数据仍提供支持 Python >=3.9 的该版本，安装失败的具体原因尚未确定，不能直接断言网络故障。该诊断有独立任务摘要和实验身份，不替换原题 10/11 的结果，也不证明依赖修复已经完整通过。
+
+该诊断在原生判题与报告写入后，外层命令返回 143，原因未确定；原生结果没有 timeout 或 exception。冻结 evaluator 的只读导入返回 0，另一项新的最小原生 oracle CLI 控制也返回 0。没有重跑该失败诊断，不能把外层退出码异常解释成旧六次模型任务被提前终止，也不能声称异常原因已经解决。
+
+`mcmc-sampling-stan` 的原生参考解约 399 秒结束，未触及 1800 秒解题期限；判题实际启动六项检查，2/6、reward 0，原生 exception 与清理错误均为空。参考解固定了部分 R 包，却下载了未固定的 RcppParallel 6.2.1；其安装明确要求 CMake >=3.5，而原题镜像与参考解均未安装 CMake。RcppParallel 失败进一步阻止 StanHeaders/rstan 安装，`library(rstan)` 失败后参考解停止，后续模型文件和分析脚本没有生成。两项后验均值检查单独通过，不等于完成整题。该问题来自参考解依赖准备；没有模型参与，也没有扩大期限或重跑原题。题源和摘要保留在 [local-24 清单](../../../benchmark/suites/local-24.json)。
 
 12 道 DeepSWE 原题默认禁止外网，解题与 verifier 期限分别为 10800、1800 秒，使用独立 verifier；12 道 Terminal-Bench 原题允许外网，原生期限为 900–2400 秒。审计保留这些声明，不为完成参考解扩大期限，也不把依赖下载或自然到期改成模型错误。
 
 ## 验证状态
 
-Python 基础套件 391 passed、29 skipped；跳过项为独立启用的 Docker/原生集成。Bun runtime 套件 28 passed；Ruff、mypy 与全部 17 项本地静态门禁通过。两版本各两项真实原生 CLI 控制通过，每项覆盖两个确定性模型。初始准备锁冲突和夹具错误的失败记录均保留，没有计入真实模型费用。
+原生 OracleAgent 没有生成解题脚本的 exit-code 文件，`solution_exit_code` 保持 null，不解释为成功退出。原生 exception 为空也不能覆盖日志中的安装或脚本错误；实际 reward、测试启动、失败断言、清理标记和归档分别核对。
 
-全题参考解与 48 次镜像预检仍在执行，完整逐题清单在审计结束后补入。已知的 bandit 清理失败及 build-cython-ext 参考解失败阻止无条件准入。正常退出、reward、实际测试启动、清理和归档/usage 分别核查，不以单个 summary 的 passed/completed 字段替代。
+Python 基础套件 394 passed、29 skipped；跳过项为独立启用的 Docker/原生集成。Bun runtime 套件 28 passed；Ruff、mypy 与全部 17 项本地静态门禁通过。两版本各两项真实原生 CLI 控制通过，每项覆盖两个确定性模型。初始准备锁冲突和夹具错误的失败记录均保留，没有计入真实模型费用。
+
+48 次镜像预检均已完成；按独立证据门禁为 47/48，不能采用冻结 driver 的 48 passed 作为准入结论。bandit 基线仍保留清理失败；新增独立诊断的两侧均通过，不替换首次结果。全部 24 道原生参考解已经核对，22 道通过；参考解与首次两侧预检都通过的交集为 21 道。两道参考解失败与未定位的诊断退出异常仍阻止无条件准入。正常退出、reward、实际测试启动、清理和归档/usage 分别核查，不以单个 summary 的 passed/completed 字段替代。
+
+## 逐题原生控制结果
+
+以下是参考解与镜像预检，不是两个产品的 24 题模型得分。星号表示只读导入此前保留的原生 oracle；其余各执行一次原生参考解。所有题目摘要、终态文件哈希、预检归档内容及完成请求 usage 已独立校验，两个固定产品的实际任务与代理镜像一致。原 48 次预检的 244 个请求及新增清理诊断的 10 个请求来自确定性本地 provider，合成 usage 不计作 Boyue 消耗。
+
+| 题目                                     | 原生参考解  | v3.0.22 镜像预检 | 候选镜像预检 |
+| ---------------------------------------- | ----------- | ---------------- | ------------ |
+| bandit-incremental-cache-control         | 通过        | 清理超时         | 通过         |
+| boa-hierarchical-evaluation-cancellation | 通过        | 通过             | 通过         |
+| dasel-html-document-format \*            | 通过        | 通过             | 通过         |
+| drizzle-orm-window-function-builders     | 通过        | 通过             | 通过         |
+| fd-deterministic-multi-key-sorting       | 通过        | 通过             | 通过         |
+| katex-multicolumn-array-spans            | 通过        | 通过             | 通过         |
+| kcp-go-multiplexed-kcp-streams           | 通过        | 通过             | 通过         |
+| kgateway-consistent-hash-policy          | 通过        | 通过             | 通过         |
+| mobly-grouped-test-barriers              | 通过        | 通过             | 通过         |
+| sqlfmt-create-table-ddl-formatting       | 通过        | 通过             | 通过         |
+| superjson-error-stack-serialization \*   | 通过        | 通过             | 通过         |
+| valibot-recursive-schema-composition     | 通过        | 通过             | 通过         |
+| adaptive-rejection-sampler               | 通过        | 通过             | 通过         |
+| build-cython-ext                         | 失败，10/11 | 通过             | 通过         |
+| compile-compcert                         | 通过        | 通过             | 通过         |
+| feal-linear-cryptanalysis                | 通过        | 通过             | 通过         |
+| financial-document-processor             | 通过        | 通过             | 通过         |
+| large-scale-text-editing \*              | 通过        | 通过             | 通过         |
+| mailman                                  | 通过        | 通过             | 通过         |
+| make-doom-for-mips                       | 通过        | 通过             | 通过         |
+| mcmc-sampling-stan                       | 失败，2/6   | 通过             | 通过         |
+| openssl-selfsigned-cert                  | 通过        | 通过             | 通过         |
+| path-tracing-reverse                     | 通过        | 通过             | 通过         |
+| polyglot-c-py                            | 通过        | 通过             | 通过         |
+
+所有原题的判题都有实际测试启动证据。Cython 与 MCMC/Stan 的判题完成且原生 reward 为 0；没有将安装失败或部分检查成功改判。path-tracing 的判题环境下载 Python 和依赖后，实际三项检查约 1.7 秒完成；准备耗时与功能耗时应分开解释，不能据此放宽原期限。
+
+收集 21 道新增原题 oracle 的进程最终正常返回 0，三道历史 oracle 只读导入。另一个参考解诊断的退出码 143 仍单独保留；主清单没有因此缺题或重复执行。当前免费审计没有增加 Boyue 执行，历史 1259 个请求、100551523 个已知 token、18 个 usage 未知请求、两条未确认派发及三个关联歧义均不变。
 
 ## 对完整 24 题实验的建议
 
@@ -62,3 +107,7 @@ Python 基础套件 391 passed、29 skipped；跳过项为独立启用的 Docker
 已知原题缺陷须先选择处理方式：修复为明确命名的新任务版本并重新验证，或预先将它列为不可可靠评分的任务且保留完整原清单。不能静默修改官方判题、删掉失败题或将余下题的分母写成 24。外部依赖的修复是否仍可称原题、需要哪些新 oracle 控制，应在新实验说明中明确。
 
 即使 24 题每侧一次全部完成，它也只是固定本地样本的描述性配对；自然模型波动、release 与候选之间的其他变化和未知 usage 仍限制因果与统计结论。token 只在独立核对完整时给出精确总量，其他情况下保留已知下界。PR 的产品质量验收与研究是否允许收集 0 分样本分开判断，PR 保持 Draft。
+
+## 发布验证
+
+修复代码及阶段报告先前已通过正常 hooks 发布。阶段 HEAD 的分支 CI 中，长轨迹 completed 用例达到 30 分钟任务上限，导致汇总检查失败；GitHub 返回该作业日志 BlobNotFound，内部原因未确定。本次没有改动该产品测试或扩大其期限。最终提交仍须检查其自身 CI；分支检查也不代表已验证与最新 dev 的合并结果。

@@ -89,16 +89,59 @@ async def test_native_execution_outlives_preparation_ceiling(tmp_path, monkeypat
 
 
 async def test_diagnostic_failure_cannot_prevent_environment_stop(monkeypatch):
-    from pier.environments.docker.docker import DockerEnvironment
-
     env = object.__new__(CachedDockerEnvironment)
     env._egress_proxy_compose_path = None
+    env._keep_containers = False
     monkeypatch.setattr(env, "_compose_command", AsyncMock(side_effect=TimeoutError("logs timed out")))
+    monkeypatch.setattr(env, "prepare_logs_for_host", AsyncMock())
+    monkeypatch.setattr(env, "_cleanup_resources_compose_file", lambda: None)
     stop = AsyncMock()
-    monkeypatch.setattr(DockerEnvironment, "stop", stop)
+    monkeypatch.setattr(env, "_run_docker_compose_command", stop)
     with pytest.raises(TimeoutError):
         await env.stop(delete=False)
-    stop.assert_awaited_once_with(delete=False)
+    stop.assert_awaited_once_with(["down"])
+
+
+@pytest.mark.parametrize("keep_containers", [False, True])
+async def test_failed_native_teardown_is_retained_by_trial(tmp_path, monkeypatch, keep_containers):
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    from synergy_bench import environment
+    from synergy_bench.storage import read_json
+    from synergy_bench.trial import BenchmarkTrial
+
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    paths = TrialPaths(trial_dir=tmp_path / "trial")
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name="cleanup-fixture",
+        session_id="cleanup-fixture",
+        trial_paths=paths,
+        task_env_config=EnvironmentConfig(),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/amd64",
+        keep_containers=keep_containers,
+    )
+    observed = []
+
+    async def compose(args, *, log, **kwargs):
+        observed.append(args)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("native teardown failed\n")
+        return 17 if args[-1] in {"down", "stop"} else 0
+
+    monkeypatch.setattr(environment, "run_process", compose)
+    monkeypatch.setattr(env, "prepare_logs_for_host", AsyncMock())
+    trial = object.__new__(BenchmarkTrial)
+    trial._cleanup_seconds = 1
+    trial._trial_paths = paths
+    await trial._stop(env, delete=True)
+    failure = paths.agent_dir / "environment-cleanup.json"
+    assert failure.exists(), "Docker cleanup errors must reach terminal evidence"
+    assert read_json(failure) == {"status": "failed", "errors": ["RuntimeError"]}
+    assert [args[-1] for args in observed] == ["--no-color", "stop" if keep_containers else "down"]
+    assert all("--rmi" not in args and "--volumes" not in args for args in observed)
 
 
 def test_image_identity_changes_with_context_platform_and_native_limits(tmp_path):

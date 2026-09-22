@@ -54,6 +54,8 @@ def oracle_result(trial: Path, native: dict[str, Any]) -> dict[str, Any]:
     rewards = (native.get("verifier_result") or {}).get("rewards")
     reward = native_reward(rewards)
     exit_file = trial / "agent/exit-code.txt"
+    cleanup_file = trial / "agent/environment-cleanup.json"
+    cleanup_error = read_json(cleanup_file) if cleanup_file.exists() else None
     files = {}
     for file in sorted(trial.rglob("*")):
         if file.is_file() and not file.is_symlink():
@@ -65,13 +67,16 @@ def oracle_result(trial: Path, native: dict[str, Any]) -> dict[str, Any]:
     return {
         "version": 1,
         "purpose": "native_oracle_audit",
-        "status": "passed" if reward is not None and reward >= 1 and not native.get("exception_info") else "failed",
+        "status": "passed"
+        if reward is not None and reward >= 1 and not native.get("exception_info") and cleanup_error is None
+        else "failed",
         "reward": reward,
         "native_rewards": rewards,
         "solution_exit_code": int(exit_file.read_text().strip()) if exit_file.exists() else None,
         "solution_timing": native.get("agent_execution"),
         "grading": grading_evidence(trial, native),
         "native_exception": native.get("exception_info"),
+        "cleanup_error": cleanup_error,
         "files": files,
         "trial_directory": trial.name,
         "ended_at": time.time(),
@@ -213,8 +218,9 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                         **await asyncio.to_thread(oracle_result, trial_dir, native),
                         "task": task["id"],
                         "task_digest": task["digest"],
-                        "cleanup_error": cleanup_error,
                     }
+                    if cleanup_error is not None:
+                        result.update(status="failed", cleanup_error=cleanup_error)
                     if (attempt / "resources.json").exists():
                         result["resources"] = read_json(attempt / "resources.json")
                     atomic_json(file, result)
@@ -264,6 +270,12 @@ def report_oracle(root: Path) -> dict[str, Any]:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != expected["sha256"]:
                     raise ValueError("Oracle evidence changed")
         reward = native_reward(recorded.get("native_rewards"))
+        cleanup_file = trial / "agent/environment-cleanup.json"
+        cleanup_error = recorded.get("cleanup_error")
+        if cleanup_file.exists():
+            if "agent/environment-cleanup.json" not in recorded["files"]:
+                raise ValueError("Oracle cleanup evidence is not in the retained file inventory")
+            cleanup_error = read_json(cleanup_file)
         native_file = trial / "result.json"
         grading = grading_evidence(trial, read_json(native_file)) if native_file.exists() else recorded.get("grading")
         rows.append(
@@ -273,8 +285,9 @@ def report_oracle(root: Path) -> dict[str, Any]:
                 "recorded_grading": recorded.get("grading"),
                 "grading": grading,
                 "reward": reward,
+                "cleanup_error": cleanup_error,
                 "status": "passed"
-                if reward is not None and reward >= 1 and not recorded.get("native_exception")
+                if reward is not None and reward >= 1 and not recorded.get("native_exception") and cleanup_error is None
                 else "failed",
                 "source_record_sha256": hashlib.sha256(file.read_bytes()).hexdigest(),
             }

@@ -14,6 +14,10 @@ The six pilot trials started in plan-index order `0, 2, 4, 1, 3, 5` even though 
 
 During the subsequent free task-image audit, the bandit baseline probe completed its tool roundtrip and request reconciliation, then hit a container-cleanup timeout. The retained evidence correctly reported `environment-cleanup_failed` and `valid: false`, but doctor still returned `completed`. The owned containers were later absent; their eventual removal does not erase the timeout or establish why it occurred. This finding blocks an unconditional readiness claim and is preserved separately from task quality.
 
+Following the cleanup path exposed another independently reproducible omission: Pier catches a nonzero Docker teardown error and returns normally. A regression supplying exit 17 for the owned project's stop/down command produced no cleanup-failure record before the fix. This is distinct from the observed bandit timeout, which was already recorded; it is not asserted to be that timeout's cause.
+
+The oracle summary had a related gap: it checked native exceptions and the exception raised by the final environment audit, but that audit writes a failure marker instead of raising ordinary cleanup errors. A reference could therefore keep both reward 1 and audit status passed with a retained cleanup-failure file. The regression preserves reward 1 while rejecting audit admission, including read-only imports of historical evidence.
+
 ## Timeline
 
 - 2026-09-21: the frozen pilot and delegated trials completed; unsuccessful native scores, unknown usage and the ambiguous association were retained.
@@ -31,6 +35,8 @@ The gateway generated a unique dispatch ID but exposed it only in a custom heade
 
 The scheduler created a coroutine per pair before acquiring a shared one-slot resource pool. Waiting first sides entered the slot ahead of a just-completed pair's second side. Resource serialization prevented overlap but did not preserve list order. Doctor separately checked process completion, tool output, usage and archive validity without checking the collected terminal evidence's validity or infrastructure failure.
 
+The environment reused Pier's best-effort teardown even though benchmark admission requires failure evidence. Timeout cancellation escaped its ordinary exception handler, but a nonzero Compose exit did not. The evaluator owns the narrow teardown sequence and propagates its errors without removing cached images or preventing teardown when diagnostics fail.
+
 ## Guardrails added
 
 - [Adapter subprocess regression](../../benchmark/test/task-environment.test.ts) preserves task HOME/XDG and isolates Synergy data.
@@ -38,6 +44,8 @@ The scheduler created a coroutine per pair before acquiring a shared one-slot re
 - [Gateway](../../benchmark/test/test_gateway.py) and [reconciliation](../../benchmark/test/test_usage.py) regressions retain unique response IDs and reject contradictory bodies, swapped usage and duplicates while keeping early cancellation unknown.
 - [Scheduling regressions](../../benchmark/test/test_runner.py) verify actual serial order, preservation of completed attempts and continued observation after quality failures.
 - [Doctor regressions](../../benchmark/test/test_maintenance.py) reject cleanup, export and infrastructure failures while preserving valid partial recording and unknown interrupted usage.
+- [Environment regressions](../../benchmark/test/test_environment.py) retain failed stop/down exits in trial evidence and ensure failed diagnostics still reach owned teardown.
+- [Oracle regressions](../../benchmark/test/test_oracle.py) preserve native reward separately from cleanup admission and reject failed cleanup during read-only historical imports.
 - The [benchmark workflow](../../.synergy/skill/develop-benchmark/SKILL.md) requires task-environment controls independently of native oracle checks and audits order and cleanup. The [decision record](../decisions/implemented/bug-fix/2026-09-22-benchmark-execution-evidence-integrity.md) defines the repair and historical evidence policy.
 
 ## Lessons

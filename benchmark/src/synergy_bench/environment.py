@@ -18,7 +18,7 @@ from .process import run_preparation_process, run_process
 from .storage import atomic_json, digest, read_json
 
 # Pier 0.3.1 Docker lifecycle extension. See third_party/pier/NOTICE.
-# Preserve its native resource, network and build recipes; own only cache identity and inference routing.
+# Preserve its native resource, network and build recipes; own cache identity, inference routing and teardown evidence.
 IMAGE_OWNER = "synergy-benchmark-image-v1"
 
 
@@ -141,7 +141,14 @@ class CachedDockerEnvironment(DockerEnvironment):
                 )
             await self._compose_command(["logs", "--no-color"], check=False, timeout_sec=20)
         finally:
-            await super().stop(delete=delete)
+            try:
+                await self.prepare_logs_for_host()
+            finally:
+                try:
+                    # Pier swallows teardown errors; benchmark evidence must retain them without deleting shared images.
+                    await self._run_docker_compose_command(["stop" if self._keep_containers else "down"])
+                finally:
+                    self._cleanup_resources_compose_file()
 
     async def _image_id(self, tag: str) -> str | None:
         try:

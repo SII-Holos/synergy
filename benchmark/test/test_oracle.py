@@ -38,6 +38,32 @@ def test_oracle_uses_primary_reward_without_discarding_auxiliary_scores(tmp_path
     assert result["native_rewards"] == rewards
 
 
+def test_oracle_cleanup_failure_blocks_admission_without_changing_native_reward(tmp_path):
+    from synergy_bench.oracle import report_oracle
+    from synergy_bench.storage import atomic_json
+
+    root = tmp_path / "audit"
+    trial = root / "oracles/0000/attempt-001/native"
+    failure = {"status": "failed", "errors": ["TimeoutError"]}
+    atomic_json(trial / "agent/environment-cleanup.json", failure)
+    result = oracle_result(trial, {"verifier_result": {"rewards": {"reward": 1}}})
+    assert result["reward"] == 1
+    assert result["status"] == "failed"
+    assert result["cleanup_error"] == failure
+
+    atomic_json(root / "owner.json", {"kind": "synergy-benchmark-oracle", "version": 1})
+    atomic_json(root / "plan.json", {"tasks": [{"id": "task"}]})
+    record = trial.parent / "oracle.json"
+    atomic_json(record, {**result, "task": "task", "status": "passed", "cleanup_error": None})
+    before = record.read_bytes()
+    row = report_oracle(root)["rows"][0]
+    assert row["recorded_status"] == "passed"
+    assert row["status"] == "failed"
+    assert row["reward"] == 1
+    assert row["cleanup_error"] == failure
+    assert record.read_bytes() == before
+
+
 def test_oracle_report_imports_raw_rewards_without_mutating_or_reexecuting(tmp_path):
     from synergy_bench.oracle import report_oracle
     from synergy_bench.storage import atomic_json

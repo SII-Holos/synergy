@@ -100,7 +100,7 @@ Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree
 
 Synergy 的两种原生适配器保留任务镜像的 `HOME` 和 XDG 环境，仅用独立 `SYNERGY_HOME` 隔离产品数据。原生 shell 的环境变量过滤属于被测产品行为；评测器不能搬移依赖缓存来掩盖环境差异。隔离原理与请求关联见[评测修复决策](../docs/decisions/implemented/bug-fix/2026-09-22-benchmark-execution-evidence-integrity.md)。
 
-并发为 1 时，正式执行严格遍历冻结 `schedule`，恢复时跳过已完成尝试并保留剩余顺序；并发大于 1 时保留各配对内的先后顺序。原生 reward 为 0 不改变调度。doctor 除核查实际工具往返、完成请求 usage 和归档外，还要求终态证据有效且无基础设施错误；清理失败不能通过预检。有效的 partial recording 与未知中断用量仍按原始口径保留。
+并发为 1 时，正式执行严格遍历冻结 `schedule`，恢复时跳过已完成尝试并保留剩余顺序；并发大于 1 时保留各配对内的先后顺序。原生 reward 为 0 不改变调度。doctor 除核查实际工具往返、完成请求 usage 和归档外，还要求终态证据有效且无基础设施错误；清理失败不能通过预检。Docker 清理的非零退出与超时都进入终态证据。原生 oracle 和只读导入同样以清理证据约束审计状态，原生 reward 单独保留。有效的 partial recording 与未知中断用量仍按原始口径保留。
 
 ## 证据与统计
 

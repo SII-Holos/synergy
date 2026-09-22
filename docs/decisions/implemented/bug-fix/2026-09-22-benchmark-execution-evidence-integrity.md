@@ -18,7 +18,11 @@ When concurrency is one, execution traverses the entire frozen schedule directly
 
 Doctor admission requires valid terminal evidence and no infrastructure error in addition to the actual tool roundtrip, completed-request usage reconciliation and verified archive. Partial recording and interrupted unknown usage remain distinct from invalid evidence; the fix does not turn missing usage into zero or reject a structurally valid partial recording merely for being partial.
 
-Implementation: [adapter](../../../../benchmark/runtime/external.mjs), [gateway](../../../../benchmark/src/synergy_bench/gateway.py), [native evidence](../../../../benchmark/src/synergy_bench/native_usage.py), [scheduler](../../../../benchmark/src/synergy_bench/runner.py), [doctor](../../../../benchmark/src/synergy_bench/maintenance.py). The incident and missed controls are recorded in the [postmortem](../../../postmortem/0022-benchmark-execution-evidence-integrity.md).
+The Docker environment propagates nonzero teardown failures to the trial's terminal evidence. Pier's best-effort stop catches those errors, so the evaluator owns this narrow teardown path: collect diagnostics, hand off log ownership, stop or remove only the owned Compose project, and release its temporary resource configuration. Diagnostic or ownership-handoff errors cannot skip teardown, and teardown never deletes cached or shared images. The existing independent cleanup deadline remains unchanged.
+
+Native oracle results and read-only imports also inspect retained cleanup-failure evidence. A successful native reward remains unchanged, but cleanup failure prevents a passed audit status. Historical imports verify the marker against the retained file inventory and preserve the recorded status separately; they do not rewrite or repeat the oracle.
+
+Implementation: [adapter](../../../../benchmark/runtime/external.mjs), [gateway](../../../../benchmark/src/synergy_bench/gateway.py), [native evidence](../../../../benchmark/src/synergy_bench/native_usage.py), [scheduler](../../../../benchmark/src/synergy_bench/runner.py), [doctor](../../../../benchmark/src/synergy_bench/maintenance.py), [Docker teardown](../../../../benchmark/src/synergy_bench/environment.py). The incident and missed controls are recorded in the [postmortem](../../../postmortem/0022-benchmark-execution-evidence-integrity.md).
 
 ## Alternatives considered
 
