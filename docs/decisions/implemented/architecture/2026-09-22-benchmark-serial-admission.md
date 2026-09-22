@@ -27,3 +27,5 @@ The policy is part of pairing conditions. Historical policy omissions remain omi
 ## Consequences
 
 Strict experiments may stop before their planned sample size when evidence becomes invalid. Continuation requires resolving the failure under an explicit new experiment decision, while retaining prior costs and results. Reading complete archives adds local validation work after each execution; the original solving and verifier deadlines are unchanged. The default policy remains available for general failure inventories and other harnesses.
+
+The [local-24 stopped-study audit](../../../research/context-efficiency/2026-09-22-local24-v7-stopped-study.md) records real-provider validation of the cleanup rejection and subsequent dispatch stop. Eventual container removal does not erase a retained cleanup failure, and completed tool checks do not supply missing formal task results.

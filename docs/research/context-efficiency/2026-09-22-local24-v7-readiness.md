@@ -2,6 +2,8 @@
 
 This records free infrastructure admission for the [prospective paired study](2026-09-22-local24-v6-protocol.md), before real-provider preflight and scoring. It is not evidence of model success.
 
+The subsequent [terminal study report](2026-09-22-local24-v7-stopped-study.md) records a live preflight cleanup failure and all 48 formal cells remaining unstarted; this preparation inventory does not override that outcome.
+
 The frozen schedule contains 24 task pairs and 48 formal cells. Plan digest: `a5b581efd3c086b0b3575a0c1539a0d47b0ac101436b0fbcdca4f8f379582191`. Evaluator Python digest: `b69016eb308334c4b6b3c7859a893cf6b15f5fbfc3ae018f1d703932a861f20d`; runtime digest: `377e08b5a52a29bcb735de49b8e618b3c928d2df6928756bb54ee3c8803886d1`. Solving and verification each use 10800 seconds.
 
 All 24 native references passed with test-start evidence and verified file hashes. Twenty-two references reuse byte-identical task inputs, retaining their historical evaluator and deadline metadata. The two final dependency variants passed new native references. Forty-two historical product/tool checks were independently revalidated; twelve new checks exercised both products with two deterministic models on Cython, Stan and bandit. All 24 task images completed prewarming. No paid model request was sent before this inventory.
