@@ -59,7 +59,10 @@ export type FileViewState = {
   imageScaleMode?: "fit" | "actual"
 }
 
+export type FileDraft = { content: string; baseContent: string; expectedVersion: string; revision: number }
+
 export type FileDocumentState = {
+  draft?: FileDraft
   path: string
   node?: WorkspaceFileNode
   content?: WorkspaceFileReadResult
@@ -67,7 +70,7 @@ export type FileDocumentState = {
   stale: boolean
   deleted: boolean
   error?: string
-  version?: { mtime: number; size: number }
+  version?: { mtime: number; size: number; contentVersion?: string }
 }
 
 export type PdfDocumentState = {
@@ -232,6 +235,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   const documentAccess = new Map<string, number>()
   const documentGeneration = new Map<string, number>()
   const documentInflight = new Map<string, Promise<void>>()
+  const forcedDocuments = new Map<string, Promise<void>>()
   const pdfAccess = new Map<string, number>()
   const pdfGeneration = new Map<string, number>()
   const pdfInflight = new Map<string, Promise<void>>()
@@ -349,7 +353,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     let bytes = entries.reduce((total, document) => total + documentBytes(document.content), 0)
     if (entries.length <= MAX_DOCUMENTS && bytes <= MAX_DOCUMENT_BYTES) return
     const candidates = entries
-      .filter((document) => document.path !== activePath() && !protectedPaths.has(document.path))
+      .filter((document) => !document.draft && document.path !== activePath() && !protectedPaths.has(document.path))
       .toSorted((a, b) => (documentAccess.get(a.path) ?? 0) - (documentAccess.get(b.path) ?? 0))
     let count = entries.length
     for (const document of candidates) {
@@ -543,7 +547,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     setStore("documents", path, { path, loading: false, stale: true, deleted: false })
   }
 
-  const load = (input: string, options?: { force?: boolean }) => {
+  const load = (input: string, options?: { force?: boolean }): Promise<void> => {
     const path = normalize(input)
     if (disposed || !path) return Promise.resolve()
     ensureDocument(path)
@@ -551,7 +555,17 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     const current = store.documents[path]
     if (!options?.force && current?.content && !current.stale) return Promise.resolve()
     const existing = documentInflight.get(path)
-    if (existing) return existing
+    if (existing) {
+      if (!options?.force) return existing
+      const queued = forcedDocuments.get(path)
+      if (queued) return queued
+      const next = existing.then(() => {
+        forcedDocuments.delete(path)
+        return load(input, options)
+      })
+      forcedDocuments.set(path, next)
+      return next
+    }
     const generation = (documentGeneration.get(path) ?? 0) + 1
     documentGeneration.set(path, generation)
     setStore(
@@ -582,7 +596,12 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
           loading: false,
           stale: false,
           deleted: false,
-          version: { mtime: content.node.mtime, size: content.node.size },
+          version: {
+            mtime: content.node.mtime,
+            size: content.node.size,
+            contentVersion: content.kind === "binary" ? undefined : content.contentVersion,
+          },
+          error: undefined,
         })
         setStore("nodes", content.node.path, content.node)
         pruneDocuments()
@@ -618,6 +637,30 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     })().finally(() => documentInflight.delete(path))
     documentInflight.set(path, promise)
     return promise
+  }
+
+  let draftRevision = 0
+  const draftFor = (input: string) => {
+    const path = normalize(input)
+    return path ? store.documents[path]?.draft : undefined
+  }
+  const beginDraft = (input: string) => {
+    const path = normalize(input)
+    if (!path) throw new Error("Invalid file path")
+    if (store.documents[path]?.draft) return
+    const content = store.documents[path]?.content
+    if (content?.kind !== "text" || !content.contentVersion || content.truncationReason === "size")
+      throw new Error("Read the complete file before editing")
+    setStore("documents", path, "draft", {
+      content: content.content,
+      baseContent: content.content,
+      expectedVersion: content.contentVersion,
+      revision: ++draftRevision,
+    })
+  }
+  const discardDraft = (input: string) => {
+    const path = normalize(input)
+    if (path && store.documents[path]) setStore("documents", path, "draft", undefined)
   }
 
   const openWorkspaceFile = (input: string) => {
@@ -894,6 +937,21 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     workspace,
     resourceKey,
     reference,
+    hasDrafts: () => Object.values(store.documents).some((document) => !!document.draft),
+    draft: {
+      get: draftFor,
+      begin: beginDraft,
+      discard: discardDraft,
+      dirty: (input: string) => {
+        const draft = draftFor(input)
+        return !!draft && draft.content !== draft.baseContent
+      },
+      update(input: string, content: string) {
+        beginDraft(input)
+        const path = normalize(input)!
+        setStore("documents", path, "draft", { content, revision: ++draftRevision })
+      },
+    },
     ready: () => view().ready() && scopeReady(),
     normalize,
     activePath,
@@ -1006,13 +1064,15 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       const path = normalize(input)
       if (!path) throw new Error("Invalid file path")
       const document = store.documents[path]
-      const expectedMtime = document?.version?.mtime
+      const editorDraft = document?.draft ? { ...document.draft } : undefined
+      const expectedVersion = editorDraft?.expectedVersion ?? document?.version?.contentVersion
+      if (!expectedVersion) throw new Error("Read the complete file before saving")
       const response = await sdk.client.workspace.files.write({
         ...reference(),
         workspaceFileWriteFileInput: {
           path,
           content,
-          expectedMtime,
+          expectedVersion,
           conflictPolicy: options?.overwrite ? "overwrite" : "fail",
         },
       })
@@ -1027,17 +1087,24 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
             draft.content = {
               ...draft.content,
               content,
+              contentVersion: result.contentVersion,
               truncated: false,
               truncationReason: undefined,
               totalBytes: result.size,
               lineCount: content.split(/\r?\n/).length,
             }
           }
-          draft.version = { mtime: result.mtime, size: result.size }
+          draft.version = { mtime: result.mtime, size: result.size, contentVersion: result.contentVersion }
+          if (draft.draft?.revision === editorDraft?.revision) draft.draft = undefined
+          else if (draft.draft && draft.draft.expectedVersion === expectedVersion) {
+            draft.draft.baseContent = content
+            draft.draft.expectedVersion = result.contentVersion
+          }
           draft.stale = false
           draft.error = undefined
         }),
       )
+      await load(path, { force: true })
       return result
     },
   }
@@ -1060,7 +1127,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const prune = (keep?: string) => {
       for (const [key, entry] of entries) {
         if (entries.size <= 16) break
-        if (key === keep || key === selectedKey() || entry.users) continue
+        if (key === keep || key === selectedKey() || entry.users || entry.value.hasDrafts()) continue
         entry.dispose()
         entries.delete(key)
       }

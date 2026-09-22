@@ -13,8 +13,8 @@ export namespace WorkspaceFile {
       name: z.string(),
       type: NodeType,
       size: z.number().int().nonnegative(),
-      mtime: z.number().int().nonnegative(),
-      ctime: z.number().int().nonnegative(),
+      mtime: z.number().nonnegative(),
+      ctime: z.number().nonnegative(),
       ignored: z.boolean(),
       hidden: z.boolean(),
       readonly: z.boolean(),
@@ -57,6 +57,7 @@ export namespace WorkspaceFile {
   export const ReadText = z
     .object({
       kind: z.literal("text"),
+      contentVersion: z.string().optional(),
       path: z.string(),
       node: Node,
       content: z.string(),
@@ -74,6 +75,7 @@ export namespace WorkspaceFile {
   export const ReadImage = z
     .object({
       kind: z.literal("image"),
+      contentVersion: z.string().optional(),
       path: z.string(),
       node: Node,
       content: z.string(),
@@ -190,7 +192,10 @@ export namespace WorkspaceFile {
       encoding: z.enum(["utf-8", "base64"]).default("utf-8"),
       createParents: z.boolean().default(false),
       conflictPolicy: WriteConflictPolicy.default("fail"),
-      expectedMtime: z.number().nonnegative().optional(),
+      expectedVersion: z
+        .string()
+        .regex(/^sha256:[a-f0-9]{64}$/)
+        .nullable(),
     })
     .meta({ ref: "WorkspaceFileWriteFileInput" })
   export type WriteFileInput = z.infer<typeof WriteFileInput>
@@ -201,13 +206,19 @@ export namespace WorkspaceFile {
       mtime: z.number().nonnegative(),
       size: z.number().int().nonnegative(),
       existed: z.boolean(),
+      contentVersion: z.string(),
     })
     .meta({ ref: "WorkspaceFileWriteResult" })
   export type WriteFileResult = z.infer<typeof WriteFileResult>
 
   export const WriteFileError = z
     .object({
-      name: z.enum(["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]),
+      name: z.enum([
+        "WorkspaceFileAccessDeniedError",
+        "WorkspaceFileWriteConflictError",
+        "WorkspaceFileTooLargeError",
+        "WorkspaceFileInvalidContentError",
+      ]),
       data: z.object({ message: z.string() }),
     })
     .meta({ ref: "WorkspaceFileWriteError" })

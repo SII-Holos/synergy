@@ -32,7 +32,7 @@ test("local edit creates, authorizes, replaces and reports the actual file delta
         const created = await edit.execute({ filePath, oldString: "", newString: "first\nsecond\n" }, context)
         expect(await Bun.file(filePath).text()).toBe("first\nsecond\n")
         expect(created.metadata.filediff.additions).toBe(2)
-        await FileTime.read(context.sessionID, filePath)
+        FileTime.read(context.sessionID, filePath, await Bun.file(filePath).bytes())
         const changed = await edit.execute({ filePath, oldString: "second", newString: "updated" }, context)
         expect(await Bun.file(filePath).text()).toBe("first\nupdated\n")
         expect(changed.metadata.filediff).toMatchObject({ additions: 1, deletions: 1 })

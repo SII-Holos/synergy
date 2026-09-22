@@ -1738,7 +1738,7 @@ export class Files extends HeyApiClient {
   /**
    * Write workspace file
    *
-   * Write content to an existing workspace file with optional optimistic concurrency control.
+   * Create or replace a workspace file using a content-version precondition and atomic local replacement.
    */
   public write<ThrowOnError extends boolean = false>(
     parameters: {

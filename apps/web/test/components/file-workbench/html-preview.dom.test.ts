@@ -33,6 +33,7 @@ beforeAll(async () => {
       `
         export const FileWorkspaceProvider = (props) => props.children
         export const useFile = () => ({
+          draft: { get: () => undefined, dirty: () => false, begin() {}, discard() {} },
           workspace: { id: "wsp_demo", generation: 1, scopeID: "home", path: "/workspace/demo", type: "directory" },
           reference: () => ({ workspaceID: "wsp_demo", workspaceGeneration: 1 }),
           resourceKey: "demo",
@@ -176,7 +177,7 @@ beforeAll(async () => {
     cacheDir: path.join(fixtureDirectory, ".vite"),
     server: {
       host: "127.0.0.1",
-      port: 5217,
+      port: 0,
       strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
     },
@@ -205,7 +206,7 @@ beforeAll(async () => {
     if (pageError) throw new Error(`file workbench fixture page failed to render: ${pageError.stack}`, { cause: error })
     throw error
   }
-})
+}, 30_000)
 
 afterAll(async () => {
   await page?.close()

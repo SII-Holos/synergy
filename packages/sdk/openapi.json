@@ -15398,7 +15398,7 @@
           }
         ],
         "summary": "Write workspace file",
-        "description": "Write content to an existing workspace file with optional optimistic concurrency control.",
+        "description": "Create or replace a workspace file using a content-version precondition and atomic local replacement.",
         "responses": {
           "200": {
             "description": "Workspace file write result",
@@ -49853,14 +49853,12 @@
             "maximum": 9007199254740991
           },
           "mtime": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
+            "type": "number",
+            "minimum": 0
           },
           "ctime": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
+            "type": "number",
+            "minimum": 0
           },
           "ignored": {
             "type": "boolean"
@@ -49925,7 +49923,12 @@
         "properties": {
           "name": {
             "type": "string",
-            "enum": ["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]
+            "enum": [
+              "WorkspaceFileAccessDeniedError",
+              "WorkspaceFileWriteConflictError",
+              "WorkspaceFileTooLargeError",
+              "WorkspaceFileInvalidContentError"
+            ]
           },
           "data": {
             "type": "object",
@@ -49971,6 +49974,9 @@
           "kind": {
             "type": "string",
             "const": "text"
+          },
+          "contentVersion": {
+            "type": "string"
           },
           "path": {
             "type": "string"
@@ -50020,6 +50026,9 @@
           "kind": {
             "type": "string",
             "const": "image"
+          },
+          "contentVersion": {
+            "type": "string"
           },
           "path": {
             "type": "string"
@@ -50346,9 +50355,12 @@
           },
           "existed": {
             "type": "boolean"
+          },
+          "contentVersion": {
+            "type": "string"
           }
         },
-        "required": ["path", "mtime", "size", "existed"]
+        "required": ["path", "mtime", "size", "existed", "contentVersion"]
       },
       "WorkspaceFileWriteFileInput": {
         "type": "object",
@@ -50373,12 +50385,19 @@
             "type": "string",
             "enum": ["fail", "overwrite"]
           },
-          "expectedMtime": {
-            "type": "number",
-            "minimum": 0
+          "expectedVersion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["path", "content"]
+        "required": ["path", "content", "expectedVersion"]
       },
       "WorkspaceInfo": {
         "type": "object",

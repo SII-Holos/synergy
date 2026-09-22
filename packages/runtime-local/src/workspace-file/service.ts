@@ -1,3 +1,4 @@
+import { FileMutation } from "../file/mutation"
 import { fileURLToPath } from "url"
 import fs from "fs/promises"
 import path from "path"
@@ -31,10 +32,6 @@ function isControlPath(input: string) {
   return /[\x00-\x1f]/.test(input)
 }
 
-async function realpathIfExists(input: string) {
-  return fs.realpath(input).catch(() => undefined)
-}
-
 function displayRelative(input: string) {
   const rel = normalizeSlashes(path.relative(root(), input))
   return rel === "." ? "" : rel
@@ -47,18 +44,10 @@ function hiddenPath(relativePath: string) {
 }
 
 export namespace WorkspaceFileService {
-  export class AccessDeniedError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = "WorkspaceFileAccessDeniedError"
-    }
-  }
-
-  export class WriteConflictError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = "WorkspaceFileWriteConflictError"
-    }
+  export const AccessDeniedError = FileMutation.AccessDeniedError
+  export const WriteConflictError = FileMutation.ConflictError
+  export class InvalidContentError extends Error {
+    override name = "WorkspaceFileInvalidContentError"
   }
   export class NotFoundError extends Error {
     constructor(message: string) {
@@ -76,7 +65,7 @@ export namespace WorkspaceFileService {
 
   export function resolve(input = "") {
     if (isControlPath(input)) throw new AccessDeniedError("Path contains control characters")
-    const cleaned = stripFileProtocol(input.trim())
+    const cleaned = stripFileProtocol(input)
     const workspace = root()
     const absolute = path.resolve(workspace, cleaned || ".")
     if (!isPathContained(workspace, absolute)) {
@@ -92,16 +81,8 @@ export namespace WorkspaceFileService {
   }
 
   export async function assertRealpathInside(absolute: string) {
-    // Resolve both sides of the containment check to their physical paths.
-    // The workspace root may itself be reached through a symlink (e.g. the
-    // scope directory is a link), in which case comparing a real path
-    // against the lexical root would falsely report an escape. Falling back
-    // to the lexical root when it cannot be resolved preserves the old
-    // (conservative) behavior rather than silently widening access.
-    const [real, realRoot] = await Promise.all([realpathIfExists(absolute), realpathIfExists(root())])
-    if (real && !isPathContained(realRoot ?? root(), real)) {
-      throw new AccessDeniedError("Access denied: real path escapes workspace")
-    }
+    const [real, realRoot] = await Promise.all([FileMutation.canonical(absolute), fs.realpath(root())])
+    if (!isPathContained(realRoot, real)) throw new AccessDeniedError("Access denied: real path escapes workspace")
   }
 
   export function isIgnored(relativePath: string) {
@@ -316,12 +297,7 @@ export namespace WorkspaceFileService {
   }
 
   async function assertRealpathWritable(absolute: string) {
-    // The lexical path check above can be bypassed through a symlink whose
-    // target is a sensitive file (for example `link.env` -> `.env`). Bun.write
-    // follows symlinks, so re-check the resolved target with the same policy.
-    const real = await realpathIfExists(absolute)
-    if (!real || real === absolute) return
-    assertWritableTarget(real)
+    assertWritableTarget(await FileMutation.canonical(absolute))
   }
 
   export async function write(input: WorkspaceFile.WriteFileInput): Promise<WorkspaceFile.WriteFileResult> {
@@ -329,52 +305,23 @@ export namespace WorkspaceFileService {
     await assertRealpathInside(absolute)
     assertWritableTarget(absolute)
     await assertRealpathWritable(absolute)
-
-    let stat: Awaited<ReturnType<typeof fs.stat>>
-    try {
-      stat = await fs.stat(absolute)
-    } catch {
-      throw new NotFoundError(`File does not exist: ${displayRelative(absolute)}`)
-    }
-    const existed = true
-    if (!stat.isFile()) {
-      throw new AccessDeniedError(`Access denied: path is not a file (${displayRelative(absolute)})`)
-    }
-    if ((stat.mode & 0o200) === 0) {
-      throw new AccessDeniedError(`Access denied: file is read-only (${displayRelative(absolute)})`)
-    }
-
-    if (input.expectedMtime !== undefined && Math.abs(stat.mtimeMs - input.expectedMtime) > 1) {
-      if (input.conflictPolicy !== "overwrite") {
-        throw new WriteConflictError(`File changed on disk since it was loaded (${displayRelative(absolute)})`)
-      }
-    }
-
-    const content = input.encoding === "base64" ? Buffer.from(input.content, "base64").toString("utf-8") : input.content
-    const byteLength = Buffer.byteLength(content, "utf-8")
-    if (byteLength > WRITE_MAX_BYTES) {
+    const content = input.encoding === "base64" ? Buffer.from(input.content, "base64") : input.content
+    if (typeof content !== "string" && content.toString("base64") !== input.content)
+      throw new InvalidContentError("Content must be canonical base64")
+    const byteLength = Buffer.byteLength(content)
+    if (byteLength > WRITE_MAX_BYTES)
       throw new TooLargeError(`File too large to write (${byteLength} bytes, limit ${WRITE_MAX_BYTES})`)
-    }
-
-    const parentDir = path.dirname(absolute)
-    if (input.createParents) {
-      await fs.mkdir(parentDir, { recursive: true }).catch(() => {})
-    } else {
-      const parentStat = await fs.stat(parentDir).catch(() => undefined)
-      if (!parentStat?.isDirectory()) {
-        throw new NotFoundError(`Parent directory does not exist: ${displayRelative(parentDir)}`)
-      }
-    }
-
-    await Bun.write(absolute, content)
+    const result = await FileMutation.write({
+      path: absolute,
+      content,
+      expectedVersion: input.conflictPolicy === "overwrite" ? undefined : input.expectedVersion,
+      createParents: input.createParents,
+      async validate(target) {
+        await assertRealpathInside(target)
+        assertWritableTarget(target)
+      },
+    })
     WorkspaceFileStatus.invalidate()
-
-    const after = await Bun.file(absolute).stat()
-    return {
-      path: displayRelative(absolute),
-      mtime: after.mtimeMs,
-      size: after.size,
-      existed,
-    }
+    return { path: displayRelative(absolute), ...result }
   }
 }

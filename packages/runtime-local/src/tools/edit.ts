@@ -1,3 +1,4 @@
+import { FileMutation } from "../file/mutation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 // the approaches in this edit tool are sourced from
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-23-25.ts
@@ -66,11 +67,17 @@ export const EditTool = Tool.define(
               },
             })
             beforeDiagnostics = await captureWriteDiagnosticsBefore()
-            await Bun.write(filePath, params.newString)
+            await FileMutation.write({
+              path: filePath,
+              content: params.newString,
+              expectedVersion: null,
+              createParents: true,
+              signal: ctx.abort,
+            })
             await WorkspaceEvents.publish(File.Event.Edited, {
               file: filePath,
             })
-            FileTime.read(ctx.sessionID, filePath)
+            FileTime.read(ctx.sessionID, filePath, await Bun.file(filePath).bytes())
             return
           }
 
@@ -78,8 +85,8 @@ export const EditTool = Tool.define(
           const stats = await file.stat().catch(() => {})
           if (!stats) throw new Error(`File ${filePath} not found`)
           if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-          await FileTime.assert(ctx.sessionID, filePath)
-          contentOld = await file.text()
+          contentOld = await FileMutation.readText(filePath)
+          FileTime.assert(ctx.sessionID, filePath, contentOld)
           contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
 
           diff = trimDiff(
@@ -95,15 +102,21 @@ export const EditTool = Tool.define(
           })
           beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
-          await file.write(contentNew)
+          FileTime.assert(ctx.sessionID, filePath, await file.bytes())
+          await FileMutation.write({
+            path: filePath,
+            content: contentNew,
+            expectedVersion: FileTime.version(contentOld),
+            signal: ctx.abort,
+          })
           await WorkspaceEvents.publish(File.Event.Edited, {
             file: filePath,
           })
-          contentNew = await file.text()
+          contentNew = await FileMutation.readText(filePath)
           diff = trimDiff(
             createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
           )
-          FileTime.read(ctx.sessionID, filePath)
+          FileTime.read(ctx.sessionID, filePath, contentNew)
         },
         { signal: ctx.abort },
       )

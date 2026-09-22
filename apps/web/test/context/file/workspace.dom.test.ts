@@ -22,11 +22,19 @@ beforeAll(async () => {
     export const a = { id: "wsp_a", generation: 1, scopeID: "scope", type: "directory", path: "/a" }
     export const b = { ...a, id: "wsp_b", path: "/b" }
     const [state, setState] = createStore({ session: { id: "session", workspace: { ...a } }, tabs: [], active: undefined })
-    const requests = []; const pending = []; const listeners = new Set()
-    const result = (query) => ({ data: { kind: "text", path: query.path, content: query.workspaceID || "wsp_a",
+    const requests = []; const writes = []; const disk = {}; const pending = []; const listeners = new Set(); const writeState = { mode: "conflict", finish: undefined }
+    const result = (query) => ({ data: { kind: "text", path: query.path, content: disk[query.workspaceID]?.content ?? query.workspaceID ?? "wsp_a",
+      contentVersion: disk[query.workspaceID]?.version ?? "sha256:" + "a".repeat(64),
       node: { path: query.path, mtime: 1, size: 5, type: "file" }, encoding: "utf-8" } })
     export const useSDK = () => ({ scopeID: "scope", scopeKey: "scope", url: "http://server",
-      client: { workspace: { files: { read(query) { requests.push(query); return new Promise(resolve => pending.push(() => resolve(result(query)))) },
+      client: { workspace: { files: { read(query) { requests.push(query); const response = result(query); return new Promise(resolve => pending.push(() => resolve(response))) },
+        async write(query) { writes.push(query);
+          if (writeState.mode === "conflict") throw { name: "WorkspaceFileWriteConflictError", data: { message: "changed" } }
+          await new Promise(resolve => writeState.finish = resolve)
+          const body = query.workspaceFileWriteFileInput
+          disk[query.workspaceID] = { content: body.content, version: "sha256:" + "c".repeat(64) }
+          return { data: { contentVersion: disk[query.workspaceID].version, mtime: 2, size: body.content.length, path: body.path, existed: true } }
+        },
         children: async () => ({ data: { children: [], truncated: false } }) } } },
       event: { listen(cb) { listeners.add(cb); return () => listeners.delete(cb) } } })
     export const useSync = () => ({ data: { path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
@@ -36,7 +44,7 @@ beforeAll(async () => {
       updateTab() {} })
     export const Persist = { workspace: () => ({}), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
-    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, state,
+    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, disk, state, writeState,
       flush() { pending.splice(0).forEach(resolve => resolve()) },
       event(ws) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: {
         workspaceID: ws.id, workspaceGeneration: ws.generation, file: ws.path + "/same.txt", event: "changed" } } })) } }
@@ -154,6 +162,101 @@ test("a captured file handle retains its generation and null Workspace never sel
     void h.file.explorer.loadChildren()
   })
   expect(await page.locator("output").textContent()).toBe("empty")
+  expect(await page.evaluate(() => (window as any).fixture.requests.length)).toBe(2)
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("watcher refresh cannot bless a dirty editor with a newer disk version", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    void h.file.load("same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.file.draft.begin("same.txt")
+    h.file.draft.update("same.txt", "local edit")
+    h.disk.wsp_a = { content: "external edit", version: "sha256:" + "b".repeat(64) }
+    h.event(h.a)
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  const result = await page.evaluate(async () => {
+    const h = (window as any).fixture
+    await h.file.save("same.txt", "local edit").catch(() => {})
+    return { write: h.writes[0], draft: h.file.draft.get("same.txt"), disk: h.file.get("same.txt").content.content }
+  })
+  expect(result.write.workspaceFileWriteFileInput.expectedVersion).toBe("sha256:" + "a".repeat(64))
+  expect(result.draft.content).toBe("local edit")
+  expect(result.disk).toBe("external edit")
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("a draft survives Workspace switches and text entered while saving stays dirty", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    void h.file.load("same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.file.draft.begin("same.txt")
+    h.file.draft.update("same.txt", "first edit")
+    h.select(h.b)
+  })
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.select(h.a)
+  })
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.get("same.txt").content)).toBe("first edit")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.writeState.mode = "success"
+    h.saving = h.file.save("same.txt", "first edit")
+    h.file.draft.update("same.txt", "second edit")
+    h.writeState.finish()
+  })
+  await page.waitForFunction(() => (window as any).fixture.requests.length === 2)
+  await page.evaluate(() => (window as any).fixture.flush())
+  const draft = await page.evaluate(async () => {
+    const h = (window as any).fixture
+    await h.saving
+    return h.file.draft.get("same.txt")
+  })
+  expect(draft.content).toBe("second edit")
+  expect(draft.baseContent).toBe("first edit")
+  expect(draft.expectedVersion).toBe("sha256:" + "c".repeat(64))
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.saving = h.file.save("same.txt", "second edit")
+    h.writeState.finish()
+  })
+  await page.waitForFunction(() => (window as any).fixture.requests.length === 3)
+  await page.evaluate(() => (window as any).fixture.flush())
+  expect(
+    await page.evaluate(async () => {
+      const h = (window as any).fixture
+      await h.saving
+      return h.file.draft.get("same.txt")
+    }),
+  ).toBeUndefined()
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("watcher bursts coalesce into one subsequent read", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    void h.file.load("same.txt")
+    for (let i = 0; i < 20; i++) void h.file.load("same.txt", { force: true })
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.waitForFunction(() => (window as any).fixture.requests.length === 2)
+  await page.evaluate(() => (window as any).fixture.flush())
   expect(await page.evaluate(() => (window as any).fixture.requests.length)).toBe(2)
   expect(errors).toEqual([])
 }, 30_000)

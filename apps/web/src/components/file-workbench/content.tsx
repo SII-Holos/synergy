@@ -136,7 +136,7 @@ function SvgPreview(props: { path: string; content: string }) {
 // dev serves the app from Vite and the server from :4096), fall back to the app
 // origin, which Vite proxies to the server. The version query forces a reload
 // when the file changes on disk (watcher events, edits, focus refresh).
-function HtmlPreview(props: { path: string; version?: { mtime: number; size: number } }) {
+function HtmlPreview(props: { path: string; version?: { mtime: number; size: number; contentVersion?: string } }) {
   const file = useFile()
   const sdk = useSDK()
   const lingui = useLingui()
@@ -404,19 +404,22 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   })
   const selectedLines = createMemo(() => file.view.selectedLines(path()))
   const breadcrumb = createMemo(() => path().split("/").filter(Boolean))
-  const [editing, setEditing] = createSignal(false)
-  const [dirty, setDirty] = createSignal(false)
+  const [editing, setEditing] = createSignal(!!file.draft.get(path()))
+  const dirty = createMemo(() => file.draft.dirty(path()))
   const [saving, setSaving] = createSignal(false)
   let sourceApi: FileSourceViewApi | undefined
-  const canEdit = createMemo(() => mode() === "source" && !!textContent() && textContent()?.truncationReason !== "size")
+  const canEdit = createMemo(
+    () => mode() === "source" && !!textContent()?.contentVersion && textContent()?.truncationReason !== "size",
+  )
 
   async function runSave(overwrite = false) {
     if (!sourceApi || saving()) return
     setSaving(true)
     try {
       await file.save(path(), sourceApi.getContent(), { overwrite })
-      setDirty(false)
-      setEditing(false)
+      setEditing(!!file.draft.get(path()))
+      const saved = textContent()
+      if (!file.draft.get(path()) && saved) sourceApi?.applyContent(saved.content)
       showToast({
         type: "success",
         title: lingui._({ id: F.saved.id, message: F.saved.message }),
@@ -455,15 +458,15 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
 
   function startEdit() {
     if (editing()) return
-    setDirty(false)
+    file.draft.begin(path())
     setEditing(true)
   }
 
   function cancelEdit() {
     if (!editing()) return
     const value = textContent()
+    file.draft.discard(path())
     if (value) sourceApi?.applyContent(value.content)
-    setDirty(false)
     setEditing(false)
   }
 
@@ -698,7 +701,6 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                   path={path()}
                   content={value().content}
                   editable={editing()}
-                  onDirtyChange={setDirty}
                   onRegister={(api) => {
                     sourceApi = api
                   }}

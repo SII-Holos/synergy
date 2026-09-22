@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { Server } from "../../src/server/server"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -194,10 +195,12 @@ describe("GET /workspace/files", () => {
 
 describe("POST /workspace/files/write", () => {
   async function postWrite(app: ReturnType<typeof Server.App>, directory: string, body: Record<string, unknown>) {
+    const read = await app.request(await workspaceUrl("read", directory, { path: String(body.path), mode: "document" }))
+    const current = await read.json()
     return app.request(await workspaceUrl("write", directory), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ expectedVersion: current.contentVersion ?? null, ...body }),
     })
   }
 
@@ -222,7 +225,7 @@ describe("POST /workspace/files/write", () => {
       expect(await Bun.file(path.join(tmp.path, "hello.txt")).text()).toBe("updated content")
     }))
 
-  test("allows overwriting without expectedMtime", () =>
+  test("updates successively using fresh content versions", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -239,7 +242,7 @@ describe("POST /workspace/files/write", () => {
       expect(await Bun.file(path.join(tmp.path, "notes.txt")).text()).toBe("third")
     }))
 
-  test("succeeds when expectedMtime matches the on-disk mtime", () =>
+  test("succeeds with the content version returned by read", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -249,20 +252,20 @@ describe("POST /workspace/files/write", () => {
       })
       const app = Server.App()
 
-      const statResponse = await app.request(await workspaceUrl("stat", tmp.path, { path: "edit.txt" }))
+      const statResponse = await app.request(await workspaceUrl("read", tmp.path, { path: "edit.txt" }))
       expect(statResponse.status).toBe(200)
       const statBody = await statResponse.json()
 
       const response = await postWrite(app, tmp.path, {
         path: "edit.txt",
         content: "after",
-        expectedMtime: statBody.mtime,
+        expectedVersion: statBody.contentVersion,
       })
       expect(response.status).toBe(200)
       expect(await Bun.file(path.join(tmp.path, "edit.txt")).text()).toBe("after")
     }))
 
-  test("rejects a stale expectedMtime with 409 and leaves the file untouched", () =>
+  test("rejects a stale content version with 409 and leaves the file untouched", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -273,14 +276,13 @@ describe("POST /workspace/files/write", () => {
       const app = Server.App()
 
       const file = path.join(tmp.path, "conflict.txt")
-      const staleMtime = (await fs.stat(file)).mtimeMs
-      await Bun.sleep(25)
+      const staleVersion = FileTime.version(await Bun.file(file).bytes())
       await Bun.write(file, "v2")
 
       const response = await postWrite(app, tmp.path, {
         path: "conflict.txt",
         content: "v3",
-        expectedMtime: staleMtime,
+        expectedVersion: staleVersion,
       })
       expect(response.status).toBe(409)
       const body = await response.json()
@@ -289,7 +291,7 @@ describe("POST /workspace/files/write", () => {
       expect(await Bun.file(file).text()).toBe("v2")
     }))
 
-  test("skips the mtime conflict check with conflictPolicy overwrite", () =>
+  test("accepts an explicit overwrite of a stale content version", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -300,29 +302,34 @@ describe("POST /workspace/files/write", () => {
       const app = Server.App()
 
       const file = path.join(tmp.path, "force.txt")
-      const staleMtime = (await fs.stat(file)).mtimeMs
-      await Bun.sleep(25)
+      const staleVersion = FileTime.version(await Bun.file(file).bytes())
       await Bun.write(file, "v2")
 
       const response = await postWrite(app, tmp.path, {
         path: "force.txt",
         content: "v3",
-        expectedMtime: staleMtime,
+        expectedVersion: staleVersion,
         conflictPolicy: "overwrite",
       })
       expect(response.status).toBe(200)
       expect(await Bun.file(file).text()).toBe("v3")
     }))
 
-  test("returns 404 for a missing file", () =>
+  test("creates a file using a missing-content precondition", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const response = await postWrite(Server.App(), tmp.path, { path: "missing.txt", content: "x" })
-      expect(response.status).toBe(404)
-      const body = await response.json()
-      expect(body.name).toBe("NotFoundError")
-      expect(body.data.message).toContain("does not exist")
-      expect(JSON.stringify(body)).not.toContain(tmp.path)
+      const response = await postWrite(Server.App(), tmp.path, {
+        path: "missing.txt",
+        content: "x",
+        expectedVersion: null,
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        path: "missing.txt",
+        existed: false,
+        contentVersion: FileTime.version("x"),
+      })
+      expect(await Bun.file(path.join(tmp.path, "missing.txt")).text()).toBe("x")
     }))
 
   test("rejects paths escaping the workspace with 403", () =>
@@ -390,7 +397,7 @@ describe("POST /workspace/files/write", () => {
       expect(response.status).toBe(403)
       const body = await response.json()
       expect(body.name).toBe("WorkspaceFileAccessDeniedError")
-      expect(body.data.message).toContain("not a file")
+      expect(body.data.message).toContain("not a regular file")
     }))
 
   test("rejects content larger than the write cap with 400", () =>
@@ -550,7 +557,7 @@ describe("GET /workspace/files/content", () => {
       }
     }))
 
-  test("returns 404 for a missing file", () =>
+  test("creates a file using a missing-content precondition", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const response = await Server.App().request(await workspaceUrl("content", tmp.path, { path: "missing.pdf" }))

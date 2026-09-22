@@ -5,6 +5,16 @@ const home = { scopeID: "home", workspaceID: "wsp_local", workspaceGeneration: 3
 const project = { ...home, scopeID: "project" }
 
 describe("workspace file preview URL", () => {
+  test("changed content invalidates previews even when mtime and size are unchanged", () => {
+    const url = (contentVersion: string) =>
+      buildWorkspaceFilePreviewUrl("https://example.test", "https://example.test", "index.html", project, {
+        mtime: 1,
+        size: 5,
+        contentVersion,
+      })
+    expect(url("sha256:a")).not.toBe(url("sha256:b"))
+    expect(new URL(url("sha256:a")).searchParams.get("v")).toBe("sha256:a")
+  })
   test("uses the app origin for a cross-origin SDK while retaining the Workspace", () => {
     expect(buildWorkspaceFilePreviewUrl("http://127.0.0.1:4096", "http://localhost:3000", "docs/page.html", home)).toBe(
       "http://localhost:3000/workspace/files/raw/home/wsp_local/3/docs/page.html",

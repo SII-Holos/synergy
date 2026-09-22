@@ -35,8 +35,8 @@ class SynergyFilesystem extends BunFilesystem {
   override async readText(p: string): Promise<string> {
     return super.readText(resolveFilePath(p))
   }
-  override async writeText(p: string, content: string): Promise<WriteResult> {
-    return super.writeText(resolveFilePath(p), content)
+  override async writeText(p: string, content: string, expectedContent?: string | null): Promise<WriteResult> {
+    return super.writeText(resolveFilePath(p), content, expectedContent)
   }
   override async exists(p: string): Promise<boolean> {
     return super.exists(resolveFilePath(p))
@@ -270,7 +270,7 @@ export const ReviseFileTool = Tool.define(
               // Reset noop guard after successful edit
               NoopLoopGuard.reset(ctx.sessionID, p.canonicalPath)
 
-              FileTime.read(ctx.sessionID, p.canonicalPath)
+              FileTime.read(ctx.sessionID, p.canonicalPath, formattedContent)
             },
             { signal: ctx.abort },
           )

@@ -3,7 +3,6 @@ import { useLingui } from "@lingui/solid"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { resolveThemeColor, useTheme, type ResolvedTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useFile } from "@/context/file"
-import { useSDK } from "@/context/sdk"
 import { getFileSourceModel, pruneFileSourceModels, setFileSourceModel } from "./source-model-cache"
 import { fileWorkbench as F } from "@/locales/messages"
 import { textSelectionController } from "@/context/text-selection"
@@ -111,7 +110,6 @@ export function FileSourceView(props: {
   onRegister?: (api: FileSourceViewApi) => void
 }) {
   const file = useFile()
-  const sdk = useSDK()
   const theme = useTheme()
   const lingui = useLingui()
   const [loading, setLoading] = createSignal(true)
@@ -121,6 +119,8 @@ export function FileSourceView(props: {
   let disposed = false
   let handleFontChange: ((event: Event) => void) | undefined
   let baseline = props.content
+  let applying = false
+  let modelListener: import("monaco-editor").IDisposable | undefined
   const [dirty, setDirty] = createSignal(false)
 
   onMount(() => {
@@ -136,14 +136,18 @@ export function FileSourceView(props: {
       const scope = encodeURIComponent(file.resourceKey)
       const uri = monaco.Uri.parse(`synergy-file://${scope}/${props.path.split("/").map(encodeURIComponent).join("/")}`)
       const key = uri.toString()
+      const draft = file.draft.get(props.path)
+      const initialContent = draft?.content ?? props.content
+      baseline = draft?.baseContent ?? props.content
+      setDirty(initialContent !== baseline)
       let cached = getFileSourceModel(key)
       if (!cached || cached.model.isDisposed()) {
-        const model = monaco.editor.createModel(props.content, languageForPath(props.path), uri)
-        cached = { model, bytes: new Blob([props.content]).size, touched: Date.now() }
+        const model = monaco.editor.createModel(initialContent, languageForPath(props.path), uri)
+        cached = { model, bytes: new Blob([initialContent]).size, touched: Date.now() }
         setFileSourceModel(key, cached)
       } else {
         cached.touched = Date.now()
-        if (cached.model.getValue() !== props.content) cached.model.setValue(props.content)
+        if (cached.model.getValue(undefined, true) !== initialContent) cached.model.setValue(initialContent)
       }
 
       const sourceTheme = defineSourceTheme(monaco, theme.tokens(), theme.mode())
@@ -212,17 +216,27 @@ export function FileSourceView(props: {
       })
       editor.onDidBlurEditorText(() => textSelectionController.update(undefined))
       const modelRef = cached.model
-      modelRef.onDidChangeContent(() => {
-        const next = modelRef.getValue() !== baseline
+      modelListener = modelRef.onDidChangeContent(() => {
+        if (applying) return
+        const content = modelRef.getValue(undefined, true)
+        const next = content !== baseline
+        if (props.editable || file.draft.get(props.path)) file.draft.update(props.path, content)
+        cached.bytes = new Blob([content]).size
+        cached.touched = Date.now()
         setDirty(next)
         props.onDirtyChange?.(next)
       })
       props.onRegister?.({
-        getContent: () => modelRef.getValue(),
+        getContent: () => modelRef.getValue(undefined, true),
         applyContent: (content: string) => {
           baseline = content
           const state = editor?.saveViewState()
-          modelRef.setValue(content)
+          applying = true
+          try {
+            modelRef.setValue(content)
+          } finally {
+            applying = false
+          }
           setDirty(false)
           props.onDirtyChange?.(false)
           if (state) editor?.restoreViewState(state)
@@ -242,13 +256,17 @@ export function FileSourceView(props: {
   })
 
   createEffect(() => {
-    if (props.content === baseline) return
+    if (dirty() || file.draft.get(props.path) || props.content === baseline) return
     baseline = props.content
     const model = editor?.getModel()
-    if (!model || model.getValue() === props.content) return
-    if (dirty()) return
+    if (!model || model.getValue(undefined, true) === props.content) return
     const state = editor?.saveViewState()
-    model.setValue(props.content)
+    applying = true
+    try {
+      model.setValue(props.content)
+    } finally {
+      applying = false
+    }
     setDirty(false)
     props.onDirtyChange?.(false)
     if (state) editor?.restoreViewState(state)
@@ -265,6 +283,7 @@ export function FileSourceView(props: {
     disposed = true
     if (handleFontChange) document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange)
     textSelectionController.update(undefined)
+    modelListener?.dispose()
     editor?.dispose()
   })
 

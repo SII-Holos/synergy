@@ -408,7 +408,8 @@ export const WorkspaceFilesRoute = () =>
       "/write",
       describeRoute({
         summary: "Write workspace file",
-        description: "Write content to an existing workspace file with optional optimistic concurrency control.",
+        description:
+          "Create or replace a workspace file using a content-version precondition and atomic local replacement.",
         operationId: "workspace.files.write",
         responses: {
           200: {
@@ -462,6 +463,9 @@ export const WorkspaceFilesRoute = () =>
         } catch (err) {
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+          }
+          if (err instanceof WorkspaceFileService.InvalidContentError) {
+            return c.json({ name: "WorkspaceFileInvalidContentError", data: { message: err.message } }, 400)
           }
           if (err instanceof WorkspaceFileService.WriteConflictError) {
             return c.json({ name: "WorkspaceFileWriteConflictError", data: { message: err.message } }, 409)

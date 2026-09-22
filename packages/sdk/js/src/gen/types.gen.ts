@@ -8168,7 +8168,11 @@ export type WorkspaceFileChildrenResponse = {
 }
 
 export type WorkspaceFileWriteError = {
-  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileWriteConflictError" | "WorkspaceFileTooLargeError"
+  name:
+    | "WorkspaceFileAccessDeniedError"
+    | "WorkspaceFileWriteConflictError"
+    | "WorkspaceFileTooLargeError"
+    | "WorkspaceFileInvalidContentError"
   data: {
     message: string
   }
@@ -8183,6 +8187,7 @@ export type WorkspaceFileTextRange = {
 
 export type WorkspaceFileReadText = {
   kind: "text"
+  contentVersion?: string
   path: string
   node: WorkspaceFileNode
   content: string
@@ -8198,6 +8203,7 @@ export type WorkspaceFileReadText = {
 
 export type WorkspaceFileReadImage = {
   kind: "image"
+  contentVersion?: string
   path: string
   node: WorkspaceFileNode
   content: string
@@ -8293,6 +8299,7 @@ export type WorkspaceFileWriteResult = {
   mtime: number
   size: number
   existed: boolean
+  contentVersion: string
 }
 
 export type WorkspaceFileWriteFileInput = {
@@ -8301,7 +8308,7 @@ export type WorkspaceFileWriteFileInput = {
   encoding?: "utf-8" | "base64"
   createParents?: boolean
   conflictPolicy?: "fail" | "overwrite"
-  expectedMtime?: number
+  expectedVersion: string | null
 }
 
 export type WorkspaceInfo = {

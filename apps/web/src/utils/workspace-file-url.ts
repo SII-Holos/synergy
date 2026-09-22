@@ -25,7 +25,7 @@ export function buildWorkspaceFilePreviewUrl(
   appOrigin: string,
   path: string,
   scope?: WorkspaceFileUrlScope,
-  version?: { mtime: number; size: number },
+  version?: { mtime: number; size: number; contentVersion?: string },
 ): string {
   let base = appOrigin
   try {
@@ -34,7 +34,9 @@ export function buildWorkspaceFilePreviewUrl(
     // keep the app-origin fallback
   }
   const rawUrl = buildWorkspaceFileBrowserUrl(base, path, scope)
-  return version ? `${rawUrl}?v=${version.mtime}-${version.size}` : rawUrl
+  return version
+    ? `${rawUrl}?v=${encodeURIComponent(version.contentVersion ?? `${version.mtime}-${version.size}`)}`
+    : rawUrl
 }
 
 function base64UrlEncode(value: string): string {

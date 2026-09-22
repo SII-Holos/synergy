@@ -1,4 +1,5 @@
 import path from "path"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { WorkspaceFile } from "./types"
 
 const TEXT_READ_BYTES = 4 * 1024 * 1024
@@ -155,6 +156,7 @@ export namespace WorkspaceFileRead {
         path: info.path,
         node: info,
         content: Buffer.from(buffer).toString("base64"),
+        contentVersion: FileTime.version(new Uint8Array(buffer)),
         mimeType,
         encoding: "base64",
         totalBytes: info.size,
@@ -176,11 +178,28 @@ export namespace WorkspaceFileRead {
 
     const capped = info.size > TEXT_READ_BYTES
     const bytesToRead = capped ? LARGE_TEXT_PREVIEW_BYTES : info.size
-    const text = await file.slice(0, bytesToRead).text()
+    const buffer = await file.slice(0, bytesToRead).bytes()
+    let text: string
+    try {
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer, { stream: capped })
+      if (text.includes("\0")) throw new Error("Binary content")
+    } catch {
+      return {
+        kind: "binary",
+        path: info.path,
+        node: info,
+        mimeType,
+        totalBytes: info.size,
+        truncated: capped,
+        unsupportedReason: "The file is not valid UTF-8 text",
+      }
+    }
+    const contentVersion = capped ? undefined : FileTime.version(buffer)
     const lines = text.split(/\r?\n/)
     if (input.mode === "document") {
       return {
         kind: "text",
+        contentVersion,
         path: info.path,
         node: info,
         content: text,
@@ -216,6 +235,7 @@ export namespace WorkspaceFileRead {
 
     return {
       kind: "text",
+      contentVersion,
       path: info.path,
       node: info,
       content: selected.join("\n"),

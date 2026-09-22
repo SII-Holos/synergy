@@ -1,5 +1,6 @@
+import { FileMutation } from "../file/mutation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
-import { chmod, lstat, realpath, rename, unlink } from "node:fs/promises"
+import { lstat, realpath } from "node:fs/promises"
 import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./resolve-conflicts.txt"
@@ -60,18 +61,6 @@ async function assertPathStaysWithinWorkspace(filePath: string, title: string): 
   const workspacePath = await realpath(ScopeContext.current.directory)
   if (!Filesystem.contains(workspacePath, physicalPath)) {
     throw new Error(`Refusing to resolve conflicts through a path that escapes the active workspace: ${title}`)
-  }
-}
-
-async function atomicReplace(filePath: string, content: string, mode: number): Promise<void> {
-  const temporary = `${filePath}.synergy-resolve-${process.pid}-${Date.now()}`
-  try {
-    await Bun.write(temporary, content)
-    await chmod(temporary, mode)
-    await rename(temporary, filePath)
-  } catch (error) {
-    await unlink(temporary).catch(() => {})
-    throw error
   }
 }
 
@@ -156,7 +145,13 @@ export const ResolveConflictsTool = Tool.define(
           if (currentContent !== oldContent) throw staleTagError(title)
 
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
-          await atomicReplace(filePath, candidate, currentStats.mode)
+          await FileMutation.write({
+            path: filePath,
+            content: candidate,
+            expectedVersion: FileTime.version(currentContent),
+            signal: ctx.abort,
+            validate: () => assertPathStaysWithinWorkspace(filePath, title),
+          })
           await WorkspaceEvents.publish(File.Event.Edited, { file: filePath })
 
           const finalContent = await readUtf8TextPreservingBom(Bun.file(filePath))
@@ -169,7 +164,7 @@ export const ResolveConflictsTool = Tool.define(
             )
           }
 
-          FileTime.read(ctx.sessionID, filePath)
+          FileTime.read(ctx.sessionID, filePath, finalContent)
           const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
           const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)
           const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filePath) ?? "auto"

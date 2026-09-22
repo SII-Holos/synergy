@@ -64,19 +64,23 @@ The classic debug file search is lazy and reuses this same bounded project index
 The current public workspace-file routes are read/browse/search/status contracts plus `POST /workspace/files/write` (operationId `workspace.files.write`), a user-direct edit channel. Writes are bounded by the same path rules as reads — lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied — and additionally:
 
 - sensitive paths are rejected via `SensitivePathPolicy` in write mode (Git metadata and secret/credential files such as `.git`, `.env`, and credential stores are not editable), and the check also runs against the resolved real path so a symlink whose target is a sensitive file cannot bypass it
-- the target must be an existing regular file; directories and read-only filesystem targets are refused
-- an optional `expectedMtime` optimistic lock rejects a concurrent on-disk change with 409 unless the caller opts into `conflictPolicy: "overwrite"`
+- a target can be missing or a regular file; directories, special files, dangling symbolic links and read-only filesystem targets are refused
+- `expectedVersion` is required: the SHA-256 version from a complete read authorizes replacement, and `null` authorizes creation only; changed bytes return 409 even when timestamps are preserved, unless the caller explicitly selects `conflictPolicy: "overwrite"`
 - content is capped at 8 MiB and parent-directory creation is opt-in via `createParents`
 
-Write failures use the same structured error shape as the rest of the API: `{ name, data: { message } }` with `WorkspaceFileAccessDeniedError` (403), `WorkspaceFileWriteConflictError` (409), `WorkspaceFileTooLargeError` (400), and `NotFoundError` (404).
+Write failures use the same structured error shape as the rest of the API: `{ name, data: { message } }` with `WorkspaceFileAccessDeniedError` (403), `WorkspaceFileWriteConflictError` (409), `WorkspaceFileTooLargeError` (400), `WorkspaceFileInvalidContentError` (400), and `NotFoundError` (404).
 
 A successful write invalidates the Git-status cache and the frontend refreshes through the filesystem watcher; no `file.edited` event is published. This route is the user editing their own workspace directly: it is profile-independent and bypasses the agent approval/sandbox pipeline, so path safety is enforced by the service itself rather than by execution policy. Agent write operations remain separate and use the governed tool pipeline (write/save_file tools with permission decisions, locking, events, formatting, and diagnostics), never this route.
+
+Writes share the native atomic replacement path with agent file tools and the anchored patcher. Canonical-path locks serialize cooperating processes. The writer stages and flushes a sibling file, rechecks content and directory identity, and publishes by rename or exclusive creation. Cancellation removes the staged file. Replacement preserves executable permission bits and leaves other hard links unchanged. Base64 content preserves raw bytes; invalid UTF-8 is returned as binary metadata instead of editable replacement characters.
 
 ## File Workbench Ownership and Bounds
 
 `apps/web/src/context/file/index.tsx` is the single frontend data owner for the File workbench. File tabs live in the Side Workspace as resource tabs. The Context panel is a separate session-scoped Side Workspace singleton and does not own files. Web and Desktop use generated `workspace.files.*` SDK calls against the active Scope rather than renderer or Electron-main filesystem reads.
 
 Each session persists its open files, active tab, source/preview mode, selection, scroll state, and Explorer layout. Scope-level directory state keeps the expanded tree and hidden/ignored preference warm across sessions in the same project.
+
+Editor drafts capture their original content version and survive file-panel remounts and Workspace selection within the Scope. Watcher refresh updates the disk snapshot without changing that baseline. A conflicted save retains the draft; typing during an in-flight successful save retains the newer text and advances its baseline to the saved version. Drafts are protected from document and Workspace-cache eviction.
 
 The workbench keeps resource use bounded:
 
@@ -152,7 +156,7 @@ Message rollback changes the effective transcript through history events. It doe
 
 - Scope owns project context; workspace owns the execution directory.
 - Worktree removal excludes new execution and binding use before it validates and migrates current bindings.
-- Web file routes never escape the active workspace, including through symlinks; user-direct writes additionally reject sensitive paths, read-only targets, and conflicting mtimes.
+- Web file routes never escape the active workspace, including through symlinks; user-direct writes additionally reject sensitive paths, read-only targets, and conflicting content versions.
 - File workbench state and caches have one frontend owner and explicit concurrency/size bounds.
 - Tool reads and writes still cross execution-policy and sensitive-path checks.
 - Anchored tags prove a file snapshot; seen-line tracking proves the agent observed an edit range.

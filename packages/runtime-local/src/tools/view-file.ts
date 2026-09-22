@@ -111,7 +111,7 @@ export const ViewFileTool = Tool.define(
 
       const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
       const tag = snapshotAvailable ? formatRecordedBlock(ctx.sessionID, filePath, content).tag : undefined
-      markFileRead(ctx.sessionID, filePath)
+      markFileRead(ctx.sessionID, filePath, snapshotAvailable ? content : undefined)
       void ToolLspSource.get()?.touchFile(filePath, false)
 
       const lines = splitDisplayLines(content)
