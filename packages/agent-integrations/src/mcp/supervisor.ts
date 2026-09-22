@@ -29,6 +29,7 @@ import { PendingOAuth } from "./pending-oauth"
 import { McpAuth } from "./auth"
 import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspection"
 import { collectBuiltinMcpServers } from "./builtin-catalog"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 
 // ---------------------------------------------------------------------------
 // Bus events — defined here, re-exported by index.ts for back-compat
@@ -145,6 +146,8 @@ const log = Log.create({ service: "mcp.supervisor" })
 const DEFAULT_TIMEOUT = 30_000
 const MAX_CONCURRENT_STARTS = 3
 const NEEDS_AUTH_CHECK_INTERVAL_MS = 30_000
+const DEFAULT_FAILED_RETRY_COOLDOWN_MS = 60_000
+const FAILURE_ERROR_MAX_LENGTH = 4096
 
 const SAFE_BASE_ENV_KEYS = new Set(["PATH", "HOME", "USER", "TMPDIR", "SHELL", "LANG", "XDG_CACHE_HOME"])
 
@@ -208,6 +211,10 @@ function redactUrl(url: string): string {
   } catch {
     return url
   }
+}
+
+function sanitizeFailureMessage(message: string): string {
+  return ObservabilityRedaction.text(message, FAILURE_ERROR_MAX_LENGTH)
 }
 
 function localServerCwd(config: Extract<AgentIntegrationsConfigSchema.Mcp, { type: "local" }>): string {
@@ -295,6 +302,8 @@ export interface McpHandle {
   generation: number
   lastError?: string
   startPromise?: Promise<void>
+  failedRetryTimer?: ReturnType<typeof setTimeout>
+  failureNotified: boolean
   localProcess?: {
     pid: number
     startedAt: number
@@ -330,6 +339,7 @@ function newHandle(
     resources: {},
     retryCount: 0,
     generation: 0,
+    failureNotified: false,
   }
 }
 
@@ -459,6 +469,7 @@ class McpSupervisorImpl {
     if (!handle || (identity && handle.identity !== identity)) {
       throw new Error(`MCP server not found: ${name}`)
     }
+    this.clearFailedRetry(handle)
     handle.retryCount = 0
     await this.connectPipeline(handle)
     return handle
@@ -500,6 +511,7 @@ class McpSupervisorImpl {
   async reset(): Promise<void> {
     log.info("resetting all MCP handles")
     const handles = [...this.handles.values()]
+    for (const handle of handles) this.clearFailedRetry(handle)
     this.handles.clear()
     this._started = false
     this.activeStarts = 0
@@ -522,6 +534,7 @@ class McpSupervisorImpl {
     await this.disconnect(name)
     handle.retryCount = 0
     handle.lastError = undefined
+    handle.failureNotified = false
     this.scheduleStart(handle)
     return handle
   }
@@ -735,6 +748,7 @@ class McpSupervisorImpl {
     handle.generation++
     handle.state = HS.Stopping
     this.pendingStarts = this.pendingStarts.filter((pending) => pending !== handle)
+    this.clearFailedRetry(handle)
   }
 
   private async disposeHandle(handle: McpHandle, reason: string): Promise<void> {
@@ -934,6 +948,8 @@ class McpSupervisorImpl {
 
       const connectTimeout = config.connectTimeout ?? config.timeout ?? DEFAULT_TIMEOUT
       let lastError: Error | undefined
+      // The first transport is the primary one; its failure is the primary diagnosis.
+      let primaryFailure: string | undefined
 
       for (const { name: transportName, transport } of transports) {
         const candidateClient = new Client({
@@ -960,6 +976,9 @@ class McpSupervisorImpl {
           if (error instanceof UnauthorizedError) {
             log.info("mcp server requires authentication", { key: handle.name, transport: transportName })
 
+            handle.client = undefined
+            handle.toolDefs = []
+
             if (lastError.message.includes("registration") || lastError.message.includes("client_id")) {
               await closeFailedClient(candidateClient, handle.name, `connect:${transportName}:registration`)
               if (!this.isCurrent(handle, gen)) return
@@ -979,11 +998,13 @@ class McpSupervisorImpl {
               })
               this.scheduleNeedsAuthCheck()
             }
+            Bus.publish(ToolsChanged, { server: handle.name })
             return
           }
 
           await closeFailedClient(candidateClient, handle.name, `connect:${transportName}`)
           if (!this.isCurrent(handle, gen)) return
+          primaryFailure ??= lastError.message
           log.debug("transport connection failed", {
             key: handle.name,
             transport: transportName,
@@ -992,6 +1013,7 @@ class McpSupervisorImpl {
           })
         }
       }
+      if (!client && primaryFailure !== undefined) handle.lastError = sanitizeFailureMessage(primaryFailure)
     }
 
     if (config.type === "local") {
@@ -1036,7 +1058,7 @@ class McpSupervisorImpl {
           cwd,
           error,
         })
-        handle.lastError = error instanceof Error ? error.message : String(error)
+        handle.lastError = sanitizeFailureMessage(error instanceof Error ? error.message : String(error))
       }
     }
 
@@ -1071,6 +1093,8 @@ class McpSupervisorImpl {
     handle.state = HS.Connected
     handle.retryCount = 0
     handle.lastError = undefined
+    handle.failureNotified = false
+    this.clearFailedRetry(handle)
 
     log.info("MCP server connected", { key: handle.name, toolCount: toolsResult.tools.length })
     Bus.publish(ToolsChanged, { server: handle.name })
@@ -1088,12 +1112,17 @@ class McpSupervisorImpl {
 
     if (handle.retryCount >= maxAttempts) {
       handle.state = HS.Failed
+      const error = handle.lastError ?? "unknown error"
       log.warn("MCP server permanently failed", {
         name: handle.name,
-        error: handle.lastError,
+        error,
         attempts: handle.retryCount,
       })
-      Bus.publish(Failed, { server: handle.name, error: handle.lastError ?? "unknown error" })
+      if (!handle.failureNotified) {
+        handle.failureNotified = true
+        Bus.publish(Failed, { server: handle.name, error })
+      }
+      if (this.startupAllowsAutoRetry(handle)) this.scheduleFailedRetry(handle)
       return
     }
 
@@ -1112,6 +1141,34 @@ class McpSupervisorImpl {
     setTimeout(() => {
       if (this.isCurrent(handle, generation) && handle.state === HS.Reconnecting) this.scheduleStart(handle)
     }, delay)
+  }
+
+  private startupAllowsAutoRetry(handle: McpHandle): boolean {
+    return handle.config.startup !== "manual" && handle.config.startup !== "lazy"
+  }
+
+  private clearFailedRetry(handle: McpHandle): void {
+    if (!handle.failedRetryTimer) return
+    clearTimeout(handle.failedRetryTimer)
+    handle.failedRetryTimer = undefined
+  }
+
+  private scheduleFailedRetry(handle: McpHandle): void {
+    this.clearFailedRetry(handle)
+    const delay = handle.config.retry?.cooldownMs ?? DEFAULT_FAILED_RETRY_COOLDOWN_MS
+    const timer = setTimeout(() => {
+      handle.failedRetryTimer = undefined
+      if (!this.isCurrent(handle) || handle.state !== HS.Failed) return
+      // A running interactive OAuth flow owns this server; wait out another cooldown.
+      if (PendingOAuth.get(handle.name)) {
+        this.scheduleFailedRetry(handle)
+        return
+      }
+      handle.retryCount = 0
+      this.scheduleStart(handle)
+    }, delay)
+    if (typeof timer === "object" && "unref" in timer) timer.unref()
+    handle.failedRetryTimer = timer
   }
 }
 

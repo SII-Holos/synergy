@@ -19,6 +19,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
@@ -72,6 +74,50 @@ async function writeMcpPlugin(root: string, input: { id: string; serverPath: str
   } satisfies PluginManifestType
   await Bun.write(path.join(dir, "plugin.json"), JSON.stringify(manifest, null, 2))
   return { dir, manifest }
+}
+
+async function startRemoteMcpFixture() {
+  let healthy = false
+  let requests = 0
+  const servers = new Set<McpServer>()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      requests++
+      if (!healthy) return new Response("upstream unavailable", { status: 503 })
+      const mcp = new McpServer({ name: "remote-fixture", version: "1.0.0" })
+      mcp.registerTool("remote_ping", { description: "Remote fixture ping" }, async () => ({
+        content: [{ type: "text", text: "pong" }],
+      }))
+      servers.add(mcp)
+      const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
+      await mcp.connect(transport)
+      return transport.handleRequest(request)
+    },
+  })
+  if (server.port === undefined) throw new Error("Failed to allocate remote MCP fixture port")
+  return {
+    url: `http://127.0.0.1:${server.port}/mcp`,
+    requests: () => requests,
+    setHealthy: (value: boolean) => {
+      healthy = value
+    },
+    async [Symbol.asyncDispose]() {
+      await Promise.all([...servers].map((mcp) => mcp.close().catch(() => undefined)))
+      servers.clear()
+      server.stop(true)
+    },
+  }
+}
+
+async function waitForStatus(name: string, expected: string, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if ((await MCP.status())[name]?.status === expected) return
+    await Bun.sleep(25)
+  }
+  throw new Error(`MCP ${name} did not reach ${expected}; last=${JSON.stringify((await MCP.status())[name])}`)
 }
 
 describe.serial("McpSupervisor", () => {
@@ -590,6 +636,119 @@ describe.serial("McpSupervisor", () => {
           expect(McpSupervisor().get("plugin-b::stable")?.config).toMatchObject({ command: ["node", "b-v1.js"] })
           expect(McpSupervisor().get("plugin-b::broken")).toBeUndefined()
           expect(events).toEqual([])
+        },
+      })
+    }))
+  test("reports the real transport failure cause instead of unknown error", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const failures: string[] = []
+          const unsubscribe = Bus.subscribe(MCP.FailedEvent, (event) => failures.push(event.properties.error))
+          const handle = McpSupervisor().add("flaky-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "manual",
+            retry: { maxAttempts: 1 },
+          })
+
+          await McpSupervisor().connect("flaky-remote", handle.identity)
+          unsubscribe()
+
+          const status = (await MCP.status())["flaky-remote"]
+          if (status.status !== "failed") throw new Error(`expected failed, got ${status.status}`)
+          expect(status.error).toContain("upstream unavailable")
+          expect(status.error).not.toBe("unknown error")
+          expect(failures).toEqual([expect.stringContaining("upstream unavailable")])
+        },
+      })
+    }))
+
+  test("an eager server retries after the cooldown and recovers once the endpoint is healthy", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const handle = McpSupervisor().add("recovering-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "eager",
+            requiresWorkspace: false,
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+
+          await handle.startPromise
+          expect((await MCP.status())["recovering-remote"]).toMatchObject({ status: "failed" })
+          const attemptsBeforeRecovery = fixture.requests()
+
+          fixture.setHealthy(true)
+          await waitForStatus("recovering-remote", "connected")
+
+          expect(fixture.requests()).toBeGreaterThan(attemptsBeforeRecovery)
+          expect(await MCP.tools()).toHaveProperty("mcp__recovering-remote__remote_ping")
+        },
+      })
+    }))
+
+  test("manual servers stay failed without a retry cycle", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const handle = McpSupervisor().add("manual-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "manual",
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+
+          await McpSupervisor().connect("manual-remote", handle.identity)
+          expect((await MCP.status())["manual-remote"]).toMatchObject({ status: "failed" })
+          const requestsAfterFailure = fixture.requests()
+
+          await Bun.sleep(500)
+
+          expect((await MCP.status())["manual-remote"]).toMatchObject({ status: "failed" })
+          expect(fixture.requests()).toBe(requestsAfterFailure)
+        },
+      })
+    }))
+
+  test("disconnect cancels a pending failed retry", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const handle = McpSupervisor().add("disconnected-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "eager",
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+
+          await handle.startPromise
+          expect((await MCP.status())["disconnected-remote"]).toMatchObject({ status: "failed" })
+
+          await McpSupervisor().disconnect("disconnected-remote")
+          const requestsAfterDisconnect = fixture.requests()
+
+          await Bun.sleep(500)
+
+          expect((await MCP.status())["disconnected-remote"]).toMatchObject({ status: "disabled" })
+          expect(fixture.requests()).toBe(requestsAfterDisconnect)
         },
       })
     }))

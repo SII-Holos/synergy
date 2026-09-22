@@ -145,6 +145,15 @@ export namespace McpAuth {
       return next
     })
   }
+  export function clearTokens(mcpName: string, options: MutationOptions = {}): Promise<boolean> {
+    return mutate(mcpName, (entry) => {
+      if (!entry || options.isCurrent?.() === false) return false
+      if (!entry.tokens) return false
+      const next = { ...entry }
+      delete next.tokens
+      return next
+    })
+  }
 
   export async function updateOAuthState(
     mcpName: string,

@@ -97,19 +97,19 @@ Piped stdin is appended to the prompt. The command subscribes to session events 
 
 ## Configuration, Providers, and Models
 
-| Command family                               | Purpose                                                         |
-| -------------------------------------------- | --------------------------------------------------------------- |
-| `synergy config path`                        | Print config, data, and cache roots                             |
-| `synergy config wizard`                      | Detect providers and write core model configuration             |
-| `synergy config import <file-or-url>`        | Preview or apply domain-aware config import                     |
-| `synergy config export`                      | Export config as JSONC (secrets redacted by default)            |
-| `synergy config embedding`                   | Configure an embedding provider                                 |
-| `synergy config rerank`                      | Configure a rerank provider                                     |
-| `synergy auth login\|logout\|list\|usage`    | Manage provider credentials and inspect supported usage windows |
-| `synergy models [provider]`                  | List available configured models                                |
-| `synergy agent create\|list`                 | Create or inspect agent definitions                             |
-| `synergy mcp add\|list\|auth\|logout\|debug` | Configure, authenticate, and inspect MCP servers                |
-| `synergy embed download`                     | Download the local embedding model assets                       |
+| Command family                                                 | Purpose                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `synergy config path`                                          | Print config, data, and cache roots                             |
+| `synergy config wizard`                                        | Detect providers and write core model configuration             |
+| `synergy config import <file-or-url>`                          | Preview or apply domain-aware config import                     |
+| `synergy config export`                                        | Export config as JSONC (secrets redacted by default)            |
+| `synergy config embedding`                                     | Configure an embedding provider                                 |
+| `synergy config rerank`                                        | Configure a rerank provider                                     |
+| `synergy auth login\|logout\|list\|usage`                      | Manage provider credentials and inspect supported usage windows |
+| `synergy models [provider]`                                    | List available configured models                                |
+| `synergy agent create\|list`                                   | Create or inspect agent definitions                             |
+| `synergy mcp add\|list\|auth\|logout\|debug\|connect\|restart` | Configure, authenticate, inspect, and recover MCP servers       |
+| `synergy embed download`                                       | Download the local embedding model assets                       |
 
 `synergy models --refresh` refreshes the shared service/model directory before listing configured models. A failed or disabled refresh exits nonzero and preserves the existing cache; partial results report skipped entries. See [Service and model directory](configuration-layout.md#service-and-model-directory) for validation and fallback behavior.
 

@@ -111,6 +111,23 @@ test("detects _key and _secret suffixed field names as sensitive", () =>
     expect(ObservabilityRedaction.isSensitiveKey("envelope")).toBe(false)
   }))
 
+test("redacts secrets in quoted key/value and bare-key query forms", () =>
+  runtime.run(() => {
+    const text = (s: string) => ObservabilityRedaction.text(s, 4096)
+    // MCP transport failures surface a remote response body verbatim, and JSON
+    // bodies quote both the key and the value.
+    expect(text('{"error":"boom","token":"secret-in-json"}')).not.toContain("secret-in-json")
+    expect(text('{"access_token":"secret-in-json"}')).not.toContain("secret-in-json")
+    expect(text('{"client_secret":"secret-in-json"}')).not.toContain("secret-in-json")
+    expect(text('{"apiKey":"secret-in-json"}')).not.toContain("secret-in-json")
+    expect(text('{"password":"secret-in-json"}')).not.toContain("secret-in-json")
+    expect(text('{"X-Api-Key":"opaque-non-bearer-credential"}')).not.toContain("opaque-non-bearer-credential")
+    expect(text('{"Authorization":"opaque-non-bearer-credential"}')).not.toContain("opaque-non-bearer-credential")
+    // A bare `?key=` query token is the same class of secret as `?api_key=`.
+    expect(text("https://host/mcp?key=secret-in-query")).not.toContain("secret-in-query")
+    expect(text("https://host/mcp?api_key=secret-in-query")).not.toContain("secret-in-query")
+  }))
+
 test("cwdScope returns abbreviated path not raw full path", () =>
   runtime.run(() => {
     expect(ObservabilityRedaction.cwdScope(undefined)).toBe("unknown")
