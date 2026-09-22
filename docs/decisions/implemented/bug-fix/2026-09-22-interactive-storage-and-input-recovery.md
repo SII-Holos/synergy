@@ -18,7 +18,7 @@ Context-usage projection updates preserve entity identity: same-message enrichme
 
 Desktop reserves admission before stopping its managed server for maintenance. The reservation rejects active or already-admitted work and expires if the client disappears. The CLI still acquires exclusive storage ownership before changing data.
 
-The shared test planner runs the file-owned agent and worktree runtime fixtures in separate processes after two shared CI coverage runs timed out during their teardown. The paired Linux invocation passes all 75 cases, but the exact CI-only blocked resource remains unproven. This contains test-process lifetime interference while retaining every assertion, the existing timeouts and unioned coverage; final CI validates the isolation independently of local performance acceptance.
+The shared test planner runs the file-owned agent and worktree runtime fixtures in separate processes to bound their overlapping resource ownership. A later isolated CI worktree invocation also timed out, so isolation does not establish a complete teardown fix. The exact CI-only blocked resource remains unproven; every assertion, existing timeout and coverage contribution remains intact. Final CI validates the submitted composition independently of local performance acceptance.
 
 The inert-import check compares directory contents independently of filesystem enumeration order. Coverage failure summaries preserve bounded multiline assertion differences across blank separators, so a truncated full log still identifies the actual mismatch.
 
