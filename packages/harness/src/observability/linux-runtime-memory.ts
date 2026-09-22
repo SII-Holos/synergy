@@ -1,11 +1,14 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { heapStats } from "bun:jsc"
 
 export namespace LinuxRuntimeMemory {
   const DEFAULT_INTERVAL_MS = 60_000
   const TOP_TYPE_LIMIT = 12
-  let lastAttemptAt: number | undefined
-  let last: Snapshot | undefined
-  let previousTypeCounts: Map<string, number> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    lastAttemptAt: undefined as number | undefined,
+    last: undefined as Snapshot | undefined,
+    previousTypeCounts: undefined as Map<string, number> | undefined,
+  }))
 
   export interface ObjectTypeCount {
     type: string
@@ -52,17 +55,20 @@ export namespace LinuxRuntimeMemory {
       readStats?: () => HeapStatsSnapshot
     } = {},
   ): Snapshot | undefined {
+    const instanceState = runtimeState()
+
     if ((input.platform ?? process.platform) !== "linux") return
     const now = input.now ?? Date.now()
     const interval = envNumber(input.env?.SYNERGY_LINUX_HEAP_STATS_INTERVAL_MS) ?? DEFAULT_INTERVAL_MS
-    if (!input.force && lastAttemptAt !== undefined && now - lastAttemptAt < interval) return last
-    lastAttemptAt = now
+    if (!input.force && instanceState.lastAttemptAt !== undefined && now - instanceState.lastAttemptAt < interval)
+      return instanceState.last
+    instanceState.lastAttemptAt = now
 
     try {
       const stats = input.readStats?.() ?? (heapStats() as HeapStatsSnapshot)
       const counts = new Map(Object.entries(stats.objectTypeCounts).map(([type, count]) => [type, finite(count)]))
       const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      const baselineTypeCounts = previousTypeCounts
+      const baselineTypeCounts = instanceState.previousTypeCounts
       const growth = baselineTypeCounts
         ? ranked
             .map(([type, count]) => ({ type, count, delta: count - (baselineTypeCounts.get(type) ?? 0) }))
@@ -70,7 +76,7 @@ export namespace LinuxRuntimeMemory {
             .sort((a, b) => b.delta - a.delta || b.count - a.count || a.type.localeCompare(b.type))
         : []
       const mimalloc = stats.mimalloc
-      last = {
+      instanceState.last = {
         sampledAt: now,
         jscHeapSizeBytes: finite(stats.heapSize),
         jscHeapCapacityBytes: finite(stats.heapCapacity),
@@ -88,17 +94,19 @@ export namespace LinuxRuntimeMemory {
         })),
         growingObjectTypes: growth.slice(0, TOP_TYPE_LIMIT),
       }
-      previousTypeCounts = counts
-      return last
+      instanceState.previousTypeCounts = counts
+      return instanceState.last
     } catch {
-      return last
+      return instanceState.last
     }
   }
 
   export function resetForTest() {
-    lastAttemptAt = undefined
-    last = undefined
-    previousTypeCounts = undefined
+    const instanceState = runtimeState()
+
+    instanceState.lastAttemptAt = undefined
+    instanceState.last = undefined
+    instanceState.previousTypeCounts = undefined
   }
 
   function envNumber(value: string | undefined) {

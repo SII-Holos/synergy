@@ -22,39 +22,69 @@ function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
 }
 
-export const EditTool = Tool.define("edit", {
-  description: DESCRIPTION,
-  parameters: z.object({
-    filePath: z.string().describe("The absolute path to the file to modify"),
-    oldString: z.string().describe("The text to replace"),
-    newString: z.string().describe("The text to replace it with (must be different from oldString)"),
-    replaceAll: z.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
-  }),
-  async execute(params, ctx) {
-    if (!params.filePath) {
-      throw new Error("filePath is required")
-    }
+export const EditTool = Tool.define(
+  "edit",
+  {
+    description: DESCRIPTION,
+    parameters: z.object({
+      filePath: z.string().describe("The absolute path to the file to modify"),
+      oldString: z.string().describe("The text to replace"),
+      newString: z.string().describe("The text to replace it with (must be different from oldString)"),
+      replaceAll: z.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
+    }),
+    async execute(params, ctx) {
+      if (!params.filePath) {
+        throw new Error("filePath is required")
+      }
 
-    if (params.oldString === params.newString) {
-      throw new Error("oldString and newString must be different")
-    }
+      if (params.oldString === params.newString) {
+        throw new Error("oldString and newString must be different")
+      }
 
-    const filePath = path.isAbsolute(params.filePath)
-      ? params.filePath
-      : path.join(ScopeContext.current.directory, params.filePath)
-    const displayPath = path.relative(ScopeContext.current.directory, filePath)
+      const filePath = path.isAbsolute(params.filePath)
+        ? params.filePath
+        : path.join(ScopeContext.current.directory, params.filePath)
+      const displayPath = path.relative(ScopeContext.current.directory, filePath)
 
-    let diff = ""
-    let contentOld = ""
-    let contentNew = ""
-    let beforeDiagnostics: WriteDiagnosticsSnapshot | undefined
+      let diff = ""
+      let contentOld = ""
+      let contentNew = ""
+      let beforeDiagnostics: WriteDiagnosticsSnapshot | undefined
 
-    await FileTime.withLock(
-      filePath,
-      async () => {
-        if (params.oldString === "") {
-          contentNew = params.newString
-          diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+      await FileTime.withLock(
+        filePath,
+        async () => {
+          if (params.oldString === "") {
+            contentNew = params.newString
+            diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+            await ctx.ask({
+              permission: "edit",
+              patterns: [displayPath],
+              metadata: {
+                filepath: filePath,
+                diff,
+              },
+            })
+            beforeDiagnostics = await captureWriteDiagnosticsBefore()
+            await Bun.write(filePath, params.newString)
+            await Bus.publish(File.Event.Edited, {
+              file: filePath,
+            })
+            FileTime.read(ctx.sessionID, filePath)
+            return
+          }
+
+          const file = Bun.file(filePath)
+          const stats = await file.stat().catch(() => {})
+          if (!stats) throw new Error(`File ${filePath} not found`)
+          if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+          await FileTime.assert(ctx.sessionID, filePath)
+          contentOld = await file.text()
+          contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
+
+          diff = trimDiff(
+            createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+          )
           await ctx.ask({
             permission: "edit",
             patterns: [displayPath],
@@ -64,106 +94,80 @@ export const EditTool = Tool.define("edit", {
             },
           })
           beforeDiagnostics = await captureWriteDiagnosticsBefore()
-          await Bun.write(filePath, params.newString)
+
+          await file.write(contentNew)
           await Bus.publish(File.Event.Edited, {
             file: filePath,
           })
+          contentNew = await file.text()
+          diff = trimDiff(
+            createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+          )
           FileTime.read(ctx.sessionID, filePath)
-          return
-        }
+        },
+        { signal: ctx.abort },
+      )
 
-        const file = Bun.file(filePath)
-        const stats = await file.stat().catch(() => {})
-        if (!stats) throw new Error(`File ${filePath} not found`)
-        if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-        await FileTime.assert(ctx.sessionID, filePath)
-        contentOld = await file.text()
-        contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
-
-        diff = trimDiff(
-          createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-        )
-        await ctx.ask({
-          permission: "edit",
-          patterns: [displayPath],
-          metadata: {
-            filepath: filePath,
-            diff,
-          },
-        })
-        beforeDiagnostics = await captureWriteDiagnosticsBefore()
-
-        await file.write(contentNew)
-        await Bus.publish(File.Event.Edited, {
+      const filediff: SnapshotSchema.FileDiff = {
+        ...SnapshotSchema.fromContents({
           file: filePath,
-        })
-        contentNew = await file.text()
-        diff = trimDiff(
-          createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-        )
-        FileTime.read(ctx.sessionID, filePath)
-      },
-      { signal: ctx.abort },
-    )
+          before: contentOld,
+          after: contentNew,
+          additions: 0,
+          deletions: 0,
+          preview: diff,
+        }),
+      }
+      for (const change of diffLines(contentOld, contentNew)) {
+        if (change.added) filediff.additions += change.count || 0
+        if (change.removed) filediff.deletions += change.count || 0
+      }
 
-    const filediff: SnapshotSchema.FileDiff = {
-      ...SnapshotSchema.fromContents({
-        file: filePath,
-        before: contentOld,
-        after: contentNew,
-        additions: 0,
-        deletions: 0,
-        preview: diff,
-      }),
-    }
-    for (const change of diffLines(contentOld, contentNew)) {
-      if (change.added) filediff.additions += change.count || 0
-      if (change.removed) filediff.deletions += change.count || 0
-    }
+      ctx.metadata({
+        metadata: {
+          diff,
+          filediff,
+          diagnostics: {},
+        },
+      })
 
-    ctx.metadata({
-      metadata: {
-        diff,
-        filediff,
-        diagnostics: {},
-      },
-    })
+      const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)
+      const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filePath) ?? "auto"
+      const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filePath)
+      const runtimeReload =
+        runtimeReloadTargets.length > 0
+          ? await RuntimeReloadExecutor.reload({
+              targets: runtimeReloadTargets,
+              scope: runtimeReloadScope,
+              reason: `edit:${displayPath}`,
+            })
+          : undefined
 
-    const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)
-    const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filePath) ?? "auto"
-    const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filePath)
-    const runtimeReload =
-      runtimeReloadTargets.length > 0
-        ? await RuntimeReloadExecutor.reload({
-            targets: runtimeReloadTargets,
-            scope: runtimeReloadScope,
-            reason: `edit:${displayPath}`,
-          })
-        : undefined
+      const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
+      let output = diagnostics.output
 
-    const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
-    let output = diagnostics.output
+      if (runtimeReload) {
+        output += `\n${formatCompactReloadResult(runtimeReload)}\n`
+      }
+      if (builtinSourceWarning) {
+        output += `\n${builtinSourceWarning}\n`
+      }
 
-    if (runtimeReload) {
-      output += `\n${formatCompactReloadResult(runtimeReload)}\n`
-    }
-    if (builtinSourceWarning) {
-      output += `\n${builtinSourceWarning}\n`
-    }
-
-    return {
-      metadata: {
-        diagnostics: diagnostics.diagnostics,
-        diff,
-        filediff,
-        runtimeReload,
-        builtinSourceWarning,
-      },
-      title: displayPath,
-      output,
-    }
+      return {
+        metadata: {
+          diagnostics: diagnostics.diagnostics,
+          diff,
+          filediff,
+          runtimeReload,
+          builtinSourceWarning,
+        },
+        title: displayPath,
+        output,
+      }
+    },
   },
-})
+  { requiresWorkspace: true },
+)
 
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
 

@@ -1,7 +1,7 @@
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
-import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -38,28 +38,30 @@ export namespace SnapshotLease {
     return current === undefined || current === owner.identity
   }
 
-  async function update<T>(dataRoot: string, scopeID: string, fn: (state: z.infer<typeof State>) => T | Promise<T>) {
-    return withFileLock(
-      { directory: directory(dataRoot), key: `snapshot-leases:${scopeID}`, timeoutMs: 1000 },
-      async () => {
-        const file =
-          path.join(dataRoot, ...(scopeID ? StoragePath.snapshotLeases(scopeID) : StoragePath.snapshotHomeLeases())) +
-          ".json"
-        const stored: unknown = await Bun.file(file)
-          .json()
-          .catch((error: NodeJS.ErrnoException) => {
-            if (error.code === "ENOENT") return { owners: [] }
-            throw error
-          })
-        const state = State.parse(stored)
-        const before = JSON.stringify(state)
-        const living = await Promise.all(state.owners.map(alive))
-        state.owners = state.owners.filter((_, index) => living[index])
-        const result = await fn(state)
-        if (JSON.stringify(state) !== before) await Storage.writeJsonAtomic(file, JSON.stringify(state))
-        return result
-      },
-    )
+  async function update<T>(
+    dataRoot: string,
+    scopeID: string,
+    fn: (state: z.infer<typeof State>) => T | Promise<T>,
+    options: Pick<Options, "signal" | "timeoutMs"> = {},
+  ) {
+    return withFileLock({ directory: directory(dataRoot), key: `snapshot-leases:${scopeID}`, ...options }, async () => {
+      const file =
+        path.join(dataRoot, ...(scopeID ? StoragePath.snapshotLeases(scopeID) : StoragePath.snapshotHomeLeases())) +
+        ".json"
+      const stored: unknown = await Bun.file(file)
+        .json()
+        .catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return { owners: [] }
+          throw error
+        })
+      const state = State.parse(stored)
+      const before = JSON.stringify(state)
+      const living = await Promise.all(state.owners.map(alive))
+      state.owners = state.owners.filter((_, index) => living[index])
+      const result = await fn(state)
+      if (JSON.stringify(state) !== before) await Storage.writeJsonAtomic(file, JSON.stringify(state))
+      return result
+    })
   }
 
   interface Options {
@@ -84,9 +86,10 @@ export namespace SnapshotLease {
   export async function acquire(scopeID: string, exclusive: boolean, options: Options = {}) {
     if (!/^[a-zA-Z0-9_-]+$/.test(scopeID)) throw new Error("Invalid snapshot lease Scope")
     const dataRoot = options.dataRoot ?? Storage.current().artifactDirectory
-    const home = await admit("", false, { ...options, dataRoot })
+    const deadline = Date.now() + (options.timeoutMs ?? 15_000)
+    const home = await admit("", false, { ...options, dataRoot }, deadline)
     try {
-      const scope = await admit(scopeID, exclusive, { ...options, dataRoot })
+      const scope = await admit(scopeID, exclusive, { ...options, dataRoot }, deadline)
       return {
         async [Symbol.asyncDispose]() {
           try {
@@ -106,7 +109,12 @@ export namespace SnapshotLease {
     return admit("", true, { ...options, dataRoot })
   }
 
-  async function admit(scopeID: string, exclusive: boolean, options: Options) {
+  async function admit(
+    scopeID: string,
+    exclusive: boolean,
+    options: Options,
+    deadline = Date.now() + (options.timeoutMs ?? 15_000),
+  ) {
     const dataRoot = options.dataRoot ?? Storage.current().artifactDirectory
     const owner: Owner = {
       token: randomUUID(),
@@ -114,7 +122,6 @@ export namespace SnapshotLease {
       identity: await processStartIdentity(process.pid),
       exclusive,
     }
-    const deadline = Date.now() + (options.timeoutMs ?? 15_000)
     let registered = false
     const release = async () => {
       if (!registered) return
@@ -133,13 +140,20 @@ export namespace SnapshotLease {
     try {
       for (;;) {
         options.signal?.throwIfAborted()
-        const ready = await update(dataRoot, scopeID, (state) => {
-          if (!registered && !state.owners.some((entry) => entry.exclusive)) {
-            state.owners.push(owner)
-            registered = true
-          }
-          return registered && (!exclusive || state.owners.length === 1)
-        })
+        const ready = await update(
+          dataRoot,
+          scopeID,
+          (state) => {
+            options.signal?.throwIfAborted()
+            if (Date.now() >= deadline) throw new BusyError()
+            if (!registered && !state.owners.some((entry) => entry.exclusive)) {
+              state.owners.push(owner)
+              registered = true
+            }
+            return registered && (!exclusive || state.owners.length === 1)
+          },
+          { signal: options.signal, timeoutMs: Math.max(0, deadline - Date.now()) },
+        )
         if (ready) break
         if (Date.now() >= deadline) throw new BusyError()
         await pause(options.signal)
@@ -148,6 +162,8 @@ export namespace SnapshotLease {
       return { [Symbol.asyncDispose]: release }
     } catch (error) {
       await release()
+      if (options.signal?.aborted && error === options.signal.reason) throw error
+      if (error instanceof FileLockTimeoutError) throw new BusyError()
       throw error
     }
   }

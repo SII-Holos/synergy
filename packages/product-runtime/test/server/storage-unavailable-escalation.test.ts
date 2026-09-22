@@ -3,6 +3,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // A terminally failed store cannot be repaired in place, so the Runtime must not
 // keep serving HTTP over it. `Storage.onUnavailable` carries that judgement and
@@ -47,18 +50,19 @@ async function waitForMarker(file: string, deadlineMs: number, stopped?: () => b
 
 test(
   "a terminally failed store escalates into the runtime shutdown path",
-  async () => {
-    // The child boots a second full runtime, so it gets its own home (reusing the
-    // test home would collide with the store this process already installed) and
-    // an explicit, hermetic environment. Inheriting this process's environment
-    // makes the child's startup depend on whatever the harness happens to export,
-    // which fails under the coverage runner.
-    const isolated = await createIsolatedTestEnv()
-    const root = await mkdtemp(path.join(os.tmpdir(), "storage-escalation-runtime-"))
-    const readyMarker = path.join(root, "ready")
-    const escalatedMarker = path.join(root, "escalated")
-    const exitMarker = path.join(root, "exit")
-    const script = String.raw`
+  () =>
+    runtime.run(async () => {
+      // The child boots a second full runtime, so it gets its own home (reusing the
+      // test home would collide with the store this process already installed) and
+      // an explicit, hermetic environment. Inheriting this process's environment
+      // makes the child's startup depend on whatever the harness happens to export,
+      // which fails under the coverage runner.
+      const isolated = await createIsolatedTestEnv()
+      const root = await mkdtemp(path.join(os.tmpdir(), "storage-escalation-runtime-"))
+      const readyMarker = path.join(root, "ready")
+      const escalatedMarker = path.join(root, "escalated")
+      const exitMarker = path.join(root, "exit")
+      const script = String.raw`
       import { writeFileSync } from "node:fs"
       import { writeFile } from "node:fs/promises"
       // Registered before anything else so the escalation's exit code is captured
@@ -69,11 +73,15 @@ test(
       })
       const mark = (file) => writeFile(file, "").catch(() => {})
       const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
-      await Log.init({ print: false })
       const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
       const { Observability } = await import("@ericsanchezok/synergy-harness/observability")
       const { getRuntimeEndpoint } = await import("@ericsanchezok/synergy-harness/util/runtime-endpoint")
       const { run } = await import("./src/server/runtime")
+      const { ProductRuntimeHandle } = await import("./src/server/runtime-handle")
+      const open = ProductRuntimeHandle.open
+      let owner
+      ProductRuntimeHandle.open = async (options) => owner = await open(options)
+      let endpoint
       let started = false
       void run({
         interactive: false,
@@ -94,8 +102,11 @@ test(
         try {
           // Transport listens before resident startup and shutdown registration finish.
           // Kill storage only after the runtime has published its startup event.
-          if ((await fetch(getRuntimeEndpoint().url + "/global/health")).ok &&
-              (await Observability.query({ type: "server.start", limit: 1 })).length) {
+          if (owner && await owner.run(async () => {
+              endpoint = getRuntimeEndpoint().url
+              return (await fetch(endpoint + "/global/health")).ok &&
+                (await Observability.query({ type: "server.start", limit: 1 })).length
+            })) {
             started = true
             break
           }
@@ -108,7 +119,7 @@ test(
       }
       await mark(process.env.SYNERGY_ESCALATION_READY)
 
-      Storage.current().store.driver.worker.kill()
+      owner.run(() => Storage.current().store.driver.worker.kill())
 
       // Closing admission is the first act of the escalation, so a 503 here is
       // the escalation arriving. The marker is written only when it is actually
@@ -117,7 +128,7 @@ test(
       const escalationDeadline = Date.now() + ${ESCALATION_DEADLINE_MS}
       while (Date.now() < escalationDeadline) {
         try {
-          if ((await fetch(getRuntimeEndpoint().url + "/global/health")).status === 503) {
+          if ((await fetch(endpoint + "/global/health")).status === 503) {
             await mark(process.env.SYNERGY_ESCALATION_ESCALATED)
             break
           }
@@ -130,55 +141,53 @@ test(
       for (;;) await Bun.sleep(1_000)
     `
 
-    const child = Bun.spawn([process.execPath, "-e", script], {
-      cwd: path.resolve(import.meta.dir, "../.."),
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        TMPDIR: process.env.TMPDIR,
-        SYNERGY_TEST_HOME: isolated.env.SYNERGY_TEST_HOME,
-        SYNERGY_TEST_ROOT: isolated.env.SYNERGY_TEST_ROOT,
-        SYNERGY_ESCALATION_READY: readyMarker,
-        SYNERGY_ESCALATION_ESCALATED: escalatedMarker,
-        SYNERGY_ESCALATION_EXIT: exitMarker,
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    })
+      const child = Bun.spawn([process.execPath, "-e", script], {
+        cwd: path.resolve(import.meta.dir, "../.."),
+        env: {
+          ...isolated.env,
+          SYNERGY_ESCALATION_READY: readyMarker,
+          SYNERGY_ESCALATION_ESCALATED: escalatedMarker,
+          SYNERGY_ESCALATION_EXIT: exitMarker,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
 
-    // Start draining both streams immediately and keep them for the failure
-    // messages. Startup and shutdown write more than one pipe buffer, so an
-    // undrained pipe blocks the child before it can reach the escalation.
-    const stdoutText = new Response(child.stdout).text()
-    const stderrText = new Response(child.stderr).text()
+      // Start draining both streams immediately and keep them for the failure
+      // messages. Startup and shutdown write more than one pipe buffer, so an
+      // undrained pipe blocks the child before it can reach the escalation.
+      const stdoutText = new Response(child.stdout).text()
+      const stderrText = new Response(child.stderr).text()
 
-    try {
-      const exited = () => child.exitCode !== null
-      const ready = await waitForMarker(readyMarker, STARTUP_DEADLINE_MS, exited)
-      const escalated = await waitForMarker(escalatedMarker, ESCALATION_DEADLINE_MS, exited)
-      const exitStatus = await waitForMarker(exitMarker, EXIT_DEADLINE_MS, exited)
-      const observed = await Promise.race([child.exited, Bun.sleep(EXIT_CONFIRM_MS).then(() => null)])
-      child.kill()
-      const output = (await Promise.all([stdoutText, stderrText])).join("\n")
+      try {
+        const exited = () => child.exitCode !== null
+        const ready = await waitForMarker(readyMarker, STARTUP_DEADLINE_MS, exited)
+        const escalated = await waitForMarker(escalatedMarker, ESCALATION_DEADLINE_MS, exited)
+        const exitStatus = await waitForMarker(exitMarker, EXIT_DEADLINE_MS, exited)
+        const observed = await Promise.race([child.exited, Bun.sleep(EXIT_CONFIRM_MS).then(() => null)])
+        child.kill()
+        const output = (await Promise.all([stdoutText, stderrText])).join("\n")
 
-      // Each assertion separates a different defect: readiness distinguishes
-      // "never booted" from "booted and did not escalate", the escalation marker
-      // names the behaviour, the exit marker records the status the process
-      // predictably left with, and the observed status confirms the operating
-      // system saw the same. The status is the supervisor contract — it must be
-      // non-zero — and every path out of this escalation yields 1: the explicit
-      // code, a cleanup that fails against the dead store, and the shutdown
-      // watchdog. The assertion pins that contract rather than the argument that
-      // happens to supply it.
-      expect(ready, `runtime never became healthy: ${output}`).toBe("")
-      expect(escalated, `storage unavailability never closed admission: ${output}`).toBe("")
-      expect(exitStatus, `the escalation never reached process.exit: ${output}`).toBe("1")
-      expect(observed, `the process did not exit with the escalated status: ${output}`).toBe(1)
-    } finally {
-      child.kill("SIGKILL")
-      await child.exited
-      await Promise.all([rm(root, { recursive: true, force: true }), isolated.dispose()])
-    }
-  },
+        // Each assertion separates a different defect: readiness distinguishes
+        // "never booted" from "booted and did not escalate", the escalation marker
+        // names the behaviour, the exit marker records the status the process
+        // predictably left with, and the observed status confirms the operating
+        // system saw the same. The status is the supervisor contract — it must be
+        // non-zero — and every path out of this escalation yields 1: the explicit
+        // code, a cleanup that fails against the dead store, and the shutdown
+        // watchdog. The assertion pins that contract rather than the argument that
+        // happens to supply it.
+        expect(ready, `runtime never became healthy: ${output}`).toBe("")
+        expect(escalated, `storage unavailability never closed admission: ${output}`).toBe("")
+        expect(exitStatus, `the escalation never reached process.exit: ${output}`).toBe("1")
+        expect(observed, `the process did not exit with the escalated status: ${output}`).toBe(1)
+      } finally {
+        child.kill("SIGKILL")
+        await child.exited
+        await Promise.all([rm(root, { recursive: true, force: true }), isolated.dispose()])
+      }
+    }),
   STARTUP_DEADLINE_MS + ESCALATION_DEADLINE_MS + EXIT_DEADLINE_MS + EXIT_CONFIRM_MS + 60_000,
 )
+
+afterRuntimeTests(() => runtime.close())

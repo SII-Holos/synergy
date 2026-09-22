@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9c source inversion: the L1 session invoke loop executes commands through
  * this registry instead of importing the command product domain. The L4
@@ -38,21 +39,32 @@ export namespace SessionCommandRuntime {
     defaultInitCommand: string
   }
 
-  let provider: Provider | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    provider: undefined as Provider | undefined,
+  }))
 
   export function register(value: Provider): void {
-    provider = value
+    const instanceState = runtimeState()
+
+    if (instanceState.provider === value) return
+    RuntimeContext.assertCompositionOpen("session/command-runtime")
+    if (instanceState.provider && value) throw new Error("session/command-runtime is already registered")
+    instanceState.provider = value
   }
 
   export function get(): Provider | undefined {
-    return provider
+    const instanceState = runtimeState()
+
+    return instanceState.provider
   }
 
   function requireProvider(): Provider {
-    if (!provider) {
+    const instanceState = runtimeState()
+
+    if (!instanceState.provider) {
       throw new Error("Command runtime is not registered (load src/product-registration)")
     }
-    return provider
+    return instanceState.provider
   }
 
   export function require(name: string): Promise<CommandInfo> {

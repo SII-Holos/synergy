@@ -1,3 +1,5 @@
+import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
 import { describe, expect, spyOn, test } from "bun:test"
 import { SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import path from "path"
@@ -6,8 +8,9 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { SystemdUserService, renderSystemdUnit } from "../../src/daemon/systemd"
 
 describe("daemon.systemd", () => {
-  test("builds systemd user unit path under home config", () => {
-    const unit = DaemonPaths.systemdUnit("synergy")
+  test("builds systemd user unit path under home config", async () => {
+    await using runtime = await migrationFixture()
+    const unit = runtime.run(() => DaemonPaths.systemdUnit("synergy"))
     expect(unit).toContain(path.join(".config", "systemd", "user", "synergy.service"))
   })
 
@@ -49,43 +52,42 @@ async function withSystemd(
   ) => Promise<void>,
 ) {
   await using tmp = await tmpdir()
-  const previousHome = process.env.SYNERGY_HOME
-  process.env.SYNERGY_HOME = tmp.path
-  const calls: string[][] = []
-  let response: { exitCode: number; stdout: string; stderr: string; failAction?: string } = {
-    exitCode: 0,
-    stdout: "",
-    stderr: "",
-  }
-  const spawn = spyOn(Bun, "spawn").mockImplementation((command) => {
-    if (!Array.isArray(command) || command[0] !== "systemctl") throw new Error("unexpected OS operation")
-    calls.push(command as string[])
-    const value =
-      response.failAction && command[2] !== response.failAction ? { exitCode: 0, stdout: "", stderr: "" } : response
-    return {
-      stdout: new Response(value.stdout).body,
-      stderr: new Response(value.stderr).body,
-      exited: Promise.resolve(value.exitCode),
-    } as never
-  })
-  const spec = {
-    label: "synergy-unit-fixture",
-    hostname: "127.0.0.1",
-    port: 49123,
-    command: ["/app path/synergy", "server"],
-    cwd: tmp.path,
-    env: { SAMPLE: 'quoted "value"' },
-    logFile: DaemonPaths.logFile(),
-  }
-  try {
-    await run(spec, calls, (value) => {
-      response = { stdout: "", stderr: "", ...value }
+  await using runtime = await migrationFixture({ home: tmp.path, register: registerLocalRuntime })
+  await runtime.run(async () => {
+    const calls: string[][] = []
+    let response: { exitCode: number; stdout: string; stderr: string; failAction?: string } = {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    }
+    const spawn = spyOn(Bun, "spawn").mockImplementation((command) => {
+      if (!Array.isArray(command) || command[0] !== "systemctl") throw new Error("unexpected OS operation")
+      calls.push(command as string[])
+      const value =
+        response.failAction && command[2] !== response.failAction ? { exitCode: 0, stdout: "", stderr: "" } : response
+      return {
+        stdout: new Response(value.stdout).body,
+        stderr: new Response(value.stderr).body,
+        exited: Promise.resolve(value.exitCode),
+      } as never
     })
-  } finally {
-    spawn.mockRestore()
-    if (previousHome === undefined) delete process.env.SYNERGY_HOME
-    else process.env.SYNERGY_HOME = previousHome
-  }
+    const spec = {
+      label: "synergy-unit-fixture",
+      hostname: "127.0.0.1",
+      port: 49123,
+      command: ["/app path/synergy", "server"],
+      cwd: tmp.path,
+      env: { SAMPLE: 'quoted "value"' },
+      logFile: DaemonPaths.logFile(),
+    }
+    try {
+      await run(spec, calls, (value) => {
+        response = { stdout: "", stderr: "", ...value }
+      })
+    } finally {
+      spawn.mockRestore()
+    }
+  })
 }
 
 test("systemd lifecycle persists the user unit and translates manager state without starting OS services", async () => {

@@ -1,3 +1,4 @@
+import { parseSessionDragData } from "@/utils/session-drag"
 import type { Accessor, Setter } from "solid-js"
 import type { SetStoreFunction } from "solid-js/store"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -20,7 +21,7 @@ import { getCursorPosition } from "./editor-dom"
 import type { PendingAttachmentTracker } from "./pending-attachments"
 import { runPendingAttachmentUpload } from "./attachment-upload-flow"
 import { PI } from "./prompt-input-i18n"
-import type { BlueprintSlot, DroppedBlueprintData, DroppedSessionData, PromptInputStore } from "./types"
+import type { BlueprintSlot, DroppedBlueprintData, PromptInputStore } from "./types"
 import { decideDroppedSession } from "./session-drop"
 
 type PromptAttachmentsInput = {
@@ -271,7 +272,8 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     const sessionData = event.dataTransfer?.getData("application/x-synergy-session")
     if (sessionData) {
       try {
-        const dropped = JSON.parse(sessionData) as DroppedSessionData
+        const dropped = parseSessionDragData(sessionData, sdk.url)
+        if (!dropped) return
         const decision = decideDroppedSession(dropped, params.id, input.sessionAttachments())
         if (!decision.accepted) return
         const cursorPosition = cursor()
@@ -282,7 +284,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
               type: "session",
               id: createPromptPartID(),
               sessionId: dropped.id,
-              directory: dropped.directory,
+              scopeID: dropped.scopeID,
               title: dropped.title || "Untitled",
               updatedAt: dropped.updatedAt,
             },

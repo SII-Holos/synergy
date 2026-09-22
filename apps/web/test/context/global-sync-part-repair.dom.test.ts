@@ -47,13 +47,13 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     const ok = data => Promise.resolve({data})
     export function createSynergyClient(options) {
       return {
-        scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve,done:false})) },
+        scope: { bootstrap: () => options.scopeID.startsWith("background.") ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([]),messagePage:(_input, options)=>new Promise(resolve=>pages.push({resolve,signal:options.signal}))},
       }
     }
-    export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({prepareScopeState(){},connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})

@@ -16,5 +16,6 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
   }
   return Response.json(JSON.parse(process.env.MODELS_REFRESH_PAYLOAD ?? "{}"))
 }) as unknown as typeof fetch
-await import("../../../src/index")
+const { main } = await import("../../../src/index")
+await main()
 export {}

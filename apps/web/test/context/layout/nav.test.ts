@@ -9,7 +9,7 @@ import {
   rootNavSectionsForSessionUpdate,
   loadNavListToDepth,
   managedProjectLocalScope,
-  managedProjectScopesByWorktree,
+  managedProjectScopesByID,
   partitionScopeNavigation,
   mergeNavListByID,
   navUpdateFromSession,
@@ -62,7 +62,6 @@ describe("managedProjectLocalScope", () => {
 
     expect(managedProjectLocalScope(managed, { time: { created: 10, updated: 20 } }, true)).toEqual({
       id: "managed-scope",
-      worktree: "/managed/project",
       name: "Managed Project",
       icon: { color: "purple" },
       time: { created: 10, updated: 20 },
@@ -90,17 +89,16 @@ describe("managed Project scope projection", () => {
     const generic = scopeEntry({ scopeID: "generic-scope", directory: "/generic/project" })
     const projection = partitionScopeNavigation([managed, generic])
 
-    const scopes = managedProjectScopesByWorktree(
+    const scopes = managedProjectScopesByID(
       projection.channelAccounts,
       new Map([["managed-scope", { time: { created: 10, updated: 20 } }]]),
-      new Set(["/managed/project"]),
+      new Set(["managed-scope"]),
     )
 
     expect(projection.genericProjects.map((entry) => entry.scopeID)).toEqual(["generic-scope"])
-    expect([...scopes.keys()]).toEqual(["/managed/project"])
-    expect(scopes.get("/managed/project")).toEqual({
+    expect([...scopes.keys()]).toEqual(["managed-scope"])
+    expect(scopes.get("managed-scope")).toEqual({
       id: "managed-scope",
-      worktree: "/managed/project",
       name: "Managed Project",
       icon: { color: "purple" },
       time: { created: 10, updated: 20 },

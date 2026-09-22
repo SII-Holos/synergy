@@ -20,7 +20,6 @@ export function defaultAgendaActivityState(limit = 25): AgendaActivityState {
 
 export async function requestAgendaActivity(input: {
   client: SynergyClient
-  directory: string
   scopeID?: string
   query?: string
   append?: boolean
@@ -32,7 +31,6 @@ export async function requestAgendaActivity(input: {
 
   const offset = input.append ? input.state.offset + input.state.items.length : 0
   const res = await input.client.agenda.activity({
-    directory: input.directory,
     scopeID: input.scopeID,
     query: input.query || undefined,
     offset,

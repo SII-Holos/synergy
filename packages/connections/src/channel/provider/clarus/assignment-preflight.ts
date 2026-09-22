@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
-import type { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { isRecord } from "@ericsanchezok/synergy-harness/util/is-record"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import type { RuntimeTaskAssignedEvent } from "./agent-tunnel-port"
@@ -179,10 +179,15 @@ export async function preflightClarusAssignment(input: {
   if (refs.length === 0) return { inputs: [], promptSection: "" }
   if (!input.runner) throw new ClarusAssignmentPreflightError({ missingInputs: refs })
 
-  const runDirectory = path.join(input.scope.directory, ".clarus", "inputs", hash(input.event.runID).slice(0, 24))
+  const runDirectory = path.join(
+    Scope.requireLocal(input.scope).directory,
+    ".clarus",
+    "inputs",
+    hash(input.event.runID).slice(0, 24),
+  )
   const manifestFile = path.join(runDirectory, "manifest.json")
   const cached = await readManifest(manifestFile, input.event.runID)
-  if (cached && (await validateCachedInputs(input.scope.directory, refs, cached.inputs))) {
+  if (cached && (await validateCachedInputs(Scope.requireLocal(input.scope).directory, refs, cached.inputs))) {
     return { inputs: cached.inputs, promptSection: renderPrompt(cached.inputs) }
   }
 
@@ -226,7 +231,7 @@ export async function preflightClarusAssignment(input: {
         }
       }
     }
-    const relativePath = path.relative(input.scope.directory, target)
+    const relativePath = path.relative(Scope.requireLocal(input.scope).directory, target)
     resolved.push({ ref, relativePath })
   }
 

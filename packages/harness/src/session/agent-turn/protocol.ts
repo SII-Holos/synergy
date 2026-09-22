@@ -6,7 +6,7 @@ import { Workspace } from "../workspace-schema"
 import { RolloutTransportSchema } from "../rollout/transport-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 9
+  export const VERSION = 10
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -178,7 +178,7 @@ export namespace AgentTurnProtocol {
   export const TurnEnvelopeSchema = z
     .object({
       scope: ScopeRuntime,
-      workspace: Workspace.optional(),
+      workspace: Workspace.nullable(),
       input: TurnInputSchema,
     })
     .strict()

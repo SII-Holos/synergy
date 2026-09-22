@@ -151,7 +151,7 @@ function ServerKey(props: ParentProps) {
   const server = useServer()
   return (
     <Show when={server.url} keyed>
-      {props.children}
+      {(_url) => props.children}
     </Show>
   )
 }

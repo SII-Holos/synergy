@@ -1,3 +1,7 @@
+import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -71,212 +75,225 @@ async function ledgerExcluding(ids: string[]) {
 }
 
 describe("retired waiting Blueprint phase upgrade", () => {
-  test("an upgrading store keeps the session and reports it in the navigation index", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
-    const scopeID = Identifier.asScopeID(scope.id)
+  test("an upgrading store keeps the session and reports it in the navigation index", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
+      const scopeID = Identifier.asScopeID(scope.id)
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const { sessionID, key } = await seedWaitingPhaseSession(scope)
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const { sessionID, key } = await seedWaitingPhaseSession(scope)
 
-        // The defect, reproduced on the exact stored shape: the record does not
-        // parse, and the navigation projection therefore hides the session.
-        const before = Session.Info.safeParse(await Storage.read<unknown>(key))
-        expect(before.success).toBe(false)
-        if (!before.success)
-          expect(before.error.issues.map((issue) => issue.path.join("."))).toContain("blueprint.phase")
+          // The defect, reproduced on the exact stored shape: the record does not
+          // parse, and the navigation projection therefore hides the session.
+          const before = Session.Info.safeParse(await Storage.read<unknown>(key))
+          expect(before.success).toBe(false)
+          if (!before.success)
+            expect(before.error.issues.map((issue) => issue.path.join("."))).toContain("blueprint.phase")
 
-        await SessionNav.rebuildAllNavIndexes()
-        expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeUndefined()
+          await SessionNav.rebuildAllNavIndexes()
+          expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeUndefined()
 
-        // The declared order, executed by the real runner.
-        const restore = await ledgerExcluding([PHASE_ID, NAV_ID])
-        try {
-          const summary = await runMigrations({ targetDomain: "session", output: "silent" })
-          expect(summary.completed).toBe(2)
-        } finally {
-          await restore()
-        }
+          // The declared order, executed by the real runner.
+          const restore = await ledgerExcluding([PHASE_ID, NAV_ID])
+          try {
+            const summary = await runMigrations({ targetDomain: "session", output: "silent" })
+            expect(summary.completed).toBe(2)
+          } finally {
+            await restore()
+          }
 
-        const migrated = await Storage.read<Record<string, unknown>>(key)
-        expect(Session.Info.safeParse(migrated).success).toBe(true)
-        // `running` is the survivor; the binding itself is untouched, so
-        // continue, abandon and the review controls still resolve the loop.
-        expect(migrated.blueprint).toEqual({ loopID: "bll_legacy", loopRole: "execution", phase: "running" })
-        // The stop the user asked for is not dropped with the status: it becomes
-        // the session's own latch, which is what keeps the turn from resuming.
-        expect(await SessionLifecycle.snapshot(sessionID)).toMatchObject({ reason: "workflow" })
-        expect(await SessionLifecycle.blocksDrive(await Session.get(sessionID))).toBe(true)
+          const migrated = await Storage.read<Record<string, unknown>>(key)
+          expect(Session.Info.safeParse(migrated).success).toBe(true)
+          // `running` is the survivor; the binding itself is untouched, so
+          // continue, abandon and the review controls still resolve the loop.
+          expect(migrated.blueprint).toEqual({ loopID: "bll_legacy", loopRole: "execution", phase: "running" })
+          // The stop the user asked for is not dropped with the status: it becomes
+          // the session's own latch, which is what keeps the turn from resuming.
+          expect(await SessionLifecycle.snapshot(sessionID)).toMatchObject({ reason: "workflow" })
+          expect(await SessionLifecycle.blocksDrive(await Session.get(sessionID))).toBe(true)
 
-        const entry = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)
-        expect(entry).toBeDefined()
-        expect(entry!.blueprint).toEqual({ loopID: "bll_legacy", loopRole: "execution", phase: "running" })
+          const entry = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)
+          expect(entry).toBeDefined()
+          expect(entry!.blueprint).toEqual({ loopID: "bll_legacy", loopRole: "execution", phase: "running" })
 
-        await Session.remove(sessionID)
-      },
-    })
-  })
+          await Session.remove(sessionID)
+        },
+      })
+    }))
 
-  test("re-running the conversion leaves the upgraded store unchanged", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("re-running the conversion leaves the upgraded store unchanged", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const { sessionID, key } = await seedWaitingPhaseSession(scope)
-        const phase = migrations.find((entry) => entry.id === PHASE_ID)
-        const nav = migrations.find((entry) => entry.id === NAV_ID)
-        expect(phase).toBeDefined()
-        expect(nav).toBeDefined()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const { sessionID, key } = await seedWaitingPhaseSession(scope)
+          const phase = migrations.find((entry) => entry.id === PHASE_ID)
+          const nav = migrations.find((entry) => entry.id === NAV_ID)
+          expect(phase).toBeDefined()
+          expect(nav).toBeDefined()
 
-        await phase!.up(() => {})
-        const first = await Storage.read<Record<string, unknown>>(key)
-        await phase!.up(() => {})
-        const second = await Storage.read<Record<string, unknown>>(key)
+          await phase!.up(() => {})
+          const first = await Storage.read<Record<string, unknown>>(key)
+          await phase!.up(() => {})
+          const second = await Storage.read<Record<string, unknown>>(key)
 
-        // Byte-identical, including `since`: the latch is first-pause-wins, so a
-        // second pass cannot churn the reason or the timestamp the user sees.
-        expect(second).toEqual(first)
-        expect((second.paused as Record<string, unknown>).since).toBe((first.paused as Record<string, unknown>).since)
+          // Byte-identical, including `since`: the latch is first-pause-wins, so a
+          // second pass cannot churn the reason or the timestamp the user sees.
+          expect(second).toEqual(first)
+          expect((second.paused as Record<string, unknown>).since).toBe((first.paused as Record<string, unknown>).since)
 
-        await nav!.up(() => {})
-        await nav!.up(() => {})
-        const entry = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)
-        expect(entry?.blueprint?.phase).toBe("running")
+          await nav!.up(() => {})
+          await nav!.up(() => {})
+          const entry = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)
+          expect(entry?.blueprint?.phase).toBe("running")
 
-        await Session.remove(sessionID)
-      },
-    })
-  })
+          await Session.remove(sessionID)
+        },
+      })
+    }))
 
-  test("a fresh install and an ordinary Blueprint binding are untouched", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("a fresh install and an ordinary Blueprint binding are untouched", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        // Fresh install: a new session, and a newly bound loop, are already in the
-        // current shape and must gain no latch and no rewrite.
-        const bound = await Session.create({ title: "Freshly bound Blueprint session" })
-        await Session.update(bound.id, (draft) => {
-          draft.blueprint = { loopID: "bll_fresh", loopRole: "execution", phase: "running" }
-        })
-        const plain = await Session.create({ title: "Fresh session" })
-        const key = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(bound.id))
-        const before = await Storage.read<Record<string, unknown>>(key)
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          // Fresh install: a new session, and a newly bound loop, are already in the
+          // current shape and must gain no latch and no rewrite.
+          const bound = await Session.create({ title: "Freshly bound Blueprint session" })
+          await Session.update(bound.id, (draft) => {
+            draft.blueprint = { loopID: "bll_fresh", loopRole: "execution", phase: "running" }
+          })
+          const plain = await Session.create({ title: "Fresh session" })
+          const key = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(bound.id))
+          const before = await Storage.read<Record<string, unknown>>(key)
 
-        const phase = migrations.find((entry) => entry.id === PHASE_ID)!
-        const nav = migrations.find((entry) => entry.id === NAV_ID)!
-        await phase.up(() => {})
-        await nav.up(() => {})
+          const phase = migrations.find((entry) => entry.id === PHASE_ID)!
+          const nav = migrations.find((entry) => entry.id === NAV_ID)!
+          await phase.up(() => {})
+          await nav.up(() => {})
 
-        expect(await Storage.read<Record<string, unknown>>(key)).toEqual(before)
-        expect(await Session.get(bound.id)).toMatchObject({ blueprint: { phase: "running" } })
-        expect((await Session.get(bound.id)).paused).toBeUndefined()
-        expect((await Session.get(plain.id)).paused).toBeUndefined()
-        expect(await Session.Info.safeParse(await Storage.read<unknown>(key))).toMatchObject({ success: true })
+          expect(await Storage.read<Record<string, unknown>>(key)).toEqual(before)
+          expect(await Session.get(bound.id)).toMatchObject({ blueprint: { phase: "running" } })
+          expect((await Session.get(bound.id)).paused).toBeUndefined()
+          expect((await Session.get(plain.id)).paused).toBeUndefined()
+          expect(await Session.Info.safeParse(await Storage.read<unknown>(key))).toMatchObject({ success: true })
 
-        await Session.remove(bound.id)
-        await Session.remove(plain.id)
-      },
-    })
-  })
+          await Session.remove(bound.id)
+          await Session.remove(plain.id)
+        },
+      })
+    }))
 
-  test("the rebuild clears a stale waiting phase left in an existing nav index", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("the rebuild clears a stale waiting phase left in an existing nav index", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const { sessionID, key } = await seedWaitingPhaseSession(scope)
-        const nav = migrations.find((entry) => entry.id === NAV_ID)!
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const { sessionID, key } = await seedWaitingPhaseSession(scope)
+          const nav = migrations.find((entry) => entry.id === NAV_ID)!
 
-        // A store whose index was built before the change keeps the retired
-        // member in its already-persisted index: reading an index does not
-        // re-validate its entries, so the stale value reaches the client, whose
-        // contract no longer admits it.
-        const navKey = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
-        const index = await Storage.read<{ entries: Array<Record<string, unknown>> }>(navKey)
-        await Storage.write(navKey, {
-          ...index,
-          entries: index.entries.map((entry) =>
-            entry.id === sessionID ? { ...entry, blueprint: { loopID: "bll_legacy", phase: "waiting" } } : entry,
-          ),
-        })
-        expect(
-          (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)?.blueprint?.phase,
-        ).toBe("waiting" as never)
+          // A store whose index was built before the change keeps the retired
+          // member in its already-persisted index: reading an index does not
+          // re-validate its entries, so the stale value reaches the client, whose
+          // contract no longer admits it.
+          const navKey = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
+          const index = await Storage.read<{ entries: Array<Record<string, unknown>> }>(navKey)
+          await Storage.write(navKey, {
+            ...index,
+            entries: index.entries.map((entry) =>
+              entry.id === sessionID ? { ...entry, blueprint: { loopID: "bll_legacy", phase: "waiting" } } : entry,
+            ),
+          })
+          expect(
+            (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)?.blueprint?.phase,
+          ).toBe("waiting" as never)
 
-        const phase = migrations.find((entry) => entry.id === PHASE_ID)!
-        await phase.up(() => {})
-        await nav.up(() => {})
+          const phase = migrations.find((entry) => entry.id === PHASE_ID)!
+          await phase.up(() => {})
+          await nav.up(() => {})
 
-        expect(await Storage.read<Record<string, unknown>>(key)).toMatchObject({
-          blueprint: { phase: "running" },
-        })
-        expect(
-          (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)?.blueprint?.phase,
-        ).toBe("running")
+          expect(await Storage.read<Record<string, unknown>>(key)).toMatchObject({
+            blueprint: { phase: "running" },
+          })
+          expect(
+            (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)?.blueprint?.phase,
+          ).toBe("running")
 
-        await Session.remove(sessionID)
-      },
-    })
-  })
+          await Session.remove(sessionID)
+        },
+      })
+    }))
 
-  test("rebuilding the navigation index before the conversion drops the session", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("rebuilding the navigation index before the conversion drops the session", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const { sessionID, key } = await seedWaitingPhaseSession(scope)
-        const phase = migrations.find((entry) => entry.id === PHASE_ID)!
-        const nav = migrations.find((entry) => entry.id === NAV_ID)!
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const { sessionID, key } = await seedWaitingPhaseSession(scope)
+          const phase = migrations.find((entry) => entry.id === PHASE_ID)!
+          const nav = migrations.find((entry) => entry.id === NAV_ID)!
 
-        // The order the declaration forbids, executed on purpose: the rebuild
-        // reads canonical records, so a record that still fails `safeParse` is
-        // skipped and the session disappears from the sidebar.
-        await nav.up(() => {})
-        expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeUndefined()
+          // The order the declaration forbids, executed on purpose: the rebuild
+          // reads canonical records, so a record that still fails `safeParse` is
+          // skipped and the session disappears from the sidebar.
+          await nav.up(() => {})
+          expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeUndefined()
 
-        // The declared order recovers it, which is the whole reason the ordering
-        // is declared rather than left to array position.
-        await phase.up(() => {})
-        await nav.up(() => {})
-        expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeDefined()
-        expect(Session.Info.safeParse(await Storage.read<unknown>(key)).success).toBe(true)
+          // The declared order recovers it, which is the whole reason the ordering
+          // is declared rather than left to array position.
+          await phase.up(() => {})
+          await nav.up(() => {})
+          expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeDefined()
+          expect(Session.Info.safeParse(await Storage.read<unknown>(key)).success).toBe(true)
 
-        await Session.remove(sessionID)
-      },
-    })
-  })
+          await Session.remove(sessionID)
+        },
+      })
+    }))
 
-  test("the navigation rebuild is declared after the phase conversion", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(tmp.path)).scope,
-      fn: async () => {
-        const nav = migrations.find((entry) => entry.id === NAV_ID)
-        expect(nav?.dependsOn).toEqual([PHASE_ID])
+  test("the navigation rebuild is declared after the phase conversion", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(tmp.path)).scope,
+        fn: async () => {
+          const nav = migrations.find((entry) => entry.id === NAV_ID)
+          expect(nav?.dependsOn).toEqual([PHASE_ID])
 
-        // The runner resolves order from `dependsOn`, and the resolved order is
-        // what actually executes. Asserting on it rather than on array position
-        // is the point: the rebuild must observe the converted record, because
-        // executing it first re-derives indexes from a record that still fails
-        // `safeParse` and re-drops the session the conversion exists to keep.
-        const pending = (await getMigrationStatus("session")).session.pending.map((entry) => entry.id)
-        const phaseIndex = pending.indexOf(PHASE_ID)
-        const navIndex = pending.indexOf(NAV_ID)
-        expect(phaseIndex).toBeGreaterThan(-1)
-        expect(navIndex).toBeGreaterThan(-1)
-        expect(phaseIndex).toBeLessThan(navIndex)
-      },
-    })
-  })
+          // The runner resolves order from `dependsOn`, and the resolved order is
+          // what actually executes. Asserting on it rather than on array position
+          // is the point: the rebuild must observe the converted record, because
+          // executing it first re-derives indexes from a record that still fails
+          // `safeParse` and re-drops the session the conversion exists to keep.
+          await using migration = await migrationFixture({
+            register: () => MigrationRegistry.register("session", migrations),
+          })
+          const pending = await migration.run(async () =>
+            (await getMigrationStatus("session")).session.pending.map((entry) => entry.id),
+          )
+          const phaseIndex = pending.indexOf(PHASE_ID)
+          const navIndex = pending.indexOf(NAV_ID)
+          expect(phaseIndex).toBeGreaterThan(-1)
+          expect(navIndex).toBeGreaterThan(-1)
+          expect(phaseIndex).toBeLessThan(navIndex)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

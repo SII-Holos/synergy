@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import { SessionMemoryPressure } from "../session/memory-pressure"
 import z from "zod"
@@ -5,8 +6,14 @@ import z from "zod"
 export namespace CortexConcurrency {
   const log = Log.create({ service: "cortex.concurrency" })
 
-  const counts: Map<string, number> = new Map()
-  const queues: Map<string, Array<() => void>> = new Map()
+  const runtimeState = RuntimeContext.state(() => ({
+    counts: new Map() as Map<string, number>,
+    queues: new Map() as Map<string, Array<() => void>>,
+    globalRunning: 0,
+    configuredGlobalLimit: undefined as number | undefined,
+    memoryProbe: undefined as (() => SessionMemoryPressure.Snapshot) | undefined,
+    pressureRecheckTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  }))
 
   const DEFAULT_LIMIT = 8
   const DEFAULT_GLOBAL_LIMIT = 8
@@ -16,11 +23,6 @@ export namespace CortexConcurrency {
   const SOFT_ARRAY_BUFFERS_BYTES = 1 * GIB
   const CRITICAL_ARRAY_BUFFERS_BYTES = 2 * GIB
   const PRESSURE_RECHECK_MS = 1_000
-
-  let globalRunning = 0
-  let configuredGlobalLimit: number | undefined
-  let memoryProbe: (() => SessionMemoryPressure.Snapshot) | undefined
-  let pressureRecheckTimer: ReturnType<typeof setTimeout> | undefined
 
   export const GlobalStatus = z
     .object({
@@ -49,8 +51,10 @@ export namespace CortexConcurrency {
   }
 
   export function configure(limit: number | undefined): void {
+    const instanceState = runtimeState()
+
     const previous = getGlobalLimit()
-    configuredGlobalLimit = normalizeLimit(limit)
+    instanceState.configuredGlobalLimit = normalizeLimit(limit)
     if (getGlobalLimit() > previous) wakeAllQueues()
   }
 
@@ -59,7 +63,7 @@ export namespace CortexConcurrency {
   }
 
   export function getMemoryPressure(snapshot = currentMemorySnapshot()) {
-    const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
+    const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, snapshot)
     const pressure = SessionMemoryPressure.pressureLevel(snapshot, thresholds)
     const criticalArrayBuffers = Math.min(thresholds.arrayBuffersCriticalBytes, CRITICAL_ARRAY_BUFFERS_BYTES)
     const critical =
@@ -84,23 +88,27 @@ export namespace CortexConcurrency {
   }
 
   export function setMemoryProbeForTest(probe?: () => SessionMemoryPressure.Snapshot) {
-    memoryProbe = probe
+    const instanceState = runtimeState()
+
+    instanceState.memoryProbe = probe
   }
 
   export async function acquire(key: string): Promise<void> {
+    const instanceState = runtimeState()
+
     while (true) {
-      const perAgent = counts.get(key) ?? 0
+      const perAgent = instanceState.counts.get(key) ?? 0
       const perAgentLimit = getLimit(key)
       const globalLimit = getGlobalLimit()
 
-      if (perAgent < perAgentLimit && globalRunning < globalLimit) {
-        counts.set(key, perAgent + 1)
-        globalRunning++
+      if (perAgent < perAgentLimit && instanceState.globalRunning < globalLimit) {
+        instanceState.counts.set(key, perAgent + 1)
+        instanceState.globalRunning++
         log.info("acquired", {
           key,
           current: perAgent + 1,
           limit: perAgentLimit,
-          globalRunning,
+          globalRunning: instanceState.globalRunning,
           globalLimit,
         })
         return
@@ -108,49 +116,55 @@ export namespace CortexConcurrency {
 
       log.info("queued", {
         key,
-        queueSize: (queues.get(key)?.length ?? 0) + 1,
+        queueSize: (instanceState.queues.get(key)?.length ?? 0) + 1,
         perAgent,
         perAgentLimit,
-        globalRunning,
+        globalRunning: instanceState.globalRunning,
         globalLimit,
       })
       await new Promise<void>((resolve) => {
-        const queue = queues.get(key) ?? []
+        const queue = instanceState.queues.get(key) ?? []
         queue.push(resolve)
-        queues.set(key, queue)
+        instanceState.queues.set(key, queue)
         schedulePressureRecheck()
       })
     }
   }
 
   export function release(key: string): void {
-    const current = counts.get(key) ?? 0
+    const instanceState = runtimeState()
+
+    const current = instanceState.counts.get(key) ?? 0
     if (current > 0) {
-      counts.set(key, current - 1)
-      globalRunning = Math.max(0, globalRunning - 1)
+      instanceState.counts.set(key, current - 1)
+      instanceState.globalRunning = Math.max(0, instanceState.globalRunning - 1)
     }
 
     if (wakeNextQueue(key)) return
 
-    log.info("released", { key, current: Math.max(0, current - 1), globalRunning })
+    log.info("released", { key, current: Math.max(0, current - 1), globalRunning: instanceState.globalRunning })
   }
 
   export function status(): Record<string, { running: number; queued: number }> {
+    const instanceState = runtimeState()
+
     const result: Record<string, { running: number; queued: number }> = {}
-    for (const [key, count] of counts) {
+    for (const [key, count] of instanceState.counts) {
       result[key] = {
         running: count,
-        queued: queues.get(key)?.length ?? 0,
+        queued: instanceState.queues.get(key)?.length ?? 0,
       }
     }
     return result
   }
 
   export function globalStatus(snapshot = currentMemorySnapshot()): GlobalStatus {
-    const environment = envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY)
+    const instanceState = runtimeState()
+
+    const environment = envNumber(RuntimeContext.current().host.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY)
     const memoryPressure = getMemoryPressure(snapshot)
     return {
-      configured: configuredGlobalLimit ?? null,
+      configured: instanceState.configuredGlobalLimit ?? null,
       environment: environment ?? null,
       effective: effectiveGlobalLimit(snapshot),
       memoryPressureLimit: memoryPressure.limit,
@@ -158,35 +172,39 @@ export namespace CortexConcurrency {
       source:
         environment !== undefined
           ? ("environment" as const)
-          : configuredGlobalLimit !== undefined
+          : instanceState.configuredGlobalLimit !== undefined
             ? ("config" as const)
             : ("default" as const),
       perAgentLimit: DEFAULT_LIMIT,
-      running: globalRunning,
-      queued: Array.from(queues.values()).reduce((total, queue) => total + queue.length, 0),
+      running: instanceState.globalRunning,
+      queued: Array.from(instanceState.queues.values()).reduce((total, queue) => total + queue.length, 0),
     }
   }
 
   export function reset(): void {
-    if (pressureRecheckTimer) clearTimeout(pressureRecheckTimer)
-    counts.clear()
-    queues.clear()
-    globalRunning = 0
-    configuredGlobalLimit = undefined
-    memoryProbe = undefined
-    pressureRecheckTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.pressureRecheckTimer) clearTimeout(instanceState.pressureRecheckTimer)
+    instanceState.counts.clear()
+    instanceState.queues.clear()
+    instanceState.globalRunning = 0
+    instanceState.configuredGlobalLimit = undefined
+    instanceState.memoryProbe = undefined
+    instanceState.pressureRecheckTimer = undefined
   }
 
   function wakeNextQueue(preferredKey?: string): boolean {
+    const instanceState = runtimeState()
+
     if (preferredKey) {
-      const preferred = queues.get(preferredKey)
+      const preferred = instanceState.queues.get(preferredKey)
       if (preferred?.length) {
         preferred.shift()!()
         return true
       }
     }
 
-    for (const queue of queues.values()) {
+    for (const queue of instanceState.queues.values()) {
       if (!queue.length) continue
       queue.shift()!()
       return true
@@ -195,17 +213,21 @@ export namespace CortexConcurrency {
   }
 
   function wakeAllQueues(): void {
-    const waiting = Array.from(queues.values()).flatMap((queue) => queue.splice(0))
+    const instanceState = runtimeState()
+
+    const waiting = Array.from(instanceState.queues.values()).flatMap((queue) => queue.splice(0))
     for (const wake of waiting) wake()
   }
 
   function schedulePressureRecheck(): void {
-    if (pressureRecheckTimer || getMemoryPressureLimit() === undefined) return
-    pressureRecheckTimer = setTimeout(() => {
-      pressureRecheckTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.pressureRecheckTimer || getMemoryPressureLimit() === undefined) return
+    instanceState.pressureRecheckTimer = setTimeout(() => {
+      instanceState.pressureRecheckTimer = undefined
       wakeAllQueues()
     }, PRESSURE_RECHECK_MS)
-    pressureRecheckTimer.unref()
+    instanceState.pressureRecheckTimer.unref()
   }
 
   function normalizeLimit(value: number | undefined): number | undefined {
@@ -215,7 +237,13 @@ export namespace CortexConcurrency {
   }
 
   export function desiredGlobalLimit(): number {
-    return envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT
+    const instanceState = runtimeState()
+
+    return (
+      envNumber(RuntimeContext.current().host.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ??
+      instanceState.configuredGlobalLimit ??
+      DEFAULT_GLOBAL_LIMIT
+    )
   }
 
   function effectiveGlobalLimit(snapshot: SessionMemoryPressure.Snapshot): number {
@@ -224,7 +252,9 @@ export namespace CortexConcurrency {
   }
 
   function currentMemorySnapshot(): SessionMemoryPressure.Snapshot {
-    if (memoryProbe) return memoryProbe()
+    const instanceState = runtimeState()
+
+    if (instanceState.memoryProbe) return instanceState.memoryProbe()
     return SessionMemoryPressure.currentSnapshot()
   }
 

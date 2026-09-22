@@ -14,10 +14,12 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import * as SessionWorking from "@ericsanchezok/synergy-harness/session/working"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 const projectRoot = new URL("../..", import.meta.url).pathname
 
@@ -131,148 +133,159 @@ async function readToolPart(sessionID: string, messageID: string, partID: string
 }
 
 describe("crashed-runtime recovery end to end", () => {
-  test("restores an honest, actionable session instead of a permanent paused state", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, note, loop, assistant, toolPartID } = await reproduceCrashedTurn()
+  test("restores an honest, actionable session instead of a permanent paused state", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, note, loop, assistant, toolPartID } = await reproduceCrashedTurn()
 
-        // Precondition: nothing has reconciled yet. The crash is visible only as
-        // what the dead process left on disk, and a stored loop is a record of
-        // intent rather than evidence of work, so no status pinning the session
-        // can be derived from it.
-        expect(await SessionWorking.resolve(session.id)).toBeUndefined()
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+          // Precondition: nothing has reconciled yet. The crash is visible only as
+          // what the dead process left on disk, and a stored loop is a record of
+          // intent rather than evidence of work, so no status pinning the session
+          // can be derived from it.
+          expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+          expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
 
-        await restartRecovery()
+          await restartRecovery()
 
-        // 1. The session is stopped and says why. The pause is the honest,
-        // durable state, and the workflow holding it is named so the user has
-        // something to act on instead of an unexplained stall.
-        const paused = await SessionLifecycle.snapshot(session.id)
-        expect(paused?.reason).toBe("workflow")
-        expect(paused?.description).toBe("Stopped by BlueprintLoop; continue or abandon")
-        const status = (await SessionManager.listStatuses(ScopeContext.current.scope.id))[session.id]
-        expect(status).toMatchObject({
-          type: "paused",
-          reason: "workflow",
-          description: "Stopped by BlueprintLoop; continue or abandon",
-        })
-        expect(await SessionWorking.resolve(session.id)).toMatchObject({ status: "paused", reason: "workflow" })
+          // 1. The session is stopped and says why. The pause is the honest,
+          // durable state, and the workflow holding it is named so the user has
+          // something to act on instead of an unexplained stall.
+          const paused = await SessionLifecycle.snapshot(session.id)
+          expect(paused?.reason).toBe("workflow")
+          expect(paused?.description).toBe("Stopped by BlueprintLoop; continue or abandon")
+          const status = (await SessionManager.listStatuses(ScopeContext.current.scope.id))[session.id]
+          expect(status).toMatchObject({
+            type: "paused",
+            reason: "workflow",
+            description: "Stopped by BlueprintLoop; continue or abandon",
+          })
+          expect(await SessionWorking.resolve(session.id)).toMatchObject({
+            status: "paused",
+            reason: "workflow",
+          })
 
-        // 2. The orphaned loop is preserved rather than terminalized. A restart
-        // is evidence the turn stopped, not that the user's work should fail,
-        // and this record is the only handle left for continuing or abandoning it.
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+          // 2. The orphaned loop is preserved rather than terminalized. A restart
+          // is evidence the turn stopped, not that the user's work should fail,
+          // and this record is the only handle left for continuing or abandoning it.
+          expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
 
-        // 3. Its references stay bound, because the loop they point at is live:
-        // clearing them here would destroy the user's ability to continue.
-        expect((await Session.get(session.id)).blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
-        expect((await NoteStore.get(ScopeContext.current.scope.id, note.id)).blueprint?.activeLoopID).toBe(loop.id)
+          // 3. Its references stay bound, because the loop they point at is live:
+          // clearing them here would destroy the user's ability to continue.
+          expect((await Session.get(session.id)).blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
+          expect((await NoteStore.get(ScopeContext.current.scope.id, note.id)).blueprint?.activeLoopID).toBe(loop.id)
 
-        // 4. The interrupted turn stays resumable. The in-flight tool call is
-        // settled as interrupted while the assistant remains non-terminal,
-        // so Continue resumes a real breakpoint without a stale running card.
-        const parts = await MessageV2.parts({ sessionID: session.id, messageID: assistant.id })
-        const toolPart = parts.find((part) => part.id === toolPartID)
-        if (toolPart?.type !== "tool") throw new Error("expected tool part")
-        expect(toolPart.state.status).toBe("error")
-        const messages = await Session.messages({ sessionID: session.id })
-        const interrupted = messages.find((message) => message.info.id === assistant.id)
-        if (interrupted?.info.role !== "assistant") throw new Error("expected assistant message")
-        expect(SessionProgress.isTerminalAssistant(interrupted.info)).toBe(false)
-      },
-    })
-  })
+          // 4. The interrupted turn stays resumable. The in-flight tool call is
+          // settled as interrupted while the assistant remains non-terminal,
+          // so Continue resumes a real breakpoint without a stale running card.
+          const parts = await MessageV2.parts({ sessionID: session.id, messageID: assistant.id })
+          const toolPart = parts.find((part) => part.id === toolPartID)
+          if (toolPart?.type !== "tool") throw new Error("expected tool part")
+          expect(toolPart.state.status).toBe("error")
+          const messages = await Session.messages({ sessionID: session.id })
+          const interrupted = messages.find((message) => message.info.id === assistant.id)
+          if (interrupted?.info.role !== "assistant") throw new Error("expected assistant message")
+          expect(SessionProgress.isTerminalAssistant(interrupted.info)).toBe(false)
+        },
+      })
+    }))
 
-  test("the abandon control actually unblocks a stuck session and stops reporting a false success", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        // The state the user was actually staring at: the assistant turn had
-        // already ended in error, but the bash call was still `running` and the
-        // loop still claimed to be active.
-        const { session, loop, assistant, toolPartID } = await reproduceCrashedTurn({ assistantFinish: "error" })
+  test("the abandon control actually unblocks a stuck session and stops reporting a false success", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          // The state the user was actually staring at: the assistant turn had
+          // already ended in error, but the bash call was still `running` and the
+          // loop still claimed to be active.
+          const { session, loop, assistant, toolPartID } = await reproduceCrashedTurn({
+            assistantFinish: "error",
+          })
 
-        const result = await SessionAbort.abort(session.id, { abandonWorkflow: true, terminalize: true })
+          const result = await SessionAbort.abort(session.id, { abandonWorkflow: true, terminalize: true })
 
-        // The visible control has a real effect instead of returning success
-        // while changing nothing.
-        expect(SessionAbort.hadEffect(result)).toBe(true)
-        expect(result.repaired).toBe(true)
-        expect(result.abandoned).toBe(true)
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("cancelled")
+          // The visible control has a real effect instead of returning success
+          // while changing nothing.
+          expect(SessionAbort.hadEffect(result)).toBe(true)
+          expect(result.repaired).toBe(true)
+          expect(result.abandoned).toBe(true)
+          expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("cancelled")
 
-        const toolPart = await readToolPart(session.id, assistant.id, toolPartID)
-        expect(toolPart.state.status).toBe("error")
+          const toolPart = await readToolPart(session.id, assistant.id, toolPartID)
+          expect(toolPart.state.status).toBe("error")
 
-        // Abandoning is the terminal exit, so the session must not stay paused
-        // waiting for a continue the user has already declined.
-        await SessionLifecycle.clear(session.id)
-        expect(await SessionWorking.resolve(session.id)).toBeUndefined()
-      },
-    })
-  })
+          // Abandoning is the terminal exit, so the session must not stay paused
+          // waiting for a continue the user has already declined.
+          await SessionLifecycle.clear(session.id)
+          expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+        },
+      })
+    }))
 
-  test("reports no further effect once the interrupted turn is already settled", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await reproduceCrashedTurn()
-        await restartRecovery()
+  test("reports no further effect once the interrupted turn is already settled", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await reproduceCrashedTurn()
+          await restartRecovery()
 
-        // Startup already settled the tool parts and kept the pause.
-        // Repeating repair must preserve the resumable breakpoint.
-        const first = await SessionInvoke.repairAbortState(session.id)
-        expect(first.repaired).toBe(false)
-        expect(first.paused).toBe(true)
+          // Startup already settled the tool parts and kept the pause.
+          // Repeating repair must preserve the resumable breakpoint.
+          const first = await SessionInvoke.repairAbortState(session.id)
+          expect(first.repaired).toBe(false)
+          expect(first.paused).toBe(true)
 
-        // A repeat must report that it changed nothing rather than claiming a
-        // second success on an already-settled turn, and it must not rewrite the
-        // latch, whose original cause is the thing worth keeping.
-        const second = await SessionInvoke.repairAbortState(session.id)
-        expect(second.repaired).toBe(false)
-        expect(second.abandoned).toBe(false)
-        expect(second.paused).toBe(true)
-        expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("workflow")
-      },
-    })
-  })
+          // A repeat must report that it changed nothing rather than claiming a
+          // second success on an already-settled turn, and it must not rewrite the
+          // latch, whose original cause is the thing worth keeping.
+          const second = await SessionInvoke.repairAbortState(session.id)
+          expect(second.repaired).toBe(false)
+          expect(second.abandoned).toBe(false)
+          expect(second.paused).toBe(true)
+          expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("workflow")
+        },
+      })
+    }))
 
-  test("keeps a healthy running loop untouched through restart recovery", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, note, loop } = await reproduceCrashedTurn()
-        // A queued inbox item is durable evidence that this loop still has a driver.
-        await SessionInbox.enqueueMail({
-          sessionID: session.id,
-          mail: {
-            type: "user",
-            agent: "test",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            parts: [
-              {
-                id: Identifier.ascending("part"),
-                sessionID: session.id,
-                messageID: Identifier.ascending("message"),
-                type: "text",
-                text: "continue the run",
-              },
-            ],
-          },
-        })
+  test("keeps a healthy running loop untouched through restart recovery", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, note, loop } = await reproduceCrashedTurn()
+          // A queued inbox item is durable evidence that this loop still has a driver.
+          await SessionInbox.enqueueMail({
+            sessionID: session.id,
+            mail: {
+              type: "user",
+              agent: "test",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              parts: [
+                {
+                  id: Identifier.ascending("part"),
+                  sessionID: session.id,
+                  messageID: Identifier.ascending("message"),
+                  type: "text",
+                  text: "continue the run",
+                },
+              ],
+            },
+          })
 
-        await restartRecovery()
+          await restartRecovery()
 
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
-        const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
-        expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
-      },
-    })
-  })
+          expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
+          const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
+          expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

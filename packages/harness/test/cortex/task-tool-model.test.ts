@@ -9,6 +9,9 @@ import { Provider } from "../../src/provider/provider"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const PARENT = { providerID: "test-provider", modelID: "parent-model" }
 const SUBAGENT = { providerID: "subagent-provider", modelID: "subagent-model" }
@@ -69,23 +72,24 @@ async function runTaskTool(input: { parentSessionID: string; messageID: string; 
 }
 
 describe("task tool delegated model resolution", () => {
-  beforeEach(() => Cortex.reset())
-  afterEach(() => mock.restore())
+  beforeEach(() => runtime.run(() => Cortex.reset()))
+  afterEach(() => runtime.run(() => mock.restore()))
 
   for (const available of [true, false]) {
-    test(`inherits the parent model when available=${available}`, async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          using agentModel = spyOn(Agent, "getAvailableModel").mockResolvedValue(SUBAGENT)
-          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(available)
-          const parent = await Session.create({})
-          const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
-          expect(await runTaskTool({ parentSessionID: parent.id, messageID })).toEqual(available ? PARENT : SUBAGENT)
-        },
-      })
-    })
+    test(`inherits the parent model when available=${available}`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            using agentModel = spyOn(Agent, "getAvailableModel").mockResolvedValue(SUBAGENT)
+            using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(available)
+            const parent = await Session.create({})
+            const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
+            expect(await runTaskTool({ parentSessionID: parent.id, messageID })).toEqual(available ? PARENT : SUBAGENT)
+          },
+        })
+      }))
   }
 
   for (const model of [
@@ -96,21 +100,24 @@ describe("task tool delegated model resolution", () => {
     " /model",
     "provider/ ",
   ]) {
-    test(`validates the category override ${JSON.stringify(model)}`, async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
-          using category = spyOn(Category, "resolve").mockResolvedValue({ model })
-          const parent = await Session.create({})
-          const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
-          const result = runTaskTool({ parentSessionID: parent.id, messageID, category: "probe" })
-          if (model === "category-provider/category-model") {
-            expect(await result).toEqual({ providerID: "category-provider", modelID: "category-model" })
-          } else await expect(result).rejects.toThrow("provider/model format")
-        },
-      })
-    })
+    test(`validates the category override ${JSON.stringify(model)}`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+            using category = spyOn(Category, "resolve").mockResolvedValue({ model })
+            const parent = await Session.create({})
+            const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
+            const result = runTaskTool({ parentSessionID: parent.id, messageID, category: "probe" })
+            if (model === "category-provider/category-model") {
+              expect(await result).toEqual({ providerID: "category-provider", modelID: "category-model" })
+            } else await expect(result).rejects.toThrow("provider/model format")
+          },
+        })
+      }))
   }
 })
+
+afterRuntimeTests(() => runtime.close())

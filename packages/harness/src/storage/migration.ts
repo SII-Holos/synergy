@@ -117,4 +117,6 @@ const migrations: Migration[] = [
     },
   },
 ]
-MigrationRegistry.register("storage", migrations)
+export function registerStorageMigrations() {
+  MigrationRegistry.register("storage", migrations)
+}

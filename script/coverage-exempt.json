@@ -379,6 +379,10 @@
           "reason": "Solid presentation is exercised in test/components/session/session-preparation.dom.test.tsx with real Chromium, readiness gating, retries, quarantine, navigation/server cancellation and reactive localization. Bun cannot instrument Vite/browser execution; session-preparation-controller.ts remains measured by unit tests."
         },
         {
+          "glob": "src/components/session/session-tag-menu.tsx",
+          "reason": "Rendered by test/components/session/session-tag-menu.dom.test.tsx in real Chromium, covering failed-save input retention, serialized pending edits, delayed events, localization and Escape dismissal. Bun cannot instrument Vite/browser execution; session-tag-filter.ts remains measured by unit tests."
+        },
+        {
           "glob": "src/components/session/dialog-fork-confirm.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1593,6 +1597,10 @@
         {
           "glob": "src/tools/process/shared.ts",
           "reason": "tool implementations require live tool runtime context"
+        },
+        {
+          "glob": "src/policy-worker.ts",
+          "reason": "source policy worker entry runs in a child process; test/enforcement/policy-worker-process.test.ts verifies the production local composition, classifier parity and shutdown across IPC; Bun does not merge child-process coverage"
         }
       ]
     },

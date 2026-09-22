@@ -96,6 +96,7 @@ def test_orphaned_logs_handoff_preserves_private_modes_and_bytes(tmp_path, stopp
     logs = attempt / project / "agent"
     logs.mkdir(parents=True)
     ownership = attempt / "environment.json"
+    atomic_json(root / "plan.json", {"config": {"platform": "linux/amd64"}})
     atomic_json(ownership, {"project": project})
     container = command(
         [

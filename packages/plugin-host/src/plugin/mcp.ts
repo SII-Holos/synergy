@@ -1,34 +1,45 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 interface PluginMcpServices {
   replacePluginServers(pluginId: string, declarations: Record<string, unknown>): Promise<void>
   replaceAllPluginServers(candidates: Array<{ pluginId: string; declarations: Record<string, unknown> }>): Promise<void>
 }
 
-let services: PluginMcpServices | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  services: undefined as PluginMcpServices | undefined,
+}))
 
 export function registerPluginMcpServices(value: PluginMcpServices) {
-  services = value
+  const instanceState = runtimeState()
+
+  instanceState.services = value
 }
 
 export async function startForPlugin(pluginId: string, declarations: Record<string, unknown>): Promise<void> {
-  if (!services) {
+  const instanceState = runtimeState()
+
+  if (!instanceState.services) {
     if (Object.keys(declarations).length) throw new Error("MCP capability is not registered in this runtime")
     return
   }
-  await services.replacePluginServers(pluginId, declarations)
+  await instanceState.services.replacePluginServers(pluginId, declarations)
 }
 
 export async function stopForPlugin(pluginId: string): Promise<void> {
-  await services?.replacePluginServers(pluginId, {})
+  const instanceState = runtimeState()
+
+  await instanceState.services?.replacePluginServers(pluginId, {})
 }
 
 export async function replaceForPlugins(
   candidates: Array<{ pluginId: string; declarations: Record<string, unknown> }>,
 ): Promise<void> {
-  if (!services) {
+  const instanceState = runtimeState()
+
+  if (!instanceState.services) {
     if (candidates.some((candidate) => Object.keys(candidate.declarations).length)) {
       throw new Error("MCP capability is not registered in this runtime")
     }
     return
   }
-  await services.replaceAllPluginServers(candidates)
+  await instanceState.services.replaceAllPluginServers(candidates)
 }

@@ -43,6 +43,7 @@ export interface EventContribution<Payload = unknown> extends ContributionBase<"
 }
 
 export interface ToolContribution<Input = unknown> extends ContributionBase<"tool"> {
+  requiresWorkspace?: boolean
   description: string
   input: PluginSchema<Input>
   exposure?: Record<string, unknown>

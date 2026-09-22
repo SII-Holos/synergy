@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "instruction.registry" })
@@ -50,25 +51,35 @@ export namespace InstructionRegistry {
     diagnostics?(): Promise<Diagnostic[]>
   }
 
-  const sources = new Map<string, Source>()
+  const runtimeState = RuntimeContext.state(() => ({
+    sources: new Map<string, Source>(),
+  }))
 
   export function register(source: Source): void {
-    sources.set(source.kind, source)
+    const instanceState = runtimeState()
+
+    instanceState.sources.set(source.kind, source)
   }
 
   export function get(kind: string): Source | undefined {
-    return sources.get(kind)
+    const instanceState = runtimeState()
+
+    return instanceState.sources.get(kind)
   }
 
   export function kinds(): string[] {
-    return [...sources.keys()].sort()
+    const instanceState = runtimeState()
+
+    return [...instanceState.sources.keys()].sort()
   }
 
   /** Render through the registered source; unknown kinds log and return the
    * trimmed template unchanged so an unregistered domain degrades quietly
    * instead of failing the session loop. */
   export async function render(kind: string, input: { template: string; arguments: string }): Promise<string[]> {
-    const source = sources.get(kind)
+    const instanceState = runtimeState()
+
+    const source = instanceState.sources.get(kind)
     if (!source) {
       log.warn("instruction source is not registered; returning template unchanged", { kind })
       return [input.template.trim()]
@@ -77,6 +88,8 @@ export namespace InstructionRegistry {
   }
 
   export function reset(): void {
-    sources.clear()
+    const instanceState = runtimeState()
+
+    instanceState.sources.clear()
   }
 }

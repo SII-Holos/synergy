@@ -1,3 +1,5 @@
+import { Env } from "../util/env"
+import { RuntimeContext } from "../lifecycle/context"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { SecretPaths } from "../secrets/path-registry"
 import { LegacyExecutionConfig } from "./legacy-execution"
@@ -32,7 +34,6 @@ import { Lock } from "../util/lock"
 export namespace Config {
   const log = Log.create({ service: "config" })
   const strictExecution = new AsyncLocalStorage<boolean>()
-  const CONFIG_SCHEMA = Global.Path.configSchemaUrl
   // ── Schema re-exports from ./schema.ts ──
 
   export const SandboxConfig = Schema.SandboxConfig
@@ -106,8 +107,17 @@ export namespace Config {
     }
     return merged
   }
-  const wellKnownCache = new Map<string, { data: Info; timestamp: number }>()
-  const wellKnownRefreshInFlight = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    wellKnownCache: new Map<string, { data: Info; timestamp: number }>(),
+    wellKnownRefreshInFlight: new Set<string>(),
+    lastGoodByScope: new Map<string, StateValue>(),
+    reloadHintFilesByScope: new Map<string, string[]>(),
+    commandDefinitionsByDir: new Map<string, Record<string, Command>>(),
+    agentDefinitionsByDir: new Map<string, Record<string, Agent>>(),
+    issues: [] as Issue[],
+    handledWrites: new Map<string, number>(),
+  }))
+
   const WELL_KNOWN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
   export const state = ScopedState.create(loadStateValue)
@@ -116,30 +126,29 @@ export namespace Config {
 
   // Last-good memory per scope: when a fresh load fails, keep serving the
   // most recently loaded configuration instead of wiping runtime state.
-  const lastGoodByScope = new Map<string, StateValue>()
 
   // Consumed synchronously by the next state load: when a reload knows the
   // exact domain files that changed (watcher hints), the load skips the
   // command/agent markdown scans that cannot be affected by those files.
   // Keyed by scope id so concurrent global/project reloads cannot overwrite
   // each other's hint.
-  const reloadHintFilesByScope = new Map<string, string[]>()
+
   // Cached command/agent markdown scans per directory, refreshed on full
   // scans and reused by hinted reloads so domain-file edits never resurrect
   // stale domain-defined entries from the previous resolved snapshot.
-  const commandDefinitionsByDir = new Map<string, Record<string, Command>>()
-  const agentDefinitionsByDir = new Map<string, Record<string, Agent>>()
 
   async function loadStateValue(): Promise<StateValue> {
+    const instanceState = runtimeState()
+
     const scopeKey = ScopeContext.current.scope.id
-    const files = reloadHintFilesByScope.get(scopeKey)
-    reloadHintFilesByScope.delete(scopeKey)
+    const files = instanceState.reloadHintFilesByScope.get(scopeKey)
+    instanceState.reloadHintFilesByScope.delete(scopeKey)
     try {
       const value = await loadStateValueInner(files)
-      lastGoodByScope.set(scopeKey, value)
+      instanceState.lastGoodByScope.set(scopeKey, value)
       return value
     } catch (error) {
-      const lastGood = lastGoodByScope.get(scopeKey)
+      const lastGood = instanceState.lastGoodByScope.get(scopeKey)
       if (lastGood) {
         const message = sanitizeErrorForIssue(error)
         log.warn("config load failed, using last good config", { scope: scopeKey, error: message })
@@ -157,6 +166,8 @@ export namespace Config {
   }
 
   async function loadStateValueInner(files?: string[]): Promise<StateValue> {
+    const instanceState = runtimeState()
+
     // A reload hint that names only synergy.d domain files cannot affect
     // command/agent markdown definitions, so skip those scans entirely and
     // reuse the previously loaded definitions instead of dropping them.
@@ -184,14 +195,14 @@ export namespace Config {
     // Inject env vars synchronously (before any fetch/await)
     for (const [key, value] of Object.entries(auth)) {
       if (value.type !== "wellknown") continue
-      process.env[value.key] = value.token
+      Env.set(value.key, value.token)
     }
 
     // Fetch well-known configs in parallel with TTL caching
     const wellKnownEntries = Object.entries(auth).filter(([, v]) => v.type === "wellknown")
     const fetchedConfigs = await Promise.all(
       wellKnownEntries.map(async ([key]) => {
-        const cached = wellKnownCache.get(key)
+        const cached = instanceState.wellKnownCache.get(key)
         if (cached && Date.now() - cached.timestamp < WELL_KNOWN_TTL_MS) {
           log.debug("using cached remote config", { url: key })
           return cached.data
@@ -218,16 +229,15 @@ export namespace Config {
     result.agent = result.agent || {}
 
     const scope = ScopeContext.current.scope
-    const projectDirectories =
-      scope.type === "project"
-        ? await Array.fromAsync(
-            Filesystem.up({
-              targets: [".synergy"],
-              start: ScopeContext.current.directory,
-              stop: ScopeContext.current.directory,
-            }),
-          )
-        : []
+    const projectDirectories = scope.local
+      ? await Array.fromAsync(
+          Filesystem.up({
+            targets: [".synergy"],
+            start: scope.local.directory,
+            stop: scope.local.directory,
+          }),
+        )
+      : []
     const directories = [Global.Path.config, ...projectDirectories]
 
     if (Flag.SYNERGY_CONFIG_DIR) {
@@ -235,8 +245,8 @@ export namespace Config {
       log.debug("loading config from SYNERGY_CONFIG_DIR", { path: Flag.SYNERGY_CONFIG_DIR })
     }
 
-    if (scope.type === "project") {
-      const pending = await migrateLegacyProjectConfig(ScopeContext.current.directory)
+    if (scope.local) {
+      const pending = await migrateLegacyProjectConfig(scope.local.directory)
       if (pending) merge(pending, "project_config")
     }
 
@@ -258,8 +268,8 @@ export namespace Config {
         // Full scan: refresh the cached markdown definitions and merge them.
         const commands = await loadCommand(dir)
         const agents = await loadAgent(dir)
-        commandDefinitionsByDir.set(dir, commands)
-        agentDefinitionsByDir.set(dir, agents)
+        instanceState.commandDefinitionsByDir.set(dir, commands)
+        instanceState.agentDefinitionsByDir.set(dir, agents)
         result.command = mergeDeep(result.command ?? {}, commands)
         result.agent = mergeDeep(result.agent, agents)
       } else {
@@ -267,8 +277,11 @@ export namespace Config {
         // markdown definitions are unchanged. Reuse the cached scan instead
         // of merging the whole previous snapshot, which would resurrect
         // domain-defined entries deleted by the edit.
-        result.command = mergeDeep(result.command ?? {}, commandDefinitionsByDir.get(dir) ?? (await loadCommand(dir)))
-        result.agent = mergeDeep(result.agent, agentDefinitionsByDir.get(dir) ?? (await loadAgent(dir)))
+        result.command = mergeDeep(
+          result.command ?? {},
+          instanceState.commandDefinitionsByDir.get(dir) ?? (await loadCommand(dir)),
+        )
+        result.agent = mergeDeep(result.agent, instanceState.agentDefinitionsByDir.get(dir) ?? (await loadAgent(dir)))
       }
     }
 
@@ -377,6 +390,8 @@ export namespace Config {
    * rest of the load continues with the local layers only.
    */
   async function loadWellKnown(key: string): Promise<Info | null> {
+    const instanceState = runtimeState()
+
     log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
 
     const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
@@ -406,7 +421,7 @@ export namespace Config {
     if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
     try {
       const loaded = await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`)
-      wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
+      instanceState.wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
       log.debug("loaded remote config from well-known", { url: key })
       return loaded
     } catch (error) {
@@ -421,8 +436,10 @@ export namespace Config {
 
   /** Refresh a stale well-known config in the background, deduplicated per URL. */
   function refreshWellKnown(key: string) {
-    if (wellKnownRefreshInFlight.has(key)) return
-    wellKnownRefreshInFlight.add(key)
+    const instanceState = runtimeState()
+
+    if (instanceState.wellKnownRefreshInFlight.has(key)) return
+    instanceState.wellKnownRefreshInFlight.add(key)
     void loadWellKnown(key)
       .then((loaded) => {
         if (!loaded) return
@@ -431,7 +448,7 @@ export namespace Config {
         // otherwise the change would only apply on some unrelated reload.
         void state.resetAll()
       })
-      .finally(() => wellKnownRefreshInFlight.delete(key))
+      .finally(() => instanceState.wellKnownRefreshInFlight.delete(key))
   }
 
   const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
@@ -526,11 +543,12 @@ export namespace Config {
     return loadDomainDirectory(Global.Path.config, pending)
   }
 
-  export const global = lazy(loadGlobalConfig)
+  const globalConfig = RuntimeContext.state(() => lazy(loadGlobalConfig))
+  export const global = Object.assign(() => globalConfig()(), { reset: () => globalConfig().reset() })
 
   async function loadDomainDirectory(root: string, initial: Info = {}): Promise<Info> {
     let result: Info = initial
-    for (const domain of ConfigDomain.definitions) {
+    for (const domain of ConfigDomain.definitions()) {
       const filepath = ConfigDomain.filepath(domain.id, root)
       try {
         const fragment = await loadFile(filepath, { addSchema: false })
@@ -709,7 +727,7 @@ export namespace Config {
         await fs.cp(domainDir, tempDir, { recursive: true, force: true })
       }
 
-      for (const domain of ConfigDomain.definitions) {
+      for (const domain of ConfigDomain.definitions()) {
         const filepath = path.join(tempDir, domain.filename)
         const existing = await loadFile(filepath, { addSchema: false })
         const fragment = split.get(domain.id) ?? {}
@@ -855,7 +873,7 @@ export namespace Config {
     options: { addSchema?: boolean; stripUnknownKeys?: boolean } = {},
   ) {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
-      const value = process.env[varName]
+      const value = Env.get(varName)
       if (value === undefined) {
         log.warn("environment variable not set for config reference", {
           var: varName,
@@ -877,7 +895,7 @@ export namespace Config {
         }
         let filePath = match.replace(/^\{file:/, "").replace(/\}$/, "")
         if (filePath.startsWith("~/")) {
-          filePath = path.join(os.homedir(), filePath.slice(2))
+          filePath = path.join(RuntimeContext.current().host.home, filePath.slice(2))
         }
         const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
         let fileContent: string
@@ -926,7 +944,7 @@ export namespace Config {
     const parsed = Info.safeParse(data)
     if (parsed.success) {
       if (options.addSchema !== false && !parsed.data.$schema) {
-        parsed.data.$schema = CONFIG_SCHEMA
+        parsed.data.$schema = Global.Path.configSchemaUrl
       }
       const result = parsed.data
       ConfigExtensions.resolve(result, configFilepath)
@@ -988,7 +1006,7 @@ export namespace Config {
     const retried = Info.safeParse(data)
     if (retried.success) {
       if (options.addSchema !== false && !retried.data.$schema) {
-        retried.data.$schema = CONFIG_SCHEMA
+        retried.data.$schema = Global.Path.configSchemaUrl
       }
       const result = retried.data
       ConfigExtensions.resolve(result, configFilepath)
@@ -1051,22 +1069,29 @@ export namespace Config {
   // loading/reloading failures. Bounded so a broken directory cannot grow
   // memory unboundedly. Snapshot-based: callers read a copy, not a live view.
   const MAX_ISSUES = 20
-  let issues: Issue[] = []
 
   export function recordIssue(issue: Issue) {
-    issues = [...issues, issue].slice(-MAX_ISSUES)
+    const instanceState = runtimeState()
+
+    instanceState.issues = [...instanceState.issues, issue].slice(-MAX_ISSUES)
   }
 
   export function clearIssueForPath(path: string) {
-    issues = issues.filter((issue) => issue.path !== path)
+    const instanceState = runtimeState()
+
+    instanceState.issues = instanceState.issues.filter((issue) => issue.path !== path)
   }
 
   export function diagnostics(): Issue[] {
-    return structuredClone(issues)
+    const instanceState = runtimeState()
+
+    return structuredClone(instanceState.issues)
   }
 
   export function resetDiagnostics() {
-    issues = []
+    const instanceState = runtimeState()
+
+    instanceState.issues = []
   }
   export async function resolveExecutionDetails() {
     return strictExecution.run(true, async () => {
@@ -1210,6 +1235,8 @@ export namespace Config {
     scope: "global" | "project" = "global",
     options: { files?: string[] } = {},
   ): Promise<ReloadResult> {
+    const instanceState = runtimeState()
+
     if (!ScopeContext.tryScope()) {
       if (scope !== "global") {
         throw new Error("Config.reload('project') requires a ScopeContext")
@@ -1230,7 +1257,7 @@ export namespace Config {
       .catch(() => ({}) as Info)
 
     global.reset()
-    reloadHintFilesByScope.set(ScopeContext.current.scope.id, options.files ?? [])
+    instanceState.reloadHintFilesByScope.set(ScopeContext.current.scope.id, options.files ?? [])
     try {
       if (scope === "global") {
         await state.resetAll()
@@ -1253,7 +1280,7 @@ export namespace Config {
 
       return { config: newConfig, changedFields, oldConfig, issues: diagnostics() }
     } finally {
-      reloadHintFilesByScope.delete(ScopeContext.current.scope.id)
+      instanceState.reloadHintFilesByScope.delete(ScopeContext.current.scope.id)
     }
   }
 
@@ -1302,7 +1329,7 @@ export namespace Config {
       reloadTargets: z.array(z.string()),
       uiSection: z.string(),
       importable: z.boolean(),
-      config: Info.optional(),
+      config: z.optional(Info),
     })
     .meta({ ref: "ConfigDomainSummary" })
   export type DomainSummary = z.infer<typeof DomainSummary>
@@ -1310,7 +1337,7 @@ export namespace Config {
   export async function domainList(): Promise<DomainSummary[]> {
     await migrateLegacyGlobalConfig()
     return Promise.all(
-      ConfigDomain.definitions.map(async (domain) => ({
+      ConfigDomain.definitions().map(async (domain) => ({
         ...domain,
         path: ConfigDomain.filepath(domain.id),
         ownedKeys: domain.ownedKeys.map(String),
@@ -1384,7 +1411,7 @@ export namespace Config {
     ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
     const stored = await domainGet(parsed, options.root)
     const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
-    const next = mergeDomainConfig(stored, mergedPatch, options.mode ?? ConfigDomain.byId.get(parsed)!.mergePolicy)
+    const next = mergeDomainConfig(stored, mergedPatch, options.mode ?? ConfigDomain.byId().get(parsed)!.mergePolicy)
     if (!ConfigExtensions.isComplete()) {
       for (const [key, value] of Object.entries(stored)) {
         if (!ConfigDomain.domainForKey(key)) (next as Record<string, unknown>)[key] = value
@@ -1422,22 +1449,26 @@ export namespace Config {
   // Files written by domainUpdateWithChange already ran their full reload;
   // the file watcher consults this registry to avoid re-reloading them.
   const HANDLED_WRITE_WINDOW_MS = 3_000
-  const handledWrites = new Map<string, number>()
+
   // mtime skew tolerated when matching a watcher event to the handled write
   // (the event is dispatched after the write completed).
   const HANDLED_WRITE_MTIME_SKEW_MS = 100
 
   export function markWriteHandled(filepath: string) {
-    handledWrites.set(filepath, Date.now())
+    const instanceState = runtimeState()
+
+    instanceState.handledWrites.set(filepath, Date.now())
   }
 
   export async function isWriteRecentlyHandled(filepath: string): Promise<boolean> {
-    const handledAt = handledWrites.get(filepath)
+    const instanceState = runtimeState()
+
+    const handledAt = instanceState.handledWrites.get(filepath)
     if (handledAt === undefined) return false
     // Consume the marker on every check: only the first watcher event for
     // this write is suppressed, so a genuine external edit inside the window
     // is never silently discarded.
-    handledWrites.delete(filepath)
+    instanceState.handledWrites.delete(filepath)
     if (Date.now() - handledAt > HANDLED_WRITE_WINDOW_MS) return false
     // Tie the suppression to the handled write's own mtime: a genuine
     // external edit in the window gets a newer mtime and must trigger a
@@ -1536,7 +1567,7 @@ export namespace Config {
 
   function sortConfigKeys(config: Partial<Info>) {
     const result: Record<string, unknown> = {}
-    for (const domain of ConfigDomain.definitions) {
+    for (const domain of ConfigDomain.definitions()) {
       for (const key of domain.ownedKeys) {
         if ((config as Record<string, unknown>)[key] !== undefined) {
           result[String(key)] = (config as Record<string, unknown>)[key]

@@ -52,13 +52,14 @@ function pluginToolEntry(
     toolId: contribution.id,
     pluginDir: plugin.pluginDir,
     description: contribution.description,
+    requiresWorkspace: contribution.requiresWorkspace,
     inputSchema: contribution.input,
     exposure: contribution.exposure as ToolPluginSource.Entry["exposure"],
     display: contribution.display as ToolPluginSource.Entry["display"],
     enabledWhen: contribution.enabledWhen,
     async execute(args, ctx) {
       await ensureRuntime(plugin)
-      return pluginRuntimeManager.invoke({
+      return pluginRuntimeManager().invoke({
         pluginId: plugin.id,
         handlerId: `tool:${contribution.id}`,
         value: args,

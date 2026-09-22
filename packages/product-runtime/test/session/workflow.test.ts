@@ -9,8 +9,10 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -32,405 +34,428 @@ async function bindLoop(sessionID: string, source: "user" | "lattice" | "plugin"
 }
 
 describe("WorkflowSessionService", () => {
-  test("keeps plan, lightloop, and lattice mutually exclusive", async () => {
-    await withScope(async () => {
-      const plan = await Session.create({})
-      await WorkflowSessionService.enablePlan(plan.id)
-      await expect(WorkflowSessionService.startLightloop(plan.id, "continue")).rejects.toThrow("plan workflow")
-      await expect(
-        WorkflowSessionService.enableLattice(plan.id, { kind: "lattice", mode: "auto" }),
-      ).rejects.toMatchObject({ data: { reason: expect.stringContaining("plan") } })
+  test("keeps plan, lightloop, and lattice mutually exclusive", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const plan = await Session.create({})
+        await WorkflowSessionService.enablePlan(plan.id)
+        await expect(WorkflowSessionService.startLightloop(plan.id, "continue")).rejects.toThrow("plan workflow")
+        await expect(
+          WorkflowSessionService.enableLattice(plan.id, { kind: "lattice", mode: "auto" }),
+        ).rejects.toMatchObject({ data: { reason: expect.stringContaining("plan") } })
 
-      const lightloop = await Session.create({})
-      await WorkflowSessionService.startLightloop(lightloop.id, "continue")
-      await expect(WorkflowSessionService.enablePlan(lightloop.id)).rejects.toThrow("lightloop")
+        const lightloop = await Session.create({})
+        await WorkflowSessionService.startLightloop(lightloop.id, "continue")
+        await expect(WorkflowSessionService.enablePlan(lightloop.id)).rejects.toThrow("lightloop")
 
-      const lattice = await Session.create({})
-      await WorkflowSessionService.enableLattice(lattice.id, { kind: "lattice", mode: "auto" })
-      await expect(WorkflowSessionService.enablePlan(lattice.id)).rejects.toThrow("lattice")
-    })
-  })
+        const lattice = await Session.create({})
+        await WorkflowSessionService.enableLattice(lattice.id, { kind: "lattice", mode: "auto" })
+        await expect(WorkflowSessionService.enablePlan(lattice.id)).rejects.toThrow("lattice")
+      })
+    }))
 
-  test("serializes concurrent workflow enables without orphaning an active Lattice Run", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const outcomes = await Promise.allSettled([
-        WorkflowSessionService.enablePlan(session.id),
-        WorkflowSessionService.enableLattice(session.id, {
-          kind: "lattice",
-          mode: "auto",
-          goal: "Do not orphan this Run",
-        }),
-      ])
+  test("serializes concurrent workflow enables without orphaning an active Lattice Run", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const outcomes = await Promise.allSettled([
+          WorkflowSessionService.enablePlan(session.id),
+          WorkflowSessionService.enableLattice(session.id, {
+            kind: "lattice",
+            mode: "auto",
+            goal: "Do not orphan this Run",
+          }),
+        ])
 
-      expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1)
-      expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1)
+        expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1)
+        expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1)
 
-      const storedSession = await Session.get(session.id)
-      const run = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
-      if (storedSession.workflow?.kind === "lattice") {
-        expect(run).toMatchObject({ id: storedSession.workflow.runID, status: "active" })
-      } else {
-        expect(storedSession.workflow).toEqual({ kind: "plan" })
-        expect(run?.status).not.toBe("active")
-      }
-    })
-  })
-
-  test("serializes Lattice enable and disable into one consistent durable owner", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await Promise.all([
-        WorkflowSessionService.enableLattice(session.id, {
-          kind: "lattice",
-          mode: "auto",
-          goal: "Race safely",
-        }),
-        WorkflowSessionService.setNone(session.id),
-      ])
-
-      const storedSession = await Session.get(session.id)
-      const run = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
-      if (storedSession.workflow?.kind === "lattice") {
-        expect(run).toMatchObject({ id: storedSession.workflow.runID, status: "active" })
-      } else {
-        expect(storedSession.workflow).toBeUndefined()
-        expect(run?.status).toBe("cancelled")
-      }
-    })
-  })
-
-  test("updates active Light Loop instructions from the next model step", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.startLightloop(session.id, "Original task")
-      const lease = SessionManager.acquire(session.id)
-      expect(lease).toBeDefined()
-
-      try {
-        const updated = await WorkflowSessionService.updateLightloopInstructions(session.id, "  Revised task  ")
-        expect(updated.workflow).toEqual({ kind: "lightloop", instructions: "Revised task" })
-      } finally {
-        await SessionManager.release(lease!, { requestNextWork: false })
-        SessionManager.unregisterRuntime(session.id)
-      }
-    })
-  })
-
-  test("rejects instruction updates while Light Loop review is pending", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.startLightloop(session.id, "Original task")
-      await Session.update(session.id, (draft) => {
-        if (draft.workflow?.kind !== "lightloop") return
-        draft.workflow.stopRequest = {
-          summary: "Ready for review",
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID: "msg_request",
-          reviewTaskID: "ctx_review",
-          reviewSessionID: "ses_review",
+        const storedSession = await Session.get(session.id)
+        const run = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
+        if (storedSession.workflow?.kind === "lattice") {
+          expect(run).toMatchObject({ id: storedSession.workflow.runID, status: "active" })
+        } else {
+          expect(storedSession.workflow).toEqual({ kind: "plan" })
+          expect(run?.status).not.toBe("active")
         }
       })
+    }))
 
-      await expect(WorkflowSessionService.updateLightloopInstructions(session.id, "Revised task")).rejects.toThrow(
-        "review is pending",
-      )
-      const unchanged = await Session.get(session.id)
-      expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.instructions).toBe("Original task")
-    })
-  })
+  test("serializes Lattice enable and disable into one consistent durable owner", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await Promise.all([
+          WorkflowSessionService.enableLattice(session.id, {
+            kind: "lattice",
+            mode: "auto",
+            goal: "Race safely",
+          }),
+          WorkflowSessionService.setNone(session.id),
+        ])
 
-  test("cancels a running Light Loop and remains idempotent", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.startLightloop(session.id, "Finish the task")
-      const lease = SessionManager.acquire(session.id)
-      expect(lease).toBeDefined()
-
-      try {
-        const cancelled = await WorkflowSessionService.cancelLightloop(session.id)
-        expect(lease!.signal.aborted).toBe(true)
-        expect(cancelled.workflow).toBeUndefined()
-
-        const repeated = await WorkflowSessionService.cancelLightloop(session.id)
-        expect(repeated.workflow).toBeUndefined()
-      } finally {
-        await SessionManager.release(lease!, { requestNextWork: false })
-        SessionManager.unregisterRuntime(session.id)
-      }
-    })
-  })
-
-  test("rejects plan and lightloop when a BlueprintLoop is active", async () => {
-    await withScope(async () => {
-      const planSession = await Session.create({})
-      await bindLoop(planSession.id)
-      await expect(WorkflowSessionService.enablePlan(planSession.id)).rejects.toThrow("BlueprintLoop")
-
-      const lightloopSession = await Session.create({})
-      await bindLoop(lightloopSession.id)
-      await expect(WorkflowSessionService.startLightloop(lightloopSession.id, "continue")).rejects.toThrow(
-        "BlueprintLoop",
-      )
-    })
-  })
-
-  test("rejects lattice with an active user BlueprintLoop", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await bindLoop(session.id, "user")
-
-      await expect(
-        WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
-      ).rejects.toMatchObject({ data: { reason: expect.stringContaining("user BlueprintLoop") } })
-    })
-  })
-
-  test("allows lattice with an active lattice-owned BlueprintLoop", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      await bindLoop(session.id, "lattice")
-
-      const updated = await WorkflowSessionService.enableLattice(session.id, {
-        kind: "lattice",
-        mode: "collaborative",
+        const storedSession = await Session.get(session.id)
+        const run = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
+        if (storedSession.workflow?.kind === "lattice") {
+          expect(run).toMatchObject({ id: storedSession.workflow.runID, status: "active" })
+        } else {
+          expect(storedSession.workflow).toBeUndefined()
+          expect(run?.status).toBe("cancelled")
+        }
       })
+    }))
 
-      expect(updated.workflow?.kind).toBe("lattice")
-      if (updated.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-      expect(updated.workflow.mode).toBe("collaborative")
-    })
-  })
+  test("updates active Light Loop instructions from the next model step", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.startLightloop(session.id, "Original task")
+        const lease = SessionManager.acquire(session.id)
+        expect(lease).toBeDefined()
 
-  test("disabling an unstarted lattice run cancels it and clears session workflow", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const enabled = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      if (enabled.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-
-      const disabled = await WorkflowSessionService.setNone(session.id)
-      const run = await LatticeStore.getByRunID(ScopeContext.current.scope.id, enabled.workflow.runID)
-
-      expect(disabled.workflow).toBeUndefined()
-      expect(run?.status).toBe("cancelled")
-    })
-  })
-
-  test("re-enables lattice after disabling an unstarted run", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const first = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      if (first.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-
-      await WorkflowSessionService.setNone(session.id)
-      const second = await WorkflowSessionService.enableLattice(session.id, {
-        kind: "lattice",
-        mode: "collaborative",
+        try {
+          const updated = await WorkflowSessionService.updateLightloopInstructions(session.id, "  Revised task  ")
+          expect(updated.workflow).toEqual({ kind: "lightloop", instructions: "Revised task" })
+        } finally {
+          await SessionManager.release(lease!, { requestNextWork: false })
+          SessionManager.unregisterRuntime(session.id)
+        }
       })
+    }))
 
-      expect(second.workflow?.kind).toBe("lattice")
-      if (second.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-      expect(second.workflow.runID).not.toBe(first.workflow.runID)
-    })
-  })
-  test("preserves an existing active run when workflow projection fails", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const enabled = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      if (enabled.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-      const update = spyOn(Session, "update").mockRejectedValueOnce(new Error("projection failed"))
+  test("rejects instruction updates while Light Loop review is pending", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.startLightloop(session.id, "Original task")
+        await Session.update(session.id, (draft) => {
+          if (draft.workflow?.kind !== "lightloop") return
+          draft.workflow.stopRequest = {
+            summary: "Ready for review",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID: "msg_request",
+            reviewTaskID: "ctx_review",
+            reviewSessionID: "ses_review",
+          }
+        })
 
-      try {
+        await expect(WorkflowSessionService.updateLightloopInstructions(session.id, "Revised task")).rejects.toThrow(
+          "review is pending",
+        )
+        const unchanged = await Session.get(session.id)
+        expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.instructions).toBe("Original task")
+      })
+    }))
+
+  test("cancels a running Light Loop and remains idempotent", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.startLightloop(session.id, "Finish the task")
+        const lease = SessionManager.acquire(session.id)
+        expect(lease).toBeDefined()
+
+        try {
+          const cancelled = await WorkflowSessionService.cancelLightloop(session.id)
+          expect(lease!.signal.aborted).toBe(true)
+          expect(cancelled.workflow).toBeUndefined()
+
+          const repeated = await WorkflowSessionService.cancelLightloop(session.id)
+          expect(repeated.workflow).toBeUndefined()
+        } finally {
+          await SessionManager.release(lease!, { requestNextWork: false })
+          SessionManager.unregisterRuntime(session.id)
+        }
+      })
+    }))
+
+  test("rejects plan and lightloop when a BlueprintLoop is active", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const planSession = await Session.create({})
+        await bindLoop(planSession.id)
+        await expect(WorkflowSessionService.enablePlan(planSession.id)).rejects.toThrow("BlueprintLoop")
+
+        const lightloopSession = await Session.create({})
+        await bindLoop(lightloopSession.id)
+        await expect(WorkflowSessionService.startLightloop(lightloopSession.id, "continue")).rejects.toThrow(
+          "BlueprintLoop",
+        )
+      })
+    }))
+
+  test("rejects lattice with an active user BlueprintLoop", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await bindLoop(session.id, "user")
+
         await expect(
-          WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" }),
-        ).rejects.toThrow("projection failed")
-      } finally {
-        update.mockRestore()
-      }
-
-      const current = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
-      expect(current).toMatchObject({ id: enabled.workflow.runID, status: "active", mode: "collaborative" })
-
-      const retried = await WorkflowSessionService.enableLattice(session.id, {
-        kind: "lattice",
-        mode: "collaborative",
+          WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
+        ).rejects.toMatchObject({ data: { reason: expect.stringContaining("user BlueprintLoop") } })
       })
-      expect(retried.workflow).toEqual({ kind: "lattice", runID: current.id, mode: "collaborative" })
-    })
-  })
+    }))
 
-  test("retries after replacement workflow projection fails", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const first = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      if (first.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-      const scopeID = ScopeContext.current.scope.id
-      await LatticeStore.updateByRunID(scopeID, first.workflow.runID, (draft) =>
-        LatticeMachine.pause(draft, "user_exit"),
-      )
-      const update = spyOn(Session, "update").mockRejectedValueOnce(new Error("projection failed"))
+  test("allows lattice with an active lattice-owned BlueprintLoop", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+        await bindLoop(session.id, "lattice")
 
-      try {
-        await expect(
-          WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" }),
-        ).rejects.toThrow("projection failed")
-      } finally {
-        update.mockRestore()
-      }
+        const updated = await WorkflowSessionService.enableLattice(session.id, {
+          kind: "lattice",
+          mode: "collaborative",
+        })
 
-      const retry = await WorkflowSessionService.enableLattice(session.id, {
-        kind: "lattice",
-        mode: "collaborative",
+        expect(updated.workflow?.kind).toBe("lattice")
+        if (updated.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+        expect(updated.workflow.mode).toBe("collaborative")
       })
-      if (retry.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
-      const current = await LatticeStore.get(scopeID, session.id)
+    }))
 
-      expect(current).toMatchObject({ id: retry.workflow.runID, status: "active", mode: "collaborative" })
-      expect(current.id).not.toBe(first.workflow.runID)
-      await expect(LatticeRunService.resume(first.workflow.runID)).rejects.toThrow()
-    })
-  })
+  test("disabling an unstarted lattice run cancels it and clears session workflow", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const enabled = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+        if (enabled.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+
+        const disabled = await WorkflowSessionService.setNone(session.id)
+        const run = await LatticeStore.getByRunID(ScopeContext.current.scope.id, enabled.workflow.runID)
+
+        expect(disabled.workflow).toBeUndefined()
+        expect(run?.status).toBe("cancelled")
+      })
+    }))
+
+  test("re-enables lattice after disabling an unstarted run", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const first = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+        if (first.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+
+        await WorkflowSessionService.setNone(session.id)
+        const second = await WorkflowSessionService.enableLattice(session.id, {
+          kind: "lattice",
+          mode: "collaborative",
+        })
+
+        expect(second.workflow?.kind).toBe("lattice")
+        if (second.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+        expect(second.workflow.runID).not.toBe(first.workflow.runID)
+      })
+    }))
+  test("preserves an existing active run when workflow projection fails", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const enabled = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+        if (enabled.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+        const update = spyOn(Session, "update").mockRejectedValueOnce(new Error("projection failed"))
+
+        try {
+          await expect(
+            WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" }),
+          ).rejects.toThrow("projection failed")
+        } finally {
+          update.mockRestore()
+        }
+
+        const current = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
+        expect(current).toMatchObject({ id: enabled.workflow.runID, status: "active", mode: "collaborative" })
+
+        const retried = await WorkflowSessionService.enableLattice(session.id, {
+          kind: "lattice",
+          mode: "collaborative",
+        })
+        expect(retried.workflow).toEqual({ kind: "lattice", runID: current.id, mode: "collaborative" })
+      })
+    }))
+
+  test("retries after replacement workflow projection fails", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const first = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+        if (first.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+        const scopeID = ScopeContext.current.scope.id
+        await LatticeStore.updateByRunID(scopeID, first.workflow.runID, (draft) =>
+          LatticeMachine.pause(draft, "user_exit"),
+        )
+        const update = spyOn(Session, "update").mockRejectedValueOnce(new Error("projection failed"))
+
+        try {
+          await expect(
+            WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" }),
+          ).rejects.toThrow("projection failed")
+        } finally {
+          update.mockRestore()
+        }
+
+        const retry = await WorkflowSessionService.enableLattice(session.id, {
+          kind: "lattice",
+          mode: "collaborative",
+        })
+        if (retry.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+        const current = await LatticeStore.get(scopeID, session.id)
+
+        expect(current).toMatchObject({ id: retry.workflow.runID, status: "active", mode: "collaborative" })
+        expect(current.id).not.toBe(first.workflow.runID)
+        await expect(LatticeRunService.resume(first.workflow.runID)).rejects.toThrow()
+      })
+    }))
 })
 
 describe("BlueprintLoop workflow source gates", () => {
-  test("manual loops default to user source", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_test",
-        title: "Manual Loop",
-        sessionID: session.id,
+  test("manual loops default to user source", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Manual Loop",
+          sessionID: session.id,
+        })
+
+        expect(loop.source).toBe("user")
       })
+    }))
 
-      expect(loop.source).toBe("user")
-    })
-  })
+  test("user loops clear idle Plan workflow when binding", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enablePlan(session.id)
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Manual Loop",
+          sessionID: session.id,
+        })
 
-  test("user loops clear idle Plan workflow when binding", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enablePlan(session.id)
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_test",
-        title: "Manual Loop",
-        sessionID: session.id,
-      })
+        await BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")
 
-      await BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")
-
-      const updated = await Session.get(session.id)
-      expect(updated.workflow).toBeUndefined()
-      expect(updated.blueprint?.loopID).toBe(loop.id)
-    })
-  })
-
-  test("user loops clear idle Light Loop workflow when starting", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.startLightloop(session.id, "Finish this task")
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_test",
-        title: "Manual Loop",
-        sessionID: session.id,
-      })
-
-      const started = await BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)
-
-      const updated = await Session.get(session.id)
-      expect(started.status).toBe("running")
-      expect(updated.workflow).toBeUndefined()
-      expect(updated.blueprint?.loopID).toBe(loop.id)
-    })
-  })
-
-  test("user loops cannot clear Plan workflow while session is running", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enablePlan(session.id)
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_test",
-        title: "Manual Loop",
-        sessionID: session.id,
-      })
-      const lease = SessionManager.acquire(session.id)
-      expect(lease).toBeDefined()
-
-      try {
-        await expect(BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")).rejects.toThrow()
         const updated = await Session.get(session.id)
-        expect(updated.workflow).toEqual({ kind: "plan" })
-        expect(updated.blueprint?.loopID).toBeUndefined()
-      } finally {
-        await SessionManager.release(lease!)
-        SessionManager.unregisterRuntime(session.id)
-      }
-    })
-  })
-
-  test("user loops cannot start in lattice workflow", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_test",
-        title: "Manual Loop",
-        sessionID: session.id,
+        expect(updated.workflow).toBeUndefined()
+        expect(updated.blueprint?.loopID).toBe(loop.id)
       })
+    }))
 
-      await expect(BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)).rejects.toThrow(
-        "User BlueprintLoops",
-      )
-    })
-  })
+  test("user loops clear idle Light Loop workflow when starting", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.startLightloop(session.id, "Finish this task")
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Manual Loop",
+          sessionID: session.id,
+        })
 
-  test("plugin loops bind without inheriting lattice workflow requirements", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_plugin",
-        title: "Plugin Loop",
-        sessionID: session.id,
-        source: "plugin",
-        pluginOwner: {
-          pluginId: "focus",
-          pluginGeneration: "generation-one",
-          scopeId: ScopeContext.current.scope.id,
-        },
+        const started = await BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)
+
+        const updated = await Session.get(session.id)
+        expect(started.status).toBe("running")
+        expect(updated.workflow).toBeUndefined()
+        expect(updated.blueprint?.loopID).toBe(loop.id)
       })
+    }))
 
-      await BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")
+  test("user loops cannot clear Plan workflow while session is running", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enablePlan(session.id)
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Manual Loop",
+          sessionID: session.id,
+        })
+        const lease = SessionManager.acquire(session.id)
+        expect(lease).toBeDefined()
 
-      const updated = await Session.get(session.id)
-      expect(updated.blueprint?.loopID).toBe(loop.id)
-    })
-  })
-
-  test("lattice cannot replace an active plugin BlueprintLoop", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await bindLoop(session.id, "plugin")
-
-      await expect(
-        WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
-      ).rejects.toMatchObject({ data: { reason: expect.stringContaining("plugin BlueprintLoop") } })
-    })
-  })
-
-  test("lattice-owned loops cannot start outside lattice workflow", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      const loop = await BlueprintLoopStore.create({
-        noteID: "note_test",
-        title: "Lattice Loop",
-        sessionID: session.id,
-        source: "lattice",
+        try {
+          await expect(BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")).rejects.toThrow()
+          const updated = await Session.get(session.id)
+          expect(updated.workflow).toEqual({ kind: "plan" })
+          expect(updated.blueprint?.loopID).toBeUndefined()
+        } finally {
+          await SessionManager.release(lease!)
+          SessionManager.unregisterRuntime(session.id)
+        }
       })
+    }))
 
-      await expect(BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)).rejects.toThrow(
-        "active Lattice workflow",
-      )
-    })
-  })
+  test("user loops cannot start in lattice workflow", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Manual Loop",
+          sessionID: session.id,
+        })
+
+        await expect(BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)).rejects.toThrow(
+          "User BlueprintLoops",
+        )
+      })
+    }))
+
+  test("plugin loops bind without inheriting lattice workflow requirements", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_plugin",
+          title: "Plugin Loop",
+          sessionID: session.id,
+          source: "plugin",
+          pluginOwner: {
+            pluginId: "focus",
+            pluginGeneration: "generation-one",
+            scopeId: ScopeContext.current.scope.id,
+          },
+        })
+
+        await BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")
+
+        const updated = await Session.get(session.id)
+        expect(updated.blueprint?.loopID).toBe(loop.id)
+      })
+    }))
+
+  test("lattice cannot replace an active plugin BlueprintLoop", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await bindLoop(session.id, "plugin")
+
+        await expect(
+          WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
+        ).rejects.toMatchObject({ data: { reason: expect.stringContaining("plugin BlueprintLoop") } })
+      })
+    }))
+
+  test("lattice-owned loops cannot start outside lattice workflow", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Lattice Loop",
+          sessionID: session.id,
+          source: "lattice",
+        })
+
+        await expect(BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)).rejects.toThrow(
+          "active Lattice workflow",
+        )
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

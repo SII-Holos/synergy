@@ -3,42 +3,45 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { shell } from "../../src/session/shell"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 describe("session shell", () => {
   test.skipIf(process.platform === "win32")(
     "settles when an exited command leaves an inherited pipe open",
-    async () => {
-      await using tmp = await tmpdir({ git: true })
-      const scope = await tmp.scope()
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
 
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          const session = await Session.create({})
-          try {
-            const startedAt = performance.now()
-            const result = await shell({
-              sessionID: session.id,
-              agent: "build",
-              model: { providerID: "test", modelID: "test" },
-              command: "(sleep 30) &",
-            })
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const session = await Session.create({})
+            try {
+              const startedAt = performance.now()
+              const result = await shell({
+                sessionID: session.id,
+                agent: "build",
+                model: { providerID: "test", modelID: "test" },
+                command: "(sleep 30) &",
+              })
 
-            expect(performance.now() - startedAt).toBeLessThan(10_000)
-            expect(result.parts.some((part) => part.type === "tool" && part.state.status === "completed")).toBe(true)
-          } finally {
-            await Session.remove(session.id)
-          }
-        },
-      })
-    },
+              expect(performance.now() - startedAt).toBeLessThan(10_000)
+              expect(result.parts.some((part) => part.type === "tool" && part.state.status === "completed")).toBe(true)
+            } finally {
+              await Session.remove(session.id)
+            }
+          },
+        })
+      }),
     12_000,
   )
 })
 
-test.skipIf(process.platform === "win32")(
-  "user shell records full output before bounding the session preview",
-  async () => {
+test.skipIf(process.platform === "win32")("user shell records full output before bounding the session preview", () =>
+  runtime.run(async () => {
     const { RolloutSnapshot } = await import("@ericsanchezok/synergy-harness/session/rollout/snapshot")
     const { RolloutArtifact } = await import("@ericsanchezok/synergy-harness/session/rollout/artifact")
     await using tmp = await tmpdir({ git: true })
@@ -84,5 +87,7 @@ test.skipIf(process.platform === "win32")(
         }
       },
     })
-  },
+  }),
 )
+
+afterRuntimeTests(() => runtime.close())

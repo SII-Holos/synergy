@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import type { Scope } from "../scope"
 import { MessageV2 } from "./message-v2"
@@ -38,17 +39,21 @@ export namespace ContinuationKernel {
     handle(gate: Gate): Promise<PolicyResult>
   }
 
-  const policies: Policy[] = []
-  const dedup = new Map<string, Set<string>>()
-  const providers = new Map<string, PolicyProvider>()
-  const drainedSources = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    policies: [] as Policy[],
+    dedup: new Map<string, Set<string>>(),
+    providers: new Map<string, PolicyProvider>(),
+    drainedSources: new Set<string>(),
+  }))
 
   export type PolicyProvider = () => Policy[]
 
   export function register(policy: Policy): void {
-    if (policies.some((candidate) => candidate.id === policy.id)) return
-    policies.push(policy)
-    policies.sort((a, b) => b.priority - a.priority)
+    const instanceState = runtimeState()
+
+    if (instanceState.policies.some((candidate) => candidate.id === policy.id)) return
+    instanceState.policies.push(policy)
+    instanceState.policies.sort((a, b) => b.priority - a.priority)
   }
 
   /** Domains register a policy provider under a stable source id. Providers
@@ -56,35 +61,51 @@ export namespace ContinuationKernel {
    * self-heal the kernel has always had — so registration order and entry
    * point cannot cause a missed continuation. */
   export function registerProvider(sourceID: string, provider: PolicyProvider): void {
-    providers.set(sourceID, provider)
+    const instanceState = runtimeState()
+
+    const existing = instanceState.providers.get(sourceID)
+    if (existing === provider) return
+    RuntimeContext.assertCompositionOpen("continuation provider")
+    if (existing) throw new Error(`Continuation provider ${sourceID} is already registered`)
+    instanceState.providers.set(sourceID, provider)
   }
 
   export function providerIDs(): string[] {
-    return [...providers.keys()].sort()
+    const instanceState = runtimeState()
+
+    return [...instanceState.providers.keys()].sort()
   }
 
   /** Canary surface: drain providers and report registered policy ids. */
   export function registeredPolicyIDs(): string[] {
+    const instanceState = runtimeState()
+
     drainProviders()
-    return policies.map((policy) => policy.id).sort()
+    return instanceState.policies.map((policy) => policy.id).sort()
   }
   function drainProviders(): void {
-    for (const [sourceID, provider] of providers) {
-      if (drainedSources.has(sourceID)) continue
-      drainedSources.add(sourceID)
+    const instanceState = runtimeState()
+
+    for (const [sourceID, provider] of instanceState.providers) {
+      if (instanceState.drainedSources.has(sourceID)) continue
+      instanceState.drainedSources.add(sourceID)
       for (const policy of provider()) register(policy)
     }
   }
 
   export function reset(): void {
-    policies.length = 0
-    dedup.clear()
-    drainedSources.clear()
+    const instanceState = runtimeState()
+
+    instanceState.policies.length = 0
+    instanceState.dedup.clear()
+    instanceState.drainedSources.clear()
   }
 
   export function init(): () => void {
+    const instanceState = runtimeState()
+
     drainProviders()
-    if (policies.length === 0) {
+    if (instanceState.policies.length === 0) {
       log.warn("continuation kernel has no policies registered", {
         providers: providerIDs().length,
       })
@@ -109,8 +130,10 @@ export namespace ContinuationKernel {
   }
 
   export async function propose(sessionID: string): Promise<Proposal | undefined> {
+    const instanceState = runtimeState()
+
     drainProviders()
-    if (policies.length === 0) {
+    if (instanceState.policies.length === 0) {
       log.warn("continuation kernel has no policies registered", {
         providers: providerIDs().length,
       })
@@ -118,7 +141,7 @@ export namespace ContinuationKernel {
     const gate = await passesSharedGate(sessionID)
     if (!gate) return undefined
 
-    for (const policy of policies) {
+    for (const policy of instanceState.policies) {
       const revision = await Promise.resolve()
         .then(() => policy.revisionKey?.(gate) ?? gate.terminalMessageID)
         .catch((error) => {
@@ -127,7 +150,7 @@ export namespace ContinuationKernel {
         })
       if (!revision) continue
       const key = dedupKey(policy.id, revision)
-      if (dedup.get(sessionID)?.has(key)) continue
+      if (instanceState.dedup.get(sessionID)?.has(key)) continue
 
       const proposal = await policy.handle(gate).catch((error) => {
         log.error("continuation policy failed", { policy: policy.id, sessionID, error })
@@ -185,9 +208,11 @@ export namespace ContinuationKernel {
   }
 
   function markDelivered(sessionID: string, key: string): void {
-    const delivered = dedup.get(sessionID) ?? new Set<string>()
+    const instanceState = runtimeState()
+
+    const delivered = instanceState.dedup.get(sessionID) ?? new Set<string>()
     delivered.add(key)
-    dedup.set(sessionID, delivered)
+    instanceState.dedup.set(sessionID, delivered)
   }
 
   async function terminalAssistantMessageID(sessionID: string): Promise<string | undefined> {

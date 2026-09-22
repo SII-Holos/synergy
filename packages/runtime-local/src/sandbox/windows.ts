@@ -114,8 +114,7 @@ function installTarballHelper(): boolean {
 export const TRUSTED_WINDOWS_HELPER_HASHES: Record<string, string> = {
   ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
     ? {
-        [path.join(Global.Path.home, ".synergy", "sandbox-helper", "synergy-sandbox-windows.exe")]:
-          SYNERGY_SANDBOX_HELPER_SHA256,
+        [WINDOWS_HELPER_BINARY_NAME]: SYNERGY_SANDBOX_HELPER_SHA256,
       }
     : {}),
 }

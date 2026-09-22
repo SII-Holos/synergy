@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as AgentIntegrationsConfigSchema from "@ericsanchezok/synergy-agent-integrations/config-schema"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -150,8 +151,8 @@ const SAFE_BASE_ENV_KEYS = new Set(["PATH", "HOME", "USER", "TMPDIR", "SHELL", "
 function buildLocalEnv(command: string, explicitEnv?: Record<string, string>): Record<string, string> {
   const env: Record<string, string> = {}
   for (const key of SAFE_BASE_ENV_KEYS) {
-    if (key in process.env && process.env[key] !== undefined) {
-      env[key] = process.env[key]!
+    if (key in RuntimeContext.current().host.env && RuntimeContext.current().host.env[key] !== undefined) {
+      env[key] = RuntimeContext.current().host.env[key]!
     }
   }
   if (command === "synergy") {
@@ -211,9 +212,7 @@ function redactUrl(url: string): string {
 
 function localServerCwd(config: Extract<AgentIntegrationsConfigSchema.Mcp, { type: "local" }>): string {
   if (config.cwd) return config.cwd
-  const scope = ScopeContext.tryScope()
-  if (scope?.type === "project") return scope.directory
-  return Global.Path.home
+  return Global.Path.config
 }
 
 async function closeFailedClient(client: Client, name: string, phase: string): Promise<void> {
@@ -1120,7 +1119,7 @@ class McpSupervisorImpl {
 // Singleton export
 // ---------------------------------------------------------------------------
 
-export const McpSupervisor = new McpSupervisorImpl()
+export const McpSupervisor = RuntimeContext.state(() => new McpSupervisorImpl())
 
 // ---------------------------------------------------------------------------
 // Notification handlers — self-contained per-handle callbacks

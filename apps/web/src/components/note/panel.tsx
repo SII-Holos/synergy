@@ -971,7 +971,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     for (const scope of globalSync.data.scope) {
       map.set(scope.id, {
         name: getScopeLabel(scope),
-        directory: scope.worktree,
+        directory: scope.id,
       })
     }
     return map
@@ -983,8 +983,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       if (!dir) return []
       if (showArchived) {
         const [active, archived] = await Promise.all([
-          sdk.client.note.listMeta({ directory: dir, archived: "false" }),
-          sdk.client.note.listMeta({ directory: dir, archived: "true" }),
+          sdk.client.note.listMeta({ scopeID: dir, archived: "false" }),
+          sdk.client.note.listMeta({ scopeID: dir, archived: "true" }),
         ])
         const activeGroups = (active.data ?? []) as NoteMetaScopeGroup[]
         const archivedGroups = (archived.data ?? []) as NoteMetaScopeGroup[]
@@ -1008,7 +1008,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         }
         return merged
       }
-      const result = await sdk.client.note.listMeta({ directory: dir, archived: "false" })
+      const result = await sdk.client.note.listMeta({ scopeID: dir, archived: "false" })
       return (result.data ?? []) as NoteMetaScopeGroup[]
     },
   )
@@ -1018,7 +1018,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     async ({ dir }) => {
       if (!dir) return [] as BlueprintLoopInfo[]
       try {
-        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        const result = await sdk.client.blueprint.loop.list({ scopeID: dir })
         return [...((result.data ?? []) as BlueprintLoopInfo[])].sort((a, b) => b.time.updated - a.time.updated)
       } catch (error) {
         console.error("Failed to load blueprint loops", error)
@@ -1255,7 +1255,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     if (!dir) return
     try {
       const result = await sdk.client.note.create({
-        directory: dir,
+        scopeID: dir,
         noteCreateInput: { title: "" },
       })
       if (result.data) {
@@ -1323,7 +1323,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       onConfirm: async () => {
         setBatchBusy(true)
         try {
-          await sdk.client.note.batch({ ids, action: "archive", directory: directory() })
+          await sdk.client.note.batch({ ids, action: "archive", scopeID: directory() })
         } catch (e) {
           console.error("Batch archive failed", e)
         }
@@ -1341,7 +1341,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       onConfirm: async () => {
         setBatchBusy(true)
         try {
-          await sdk.client.note.batch({ ids, action: "unarchive", directory: directory() })
+          await sdk.client.note.batch({ ids, action: "unarchive", scopeID: directory() })
         } catch (e) {
           console.error("Batch unarchive failed", e)
         }
@@ -1365,7 +1365,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       onConfirm: async () => {
         setBatchBusy(true)
         try {
-          await sdk.client.note.batch({ ids, action: "delete", directory: directory() })
+          await sdk.client.note.batch({ ids, action: "delete", scopeID: directory() })
         } catch (e) {
           console.error("Batch delete failed", e)
         }
@@ -1631,7 +1631,7 @@ function NoteEditor(props: {
     () => ({ id: props.id, dir: directory(), reconnect: globalSync.reconnectVersion() }),
     async ({ id, dir }) => {
       if (!dir) return null
-      const result = await sdk.client.note.get({ id, directory: dir })
+      const result = await sdk.client.note.get({ id, scopeID: dir })
       return result.data as NoteInfo
     },
   )
@@ -1665,25 +1665,17 @@ function NoteEditor(props: {
   const noteLoaded = createMemo(() => !!baseNote())
   const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
   const routeDirectory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
-  const blueprintScopes = createMemo(() =>
-    globalSync.data.scope.map((scope) => ({
-      id: scope.id,
-      worktree: scope.worktree,
-      sandboxes: scope.sandboxes,
-      vcs: scope.vcs,
-    })),
-  )
+  const blueprintScopes = createMemo(() => globalSync.data.scope)
   const canRunCurrentSession = createMemo(() =>
     canRunBlueprintInCurrentSession({
       sessionID: params.id,
-      blueprintDirectory: directory(),
-      routeDirectory: routeDirectory(),
-      scopes: blueprintScopes(),
+      blueprintScopeID: directory(),
+      sessionScopeID: routeDirectory(),
     }),
   )
   const canRunWorktreeSession = createMemo(() =>
     canCreateBlueprintWorktree({
-      blueprintDirectory: directory(),
+      scopeID: directory(),
       scopes: blueprintScopes(),
     }),
   )
@@ -1852,7 +1844,7 @@ function NoteEditor(props: {
     try {
       const result = await sdk.client.note.update({
         id: props.id,
-        directory: dir,
+        scopeID: dir,
         notePatchInput,
       })
       const saved = result.data as NoteInfo
@@ -1969,7 +1961,7 @@ function NoteEditor(props: {
         try {
           const result = await sdk.client.note.update({
             id: props.id,
-            directory: dir,
+            scopeID: dir,
             notePatchInput: buildPatch(base),
           })
           applySnapshot(result.data as NoteInfo)
@@ -2068,7 +2060,7 @@ function NoteEditor(props: {
   function downloadNote() {
     const dir = directory()
     if (!dir) return
-    const params = new URLSearchParams({ directory: dir, format: "md" })
+    const params = new URLSearchParams({ scopeID: dir, format: "md" })
     const url = `${sdk.url}/note/export/${encodeURIComponent(props.id)}?${params}`
     const a = document.createElement("a")
     a.href = url
@@ -2091,7 +2083,7 @@ function NoteEditor(props: {
     try {
       const result = await sdk.client.note.update({
         id: latest.id,
-        directory: dir,
+        scopeID: dir,
         notePatchInput: {
           kind: "blueprint",
           blueprint: {},
@@ -2131,7 +2123,7 @@ function NoteEditor(props: {
     try {
       const result = await sdk.client.note.update({
         id: latest.id,
-        directory: dir,
+        scopeID: dir,
         notePatchInput: {
           kind: "note",
           expectedVersion: latest.version,
@@ -2163,7 +2155,7 @@ function NoteEditor(props: {
     return createSynergyClient({
       baseUrl: sdk.url,
       fetch: platform.fetch,
-      directory,
+      scopeID: directory,
       throwOnError: true,
     })
   }
@@ -2228,7 +2220,7 @@ function NoteEditor(props: {
       if (!target) return
       const loop = await sdk.client.blueprint.loop
         .create({
-          directory: dir,
+          scopeID: dir,
           blueprintLoopCreateInput: {
             noteID: base.id,
             noteVersion: base.version,
@@ -2243,11 +2235,11 @@ function NoteEditor(props: {
         .then((result) => result.data)
       if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
       createdLoopID = loop.id
-      await sdk.client.blueprint.loop.start({ id: loop.id, directory: dir })
+      await sdk.client.blueprint.loop.start({ id: loop.id, scopeID: dir })
       setShowRunMenu(false)
     } catch (error) {
       if (createdLoopID) {
-        await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
+        await sdk.client.blueprint.loop.cancel({ id: createdLoopID, scopeID: dir }).catch(() => undefined)
       }
       if (target?.createdSession) {
         await target.client.session.delete({ sessionID: target.sessionID }).catch(() => undefined)
@@ -2270,7 +2262,7 @@ function NoteEditor(props: {
     confirm.show({
       ...archiveNoteConfirm(1),
       onConfirm: async () => {
-        await sdk.client.note.batch({ ids: [props.id], action: "archive", directory: dir })
+        await sdk.client.note.batch({ ids: [props.id], action: "archive", scopeID: dir })
         props.onBack()
       },
     })
@@ -2281,7 +2273,7 @@ function NoteEditor(props: {
     if (!dir) return
     await flushSave()
     if (remoteConflict()) return
-    await sdk.client.note.batch({ ids: [props.id], action: "unarchive", directory: dir })
+    await sdk.client.note.batch({ ids: [props.id], action: "unarchive", scopeID: dir })
   }
 
   async function deleteArchivedNote() {
@@ -2290,7 +2282,7 @@ function NoteEditor(props: {
     confirm.show({
       ...deleteArchivedNoteConfirm(1),
       onConfirm: async () => {
-        await sdk.client.note.batch({ ids: [props.id], action: "delete", directory: dir })
+        await sdk.client.note.batch({ ids: [props.id], action: "delete", scopeID: dir })
         props.onDelete()
       },
     })

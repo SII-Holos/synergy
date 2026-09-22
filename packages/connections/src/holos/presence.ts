@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 const log = Log.create({ service: "holos.presence" })
@@ -10,57 +11,77 @@ export namespace Presence {
     lastChecked: number
   }
 
-  const cache = new Map<string, Entry>()
+  const runtimeState = RuntimeContext.state(() => ({
+    cache: new Map<string, Entry>(),
+    clock: (() => Date.now()) as () => number,
+  }))
   const MAX_AGE_MS = 5 * 60 * 1000
-  let clock: () => number = () => Date.now()
 
   export function setClock(next: () => number): void {
-    clock = next
+    const instanceState = runtimeState()
+
+    instanceState.clock = next
   }
 
   export function now(): number {
-    return clock()
+    const instanceState = runtimeState()
+
+    return instanceState.clock()
   }
 
   export function get(agentId: string): Status {
-    const entry = cache.get(agentId)
+    const instanceState = runtimeState()
+
+    const entry = instanceState.cache.get(agentId)
     if (!entry) return "unknown"
     if (now() - entry.lastChecked > MAX_AGE_MS) {
-      cache.delete(agentId)
+      instanceState.cache.delete(agentId)
       return "unknown"
     }
     return entry.status
   }
 
   export function markOnline(agentId: string): void {
-    cache.set(agentId, { status: "online", lastChecked: now() })
+    const instanceState = runtimeState()
+
+    instanceState.cache.set(agentId, { status: "online", lastChecked: now() })
   }
 
   export function markOffline(agentId: string): void {
-    cache.set(agentId, { status: "offline", lastChecked: now() })
+    const instanceState = runtimeState()
+
+    instanceState.cache.set(agentId, { status: "offline", lastChecked: now() })
   }
 
   export function remove(agentId: string): void {
-    cache.delete(agentId)
+    const instanceState = runtimeState()
+
+    instanceState.cache.delete(agentId)
   }
 
   export function clear(): void {
-    cache.clear()
+    const instanceState = runtimeState()
+
+    instanceState.cache.clear()
   }
 
   export function prune(): void {
+    const instanceState = runtimeState()
+
     const current = now()
-    for (const [id, entry] of cache) {
-      if (current - entry.lastChecked > MAX_AGE_MS) cache.delete(id)
+    for (const [id, entry] of instanceState.cache) {
+      if (current - entry.lastChecked > MAX_AGE_MS) instanceState.cache.delete(id)
     }
   }
 
   export function all(): Map<string, Status> {
+    const instanceState = runtimeState()
+
     const result = new Map<string, Status>()
     const current = now()
-    for (const [id, entry] of cache) {
+    for (const [id, entry] of instanceState.cache) {
       if (current - entry.lastChecked > MAX_AGE_MS) {
-        cache.delete(id)
+        instanceState.cache.delete(id)
         continue
       }
       result.set(id, entry.status)

@@ -13,6 +13,9 @@ import {
 import type { LoadedPlugin } from "../../src/plugin/loader"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const manifest = compilePluginManifest(
   definePlugin({
@@ -58,80 +61,88 @@ const installPlugin = {
 } as LoadedPlugin
 
 describe("plugin uninstall lifecycle", () => {
-  test("stops normal uninstall on handler failure and force uninstall skips the handler", async () => {
-    await using tmp = await tmpdir({ git: true })
-    let ensured = 0
-    let invoked = 0
-    const services = {
-      ensureRuntime: async () => {
-        ensured++
-      },
-      invoke: async () => {
-        invoked++
-        throw new Error("cleanup failed")
-      },
-    }
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expect(runPluginUninstallLifecycle(plugin, false, services)).rejects.toThrow("cleanup failed")
-      },
-    })
-    expect({ ensured, invoked }).toEqual({ ensured: 1, invoked: 1 })
-    await runPluginUninstallLifecycle(plugin, true, services)
-    expect({ ensured, invoked }).toEqual({ ensured: 1, invoked: 1 })
-  })
+  test("stops normal uninstall on handler failure and force uninstall skips the handler", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      let ensured = 0
+      let invoked = 0
+      const services = {
+        ensureRuntime: async () => {
+          ensured++
+        },
+        invoke: async () => {
+          invoked++
+          throw new Error("cleanup failed")
+        },
+      }
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expect(runPluginUninstallLifecycle(plugin, false, services)).rejects.toThrow("cleanup failed")
+        },
+      })
+      expect({ ensured, invoked }).toEqual({ ensured: 1, invoked: 1 })
+      await runPluginUninstallLifecycle(plugin, true, services)
+      expect({ ensured, invoked }).toEqual({ ensured: 1, invoked: 1 })
+    }))
 })
 
 describe("plugin install lifecycle", () => {
-  test("contains handler failures after installation instead of rolling back", async () => {
-    await using tmp = await tmpdir({ git: true })
-    let degraded = ""
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expect(
-          runPluginInstallLifecycle(installPlugin, {
-            ensureRuntime: async () => undefined,
-            invoke: async () => {
-              throw new Error("installer launch failed")
-            },
-            onFailure: (_plugin, contribution, error) => {
-              degraded = `${contribution.id}:${error instanceof Error ? error.message : String(error)}`
-            },
-          }),
-        ).resolves.toEqual({ status: "failed", error: "installer launch failed" })
-      },
-    })
-    expect(degraded).toBe("setup:installer launch failed")
-  })
+  test("contains handler failures after installation instead of rolling back", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      let degraded = ""
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expect(
+            runPluginInstallLifecycle(installPlugin, {
+              ensureRuntime: async () => undefined,
+              invoke: async () => {
+                throw new Error("installer launch failed")
+              },
+              onFailure: (_plugin, contribution, error) => {
+                degraded = `${contribution.id}:${error instanceof Error ? error.message : String(error)}`
+              },
+            }),
+          ).resolves.toEqual({ status: "failed", error: "installer launch failed" })
+        },
+      })
+      expect(degraded).toBe("setup:installer launch failed")
+    }))
 })
 
 describe("theme preference cleanup on uninstall", () => {
-  test("clears the preference when it names the removed plugin's skin", async () => {
-    let cleared = 0
-    const result = await clearThemePreferenceIfOwned("theme-plugin", {
-      read: async () => ({ theme: "theme-plugin:skin" }),
-      clear: async () => {
-        cleared++
-      },
-    })
-    expect(result).toBe(true)
-    expect(cleared).toBe(1)
-  })
+  test("clears the preference when it names the removed plugin's skin", () =>
+    runtime.run(async () => {
+      let cleared = 0
+      const result = await clearThemePreferenceIfOwned("theme-plugin", {
+        read: async () => ({ theme: "theme-plugin:skin" }),
+        clear: async () => {
+          cleared++
+        },
+      })
+      expect(result).toBe(true)
+      expect(cleared).toBe(1)
+    }))
 
-  test("keeps the preference when it belongs to another theme or is unset", async () => {
-    let cleared = 0
-    const io = {
-      clear: async () => {
-        cleared++
-      },
-    }
-    expect(
-      await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => ({ theme: "other:skin" }) }),
-    ).toBe(false)
-    expect(await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => ({ theme: "" }) })).toBe(false)
-    expect(await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => undefined })).toBe(false)
-    expect(cleared).toBe(0)
-  })
+  test("keeps the preference when it belongs to another theme or is unset", () =>
+    runtime.run(async () => {
+      let cleared = 0
+      const io = {
+        clear: async () => {
+          cleared++
+        },
+      }
+      expect(
+        await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => ({ theme: "other:skin" }) }),
+      ).toBe(false)
+      expect(await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => ({ theme: "" }) })).toBe(
+        false,
+      )
+      expect(await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => undefined })).toBe(false)
+      expect(cleared).toBe(0)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

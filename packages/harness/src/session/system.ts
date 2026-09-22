@@ -26,27 +26,27 @@ export namespace SystemPrompt {
     session?: SessionEnvContributor.EnvSession & { id: string; title: string; time: { created: number } }
   }) {
     const scope = ScopeContext.current.scope
+    const workspace = ScopeContext.current.workspace
     const endpointType = options?.endpointType
     const session = options?.session
     // Probe live instead of trusting the session-scope snapshot: a scope
     // created before `git init` keeps vcs undefined for the whole session,
     // which used to contradict the git-health block forever. Same probe as
     // git-health so the two can never disagree.
-    const isGitRepo =
-      scope.type === "project" ? await SessionProjectHealth.isGitRepo(ScopeContext.current.directory) : false
+    const isGitRepo = workspace ? await SessionProjectHealth.isGitRepo(ScopeContext.current.directory) : false
     const envLines = [
-      `  Working directory: ${ScopeContext.current.directory}`,
+      workspace
+        ? `  Working directory: ${workspace.path}`
+        : "  Workspace: none. Local file and process tools require a workspace.",
       `  Is directory a git repo: ${isGitRepo ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    const workspace = ScopeContext.current.workspace
     // In a git_worktree session the project folder list is derived from
     // trustRoots, which excludes the original checkout (and anything nested
     // under it) — the prompt must match the execution boundary exactly.
-    const projectRoots =
-      workspace?.type === "git_worktree" ? Scope.Root.trustRoots(scope, workspace) : Scope.Root.projectRoots(scope)
+    const projectRoots = Scope.Root.trustRoots(scope, workspace)
     if (projectRoots.length > 1) {
       envLines.push(`  Project folders: ${projectRoots.join(", ")}`)
     } else if (scope.type === "project" && projectRoots.length === 1) {

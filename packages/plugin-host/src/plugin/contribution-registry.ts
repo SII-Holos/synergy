@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   EXECUTABLE_CONTRIBUTION_KINDS,
   hasTrustedUIComponent,
@@ -103,23 +104,26 @@ export class ContributionAdapterRegistry {
   }
 }
 
-export const pluginContributionAdapters = new ContributionAdapterRegistry()
-
 const kinds = PluginManifestContribution.options.map((schema) => schema.shape.kind.value)
+export const pluginContributionAdapters = RuntimeContext.state(() => {
+  const registry = new ContributionAdapterRegistry()
 
-for (const kind of kinds) {
-  pluginContributionAdapters.add({
-    kind,
-    validate({ manifest, contribution }) {
-      if (
-        (EXECUTABLE_CONTRIBUTION_KINDS as readonly string[]).includes(contribution.kind) &&
-        !manifest.artifacts.runtime
-      ) {
-        throw new Error(`${contribution.kind}:${contribution.id} requires a runtime artifact`)
-      }
-      if (hasTrustedUIComponent(contribution) && !manifest.artifacts.ui) {
-        throw new Error(`${contribution.kind}:${contribution.id} requires a UI artifact`)
-      }
-    },
-  })
-}
+  for (const kind of kinds) {
+    registry.add({
+      kind,
+      validate({ manifest, contribution }) {
+        if (
+          (EXECUTABLE_CONTRIBUTION_KINDS as readonly string[]).includes(contribution.kind) &&
+          !manifest.artifacts.runtime
+        ) {
+          throw new Error(`${contribution.kind}:${contribution.id} requires a runtime artifact`)
+        }
+        if (hasTrustedUIComponent(contribution) && !manifest.artifacts.ui) {
+          throw new Error(`${contribution.kind}:${contribution.id} requires a UI artifact`)
+        }
+      },
+    })
+  }
+
+  return registry
+})

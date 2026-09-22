@@ -193,350 +193,351 @@ const StorageReclaimControlInput = z
   .strict()
   .meta({ ref: "StorageReclaimControlInput" })
 
-export const GlobalStorageRoute = new Hono()
-  .get(
-    "/maintenance",
-    describeRoute({
-      summary: "Get storage format and reclamation status",
-      operationId: "storage.maintenanceStatus",
-      responses: {
-        200: {
-          description: "Current storage maintenance status",
-          content: { "application/json": { schema: resolver(StorageMaintenanceStatus) } },
+export const GlobalStorageRoute = () =>
+  new Hono()
+    .get(
+      "/maintenance",
+      describeRoute({
+        summary: "Get storage format and reclamation status",
+        operationId: "storage.maintenanceStatus",
+        responses: {
+          200: {
+            description: "Current storage maintenance status",
+            content: { "application/json": { schema: resolver(StorageMaintenanceStatus) } },
+          },
         },
-      },
-    }),
-    async (c) => c.json(await StorageMaintenance.status()),
-  )
-  .post(
-    "/reclaim/control",
-    describeRoute({
-      summary: "Pause or resume background storage reclamation",
-      operationId: "storage.reclaimControl",
-      responses: {
-        200: {
-          description: "Updated storage maintenance status",
-          content: { "application/json": { schema: resolver(StorageMaintenanceStatus) } },
-        },
-      },
-    }),
-    validator("json", StorageReclaimControlInput),
-    async (c) => c.json(await StorageMaintenance.controlReclaim(c.req.valid("json").action)),
-  )
-  .get(
-    "/upgrade",
-    describeRoute({
-      summary: "Get historical data upgrade progress",
-      description:
-        "The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.",
-      operationId: "storage.upgradeStatus",
-      responses: {
-        200: {
-          description: "Historical upgrade counts",
-          content: { "application/json": { schema: resolver(StorageUpgradeStatus) } },
-        },
-      },
-    }),
-    async (c) => c.json(await SessionCompat.status()),
-  )
-  .get(
-    "/upgrade/sessions",
-    describeRoute({
-      summary: "List unresolved historical Sessions",
-      operationId: "storage.upgradeCatalog",
-      responses: {
-        200: {
-          description: "One page from the immutable upgrade cohort",
-          content: { "application/json": { schema: resolver(StorageUpgradeCatalog) } },
-        },
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        scopeID: z.string().optional(),
-        after: z.array(z.string()).length(4).optional(),
-        limit: z.coerce.number().int().min(1).max(100).optional(),
       }),
-    ),
-    async (c) => c.json(await SessionCompat.catalogPage(c.req.valid("query"))),
-  )
-  .post(
-    "/upgrade/control",
-    describeRoute({
-      summary: "Pause or resume background history preparation",
-      operationId: "storage.controlUpgrade",
-      responses: {
-        200: {
-          description: "Updated preparation status",
-          content: { "application/json": { schema: resolver(StorageUpgradeStatus) } },
+      async (c) => c.json(await StorageMaintenance.status()),
+    )
+    .post(
+      "/reclaim/control",
+      describeRoute({
+        summary: "Pause or resume background storage reclamation",
+        operationId: "storage.reclaimControl",
+        responses: {
+          200: {
+            description: "Updated storage maintenance status",
+            content: { "application/json": { schema: resolver(StorageMaintenanceStatus) } },
+          },
         },
-      },
-    }),
-    validator("json", z.object({ action: z.enum(["pause", "resume"]) }).strict()),
-    async (c) => {
-      await SessionCompat.control(c.req.valid("json").action)
-      return c.json(await SessionCompat.status())
-    },
-  )
-  .get(
-    "/upgrade/sessions/:sessionID",
-    describeRoute({
-      summary: "Get historical Session preparation status",
-      operationId: "storage.upgradeSession",
-      responses: {
-        200: {
-          description: "Preparation status without starting work",
-          content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+      }),
+      validator("json", StorageReclaimControlInput),
+      async (c) => c.json(await StorageMaintenance.controlReclaim(c.req.valid("json").action)),
+    )
+    .get(
+      "/upgrade",
+      describeRoute({
+        summary: "Get historical data upgrade progress",
+        description:
+          "The runtime is ready for new work. Historical Sessions are admitted individually after migration and recovery.",
+        operationId: "storage.upgradeStatus",
+        responses: {
+          200: {
+            description: "Historical upgrade counts",
+            content: { "application/json": { schema: resolver(StorageUpgradeStatus) } },
+          },
         },
-      },
-    }),
-    validator("param", z.object({ sessionID: z.string().min(1) })),
-    async (c) => c.json(await SessionCompat.preparation(c.req.valid("param").sessionID)),
-  )
-  .post(
-    "/upgrade/sessions/:sessionID/prepare",
-    describeRoute({
-      summary: "Prioritize historical Session preparation",
-      description: "Returns immediately. Poll status; leaving the page does not cancel durable preparation.",
-      operationId: "storage.prepareSession",
-      responses: {
-        200: {
-          description: "Current preparation status",
-          content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+      }),
+      async (c) => c.json(await SessionCompat.status()),
+    )
+    .get(
+      "/upgrade/sessions",
+      describeRoute({
+        summary: "List unresolved historical Sessions",
+        operationId: "storage.upgradeCatalog",
+        responses: {
+          200: {
+            description: "One page from the immutable upgrade cohort",
+            content: { "application/json": { schema: resolver(StorageUpgradeCatalog) } },
+          },
         },
-      },
-    }),
-    validator("param", z.object({ sessionID: z.string().min(1) })),
-    async (c) => c.json(await SessionCompat.prepare(c.req.valid("param").sessionID)),
-  )
-  .post(
-    "/upgrade/sessions/:sessionID/retry",
-    describeRoute({
-      summary: "Retry interrupted historical Session preparation",
-      description:
-        "Retries from durable checkpoints. Quarantined data requires repair; this operation never discards or overwrites a recovery set.",
-      operationId: "storage.retrySession",
-      responses: {
-        200: {
-          description: "Current preparation status",
-          content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+      }),
+      validator(
+        "query",
+        z.object({
+          scopeID: z.string().optional(),
+          after: z.array(z.string()).length(4).optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+        }),
+      ),
+      async (c) => c.json(await SessionCompat.catalogPage(c.req.valid("query"))),
+    )
+    .post(
+      "/upgrade/control",
+      describeRoute({
+        summary: "Pause or resume background history preparation",
+        operationId: "storage.controlUpgrade",
+        responses: {
+          200: {
+            description: "Updated preparation status",
+            content: { "application/json": { schema: resolver(StorageUpgradeStatus) } },
+          },
         },
+      }),
+      validator("json", z.object({ action: z.enum(["pause", "resume"]) }).strict()),
+      async (c) => {
+        await SessionCompat.control(c.req.valid("json").action)
+        return c.json(await SessionCompat.status())
       },
-    }),
-    validator("param", z.object({ sessionID: z.string().min(1) })),
-    async (c) => c.json(await SessionCompat.prepare(c.req.valid("param").sessionID, true)),
-  )
-  .get(
-    "/snapshot",
-    describeRoute({
-      summary: "Report snapshot storage usage",
-      description:
-        "Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Read-only; reclamation is a separate POST.",
-      operationId: "storage.snapshot.usage",
-      responses: {
-        200: {
-          description: "Snapshot storage usage per scope",
-          content: {
-            "application/json": {
-              schema: resolver(StorageSnapshotUsage.array()),
+    )
+    .get(
+      "/upgrade/sessions/:sessionID",
+      describeRoute({
+        summary: "Get historical Session preparation status",
+        operationId: "storage.upgradeSession",
+        responses: {
+          200: {
+            description: "Preparation status without starting work",
+            content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+          },
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string().min(1) })),
+      async (c) => c.json(await SessionCompat.preparation(c.req.valid("param").sessionID)),
+    )
+    .post(
+      "/upgrade/sessions/:sessionID/prepare",
+      describeRoute({
+        summary: "Prioritize historical Session preparation",
+        description: "Returns immediately. Poll status; leaving the page does not cancel durable preparation.",
+        operationId: "storage.prepareSession",
+        responses: {
+          200: {
+            description: "Current preparation status",
+            content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+          },
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string().min(1) })),
+      async (c) => c.json(await SessionCompat.prepare(c.req.valid("param").sessionID)),
+    )
+    .post(
+      "/upgrade/sessions/:sessionID/retry",
+      describeRoute({
+        summary: "Retry interrupted historical Session preparation",
+        description:
+          "Retries from durable checkpoints. Quarantined data requires repair; this operation never discards or overwrites a recovery set.",
+        operationId: "storage.retrySession",
+        responses: {
+          200: {
+            description: "Current preparation status",
+            content: { "application/json": { schema: resolver(StorageSessionPreparation) } },
+          },
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string().min(1) })),
+      async (c) => c.json(await SessionCompat.prepare(c.req.valid("param").sessionID, true)),
+    )
+    .get(
+      "/snapshot",
+      describeRoute({
+        summary: "Report snapshot storage usage",
+        description:
+          "Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Read-only; reclamation is a separate POST.",
+        operationId: "storage.snapshot.usage",
+        responses: {
+          200: {
+            description: "Snapshot storage usage per scope",
+            content: {
+              "application/json": {
+                schema: resolver(StorageSnapshotUsage.array()),
+              },
             },
           },
         },
+      }),
+      async (c) => {
+        const usage = await SnapshotMaintenance.inspect()
+        return c.json(usage)
       },
-    }),
-    async (c) => {
-      const usage = await SnapshotMaintenance.inspect()
-      return c.json(usage)
-    },
-  )
-  .post(
-    "/snapshot/clean",
-    describeRoute({
-      summary: "Reclaim unowned legacy snapshot directories",
-      description:
-        "Reclaim retained legacy snapshot directories with no owner record and no session record, including the __reclaimed__ scope. The shared store and directories with owners are never touched. Dry run by default; apply refuses a scope whose integrity check fails. Conflicts with running maintenance or a corrupted scope return 409.",
-      operationId: "storage.snapshot.clean",
-      requestBody: {
-        required: true,
-        content: {},
-      },
-      responses: {
-        200: {
-          description:
-            "Per-scope clean reports plus failures for scopes that could not run (batch requests without scopeID keep completed work when a later scope fails)",
-          content: {
-            "application/json": {
-              schema: resolver(StorageSnapshotCleanBatch),
+    )
+    .post(
+      "/snapshot/clean",
+      describeRoute({
+        summary: "Reclaim unowned legacy snapshot directories",
+        description:
+          "Reclaim retained legacy snapshot directories with no owner record and no session record, including the __reclaimed__ scope. The shared store and directories with owners are never touched. Dry run by default; apply refuses a scope whose integrity check fails. Conflicts with running maintenance or a corrupted scope return 409.",
+        operationId: "storage.snapshot.clean",
+        requestBody: {
+          required: true,
+          content: {},
+        },
+        responses: {
+          200: {
+            description:
+              "Per-scope clean reports plus failures for scopes that could not run (batch requests without scopeID keep completed work when a later scope fails)",
+            content: {
+              "application/json": {
+                schema: resolver(StorageSnapshotCleanBatch),
+              },
+            },
+          },
+          409: {
+            description:
+              "A scope-targeted request found storage busy or its integrity check failed; nothing was reclaimed",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ message: z.string() })),
+              },
             },
           },
         },
-        409: {
-          description:
-            "A scope-targeted request found storage busy or its integrity check failed; nothing was reclaimed",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ message: z.string() })),
-            },
-          },
-        },
-      },
-    }),
-    validator("json", StorageSnapshotCleanInput),
-    async (c) => {
-      const { scopeID, apply } = c.req.valid("json")
-      if (scopeID !== undefined) {
-        try {
-          const result = await SnapshotMaintenance.clean(SnapshotStore.component(scopeID), { apply })
-          return c.json({ results: [result], failures: [] })
-        } catch (error) {
-          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
-            return c.json({ message: error.message }, 409)
+      }),
+      validator("json", StorageSnapshotCleanInput),
+      async (c) => {
+        const { scopeID, apply } = c.req.valid("json")
+        if (scopeID !== undefined) {
+          try {
+            const result = await SnapshotMaintenance.clean(SnapshotStore.component(scopeID), { apply })
+            return c.json({ results: [result], failures: [] })
+          } catch (error) {
+            if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+              return c.json({ message: error.message }, 409)
+            }
+            throw error
           }
-          throw error
         }
-      }
-      const results = []
-      const failures: Array<{ scopeID: string; message: string }> = []
-      for (const scope of await SnapshotMaintenance.scopes()) {
-        try {
-          results.push(await SnapshotMaintenance.clean(scope, { apply }))
-        } catch (error) {
-          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
-            failures.push({ scopeID: scope, message: error.message })
-            continue
+        const results = []
+        const failures: Array<{ scopeID: string; message: string }> = []
+        for (const scope of await SnapshotMaintenance.scopes()) {
+          try {
+            results.push(await SnapshotMaintenance.clean(scope, { apply }))
+          } catch (error) {
+            if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+              failures.push({ scopeID: scope, message: error.message })
+              continue
+            }
+            throw error
           }
-          throw error
         }
-      }
-      return c.json({ results, failures })
-    },
-  )
-  .post(
-    "/snapshot/migrate",
-    describeRoute({
-      summary: "Migrate legacy snapshots into shared storage",
-      description:
-        "Move owned legacy snapshot repositories into the per-scope shared object store. Dry run by default: reports pending repositories without changing anything. Legacy repositories without a confirmed session record are skipped, not failures. Conflicts with running maintenance return 409.",
-      operationId: "storage.snapshot.migrate",
-      requestBody: {
-        required: true,
-        content: {},
+        return c.json({ results, failures })
       },
-      responses: {
-        200: {
-          description: "Per-scope migration report (pending repositories for dry runs, outcomes otherwise)",
-          content: {
-            "application/json": {
-              schema: resolver(StorageSnapshotMigrateBatch),
+    )
+    .post(
+      "/snapshot/migrate",
+      describeRoute({
+        summary: "Migrate legacy snapshots into shared storage",
+        description:
+          "Move owned legacy snapshot repositories into the per-scope shared object store. Dry run by default: reports pending repositories without changing anything. Legacy repositories without a confirmed session record are skipped, not failures. Conflicts with running maintenance return 409.",
+        operationId: "storage.snapshot.migrate",
+        requestBody: {
+          required: true,
+          content: {},
+        },
+        responses: {
+          200: {
+            description: "Per-scope migration report (pending repositories for dry runs, outcomes otherwise)",
+            content: {
+              "application/json": {
+                schema: resolver(StorageSnapshotMigrateBatch),
+              },
+            },
+          },
+          409: {
+            description: "Snapshot storage is busy; nothing was migrated",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ message: z.string() })),
+              },
             },
           },
         },
-        409: {
-          description: "Snapshot storage is busy; nothing was migrated",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ message: z.string() })),
+      }),
+      validator("json", StorageSnapshotMigrateInput),
+      async (c) => {
+        const { scopeID, apply } = c.req.valid("json")
+        const runScope = async (scope: string) => {
+          if (apply) await SnapshotLifecycle.recover(scope)
+          return SnapshotMaintenance.migrate(scope, { apply })
+        }
+        if (scopeID !== undefined) {
+          try {
+            const result = await runScope(SnapshotStore.component(scopeID))
+            return c.json({ results: [result], failures: [] })
+          } catch (error) {
+            if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+              return c.json({ message: error.message }, 409)
+            }
+            throw error
+          }
+        }
+        const results = []
+        const failures: Array<{ scopeID: string; message: string }> = []
+        for (const scope of await SnapshotMaintenance.scopes()) {
+          try {
+            results.push(await runScope(scope))
+          } catch (error) {
+            if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+              failures.push({ scopeID: scope, message: error.message })
+              continue
+            }
+            throw error
+          }
+        }
+        return c.json({ results, failures })
+      },
+    )
+    .post(
+      "/snapshot/compact",
+      describeRoute({
+        summary: "Pack shared snapshot storage",
+        description:
+          "Repack the per-scope shared object store to reclaim space. Dry run by default: reports current statistics without changing anything. Apply verifies integrity first and refuses a corrupted scope; with prune it also collects unreferenced objects after recovery checks. A missing shared store is a no-op. Conflicts with running maintenance return 409.",
+        operationId: "storage.snapshot.compact",
+        requestBody: {
+          required: true,
+          content: {},
+        },
+        responses: {
+          200: {
+            description: "Per-scope compaction report (statistics for dry runs, before/after otherwise)",
+            content: {
+              "application/json": {
+                schema: resolver(StorageSnapshotCompactBatch),
+              },
+            },
+          },
+          409: {
+            description: "Snapshot storage is busy or failed its integrity check; nothing was compacted",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ message: z.string() })),
+              },
             },
           },
         },
+      }),
+      validator("json", StorageSnapshotCompactInput),
+      async (c) => {
+        const { scopeID, apply, prune } = c.req.valid("json")
+        const runScope = async (scope: string) => {
+          if (apply) await SnapshotLifecycle.recover(scope)
+          return SnapshotMaintenance.compact(scope, { apply, prune })
+        }
+        if (scopeID !== undefined) {
+          try {
+            const result = await runScope(SnapshotStore.component(scopeID))
+            return c.json({ results: [result], failures: [] })
+          } catch (error) {
+            if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+              return c.json({ message: error.message }, 409)
+            }
+            throw error
+          }
+        }
+        const results = []
+        const failures: Array<{ scopeID: string; message: string }> = []
+        for (const scope of await SnapshotMaintenance.scopes()) {
+          try {
+            results.push(await runScope(scope))
+          } catch (error) {
+            if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+              failures.push({ scopeID: scope, message: error.message })
+              continue
+            }
+            throw error
+          }
+        }
+        return c.json({ results, failures })
       },
-    }),
-    validator("json", StorageSnapshotMigrateInput),
-    async (c) => {
-      const { scopeID, apply } = c.req.valid("json")
-      const runScope = async (scope: string) => {
-        if (apply) await SnapshotLifecycle.recover(scope)
-        return SnapshotMaintenance.migrate(scope, { apply })
-      }
-      if (scopeID !== undefined) {
-        try {
-          const result = await runScope(SnapshotStore.component(scopeID))
-          return c.json({ results: [result], failures: [] })
-        } catch (error) {
-          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
-            return c.json({ message: error.message }, 409)
-          }
-          throw error
-        }
-      }
-      const results = []
-      const failures: Array<{ scopeID: string; message: string }> = []
-      for (const scope of await SnapshotMaintenance.scopes()) {
-        try {
-          results.push(await runScope(scope))
-        } catch (error) {
-          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
-            failures.push({ scopeID: scope, message: error.message })
-            continue
-          }
-          throw error
-        }
-      }
-      return c.json({ results, failures })
-    },
-  )
-  .post(
-    "/snapshot/compact",
-    describeRoute({
-      summary: "Pack shared snapshot storage",
-      description:
-        "Repack the per-scope shared object store to reclaim space. Dry run by default: reports current statistics without changing anything. Apply verifies integrity first and refuses a corrupted scope; with prune it also collects unreferenced objects after recovery checks. A missing shared store is a no-op. Conflicts with running maintenance return 409.",
-      operationId: "storage.snapshot.compact",
-      requestBody: {
-        required: true,
-        content: {},
-      },
-      responses: {
-        200: {
-          description: "Per-scope compaction report (statistics for dry runs, before/after otherwise)",
-          content: {
-            "application/json": {
-              schema: resolver(StorageSnapshotCompactBatch),
-            },
-          },
-        },
-        409: {
-          description: "Snapshot storage is busy or failed its integrity check; nothing was compacted",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ message: z.string() })),
-            },
-          },
-        },
-      },
-    }),
-    validator("json", StorageSnapshotCompactInput),
-    async (c) => {
-      const { scopeID, apply, prune } = c.req.valid("json")
-      const runScope = async (scope: string) => {
-        if (apply) await SnapshotLifecycle.recover(scope)
-        return SnapshotMaintenance.compact(scope, { apply, prune })
-      }
-      if (scopeID !== undefined) {
-        try {
-          const result = await runScope(SnapshotStore.component(scopeID))
-          return c.json({ results: [result], failures: [] })
-        } catch (error) {
-          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
-            return c.json({ message: error.message }, 409)
-          }
-          throw error
-        }
-      }
-      const results = []
-      const failures: Array<{ scopeID: string; message: string }> = []
-      for (const scope of await SnapshotMaintenance.scopes()) {
-        try {
-          results.push(await runScope(scope))
-        } catch (error) {
-          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
-            failures.push({ scopeID: scope, message: error.message })
-            continue
-          }
-          throw error
-        }
-      }
-      return c.json({ results, failures })
-    },
-  )
+    )

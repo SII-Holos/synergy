@@ -7,6 +7,7 @@ export interface Migration {
   version?: string
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
+  onAccess?: true
   isApplied?(): Promise<boolean>
   execution?: "startup" | "session" | "after-convergence" | "maintenance"
   upSession?(

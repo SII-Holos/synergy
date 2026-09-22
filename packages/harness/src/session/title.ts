@@ -24,43 +24,45 @@ export function isDefaultTitle(title: string) {
   ).test(title)
 }
 
-LoopJob.register({
-  type: "ensure-title",
-  phase: "pre",
-  blocking: false,
-  detached: true,
-  collect(ctx) {
-    if (ctx.step !== 1) return []
-    return [{ type: "ensure-title" }]
-  },
-  capture(ctx) {
-    return {
-      type: "ensure-title",
-      sessionID: ctx.sessionID,
-      modelID: ctx.lastUser.model.modelID,
-      providerID: ctx.lastUser.model.providerID,
-    }
-  },
-  key(input) {
-    return input.sessionID
-  },
-  timeoutMs: 120_000,
-  async execute(input, signal) {
-    const { Session } = await import(".")
-    const [session, history] = await Promise.all([
-      Session.get(input.sessionID),
-      SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal }),
-    ])
-    await ensureTitle({
-      session,
-      modelID: input.modelID,
-      providerID: input.providerID,
-      history,
-      abort: signal,
-    })
-    return "pass"
-  },
-})
+export function registerTitleJob() {
+  LoopJob.register({
+    type: "ensure-title",
+    phase: "pre",
+    blocking: false,
+    detached: true,
+    collect(ctx) {
+      if (ctx.step !== 1) return []
+      return [{ type: "ensure-title" }]
+    },
+    capture(ctx) {
+      return {
+        type: "ensure-title",
+        sessionID: ctx.sessionID,
+        modelID: ctx.lastUser.model.modelID,
+        providerID: ctx.lastUser.model.providerID,
+      }
+    },
+    key(input) {
+      return input.sessionID
+    },
+    timeoutMs: 120_000,
+    async execute(input, signal) {
+      const { Session } = await import(".")
+      const [session, history] = await Promise.all([
+        Session.get(input.sessionID),
+        SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal }),
+      ])
+      await ensureTitle({
+        session,
+        modelID: input.modelID,
+        providerID: input.providerID,
+        history,
+        abort: signal,
+      })
+      return "pass"
+    },
+  })
+}
 
 export async function ensureTitle(input: {
   session: Info

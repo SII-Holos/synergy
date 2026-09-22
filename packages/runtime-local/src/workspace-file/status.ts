@@ -45,7 +45,7 @@ async function lineCount(filepath: string) {
 
 async function build(): Promise<WorkspaceFile.StatusSummary> {
   const scope = ScopeContext.current.scope
-  if (scope.type !== "project" || scope.vcs !== "git") return { files: [] }
+  if (scope.type !== "project" || scope.local?.vcs !== "git") return { files: [] }
 
   const cwd = root()
   const counts = new Map<string, { added: number; removed: number }>()

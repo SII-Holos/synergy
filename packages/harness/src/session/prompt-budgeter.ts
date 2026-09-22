@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { JSONSchema7, ModelMessage } from "ai"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
@@ -15,7 +16,9 @@ export namespace PromptBudgeter {
   const TOOL_OVERHEAD_PER_TOOL = 48
   const MESSAGE_OVERHEAD_PER_ITEM = 12
   const ESTIMATE_CACHE_MAX = 4096
-  const estimateCache = new Map<string, number>()
+  const runtimeState = RuntimeContext.state(() => ({
+    estimateCache: new Map<string, number>(),
+  }))
 
   export interface PromptPlanInput {
     sessionID: string
@@ -261,16 +264,18 @@ export namespace PromptBudgeter {
   }
 
   async function estimateModelJSONCached(modelID: string, value: unknown) {
+    const instanceState = runtimeState()
+
     const serialized = serializeForEstimate(value)
     if (serialized === undefined) return 0
     const key = estimateKey(modelID, serialized)
-    const cached = estimateCache.get(key)
+    const cached = instanceState.estimateCache.get(key)
     if (cached !== undefined) return cached
     const estimated = await Token.estimateModelJSON(modelID, serialized)
-    estimateCache.set(key, estimated)
-    if (estimateCache.size > ESTIMATE_CACHE_MAX) {
-      const first = estimateCache.keys().next().value
-      if (first) estimateCache.delete(first)
+    instanceState.estimateCache.set(key, estimated)
+    if (instanceState.estimateCache.size > ESTIMATE_CACHE_MAX) {
+      const first = instanceState.estimateCache.keys().next().value
+      if (first) instanceState.estimateCache.delete(first)
     }
     return estimated
   }

@@ -3,7 +3,7 @@ import type { Composition } from "../composition"
 
 export default {
   id: "core",
-  async register() {
+  register() {
     registerLocalRuntime()
   },
   open: openLocalRuntime,

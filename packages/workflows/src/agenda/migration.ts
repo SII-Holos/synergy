@@ -165,4 +165,6 @@ export const migrations: Migration[] = [
     },
   },
 ]
-MigrationRegistry.register("agenda", migrations)
+export function registerAgendaMigrations() {
+  MigrationRegistry.register("agenda", migrations)
+}

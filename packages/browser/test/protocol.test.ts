@@ -39,11 +39,11 @@ describe("browser protocol v2", () => {
     ).toBe("file:///workspace/index.html")
   })
   test("uses a versioned strict protocol", () => {
-    expect(BROWSER_PROTOCOL_VERSION).toBe(2)
+    expect(BROWSER_PROTOCOL_VERSION).toBe(3)
     expect(
       BrowserSessionStateSchema.parse({
         type: "session.state",
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "owner-1",
         status: "empty",
         page: null,
@@ -56,7 +56,7 @@ describe("browser protocol v2", () => {
     expect(() =>
       BrowserSessionStateSchema.parse({
         type: "session.state",
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "owner-1",
         status: "empty",
         page: null,
@@ -260,7 +260,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserEventSchema.parse({
         type: "page.closed",
-        protocolVersion: 2,
+        protocolVersion: 3,
         seq: 1,
         epoch: "epoch-1",
         pageId: "page-1",
@@ -278,7 +278,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserWebRTCSignalSchema.safeParse({
         type: "webrtc.ice",
-        protocolVersion: 2,
+        protocolVersion: 3,
         connectionId: "connection",
         generation: 1,
         sequence: -1,
@@ -289,7 +289,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserWebRTCMessageSchema.safeParse({
         type: "webrtc.host.ready",
-        protocolVersion: 2,
+        protocolVersion: 3,
         pageId: "page-1",
       }).success,
     ).toBe(true)
@@ -297,7 +297,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserEventSchema.safeParse({
         type: "page.closed",
-        protocolVersion: 2,
+        protocolVersion: 3,
         seq: 1,
         epoch: "epoch-1",
         pageId: "page-1",
@@ -307,7 +307,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserRemoteInputSchema.safeParse({
         type: "input.key",
-        protocolVersion: 2,
+        protocolVersion: 3,
         pageId: "page-1",
         action: "down",
         key: "Enter",
@@ -322,7 +322,7 @@ describe("browser protocol v2", () => {
     ).toBe(false)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
@@ -331,7 +331,7 @@ describe("browser protocol v2", () => {
     ).toBe(true)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         visible: "hidden",
@@ -339,7 +339,7 @@ describe("browser protocol v2", () => {
     ).toBe(false)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         sessionID: "retired-field",
@@ -348,7 +348,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserNativeViewEventSchema.safeParse({
         type: "native.loaded",
-        protocolVersion: 2,
+        protocolVersion: 3,
         pageId: "page-1",
         url: "https://example.com/",
         title: "Example",
@@ -457,7 +457,7 @@ describe("browser URL normalization and presentation preference", () => {
 describe("browser Host page lifecycle messages", () => {
   const baseCreate = {
     type: "page.create",
-    protocolVersion: 2,
+    protocolVersion: 3,
     requestId: "request-1",
     ownerKey: "scope:scope-1:session:session-1",
     owner: { mode: "session", scopeID: "scope-1", directory: "/workspace", sessionID: "session-1" },
@@ -503,7 +503,7 @@ describe("browser Host page lifecycle messages", () => {
   test("requires exactly one of result or error on page.result", () => {
     const baseResult = {
       type: "page.result",
-      protocolVersion: 2,
+      protocolVersion: 3,
       requestId: "request-1",
       result: { type: "void" },
     }

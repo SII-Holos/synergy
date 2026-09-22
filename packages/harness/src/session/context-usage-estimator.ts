@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Worker } from "node:worker_threads"
 
 export namespace ContextUsageEstimator {
@@ -29,12 +30,16 @@ export namespace ContextUsageEstimator {
     truncated: boolean
   }
 
-  let activeWorkers = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    activeWorkers: 0,
+  }))
 
   export function estimate(request: Request): Promise<Result | undefined> {
+    const instanceState = runtimeState()
+
     const bounded = parseRequest(request)
-    if (!bounded || activeWorkers >= LIMITS.activeWorkers) return Promise.resolve(undefined)
-    activeWorkers++
+    if (!bounded || instanceState.activeWorkers >= LIMITS.activeWorkers) return Promise.resolve(undefined)
+    instanceState.activeWorkers++
 
     return new Promise((resolve) => {
       let worker: Worker | undefined
@@ -45,7 +50,7 @@ export namespace ContextUsageEstimator {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        activeWorkers--
+        instanceState.activeWorkers--
         const current = worker
         worker = undefined
         if (current) void current.terminate().catch(() => {})

@@ -15,10 +15,12 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 // SessionCortexRuntime must be mounted: the DAG upstream-results context
 // flows through the L1 port (delegatedTask), which degrades silently in an
 // isolated process without the product registration.
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { CortexOutput } from "@ericsanchezok/synergy-harness/test/internal/cortex/output"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function emptyAvailability(): ToolResolver.Availability {
   return { visible: [], diagnostics: new Map(), autoExpandable: new Set() }
@@ -165,40 +167,43 @@ function installDagLoopMocks(options?: {
 // ---------------------------------------------------------------------------
 
 describe("Dag.Node result field (schema)", () => {
-  test("parses node without result field (backward compatibility with old data)", () => {
-    const parsed = Dag.Node.parse({
-      id: "node-backward-compat",
-      content: "Legacy task without result",
-      status: "completed",
-      deps: [],
-    })
-    expect(parsed.id).toBe("node-backward-compat")
-    expect(parsed.result).toBeUndefined()
-  })
+  test("parses node without result field (backward compatibility with old data)", () =>
+    runtime.run(() => {
+      const parsed = Dag.Node.parse({
+        id: "node-backward-compat",
+        content: "Legacy task without result",
+        status: "completed",
+        deps: [],
+      })
+      expect(parsed.id).toBe("node-backward-compat")
+      expect(parsed.result).toBeUndefined()
+    }))
 
-  test("parses node with result field and result is accessible", () => {
-    const resultText = "Task completed successfully: all tests passed, coverage at 95%"
-    const parsed = Dag.Node.parse({
-      id: "node-with-result",
-      content: "Task with result",
-      status: "completed",
-      deps: [],
-      result: resultText,
-    })
-    expect(parsed.id).toBe("node-with-result")
-    expect(parsed.result).toBe(resultText)
-  })
+  test("parses node with result field and result is accessible", () =>
+    runtime.run(() => {
+      const resultText = "Task completed successfully: all tests passed, coverage at 95%"
+      const parsed = Dag.Node.parse({
+        id: "node-with-result",
+        content: "Task with result",
+        status: "completed",
+        deps: [],
+        result: resultText,
+      })
+      expect(parsed.id).toBe("node-with-result")
+      expect(parsed.result).toBe(resultText)
+    }))
 
-  test("result is optional — node with undefined result is valid", () => {
-    const parsed = Dag.Node.parse({
-      id: "node-no-result",
-      content: "No result",
-      status: "failed",
-      deps: [],
-    })
-    expect(parsed.result).toBeUndefined()
-    expect(parsed.status).toBe("failed")
-  })
+  test("result is optional — node with undefined result is valid", () =>
+    runtime.run(() => {
+      const parsed = Dag.Node.parse({
+        id: "node-no-result",
+        content: "No result",
+        status: "failed",
+        deps: [],
+      })
+      expect(parsed.result).toBeUndefined()
+      expect(parsed.status).toBe("failed")
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -209,369 +214,379 @@ describe("Dag.Node result field (schema)", () => {
 // ---------------------------------------------------------------------------
 
 describe("delegated subagent with DAG context (integration)", () => {
-  beforeEach(() => {
-    Cortex.reset()
-  })
+  beforeEach(() =>
+    runtime.run(() => {
+      Cortex.reset()
+    }),
+  )
 
-  afterEach(() => {
-    Cortex.reset()
-  })
+  afterEach(() =>
+    runtime.run(() => {
+      Cortex.reset()
+    }),
+  )
 
-  test("structured task output is rendered into DAG result text", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalInvokeInternal = SessionInvoke.invokeInternal
-        ;(SessionInvoke.invokeInternal as any) = mock(
-          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-            return writeAssistantText(input.sessionID, JSON.stringify({ choice: "blue", items: ["a", "b"] }))
-          },
-        )
-        try {
-          const parentSession = await Session.create({})
-          await Dag.update({
-            sessionID: parentSession.id,
-            nodes: [{ id: "structured-node", content: "Produce structured data", status: "pending", deps: [] }],
-          })
+  test("structured task output is rendered into DAG result text", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, JSON.stringify({ choice: "blue", items: ["a", "b"] }))
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            await Dag.update({
+              sessionID: parentSession.id,
+              nodes: [{ id: "structured-node", content: "Produce structured data", status: "pending", deps: [] }],
+            })
 
-          const task = await Cortex.launch({
-            description: "Structured DAG result",
-            prompt: "Choose structured result",
-            agent: "developer",
-            parentSessionID: parentSession.id,
-            parentMessageID: "msg_structured_dag",
-            dagNodeId: "structured-node",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            notifyParentOnComplete: false,
-            output: {
-              mode: "structured",
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["choice", "items"],
-                properties: {
-                  choice: { type: "string" },
-                  items: { type: "array", items: { type: "string" } },
+            const task = await Cortex.launch({
+              description: "Structured DAG result",
+              prompt: "Choose structured result",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_structured_dag",
+              dagNodeId: "structured-node",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: {
+                mode: "structured",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["choice", "items"],
+                  properties: {
+                    choice: { type: "string" },
+                    items: { type: "array", items: { type: "string" } },
+                  },
                 },
               },
+            })
+
+            const completed = await Cortex.waitFor(task.id, 10)
+            expect(completed?.status).toBe("completed")
+            await Cortex.drain(task.id)
+
+            const node = (await Dag.get(parentSession.id)).find((n) => n.id === "structured-node")
+            expect(node?.status).toBe("completed")
+            expect(node?.result).toBe(
+              CortexOutput.renderTaskOutputForDag({ mode: "structured", value: { choice: "blue", items: ["a", "b"] } }),
+            )
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    }))
+
+  test("downstream delegated subagent context includes structured upstream DAG result", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const systemPlans = new Map<string, string[]>()
+          const restore = installDagLoopMocks({
+            onBuildPlan(input) {
+              const plans = systemPlans.get(input.sessionID) ?? []
+              plans.push(input.system.join("\n"))
+              systemPlans.set(input.sessionID, plans)
             },
           })
+          try {
+            const parentSession = await Session.create({})
+            await Dag.update({
+              sessionID: parentSession.id,
+              nodes: [
+                {
+                  id: "upstream-structured",
+                  content: "Upstream structured result",
+                  status: "completed",
+                  deps: [],
+                  result: CortexOutput.renderTaskOutputForDag({
+                    mode: "structured",
+                    value: { winner: "drake", score: 3 },
+                  }),
+                },
+                {
+                  id: "downstream-context",
+                  content: "Use upstream structured result",
+                  status: "pending",
+                  deps: ["upstream-structured"],
+                },
+              ],
+            })
 
-          const completed = await Cortex.waitFor(task.id, 10)
-          expect(completed?.status).toBe("completed")
-          await Cortex.drain(task.id)
+            const task = await Cortex.launch({
+              description: "Downstream reads structured DAG result",
+              prompt: "Use upstream structured result",
+              agent: "developer",
+              executionRole: "delegated_subagent",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_downstream_structured",
+              dagNodeId: "downstream-context",
+              notifyParentOnComplete: false,
+            })
 
-          const node = (await Dag.get(parentSession.id)).find((n) => n.id === "structured-node")
-          expect(node?.status).toBe("completed")
-          expect(node?.result).toBe(
-            CortexOutput.renderTaskOutputForDag({ mode: "structured", value: { choice: "blue", items: ["a", "b"] } }),
+            const completed = await Cortex.waitFor(task.id, 10)
+            expect(completed?.status).toBe("completed")
+            await Cortex.drain(task.id)
+            const independent = await Session.create({})
+            await SessionInvoke.invokeInternal({
+              sessionID: independent.id,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              agent: "developer",
+              parts: [{ type: "text", text: "Run an independent task" }],
+            })
+            const plans = systemPlans.get(task.sessionID) ?? []
+            expect(plans.length).toBeGreaterThan(0)
+            for (const systemText of plans) {
+              expect(systemText).toContain("<upstream-results>")
+              expect(systemText).toContain("Structured output:")
+              expect(systemText).toContain('"winner": "drake"')
+              expect(systemText).toContain('"score": 3')
+            }
+            const independentPlans = systemPlans.get(independent.id) ?? []
+            expect(independentPlans.length).toBeGreaterThan(0)
+            for (const systemText of independentPlans) {
+              expect(systemText).not.toContain("<upstream-results>")
+            }
+          } finally {
+            restore()
+          }
+        },
+      })
+    }))
+  test("delegated_subagent task populates DAG node with upstream completion context", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
+              writeAssistantText(input.sessionID, "downstream task completed"),
           )
-        } finally {
-          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-        }
-      },
-    })
-  })
+          try {
+            const parentSession = await Session.create({})
 
-  test("downstream delegated subagent context includes structured upstream DAG result", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const systemPlans = new Map<string, string[]>()
-        const restore = installDagLoopMocks({
-          onBuildPlan(input) {
-            const plans = systemPlans.get(input.sessionID) ?? []
-            plans.push(input.system.join("\n"))
-            systemPlans.set(input.sessionID, plans)
-          },
-        })
-        try {
-          const parentSession = await Session.create({})
-          await Dag.update({
-            sessionID: parentSession.id,
-            nodes: [
-              {
-                id: "upstream-structured",
-                content: "Upstream structured result",
-                status: "completed",
-                deps: [],
-                result: CortexOutput.renderTaskOutputForDag({
-                  mode: "structured",
-                  value: { winner: "drake", score: 3 },
-                }),
-              },
-              {
-                id: "downstream-context",
-                content: "Use upstream structured result",
-                status: "pending",
-                deps: ["upstream-structured"],
-              },
-            ],
-          })
+            // Simulate an upstream DAG node that has already completed with a result
+            await Dag.update({
+              sessionID: parentSession.id,
+              nodes: [
+                {
+                  id: "upstream-done",
+                  content: "Already completed upstream work",
+                  status: "completed",
+                  deps: [],
+                  result: "Analysis complete: found 3 issues in the codebase.",
+                },
+                {
+                  id: "downstream-next",
+                  content: "Downstream task depending on upstream",
+                  status: "pending",
+                  deps: ["upstream-done"],
+                },
+              ],
+            })
 
-          const task = await Cortex.launch({
-            description: "Downstream reads structured DAG result",
-            prompt: "Use upstream structured result",
-            agent: "developer",
-            executionRole: "delegated_subagent",
-            parentSessionID: parentSession.id,
-            parentMessageID: "msg_downstream_structured",
-            dagNodeId: "downstream-context",
-            notifyParentOnComplete: false,
-          })
+            // Launch a delegated subagent task for the downstream node
+            const task = await Cortex.launch({
+              description: "Downstream task with upstream context",
+              prompt: "Use upstream findings to fix issues",
+              agent: "implementation-engineer",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              executionRole: "delegated_subagent",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_ctx_downstream",
+              dagNodeId: "downstream-next",
+            })
 
-          const completed = await Cortex.waitFor(task.id, 10)
-          expect(completed?.status).toBe("completed")
-          await Cortex.drain(task.id)
-          const independent = await Session.create({})
-          await SessionInvoke.invokeInternal({
-            sessionID: independent.id,
-            model: { providerID: "test-provider", modelID: "test-model" },
-            agent: "developer",
-            parts: [{ type: "text", text: "Run an independent task" }],
-          })
-          const plans = systemPlans.get(task.sessionID) ?? []
-          expect(plans.length).toBeGreaterThan(0)
-          for (const systemText of plans) {
-            expect(systemText).toContain("<upstream-results>")
-            expect(systemText).toContain("Structured output:")
-            expect(systemText).toContain('"winner": "drake"')
-            expect(systemText).toContain('"score": 3')
+            const completed = await Cortex.waitFor(task.id, 10)
+            expect(completed).toBeDefined()
+
+            // give async DAG updates time to flush
+            await new Promise((r) => setTimeout(r, 500))
+
+            const nodes = await Dag.get(parentSession.id)
+            const upstream = nodes.find((n) => n.id === "upstream-done")
+            const downstream = nodes.find((n) => n.id === "downstream-next")
+
+            // Upstream should be unchanged (it was already completed)
+            expect(upstream).toBeDefined()
+            expect(upstream!.status).toBe("completed")
+            expect(upstream!.result).toBe("Analysis complete: found 3 issues in the codebase.")
+
+            // Downstream got its status updated by the task
+            expect(downstream).toBeDefined()
+            expect(downstream!.status === "completed" || downstream!.status === "failed").toBe(true)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
-          const independentPlans = systemPlans.get(independent.id) ?? []
-          expect(independentPlans.length).toBeGreaterThan(0)
-          for (const systemText of independentPlans) {
-            expect(systemText).not.toContain("<upstream-results>")
+        },
+      })
+    }))
+
+  test("delegated_subagent without dagNodeId does not modify DAG", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
+              writeAssistantText(input.sessionID, "no dag binding completed"),
+          )
+          try {
+            const parentSession = await Session.create({})
+
+            await Dag.update({
+              sessionID: parentSession.id,
+              nodes: [{ id: "node-alone", content: "Standalone node", status: "pending", deps: [] }],
+            })
+
+            const task = await Cortex.launch({
+              description: "No DAG binding",
+              prompt: "Do work",
+              agent: "developer",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              executionRole: "delegated_subagent",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_no_dag",
+              // No dagNodeId
+            })
+
+            const completed = await Cortex.waitFor(task.id, 10)
+            expect(completed).toBeDefined()
+
+            await new Promise((r) => setTimeout(r, 500))
+
+            const nodes = await Dag.get(parentSession.id)
+            const node = nodes.find((n) => n.id === "node-alone")
+            expect(node).toBeDefined()
+            expect(node!.status).toBe("pending")
+            expect(node!.result).toBeUndefined()
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
-        } finally {
-          restore()
-        }
-      },
-    })
-  })
-  test("delegated_subagent task populates DAG node with upstream completion context", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalInvokeInternal = SessionInvoke.invokeInternal
-        ;(SessionInvoke.invokeInternal as any) = mock(
-          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
-            writeAssistantText(input.sessionID, "downstream task completed"),
-        )
-        try {
-          const parentSession = await Session.create({})
+        },
+      })
+    }))
 
-          // Simulate an upstream DAG node that has already completed with a result
-          await Dag.update({
-            sessionID: parentSession.id,
-            nodes: [
-              {
-                id: "upstream-done",
-                content: "Already completed upstream work",
-                status: "completed",
-                deps: [],
-                result: "Analysis complete: found 3 issues in the codebase.",
-              },
-              {
-                id: "downstream-next",
-                content: "Downstream task depending on upstream",
-                status: "pending",
-                deps: ["upstream-done"],
-              },
-            ],
-          })
+  test("completed task result set on DAG node preserves content", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
+              writeAssistantText(input.sessionID, "content preservation completed"),
+          )
+          try {
+            const parentSession = await Session.create({})
 
-          // Launch a delegated subagent task for the downstream node
-          const task = await Cortex.launch({
-            description: "Downstream task with upstream context",
-            prompt: "Use upstream findings to fix issues",
-            agent: "implementation-engineer",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            executionRole: "delegated_subagent",
-            parentSessionID: parentSession.id,
-            parentMessageID: "msg_ctx_downstream",
-            dagNodeId: "downstream-next",
-          })
+            const expectedContent = "Implementation task for feature X"
+            await Dag.update({
+              sessionID: parentSession.id,
+              nodes: [{ id: "node-content", content: expectedContent, status: "pending", deps: [] }],
+            })
 
-          const completed = await Cortex.waitFor(task.id, 10)
-          expect(completed).toBeDefined()
+            const task = await Cortex.launch({
+              description: "Content preservation test",
+              prompt: "Implement feature X",
+              agent: "developer",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_content_001",
+              dagNodeId: "node-content",
+            })
 
-          // give async DAG updates time to flush
-          await new Promise((r) => setTimeout(r, 500))
+            const completed = await Cortex.waitFor(task.id, 10)
+            expect(completed).toBeDefined()
 
-          const nodes = await Dag.get(parentSession.id)
-          const upstream = nodes.find((n) => n.id === "upstream-done")
-          const downstream = nodes.find((n) => n.id === "downstream-next")
+            await new Promise((r) => setTimeout(r, 500))
 
-          // Upstream should be unchanged (it was already completed)
-          expect(upstream).toBeDefined()
-          expect(upstream!.status).toBe("completed")
-          expect(upstream!.result).toBe("Analysis complete: found 3 issues in the codebase.")
+            const nodes = await Dag.get(parentSession.id)
+            const node = nodes.find((n) => n.id === "node-content")
+            expect(node).toBeDefined()
+            // Content should be preserved (only status/result change)
+            expect(node!.content).toBe(expectedContent)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    }))
 
-          // Downstream got its status updated by the task
-          expect(downstream).toBeDefined()
-          expect(downstream!.status === "completed" || downstream!.status === "failed").toBe(true)
-        } finally {
-          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-        }
-      },
-    })
-  })
+  test("primary execution role task does NOT set upstream-results context but still updates DAG", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
+              writeAssistantText(input.sessionID, "primary role completed"),
+          )
+          try {
+            const parentSession = await Session.create({})
 
-  test("delegated_subagent without dagNodeId does not modify DAG", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalInvokeInternal = SessionInvoke.invokeInternal
-        ;(SessionInvoke.invokeInternal as any) = mock(
-          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
-            writeAssistantText(input.sessionID, "no dag binding completed"),
-        )
-        try {
-          const parentSession = await Session.create({})
+            await Dag.update({
+              sessionID: parentSession.id,
+              nodes: [
+                {
+                  id: "up-comp",
+                  content: "Completed upstream",
+                  status: "completed",
+                  deps: [],
+                  result: "Upstream analysis results here",
+                },
+                {
+                  id: "down-primary",
+                  content: "Downstream with primary role",
+                  status: "pending",
+                  deps: ["up-comp"],
+                },
+              ],
+            })
 
-          await Dag.update({
-            sessionID: parentSession.id,
-            nodes: [{ id: "node-alone", content: "Standalone node", status: "pending", deps: [] }],
-          })
+            const task = await Cortex.launch({
+              description: "Primary role downstream",
+              prompt: "Continue work",
+              agent: "developer",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              executionRole: "primary",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_primary_001",
+              dagNodeId: "down-primary",
+            })
 
-          const task = await Cortex.launch({
-            description: "No DAG binding",
-            prompt: "Do work",
-            agent: "developer",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            executionRole: "delegated_subagent",
-            parentSessionID: parentSession.id,
-            parentMessageID: "msg_no_dag",
-            // No dagNodeId
-          })
+            const completed = await Cortex.waitFor(task.id, 10)
+            expect(completed).toBeDefined()
 
-          const completed = await Cortex.waitFor(task.id, 10)
-          expect(completed).toBeDefined()
+            await new Promise((r) => setTimeout(r, 500))
 
-          await new Promise((r) => setTimeout(r, 500))
-
-          const nodes = await Dag.get(parentSession.id)
-          const node = nodes.find((n) => n.id === "node-alone")
-          expect(node).toBeDefined()
-          expect(node!.status).toBe("pending")
-          expect(node!.result).toBeUndefined()
-        } finally {
-          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-        }
-      },
-    })
-  })
-
-  test("completed task result set on DAG node preserves content", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalInvokeInternal = SessionInvoke.invokeInternal
-        ;(SessionInvoke.invokeInternal as any) = mock(
-          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
-            writeAssistantText(input.sessionID, "content preservation completed"),
-        )
-        try {
-          const parentSession = await Session.create({})
-
-          const expectedContent = "Implementation task for feature X"
-          await Dag.update({
-            sessionID: parentSession.id,
-            nodes: [{ id: "node-content", content: expectedContent, status: "pending", deps: [] }],
-          })
-
-          const task = await Cortex.launch({
-            description: "Content preservation test",
-            prompt: "Implement feature X",
-            agent: "developer",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            parentSessionID: parentSession.id,
-            parentMessageID: "msg_content_001",
-            dagNodeId: "node-content",
-          })
-
-          const completed = await Cortex.waitFor(task.id, 10)
-          expect(completed).toBeDefined()
-
-          await new Promise((r) => setTimeout(r, 500))
-
-          const nodes = await Dag.get(parentSession.id)
-          const node = nodes.find((n) => n.id === "node-content")
-          expect(node).toBeDefined()
-          // Content should be preserved (only status/result change)
-          expect(node!.content).toBe(expectedContent)
-        } finally {
-          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-        }
-      },
-    })
-  })
-
-  test("primary execution role task does NOT set upstream-results context but still updates DAG", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalInvokeInternal = SessionInvoke.invokeInternal
-        ;(SessionInvoke.invokeInternal as any) = mock(
-          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) =>
-            writeAssistantText(input.sessionID, "primary role completed"),
-        )
-        try {
-          const parentSession = await Session.create({})
-
-          await Dag.update({
-            sessionID: parentSession.id,
-            nodes: [
-              {
-                id: "up-comp",
-                content: "Completed upstream",
-                status: "completed",
-                deps: [],
-                result: "Upstream analysis results here",
-              },
-              {
-                id: "down-primary",
-                content: "Downstream with primary role",
-                status: "pending",
-                deps: ["up-comp"],
-              },
-            ],
-          })
-
-          const task = await Cortex.launch({
-            description: "Primary role downstream",
-            prompt: "Continue work",
-            agent: "developer",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            executionRole: "primary",
-            parentSessionID: parentSession.id,
-            parentMessageID: "msg_primary_001",
-            dagNodeId: "down-primary",
-          })
-
-          const completed = await Cortex.waitFor(task.id, 10)
-          expect(completed).toBeDefined()
-
-          await new Promise((r) => setTimeout(r, 500))
-
-          const nodes = await Dag.get(parentSession.id)
-          const down = nodes.find((n) => n.id === "down-primary")
-          expect(down).toBeDefined()
-          // Still gets status/result updated (that's updateDagNode, not context)
-          expect(down!.status === "completed" || down!.status === "failed").toBe(true)
-        } finally {
-          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-        }
-      },
-    })
-  })
+            const nodes = await Dag.get(parentSession.id)
+            const down = nodes.find((n) => n.id === "down-primary")
+            expect(down).toBeDefined()
+            // Still gets status/result updated (that's updateDagNode, not context)
+            expect(down!.status === "completed" || down!.status === "failed").toBe(true)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -593,87 +608,91 @@ describe("dagpatch rejects task_id / session_id mutation on completed nodes", ()
     ask: async () => {},
   }
 
-  test("completed node rejects task_id mutation", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        ctx.sessionID = session.id
+  test("completed node rejects task_id mutation", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          ctx.sessionID = session.id
 
-        const originalTaskId = "existing-task-123"
-        await Dag.update({
-          sessionID: session.id,
-          nodes: [
+          const originalTaskId = "existing-task-123"
+          await Dag.update({
+            sessionID: session.id,
+            nodes: [
+              {
+                id: "node-immutable-task",
+                content: "Completed node with task_id",
+                status: "completed",
+                deps: [],
+                task_id: originalTaskId,
+              },
+            ],
+          })
+
+          const patch = await DagPatchTool.init()
+          const result = await patch.execute(
             {
-              id: "node-immutable-task",
-              content: "Completed node with task_id",
-              status: "completed",
-              deps: [],
-              task_id: originalTaskId,
+              nodes: [{ id: "node-immutable-task", task_id: "new-task-999" }],
             },
-          ],
-        })
+            ctx as any,
+          )
 
-        const patch = await DagPatchTool.init()
-        const result = await patch.execute(
-          {
-            nodes: [{ id: "node-immutable-task", task_id: "new-task-999" }],
-          },
-          ctx as any,
-        )
+          expect(result.title).toBe("Patch failed")
+          expect(result.output).toContain("task_id and session_id are immutable")
 
-        expect(result.title).toBe("Patch failed")
-        expect(result.output).toContain("task_id and session_id are immutable")
+          // Verify the node's task_id was not changed
+          const nodes = await Dag.get(session.id)
+          const node = nodes.find((n) => n.id === "node-immutable-task")
+          expect(node).toBeDefined()
+          expect(node!.task_id).toBe(originalTaskId)
+        },
+      })
+    }))
 
-        // Verify the node's task_id was not changed
-        const nodes = await Dag.get(session.id)
-        const node = nodes.find((n) => n.id === "node-immutable-task")
-        expect(node).toBeDefined()
-        expect(node!.task_id).toBe(originalTaskId)
-      },
-    })
-  })
+  test("completed node rejects session_id mutation", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          ctx.sessionID = session.id
 
-  test("completed node rejects session_id mutation", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        ctx.sessionID = session.id
+          const originalSessionId = "existing-secret-session-abc"
+          await Dag.update({
+            sessionID: session.id,
+            nodes: [
+              {
+                id: "node-immutable-session",
+                content: "Completed node with session_id",
+                status: "completed",
+                deps: [],
+                session_id: originalSessionId,
+              },
+            ],
+          })
 
-        const originalSessionId = "existing-secret-session-abc"
-        await Dag.update({
-          sessionID: session.id,
-          nodes: [
+          const patch = await DagPatchTool.init()
+          const result = await patch.execute(
             {
-              id: "node-immutable-session",
-              content: "Completed node with session_id",
-              status: "completed",
-              deps: [],
-              session_id: originalSessionId,
+              nodes: [{ id: "node-immutable-session", session_id: "new-session-777" }],
             },
-          ],
-        })
+            ctx as any,
+          )
 
-        const patch = await DagPatchTool.init()
-        const result = await patch.execute(
-          {
-            nodes: [{ id: "node-immutable-session", session_id: "new-session-777" }],
-          },
-          ctx as any,
-        )
+          expect(result.title).toBe("Patch failed")
+          expect(result.output).toContain("task_id and session_id are immutable")
 
-        expect(result.title).toBe("Patch failed")
-        expect(result.output).toContain("task_id and session_id are immutable")
-
-        // Verify the node's session_id was not changed
-        const nodes = await Dag.get(session.id)
-        const node = nodes.find((n) => n.id === "node-immutable-session")
-        expect(node).toBeDefined()
-        expect(node!.session_id).toBe(originalSessionId)
-      },
-    })
-  })
+          // Verify the node's session_id was not changed
+          const nodes = await Dag.get(session.id)
+          const node = nodes.find((n) => n.id === "node-immutable-session")
+          expect(node).toBeDefined()
+          expect(node!.session_id).toBe(originalSessionId)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

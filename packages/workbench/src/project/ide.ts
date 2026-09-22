@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { spawn } from "bun"
@@ -35,8 +36,8 @@ export namespace Ide {
   )
 
   export function ide() {
-    if (process.env["TERM_PROGRAM"] === "vscode") {
-      const v = process.env["GIT_ASKPASS"]
+    if (RuntimeContext.current().host.env["TERM_PROGRAM"] === "vscode") {
+      const v = RuntimeContext.current().host.env["GIT_ASKPASS"]
       for (const ide of SUPPORTED_IDES) {
         if (v?.includes(ide.name)) return ide.name
       }
@@ -45,7 +46,10 @@ export namespace Ide {
   }
 
   export function alreadyInstalled() {
-    return process.env["SYNERGY_CALLER"] === "vscode" || process.env["SYNERGY_CALLER"] === "vscode-insiders"
+    return (
+      RuntimeContext.current().host.env["SYNERGY_CALLER"] === "vscode" ||
+      RuntimeContext.current().host.env["SYNERGY_CALLER"] === "vscode-insiders"
+    )
   }
 
   export async function install(ide: (typeof SUPPORTED_IDES)[number]["name"]) {

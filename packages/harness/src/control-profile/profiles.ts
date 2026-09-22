@@ -88,8 +88,8 @@ function uniqueRoots(roots: string[]) {
   return Array.from(new Set(roots.filter(Boolean)))
 }
 
-function workspaceFs(workspace: string, trustedRoots: string[] = []) {
-  const roots = uniqueRoots([workspace, ...trustedRoots])
+function workspaceFs(workspace: string | null, trustedRoots: string[] = []) {
+  const roots = workspace ? uniqueRoots([workspace, ...trustedRoots]) : []
   return {
     readRoots: roots,
     writeRoots: roots,
@@ -97,27 +97,27 @@ function workspaceFs(workspace: string, trustedRoots: string[] = []) {
   }
 }
 
-function autonomousFs(workspace: string, trustedRoots: string[] = [], sessionKey?: string) {
+function autonomousFs(workspace: string | null, trustedRoots: string[] = [], sessionKey?: string) {
   // The controlled temporary root (workspace/.synergy/tmp, session-scoped when
   // a session key is available) is a first-class autonomous write root:
   // sandboxed shells are pointed at it through TMPDIR so their temporary
   // files land inside the workspace boundary instead of the host's shared
   // temporary directory.
   return {
-    readRoots: ["/"],
-    writeRoots: uniqueRoots([workspace, controlledTempRoot(workspace, sessionKey), ...trustedRoots]),
+    readRoots: workspace ? ["/"] : [],
+    writeRoots: workspace ? uniqueRoots([workspace, controlledTempRoot(workspace, sessionKey), ...trustedRoots]) : [],
     protectedPaths: [],
   }
 }
 
-function autonomousPolicy(workspace: string, trustedRoots: string[] = [], sessionKey?: string) {
+function autonomousPolicy(workspace: string | null, trustedRoots: string[] = [], sessionKey?: string) {
   return {
     filesystem: autonomousFs(workspace, trustedRoots, sessionKey),
     network: { mode: "restricted" as const },
     sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
   }
 }
-function workspacePolicy(workspace: string, trustedRoots: string[] = []) {
+function workspacePolicy(workspace: string | null, trustedRoots: string[] = []) {
   return {
     filesystem: workspaceFs(workspace, trustedRoots),
     network: { mode: "restricted" as const },
@@ -148,7 +148,7 @@ function approval(mode: ProfileApproval["mode"]): ProfileApproval {
   }
 }
 
-function summary(id: ProfileId, profile: Omit<ControlProfile, "filesystem" | "network">, workspace: string) {
+function summary(id: ProfileId, profile: Omit<ControlProfile, "filesystem" | "network">, workspace: string | null) {
   return {
     profileId: id,
     sandbox: profile.sandbox,
@@ -243,6 +243,8 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
 export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
   const id = normalizeProfileId(idInput)
   const { workspace, sessionKey } = ctx
+  if (workspace !== null && (typeof workspace !== "string" || !workspace))
+    throw new Error("Workspace must be an explicit path or null")
   const trustedRoots = ctx.trustedRoots ?? []
   const effectiveSandbox = await resolveEffectiveSandbox(id)
 

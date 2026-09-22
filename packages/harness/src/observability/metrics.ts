@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityClock } from "./clock"
 import { ObservabilityConfig } from "./config"
 import { ObservabilityContext } from "./context"
@@ -12,8 +13,11 @@ export namespace ObservabilityMetrics {
     "process.output.chars",
     "storage.operation.count",
   ])
-  const aggregates = new Map<string, AggregatedMetric>()
-  let aggregateTimer: ReturnType<typeof setTimeout> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    stopped: false,
+    aggregates: new Map<string, AggregatedMetric>(),
+    aggregateTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  }))
 
   type MetricInput = Parameters<typeof record>[0]
   type ResolvedMetricInput = Omit<MetricInput, "sampleRate"> & {
@@ -26,7 +30,9 @@ export namespace ObservabilityMetrics {
     value: number
   }
 
-  ObservabilityStore.beforeFlush(flushAggregates)
+  export function register() {
+    ObservabilityStore.beforeFlush(flushAggregates)
+  }
 
   export function record(input: {
     name: string
@@ -49,6 +55,7 @@ export namespace ObservabilityMetrics {
     tool?: string
     sampleRate?: number
   }) {
+    if (!RuntimeContext.tryCurrent() || runtimeState().stopped) return
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
     const sampleRate = input.sampleRate ?? config.samplingRate
@@ -112,26 +119,35 @@ export namespace ObservabilityMetrics {
   }
 
   function aggregate(input: ResolvedMetricInput) {
+    const instanceState = runtimeState()
+
     const key = aggregateKey(input)
-    const existing = aggregates.get(key)
+    const existing = instanceState.aggregates.get(key)
     if (existing) {
       existing.value += input.value
     } else {
       const { value: _value, ...rest } = input
-      aggregates.set(key, { input: rest, value: input.value })
+      instanceState.aggregates.set(key, { input: rest, value: input.value })
     }
-    if (!aggregateTimer) {
-      aggregateTimer = setTimeout(flushAggregates, AGGREGATE_FLUSH_MS)
-      aggregateTimer.unref()
+    if (!instanceState.aggregateTimer) {
+      instanceState.aggregateTimer = setTimeout(flushAggregates, AGGREGATE_FLUSH_MS)
+      instanceState.aggregateTimer.unref()
     }
   }
 
+  export function stop() {
+    runtimeState().stopped = true
+    flushAggregates()
+  }
+
   export function flushAggregates() {
-    if (aggregateTimer) clearTimeout(aggregateTimer)
-    aggregateTimer = undefined
-    if (aggregates.size === 0) return
-    const items = [...aggregates.values()]
-    aggregates.clear()
+    const instanceState = runtimeState()
+
+    if (instanceState.aggregateTimer) clearTimeout(instanceState.aggregateTimer)
+    instanceState.aggregateTimer = undefined
+    if (instanceState.aggregates.size === 0) return
+    const items = [...instanceState.aggregates.values()]
+    instanceState.aggregates.clear()
     for (const item of items) insert({ ...item.input, value: item.value })
   }
 

@@ -2,13 +2,11 @@ import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach, spy
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import fs from "node:fs/promises"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-// ── Temporary home directory isolation ──────────────────────────────────
-// HolosAccounts reads/writes ~/.synergy/data/auth/holos-accounts.json.
-// We swap SYNERGY_TEST_HOME so Global.Path.root targets a temp dir.
-const tmpDir = mkdtempSync(join(import.meta.dirname, "..", ".tmp-holos-accounts-"))
-const origHome = process.env["SYNERGY_TEST_HOME"]
-
+const tmpDir = runtime.host.home
 const authDir = join(tmpDir, ".synergy", "data", "auth")
 const accountsPath = join(authDir, "holos-accounts.json")
 const apiKeyPath = join(authDir, "api-key.json")
@@ -16,26 +14,20 @@ const apiKeyPath = join(authDir, "api-key.json")
 type HolosAccountsNamespace = typeof import("../../src/holos/accounts").HolosAccounts
 let HolosAccounts: HolosAccountsNamespace
 
-beforeAll(async () => {
-  process.env["SYNERGY_TEST_HOME"] = tmpDir
-  await fs.mkdir(authDir, { recursive: true })
-  HolosAccounts = (await import("../../src/holos/accounts")).HolosAccounts
-})
-
-afterAll(() => {
-  if (origHome !== undefined) {
-    process.env["SYNERGY_TEST_HOME"] = origHome
-  } else {
-    delete process.env["SYNERGY_TEST_HOME"]
-  }
-  rmSync(tmpDir, { recursive: true, force: true })
-})
+beforeAll(() =>
+  runtime.run(async () => {
+    await fs.mkdir(authDir, { recursive: true })
+    HolosAccounts = (await import("../../src/holos/accounts")).HolosAccounts
+  }),
+)
 
 // Each test gets a clean store.
-beforeEach(async () => {
-  await fs.rm(accountsPath, { force: true }).catch(() => {})
-  await fs.rm(apiKeyPath, { force: true }).catch(() => {})
-})
+beforeEach(() =>
+  runtime.run(async () => {
+    await fs.rm(accountsPath, { force: true }).catch(() => {})
+    await fs.rm(apiKeyPath, { force: true }).catch(() => {})
+  }),
+)
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -62,243 +54,263 @@ async function apiKeyFile(): Promise<Record<string, unknown> | undefined> {
 describe("HolosAccounts multi-account store", () => {
   // ── 1. Fresh store has no active credential / empty accounts ────────
 
-  test("fresh store returns no active account and empty account list", async () => {
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active).toBeUndefined()
+  test("fresh store returns no active account and empty account list", () =>
+    runtime.run(async () => {
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active).toBeUndefined()
 
-    const accounts = await HolosAccounts.listAccounts()
-    expect(accounts).toEqual([])
-  })
+      const accounts = await HolosAccounts.listAccounts()
+      expect(accounts).toEqual([])
+    }))
 
   // ── 2. Saving A then B stores both and makes latest active ──────────
 
-  test("saveAndActivateAccount stores credential and makes latest active", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+  test("saveAndActivateAccount stores credential and makes latest active", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
 
-    const activeAfterA = await HolosAccounts.getActiveAccount()
-    expect(activeAfterA).toBeDefined()
-    expect(activeAfterA!.agentId).toBe("agent_a")
-    expect(activeAfterA!.agentSecret).toBe("secret_a")
+      const activeAfterA = await HolosAccounts.getActiveAccount()
+      expect(activeAfterA).toBeDefined()
+      expect(activeAfterA!.agentId).toBe("agent_a")
+      expect(activeAfterA!.agentSecret).toBe("secret_a")
 
-    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
+      await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
 
-    // B should now be active (latest login wins)
-    const activeAfterB = await HolosAccounts.getActiveAccount()
-    expect(activeAfterB).toBeDefined()
-    expect(activeAfterB!.agentId).toBe("agent_b")
-    expect(activeAfterB!.agentSecret).toBe("secret_b")
+      // B should now be active (latest login wins)
+      const activeAfterB = await HolosAccounts.getActiveAccount()
+      expect(activeAfterB).toBeDefined()
+      expect(activeAfterB!.agentId).toBe("agent_b")
+      expect(activeAfterB!.agentSecret).toBe("secret_b")
 
-    // Both accounts should be present in the list
-    const accounts = await HolosAccounts.listAccounts()
-    const ids = accounts.map((a) => a.agentId).sort()
-    expect(ids).toEqual(["agent_a", "agent_b"])
-  })
-  test("concurrent saves preserve every account", async () => {
-    const agents = Array.from({ length: 32 }, (_, index) => `agent_${index}`)
+      // Both accounts should be present in the list
+      const accounts = await HolosAccounts.listAccounts()
+      const ids = accounts.map((a) => a.agentId).sort()
+      expect(ids).toEqual(["agent_a", "agent_b"])
+    }))
+  test("concurrent saves preserve every account", () =>
+    runtime.run(async () => {
+      const agents = Array.from({ length: 32 }, (_, index) => `agent_${index}`)
 
-    await Promise.all(agents.map((agentId) => HolosAccounts.saveAndActivateAccount(agentId, `secret_${agentId}`)))
+      await Promise.all(agents.map((agentId) => HolosAccounts.saveAndActivateAccount(agentId, `secret_${agentId}`)))
 
-    const stored = await HolosAccounts.listAccounts()
-    expect(stored.map((account) => account.agentId).sort()).toEqual(agents.sort())
-  })
+      const stored = await HolosAccounts.listAccounts()
+      expect(stored.map((account) => account.agentId).sort()).toEqual(agents.sort())
+    }))
 
-  test("save refuses to replace a malformed canonical account store", async () => {
-    await fs.writeFile(accountsPath, "not-json")
+  test("save refuses to replace a malformed canonical account store", () =>
+    runtime.run(async () => {
+      await fs.writeFile(accountsPath, "not-json")
 
-    await expect(HolosAccounts.saveAndActivateAccount("agent_new", "secret_new")).rejects.toThrow(
-      "Failed to parse the shared Holos account store",
-    )
-    await expect(fs.readFile(accountsPath, "utf8")).resolves.toBe("not-json")
-  })
+      await expect(HolosAccounts.saveAndActivateAccount("agent_new", "secret_new")).rejects.toThrow(
+        "Failed to parse the shared Holos account store",
+      )
+      await expect(fs.readFile(accountsPath, "utf8")).resolves.toBe("not-json")
+    }))
 
-  test("saving same agentId again overwrites secret and makes it active", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_x", "old_secret")
+  test("saving same agentId again overwrites secret and makes it active", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_x", "old_secret")
 
-    const list1 = await HolosAccounts.listAccounts()
-    expect(list1).toHaveLength(1)
+      const list1 = await HolosAccounts.listAccounts()
+      expect(list1).toHaveLength(1)
 
-    // Re-login with updated secret
-    await HolosAccounts.saveAndActivateAccount("agent_x", "new_secret")
+      // Re-login with updated secret
+      await HolosAccounts.saveAndActivateAccount("agent_x", "new_secret")
 
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active!.agentId).toBe("agent_x")
-    expect(active!.agentSecret).toBe("new_secret")
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active!.agentId).toBe("agent_x")
+      expect(active!.agentSecret).toBe("new_secret")
 
-    // Still only one account (no duplicate agentId entries)
-    const list2 = await HolosAccounts.listAccounts()
-    expect(list2).toHaveLength(1)
-  })
+      // Still only one account (no duplicate agentId entries)
+      const list2 = await HolosAccounts.listAccounts()
+      expect(list2).toHaveLength(1)
+    }))
 
   // ── 3. Switching active account changes resolved credential ─────────
 
-  test("setActiveAccount changes what getActiveAccount returns", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
-    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
+  test("setActiveAccount changes what getActiveAccount returns", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+      await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
 
-    // B is active (latest saved)
-    expect((await HolosAccounts.getActiveAccount())!.agentId).toBe("agent_b")
+      // B is active (latest saved)
+      expect((await HolosAccounts.getActiveAccount())!.agentId).toBe("agent_b")
 
-    // Switch to A
-    await HolosAccounts.setActiveAccount("agent_a")
+      // Switch to A
+      await HolosAccounts.setActiveAccount("agent_a")
 
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active!.agentId).toBe("agent_a")
-    expect(active!.agentSecret).toBe("secret_a")
-  })
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active!.agentId).toBe("agent_a")
+      expect(active!.agentSecret).toBe("secret_a")
+    }))
 
-  test("setActiveAccount with unknown ID does nothing or throws clearly", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+  test("setActiveAccount with unknown ID does nothing or throws clearly", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
 
-    // Switching to a non-existent agentId should either no-op (stay on active)
-    // or throw a clear error. Assert on the behavior once chosen.
-    await expect(HolosAccounts.setActiveAccount("nonexistent")).rejects.toThrow()
+      // Switching to a non-existent agentId should either no-op (stay on active)
+      // or throw a clear error. Assert on the behavior once chosen.
+      await expect(HolosAccounts.setActiveAccount("nonexistent")).rejects.toThrow()
 
-    // Active should still be the same
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active!.agentId).toBe("agent_a")
-  })
+      // Active should still be the same
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active!.agentId).toBe("agent_a")
+    }))
 
   // ── 4. Removing active account leaves no active ─────────────────────
 
-  test("deleteAccount with active account clears active state", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+  test("deleteAccount with active account clears active state", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
 
-    expect((await HolosAccounts.getActiveAccount())!.agentId).toBe("agent_a")
+      expect((await HolosAccounts.getActiveAccount())!.agentId).toBe("agent_a")
 
-    await HolosAccounts.deleteAccount("agent_a")
+      await HolosAccounts.deleteAccount("agent_a")
 
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active).toBeUndefined()
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active).toBeUndefined()
 
-    const accounts = await HolosAccounts.listAccounts()
-    expect(accounts).toEqual([])
-  })
+      const accounts = await HolosAccounts.listAccounts()
+      expect(accounts).toEqual([])
+    }))
 
-  test("deleteAccount removes legacy Holos credentials while preserving other entries", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
-    await fs.writeFile(
-      apiKeyPath,
-      JSON.stringify({
-        anthropic: { type: "api", key: "keep-me" },
-        holos: { type: "holos", agentId: "legacy_agent", agentSecret: "legacy_secret" },
-      }),
-    )
+  test("deleteAccount removes legacy Holos credentials while preserving other entries", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+      await fs.writeFile(
+        apiKeyPath,
+        JSON.stringify({
+          anthropic: { type: "api", key: "keep-me" },
+          holos: { type: "holos", agentId: "legacy_agent", agentSecret: "legacy_secret" },
+        }),
+      )
 
-    await HolosAccounts.deleteAccount("agent_a")
+      await HolosAccounts.deleteAccount("agent_a")
 
-    await expect(apiKeyFile()).resolves.toEqual({ anthropic: { type: "api", key: "keep-me" } })
-  })
+      await expect(apiKeyFile()).resolves.toEqual({ anthropic: { type: "api", key: "keep-me" } })
+    }))
 
-  test("deleteAccount with non-active account keeps active unchanged", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
-    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
+  test("deleteAccount with non-active account keeps active unchanged", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+      await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
 
-    // B is active (latest saved)
-    await HolosAccounts.deleteAccount("agent_a")
+      // B is active (latest saved)
+      await HolosAccounts.deleteAccount("agent_a")
 
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active!.agentId).toBe("agent_b")
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active!.agentId).toBe("agent_b")
 
-    const accounts = await HolosAccounts.listAccounts()
-    expect(accounts).toHaveLength(1)
-    expect(accounts[0].agentId).toBe("agent_b")
-  })
+      const accounts = await HolosAccounts.listAccounts()
+      expect(accounts).toHaveLength(1)
+      expect(accounts[0].agentId).toBe("agent_b")
+    }))
 
   // ── 5. Legacy migration from Auth.set("holos", ...) ─────────────────
 
-  test("migrateFromLegacy converts api-key.json holos entry to multi-account store", async () => {
-    // Set up legacy data as Auth.set("holos", ...) would
-    const legacyEntry: Record<string, unknown> = {
-      holos: {
-        type: "holos",
-        agentId: "legacy_agent",
-        agentSecret: "legacy_secret",
-      },
-    }
-    await Bun.write(apiKeyPath, JSON.stringify(legacyEntry, null, 2))
+  test("migrateFromLegacy converts api-key.json holos entry to multi-account store", () =>
+    runtime.run(async () => {
+      // Set up legacy data as Auth.set("holos", ...) would
+      const legacyEntry: Record<string, unknown> = {
+        holos: {
+          type: "holos",
+          agentId: "legacy_agent",
+          agentSecret: "legacy_secret",
+        },
+      }
+      await Bun.write(apiKeyPath, JSON.stringify(legacyEntry, null, 2))
 
-    // Run migration
-    const result = await HolosAccounts.migrateFromLegacy()
-    expect(result.migrated).toBe(true)
+      // Run migration
+      const result = await HolosAccounts.migrateFromLegacy()
+      expect(result.migrated).toBe(true)
 
-    // Verify new store has the legacy account as active
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active).toBeDefined()
-    expect(active!.agentId).toBe("legacy_agent")
-    expect(active!.agentSecret).toBe("legacy_secret")
-    expect("label" in active!).toBe(false)
+      // Verify new store has the legacy account as active
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active).toBeDefined()
+      expect(active!.agentId).toBe("legacy_agent")
+      expect(active!.agentSecret).toBe("legacy_secret")
+      expect("label" in active!).toBe(false)
 
-    // Verify old key was removed from api-key.json
-    const keys = await apiKeyFile()
-    expect(keys).toBeDefined()
-    expect(keys!["holos"]).toBeUndefined()
-  })
+      // Verify old key was removed from api-key.json
+      const keys = await apiKeyFile()
+      expect(keys).toBeDefined()
+      expect(keys!["holos"]).toBeUndefined()
+    }))
 
-  test("migrateFromLegacy is idempotent when no legacy data exists", async () => {
-    const result = await HolosAccounts.migrateFromLegacy()
-    expect(result.migrated).toBe(false)
-  })
+  test("migrateFromLegacy is idempotent when no legacy data exists", () =>
+    runtime.run(async () => {
+      const result = await HolosAccounts.migrateFromLegacy()
+      expect(result.migrated).toBe(false)
+    }))
 
-  test("migrateFromLegacy when holos key is missing in api-key.json", async () => {
-    // api-key.json has other providers but no holos
-    const otherKeys: Record<string, unknown> = {
-      anthropic: { type: "api", key: "sk-ant" },
-    }
-    await Bun.write(apiKeyPath, JSON.stringify(otherKeys, null, 2))
+  test("migrateFromLegacy when holos key is missing in api-key.json", () =>
+    runtime.run(async () => {
+      // api-key.json has other providers but no holos
+      const otherKeys: Record<string, unknown> = {
+        anthropic: { type: "api", key: "sk-ant" },
+      }
+      await Bun.write(apiKeyPath, JSON.stringify(otherKeys, null, 2))
 
-    const result = await HolosAccounts.migrateFromLegacy()
-    expect(result.migrated).toBe(false)
+      const result = await HolosAccounts.migrateFromLegacy()
+      expect(result.migrated).toBe(false)
 
-    // Other keys should be preserved
-    const keys = await apiKeyFile()
-    expect(keys).toBeDefined()
-    expect(keys!["anthropic"]).toBeDefined()
-  })
+      // Other keys should be preserved
+      const keys = await apiKeyFile()
+      expect(keys).toBeDefined()
+      expect(keys!["anthropic"]).toBeDefined()
+    }))
 })
 // ── writeStore error handling ───────────────────────────────────────────
 
 describe("writeStore error handling", () => {
   let mkdirOriginal: typeof fs.mkdir
 
-  beforeEach(() => {
-    mkdirOriginal = fs.mkdir
-  })
+  beforeEach(() =>
+    runtime.run(() => {
+      mkdirOriginal = fs.mkdir
+    }),
+  )
 
-  afterEach(() => {
-    fs.mkdir = mkdirOriginal
-  })
+  afterEach(() =>
+    runtime.run(() => {
+      fs.mkdir = mkdirOriginal
+    }),
+  )
 
-  test("ENOENT from mkdir throws domain-clear error with path", async () => {
-    const enoentErr = Object.assign(new Error("ENOENT: no such file or directory, mkdir '/nonexistent'"), {
-      code: "ENOENT",
-    })
-    fs.mkdir = (async () => {
-      throw enoentErr
-    }) as any
+  test("ENOENT from mkdir throws domain-clear error with path", () =>
+    runtime.run(async () => {
+      const enoentErr = Object.assign(new Error("ENOENT: no such file or directory, mkdir '/nonexistent'"), {
+        code: "ENOENT",
+      })
+      fs.mkdir = (async () => {
+        throw enoentErr
+      }) as any
 
-    await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret")).rejects.toThrow(
-      /Unable to create data directory at .+: ENOENT: no such file or directory/,
-    )
-  })
+      await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret")).rejects.toThrow(
+        /Unable to create data directory at .+: ENOENT: no such file or directory/,
+      )
+    }))
 
-  test("non-ENOENT error from mkdir is re-thrown unchanged", async () => {
-    const eaccesErr = Object.assign(new Error("EACCES: permission denied, mkdir '/protected'"), { code: "EACCES" })
-    fs.mkdir = (async () => {
-      throw eaccesErr
-    }) as any
+  test("non-ENOENT error from mkdir is re-thrown unchanged", () =>
+    runtime.run(async () => {
+      const eaccesErr = Object.assign(new Error("EACCES: permission denied, mkdir '/protected'"), { code: "EACCES" })
+      fs.mkdir = (async () => {
+        throw eaccesErr
+      }) as any
 
-    await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret")).rejects.toThrow(eaccesErr)
-  })
+      await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret")).rejects.toThrow(eaccesErr)
+    }))
 
-  test("successful mkdir proceeds to write store", async () => {
-    fs.mkdir = (async () => undefined) as any
+  test("successful mkdir proceeds to write store", () =>
+    runtime.run(async () => {
+      fs.mkdir = (async () => undefined) as any
 
-    await HolosAccounts.saveAndActivateAccount("ok_agent", "secret_ok")
+      await HolosAccounts.saveAndActivateAccount("ok_agent", "secret_ok")
 
-    const active = await HolosAccounts.getActiveAccount()
-    expect(active!.agentId).toBe("ok_agent")
-    expect(active!.agentSecret).toBe("secret_ok")
-  })
+      const active = await HolosAccounts.getActiveAccount()
+      expect(active!.agentId).toBe("ok_agent")
+      expect(active!.agentSecret).toBe("secret_ok")
+    }))
 })
 
 // ── Transient IO (EPERM) handling ────────────────────────────────────────
@@ -308,37 +320,41 @@ describe("readStore transient IO error handling", () => {
     return Object.assign(new Error(`injected ${code}`), { code })
   }
 
-  test("transient EPERM during read is retried and then succeeds", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_ephemeral", "secret_ephemeral")
+  test("transient EPERM during read is retried and then succeeds", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_ephemeral", "secret_ephemeral")
 
-    const realReadFile = fs.readFile
-    let calls = 0
-    const impl = (async (file: string) => {
-      calls++
-      if (calls === 1) throw errnoError("EPERM")
-      return realReadFile(file, "utf8")
-    }) as unknown as typeof fs.readFile
-    using _read = spyOn(fs, "readFile").mockImplementation(impl)
-
-    const active = await HolosAccounts.getActiveAccount()
-    expect(calls).toBe(2)
-    expect(active!.agentId).toBe("agent_ephemeral")
-  })
-
-  test("persistent EPERM during read propagates and never wipes the store", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_persist", "secret_persist")
-    const before = await fs.readFile(accountsPath, "utf8")
-
-    const impl = (async () => {
-      throw errnoError("EPERM")
-    }) as unknown as typeof fs.readFile
-    {
+      const realReadFile = fs.readFile
+      let calls = 0
+      const impl = (async (file: string) => {
+        calls++
+        if (calls === 1) throw errnoError("EPERM")
+        return realReadFile(file, "utf8")
+      }) as unknown as typeof fs.readFile
       using _read = spyOn(fs, "readFile").mockImplementation(impl)
-      await expect(HolosAccounts.getActiveAccount()).rejects.toMatchObject({ code: "EPERM" })
-    }
 
-    // The on-disk store must remain untouched.
-    const after = await fs.readFile(accountsPath, "utf8")
-    expect(after).toBe(before)
-  })
+      const active = await HolosAccounts.getActiveAccount()
+      expect(calls).toBe(2)
+      expect(active!.agentId).toBe("agent_ephemeral")
+    }))
+
+  test("persistent EPERM during read propagates and never wipes the store", () =>
+    runtime.run(async () => {
+      await HolosAccounts.saveAndActivateAccount("agent_persist", "secret_persist")
+      const before = await fs.readFile(accountsPath, "utf8")
+
+      const impl = (async () => {
+        throw errnoError("EPERM")
+      }) as unknown as typeof fs.readFile
+      {
+        using _read = spyOn(fs, "readFile").mockImplementation(impl)
+        await expect(HolosAccounts.getActiveAccount()).rejects.toMatchObject({ code: "EPERM" })
+      }
+
+      // The on-disk store must remain untouched.
+      const after = await fs.readFile(accountsPath, "utf8")
+      expect(after).toBe(before)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

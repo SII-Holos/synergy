@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { RolloutProcess } from "@ericsanchezok/synergy-harness/session/rollout/process"
 import { spawn } from "child_process"
 import * as fs from "node:fs"
@@ -166,7 +167,7 @@ function allowsDetachedDaemons(ctx: BashContext) {
   if (extra?.shellAllowDetachedDaemons === true) return true
   const controlProfile = extra?.controlProfile as string | undefined
   if (controlProfile === "full_access") return true
-  const value = process.env[ALLOW_DETACHED_DAEMONS_ENV]?.toLowerCase()
+  const value = RuntimeContext.current().host.env[ALLOW_DETACHED_DAEMONS_ENV]?.toLowerCase()
   return value === "1" || value === "true" || value === "yes"
 }
 
@@ -350,7 +351,7 @@ export const LocalBashBackend = {
     // Build sandbox-safe environment from the backend allowlist
     const sandboxEnv: Record<string, string> = {}
     for (const key of SandboxBackend.SANDBOX_ENV_ALLOWLIST) {
-      const val = process.env[key]
+      const val = RuntimeContext.current().host.env[key]
       if (val !== undefined) {
         sandboxEnv[key] = val
       }
@@ -776,7 +777,7 @@ export const LocalBashBackend = {
       resolveChildFinished("exited")
     }
 
-    void ChildProcessClose.wait(child, {
+    const closing = ChildProcessClose.wait(child, {
       isBackpressured: () => pendingWrites > 0,
       onExit(code, signal) {
         exited = true
@@ -815,6 +816,7 @@ export const LocalBashBackend = {
         },
       )
       .catch((error: unknown) => finishError(error instanceof Error ? error : new Error(String(error))))
+    ProcessRegistry.trackClosure(regProc, closing)
 
     await trace("process.spawn", {
       processId: regProc.id,

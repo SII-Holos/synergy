@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { ModelRole } from "../provider/model-role"
 
 /**
@@ -30,13 +31,22 @@ export namespace AgentPluginSource {
     agentEntries(): Promise<AgentEntry[]>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("agent/plugin-source")
+    if (instanceState.source && value) throw new Error("agent/plugin-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

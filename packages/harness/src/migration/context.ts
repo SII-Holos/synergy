@@ -1,7 +1,12 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { MigrationContext } from "./types"
 
-let activeCtx: MigrationContext | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  activeCtx: undefined as MigrationContext | undefined,
+}))
 
 export function setActiveMigrationContext(ctx: MigrationContext | undefined): void {
-  activeCtx = ctx
+  const instanceState = runtimeState()
+
+  instanceState.activeCtx = ctx
 }

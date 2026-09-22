@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import {
   BROWSER_ACTION_SETTLE_TIMEOUT_MS,
@@ -46,39 +47,52 @@ interface Connection {
   eventCount: number
 }
 
-let connection: Connection | null = null
-let requestSequence = 0
-const registrationSecret = BrowserRegistrationSecretSchema.parse(
-  process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET || randomBytes(32).toString("hex"),
-)
-const preferences = new Map<
-  string,
-  { owner: BrowserOwner.Info; routeDirectory: string; presentation: BrowserPresentationKind }
->()
-const eventListeners = new Map<string, Set<(event: BrowserHostPageEvent) => void>>()
-const activityListeners = new Set<(hasPages: boolean) => void>()
+const runtimeState = RuntimeContext.state(() => ({
+  connection: null as Connection | null,
+  requestSequence: 0,
+  registrationSecret: BrowserRegistrationSecretSchema.parse(
+    RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET || randomBytes(32).toString("hex"),
+  ),
+  preferences: new Map<
+    string,
+    { owner: BrowserOwner.Info; routeDirectory: string; presentation: BrowserPresentationKind }
+  >(),
+  eventListeners: new Map<string, Set<(event: BrowserHostPageEvent) => void>>(),
+  activityListeners: new Set<(hasPages: boolean) => void>(),
+}))
+
 const MAX_PENDING_REQUESTS = 64
 const MAX_EVENTS_PER_SECOND = 500
 
 export namespace BrowserBroker {
   export function secret(): string {
-    return registrationSecret
+    const instanceState = runtimeState()
+
+    return instanceState.registrationSecret
   }
 
   export function capabilities(): BrowserPresentationCapabilities {
-    return connection?.capabilities ?? { native: false, webrtc: false }
+    const instanceState = runtimeState()
+
+    return instanceState.connection?.capabilities ?? { native: false, webrtc: false }
   }
 
   export function ready(kind?: BrowserPresentationKind): boolean {
-    if (!connection) return false
-    return kind ? connection.capabilities[kind] : true
+    const instanceState = runtimeState()
+
+    if (!instanceState.connection) return false
+    return kind ? instanceState.connection.capabilities[kind] : true
   }
 
   export function hasPage(owner: BrowserOwner.Info, pageId: string): boolean {
-    return connection?.pages.has(pageKey(owner, pageId)) ?? false
+    const instanceState = runtimeState()
+
+    return instanceState.connection?.pages.has(pageKey(owner, pageId)) ?? false
   }
   export function renewHostTicket(owner: BrowserOwner.Info, pageId: string): boolean {
-    const active = connection
+    const instanceState = runtimeState()
+
+    const active = instanceState.connection
     if (!active || !active.pages.has(pageKey(owner, pageId))) return false
     const signalingTicket = BrowserTicket.issue(owner, pageId, "host")
     try {
@@ -98,8 +112,13 @@ export namespace BrowserBroker {
   }
 
   export function onActivity(listener: (hasPages: boolean) => void): () => void {
-    activityListeners.add(listener)
-    return () => activityListeners.delete(listener)
+    const instanceState = runtimeState()
+
+    instanceState.activityListeners.add(listener)
+    return () => {
+      const instanceState = runtimeState()
+      return instanceState.activityListeners.delete(listener)
+    }
   }
 
   export function publishHostStatus(status: BrowserHostStatus): void {
@@ -111,13 +130,17 @@ export namespace BrowserBroker {
     routeDirectory: string,
     presentation: BrowserPresentationKind,
   ): void {
-    preferences.set(BrowserOwner.key(owner), { owner, routeDirectory, presentation })
+    const instanceState = runtimeState()
+
+    instanceState.preferences.set(BrowserOwner.key(owner), { owner, routeDirectory, presentation })
   }
 
   export function preference(
     owner: BrowserOwner.Info,
   ): { routeDirectory: string; presentation: BrowserPresentationKind } | null {
-    const explicit = preferences.get(BrowserOwner.key(owner))
+    const instanceState = runtimeState()
+
+    const explicit = instanceState.preferences.get(BrowserOwner.key(owner))
     if (explicit && ready(explicit.presentation)) {
       return { routeDirectory: explicit.routeDirectory, presentation: explicit.presentation }
     }
@@ -127,6 +150,8 @@ export namespace BrowserBroker {
   }
 
   export function attach(socket: BrowserBrokerSocket, input: unknown): void {
+    const instanceState = runtimeState()
+
     const parsed = BrowserHostMessageSchema.safeParse(input)
     if (!parsed.success) {
       socket.close(1008, "Invalid Browser Host registration")
@@ -134,7 +159,7 @@ export namespace BrowserBroker {
     }
     const message = parsed.data
     if (message.type !== "host.register") throw new Error("First Browser Host broker message must register the host.")
-    if (!secureEqual(message.token, registrationSecret)) {
+    if (!secureEqual(message.token, instanceState.registrationSecret)) {
       socket.close(1008, "Invalid Browser Host registration secret")
       throw new Error("Invalid Browser Host registration secret")
     }
@@ -142,11 +167,11 @@ export namespace BrowserBroker {
       socket.close(1008, "Browser Host registered no capabilities")
       throw new Error("Browser Host must register at least one presentation capability.")
     }
-    if (connection) {
+    if (instanceState.connection) {
       socket.close(1013, "Browser Host broker is already registered")
       throw new Error("A Browser Host broker is already registered for this server.")
     }
-    connection = {
+    instanceState.connection = {
       hostId: message.hostId,
       socket,
       capabilities: message.capabilities,
@@ -162,39 +187,43 @@ export namespace BrowserBroker {
   }
 
   export function detach(socket: BrowserBrokerSocket): void {
-    if (connection?.socket !== socket) return
-    disconnect(connection, new Error("Browser Host broker disconnected."))
-    connection = null
+    const instanceState = runtimeState()
+
+    if (instanceState.connection?.socket !== socket) return
+    disconnect(instanceState.connection, new Error("Browser Host broker disconnected."))
+    instanceState.connection = null
     notifyHostStatus("restarting")
     ObservabilityBrowserTelemetry.recordHostStatus("restarting")
     notifyActivity()
   }
 
   export function handle(socket: BrowserBrokerSocket, input: unknown): void {
-    if (connection?.socket !== socket) throw new Error("Browser Host broker is not registered.")
+    const instanceState = runtimeState()
+
+    if (instanceState.connection?.socket !== socket) throw new Error("Browser Host broker is not registered.")
     const message = BrowserHostMessageSchema.parse(input)
     if (message.type === "page.event") {
       const now = Date.now()
-      if (now - connection.eventWindowStartedAt >= 1_000) {
-        connection.eventWindowStartedAt = now
-        connection.eventCount = 0
+      if (now - instanceState.connection.eventWindowStartedAt >= 1_000) {
+        instanceState.connection.eventWindowStartedAt = now
+        instanceState.connection.eventCount = 0
       }
-      connection.eventCount++
-      if (connection.eventCount > MAX_EVENTS_PER_SECOND) {
-        connection.socket.close(1008, "Browser Host event rate exceeded")
+      instanceState.connection.eventCount++
+      if (instanceState.connection.eventCount > MAX_EVENTS_PER_SECOND) {
+        instanceState.connection.socket.close(1008, "Browser Host event rate exceeded")
         return
       }
       const key = `${message.ownerKey}:${message.pageId}`
-      if (!connection.pages.has(key)) {
-        connection.socket.close(1008, "Browser Host emitted an event for an unknown page")
+      if (!instanceState.connection.pages.has(key)) {
+        instanceState.connection.socket.close(1008, "Browser Host emitted an event for an unknown page")
         return
       }
       if (eventPageId(message.event) !== message.pageId) {
-        connection.socket.close(1008, "Browser Host event page does not match its envelope")
+        instanceState.connection.socket.close(1008, "Browser Host event page does not match its envelope")
         return
       }
       if (message.event.type === "host.status") {
-        const preference = preferences.get(message.ownerKey)
+        const preference = instanceState.preferences.get(message.ownerKey)
         if (preference) {
           BrowserEvent.publish(preference.owner, {
             type: "host.status",
@@ -204,16 +233,16 @@ export namespace BrowserBroker {
           ObservabilityBrowserTelemetry.recordHostStatus(message.event.status, preference.owner)
         }
       }
-      for (const listener of eventListeners.get(key) ?? []) listener(message.event)
+      for (const listener of instanceState.eventListeners.get(key) ?? []) listener(message.event)
       return
     }
     if (message.type !== "page.result") {
-      connection.socket.close(1008, "Browser Host sent a message for the wrong protocol role")
+      instanceState.connection.socket.close(1008, "Browser Host sent a message for the wrong protocol role")
       return
     }
-    const pending = connection.pending.get(message.requestId)
+    const pending = instanceState.connection.pending.get(message.requestId)
     if (!pending) return
-    connection.pending.delete(message.requestId)
+    instanceState.connection.pending.delete(message.requestId)
     clearTimeout(pending.timer)
     if (message.error) {
       pending.reject(new BrowserProtocolError(message.error))
@@ -222,7 +251,7 @@ export namespace BrowserBroker {
     const resultPage = message.result ? resultPageId(message.result) : undefined
     if (resultPage && resultPage !== pending.pageId) {
       pending.reject(new Error("Browser Host result page does not match its request."))
-      connection.socket.close(1008, "Browser Host result crossed a page boundary")
+      instanceState.connection.socket.close(1008, "Browser Host result crossed a page boundary")
       return
     }
     pending.resolve(message.result ?? { type: "void" })
@@ -235,8 +264,10 @@ export namespace BrowserBroker {
     pageId: string
     url?: string
   }): Promise<BrowserBackendResult> {
+    const instanceState = runtimeState()
+
     if (!ready(input.presentation)) throw new Error(`Browser Host does not support ${input.presentation} presentation.`)
-    const active = connection
+    const active = instanceState.connection
     if (!active) throw new Error("Browser Host broker is unavailable.")
     const ownerKey = BrowserOwner.key(input.owner)
     if (Array.from(active.pages).some((key) => key.startsWith(`${ownerKey}:`))) {
@@ -281,7 +312,7 @@ export namespace BrowserBroker {
     } catch (error) {
       const timedOut =
         createSent &&
-        connection === active &&
+        instanceState.connection === active &&
         error instanceof BrowserProtocolError &&
         error.code === "browser_host_timeout"
       if (timedOut) {
@@ -293,7 +324,9 @@ export namespace BrowserBroker {
           pageId: input.pageId,
         })
           .then(() => {
-            if (connection === active) active.pages.delete(reservedPageKey)
+            const instanceState = runtimeState()
+
+            if (instanceState.connection === active) active.pages.delete(reservedPageKey)
             BrowserTicket.revoke(input.owner, input.pageId)
             notifyActivity()
             ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
@@ -328,6 +361,8 @@ export namespace BrowserBroker {
   }
 
   export async function closePage(owner: BrowserOwner.Info, pageId: string): Promise<void> {
+    const instanceState = runtimeState()
+
     await request({
       type: "page.close",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -335,7 +370,7 @@ export namespace BrowserBroker {
       ownerKey: BrowserOwner.key(owner),
       pageId,
     })
-    connection?.pages.delete(pageKey(owner, pageId))
+    instanceState.connection?.pages.delete(pageKey(owner, pageId))
     BrowserTicket.revoke(owner, pageId)
     notifyActivity()
     ObservabilityBrowserTelemetry.recordResourceCleanup(owner, "ok")
@@ -346,45 +381,57 @@ export namespace BrowserBroker {
     pageId: string,
     listener: (event: BrowserHostPageEvent) => void,
   ): () => void {
+    const instanceState = runtimeState()
+
     const key = pageKey(owner, pageId)
-    const listeners = eventListeners.get(key) ?? new Set()
+    const listeners = instanceState.eventListeners.get(key) ?? new Set()
     listeners.add(listener)
-    eventListeners.set(key, listeners)
+    instanceState.eventListeners.set(key, listeners)
     return () => {
+      const instanceState = runtimeState()
+
       listeners.delete(listener)
-      if (listeners.size === 0) eventListeners.delete(key)
+      if (listeners.size === 0) instanceState.eventListeners.delete(key)
     }
   }
 
   export function release(owner: BrowserOwner.Info): void {
+    const instanceState = runtimeState()
+
     const ownerKey = BrowserOwner.key(owner)
-    preferences.delete(ownerKey)
+    instanceState.preferences.delete(ownerKey)
     BrowserTicket.revoke(owner)
-    for (const key of eventListeners.keys()) {
-      if (key.startsWith(`${ownerKey}:`)) eventListeners.delete(key)
+    for (const key of instanceState.eventListeners.keys()) {
+      if (key.startsWith(`${ownerKey}:`)) instanceState.eventListeners.delete(key)
     }
   }
 
   export function resetForTest(): void {
-    if (connection) {
-      disconnect(connection, new Error("Browser Host broker test state was reset."))
-      connection.socket.close()
+    const instanceState = runtimeState()
+
+    if (instanceState.connection) {
+      disconnect(instanceState.connection, new Error("Browser Host broker test state was reset."))
+      instanceState.connection.socket.close()
     }
-    connection = null
-    requestSequence = 0
-    preferences.clear()
-    eventListeners.clear()
-    activityListeners.clear()
+    instanceState.connection = null
+    instanceState.requestSequence = 0
+    instanceState.preferences.clear()
+    instanceState.eventListeners.clear()
+    instanceState.activityListeners.clear()
   }
 }
 
 function notifyActivity(): void {
-  const hasPages = Boolean(connection?.pages.size)
-  for (const listener of activityListeners) listener(hasPages)
+  const instanceState = runtimeState()
+
+  const hasPages = Boolean(instanceState.connection?.pages.size)
+  for (const listener of instanceState.activityListeners) listener(hasPages)
 }
 
 function notifyHostStatus(status: BrowserHostStatus): void {
-  for (const preference of preferences.values()) {
+  const instanceState = runtimeState()
+
+  for (const preference of instanceState.preferences.values()) {
     BrowserEvent.publish(preference.owner, { type: "host.status", status })
   }
 }
@@ -392,7 +439,9 @@ function notifyHostStatus(status: BrowserHostStatus): void {
 function request(
   message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" }>,
 ): Promise<BrowserBackendResult> {
-  const active = connection
+  const instanceState = runtimeState()
+
+  const active = instanceState.connection
   if (!active) throw new Error("Browser Host broker is unavailable.")
   if (active.pending.size >= MAX_PENDING_REQUESTS) {
     throw new BrowserProtocolError({
@@ -456,20 +505,22 @@ function requestTimeout(
 }
 
 function disconnect(active: Connection, error: Error): void {
+  const instanceState = runtimeState()
+
   for (const pending of active.pending.values()) {
     clearTimeout(pending.timer)
     pending.reject(error)
   }
   active.pending.clear()
-  for (const preference of preferences.values()) {
+  for (const preference of instanceState.preferences.values()) {
     ObservabilityBrowserTelemetry.recordHostDisconnected(preference.owner)
   }
   for (const key of active.pages) {
     const separator = key.lastIndexOf(":")
     const ownerKey = separator > 0 ? key.slice(0, separator) : undefined
     const pageId = separator > 0 ? key.slice(separator + 1) : undefined
-    const listeners = eventListeners.get(key)
-    const preference = ownerKey ? preferences.get(ownerKey) : undefined
+    const listeners = instanceState.eventListeners.get(key)
+    const preference = ownerKey ? instanceState.preferences.get(ownerKey) : undefined
     if (pageId && preference) {
       BrowserEvent.publish(preference.owner, { type: "host.status", pageId, status: "restarting" })
     }
@@ -484,11 +535,15 @@ function disconnect(active: Connection, error: Error): void {
 }
 
 function send(message: BrowserHostMessage): void {
-  connection?.socket.send(JSON.stringify(message))
+  const instanceState = runtimeState()
+
+  instanceState.connection?.socket.send(JSON.stringify(message))
 }
 
 function nextRequestId(): string {
-  return `broker-${++requestSequence}-${crypto.randomUUID()}`
+  const instanceState = runtimeState()
+
+  return `broker-${++instanceState.requestSequence}-${crypto.randomUUID()}`
 }
 
 function pageKey(owner: BrowserOwner.Info, pageId: string): string {
@@ -522,5 +577,7 @@ function secureEqual(actual: string, expected: string): boolean {
 function telemetryOwner(
   message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" }>,
 ): BrowserOwner.Info | undefined {
-  return preferences.get(message.ownerKey)?.owner
+  const instanceState = runtimeState()
+
+  return instanceState.preferences.get(message.ownerKey)?.owner
 }

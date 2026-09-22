@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkRemoteError, type SynergyLinkTransportFailureReason } from "./remote-error"
@@ -34,29 +35,39 @@ export namespace SynergyLinkExecution {
     dispose?: (reason?: SynergyLinkTransportFailureReason) => void
   }
 
-  let client: DisposableExecutionClient | null = null
-  const sessions = new Map<SynergyLinkIdentity.LinkID, Map<string, SessionRecord>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    client: null as DisposableExecutionClient | null,
+    sessions: new Map<SynergyLinkIdentity.LinkID, Map<string, SessionRecord>>(),
+  }))
 
   export function setClient(next: DisposableExecutionClient | null, reason?: SynergyLinkTransportFailureReason) {
-    if (client === next) return
-    client?.dispose?.(reason)
-    client = next
-    sessions.clear()
+    const instanceState = runtimeState()
+
+    if (instanceState.client === next) return
+    instanceState.client?.dispose?.(reason)
+    instanceState.client = next
+    instanceState.sessions.clear()
   }
 
   export function getClient() {
-    return client
+    const instanceState = runtimeState()
+
+    return instanceState.client
   }
 
   export function requireClient(linkID: SynergyLinkIdentity.LinkID, tool: "bash" | "process" | "connect") {
-    if (!client) {
+    const instanceState = runtimeState()
+
+    if (!instanceState.client) {
       throw new NotConnectedError(linkID, tool)
     }
-    return client
+    return instanceState.client
   }
 
   export function getSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
-    const bucket = sessions.get(linkID)
+    const instanceState = runtimeState()
+
+    const bucket = instanceState.sessions.get(linkID)
     if (!bucket) return undefined
     if (selector?.targetAgentID) {
       const session = bucket.get(selector.targetAgentID)
@@ -67,15 +78,19 @@ export namespace SynergyLinkExecution {
   }
 
   export function allSessions() {
-    return [...sessions.values()]
+    const instanceState = runtimeState()
+
+    return [...instanceState.sessions.values()]
       .flatMap((bucket) => [...bucket.values()])
       .sort((left, right) => right.lastUsedAt - left.lastUsedAt)
   }
 
   export function upsertSession(session: SessionRecord) {
-    const bucket = sessions.get(session.linkID) ?? new Map<string, SessionRecord>()
+    const instanceState = runtimeState()
+
+    const bucket = instanceState.sessions.get(session.linkID) ?? new Map<string, SessionRecord>()
     bucket.set(session.targetAgentID, session)
-    sessions.set(session.linkID, bucket)
+    instanceState.sessions.set(session.linkID, bucket)
   }
 
   export function touchSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
@@ -85,11 +100,13 @@ export namespace SynergyLinkExecution {
   }
 
   export function clearSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
-    const bucket = sessions.get(linkID)
+    const instanceState = runtimeState()
+
+    const bucket = instanceState.sessions.get(linkID)
     const session = getSession(linkID, selector)
     if (!bucket || !session) return undefined
     bucket.delete(session.targetAgentID)
-    if (bucket.size === 0) sessions.delete(linkID)
+    if (bucket.size === 0) instanceState.sessions.delete(linkID)
     return session
   }
 
@@ -140,13 +157,15 @@ export namespace SynergyLinkExecution {
     linkID: SynergyLinkIdentity.LinkID,
     selector?: SessionSelector,
   ): Promise<SessionVerification> {
+    const instanceState = runtimeState()
+
     const session = getSession(linkID, selector)
     if (!session || session.status !== "opened") return { kind: "missing" }
     const now = Date.now()
     if (session.lastVerifiedAt !== undefined && now - session.lastVerifiedAt < SESSION_VERIFY_TTL_MS) {
       return { kind: "verified", session }
     }
-    const activeClient = client
+    const activeClient = instanceState.client
     if (!activeClient) {
       return { kind: "unverified", session, reason: "transport" }
     }

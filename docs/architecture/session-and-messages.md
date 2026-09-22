@@ -2,7 +2,7 @@
 
 ## Session Contract
 
-A session is the durable unit of work in Synergy. It belongs to one Scope, binds an execution workspace, stores its message history and operational state, and can be resumed by any client connected to the same runtime.
+A session is the durable unit of work in Synergy. It belongs to one Scope, persists an explicit nullable execution workspace, stores its message history and operational state, and can be resumed by any client connected to the same runtime.
 
 Session state includes, when applicable:
 
@@ -58,7 +58,7 @@ Session metadata is not the message transcript. Each has its own storage and eve
 
 ### Global identity and endpoint lookup
 
-`sessionID` is globally stable. `Session.get(sessionID)` resolves the logical key `["session_index", sessionID]` to the owning Scope and then reads `["sessions", scopeID, sessionID, "info"]` through the storage Handle; callers do not form a composite `(scopeID, sessionID)` identity.
+`sessionID` is stable within its owning Runtime storage. Independent Runtime instances may contain identical session IDs without sharing state. `Session.get(sessionID)` resolves the logical key `["session_index", sessionID]` to the owning Scope and then reads `["sessions", scopeID, sessionID, "info"]` through the storage Handle; callers do not form a composite `(scopeID, sessionID)` identity.
 
 Channel endpoint lookup is a secondary global index from endpoint key to candidate `sessionID` values. The endpoint facade requires the provider's resolved Scope and verifies that the active Session belongs to it. A mismatch fails without moving, reusing, or creating a second Session in another Scope. Endpoint creation and archive share one hashed lock, so one endpoint has at most one active Session while retaining archived history.
 
@@ -75,7 +75,7 @@ Synergy records two different relationships:
 
 A fork is not a child task. It copies the source session's effective history and records `forkedFrom`; it does not use `parentID` to imitate delegation.
 
-Child sessions inherit the parent workspace and interaction context by default. Their effective control profile is resolved through the parent chain rather than copied as an independent root profile.
+Child sessions inherit the parent Scope, nullable workspace and interaction context by default, even when creation runs under another ambient Scope. Their effective control profile is resolved through the parent chain rather than copied as an independent root profile.
 
 ## One Active Loop
 
@@ -458,7 +458,7 @@ This separation exists because `SessionEvent.Idle` has side-effect consumers —
 
 ## Invariants
 
-- A session belongs to one Scope and has one current workspace.
+- A session belongs to one Scope and has one explicit workspace binding or `null`.
 - At most one active loop lease owns a session, including while it is starting or stopping.
 - Agent workers never own Session/Message persistence or canonical event sequencing.
 - Internal execution phases refine an owned loop without replacing the public busy/retry/idle status contract.
@@ -488,3 +488,5 @@ Run cancellation drains its execution owner, detached jobs, and native processes
 The continuation repair migration persists a rollout recovery intent before reopening incorrectly completed work. Startup routes that intent through the normal drive/wake path even when the inbox is empty. The intent survives failed wake attempts and is cleared once the root is answered, cancelled, failed, or superseded. This targeted repair does not enable automatic resume for ordinary interrupted sessions or add messages to the transcript.
 
 Recording-error cancellation carries the source root ID. The active loop lease binds its current root before model or tool work; an error from an older root cannot cancel a replacement root, including another root processed under the same lease. An unbound starting lease is not ownership evidence for an old task. Explicit user cancellation retains its session-wide semantics.
+
+Workspace-free sessions can use enabled model, network and managed-data capabilities. Local execution requires a valid persisted workspace; submission rejects an unavailable or archived binding before persisting input. Retained tool handles enforce that requirement again regardless of control profile. Missing projects retain readable history and never acquire the host working directory implicitly. See [Runtime and Scope](runtime-and-scope.md#session-workspace).

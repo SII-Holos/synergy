@@ -7,6 +7,9 @@ import { RPCHandler, SessionManager, SynergyLinkInboundHandler, SynergyLinkLog }
 import { HolosRuntime } from "../../src/holos/runtime"
 import { HolosSynergyLinkTransport } from "../../src/holos/synergy-link-transport"
 import { HolosSynergyLinkClient } from "../../src/remote/client"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /**
  * Transport-level regression for the blocking-poll deadline race: the remote
@@ -28,21 +31,25 @@ describe("Synergy Link blocking-poll deadline ordering", () => {
   let sessions: SessionManager
   let inbound: SynergyLinkInboundHandler
 
-  beforeEach(async () => {
-    home = await mkdtemp(path.join(tmpdir(), "synergy-link-poll-deadline-"))
-    originalLinkHome = process.env.SYNERGY_LINK_HOME
-    process.env.SYNERGY_LINK_HOME = home
-    rpc = new RPCHandler({ linkID: LINK_ID, registry: { maxBlockingPollMs: MAX_BLOCKING_POLL_MS } })
-    sessions = new SessionManager()
-    inbound = new SynergyLinkInboundHandler(rpc, sessions, async () => "approve")
-  })
+  beforeEach(() =>
+    runtime.run(async () => {
+      home = await mkdtemp(path.join(tmpdir(), "synergy-link-poll-deadline-"))
+      originalLinkHome = process.env.SYNERGY_LINK_HOME
+      process.env.SYNERGY_LINK_HOME = home
+      rpc = new RPCHandler({ linkID: LINK_ID, registry: { maxBlockingPollMs: MAX_BLOCKING_POLL_MS } })
+      sessions = new SessionManager()
+      inbound = new SynergyLinkInboundHandler(rpc, sessions, async () => "approve")
+    }),
+  )
 
-  afterEach(async () => {
-    await SynergyLinkLog.flush()
-    if (originalLinkHome === undefined) delete process.env.SYNERGY_LINK_HOME
-    else process.env.SYNERGY_LINK_HOME = originalLinkHome
-    await rm(home, { recursive: true, force: true })
-  })
+  afterEach(() =>
+    runtime.run(async () => {
+      await SynergyLinkLog.flush()
+      if (originalLinkHome === undefined) delete process.env.SYNERGY_LINK_HOME
+      else process.env.SYNERGY_LINK_HOME = originalLinkHome
+      await rm(home, { recursive: true, force: true })
+    }),
+  )
 
   function clientFor() {
     const provider = {
@@ -65,69 +72,81 @@ describe("Synergy Link blocking-poll deadline ordering", () => {
     return { client: new HolosSynergyLinkClient(transport), transport }
   }
 
-  test("returns a still-running result before the transport deadline when the process outlives the wait", async () => {
-    const { client, transport } = clientFor()
-    try {
-      const opened = await client.executeSession(LINK_ID, { action: "open" }, { targetAgentID: TARGET_AGENT_ID })
-      expect(opened.metadata.status).toBe("opened")
-      const sessionID = opened.metadata.sessionID
-      expect(sessionID).toBeDefined()
+  test(
+    "returns a still-running result before the transport deadline when the process outlives the wait",
+    () =>
+      runtime.run(async () => {
+        const { client, transport } = clientFor()
+        try {
+          const opened = await client.executeSession(LINK_ID, { action: "open" }, { targetAgentID: TARGET_AGENT_ID })
+          expect(opened.metadata.status).toBe("opened")
+          const sessionID = opened.metadata.sessionID
+          expect(sessionID).toBeDefined()
 
-      const started = await client.executeBash(
-        LINK_ID,
-        { command: "sleep 30", description: "deadline poll regression", background: true },
-        { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
-      )
-      const processId = started.metadata.processId
-      expect(processId).toBeDefined()
+          const started = await client.executeBash(
+            LINK_ID,
+            { command: "sleep 30", description: "deadline poll regression", background: true },
+            { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
+          )
+          const processId = started.metadata.processId
+          expect(processId).toBeDefined()
 
-      const startedAt = Date.now()
-      const polled = await client.executeProcess(
-        LINK_ID,
-        { action: "poll", processId: processId!, block: true, timeout: 30 },
-        { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
-      )
-      const elapsed = Date.now() - startedAt
+          const startedAt = Date.now()
+          const polled = await client.executeProcess(
+            LINK_ID,
+            { action: "poll", processId: processId!, block: true, timeout: 30 },
+            { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
+          )
+          const elapsed = Date.now() - startedAt
 
-      expect(polled.metadata.status).toBe("running")
-      expect(polled.output).toContain("Process still running.")
-      expect(elapsed).toBeGreaterThanOrEqual(MAX_BLOCKING_POLL_MS - 400)
-      expect(elapsed).toBeLessThan(TRANSPORT_TIMEOUT_MS - 400)
-    } finally {
-      await rpc.processRegistry.reset()
-      transport.dispose()
-    }
-  }, 10_000)
+          expect(polled.metadata.status).toBe("running")
+          expect(polled.output).toContain("Process still running.")
+          expect(elapsed).toBeGreaterThanOrEqual(MAX_BLOCKING_POLL_MS - 400)
+          expect(elapsed).toBeLessThan(TRANSPORT_TIMEOUT_MS - 400)
+        } finally {
+          await rpc.processRegistry.reset()
+          transport.dispose()
+        }
+      }),
+    10_000,
+  )
 
-  test("returns the terminal state when the process exits during the capped wait", async () => {
-    const { client, transport } = clientFor()
-    try {
-      const opened = await client.executeSession(LINK_ID, { action: "open" }, { targetAgentID: TARGET_AGENT_ID })
-      const sessionID = opened.metadata.sessionID
-      expect(sessionID).toBeDefined()
+  test(
+    "returns the terminal state when the process exits during the capped wait",
+    () =>
+      runtime.run(async () => {
+        const { client, transport } = clientFor()
+        try {
+          const opened = await client.executeSession(LINK_ID, { action: "open" }, { targetAgentID: TARGET_AGENT_ID })
+          const sessionID = opened.metadata.sessionID
+          expect(sessionID).toBeDefined()
 
-      const started = await client.executeBash(
-        LINK_ID,
-        { command: "sleep 1", description: "deadline poll exit", background: true },
-        { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
-      )
-      const processId = started.metadata.processId
-      expect(processId).toBeDefined()
+          const started = await client.executeBash(
+            LINK_ID,
+            { command: "sleep 1", description: "deadline poll exit", background: true },
+            { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
+          )
+          const processId = started.metadata.processId
+          expect(processId).toBeDefined()
 
-      const startedAt = Date.now()
-      const polled = await client.executeProcess(
-        LINK_ID,
-        { action: "poll", processId: processId!, block: true, timeout: 30 },
-        { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
-      )
-      const elapsed = Date.now() - startedAt
+          const startedAt = Date.now()
+          const polled = await client.executeProcess(
+            LINK_ID,
+            { action: "poll", processId: processId!, block: true, timeout: 30 },
+            { sessionID: sessionID!, targetAgentID: TARGET_AGENT_ID },
+          )
+          const elapsed = Date.now() - startedAt
 
-      expect(polled.metadata.status).toBe("completed")
-      expect(polled.output).toContain("Process exited with")
-      expect(elapsed).toBeLessThan(TRANSPORT_TIMEOUT_MS - 400)
-    } finally {
-      await rpc.processRegistry.reset()
-      transport.dispose()
-    }
-  }, 10_000)
+          expect(polled.metadata.status).toBe("completed")
+          expect(polled.output).toContain("Process exited with")
+          expect(elapsed).toBeLessThan(TRANSPORT_TIMEOUT_MS - 400)
+        } finally {
+          await rpc.processRegistry.reset()
+          transport.dispose()
+        }
+      }),
+    10_000,
+  )
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -1,20 +1,31 @@
 import { expect, test } from "bun:test"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("runtime registration lock rejects late migration domains without changing legacy tracking", async () => {
-  const isolated = await createIsolatedTestEnv()
-  const registry = new URL("../../src/migration/registry.ts", import.meta.url).pathname
-  const migration = new URL("../../src/migration/index.ts", import.meta.url).pathname
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
+test("runtime registration lock rejects late migration domains without changing legacy tracking", () =>
+  runtime.run(async () => {
+    const isolated = await createIsolatedTestEnv()
+    const registry = new URL("../../src/migration/registry.ts", import.meta.url).pathname
+    const migration = new URL("../../src/migration/index.ts", import.meta.url).pathname
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "--eval",
+        `
       import assert from "node:assert/strict"
+      import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+      import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
+      import path from "node:path"
+      const home = process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME
+      const context = RuntimeContext.create({ home, root: path.join(home, ".synergy"), env: { ...process.env } })
+      await context.run(async () => {
+      registerHarness()
+
       const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
       await using storageHandle = await StorageMaintenance.open({ migrate: false })
-      import fs from "node:fs/promises"
-      import path from "node:path"
+      const { default: fs } = await import("node:fs/promises")
       const { MigrationRegistry } = await import(${JSON.stringify(registry)})
       const { runMigrations } = await import(${JSON.stringify(migration)})
       const known = [{ id: "registered-before-open", description: "Known", dependsOn: [], async up() {} }]
@@ -40,18 +51,22 @@ test("runtime registration lock rejects late migration domains without changing 
       assert.throws(() => MigrationRegistry.unregister("known-before-open"), /before opening the runtime/)
       MigrationRegistry.list().clear()
       assert.equal(MigrationRegistry.list().has("known-before-open"), true)
-      assert.throws(() => MigrationRegistry.register("known-before-open", [...known]), /before opening the runtime/)
+      assert.throws(() => MigrationRegistry.register("known-before-open", [...known]), /already registered/)
       assert.throws(() => MigrationRegistry.register("optional-late", [{ id: "optional-late", description: "Late", async up() {} }]), /before opening the runtime/)
       await runMigrations({ targetDomain: "known-before-open", output: "silent" })
       assert.deepEqual(await Storage.read(["meta", "migration", "log"]), legacy)
       assert.equal(MigrationRegistry.list().has("optional-late"), false)
+      })
+      context.dispose()
     `,
-    ],
-    stdout: "pipe",
-    stderr: "pipe",
-    env: isolated.env,
-  })
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-  await isolated.dispose()
-  expect(code, stderr).toBe(0)
-})
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+      env: isolated.env,
+    })
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    await isolated.dispose()
+    expect(code, stderr).toBe(0)
+  }))
+
+afterRuntimeTests(() => runtime.close())

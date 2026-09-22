@@ -2,6 +2,9 @@ import { expect, test } from "bun:test"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { ProviderTransform } from "@ericsanchezok/synergy-harness/provider/transform"
 import type { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 type ModelOverrides = Omit<Partial<Provider.Model>, "capabilities"> & {
   capabilities?: Partial<Provider.Model["capabilities"]>
@@ -56,75 +59,79 @@ const anthropicModel = (apiID: string, overrides: ModelOverrides = {}): Provider
     ...overrides,
   })
 
-test("Kimi K3 effort variants pass the locked Anthropic SDK validator", async () => {
-  const model = createMockModel({
-    id: "k3",
-    family: "kimi-k3",
-    providerID: "kimi-for-coding",
-    api: {
+test("Kimi K3 effort variants pass the locked Anthropic SDK validator", () =>
+  runtime.run(async () => {
+    const model = createMockModel({
       id: "k3",
-      url: "https://api.kimi.com/coding/v1",
-      npm: "@ai-sdk/anthropic",
-    },
-    capabilities: { reasoningEfforts: ["low", "high", "max"] },
-  })
-
-  for (const [variant, options] of Object.entries(ProviderTransform.variants(model))) {
-    let requestBody: Record<string, unknown> | undefined
-    const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
-      return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      })
-    }) as unknown as typeof fetch
-    const anthropic = createAnthropic({
-      apiKey: "test",
-      baseURL: "https://example.invalid",
-      fetch: fetchFn,
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
     })
 
-    try {
-      await anthropic("k3").doGenerate({
-        prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
-        maxOutputTokens: 16,
-        providerOptions: ProviderTransform.providerOptions(model, options),
+    for (const [variant, options] of Object.entries(ProviderTransform.variants(model))) {
+      let requestBody: Record<string, unknown> | undefined
+      const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        })
+      }) as unknown as typeof fetch
+      const anthropic = createAnthropic({
+        apiKey: "test",
+        baseURL: "https://example.invalid",
+        fetch: fetchFn,
       })
-    } catch {}
 
-    expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
-    expect(requestBody?.output_config).toEqual(variant === "max" ? undefined : { effort: variant })
-  }
-})
+      try {
+        await anthropic("k3").doGenerate({
+          prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+          maxOutputTokens: 16,
+          providerOptions: ProviderTransform.providerOptions(model, options),
+        })
+      } catch {}
 
-test("adaptive variants pass the locked Anthropic SDK validator", async () => {
-  const model = anthropicModel("claude-opus-4-7", { limit: { context: 200000, output: 128000 } })
-  const variants = ProviderTransform.variants(model)
-  for (const [variant, options] of Object.entries(variants)) {
-    let requestBody: Record<string, unknown> | undefined
-    const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
-      return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
+      expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
+      expect(requestBody?.output_config).toEqual(variant === "max" ? undefined : { effort: variant })
+    }
+  }))
+
+test("adaptive variants pass the locked Anthropic SDK validator", () =>
+  runtime.run(async () => {
+    const model = anthropicModel("claude-opus-4-7", { limit: { context: 200000, output: 128000 } })
+    const variants = ProviderTransform.variants(model)
+    for (const [variant, options] of Object.entries(variants)) {
+      let requestBody: Record<string, unknown> | undefined
+      const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        })
+      }) as unknown as typeof fetch
+      const anthropic = createAnthropic({
+        apiKey: "test",
+        baseURL: "https://example.invalid",
+        fetch: fetchFn,
       })
-    }) as unknown as typeof fetch
-    const anthropic = createAnthropic({
-      apiKey: "test",
-      baseURL: "https://example.invalid",
-      fetch: fetchFn,
-    })
 
-    try {
-      await anthropic("claude-opus-4-7").doGenerate({
-        prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
-        maxOutputTokens: 16,
-        providerOptions: ProviderTransform.providerOptions(model, options),
-      })
-    } catch {}
+      try {
+        await anthropic("claude-opus-4-7").doGenerate({
+          prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+          maxOutputTokens: 16,
+          providerOptions: ProviderTransform.providerOptions(model, options),
+        })
+      } catch {}
 
-    expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
-    expect(requestBody?.thinking).toEqual({ type: "adaptive", display: "summarized" })
-    expect(requestBody?.output_config).toEqual({ effort: variant })
-  }
-})
+      expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
+      expect(requestBody?.thinking).toEqual({ type: "adaptive", display: "summarized" })
+      expect(requestBody?.output_config).toEqual({ effort: variant })
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

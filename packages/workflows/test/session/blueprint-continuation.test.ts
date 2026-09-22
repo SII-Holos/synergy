@@ -12,6 +12,9 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const model = { providerID: "test-provider", modelID: "test-model" }
 const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
@@ -21,20 +24,24 @@ let originalGetTasksForSession: typeof Cortex.getTasksForSession
 let originalPrepare: unknown
 let originalStart: unknown
 
-beforeEach(() => {
-  originalDeliver = SessionManager.deliver
-  originalGetTasksForSession = Cortex.getTasksForSession
-  originalPrepare = (Cortex as any).prepare
-  originalStart = (Cortex as any).start
-  ;(Cortex.getTasksForSession as any) = mock(() => [])
-})
+beforeEach(() =>
+  runtime.run(() => {
+    originalDeliver = SessionManager.deliver
+    originalGetTasksForSession = Cortex.getTasksForSession
+    originalPrepare = (Cortex as any).prepare
+    originalStart = (Cortex as any).start
+    ;(Cortex.getTasksForSession as any) = mock(() => [])
+  }),
+)
 
-afterEach(() => {
-  ;(SessionManager.deliver as any) = originalDeliver
-  ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
-  ;(Cortex as any).prepare = originalPrepare
-  ;(Cortex as any).start = originalStart
-})
+afterEach(() =>
+  runtime.run(() => {
+    ;(SessionManager.deliver as any) = originalDeliver
+    ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
+    ;(Cortex as any).prepare = originalPrepare
+    ;(Cortex as any).start = originalStart
+  }),
+)
 
 async function setupLoop(status: "running" | "auditing" | "completed" = "running") {
   const session = await Session.create({})
@@ -98,404 +105,419 @@ async function writeAssistant(
 }
 
 describe("BlueprintContinuation", () => {
-  test("sends continuation when a running loop goes idle after a terminal assistant response", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await setupLoop()
-        const user = await writeUser(session.id)
-        await writeAssistant(session.id, user.id)
+  test("sends continuation when a running loop goes idle after a terminal assistant response", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const user = await writeUser(session.id)
+          await writeAssistant(session.id, user.id)
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
 
-        expect(delivered).toBe(true)
-        const items = await SessionInbox.list(session.id)
-        expect(items).toHaveLength(1)
-        const item = items[0]
-        expect(item.mode).toBe("steer")
-        expect(item.deliveryKey).toContain("continuation:blueprint_loop:")
-        expect(item.message?.summary?.title).toBe(`Continue ${loop.title} blueprint`)
-        expect(item.message?.metadata?.source).toBe("blueprint_loop_continuation")
-        expect(item.message?.metadata?.loopID).toBe(loop.id)
-        expect(item.message?.metadata?.noteID).toBe(loop.noteID)
-        expect(item.message?.metadata?.title).toBe(loop.title)
-        expect(item.message?.metadata?.status).toBe("running")
-        expect(item.message?.origin?.type).toBe("blueprint")
-        const part = item.message?.parts[0] as MessageV2.TextPart
-        expect(part.synthetic).toBe(true)
-        expect(part.text).toContain(`BlueprintLoop ${loop.id} status is \`running\``)
-        expect(part.text).toContain("current delivered state")
-        expect(part.text).not.toContain("implementation state")
-        expect(part.text).not.toContain("implementation work")
-        expect(part.text).toContain("blueprint_loop_stop")
-        expect(part.text).not.toContain('status: "failed"')
-      },
-    })
-  })
+          expect(delivered).toBe(true)
+          const items = await SessionInbox.list(session.id)
+          expect(items).toHaveLength(1)
+          const item = items[0]
+          expect(item.mode).toBe("steer")
+          expect(item.deliveryKey).toContain("continuation:blueprint_loop:")
+          expect(item.message?.summary?.title).toBe(`Continue ${loop.title} blueprint`)
+          expect(item.message?.metadata?.source).toBe("blueprint_loop_continuation")
+          expect(item.message?.metadata?.loopID).toBe(loop.id)
+          expect(item.message?.metadata?.noteID).toBe(loop.noteID)
+          expect(item.message?.metadata?.title).toBe(loop.title)
+          expect(item.message?.metadata?.status).toBe("running")
+          expect(item.message?.origin?.type).toBe("blueprint")
+          const part = item.message?.parts[0] as MessageV2.TextPart
+          expect(part.synthetic).toBe(true)
+          expect(part.text).toContain(`BlueprintLoop ${loop.id} status is \`running\``)
+          expect(part.text).toContain("current delivered state")
+          expect(part.text).not.toContain("implementation state")
+          expect(part.text).not.toContain("implementation work")
+          expect(part.text).toContain("blueprint_loop_stop")
+          expect(part.text).not.toContain('status: "failed"')
+        },
+      })
+    }))
 
-  test("prepares, binds, and starts the audit reviewer for a pending stop intent", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await setupLoop()
-        const scopeID = ScopeContext.current.scope.id
-        await (BlueprintLoopStore as any).recordStopRequest(scopeID, loop.id, {
-          summary: "Blueprint complete",
-          completed: ["Implemented the requested behavior"],
-          evidence: ["Focused tests pass"],
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID: "msg_stop",
-        })
-        const order: string[] = []
-        let reviewSessionID = ""
-        ;(Cortex as any).prepare = mock(async (input: any) => {
-          order.push("prepare")
-          expect(input.agent).toBe("supervisor")
-          expect(input.parentSessionID).toBe(session.id)
-          expect(input.parentMessageID).toBe("msg_stop")
-          expect(input.visibility).toBe("visible")
-          expect(input.notifyParentOnComplete).toBe(false)
-          expect(input.prompt).toContain("Focused tests pass")
-          expect(input.prompt).toContain("Change Scope, boundaries, and non-goals")
-          expect(input.prompt).toContain("future Lattice Pathway steps")
-          expect(input.prompt).toContain("first successful blueprint_loop_stop")
-          const reviewSession = await Session.create({ parentID: session.id })
-          reviewSessionID = reviewSession.id
-          return { id: "ctx_audit", sessionID: reviewSession.id, status: "queued" }
-        })
-        ;(Cortex as any).start = mock(async (taskID: string) => {
-          order.push("start")
-          expect(taskID).toBe("ctx_audit")
-          const boundLoop = await BlueprintLoopStore.get(scopeID, loop.id)
-          const reviewSession = await Session.get(reviewSessionID)
-          expect(boundLoop.status).toBe("auditing")
-          expect(boundLoop.auditTaskID).toBe("ctx_audit")
-          expect(boundLoop.auditSessionID).toBe(reviewSessionID)
-          expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
-        })
-
-        const refreshed = await Session.get(session.id)
-        const proposal = await BlueprintContinuationPolicy.handle({
-          session: refreshed,
-          scopeID,
-          sessionID: session.id,
-          terminalMessageID: "msg_terminal",
-        })
-
-        expect(proposal).toEqual({ kind: "handled" })
-        expect(order).toEqual(["prepare", "start"])
-      },
-    })
-  })
-
-  test("reuses a completed reviewer that omitted the terminal review tool", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await setupLoop()
-        const scopeID = ScopeContext.current.scope.id
-        const requesterMessageID = Identifier.ascending("message")
-        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
-          summary: "Blueprint complete",
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID,
-        })
-        const reviewer = await Session.create({
-          parentID: session.id,
-          cortex: {
-            taskID: "ctx_completed_review",
-            parentSessionID: session.id,
-            parentMessageID: requesterMessageID,
-            description: "Audit BlueprintLoop",
-            agent: "supervisor",
-            status: "completed",
-            startedAt: Date.now(),
-            completedAt: Date.now(),
-          },
-        })
-        await Session.update(reviewer.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
-        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
-          status: "auditing",
-          auditSessionID: reviewer.id,
-          auditTaskID: "ctx_completed_review",
-        })
-        ;(Cortex as any).prepare = mock(async (input: any) => {
-          expect(input.sessionID).toBe(reviewer.id)
-          expect(input.parentSessionID).toBe(session.id)
-          expect(input.parentMessageID).toBe(requesterMessageID)
-          expect(input.reuseInterrupted).toBe(true)
-          expect(input.tools).toEqual({
-            "*": false,
-            blueprint_loop_approve: true,
-            blueprint_loop_reject: true,
+  test("prepares, binds, and starts the audit reviewer for a pending stop intent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const scopeID = ScopeContext.current.scope.id
+          await (BlueprintLoopStore as any).recordStopRequest(scopeID, loop.id, {
+            summary: "Blueprint complete",
+            completed: ["Implemented the requested behavior"],
+            evidence: ["Focused tests pass"],
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID: "msg_stop",
           })
-          expect(input.prompt).toContain(`Execution session ID: ${session.id}`)
-          expect(input.prompt).toContain("Do not search for sessions")
-          return { id: "ctx_recovery_review", sessionID: reviewer.id, status: "queued" }
-        })
-        ;(Cortex as any).start = mock(async (taskID: string) => {
-          expect(taskID).toBe("ctx_recovery_review")
-        })
+          const order: string[] = []
+          let reviewSessionID = ""
+          ;(Cortex as any).prepare = mock(async (input: any) => {
+            order.push("prepare")
+            expect(input.agent).toBe("supervisor")
+            expect(input.parentSessionID).toBe(session.id)
+            expect(input.parentMessageID).toBe("msg_stop")
+            expect(input.visibility).toBe("visible")
+            expect(input.notifyParentOnComplete).toBe(false)
+            expect(input.prompt).toContain("Focused tests pass")
+            expect(input.prompt).toContain("Change Scope, boundaries, and non-goals")
+            expect(input.prompt).toContain("future Lattice Pathway steps")
+            expect(input.prompt).toContain("first successful blueprint_loop_stop")
+            const reviewSession = await Session.create({ parentID: session.id })
+            reviewSessionID = reviewSession.id
+            return { id: "ctx_audit", sessionID: reviewSession.id, status: "queued" }
+          })
+          ;(Cortex as any).start = mock(async (taskID: string) => {
+            order.push("start")
+            expect(taskID).toBe("ctx_audit")
+            const boundLoop = await BlueprintLoopStore.get(scopeID, loop.id)
+            const reviewSession = await Session.get(reviewSessionID)
+            expect(boundLoop.status).toBe("auditing")
+            expect(boundLoop.auditTaskID).toBe("ctx_audit")
+            expect(boundLoop.auditSessionID).toBe(reviewSessionID)
+            expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
+          })
 
-        const proposal = await BlueprintContinuationPolicy.handle({
-          session: await Session.get(session.id),
-          scopeID,
-          sessionID: session.id,
-          terminalMessageID: "msg_terminal",
-        })
+          const refreshed = await Session.get(session.id)
+          const proposal = await BlueprintContinuationPolicy.handle({
+            session: refreshed,
+            scopeID,
+            sessionID: session.id,
+            terminalMessageID: "msg_terminal",
+          })
 
-        expect(proposal).toEqual({ kind: "handled" })
-        const recovered = await BlueprintLoopStore.get(scopeID, loop.id)
-        expect(recovered.status).toBe("auditing")
-        expect(recovered.auditSessionID).toBe(reviewer.id)
-        expect(recovered.auditTaskID).toBe("ctx_recovery_review")
-        expect(recovered.stopRequest?.reviewToolRecoveryAttempts).toBe(1)
-      },
-    })
-  })
+          expect(proposal).toEqual({ kind: "handled" })
+          expect(order).toEqual(["prepare", "start"])
+        },
+      })
+    }))
 
-  test("fails an audit after the bounded terminal-tool recovery budget is exhausted", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await setupLoop()
-        const scopeID = ScopeContext.current.scope.id
-        const requesterMessageID = Identifier.ascending("message")
-        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
-          summary: "Blueprint complete",
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID,
-          reviewToolRecoveryAttempts: 2,
-        })
-        const reviewer = await Session.create({
-          parentID: session.id,
-          cortex: {
-            taskID: "ctx_exhausted_review",
-            parentSessionID: session.id,
-            parentMessageID: requesterMessageID,
-            description: "Audit BlueprintLoop",
-            agent: "supervisor",
-            status: "completed",
-            startedAt: Date.now(),
-            completedAt: Date.now(),
-          },
-        })
-        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
-          status: "auditing",
-          auditSessionID: reviewer.id,
-          auditTaskID: "ctx_exhausted_review",
-        })
-        const prepare = mock(async () => {
-          throw new Error("recovery must not relaunch after exhaustion")
-        })
-        ;(Cortex as any).prepare = prepare
+  test("reuses a completed reviewer that omitted the terminal review tool", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const scopeID = ScopeContext.current.scope.id
+          const requesterMessageID = Identifier.ascending("message")
+          await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+            summary: "Blueprint complete",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID,
+          })
+          const reviewer = await Session.create({
+            parentID: session.id,
+            cortex: {
+              taskID: "ctx_completed_review",
+              parentSessionID: session.id,
+              parentMessageID: requesterMessageID,
+              description: "Audit BlueprintLoop",
+              agent: "supervisor",
+              status: "completed",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+            },
+          })
+          await Session.update(reviewer.id, (draft) => {
+            draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+          })
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            status: "auditing",
+            auditSessionID: reviewer.id,
+            auditTaskID: "ctx_completed_review",
+          })
+          ;(Cortex as any).prepare = mock(async (input: any) => {
+            expect(input.sessionID).toBe(reviewer.id)
+            expect(input.parentSessionID).toBe(session.id)
+            expect(input.parentMessageID).toBe(requesterMessageID)
+            expect(input.reuseInterrupted).toBe(true)
+            expect(input.tools).toEqual({
+              "*": false,
+              blueprint_loop_approve: true,
+              blueprint_loop_reject: true,
+            })
+            expect(input.prompt).toContain(`Execution session ID: ${session.id}`)
+            expect(input.prompt).toContain("Do not search for sessions")
+            return { id: "ctx_recovery_review", sessionID: reviewer.id, status: "queued" }
+          })
+          ;(Cortex as any).start = mock(async (taskID: string) => {
+            expect(taskID).toBe("ctx_recovery_review")
+          })
 
-        const proposal = await BlueprintContinuationPolicy.handle({
-          session: await Session.get(session.id),
-          scopeID,
-          sessionID: session.id,
-          terminalMessageID: "msg_terminal",
-        })
+          const proposal = await BlueprintContinuationPolicy.handle({
+            session: await Session.get(session.id),
+            scopeID,
+            sessionID: session.id,
+            terminalMessageID: "msg_terminal",
+          })
 
-        expect(proposal).toEqual({ kind: "handled" })
-        expect(prepare).not.toHaveBeenCalled()
-        const failed = await BlueprintLoopStore.get(scopeID, loop.id)
-        expect(failed.status).toBe("failed")
-        expect(failed.error).toContain("review_terminal_tool_missing")
-      },
-    })
-  })
+          expect(proposal).toEqual({ kind: "handled" })
+          const recovered = await BlueprintLoopStore.get(scopeID, loop.id)
+          expect(recovered.status).toBe("auditing")
+          expect(recovered.auditSessionID).toBe(reviewer.id)
+          expect(recovered.auditTaskID).toBe("ctx_recovery_review")
+          expect(recovered.stopRequest?.reviewToolRecoveryAttempts).toBe(1)
+        },
+      })
+    }))
 
-  test("fails an audit immediately when the reviewer failed to launch", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await setupLoop()
-        const scopeID = ScopeContext.current.scope.id
-        const requesterMessageID = Identifier.ascending("message")
-        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
-          summary: "Blueprint complete",
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID,
-        })
-        const reviewer = await Session.create({
-          parentID: session.id,
-          cortex: {
-            taskID: "ctx_launch_failed_review",
-            parentSessionID: session.id,
-            parentMessageID: requesterMessageID,
-            description: "Audit BlueprintLoop",
-            agent: "supervisor",
-            status: "error",
-            startedAt: Date.now(),
-            completedAt: Date.now(),
-            error: "No model configured for agent supervisor",
-            launchFailure: true,
-          },
-        })
-        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
-          status: "auditing",
-          auditSessionID: reviewer.id,
-          auditTaskID: "ctx_launch_failed_review",
-        })
-        const prepare = mock(async () => {
-          throw new Error("recovery must not relaunch after a launch failure")
-        })
-        ;(Cortex as any).prepare = prepare
+  test("fails an audit after the bounded terminal-tool recovery budget is exhausted", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const scopeID = ScopeContext.current.scope.id
+          const requesterMessageID = Identifier.ascending("message")
+          await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+            summary: "Blueprint complete",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID,
+            reviewToolRecoveryAttempts: 2,
+          })
+          const reviewer = await Session.create({
+            parentID: session.id,
+            cortex: {
+              taskID: "ctx_exhausted_review",
+              parentSessionID: session.id,
+              parentMessageID: requesterMessageID,
+              description: "Audit BlueprintLoop",
+              agent: "supervisor",
+              status: "completed",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+            },
+          })
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            status: "auditing",
+            auditSessionID: reviewer.id,
+            auditTaskID: "ctx_exhausted_review",
+          })
+          const prepare = mock(async () => {
+            throw new Error("recovery must not relaunch after exhaustion")
+          })
+          ;(Cortex as any).prepare = prepare
 
-        const proposal = await BlueprintContinuationPolicy.handle({
-          session: await Session.get(session.id),
-          scopeID,
-          sessionID: session.id,
-          terminalMessageID: "msg_terminal",
-        })
+          const proposal = await BlueprintContinuationPolicy.handle({
+            session: await Session.get(session.id),
+            scopeID,
+            sessionID: session.id,
+            terminalMessageID: "msg_terminal",
+          })
 
-        expect(proposal).toEqual({ kind: "handled" })
-        expect(prepare).not.toHaveBeenCalled()
-        const failed = await BlueprintLoopStore.get(scopeID, loop.id)
-        expect(failed.status).toBe("failed")
-        expect(failed.error).toContain("reviewer_launch_failed")
-        expect(failed.error).toContain("No model configured for agent supervisor")
-        expect(failed.stopRequest?.reviewToolRecoveryAttempts ?? 0).toBe(0)
-      },
-    })
-  })
+          expect(proposal).toEqual({ kind: "handled" })
+          expect(prepare).not.toHaveBeenCalled()
+          const failed = await BlueprintLoopStore.get(scopeID, loop.id)
+          expect(failed.status).toBe("failed")
+          expect(failed.error).toContain("review_terminal_tool_missing")
+        },
+      })
+    }))
 
-  test.each(["running", "queued"] as const)("does not continue while a child task is %s", async (status) => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await setupLoop()
-        const user = await writeUser(session.id)
-        await writeAssistant(session.id, user.id)
-        ;(Cortex.getTasksForSession as any) = mock(() => [{ status }])
-        const deliver = mock(async () => {})
-        ;(SessionManager.deliver as any) = deliver
+  test("fails an audit immediately when the reviewer failed to launch", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const scopeID = ScopeContext.current.scope.id
+          const requesterMessageID = Identifier.ascending("message")
+          await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+            summary: "Blueprint complete",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID,
+          })
+          const reviewer = await Session.create({
+            parentID: session.id,
+            cortex: {
+              taskID: "ctx_launch_failed_review",
+              parentSessionID: session.id,
+              parentMessageID: requesterMessageID,
+              description: "Audit BlueprintLoop",
+              agent: "supervisor",
+              status: "error",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+              error: "No model configured for agent supervisor",
+              launchFailure: true,
+            },
+          })
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            status: "auditing",
+            auditSessionID: reviewer.id,
+            auditTaskID: "ctx_launch_failed_review",
+          })
+          const prepare = mock(async () => {
+            throw new Error("recovery must not relaunch after a launch failure")
+          })
+          ;(Cortex as any).prepare = prepare
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const proposal = await BlueprintContinuationPolicy.handle({
+            session: await Session.get(session.id),
+            scopeID,
+            sessionID: session.id,
+            terminalMessageID: "msg_terminal",
+          })
 
-        expect(delivered).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
-      },
-    })
-  })
+          expect(proposal).toEqual({ kind: "handled" })
+          expect(prepare).not.toHaveBeenCalled()
+          const failed = await BlueprintLoopStore.get(scopeID, loop.id)
+          expect(failed.status).toBe("failed")
+          expect(failed.error).toContain("reviewer_launch_failed")
+          expect(failed.error).toContain("No model configured for agent supervisor")
+          expect(failed.stopRequest?.reviewToolRecoveryAttempts ?? 0).toBe(0)
+        },
+      })
+    }))
 
-  test.each(["auditing", "completed"] as const)("does not continue when loop status is %s", async (status) => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await setupLoop(status)
-        const user = await writeUser(session.id)
-        await writeAssistant(session.id, user.id)
-        const deliver = mock(async () => {})
-        ;(SessionManager.deliver as any) = deliver
+  test.each(["running", "queued"] as const)(
+    "does not continue while a child task is %s",
+    runtime.bind(async (status) => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await setupLoop()
+          const user = await writeUser(session.id)
+          await writeAssistant(session.id, user.id)
+          ;(Cortex.getTasksForSession as any) = mock(() => [{ status }])
+          const deliver = mock(async () => {})
+          ;(SessionManager.deliver as any) = deliver
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
 
-        expect(delivered).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
-      },
-    })
-  })
+          expect(delivered).toBe(false)
+          expect(deliver).not.toHaveBeenCalled()
+        },
+      })
+    }),
+  )
 
-  test("does not continue without a terminal assistant response", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await setupLoop()
-        await writeUser(session.id)
-        const deliver = mock(async () => {})
-        ;(SessionManager.deliver as any) = deliver
+  test.each(["auditing", "completed"] as const)(
+    "does not continue when loop status is %s",
+    runtime.bind(async (status) => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await setupLoop(status)
+          const user = await writeUser(session.id)
+          await writeAssistant(session.id, user.id)
+          const deliver = mock(async () => {})
+          ;(SessionManager.deliver as any) = deliver
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
 
-        expect(delivered).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
-      },
-    })
-  })
+          expect(delivered).toBe(false)
+          expect(deliver).not.toHaveBeenCalled()
+        },
+      })
+    }),
+  )
 
-  test("does not continue after an assistant error", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await setupLoop()
-        const user = await writeUser(session.id)
-        await writeAssistant(session.id, user.id, {
-          error: new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"],
-        })
-        const deliver = mock(async () => {})
-        ;(SessionManager.deliver as any) = deliver
+  test("does not continue without a terminal assistant response", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await setupLoop()
+          await writeUser(session.id)
+          const deliver = mock(async () => {})
+          ;(SessionManager.deliver as any) = deliver
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
 
-        expect(delivered).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
-      },
-    })
-  })
+          expect(delivered).toBe(false)
+          expect(deliver).not.toHaveBeenCalled()
+        },
+      })
+    }))
 
-  test("does not continue when the latest assistant response for the user errored", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await setupLoop()
-        const user = await writeUser(session.id)
-        await writeAssistant(session.id, user.id)
-        await writeAssistant(session.id, user.id, {
-          error: new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"],
-        })
-        const deliver = mock(async () => {})
-        ;(SessionManager.deliver as any) = deliver
+  test("does not continue after an assistant error", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await setupLoop()
+          const user = await writeUser(session.id)
+          await writeAssistant(session.id, user.id, {
+            error: new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"],
+          })
+          const deliver = mock(async () => {})
+          ;(SessionManager.deliver as any) = deliver
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
 
-        expect(delivered).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
-      },
-    })
-  })
+          expect(delivered).toBe(false)
+          expect(deliver).not.toHaveBeenCalled()
+        },
+      })
+    }))
 
-  test("does not continue when the bound loop is missing", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.blueprint = { loopID: Identifier.ascending("blueprint_loop") }
-        })
-        const user = await writeUser(session.id)
-        await writeAssistant(session.id, user.id)
-        const deliver = mock(async () => {})
-        ;(SessionManager.deliver as any) = deliver
+  test("does not continue when the latest assistant response for the user errored", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await setupLoop()
+          const user = await writeUser(session.id)
+          await writeAssistant(session.id, user.id)
+          await writeAssistant(session.id, user.id, {
+            error: new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"],
+          })
+          const deliver = mock(async () => {})
+          ;(SessionManager.deliver as any) = deliver
 
-        const delivered = await BlueprintContinuation.handleIdle(session.id)
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
 
-        expect(delivered).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
-      },
-    })
-  })
+          expect(delivered).toBe(false)
+          expect(deliver).not.toHaveBeenCalled()
+        },
+      })
+    }))
+
+  test("does not continue when the bound loop is missing", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.blueprint = { loopID: Identifier.ascending("blueprint_loop") }
+          })
+          const user = await writeUser(session.id)
+          await writeAssistant(session.id, user.id)
+          const deliver = mock(async () => {})
+          ;(SessionManager.deliver as any) = deliver
+
+          const delivered = await BlueprintContinuation.handleIdle(session.id)
+
+          expect(delivered).toBe(false)
+          expect(deliver).not.toHaveBeenCalled()
+        },
+      })
+    }))
   test.each(["error", "cancelled"] as const)(
     "retries when reviewer is %s by consuming recovery budget",
-    async (status) => {
+    runtime.bind(async (status) => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -557,61 +579,64 @@ describe("BlueprintContinuation", () => {
           expect(recovered.stopRequest?.reviewToolRecoveryAttempts).toBe(1)
         },
       })
-    },
+    }),
   )
 
-  test("fails an audit after reviewer error exhausts recovery budget", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await setupLoop()
-        const scopeID = ScopeContext.current.scope.id
-        const requesterMessageID = Identifier.ascending("message")
-        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
-          summary: "Blueprint complete",
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID,
-          reviewToolRecoveryAttempts: 2,
-        })
-        const reviewer = await Session.create({
-          parentID: session.id,
-          cortex: {
-            taskID: "ctx_exhausted_error_review",
-            parentSessionID: session.id,
-            parentMessageID: requesterMessageID,
-            description: "Audit BlueprintLoop",
-            agent: "supervisor",
-            status: "error",
-            error: "some crash",
-            startedAt: Date.now(),
-            completedAt: Date.now(),
-          },
-        })
-        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
-          status: "auditing",
-          auditSessionID: reviewer.id,
-          auditTaskID: "ctx_exhausted_error_review",
-        })
-        const prepare = mock(async () => {
-          throw new Error("recovery must not relaunch after exhaustion")
-        })
-        ;(Cortex as any).prepare = prepare
+  test("fails an audit after reviewer error exhausts recovery budget", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const scopeID = ScopeContext.current.scope.id
+          const requesterMessageID = Identifier.ascending("message")
+          await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+            summary: "Blueprint complete",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID,
+            reviewToolRecoveryAttempts: 2,
+          })
+          const reviewer = await Session.create({
+            parentID: session.id,
+            cortex: {
+              taskID: "ctx_exhausted_error_review",
+              parentSessionID: session.id,
+              parentMessageID: requesterMessageID,
+              description: "Audit BlueprintLoop",
+              agent: "supervisor",
+              status: "error",
+              error: "some crash",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+            },
+          })
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            status: "auditing",
+            auditSessionID: reviewer.id,
+            auditTaskID: "ctx_exhausted_error_review",
+          })
+          const prepare = mock(async () => {
+            throw new Error("recovery must not relaunch after exhaustion")
+          })
+          ;(Cortex as any).prepare = prepare
 
-        const proposal = await BlueprintContinuationPolicy.handle({
-          session: await Session.get(session.id),
-          scopeID,
-          sessionID: session.id,
-          terminalMessageID: "msg_terminal",
-        })
+          const proposal = await BlueprintContinuationPolicy.handle({
+            session: await Session.get(session.id),
+            scopeID,
+            sessionID: session.id,
+            terminalMessageID: "msg_terminal",
+          })
 
-        expect(proposal).toEqual({ kind: "handled" })
-        expect(prepare).not.toHaveBeenCalled()
-        const failed = await BlueprintLoopStore.get(scopeID, loop.id)
-        expect(failed.status).toBe("failed")
-        expect(failed.error).toContain("review_terminal_tool_missing")
-      },
-    })
-  })
+          expect(proposal).toEqual({ kind: "handled" })
+          expect(prepare).not.toHaveBeenCalled()
+          const failed = await BlueprintLoopStore.get(scopeID, loop.id)
+          expect(failed.status).toBe("failed")
+          expect(failed.error).toContain("review_terminal_tool_missing")
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

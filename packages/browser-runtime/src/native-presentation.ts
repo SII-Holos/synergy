@@ -1,13 +1,18 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
 import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
 import { BrowserBroker } from "./broker.js"
 import { BrowserOwner } from "./owner.js"
 
-const consumed = new Map<string, number>()
+const runtimeState = RuntimeContext.state(() => ({
+  consumed: new Map<string, number>(),
+}))
 const MAX_CONSUMED_LEASES = 2_048
 
 export namespace BrowserNativePresentation {
   export function consume(owner: BrowserOwner.Info, serverOrigin: string, token: string | undefined): boolean {
+    const instanceState = runtimeState()
+
     prune()
     if (!token) return false
     let claims: ReturnType<typeof BrowserNativeLease.verify>
@@ -38,28 +43,32 @@ export namespace BrowserNativePresentation {
         retryable: true,
       })
     }
-    if (consumed.has(claims.nonce)) {
+    if (instanceState.consumed.has(claims.nonce)) {
       throw new BrowserProtocolError({
         code: "browser_native_ticket_replayed",
         message: "The native Browser presentation ticket was already used.",
         retryable: true,
       })
     }
-    consumed.set(claims.nonce, claims.expiresAt)
-    while (consumed.size > MAX_CONSUMED_LEASES) {
-      const oldest = consumed.keys().next().value
+    instanceState.consumed.set(claims.nonce, claims.expiresAt)
+    while (instanceState.consumed.size > MAX_CONSUMED_LEASES) {
+      const oldest = instanceState.consumed.keys().next().value
       if (typeof oldest !== "string") break
-      consumed.delete(oldest)
+      instanceState.consumed.delete(oldest)
     }
     return true
   }
 
   export function resetForTest(): void {
-    consumed.clear()
+    const instanceState = runtimeState()
+
+    instanceState.consumed.clear()
   }
 }
 
 function prune(): void {
+  const instanceState = runtimeState()
+
   const now = Date.now()
-  for (const [nonce, expiresAt] of consumed) if (expiresAt < now) consumed.delete(nonce)
+  for (const [nonce, expiresAt] of instanceState.consumed) if (expiresAt < now) instanceState.consumed.delete(nonce)
 }

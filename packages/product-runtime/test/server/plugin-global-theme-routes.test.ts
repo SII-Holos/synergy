@@ -10,8 +10,11 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { saveApproval } from "@ericsanchezok/synergy-plugin-host/plugin/consent/approval-store"
 import { getLoadedPlugins, resetAllPluginState } from "@ericsanchezok/synergy-plugin-host/plugin/loader"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 async function createThemePluginFixture(rootDir: string, pluginId: string): Promise<string> {
   const dir = path.join(rootDir, `plugin-${pluginId}`)
@@ -49,73 +52,85 @@ describe("GET /plugin/ui/contributions/themes", () => {
   let pluginRoot: Awaited<ReturnType<typeof tmpdir>>
   let projectTmp: Awaited<ReturnType<typeof tmpdir>>
 
-  beforeAll(async () => {
-    pluginRoot = await tmpdir()
-    const spec = await createThemePluginFixture(pluginRoot.path, "route-theme-plugin")
-    projectTmp = await tmpdir({ git: true, config: { plugin: [spec] } })
-    app = await Server.App()
-  })
+  beforeAll(() =>
+    runtime.run(async () => {
+      pluginRoot = await tmpdir()
+      const spec = await createThemePluginFixture(pluginRoot.path, "route-theme-plugin")
+      projectTmp = await tmpdir({ git: true, config: { plugin: [spec] } })
+      app = await Server.App()
+    }),
+  )
 
-  afterAll(async () => {
-    await resetAllPluginState()
-    await projectTmp[Symbol.asyncDispose]()
-    await pluginRoot[Symbol.asyncDispose]()
-  })
+  afterAll(() =>
+    runtime.run(async () => {
+      await resetAllPluginState()
+      await projectTmp[Symbol.asyncDispose]()
+      await pluginRoot[Symbol.asyncDispose]()
+    }),
+  )
 
-  test("returns the global theme list without any scope binding and stays stable across scope contexts", async () => {
-    await resetAllPluginState()
-    const scope = await projectTmp.scope()
-    // Activate the project scope so its plugin enters the catalog.
-    await ScopeContext.provide({ scope, fn: async () => void (await getLoadedPlugins()) })
+  test("returns the global theme list without any scope binding and stays stable across scope contexts", () =>
+    runtime.run(async () => {
+      await resetAllPluginState()
+      const scope = await projectTmp.scope()
+      // Activate the project scope so its plugin enters the catalog.
+      await ScopeContext.provide({ scope, fn: async () => void (await getLoadedPlugins()) })
 
-    // The theme asset must resolve globally too: the registrar fetches it
-    // without any scope hint, so the catalog fallback in the asset route is
-    // what makes a project-scope theme registrable from any context.
-    const assetRes = await app.request(
-      "/plugin/assets/route-theme-plugin/route-theme-plugin-generation/themes/skin.json",
-    )
-    expect(assetRes.status).toBe(200)
-    expect(assetRes.headers.get("content-type")).toBe("application/json")
-    const asset = (await assetRes.json()) as { id: string }
-    expect(asset.id).toBe("unused")
+      // The theme asset must resolve globally too: the registrar fetches it
+      // without any scope hint, so the catalog fallback in the asset route is
+      // what makes a project-scope theme registrable from any context.
+      const assetRes = await app.request(
+        "/plugin/assets/route-theme-plugin/route-theme-plugin-generation/themes/skin.json",
+      )
+      expect(assetRes.status).toBe(200)
+      expect(assetRes.headers.get("content-type")).toBe("application/json")
+      const asset = (await assetRes.json()) as { id: string }
+      expect(asset.id).toBe("unused")
 
-    // The catalog fallback serves only the manifest's declared ui.theme
-    // assets: any other file in the plugin directory (e.g. manifests, env
-    // files, source) must not be readable through the scope-less route.
-    const undeclared = await app.request("/plugin/assets/route-theme-plugin/route-theme-plugin-generation/plugin.json")
-    expect(undeclared.status).toBe(404)
+      // The catalog fallback serves only the manifest's declared ui.theme
+      // assets: any other file in the plugin directory (e.g. manifests, env
+      // files, source) must not be readable through the scope-less route.
+      const undeclared = await app.request(
+        "/plugin/assets/route-theme-plugin/route-theme-plugin-generation/plugin.json",
+      )
+      expect(undeclared.status).toBe(404)
 
-    // No directory/scopeID on the request: the route must resolve as global,
-    // not 400 ScopeRequired, and still surface the project-scope plugin.
-    const res = await app.request("/plugin/ui/contributions/themes")
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as Array<Record<string, unknown>>
-    const entry = body.find((item) => item.pluginId === "route-theme-plugin")
-    expect(entry).toBeDefined()
-    expect(entry).toMatchObject({
-      generation: "route-theme-plugin-generation",
-      contributions: [{ kind: "ui.theme", id: "skin", path: "themes/skin.json" }],
-    })
-    expect(Array.isArray(entry?.enabledScopes)).toBe(true)
-    expect((entry?.enabledScopes as string[]).length).toBeGreaterThan(0)
-    expect(entry?.scopeId).toBeUndefined()
+      // No directory/scopeID on the request: the route must resolve as global,
+      // not 400 ScopeRequired, and still surface the project-scope plugin.
+      const res = await app.request("/plugin/ui/contributions/themes")
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as Array<Record<string, unknown>>
+      const entry = body.find((item) => item.pluginId === "route-theme-plugin")
+      expect(entry).toBeDefined()
+      expect(entry).toMatchObject({
+        generation: "route-theme-plugin-generation",
+        contributions: [{ kind: "ui.theme", id: "skin", path: "themes/skin.json" }],
+      })
+      expect(Array.isArray(entry?.enabledScopes)).toBe(true)
+      expect((entry?.enabledScopes as string[]).length).toBeGreaterThan(0)
+      expect(entry?.scopeId).toBeUndefined()
 
-    // A home-scope request must observe the same global list (no scope swap).
-    const homeRes = await app.request("/plugin/ui/contributions/themes")
-    expect(homeRes.status).toBe(200)
-    const homeBody = (await homeRes.json()) as Array<Record<string, unknown>>
-    expect(homeBody.some((item) => item.pluginId === "route-theme-plugin")).toBe(true)
-  })
+      // A home-scope request must observe the same global list (no scope swap).
+      const homeRes = await app.request("/plugin/ui/contributions/themes")
+      expect(homeRes.status).toBe(200)
+      const homeBody = (await homeRes.json()) as Array<Record<string, unknown>>
+      expect(homeBody.some((item) => item.pluginId === "route-theme-plugin")).toBe(true)
+    }))
 
-  test("rejects theme listings and assets after all scopes are disposed", async () => {
-    await resetAllPluginState()
-    const res = await app.request("/plugin/ui/contributions/themes")
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual([])
+  test("rejects theme listings and assets after all scopes are disposed", () =>
+    runtime.run(async () => {
+      await resetAllPluginState()
+      const res = await app.request("/plugin/ui/contributions/themes")
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual([])
 
-    // Loader disposal removes the enabled scope but caches the catalog entry;
-    // the global asset fallback must not keep serving the disposed plugin.
-    const asset = await app.request("/plugin/assets/route-theme-plugin/route-theme-plugin-generation/themes/skin.json")
-    expect(asset.status).toBe(404)
-  })
+      // Loader disposal removes the enabled scope but caches the catalog entry;
+      // the global asset fallback must not keep serving the disposed plugin.
+      const asset = await app.request(
+        "/plugin/assets/route-theme-plugin/route-theme-plugin-generation/themes/skin.json",
+      )
+      expect(asset.status).toBe(404)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

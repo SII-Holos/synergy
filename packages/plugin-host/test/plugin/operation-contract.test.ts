@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { PluginOperationError, resolvePluginOperation, validatePluginOperationValue } from "../../src/plugin/operation"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const manifest = {
   contributions: [
@@ -9,29 +12,33 @@ const manifest = {
 }
 
 describe("plugin operation contract", () => {
-  test("rejects SDK calls to UI-only operations", () => {
-    expect(() => resolvePluginOperation(manifest, "ui.query", "sdk")).toThrow(PluginOperationError)
-    try {
-      resolvePluginOperation(manifest, "ui.query", "sdk")
-    } catch (error) {
-      expect((error as PluginOperationError).code).toBe("CAPABILITY_DENIED")
-    }
-    expect(resolvePluginOperation(manifest, "public.query", "sdk").id).toBe("public.query")
-  })
+  test("rejects SDK calls to UI-only operations", () =>
+    runtime.run(() => {
+      expect(() => resolvePluginOperation(manifest, "ui.query", "sdk")).toThrow(PluginOperationError)
+      try {
+        resolvePluginOperation(manifest, "ui.query", "sdk")
+      } catch (error) {
+        expect((error as PluginOperationError).code).toBe("CAPABILITY_DENIED")
+      }
+      expect(resolvePluginOperation(manifest, "public.query", "sdk").id).toBe("public.query")
+    }))
 
-  test("validates both request and response schemas with stable error codes", () => {
-    const schema = {
-      type: "object",
-      required: ["name"],
-      properties: { name: { type: "string" } },
-      additionalProperties: false,
-    }
-    expect(() => validatePluginOperationValue(schema, {}, "INPUT_INVALID")).toThrow(PluginOperationError)
-    try {
-      validatePluginOperationValue(schema, { name: 3 }, "OUTPUT_INVALID")
-    } catch (error) {
-      expect((error as PluginOperationError).code).toBe("OUTPUT_INVALID")
-    }
-    expect(validatePluginOperationValue(schema, { name: "valid" }, "INPUT_INVALID")).toBeUndefined()
-  })
+  test("validates both request and response schemas with stable error codes", () =>
+    runtime.run(() => {
+      const schema = {
+        type: "object",
+        required: ["name"],
+        properties: { name: { type: "string" } },
+        additionalProperties: false,
+      }
+      expect(() => validatePluginOperationValue(schema, {}, "INPUT_INVALID")).toThrow(PluginOperationError)
+      try {
+        validatePluginOperationValue(schema, { name: 3 }, "OUTPUT_INVALID")
+      } catch (error) {
+        expect((error as PluginOperationError).code).toBe("OUTPUT_INVALID")
+      }
+      expect(validatePluginOperationValue(schema, { name: "valid" }, "INPUT_INVALID")).toBeUndefined()
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

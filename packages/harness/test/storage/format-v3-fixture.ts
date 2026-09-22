@@ -110,58 +110,60 @@ export function createV2Store(options: {
       database.run("PRAGMA journal_mode = WAL")
     }
     database.exec(V2_SCHEMA.join(";\n"))
-    database
-      .query("INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, 2, '', 'idle')")
-      .run(options.namespace)
-    for (const record of options.records) {
-      for (let depth = 1; depth <= record.key.length; depth++) {
-        const prefix = record.key.slice(0, depth)
+    database.transaction(() => {
+      database
+        .query("INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, 2, '', 'idle')")
+        .run(options.namespace)
+      for (const record of options.records) {
+        for (let depth = 1; depth <= record.key.length; depth++) {
+          const prefix = record.key.slice(0, depth)
+          database
+            .query(
+              "INSERT OR IGNORE INTO storage_nodes(namespace, key_id, parent_id, key_text, segment) VALUES (?, ?, ?, ?, ?)",
+            )
+            .run(options.namespace, keyHex(prefix), keyHex(prefix.slice(0, -1)), JSON.stringify(prefix), prefix.at(-1)!)
+        }
+        const meta = metadata(record.key)
         database
           .query(
-            "INSERT OR IGNORE INTO storage_nodes(namespace, key_id, parent_id, key_text, segment) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO storage_records(namespace, key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           )
-          .run(options.namespace, keyHex(prefix), keyHex(prefix.slice(0, -1)), JSON.stringify(prefix), prefix.at(-1)!)
+          .run(
+            options.namespace,
+            keyHex(record.key),
+            JSON.stringify(record.key),
+            record.body === undefined ? JSON.stringify({ v: 1 }) : record.body,
+            1,
+            meta.kind,
+            meta.scope,
+            meta.session,
+            meta.message,
+            meta.order,
+            record.updated ?? 1,
+          )
       }
-      const meta = metadata(record.key)
-      database
-        .query(
-          "INSERT OR REPLACE INTO storage_records(namespace, key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          options.namespace,
-          keyHex(record.key),
-          JSON.stringify(record.key),
-          record.body === undefined ? JSON.stringify({ v: 1 }) : record.body,
-          1,
-          meta.kind,
-          meta.scope,
-          meta.session,
-          meta.message,
-          meta.order,
-          record.updated ?? 1,
-        )
-    }
-    for (const artifact of options.artifacts ?? [])
-      database
-        .query(
-          "INSERT OR REPLACE INTO storage_artifacts(namespace, key_text, owner_key, location, pack) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run(
-          options.namespace,
-          JSON.stringify(artifact.key),
-          JSON.stringify(artifact.key.slice(0, 1)),
-          JSON.stringify({
-            pack: artifact.pack,
-            blockOffset: 0,
-            blockBytes: 1,
-            decodedBytes: 1,
-            offset: 0,
-            size: 1,
-            codec: "raw",
-            sha256: "0".repeat(64),
-          }),
-          artifact.pack,
-        )
+      for (const artifact of options.artifacts ?? [])
+        database
+          .query(
+            "INSERT OR REPLACE INTO storage_artifacts(namespace, key_text, owner_key, location, pack) VALUES (?, ?, ?, ?, ?)",
+          )
+          .run(
+            options.namespace,
+            JSON.stringify(artifact.key),
+            JSON.stringify(artifact.key.slice(0, 1)),
+            JSON.stringify({
+              pack: artifact.pack,
+              blockOffset: 0,
+              blockBytes: 1,
+              decodedBytes: 1,
+              offset: 0,
+              size: 1,
+              codec: "raw",
+              sha256: "0".repeat(64),
+            }),
+            artifact.pack,
+          )
+    })()
   } finally {
     database.close()
   }

@@ -83,11 +83,21 @@ export namespace SnapshotStore {
     return stored === undefined ? undefined : Owner.parse(stored)
   }
 
-  export async function resolve(scopeID: string, sessionID: string, workspace: string): Promise<Operation> {
+  export async function resolveRepository(scopeID: string, sessionID: string) {
     const record = await owner(scopeID, sessionID)
     if (record?.backend === "deleted") throw new StorageError("Snapshot session has been permanently deleted")
     const backend = record?.backend ?? "shared"
-    const repo = backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID)
+    return {
+      scopeID,
+      sessionID,
+      backend,
+      repository: backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID),
+    }
+  }
+
+  export async function resolve(scopeID: string, sessionID: string, workspace: string): Promise<Operation> {
+    const owned = await resolveRepository(scopeID, sessionID)
+    const { backend, repository: repo } = owned
     const real = await fs.realpath(workspace).catch(() => path.resolve(workspace))
     const identity = process.platform === "win32" ? real.toLowerCase() : real
     const temporary = path.join(cache(scopeID, sessionID), createHash("sha256").update(identity).digest("hex"))
@@ -150,7 +160,7 @@ export namespace SnapshotStore {
     return result.text.trim()
   }
 
-  export async function initialize(operation: Operation) {
+  export async function initialize(operation: Awaited<ReturnType<typeof resolveRepository>>) {
     await withFileLock(
       { directory: SnapshotLease.directory(), key: `snapshot-init:${operation.repository}` },
       async () => {

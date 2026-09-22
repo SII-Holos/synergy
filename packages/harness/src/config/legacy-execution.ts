@@ -1,9 +1,12 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 
 /** One-release input adapter. Persisted files are upgraded by the config migration. */
 export namespace LegacyExecutionConfig {
   const log = Log.create({ service: "config.legacy-execution" })
-  const warned = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    warned: new Set<string>(),
+  }))
   const fields = {
     coauthor_reminder: ["prompt", "coauthorReminder"],
     openTelemetry: ["observability", "modelSpans"],
@@ -33,12 +36,14 @@ export namespace LegacyExecutionConfig {
     delete result.experimental
     return result
   }
-  export function environment(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
+  export function environment(env: NodeJS.ProcessEnv = RuntimeContext.current().host.env): Record<string, unknown> {
+    const instanceState = runtimeState()
+
     const result: Record<string, unknown> = {}
     function enabled(key: string) {
       if (env[key] === undefined) return false
-      if (!warned.has(key)) {
-        warned.add(key)
+      if (!instanceState.warned.has(key)) {
+        instanceState.warned.add(key)
         log.warn("Deprecated execution environment variable; use domain config or an experiment file", { name: key })
       }
       return env[key]?.toLowerCase() === "true" || env[key] === "1"

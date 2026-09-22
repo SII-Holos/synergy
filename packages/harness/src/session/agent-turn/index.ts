@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import { Log } from "../../util/log"
 import { ProviderRetryCoordinator, providerRetryKey } from "../../provider/retry-coordinator"
 import { LLM } from "../llm"
@@ -23,44 +24,56 @@ export namespace AgentTurn {
   export type Stream = AgentTurnStream
   export type InProcessStream = (input: Input) => Promise<Stream>
 
-  let recovery = new ProviderRetryCoordinator()
-  let pool: AgentWorkerPool | undefined
-  let options = DEFAULT_AGENT_WORKER_POOL_OPTIONS
-  let accepting = true
-  let stopPromise: Promise<void> | undefined
-  let inProcessStream: InProcessStream | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    recovery: new ProviderRetryCoordinator(),
+    pool: undefined as AgentWorkerPool | undefined,
+    options: DEFAULT_AGENT_WORKER_POOL_OPTIONS,
+    accepting: true,
+    stopPromise: undefined as Promise<void> | undefined,
+    inProcessStream: undefined as InProcessStream | undefined,
+  }))
 
   const log = Log.create({ service: "agent.turn" })
   export function configure(input: Partial<AgentWorkerPoolOptions> = {}): void {
-    if (pool) throw new Error("Agent worker pool cannot be reconfigured after it has started")
-    accepting = true
-    recovery = new ProviderRetryCoordinator()
-    options = {
+    const instanceState = runtimeState()
+
+    if (instanceState.pool) throw new Error("Agent worker pool cannot be reconfigured after it has started")
+    instanceState.accepting = true
+    instanceState.recovery = new ProviderRetryCoordinator()
+    instanceState.options = {
       ...DEFAULT_AGENT_WORKER_POOL_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
     }
   }
   export function setInProcessStream(hook: InProcessStream | undefined): void {
-    inProcessStream = hook
+    const instanceState = runtimeState()
+
+    instanceState.inProcessStream = hook
   }
 
   export function closeAdmission(): void {
-    accepting = false
-    recovery.close()
+    const instanceState = runtimeState()
+
+    instanceState.accepting = false
+    instanceState.recovery.close()
   }
 
   export function resize(size: number): void {
+    const instanceState = runtimeState()
+
     if (!Number.isInteger(size) || size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
     }
-    options = { ...options, size }
-    pool?.resize(size)
+    instanceState.options = { ...instanceState.options, size }
+    instanceState.pool?.resize(size)
   }
 
   export function prewarm(): void {
-    if (!accepting || stopPromise || inProcessStream) return
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting || instanceState.stopPromise || instanceState.inProcessStream) return
     try {
-      pool ??= new AgentWorkerPool(options)
+      instanceState.pool ??= new AgentWorkerPool(instanceState.options)
     } catch (error) {
       // Option validation cannot succeed in any later attempt either; log it
       // and let the first turn surface the failure through lazy creation.
@@ -69,7 +82,9 @@ export namespace AgentTurn {
   }
 
   export async function stream(input: Input): Promise<Stream> {
-    if (!accepting || stopPromise) throw new Error("Agent worker pool is stopping")
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
     const { contextUsageProvenance, recording, ...turnInput } = input
     const attribution = recording ?? {
       owner: {
@@ -82,14 +97,14 @@ export namespace AgentTurn {
       runID: input.user.rootID ?? input.user.id,
       purpose: input.agent.name,
     }
-    const prepared = inProcessStream
+    const prepared = instanceState.inProcessStream
       ? undefined
       : await LLM.prepare({
           ...turnInput,
           tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
         })
     try {
-      return await recovery.stream(providerRetryKey(input.model, prepared?.provider), input.abort, () =>
+      return await instanceState.recovery.stream(providerRetryKey(input.model, prepared?.provider), input.abort, () =>
         RolloutCall.stream(
           {
             ...attribution,
@@ -113,10 +128,11 @@ export namespace AgentTurn {
             ),
           },
           async (archive) => {
-            if (!accepting || stopPromise) throw new Error("Agent worker pool is stopping")
-            if (inProcessStream) return RolloutTransport.provide(archive, () => inProcessStream!(input))
-            pool ??= new AgentWorkerPool(options)
-            const result = await pool.run({ ...turnInput, prepared: prepared!, archive })
+            if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
+            if (instanceState.inProcessStream)
+              return RolloutTransport.provide(archive, () => instanceState.inProcessStream!(input))
+            instanceState.pool ??= new AgentWorkerPool(instanceState.options)
+            const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive })
             const contextUsageDraft = startContextUsageDraft(input, prepared!.system, contextUsageProvenance)
             return { ...result, contextUsageDraft }
           },
@@ -135,13 +151,15 @@ export namespace AgentTurn {
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     return (
-      pool?.stats() ?? {
-        configured: options.size,
-        minIdle: options.minIdle,
-        idleTimeoutMs: options.idleTimeoutMs,
-        maxQueued: options.maxQueued,
-        maxQueuedBytes: options.maxQueuedBytes,
+      instanceState.pool?.stats() ?? {
+        configured: instanceState.options.size,
+        minIdle: instanceState.options.minIdle,
+        idleTimeoutMs: instanceState.options.idleTimeoutMs,
+        maxQueued: instanceState.options.maxQueued,
+        maxQueuedBytes: instanceState.options.maxQueuedBytes,
         workers: 0,
         ready: 0,
         active: 0,
@@ -162,17 +180,19 @@ export namespace AgentTurn {
   }
 
   export async function stop(): Promise<void> {
+    const instanceState = runtimeState()
+
     closeAdmission()
-    if (stopPromise) return stopPromise
-    const current = pool
-    stopPromise = (async () => {
+    if (instanceState.stopPromise) return instanceState.stopPromise
+    const current = instanceState.pool
+    instanceState.stopPromise = (async () => {
       await current?.stop()
-      if (pool === current) pool = undefined
+      if (instanceState.pool === current) instanceState.pool = undefined
     })()
     try {
-      await stopPromise
+      await instanceState.stopPromise
     } finally {
-      stopPromise = undefined
+      instanceState.stopPromise = undefined
     }
   }
 }

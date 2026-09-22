@@ -7,6 +7,9 @@ import {
   peekRuntimeEndpointGeneration,
 } from "@ericsanchezok/synergy-harness/util/runtime-endpoint"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function manifest(input: { capability?: boolean; contributionRequires?: boolean } = {}) {
   const compiled = compilePluginManifest(
@@ -54,43 +57,49 @@ async function invoke(input: {
 }
 
 describe("runtime endpoint Host Service", () => {
-  afterEach(() => configureRuntimeEndpoint(undefined))
+  afterEach(() => runtime.run(() => configureRuntimeEndpoint(undefined)))
 
-  test("requires both the capability and contribution requirement", async () => {
-    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener-one" })
-    await expect(invoke({ capability: false })).rejects.toThrow('does not declare capability "runtime.endpoint.read"')
-    await expect(invoke({ contributionRequires: false })).rejects.toThrow(
-      'does not require capability "runtime.endpoint.read"',
-    )
-  })
+  test("requires both the capability and contribution requirement", () =>
+    runtime.run(async () => {
+      configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener-one" })
+      await expect(invoke({ capability: false })).rejects.toThrow('does not declare capability "runtime.endpoint.read"')
+      await expect(invoke({ contributionRequires: false })).rejects.toThrow(
+        'does not require capability "runtime.endpoint.read"',
+      )
+    }))
 
-  test("returns only the loopback URL and opaque listener generation", async () => {
-    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener-two" })
-    await expect(invoke({})).resolves.toEqual({
-      url: "http://127.0.0.1:43123",
-      generation: "listener-two",
-    })
-    await expect(invoke({ params: { token: "no" } })).rejects.toThrow("does not accept parameters")
-  })
+  test("returns only the loopback URL and opaque listener generation", () =>
+    runtime.run(async () => {
+      configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener-two" })
+      await expect(invoke({})).resolves.toEqual({
+        url: "http://127.0.0.1:43123",
+        generation: "listener-two",
+      })
+      await expect(invoke({ params: { token: "no" } })).rejects.toThrow("does not accept parameters")
+    }))
 
-  test("treats wildcard binds as loopback-reachable and normalizes the URL", async () => {
-    configureRuntimeEndpoint({ hostname: "0.0.0.0", port: 43123, generation: "listener-wildcard-v4" })
-    await expect(invoke({})).resolves.toEqual({
-      url: "http://127.0.0.1:43123",
-      generation: "listener-wildcard-v4",
-    })
-    configureRuntimeEndpoint({ hostname: "::", port: 43123, generation: "listener-wildcard-v6" })
-    await expect(invoke({})).resolves.toEqual({
-      url: "http://127.0.0.1:43123",
-      generation: "listener-wildcard-v6",
-    })
-  })
+  test("treats wildcard binds as loopback-reachable and normalizes the URL", () =>
+    runtime.run(async () => {
+      configureRuntimeEndpoint({ hostname: "0.0.0.0", port: 43123, generation: "listener-wildcard-v4" })
+      await expect(invoke({})).resolves.toEqual({
+        url: "http://127.0.0.1:43123",
+        generation: "listener-wildcard-v4",
+      })
+      configureRuntimeEndpoint({ hostname: "::", port: 43123, generation: "listener-wildcard-v6" })
+      await expect(invoke({})).resolves.toEqual({
+        url: "http://127.0.0.1:43123",
+        generation: "listener-wildcard-v6",
+      })
+    }))
 
-  test("rejects unavailable and non-loopback listeners", async () => {
-    configureRuntimeEndpoint(undefined)
-    await expect(invoke({})).rejects.toMatchObject({ code: "PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE" })
-    configureRuntimeEndpoint({ hostname: "192.168.1.5", port: 43123, generation: "listener-three" })
-    expect(peekRuntimeEndpointGeneration()).toBeUndefined()
-    await expect(invoke({})).rejects.toMatchObject({ code: "PLUGIN_RUNTIME_ENDPOINT_UNSAFE" })
-  })
+  test("rejects unavailable and non-loopback listeners", () =>
+    runtime.run(async () => {
+      configureRuntimeEndpoint(undefined)
+      await expect(invoke({})).rejects.toMatchObject({ code: "PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE" })
+      configureRuntimeEndpoint({ hostname: "192.168.1.5", port: 43123, generation: "listener-three" })
+      expect(peekRuntimeEndpointGeneration()).toBeUndefined()
+      await expect(invoke({})).rejects.toMatchObject({ code: "PLUGIN_RUNTIME_ENDPOINT_UNSAFE" })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

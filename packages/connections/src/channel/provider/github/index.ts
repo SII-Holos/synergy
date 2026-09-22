@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -324,8 +325,8 @@ export class GithubProvider
   }
 
   private async resolveInstallationToken(owner: string, repo: string, signal?: AbortSignal): Promise<string> {
-    const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
-    const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+    const appId = Number(RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_ID)
+    const privateKey = RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
     const jwt = GitHubChannelAuth.generateJWT({ appId, privateKey })
     const installation = await GitHubChannelAuth.GitHubClient.send<{ id?: unknown }>(
       GitHubChannelAuth.GitHubClient.resolveInstallation({ owner, repo, jwt }),

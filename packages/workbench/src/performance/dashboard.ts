@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Diagnostics } from "@ericsanchezok/synergy-harness/observability/diagnostics"
 import { ObservabilityIssues } from "@ericsanchezok/synergy-harness/observability/issues"
@@ -22,37 +23,47 @@ export namespace PerformanceDashboard {
   type MetricRow = ObservabilityStore.StoredMetric
 
   const SUMMARY_CACHE_MS = 1000
-  let cached: { key: string; at: number; value: Promise<PerformanceSchema.DashboardSummary> } | undefined
-  const labelsCache = new WeakMap<object, Record<string, unknown>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    cached: undefined as { key: string; at: number; value: Promise<PerformanceSchema.DashboardSummary> } | undefined,
+    labelsCache: new WeakMap<object, Record<string, unknown>>(),
+  }))
 
   // Ranked and latest detail can reuse the same row across several projections.
   function metricLabels(row: object): Record<string, unknown> {
-    const cachedLabels = labelsCache.get(row)
+    const instanceState = runtimeState()
+
+    const cachedLabels = instanceState.labelsCache.get(row)
     if (cachedLabels) return cachedLabels
     const labels = parseJson((row as { labels_json: string }).labels_json)
-    labelsCache.set(row, labels)
+    instanceState.labelsCache.set(row, labels)
     return labels
   }
 
   export function summary(
     input: { windowMs?: number; scopeID?: string } = {},
   ): Promise<PerformanceSchema.DashboardSummary> {
+    const instanceState = runtimeState()
+
     const key = `${input.windowMs ?? 300_000}:${input.scopeID ?? ""}:${ObservabilityStore.dataVersion()}`
     const now = Date.now()
-    if (cached && cached.key === key && now - cached.at < SUMMARY_CACHE_MS) return cached.value
+    if (instanceState.cached && instanceState.cached.key === key && now - instanceState.cached.at < SUMMARY_CACHE_MS)
+      return instanceState.cached.value
     const value = computeSummary(input)
     const wrapped = value.catch((error) => {
-      if (cached?.value === wrapped) cached = undefined
+      const instanceState = runtimeState()
+
+      if (instanceState.cached?.value === wrapped) instanceState.cached = undefined
       throw error
     })
-    cached = { key, at: now, value: wrapped }
+    instanceState.cached = { key, at: now, value: wrapped }
     return wrapped
   }
   async function computeSummary(
     input: { windowMs?: number; scopeID?: string } = {},
   ): Promise<PerformanceSchema.DashboardSummary> {
     const windowMs = Math.max(1000, Math.min(input.windowMs ?? 300_000, 86_400_000))
-    const until = Date.now()
+    // Storage uses an exclusive upper bound; include observations in the current millisecond.
+    const until = Date.now() + 1
     const since = until - windowMs
     const metrics = ObservabilityStore.queryMetricHighlights({ since, until, scopeID: input.scopeID })
     const aggregate = (name: string) =>
@@ -87,9 +98,9 @@ export namespace PerformanceDashboard {
     const agentWorkers = AgentTurn.stats()
     const policyWorkers = PolicyWorker.stats()
     const { toolTasks } = readRuntimeStats()
-    const pluginRuntimes = pluginRuntimeManager.resourceStats()
+    const pluginRuntimes = pluginRuntimeManager().resourceStats()
     const browser = BrowserRuntime.resourceStats()
-    const mcp = McpSupervisor.resourceStats()
+    const mcp = McpSupervisor().resourceStats()
     const localProcesses = ProcessRegistry.resourceStats()
     const controlPlane = SessionMemoryPressure.stats()
     const messageCacheStats = SessionMessageCache.stats()

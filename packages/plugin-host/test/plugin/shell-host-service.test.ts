@@ -7,6 +7,9 @@ import { SandboxBackend } from "@ericsanchezok/synergy-runtime-local/sandbox/bac
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function manifest(capabilities: string[] = ["shell.execute"]) {
   return compilePluginManifest(
@@ -46,145 +49,155 @@ async function invoke(input: {
 }
 
 describe("plugin shell.run Host Service", () => {
-  test("executes an argv tuple in the active Scope and preserves non-zero process output", async () => {
-    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
-    const scope = await tmp.scope()
-    const script = [
-      "process.stdout.write(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(1) }))",
-      'process.stderr.write("setup warning")',
-      "process.exit(7)",
-    ].join(";")
+  test("executes an argv tuple in the active Scope and preserves non-zero process output", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+      const scope = await tmp.scope()
+      const script = [
+        "process.stdout.write(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(1) }))",
+        'process.stderr.write("setup warning")',
+        "process.exit(7)",
+      ].join(";")
 
-    const result = await invoke({
-      directory: tmp.path,
-      scopeId: scope.id,
-      params: { command: [process.execPath, "-e", script, "literal value"] },
-    })
-
-    expect(result.exitCode).toBe(7)
-    expect(result.stderr).toBe("setup warning")
-    expect(JSON.parse(result.stdout)).toEqual({ cwd: tmp.path, argv: ["literal value"] })
-  })
-
-  test("fails closed when guarded shell execution still requires approval", async () => {
-    await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
-    const scope = await tmp.scope()
-
-    await expect(
-      invoke({
+      const result = await invoke({
         directory: tmp.path,
         scopeId: scope.id,
-        params: { command: [process.execPath, "-e", "process.exit(0)"] },
-      }),
-    ).rejects.toBeInstanceOf(EnforcementError.PolicyDenied)
-  })
-
-  test("applies the resolved workspace sandbox policy to autonomous shell execution", async () => {
-    await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
-    const scope = await tmp.scope()
-    let prepared: Parameters<typeof SandboxBackend.prepareWrapper>[0] | undefined
-    const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => {
-      prepared = input
-      return { command: input.command, args: input.args, sandboxed: true }
-    })
-    const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
-      mock(async () => ({ exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false })),
-    )
-
-    try {
-      await invoke({
-        directory: tmp.path,
-        scopeId: scope.id,
-        params: { command: ["ls"] },
+        params: { command: [process.execPath, "-e", script, "literal value"] },
       })
-    } finally {
-      prepare.mockRestore()
-      execute.mockRestore()
-    }
 
-    expect(prepared?.sandboxMode).toBe("workspace_write")
-    expect(prepared?.workspace).toBe(tmp.path)
-    expect(prepared?.protectedPaths?.length).toBeGreaterThan(0)
-  })
+      expect(result.exitCode).toBe(7)
+      expect(result.stderr).toBe("setup warning")
+      expect(JSON.parse(result.stdout)).toEqual({ cwd: tmp.path, argv: ["literal value"] })
+    }))
 
-  test("requires shell.execute and rejects shell strings or execution overrides", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    const command = [process.execPath, "-e", 'process.stdout.write("ok")']
+  test("fails closed when guarded shell execution still requires approval", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
+      const scope = await tmp.scope()
 
-    await expect(
-      invoke({ directory: tmp.path, scopeId: scope.id, capabilities: [], params: { command } }),
-    ).rejects.toThrow('does not declare capability "shell.execute"')
-    await expect(
-      invoke({ directory: tmp.path, scopeId: scope.id, params: { command: command.join(" ") } }),
-    ).rejects.toThrow()
-    await expect(invoke({ directory: tmp.path, scopeId: scope.id, params: { command, cwd: "/tmp" } })).rejects.toThrow()
-    await expect(
-      invoke({ directory: tmp.path, scopeId: scope.id, params: { command, env: { TOKEN: "secret" } } }),
-    ).rejects.toThrow()
-  })
+      await expect(
+        invoke({
+          directory: tmp.path,
+          scopeId: scope.id,
+          params: { command: [process.execPath, "-e", "process.exit(0)"] },
+        }),
+      ).rejects.toBeInstanceOf(EnforcementError.PolicyDenied)
+    }))
 
-  test("uses the configured shellRunTimeoutMs default when the plugin omits timeoutMs", async () => {
-    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
-    const scope = await tmp.scope()
-    let receivedTimeout: number | undefined
-    const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
-      mock(async (_wrapper: unknown, options?: { timeoutMs?: number }) => {
-        receivedTimeout = options?.timeoutMs
-        return { exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false }
-      }),
-    )
-
-    try {
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          await Config.state.reset()
-          await Config.update({
-            pluginRuntimePolicy: { limits: { shellRunTimeoutMs: 4_000 } },
-          } as any)
-          await Config.state.reset()
-          await invoke({ directory: tmp.path, scopeId: scope.id, params: { command: ["ls"] } })
-        },
+  test("applies the resolved workspace sandbox policy to autonomous shell execution", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
+      const scope = await tmp.scope()
+      let prepared: Parameters<typeof SandboxBackend.prepareWrapper>[0] | undefined
+      const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => {
+        prepared = input
+        return { command: input.command, args: input.args, sandboxed: true }
       })
-    } finally {
-      execute.mockRestore()
-    }
+      const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
+        mock(async () => ({ exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false })),
+      )
 
-    expect(receivedTimeout).toBe(4_000)
-  })
+      try {
+        await invoke({
+          directory: tmp.path,
+          scopeId: scope.id,
+          params: { command: ["ls"] },
+        })
+      } finally {
+        prepare.mockRestore()
+        execute.mockRestore()
+      }
 
-  test("plugin-provided timeoutMs still wins over the configured shellRunTimeoutMs", async () => {
-    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
-    const scope = await tmp.scope()
-    let receivedTimeout: number | undefined
-    const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
-      mock(async (_wrapper: unknown, options?: { timeoutMs?: number }) => {
-        receivedTimeout = options?.timeoutMs
-        return { exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false }
-      }),
-    )
+      expect(prepared?.sandboxMode).toBe("workspace_write")
+      expect(prepared?.workspace).toBe(tmp.path)
+      expect(prepared?.protectedPaths?.length).toBeGreaterThan(0)
+    }))
 
-    try {
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          await Config.state.reset()
-          await Config.update({
-            pluginRuntimePolicy: { limits: { shellRunTimeoutMs: 4_000 } },
-          } as any)
-          await Config.state.reset()
-          await invoke({
-            directory: tmp.path,
-            scopeId: scope.id,
-            params: { command: ["ls"], timeoutMs: 2_000 },
-          })
-        },
-      })
-    } finally {
-      execute.mockRestore()
-    }
+  test("requires shell.execute and rejects shell strings or execution overrides", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      const command = [process.execPath, "-e", 'process.stdout.write("ok")']
 
-    expect(receivedTimeout).toBe(2_000)
-  })
+      await expect(
+        invoke({ directory: tmp.path, scopeId: scope.id, capabilities: [], params: { command } }),
+      ).rejects.toThrow('does not declare capability "shell.execute"')
+      await expect(
+        invoke({ directory: tmp.path, scopeId: scope.id, params: { command: command.join(" ") } }),
+      ).rejects.toThrow()
+      await expect(
+        invoke({ directory: tmp.path, scopeId: scope.id, params: { command, cwd: "/tmp" } }),
+      ).rejects.toThrow()
+      await expect(
+        invoke({ directory: tmp.path, scopeId: scope.id, params: { command, env: { TOKEN: "secret" } } }),
+      ).rejects.toThrow()
+    }))
+
+  test("uses the configured shellRunTimeoutMs default when the plugin omits timeoutMs", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+      const scope = await tmp.scope()
+      let receivedTimeout: number | undefined
+      const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
+        mock(async (_wrapper: unknown, options?: { timeoutMs?: number }) => {
+          receivedTimeout = options?.timeoutMs
+          return { exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false }
+        }),
+      )
+
+      try {
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            await Config.state.reset()
+            await Config.update({
+              pluginRuntimePolicy: { limits: { shellRunTimeoutMs: 4_000 } },
+            } as any)
+            await Config.state.reset()
+            await invoke({ directory: tmp.path, scopeId: scope.id, params: { command: ["ls"] } })
+          },
+        })
+      } finally {
+        execute.mockRestore()
+      }
+
+      expect(receivedTimeout).toBe(4_000)
+    }))
+
+  test("plugin-provided timeoutMs still wins over the configured shellRunTimeoutMs", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+      const scope = await tmp.scope()
+      let receivedTimeout: number | undefined
+      const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
+        mock(async (_wrapper: unknown, options?: { timeoutMs?: number }) => {
+          receivedTimeout = options?.timeoutMs
+          return { exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false }
+        }),
+      )
+
+      try {
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            await Config.state.reset()
+            await Config.update({
+              pluginRuntimePolicy: { limits: { shellRunTimeoutMs: 4_000 } },
+            } as any)
+            await Config.state.reset()
+            await invoke({
+              directory: tmp.path,
+              scopeId: scope.id,
+              params: { command: ["ls"], timeoutMs: 2_000 },
+            })
+          },
+        })
+      } finally {
+        execute.mockRestore()
+      }
+
+      expect(receivedTimeout).toBe(2_000)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

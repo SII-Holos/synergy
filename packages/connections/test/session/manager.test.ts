@@ -10,655 +10,684 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Channel } from "@ericsanchezok/synergy-connections/channel"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
-Log.init({ print: false })
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+runtime.run(() => Log.init({ print: false }))
 
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 describe("SessionManager.getSession", () => {
   describe("by sessionID", () => {
-    test("returns session info when session exists in storage", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({})
+    test("returns session info when session exists in storage", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
 
-          const result = await SessionManager.getSession(session.id)
+            const result = await SessionManager.getSession(session.id)
 
-          expect(result).toBeDefined()
-          expect(result!.id).toBe(session.id)
+            expect(result).toBeDefined()
+            expect(result!.id).toBe(session.id)
 
-          SessionManager.unregisterRuntime(session.id)
-        },
-      })
-    })
+            SessionManager.unregisterRuntime(session.id)
+          },
+        })
+      }))
 
-    test("returns undefined for nonexistent session", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const result = await SessionManager.getSession("ses_nonexistent")
-          expect(result).toBeUndefined()
-        },
-      })
-    })
+    test("returns undefined for nonexistent session", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const result = await SessionManager.getSession("ses_nonexistent")
+            expect(result).toBeUndefined()
+          },
+        })
+      }))
   })
 
   describe("by channel", () => {
-    test("returns session matching channel", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const channel: Channel.Info = {
-            type: "test",
-            accountId: "acc-1",
-            chatId: "chat-match",
-          }
-          const endpoint = SessionEndpoint.fromChannel(channel)
-          const session = await Session.create({ endpoint })
+    test("returns session matching channel", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const channel: Channel.Info = {
+              type: "test",
+              accountId: "acc-1",
+              chatId: "chat-match",
+            }
+            const endpoint = SessionEndpoint.fromChannel(channel)
+            const session = await Session.create({ endpoint })
 
-          const result = await SessionManager.getSession(endpoint)
+            const result = await SessionManager.getSession(endpoint)
 
-          expect(result).toBeDefined()
-          expect(result!.id).toBe(session.id)
+            expect(result).toBeDefined()
+            expect(result!.id).toBe(session.id)
 
-          SessionManager.unregisterRuntime(session.id)
-        },
-      })
-    })
+            SessionManager.unregisterRuntime(session.id)
+          },
+        })
+      }))
 
-    test("returns undefined when no session matches channel", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const otherChannel: Channel.Info = {
-            type: "test",
-            accountId: "acc-other",
-            chatId: "chat-other",
-          }
+    test("returns undefined when no session matches channel", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const otherChannel: Channel.Info = {
+              type: "test",
+              accountId: "acc-other",
+              chatId: "chat-other",
+            }
 
-          const result = await SessionManager.getSession(SessionEndpoint.fromChannel(otherChannel))
-          expect(result).toBeUndefined()
-        },
-      })
-    })
+            const result = await SessionManager.getSession(SessionEndpoint.fromChannel(otherChannel))
+            expect(result).toBeUndefined()
+          },
+        })
+      }))
 
-    test("does not return archived sessions", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const channel: Channel.Info = {
-            type: "test",
-            accountId: "acc-1",
-            chatId: "chat-archived",
-          }
-          const endpoint = SessionEndpoint.fromChannel(channel)
-          const session = await Session.create({ endpoint })
-          await Session.update(session.id, (draft) => {
-            draft.time.archived = Date.now()
-          })
+    test("does not return archived sessions", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const channel: Channel.Info = {
+              type: "test",
+              accountId: "acc-1",
+              chatId: "chat-archived",
+            }
+            const endpoint = SessionEndpoint.fromChannel(channel)
+            const session = await Session.create({ endpoint })
+            await Session.update(session.id, (draft) => {
+              draft.time.archived = Date.now()
+            })
 
-          const result = await SessionManager.getSession(endpoint)
-          expect(result).toBeUndefined()
+            const result = await SessionManager.getSession(endpoint)
+            expect(result).toBeUndefined()
 
-          SessionManager.unregisterRuntime(session.id)
-        },
-      })
-    })
+            SessionManager.unregisterRuntime(session.id)
+          },
+        })
+      }))
   })
 
   describe("runtime", () => {
-    test("registerRuntime and unregisterRuntime manage runtime entries", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({})
+    test("registerRuntime and unregisterRuntime manage runtime entries", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
 
-          const runtime = SessionManager.getRuntime(session.id)
-          expect(runtime).toBeDefined()
-          expect(runtime!.status).toEqual({ type: "idle" })
+            const runtime = SessionManager.getRuntime(session.id)
+            expect(runtime).toBeDefined()
+            expect(runtime!.status).toEqual({ type: "idle" })
 
-          SessionManager.unregisterRuntime(session.id)
-          expect(SessionManager.getRuntime(session.id)).toBeUndefined()
-        },
-      })
-    })
+            SessionManager.unregisterRuntime(session.id)
+            expect(SessionManager.getRuntime(session.id)).toBeUndefined()
+          },
+        })
+      }))
 
-    test("listStatuses reports a persisted pause even without a runtime", async () => {
-      await using tmp = await tmpdir({ git: true })
-      const scope = await tmp.scope()
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          const session = await Session.create({})
-          SessionManager.unregisterRuntime(session.id)
+    test("listStatuses reports a persisted pause even without a runtime", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const session = await Session.create({})
+            SessionManager.unregisterRuntime(session.id)
 
-          // Nothing is running and no latch is present, so there is no status
-          // to report at all.
-          expect((await SessionManager.listStatuses(scope.id))[session.id]).toBeUndefined()
+            // Nothing is running and no latch is present, so there is no status
+            // to report at all.
+            expect((await SessionManager.listStatuses(scope.id))[session.id]).toBeUndefined()
 
-          // A pause is durable session state, so it is reported even though no
-          // runtime object exists: this is how another client learns that the
-          // session stopped and awaits an explicit continue.
-          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
-          expect((await SessionManager.listStatuses(scope.id))[session.id]).toMatchObject({
-            type: "paused",
-            reason: "aborted",
-          })
-        },
-      })
-    })
+            // A pause is durable session state, so it is reported even though no
+            // runtime object exists: this is how another client learns that the
+            // session stopped and awaits an explicit continue.
+            await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+            expect((await SessionManager.listStatuses(scope.id))[session.id]).toMatchObject({
+              type: "paused",
+              reason: "aborted",
+            })
+          },
+        })
+      }))
 
-    test("runtimeStats reports retained runtime counters", () => {
-      const userSessionID = "ses_runtime_stats_user"
-      const childSessionID = "ses_runtime_stats_child"
-      SessionManager.unregisterRuntime(userSessionID)
-      SessionManager.unregisterRuntime(childSessionID)
-      const before = SessionManager.runtimeStats()
-      try {
-        SessionManager.registerRuntime(userSessionID)
-        const child = SessionManager.registerChildRuntime(childSessionID)
-        const lease = SessionManager.acquire(childSessionID)
-        expect(lease).toBeDefined()
-        child.waiters = [{ onComplete: () => {}, onCancel: () => {} }]
-
-        const stats = SessionManager.runtimeStats()
-        expect(stats.totalCount).toBe(before.totalCount + 2)
-        expect(stats.runningCount).toBe(before.runningCount + 1)
-        expect(stats.idleCount).toBe(before.idleCount + 1)
-        expect(stats.childCount).toBe(before.childCount + 1)
-        expect(stats.userCount).toBe(before.userCount + 1)
-        expect(stats.waiterCount).toBe(before.waiterCount + 1)
-      } finally {
-        SessionManager.signalAbort(childSessionID)
+    test("runtimeStats reports retained runtime counters", () =>
+      runtime.run(() => {
+        const userSessionID = "ses_runtime_stats_user"
+        const childSessionID = "ses_runtime_stats_child"
         SessionManager.unregisterRuntime(userSessionID)
         SessionManager.unregisterRuntime(childSessionID)
-      }
-    })
+        const before = SessionManager.runtimeStats()
+        try {
+          SessionManager.registerRuntime(userSessionID)
+          const child = SessionManager.registerChildRuntime(childSessionID)
+          const lease = SessionManager.acquire(childSessionID)
+          expect(lease).toBeDefined()
+          child.waiters = [{ onComplete: () => {}, onCancel: () => {} }]
 
-    test("release emits updated session info after clearing working state", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({})
-          const updated: Session.Info[] = []
-          const unsub = Bus.subscribe(SessionEvent.Updated, (event) => {
-            if (event.properties.info.id === session.id) updated.push(event.properties.info as Session.Info)
-          })
+          const stats = SessionManager.runtimeStats()
+          expect(stats.totalCount).toBe(before.totalCount + 2)
+          expect(stats.runningCount).toBe(before.runningCount + 1)
+          expect(stats.idleCount).toBe(before.idleCount + 1)
+          expect(stats.childCount).toBe(before.childCount + 1)
+          expect(stats.userCount).toBe(before.userCount + 1)
+          expect(stats.waiterCount).toBe(before.waiterCount + 1)
+        } finally {
+          SessionManager.signalAbort(childSessionID)
+          SessionManager.unregisterRuntime(userSessionID)
+          SessionManager.unregisterRuntime(childSessionID)
+        }
+      }))
 
-          try {
-            const lease = SessionManager.acquire(session.id)
-            expect(lease).toBeDefined()
-            // Any durable update while the lease is held republishes the session
-            // with its live runtime projection, which is what the client reads.
-            await Session.update(session.id, (draft) => {
-              draft.title = "Release projection fixture"
+    test("release emits updated session info after clearing working state", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            const updated: Session.Info[] = []
+            const unsub = Bus.subscribe(SessionEvent.Updated, (event) => {
+              if (event.properties.info.id === session.id) updated.push(event.properties.info as Session.Info)
             })
-            expect(updated.at(-1)?.working?.status).toBe("busy")
 
-            await SessionManager.release(lease!)
+            try {
+              const lease = SessionManager.acquire(session.id)
+              expect(lease).toBeDefined()
+              // Any durable update while the lease is held republishes the session
+              // with its live runtime projection, which is what the client reads.
+              await Session.update(session.id, (draft) => {
+                draft.title = "Release projection fixture"
+              })
+              expect(updated.at(-1)?.working?.status).toBe("busy")
 
-            expect(updated.at(-1)?.working).toBeUndefined()
-          } finally {
-            unsub()
-            SessionManager.unregisterRuntime(session.id)
-          }
-        },
-      })
-    })
+              await SessionManager.release(lease!)
 
-    test("release schedules persisted inbox work after the active turn", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const { SessionInvoke } = await import("@ericsanchezok/synergy-harness/session/invoke")
-          const originalLoop = SessionInvoke.loop
-          const wakes: string[] = []
-          const wake = Promise.withResolvers<string>()
-          let parentSessionID = ""
-          let parentLease: SessionManager.LoopLease | undefined
-          ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
-            wakes.push(sessionID)
-            wake.resolve(sessionID)
-          })
+              expect(updated.at(-1)?.working).toBeUndefined()
+            } finally {
+              unsub()
+              SessionManager.unregisterRuntime(session.id)
+            }
+          },
+        })
+      }))
 
-          try {
-            const parentSession = await Session.create({})
-            parentSessionID = parentSession.id
-            const rootID = "msg_parent_root"
-            await Session.updateMessage({
-              id: rootID,
-              role: "user",
-              sessionID: parentSession.id,
-              time: { created: Date.now() },
-              agent: "synergy",
-              model: { providerID: "test-provider", modelID: "test-model" },
-              isRoot: true,
-              rootID,
-            } as any)
-            await Session.updatePart({
-              id: "prt_parent_root",
-              messageID: rootID,
-              sessionID: parentSession.id,
-              type: "text",
-              text: "parent root",
+    test("release schedules persisted inbox work after the active turn", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const { SessionInvoke } = await import("@ericsanchezok/synergy-harness/session/invoke")
+            const originalLoop = SessionInvoke.loop
+            const wakes: string[] = []
+            const wake = Promise.withResolvers<string>()
+            let parentSessionID = ""
+            let parentLease: SessionManager.LoopLease | undefined
+            ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+              wakes.push(sessionID)
+              wake.resolve(sessionID)
             })
-            parentLease = SessionManager.acquire(parentSession.id)
-            expect(parentLease).toBeDefined()
 
-            await SessionInbox.deliverUnique({
-              sessionID: parentSession.id,
-              deliveryKey: "cortex:taskNotification:ctx_release_test",
-              mode: "steer",
-              message: {
+            try {
+              const parentSession = await Session.create({})
+              parentSessionID = parentSession.id
+              const rootID = "msg_parent_root"
+              await Session.updateMessage({
+                id: rootID,
                 role: "user",
-                metadata: { source: "cortex" },
-                parts: [{ type: "text", text: "Cortex task completed" }],
-              },
+                sessionID: parentSession.id,
+                time: { created: Date.now() },
+                agent: "synergy",
+                model: { providerID: "test-provider", modelID: "test-model" },
+                isRoot: true,
+                rootID,
+              } as any)
+              await Session.updatePart({
+                id: "prt_parent_root",
+                messageID: rootID,
+                sessionID: parentSession.id,
+                type: "text",
+                text: "parent root",
+              })
+              parentLease = SessionManager.acquire(parentSession.id)
+              expect(parentLease).toBeDefined()
+
+              await SessionInbox.deliverUnique({
+                sessionID: parentSession.id,
+                deliveryKey: "cortex:taskNotification:ctx_release_test",
+                mode: "steer",
+                message: {
+                  role: "user",
+                  metadata: { source: "cortex" },
+                  parts: [{ type: "text", text: "Cortex task completed" }],
+                },
+              })
+
+              expect(SessionManager.isRunning(parentSession.id)).toBe(true)
+              expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
+              expect(wakes).toHaveLength(0)
+
+              await SessionManager.release(parentLease!)
+              parentLease = undefined
+
+              expect(
+                await Promise.race([
+                  wake.promise,
+                  Bun.sleep(1_000).then(() => {
+                    throw new Error("Release did not wake persisted inbox work")
+                  }),
+                ]),
+              ).toBe(parentSession.id)
+              expect(wakes).toEqual([parentSession.id])
+            } finally {
+              if (parentLease) await SessionManager.release(parentLease)
+              ;(SessionInvoke.loop as any) = originalLoop
+              if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
+              SessionDrive.reset()
+            }
+          },
+        })
+      }))
+
+    test("wait-for-processing wake can release without reentrant drive deadlock", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const { SessionInvoke } = await import("@ericsanchezok/synergy-harness/session/invoke")
+            const originalLoop = SessionInvoke.loop
+            let sessionID = ""
+            let loopCount = 0
+            ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
+              loopCount++
+              const lease = SessionManager.acquire(wokenSessionID)
+              expect(lease).toBeDefined()
+              expect(SessionManager.activate(lease!)).toBe(true)
+              await SessionInbox.drainReady(wokenSessionID)
+              await SessionManager.release(lease!)
             })
 
-            expect(SessionManager.isRunning(parentSession.id)).toBe(true)
-            expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
-            expect(wakes).toHaveLength(0)
+            try {
+              const session = await Session.create({})
+              sessionID = session.id
+              await SessionInbox.deliverUnique({
+                sessionID,
+                deliveryKey: "agenda:reentrant-test:once:0",
+                mode: "task",
+                message: {
+                  role: "user",
+                  metadata: { source: "agenda" },
+                  parts: [{ type: "text", text: "Agenda task ready" }],
+                },
+              })
 
-            await SessionManager.release(parentLease!)
-            parentLease = undefined
-
-            expect(
-              await Promise.race([
-                wake.promise,
+              const handled = await Promise.race([
+                SessionDrive.request(sessionID, "reentrant-test", { waitForProcessing: true }),
                 Bun.sleep(1_000).then(() => {
-                  throw new Error("Release did not wake persisted inbox work")
+                  throw new Error("Reentrant session drive did not settle")
                 }),
-              ]),
-            ).toBe(parentSession.id)
-            expect(wakes).toEqual([parentSession.id])
-          } finally {
-            if (parentLease) await SessionManager.release(parentLease)
-            ;(SessionInvoke.loop as any) = originalLoop
-            if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
-            SessionDrive.reset()
-          }
-        },
-      })
-    })
+              ])
 
-    test("wait-for-processing wake can release without reentrant drive deadlock", async () => {
+              expect(handled).toBe(true)
+              expect(loopCount).toBe(1)
+              expect(await SessionInbox.list(sessionID)).toHaveLength(0)
+              expect(SessionManager.isRunning(sessionID)).toBe(false)
+            } finally {
+              ;(SessionInvoke.loop as any) = originalLoop
+              if (sessionID) SessionManager.unregisterRuntime(sessionID)
+              SessionDrive.reset()
+            }
+          },
+        })
+      }))
+  })
+})
+
+describe("loop ownership", () => {
+  test("lets inbox loop callers suppress release wake after failure", () =>
+    runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const { SessionInvoke } = await import("@ericsanchezok/synergy-harness/session/invoke")
-          const originalLoop = SessionInvoke.loop
-          let sessionID = ""
-          let loopCount = 0
-          ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
-            loopCount++
-            const lease = SessionManager.acquire(wokenSessionID)
-            expect(lease).toBeDefined()
-            expect(SessionManager.activate(lease!)).toBe(true)
-            await SessionInbox.drainReady(wokenSessionID)
-            await SessionManager.release(lease!)
+          const originalRequest = SessionDrive.request
+          const driveRequests: string[] = []
+          ;(SessionDrive.request as any) = mock(async (_sessionID: string, reason: string) => {
+            driveRequests.push(reason)
+            return true
           })
 
+          let sessionID = ""
           try {
             const session = await Session.create({})
             sessionID = session.id
-            await SessionInbox.deliverUnique({
+            const item = await SessionInbox.enqueueUser({
               sessionID,
-              deliveryKey: "agenda:reentrant-test:once:0",
-              mode: "task",
-              message: {
-                role: "user",
-                metadata: { source: "agenda" },
-                parts: [{ type: "text", text: "Agenda task ready" }],
-              },
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "missing-model" },
+              parts: [{ type: "text", text: "Retry after provider recovery" }],
             })
 
-            const handled = await Promise.race([
-              SessionDrive.request(sessionID, "reentrant-test", { waitForProcessing: true }),
-              Bun.sleep(1_000).then(() => {
-                throw new Error("Reentrant session drive did not settle")
-              }),
-            ])
+            await expect(
+              SessionManager.run(
+                sessionID,
+                async () => {
+                  throw new Error("simulated loop failure")
+                },
+                { requestNextWorkOnFailure: false },
+              ),
+            ).rejects.toThrow("simulated loop failure")
 
-            expect(handled).toBe(true)
-            expect(loopCount).toBe(1)
-            expect(await SessionInbox.list(sessionID)).toHaveLength(0)
             expect(SessionManager.isRunning(sessionID)).toBe(false)
+            expect(SessionManager.getRuntime(sessionID)).toBeUndefined()
+            expect(driveRequests).not.toContain("release")
+            expect((await SessionInbox.list(sessionID)).map((entry) => entry.id)).toContain(item.id)
           } finally {
-            ;(SessionInvoke.loop as any) = originalLoop
+            ;(SessionDrive.request as any) = originalRequest
             if (sessionID) SessionManager.unregisterRuntime(sessionID)
             SessionDrive.reset()
           }
         },
       })
-    })
-  })
-})
+    }))
 
-describe("loop ownership", () => {
-  test("lets inbox loop callers suppress release wake after failure", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalRequest = SessionDrive.request
-        const driveRequests: string[] = []
-        ;(SessionDrive.request as any) = mock(async (_sessionID: string, reason: string) => {
-          driveRequests.push(reason)
-          return true
-        })
-
-        let sessionID = ""
-        try {
-          const session = await Session.create({})
-          sessionID = session.id
-          const item = await SessionInbox.enqueueUser({
-            sessionID,
-            agent: "synergy",
-            model: { providerID: "test-provider", modelID: "missing-model" },
-            parts: [{ type: "text", text: "Retry after provider recovery" }],
+  test("requests pending work after a non-loop run fails", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalRequest = SessionDrive.request
+          const driveRequests: string[] = []
+          ;(SessionDrive.request as any) = mock(async (_sessionID: string, reason: string) => {
+            driveRequests.push(reason)
+            return true
           })
 
-          await expect(
-            SessionManager.run(
-              sessionID,
-              async () => {
-                throw new Error("simulated loop failure")
-              },
-              { requestNextWorkOnFailure: false },
-            ),
-          ).rejects.toThrow("simulated loop failure")
+          let sessionID = ""
+          try {
+            const session = await Session.create({})
+            sessionID = session.id
 
-          expect(SessionManager.isRunning(sessionID)).toBe(false)
-          expect(SessionManager.getRuntime(sessionID)).toBeUndefined()
-          expect(driveRequests).not.toContain("release")
-          expect((await SessionInbox.list(sessionID)).map((entry) => entry.id)).toContain(item.id)
-        } finally {
-          ;(SessionDrive.request as any) = originalRequest
-          if (sessionID) SessionManager.unregisterRuntime(sessionID)
-          SessionDrive.reset()
-        }
-      },
-    })
-  })
+            await expect(
+              SessionManager.run(sessionID, async () => {
+                throw new Error("simulated command failure")
+              }),
+            ).rejects.toThrow("simulated command failure")
 
-  test("requests pending work after a non-loop run fails", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalRequest = SessionDrive.request
-        const driveRequests: string[] = []
-        ;(SessionDrive.request as any) = mock(async (_sessionID: string, reason: string) => {
-          driveRequests.push(reason)
-          return true
-        })
+            expect(driveRequests).toContain("release")
+          } finally {
+            ;(SessionDrive.request as any) = originalRequest
+            if (sessionID) SessionManager.unregisterRuntime(sessionID)
+            SessionDrive.reset()
+          }
+        },
+      })
+    }))
 
-        let sessionID = ""
-        try {
+  test("reserves ownership before async session setup can yield", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
           const session = await Session.create({})
-          sessionID = session.id
+          let observedSignal: AbortSignal | undefined
+          const run = SessionManager.run(session.id, async (lease) => {
+            observedSignal = lease.signal
+          })
 
-          await expect(
-            SessionManager.run(sessionID, async () => {
-              throw new Error("simulated command failure")
-            }),
-          ).rejects.toThrow("simulated command failure")
+          expect(SessionManager.isRunning(session.id)).toBe(true)
+          expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("starting")
+          expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+          expect(SessionManager.isRunning(session.id)).toBe(true)
+          expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
 
-          expect(driveRequests).toContain("release")
-        } finally {
-          ;(SessionDrive.request as any) = originalRequest
-          if (sessionID) SessionManager.unregisterRuntime(sessionID)
-          SessionDrive.reset()
-        }
-      },
-    })
-  })
+          await run
 
-  test("reserves ownership before async session setup can yield", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        let observedSignal: AbortSignal | undefined
-        const run = SessionManager.run(session.id, async (lease) => {
-          observedSignal = lease.signal
-        })
+          expect(observedSignal?.aborted).toBe(true)
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+        },
+      })
+    }))
 
-        expect(SessionManager.isRunning(session.id)).toBe(true)
-        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("starting")
-        expect(SessionManager.signalAbort(session.id)).toBe("signaled")
-        expect(SessionManager.isRunning(session.id)).toBe(true)
-        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
+  test("keeps the stopping owner exclusive until release", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+          expect(SessionManager.activate(lease!)).toBe(true)
+          expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("running")
 
-        await run
+          expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+          expect(lease!.signal.aborted).toBe(true)
+          expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
+          expect(SessionManager.acquire(session.id)).toBeUndefined()
+          expect(SessionManager.isRunning(session.id)).toBe(true)
 
-        expect(observedSignal?.aborted).toBe(true)
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-      },
-    })
-  })
+          expect(await SessionManager.release(lease!)).toBe(true)
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+          SessionManager.unregisterRuntime(session.id)
+        },
+      })
+    }))
 
-  test("keeps the stopping owner exclusive until release", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const lease = SessionManager.acquire(session.id)
-        expect(lease).toBeDefined()
-        expect(SessionManager.activate(lease!)).toBe(true)
-        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("running")
+  test("ignores a stale release without aborting the replacement owner", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const first = SessionManager.acquire(session.id)
+          expect(first).toBeDefined()
+          expect(await SessionManager.release(first!)).toBe(true)
 
-        expect(SessionManager.signalAbort(session.id)).toBe("signaled")
-        expect(lease!.signal.aborted).toBe(true)
-        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
-        expect(SessionManager.acquire(session.id)).toBeUndefined()
-        expect(SessionManager.isRunning(session.id)).toBe(true)
+          const second = SessionManager.acquire(session.id)
+          expect(second).toBeDefined()
+          expect(second!.generation).not.toBe(first!.generation)
+          expect(second!.signal.aborted).toBe(false)
 
-        expect(await SessionManager.release(lease!)).toBe(true)
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-        SessionManager.unregisterRuntime(session.id)
-      },
-    })
-  })
+          expect(await SessionManager.release(first!)).toBe(false)
+          expect(second!.signal.aborted).toBe(false)
+          expect(SessionManager.isRunning(session.id)).toBe(true)
 
-  test("ignores a stale release without aborting the replacement owner", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const first = SessionManager.acquire(session.id)
-        expect(first).toBeDefined()
-        expect(await SessionManager.release(first!)).toBe(true)
+          expect(await SessionManager.release(second!)).toBe(true)
+          SessionManager.unregisterRuntime(session.id)
+        },
+      })
+    }))
 
-        const second = SessionManager.acquire(session.id)
-        expect(second).toBeDefined()
-        expect(second!.generation).not.toBe(first!.generation)
-        expect(second!.signal.aborted).toBe(false)
+  test("settles waiters once and rejects stale owner completion", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const first = SessionManager.acquire(session.id)
+          expect(first).toBeDefined()
+          expect(await SessionManager.release(first!)).toBe(true)
 
-        expect(await SessionManager.release(first!)).toBe(false)
-        expect(second!.signal.aborted).toBe(false)
-        expect(SessionManager.isRunning(session.id)).toBe(true)
+          const second = SessionManager.acquire(session.id)
+          expect(second).toBeDefined()
+          const runtime = SessionManager.getRuntime(session.id)!
+          const onComplete = mock(() => {})
+          const onCancel = mock(() => {})
+          runtime.waiters.push({ onComplete, onCancel })
+          const result = { info: { id: "msg_result" }, parts: [] } as any
 
-        expect(await SessionManager.release(second!)).toBe(true)
-        SessionManager.unregisterRuntime(session.id)
-      },
-    })
-  })
+          expect(SessionManager.completeWaiters(first!, result)).toBe(false)
+          expect(onComplete).not.toHaveBeenCalled()
+          expect(SessionManager.completeWaiters(second!, result)).toBe(true)
+          expect(SessionManager.completeWaiters(second!, result)).toBe(true)
+          expect(onComplete).toHaveBeenCalledTimes(1)
+          expect(onComplete).toHaveBeenCalledWith(result)
+          expect(onCancel).not.toHaveBeenCalled()
+          expect(runtime.waiters).toEqual([])
 
-  test("settles waiters once and rejects stale owner completion", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const first = SessionManager.acquire(session.id)
-        expect(first).toBeDefined()
-        expect(await SessionManager.release(first!)).toBe(true)
-
-        const second = SessionManager.acquire(session.id)
-        expect(second).toBeDefined()
-        const runtime = SessionManager.getRuntime(session.id)!
-        const onComplete = mock(() => {})
-        const onCancel = mock(() => {})
-        runtime.waiters.push({ onComplete, onCancel })
-        const result = { info: { id: "msg_result" }, parts: [] } as any
-
-        expect(SessionManager.completeWaiters(first!, result)).toBe(false)
-        expect(onComplete).not.toHaveBeenCalled()
-        expect(SessionManager.completeWaiters(second!, result)).toBe(true)
-        expect(SessionManager.completeWaiters(second!, result)).toBe(true)
-        expect(onComplete).toHaveBeenCalledTimes(1)
-        expect(onComplete).toHaveBeenCalledWith(result)
-        expect(onCancel).not.toHaveBeenCalled()
-        expect(runtime.waiters).toEqual([])
-
-        expect(await SessionManager.release(second!)).toBe(true)
-        expect(onCancel).not.toHaveBeenCalled()
-        SessionManager.unregisterRuntime(session.id)
-      },
-    })
-  })
+          expect(await SessionManager.release(second!)).toBe(true)
+          expect(onCancel).not.toHaveBeenCalled()
+          SessionManager.unregisterRuntime(session.id)
+        },
+      })
+    }))
 })
 
 describe("signalAbort", () => {
-  test("aborts the active owner, cancels waiters, and retains ownership", () => {
-    const sessionID = "ses_signal_abort_1"
-    SessionManager.unregisterRuntime(sessionID)
-    const lease = SessionManager.acquire(sessionID)
-    expect(lease).toBeDefined()
-    const runtime = SessionManager.getRuntime(sessionID)!
-    try {
-      const onCancel1 = mock(() => {})
-      const onCancel2 = mock(() => {})
-      const onComplete = mock(() => {})
-      runtime.waiters = [
-        { onComplete, onCancel: onCancel1 },
-        { onComplete, onCancel: onCancel2 },
-      ]
-
-      expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
-
-      expect(lease!.signal.aborted).toBe(true)
-      expect(onCancel1).toHaveBeenCalledTimes(1)
-      expect(onCancel2).toHaveBeenCalledTimes(1)
-      expect(onComplete).not.toHaveBeenCalled()
-      expect(runtime.waiters).toEqual([])
-      expect(runtime.owner?.lease).toBe(lease)
-      expect(runtime.owner?.phase).toBe("stopping")
-      expect(SessionManager.isRunning(sessionID)).toBe(true)
-    } finally {
+  test("aborts the active owner, cancels waiters, and retains ownership", () =>
+    runtime.run(() => {
+      const sessionID = "ses_signal_abort_1"
       SessionManager.unregisterRuntime(sessionID)
-    }
-  })
-
-  test("reports repeated abort without canceling new waiters", () => {
-    const sessionID = "ses_signal_abort_repeat"
-    SessionManager.unregisterRuntime(sessionID)
-    const lease = SessionManager.acquire(sessionID)
-    expect(lease).toBeDefined()
-    const runtime = SessionManager.getRuntime(sessionID)!
-    try {
-      expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
-      const onCancel = mock(() => {})
-      runtime.waiters.push({ onComplete: () => {}, onCancel })
-
-      expect(SessionManager.signalAbort(sessionID)).toBe("already_stopping")
-      expect(onCancel).not.toHaveBeenCalled()
-      expect(runtime.waiters).toHaveLength(1)
-    } finally {
-      SessionManager.unregisterRuntime(sessionID)
-    }
-  })
-
-  test("does not change the runtime status", () => {
-    const sessionID = "ses_signal_abort_status"
-    SessionManager.unregisterRuntime(sessionID)
-    const lease = SessionManager.acquire(sessionID)
-    expect(lease).toBeDefined()
-    const runtime = SessionManager.getRuntime(sessionID)!
-    try {
-      runtime.status = { type: "busy", description: "thinking..." }
-
-      expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
-      expect(runtime.status).toEqual({ type: "busy", description: "thinking..." })
-    } finally {
-      SessionManager.unregisterRuntime(sessionID)
-    }
-  })
-
-  test("distinguishes missing and idle runtimes", () => {
-    const sessionID = "ses_signal_abort_idle"
-    SessionManager.unregisterRuntime(sessionID)
-    expect(SessionManager.signalAbort(sessionID)).toBe("not_found")
-
-    SessionManager.registerRuntime(sessionID)
-    try {
-      expect(SessionManager.signalAbort(sessionID)).toBe("idle")
-    } finally {
-      SessionManager.unregisterRuntime(sessionID)
-    }
-  })
-})
-
-test("a late recording failure cannot cancel a later root sharing the same loop lease", () => {
-  const sessionID = "ses_root_recording_ownership"
-  SessionManager.unregisterRuntime(sessionID)
-  const lease = SessionManager.acquire(sessionID)!
-  try {
-    expect(SessionManager.signalAbort(sessionID, { rootID: "root_a" })).toBe("not_owner")
-    expect(SessionManager.bindRootTask(lease, "root_a")).toBe(true)
-    expect(SessionManager.bindRootTask(lease, "root_b")).toBe(true)
-    expect(SessionManager.signalAbort(sessionID, { rootID: "root_a" })).toBe("not_owner")
-    expect(lease.signal.aborted).toBe(false)
-    expect(SessionManager.signalAbort(sessionID, { rootID: "root_b" })).toBe("signaled")
-    expect(lease.signal.aborted).toBe(true)
-  } finally {
-    SessionManager.unregisterRuntime(sessionID)
-  }
-})
-
-test("runtime shutdown refuses new loops and waits for current cleanup", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const session = await Session.create({})
-      const started = Promise.withResolvers<void>()
-      const cleanup = Promise.withResolvers<void>()
-      let finished = false
-      const running = SessionManager.run(session.id, async () => {
-        started.resolve()
-        await cleanup.promise
-        finished = true
-      })
-      await started.promise
-      SessionManager.closeAdmission()
+      const lease = SessionManager.acquire(sessionID)
+      expect(lease).toBeDefined()
+      const runtime = SessionManager.getRuntime(sessionID)!
       try {
-        expect(() => SessionManager.acquire("new-session")).toThrow("shutting down")
-        const drained = SessionManager.drain()
-        await Bun.sleep(1)
-        expect(finished).toBe(false)
-        cleanup.resolve()
-        await drained
-        expect(finished).toBe(true)
-        await running
+        const onCancel1 = mock(() => {})
+        const onCancel2 = mock(() => {})
+        const onComplete = mock(() => {})
+        runtime.waiters = [
+          { onComplete, onCancel: onCancel1 },
+          { onComplete, onCancel: onCancel2 },
+        ]
+
+        expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
+
+        expect(lease!.signal.aborted).toBe(true)
+        expect(onCancel1).toHaveBeenCalledTimes(1)
+        expect(onCancel2).toHaveBeenCalledTimes(1)
+        expect(onComplete).not.toHaveBeenCalled()
+        expect(runtime.waiters).toEqual([])
+        expect(runtime.owner?.lease).toBe(lease)
+        expect(runtime.owner?.phase).toBe("stopping")
+        expect(SessionManager.isRunning(sessionID)).toBe(true)
       } finally {
-        cleanup.resolve()
-        await running
-        SessionManager.openAdmission()
+        SessionManager.unregisterRuntime(sessionID)
       }
-    },
-  })
+    }))
+
+  test("reports repeated abort without canceling new waiters", () =>
+    runtime.run(() => {
+      const sessionID = "ses_signal_abort_repeat"
+      SessionManager.unregisterRuntime(sessionID)
+      const lease = SessionManager.acquire(sessionID)
+      expect(lease).toBeDefined()
+      const runtime = SessionManager.getRuntime(sessionID)!
+      try {
+        expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
+        const onCancel = mock(() => {})
+        runtime.waiters.push({ onComplete: () => {}, onCancel })
+
+        expect(SessionManager.signalAbort(sessionID)).toBe("already_stopping")
+        expect(onCancel).not.toHaveBeenCalled()
+        expect(runtime.waiters).toHaveLength(1)
+      } finally {
+        SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
+
+  test("does not change the runtime status", () =>
+    runtime.run(() => {
+      const sessionID = "ses_signal_abort_status"
+      SessionManager.unregisterRuntime(sessionID)
+      const lease = SessionManager.acquire(sessionID)
+      expect(lease).toBeDefined()
+      const runtime = SessionManager.getRuntime(sessionID)!
+      try {
+        runtime.status = { type: "busy", description: "thinking..." }
+
+        expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
+        expect(runtime.status).toEqual({ type: "busy", description: "thinking..." })
+      } finally {
+        SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
+
+  test("distinguishes missing and idle runtimes", () =>
+    runtime.run(() => {
+      const sessionID = "ses_signal_abort_idle"
+      SessionManager.unregisterRuntime(sessionID)
+      expect(SessionManager.signalAbort(sessionID)).toBe("not_found")
+
+      SessionManager.registerRuntime(sessionID)
+      try {
+        expect(SessionManager.signalAbort(sessionID)).toBe("idle")
+      } finally {
+        SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
 })
+
+test("a late recording failure cannot cancel a later root sharing the same loop lease", () =>
+  runtime.run(() => {
+    const sessionID = "ses_root_recording_ownership"
+    SessionManager.unregisterRuntime(sessionID)
+    const lease = SessionManager.acquire(sessionID)!
+    try {
+      expect(SessionManager.signalAbort(sessionID, { rootID: "root_a" })).toBe("not_owner")
+      expect(SessionManager.bindRootTask(lease, "root_a")).toBe(true)
+      expect(SessionManager.bindRootTask(lease, "root_b")).toBe(true)
+      expect(SessionManager.signalAbort(sessionID, { rootID: "root_a" })).toBe("not_owner")
+      expect(lease.signal.aborted).toBe(false)
+      expect(SessionManager.signalAbort(sessionID, { rootID: "root_b" })).toBe("signaled")
+      expect(lease.signal.aborted).toBe(true)
+    } finally {
+      SessionManager.unregisterRuntime(sessionID)
+    }
+  }))
+
+test("runtime shutdown refuses new loops and waits for current cleanup", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const started = Promise.withResolvers<void>()
+        const cleanup = Promise.withResolvers<void>()
+        let finished = false
+        const running = SessionManager.run(session.id, async () => {
+          started.resolve()
+          await cleanup.promise
+          finished = true
+        })
+        await started.promise
+        SessionManager.closeAdmission()
+        try {
+          expect(() => SessionManager.acquire("new-session")).toThrow("shutting down")
+          const drained = SessionManager.drain()
+          await Bun.sleep(1)
+          expect(finished).toBe(false)
+          cleanup.resolve()
+          await drained
+          expect(finished).toBe(true)
+          await running
+        } finally {
+          cleanup.resolve()
+          await running
+          SessionManager.openAdmission()
+        }
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

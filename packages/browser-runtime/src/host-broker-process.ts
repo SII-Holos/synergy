@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "node:path"
 import { BunProc } from "@ericsanchezok/synergy-harness/util/bun"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -19,125 +20,143 @@ export namespace BrowserHostBrokerProcess {
   type HostSubprocess = Bun.Subprocess<"ignore", "ignore" | "pipe", "ignore" | "pipe">
 
   const log = Log.create({ service: "browser.host.process" })
-  let proc: HostSubprocess | null = null
-  let serverUrl: string | null = null
-  let listenUrl: string | null = null
-  let idleTimer: ReturnType<typeof setTimeout> | null = null
-  let activityInstalled = false
-  let activityUnsubscribe: (() => void) | null = null
-  let hostStatus: BrowserHostStatus = "idle"
-  let baselineRssBytes: number | undefined
-  let peakRssBytes = 0
-  let currentRssBytes: number | undefined
-  let ensureChain: Promise<EnsureResult> | null = null
-  let launchServerUrl: string | null = null
-  let launchEpoch = 0
-  let lastRecovery:
-    | {
-        action: "idle_retire"
-        reason: "no_active_pages"
-        at: number
-        beforeBytes?: number
-        afterBytes: number
-        reclaimedBytes?: number
-      }
-    | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    proc: null as HostSubprocess | null,
+    serverUrl: null as string | null,
+    listenUrl: null as string | null,
+    idleTimer: null as ReturnType<typeof setTimeout> | null,
+    activityInstalled: false,
+    activityUnsubscribe: null as (() => void) | null,
+    hostStatus: "idle" as BrowserHostStatus,
+    baselineRssBytes: undefined as number | undefined,
+    peakRssBytes: 0,
+    currentRssBytes: undefined as number | undefined,
+    ensureChain: null as Promise<EnsureResult> | null,
+    launchServerUrl: null as string | null,
+    launchEpoch: 0,
+    lastRecovery: undefined as
+      | {
+          action: "idle_retire"
+          reason: "no_active_pages"
+          at: number
+          beforeBytes?: number
+          afterBytes: number
+          reclaimedBytes?: number
+        }
+      | undefined,
+  }))
 
   export function key(): string {
     return "browser-host-broker"
   }
 
   export function enabled(): boolean {
-    const configured = process.env.SYNERGY_BROWSER_HOST_AUTOSTART?.trim().toLowerCase()
+    const configured = RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_AUTOSTART?.trim().toLowerCase()
     return configured !== "0" && configured !== "false"
   }
 
   export function status(): BrowserHostStatus {
+    const instanceState = runtimeState()
+
     if (BrowserBroker.ready("webrtc")) return "ready"
     if (!enabled()) return "unavailable"
-    return hostStatus
+    return instanceState.hostStatus
   }
 
   export function resourceStats() {
-    const active = proc?.exitCode === null ? proc : undefined
+    const instanceState = runtimeState()
+
+    const active = instanceState.proc?.exitCode === null ? instanceState.proc : undefined
     if (active) {
       const sample = ProcessInspection.rssBytes(active.pid)
       if (sample !== undefined) {
-        currentRssBytes = sample
-        baselineRssBytes = baselineRssBytes === undefined ? sample : Math.min(baselineRssBytes, sample)
-        peakRssBytes = Math.max(peakRssBytes, sample)
+        instanceState.currentRssBytes = sample
+        instanceState.baselineRssBytes =
+          instanceState.baselineRssBytes === undefined ? sample : Math.min(instanceState.baselineRssBytes, sample)
+        instanceState.peakRssBytes = Math.max(instanceState.peakRssBytes, sample)
       }
     } else {
-      currentRssBytes = undefined
+      instanceState.currentRssBytes = undefined
     }
     return {
       processCount: active ? 1 : 0,
-      measuredProcessCount: active && currentRssBytes !== undefined ? 1 : 0,
-      currentBytes: currentRssBytes,
-      baselineBytes: baselineRssBytes,
-      peakBytes: peakRssBytes || undefined,
+      measuredProcessCount: active && instanceState.currentRssBytes !== undefined ? 1 : 0,
+      currentBytes: instanceState.currentRssBytes,
+      baselineBytes: instanceState.baselineRssBytes,
+      peakBytes: instanceState.peakRssBytes || undefined,
       retainedBytes:
-        currentRssBytes === undefined
+        instanceState.currentRssBytes === undefined
           ? undefined
-          : Math.max(0, currentRssBytes - (baselineRssBytes ?? currentRssBytes)),
-      lastRecovery,
+          : Math.max(
+              0,
+              instanceState.currentRssBytes - (instanceState.baselineRssBytes ?? instanceState.currentRssBytes),
+            ),
+      lastRecovery: instanceState.lastRecovery,
     }
   }
 
   export function configureServerUrl(url: string): void {
-    listenUrl = url
+    const instanceState = runtimeState()
+
+    instanceState.listenUrl = url
   }
 
   export function activeServerUrl(): string | null {
-    return serverUrl
+    const instanceState = runtimeState()
+
+    return instanceState.serverUrl
   }
 
   export async function ensure(input: EnsureInput): Promise<EnsureResult> {
+    const instanceState = runtimeState()
+
     installActivityListener()
     cancelIdleStop()
     BrowserBroker.prepare(input.owner, input.routeDirectory, "webrtc")
     if (BrowserBroker.ready("webrtc")) {
-      hostStatus = "ready"
+      instanceState.hostStatus = "ready"
       return { status: "running", key: key() }
     }
     if (!enabled()) {
-      hostStatus = "unavailable"
-      BrowserBroker.publishHostStatus(hostStatus)
+      instanceState.hostStatus = "unavailable"
+      BrowserBroker.publishHostStatus(instanceState.hostStatus)
       return { status: "disabled", key: key() }
     }
 
     const resolvedServerUrl = resolveServerUrl(input.serverUrl)
-    if (ensureChain) {
-      if (launchServerUrl === resolvedServerUrl) {
-        hostStatus = "starting"
-        BrowserBroker.publishHostStatus(hostStatus)
+    if (instanceState.ensureChain) {
+      if (instanceState.launchServerUrl === resolvedServerUrl) {
+        instanceState.hostStatus = "starting"
+        BrowserBroker.publishHostStatus(instanceState.hostStatus)
         return { status: "running", key: key() }
       }
       // The URL differs from the in-flight launch/restart. Wait for it to
       // settle, then re-evaluate so the process is restarted with the new URL.
-      const previous = ensureChain
+      const previous = instanceState.ensureChain
       const run = previous.then(
         () => ensureSettled(input, resolvedServerUrl),
         () => ensureSettled(input, resolvedServerUrl),
       )
       const tail = run.finally(() => {
-        if (ensureChain === tail) ensureChain = null
+        const instanceState = runtimeState()
+
+        if (instanceState.ensureChain === tail) instanceState.ensureChain = null
       })
-      ensureChain = tail
+      instanceState.ensureChain = tail
       void tail.catch(() => undefined)
       return tail
     }
 
-    if (proc?.exitCode === null && launchServerUrl === resolvedServerUrl) {
-      hostStatus = "starting"
-      BrowserBroker.publishHostStatus(hostStatus)
+    if (instanceState.proc?.exitCode === null && instanceState.launchServerUrl === resolvedServerUrl) {
+      instanceState.hostStatus = "starting"
+      BrowserBroker.publishHostStatus(instanceState.hostStatus)
       return { status: "running", key: key() }
     }
-    if (proc?.exitCode === null) {
-      log.info("browser.host.broker.restarting", { previous: launchServerUrl, next: resolvedServerUrl })
-      serverUrl = resolvedServerUrl
-      launchServerUrl = resolvedServerUrl
-      const pipeLogs = process.env.NODE_ENV !== "production"
+    if (instanceState.proc?.exitCode === null) {
+      log.info("browser.host.broker.restarting", { previous: instanceState.launchServerUrl, next: resolvedServerUrl })
+      instanceState.serverUrl = resolvedServerUrl
+      instanceState.launchServerUrl = resolvedServerUrl
+      const pipeLogs = RuntimeContext.current().host.env.NODE_ENV !== "production"
       // A live process implies the executable is already installed, so the
       // restart is bounded (stop + spawn) and can be awaited by the caller.
       const restart = (async () => {
@@ -145,101 +164,119 @@ export namespace BrowserHostBrokerProcess {
         return launch(resolvedServerUrl, pipeLogs)
       })()
       const tail = restart.finally(() => {
-        if (ensureChain === tail) ensureChain = null
+        const instanceState = runtimeState()
+
+        if (instanceState.ensureChain === tail) instanceState.ensureChain = null
       })
-      ensureChain = tail
+      instanceState.ensureChain = tail
       void tail.catch(() => undefined)
       return tail
     }
 
-    serverUrl = resolvedServerUrl
+    instanceState.serverUrl = resolvedServerUrl
     return startLaunch(resolvedServerUrl)
   }
 
   function startLaunch(resolvedServerUrl: string): EnsureResult {
-    const pipeLogs = process.env.NODE_ENV !== "production"
-    hostStatus =
-      Installation.VERSION === "local" || process.env.SYNERGY_BROWSER_HOST_COMMAND ? "starting" : "installing"
-    BrowserBroker.publishHostStatus(hostStatus)
-    launchServerUrl = resolvedServerUrl
+    const instanceState = runtimeState()
+
+    const pipeLogs = RuntimeContext.current().host.env.NODE_ENV !== "production"
+    instanceState.hostStatus =
+      Installation.VERSION === "local" || RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_COMMAND
+        ? "starting"
+        : "installing"
+    BrowserBroker.publishHostStatus(instanceState.hostStatus)
+    instanceState.launchServerUrl = resolvedServerUrl
     // Resolve the command (including any managed installation) and spawn in the
     // background so the HTTP control request is never blocked by a multi-minute
     // download. Callers get a bounded wait (browser_host_pending) and retry.
-    ensureChain = launch(resolvedServerUrl, pipeLogs).finally(() => {
-      ensureChain = null
+    instanceState.ensureChain = launch(resolvedServerUrl, pipeLogs).finally(() => {
+      const instanceState = runtimeState()
+
+      instanceState.ensureChain = null
     })
-    void ensureChain.catch(() => undefined)
+    void instanceState.ensureChain.catch(() => undefined)
     return { status: "started", key: key() }
   }
 
   async function ensureSettled(input: EnsureInput, resolvedServerUrl: string): Promise<EnsureResult> {
-    if (proc?.exitCode === null) {
-      if (launchServerUrl === resolvedServerUrl) {
-        hostStatus = "starting"
-        BrowserBroker.publishHostStatus(hostStatus)
+    const instanceState = runtimeState()
+
+    if (instanceState.proc?.exitCode === null) {
+      if (instanceState.launchServerUrl === resolvedServerUrl) {
+        instanceState.hostStatus = "starting"
+        BrowserBroker.publishHostStatus(instanceState.hostStatus)
         return { status: "running", key: key() }
       }
-      log.info("browser.host.broker.restarting", { previous: launchServerUrl, next: resolvedServerUrl })
-      serverUrl = resolvedServerUrl
-      launchServerUrl = resolvedServerUrl
-      const pipeLogs = process.env.NODE_ENV !== "production"
+      log.info("browser.host.broker.restarting", { previous: instanceState.launchServerUrl, next: resolvedServerUrl })
+      instanceState.serverUrl = resolvedServerUrl
+      instanceState.launchServerUrl = resolvedServerUrl
+      const pipeLogs = RuntimeContext.current().host.env.NODE_ENV !== "production"
       await stop("restart")
       return launch(resolvedServerUrl, pipeLogs)
     }
-    serverUrl = resolvedServerUrl
+    instanceState.serverUrl = resolvedServerUrl
     return startLaunch(resolvedServerUrl)
   }
 
   async function launch(resolvedServerUrl: string, pipeLogs: boolean): Promise<EnsureResult> {
-    const epoch = ++launchEpoch
+    const instanceState = runtimeState()
+
+    const epoch = ++instanceState.launchEpoch
     const hostCommand = await resolveCommand().catch((error) => {
-      if (launchEpoch !== epoch) return null
-      hostStatus = "failed"
-      BrowserBroker.publishHostStatus(hostStatus)
+      const instanceState = runtimeState()
+
+      if (instanceState.launchEpoch !== epoch) return null
+      instanceState.hostStatus = "failed"
+      BrowserBroker.publishHostStatus(instanceState.hostStatus)
       log.error("browser.host.install.failed", { error })
       throw error
     })
-    if (hostCommand === null || launchEpoch !== epoch) return { status: "running", key: key() }
+    if (hostCommand === null || instanceState.launchEpoch !== epoch) return { status: "running", key: key() }
 
     // Re-assert the URL: the previous process's exit handler clears serverUrl
     // when it observes the old process exiting during a restart.
-    serverUrl = resolvedServerUrl
-    hostStatus = "starting"
-    BrowserBroker.publishHostStatus(hostStatus)
+    instanceState.serverUrl = resolvedServerUrl
+    instanceState.hostStatus = "starting"
+    BrowserBroker.publishHostStatus(instanceState.hostStatus)
     const active = Bun.spawn(hostCommand, {
       cwd: repoRoot(),
       detached: process.platform !== "win32",
       stdout: pipeLogs ? "pipe" : "ignore",
       stderr: pipeLogs ? "pipe" : "ignore",
       env: {
-        ...process.env,
+        ...RuntimeContext.current().host.env,
         SYNERGY_BROWSER_HOST_SERVER_URL: resolvedServerUrl,
         SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: BrowserBroker.secret(),
       },
     })
-    proc = active
+    instanceState.proc = active
     log.info("browser.host.broker.started", { pid: active.pid, serverUrl: resolvedServerUrl })
     if (pipeLogs) {
       pipe(active.stdout, "stdout")
       pipe(active.stderr, "stderr")
     }
     active.exited.finally(() => {
-      if (proc !== active) return
+      const instanceState = runtimeState()
+
+      if (instanceState.proc !== active) return
       log.info("browser.host.broker.exited", { pid: active.pid, exitCode: active.exitCode })
-      proc = null
-      serverUrl = null
-      hostStatus = active.exitCode === 0 ? "idle" : "failed"
-      BrowserBroker.publishHostStatus(hostStatus)
+      instanceState.proc = null
+      instanceState.serverUrl = null
+      instanceState.hostStatus = active.exitCode === 0 ? "idle" : "failed"
+      BrowserBroker.publishHostStatus(instanceState.hostStatus)
     })
     return { status: "started", key: key() }
   }
 
   export async function stop(reason: "shutdown" | "idle_no_pages" | "restart" = "shutdown"): Promise<void> {
+    const instanceState = runtimeState()
+
     cancelIdleStop()
-    launchEpoch++
-    const active = proc
+    instanceState.launchEpoch++
+    const active = instanceState.proc
     if (!active) return
-    const beforeBytes = ProcessInspection.rssBytes(active.pid) ?? currentRssBytes
+    const beforeBytes = ProcessInspection.rssBytes(active.pid) ?? instanceState.currentRssBytes
     let exited = active.exitCode !== null
     const exit = active.exited.then(() => {
       exited = true
@@ -251,13 +288,13 @@ export namespace BrowserHostBrokerProcess {
       await Promise.race([exit, new Promise<void>((resolve) => setTimeout(resolve, 2_000))])
     }
     if (!exited) throw new Error(`Browser Host process ${active.pid} did not exit after SIGKILL.`)
-    if (proc === active) proc = null
-    if (reason !== "restart") serverUrl = null
-    hostStatus = reason === "restart" ? "restarting" : "idle"
-    BrowserBroker.publishHostStatus(hostStatus)
-    currentRssBytes = undefined
+    if (instanceState.proc === active) instanceState.proc = null
+    if (reason !== "restart") instanceState.serverUrl = null
+    instanceState.hostStatus = reason === "restart" ? "restarting" : "idle"
+    BrowserBroker.publishHostStatus(instanceState.hostStatus)
+    instanceState.currentRssBytes = undefined
     if (reason === "idle_no_pages") {
-      lastRecovery = {
+      instanceState.lastRecovery = {
         action: "idle_retire",
         reason: "no_active_pages",
         at: Date.now(),
@@ -269,26 +306,30 @@ export namespace BrowserHostBrokerProcess {
   }
 
   export function resetForTest(): void {
+    const instanceState = runtimeState()
+
     cancelIdleStop()
-    if (proc) killHostTree(proc, "SIGKILL")
-    proc = null
-    serverUrl = null
-    listenUrl = null
-    hostStatus = "idle"
-    baselineRssBytes = undefined
-    peakRssBytes = 0
-    currentRssBytes = undefined
-    lastRecovery = undefined
-    ensureChain = null
-    launchServerUrl = null
-    launchEpoch++
-    activityUnsubscribe?.()
-    activityUnsubscribe = null
-    activityInstalled = false
+    if (instanceState.proc) killHostTree(instanceState.proc, "SIGKILL")
+    instanceState.proc = null
+    instanceState.serverUrl = null
+    instanceState.listenUrl = null
+    instanceState.hostStatus = "idle"
+    instanceState.baselineRssBytes = undefined
+    instanceState.peakRssBytes = 0
+    instanceState.currentRssBytes = undefined
+    instanceState.lastRecovery = undefined
+    instanceState.ensureChain = null
+    instanceState.launchServerUrl = null
+    instanceState.launchEpoch++
+    instanceState.activityUnsubscribe?.()
+    instanceState.activityUnsubscribe = null
+    instanceState.activityInstalled = false
   }
 
   function resolveServerUrl(requestOrigin: string): string {
-    const configured = process.env.SYNERGY_BROWSER_HOST_SERVER_URL?.trim()
+    const instanceState = runtimeState()
+
+    const configured = RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_SERVER_URL?.trim()
     if (configured) {
       try {
         const parsed = new URL(configured)
@@ -296,9 +337,9 @@ export namespace BrowserHostBrokerProcess {
       } catch {}
       log.warn("browser.host.broker.invalid_server_url_override", { value: configured })
     }
-    if (!listenUrl) return requestOrigin
+    if (!instanceState.listenUrl) return requestOrigin
     try {
-      const url = new URL(listenUrl)
+      const url = new URL(instanceState.listenUrl)
       if (url.hostname === "0.0.0.0") url.hostname = "127.0.0.1"
       else if (url.hostname === "[::]") url.hostname = "[::1]"
       return url.origin
@@ -308,29 +349,37 @@ export namespace BrowserHostBrokerProcess {
   }
 
   function installActivityListener(): void {
-    if (activityInstalled) return
-    activityInstalled = true
-    activityUnsubscribe = BrowserBroker.onActivity((hasPages) => {
+    const instanceState = runtimeState()
+
+    if (instanceState.activityInstalled) return
+    instanceState.activityInstalled = true
+    instanceState.activityUnsubscribe = BrowserBroker.onActivity((hasPages) => {
+      const instanceState = runtimeState()
+
       if (hasPages) {
         cancelIdleStop()
         return
       }
-      if (!proc || idleTimer) return
-      idleTimer = setTimeout(() => {
-        idleTimer = null
+      if (!instanceState.proc || instanceState.idleTimer) return
+      instanceState.idleTimer = setTimeout(() => {
+        const instanceState = runtimeState()
+
+        instanceState.idleTimer = null
         void stop("idle_no_pages")
       }, 60_000)
     })
   }
 
   function cancelIdleStop(): void {
-    if (!idleTimer) return
-    clearTimeout(idleTimer)
-    idleTimer = null
+    const instanceState = runtimeState()
+
+    if (!instanceState.idleTimer) return
+    clearTimeout(instanceState.idleTimer)
+    instanceState.idleTimer = null
   }
 
   export async function resolveCommand(): Promise<string[]> {
-    const configured = process.env.SYNERGY_BROWSER_HOST_COMMAND
+    const configured = RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_COMMAND
     if (configured)
       return configured.trim().startsWith("[") ? JSON.parse(configured) : configured.split(/\s+/).filter(Boolean)
     if (Installation.VERSION === "local") {

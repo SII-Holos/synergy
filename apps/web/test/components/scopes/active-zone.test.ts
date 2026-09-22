@@ -14,8 +14,14 @@ type Runtime = Parameters<typeof getActiveReason>[1]
 function session(id = "ses_1"): Session {
   return {
     id,
-    scope: { id: "scope_1", type: "project", directory: "/repo" },
+    scope: {
+      id: "scope_1",
+      type: "project",
+      time: { created: 1, updated: 1 },
+      local: { sandboxes: [], worktree: "/repo", directory: "/repo" },
+    },
     title: "Session",
+    workspace: null,
     version: "1.0.0",
     time: { created: 1, updated: 2 },
   }

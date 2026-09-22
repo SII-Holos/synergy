@@ -1,6 +1,5 @@
 import {
   abandonSession,
-  assertSessionWorkspaceAvailable,
   continueSession,
   createSession,
   submitInput,
@@ -74,1481 +73,1489 @@ const SessionAbandonResult = z
   })
   .meta({ ref: "SessionAbandonResult" })
 
-export const SessionRoute = new Hono()
-  .post(
-    "/:sessionID/run/:runID/cancel",
-    describeRoute({
-      summary: "Cancel one task and drain its execution",
-      description:
-        "Close admission for this run, cancel its descendants, and await durable terminal records without cancelling an unrelated session root.",
-      operationId: "session.cancelRun",
-      tags: ["Session"],
-      responses: {
-        200: {
-          description: "Cancelled or already terminal run",
-          content: { "application/json": { schema: resolver(RolloutSchema.RunRecord) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
-    ),
-    async (c) => {
-      const { sessionID, runID } = c.req.valid("param")
-      return c.json(await RolloutLifecycle.cancel(sessionID, runID))
-    },
-  )
-  .get(
-    "/:sessionID/run/:runID/result",
-    describeRoute({
-      summary: "Read a task trajectory and accounting",
-      description:
-        "Read a fixed journal boundary for each related run, including descendant calls and separate reported and estimated costs.",
-      operationId: "session.runResult",
-      tags: ["Session"],
-      responses: {
-        200: {
-          description: "Rollout result",
-          content: { "application/json": { schema: resolver(RolloutQuery.Result) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
-    ),
-    async (c) => {
-      const { sessionID, runID } = c.req.valid("param")
-      return c.json(await RolloutQuery.tree(RolloutLifecycle.owner(await Session.get(sessionID)), runID))
-    },
-  )
-  .get(
-    "/:sessionID/run/:runID",
-    describeRoute({
-      summary: "Get durable task execution status",
-      description: "Read the persisted run status after execution, descendant delivery, and auxiliary work settle.",
-      operationId: "session.run",
-      tags: ["Session"],
-      responses: {
-        200: {
-          description: "Durable run",
-          content: { "application/json": { schema: resolver(RolloutSchema.RunRecord) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
-    ),
-    async (c) => {
-      const { sessionID, runID } = c.req.valid("param")
-      return c.json(await RolloutLedger.getRun(RolloutLifecycle.owner(await Session.get(sessionID)), runID))
-    },
-  )
-  .get(
-    "/",
-    describeRoute({
-      summary: "List sessions",
-      description: "Get a paginated list of Synergy sessions, sorted by most recently updated.",
-      operationId: "session.list",
-      responses: {
-        200: {
-          description: "Paginated list of sessions",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  data: Session.Info.array(),
-                  total: z.number(),
-                  offset: z.number(),
-                  limit: z.number(),
-                }),
-              ),
-            },
+export const SessionRoute = () =>
+  new Hono()
+    .post(
+      "/:sessionID/run/:runID/cancel",
+      describeRoute({
+        summary: "Cancel one task and drain its execution",
+        description:
+          "Close admission for this run, cancel its descendants, and await durable terminal records without cancelling an unrelated session root.",
+        operationId: "session.cancelRun",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Cancelled or already terminal run",
+            content: { "application/json": { schema: resolver(RolloutSchema.RunRecord) } },
           },
+          ...errors(400, 404),
         },
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        offset: z.coerce.number().default(0).meta({ description: "Number of sessions to skip" }),
-        limit: z.coerce.number().default(20).meta({ description: "Maximum number of sessions to return" }),
-        search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
-        since: z.coerce
-          .number()
-          .optional()
-          .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
-        before: z.coerce
-          .number()
-          .optional()
-          .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
-        pinned: booleanQuery.optional().meta({ description: "Only include pinned sessions" }),
-        parentOnly: booleanQuery
-          .default(true)
-          .meta({ description: "Only include top-level sessions (exclude subsessions). Default: true" }),
       }),
-    ),
-    async (c) => {
-      const query = c.req.valid("query")
-      const result = await Session.list({
-        offset: query.offset,
-        limit: query.limit,
-        search: query.search,
-        since: query.since,
-        before: query.before,
-        pinned: query.pinned,
-        parentOnly: query.parentOnly,
-      })
-      return c.json({
-        data: result.data,
-        total: result.total,
-        offset: query.offset,
-        limit: query.limit,
-      })
-    },
-  )
-  .get(
-    "/status",
-    describeRoute({
-      summary: "Get session status",
-      description: "Retrieve the current status of all sessions, including active, idle, and completed states.",
-      operationId: "session.status",
-      responses: {
-        200: {
-          description: "Get session status",
-          content: {
-            "application/json": {
-              schema: resolver(z.record(z.string(), Session.StatusInfo)),
-            },
-          },
-        },
-        ...errors(400),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
+      ),
+      async (c) => {
+        const { sessionID, runID } = c.req.valid("param")
+        return c.json(await RolloutLifecycle.cancel(sessionID, runID))
       },
-    }),
-    async (c) => {
-      const result = await SessionManager.listStatuses(ScopeContext.current.scope.id)
-      return c.json(result)
-    },
-  )
-  .get(
-    "/:sessionID",
-    describeRoute({
-      summary: "Get session",
-      description: "Retrieve detailed information about a specific Synergy session.",
-      tags: ["Session"],
-      operationId: "session.get",
-      responses: {
-        200: {
-          description: "Get session",
-          content: {
-            "application/json": {
-              schema: resolver(Session.Info),
-            },
+    )
+    .get(
+      "/:sessionID/run/:runID/result",
+      describeRoute({
+        summary: "Read a task trajectory and accounting",
+        description:
+          "Read a fixed journal boundary for each related run, including descendant calls and separate reported and estimated costs.",
+        operationId: "session.runResult",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Rollout result",
+            content: { "application/json": { schema: resolver(RolloutQuery.Result) } },
           },
+          ...errors(400, 404),
         },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.get.schema,
       }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      log.info("SEARCH", { route: ObservabilityRedaction.routePath(c.req.url) })
-      const session = await Session.get(sessionID)
-      return c.json(session)
-    },
-  )
-  .get(
-    "/:sessionID/children",
-    describeRoute({
-      summary: "Get session children",
-      tags: ["Session"],
-      description: "Retrieve all child sessions that were forked from the specified parent session.",
-      operationId: "session.children",
-      responses: {
-        200: {
-          description: "Paginated child sessions",
-          content: {
-            "application/json": {
-              schema: resolver(Session.ChildrenPage),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
+      ),
+      async (c) => {
+        const { sessionID, runID } = c.req.valid("param")
+        return c.json(await RolloutQuery.tree(RolloutLifecycle.owner(await Session.get(sessionID)), runID))
+      },
+    )
+    .get(
+      "/:sessionID/run/:runID",
+      describeRoute({
+        summary: "Get durable task execution status",
+        description: "Read the persisted run status after execution, descendant delivery, and auxiliary work settle.",
+        operationId: "session.run",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Durable run",
+            content: { "application/json": { schema: resolver(RolloutSchema.RunRecord) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
+      ),
+      async (c) => {
+        const { sessionID, runID } = c.req.valid("param")
+        return c.json(await RolloutLedger.getRun(RolloutLifecycle.owner(await Session.get(sessionID)), runID))
+      },
+    )
+    .get(
+      "/",
+      describeRoute({
+        summary: "List sessions",
+        description: "Get a paginated list of Synergy sessions, sorted by most recently updated.",
+        operationId: "session.list",
+        responses: {
+          200: {
+            description: "Paginated list of sessions",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    data: Session.Info.array(),
+                    total: z.number(),
+                    offset: z.number(),
+                    limit: z.number(),
+                  }),
+                ),
+              },
             },
           },
         },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Identifier.schema("session"),
       }),
-    ),
-    validator(
-      "query",
-      z
-        .object({
-          limit: z.coerce.number().int().min(1).max(50).default(8),
-          cursorLastActivityAt: z.coerce.number().optional(),
-          cursorId: z.string().optional(),
-          search: z.string().optional(),
-          includeArchived: booleanQuery.optional().default(false),
-        })
-        .refine((query) => (query.cursorLastActivityAt === undefined) === (query.cursorId === undefined), {
-          message: "cursorLastActivityAt and cursorId must be provided together",
+      validator(
+        "query",
+        z.object({
+          offset: z.coerce.number().default(0).meta({ description: "Number of sessions to skip" }),
+          limit: z.coerce.number().default(20).meta({ description: "Maximum number of sessions to return" }),
+          search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
+          since: z.coerce
+            .number()
+            .optional()
+            .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
+          before: z.coerce
+            .number()
+            .optional()
+            .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
+          pinned: booleanQuery.optional().meta({ description: "Only include pinned sessions" }),
+          tag: Session.TagQuery.optional().meta({ description: "Filter sessions by tag" }),
+          parentOnly: booleanQuery
+            .default(true)
+            .meta({ description: "Only include top-level sessions (exclude subsessions). Default: true" }),
         }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const query = c.req.valid("query")
-      const result = await Session.childPage({
-        parentID: sessionID,
-        limit: query.limit,
-        cursor:
-          query.cursorLastActivityAt !== undefined && query.cursorId !== undefined
-            ? { lastActivityAt: query.cursorLastActivityAt, id: query.cursorId }
-            : undefined,
-        search: query.search,
-        includeArchived: query.includeArchived,
-      })
-      return c.json(result)
-    },
-  )
-  .get(
-    "/:sessionID/todo",
-    describeRoute({
-      summary: "Get session todos",
-      description: "Retrieve the todo list associated with a specific session, showing tasks and action items.",
-      operationId: "session.todo",
-      responses: {
-        200: {
-          description: "Todo list",
-          content: {
-            "application/json": {
-              schema: resolver(Todo.Info.array()),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        const result = await Session.list({
+          offset: query.offset,
+          limit: query.limit,
+          search: query.search,
+          since: query.since,
+          before: query.before,
+          pinned: query.pinned,
+          parentOnly: query.parentOnly,
+          tag: query.tag,
+        })
+        return c.json({
+          data: result.data,
+          total: result.total,
+          offset: query.offset,
+          limit: query.limit,
+        })
+      },
+    )
+    .get(
+      "/status",
+      describeRoute({
+        summary: "Get session status",
+        description: "Retrieve the current status of all sessions, including active, idle, and completed states.",
+        operationId: "session.status",
+        responses: {
+          200: {
+            description: "Get session status",
+            content: {
+              "application/json": {
+                schema: resolver(z.record(z.string(), Session.StatusInfo)),
+              },
             },
           },
+          ...errors(400),
         },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
       }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const todos = await Todo.get(sessionID)
-      return c.json(todos)
-    },
-  )
-  .get(
-    "/:sessionID/dag",
-    describeRoute({
-      summary: "Get session DAG",
-      description: "Retrieve the task DAG associated with a specific session.",
-      operationId: "session.dag",
-      responses: {
-        200: {
-          description: "DAG node list",
-          content: {
-            "application/json": {
-              schema: resolver(Dag.Node.array()),
+      async (c) => {
+        const result = await SessionManager.listStatuses(ScopeContext.current.scope.id)
+        return c.json(result)
+      },
+    )
+    .get(
+      "/:sessionID",
+      describeRoute({
+        summary: "Get session",
+        description: "Retrieve detailed information about a specific Synergy session.",
+        tags: ["Session"],
+        operationId: "session.get",
+        responses: {
+          200: {
+            description: "Get session",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info),
+              },
             },
           },
+          ...errors(400, 404),
         },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
       }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const nodes = await Dag.get(sessionID)
-      return c.json(nodes)
-    },
-  )
-  .post(
-    "/",
-    describeRoute({
-      summary: "Create session",
-      description: "Create a new Synergy session for interacting with AI assistants and managing conversations.",
-      operationId: "session.create",
-      responses: {
-        ...errors(400),
-        200: {
-          description: "Successfully created session",
-          content: {
-            "application/json": {
-              schema: resolver(Session.Info),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.get.schema,
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        log.info("SEARCH", { route: ObservabilityRedaction.routePath(c.req.url) })
+        const session = await Session.get(sessionID)
+        return c.json(session)
+      },
+    )
+    .get(
+      "/:sessionID/children",
+      describeRoute({
+        summary: "Get session children",
+        tags: ["Session"],
+        description: "Retrieve all child sessions that were forked from the specified parent session.",
+        operationId: "session.children",
+        responses: {
+          200: {
+            description: "Paginated child sessions",
+            content: {
+              "application/json": {
+                schema: resolver(Session.ChildrenPage),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+        }),
+      ),
+      validator(
+        "query",
+        z
+          .object({
+            limit: z.coerce.number().int().min(1).max(50).default(8),
+            cursorLastActivityAt: z.coerce.number().optional(),
+            cursorId: z.string().optional(),
+            search: z.string().optional(),
+            includeArchived: booleanQuery.optional().default(false),
+          })
+          .refine((query) => (query.cursorLastActivityAt === undefined) === (query.cursorId === undefined), {
+            message: "cursorLastActivityAt and cursorId must be provided together",
+          }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const query = c.req.valid("query")
+        const result = await Session.childPage({
+          parentID: sessionID,
+          limit: query.limit,
+          cursor:
+            query.cursorLastActivityAt !== undefined && query.cursorId !== undefined
+              ? { lastActivityAt: query.cursorLastActivityAt, id: query.cursorId }
+              : undefined,
+          search: query.search,
+          includeArchived: query.includeArchived,
+        })
+        return c.json(result)
+      },
+    )
+    .get(
+      "/:sessionID/todo",
+      describeRoute({
+        summary: "Get session todos",
+        description: "Retrieve the todo list associated with a specific session, showing tasks and action items.",
+        operationId: "session.todo",
+        responses: {
+          200: {
+            description: "Todo list",
+            content: {
+              "application/json": {
+                schema: resolver(Todo.Info.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const todos = await Todo.get(sessionID)
+        return c.json(todos)
+      },
+    )
+    .get(
+      "/:sessionID/dag",
+      describeRoute({
+        summary: "Get session DAG",
+        description: "Retrieve the task DAG associated with a specific session.",
+        operationId: "session.dag",
+        responses: {
+          200: {
+            description: "DAG node list",
+            content: {
+              "application/json": {
+                schema: resolver(Dag.Node.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const nodes = await Dag.get(sessionID)
+        return c.json(nodes)
+      },
+    )
+    .post(
+      "/",
+      describeRoute({
+        summary: "Create session",
+        description: "Create a new Synergy session for interacting with AI assistants and managing conversations.",
+        operationId: "session.create",
+        responses: {
+          ...errors(400),
+          200: {
+            description: "Successfully created session",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info),
+              },
             },
           },
         },
+      }),
+      validator(
+        "json",
+        z
+          .object({
+            parentID: z.string().optional(),
+            title: z.string().optional(),
+            tags: Session.Tags.optional(),
+            id: z.string().optional(),
+            controlProfile: ControlProfileId.optional(),
+            workspace: Session.WorkspaceSelection.optional(),
+            completionNotice: z
+              .object({
+                silent: z.boolean().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .optional(),
+      ),
+      async (c) => {
+        return c.json(await createSession(c.req.valid("json")))
       },
-    }),
-    validator(
-      "json",
-      z
-        .object({
-          parentID: z.string().optional(),
+    )
+    .delete(
+      "/:sessionID",
+      describeRoute({
+        summary: "Delete session",
+        description: "Delete a session and permanently remove all associated data, including messages and history.",
+        operationId: "session.delete",
+        responses: {
+          200: {
+            description: "Successfully deleted session",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.remove.schema,
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        await Session.remove(sessionID)
+        return c.json(true)
+      },
+    )
+    .patch(
+      "/:sessionID",
+      describeRoute({
+        summary: "Update session",
+        description: "Update properties of an existing session, such as title or other metadata.",
+        operationId: "session.update",
+        responses: {
+          200: {
+            description: "Successfully updated session",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
           title: z.string().optional(),
-          id: z.string().optional(),
+          tags: Session.Tags.optional(),
+          pinned: z.number().optional(),
           controlProfile: ControlProfileId.optional(),
-          workspace: Session.WorkspaceSelection.optional(),
+          resolvePendingPermissions: z.boolean().optional(),
           completionNotice: z
             .object({
-              silent: z.boolean().optional(),
+              unread: z.literal(false),
             })
             .strict()
             .optional(),
-        })
-        .optional(),
-    ),
-    async (c) => {
-      return c.json(await createSession(c.req.valid("json")))
-    },
-  )
-  .delete(
-    "/:sessionID",
-    describeRoute({
-      summary: "Delete session",
-      description: "Delete a session and permanently remove all associated data, including messages and history.",
-      operationId: "session.delete",
-      responses: {
-        200: {
-          description: "Successfully deleted session",
-          content: {
-            "application/json": {
-              schema: resolver(z.boolean()),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.remove.schema,
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      await Session.remove(sessionID)
-      return c.json(true)
-    },
-  )
-  .patch(
-    "/:sessionID",
-    describeRoute({
-      summary: "Update session",
-      description: "Update properties of an existing session, such as title or other metadata.",
-      operationId: "session.update",
-      responses: {
-        200: {
-          description: "Successfully updated session",
-          content: {
-            "application/json": {
-              schema: resolver(Session.Info),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string(),
-      }),
-    ),
-    validator(
-      "json",
-      z.object({
-        title: z.string().optional(),
-        pinned: z.number().optional(),
-        controlProfile: ControlProfileId.optional(),
-        resolvePendingPermissions: z.boolean().optional(),
-        completionNotice: z
-          .object({
-            unread: z.literal(false),
-          })
-          .strict()
-          .optional(),
-        time: z
-          .object({
-            archived: z.number().optional(),
-          })
-          .optional(),
-        // Per-session model preference set from the composer's model selector.
-        // Pass null to clear it and fall back to history/agent/provider default.
-        modelOverride: z
-          .object({
-            providerID: z.string(),
-            modelID: z.string(),
-          })
-          .nullable()
-          .optional(),
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const updates = c.req.valid("json")
+          time: z
+            .object({
+              archived: z.number().optional(),
+            })
+            .optional(),
+          // Per-session model preference set from the composer's model selector.
+          // Pass null to clear it and fall back to history/agent/provider default.
+          modelOverride: z
+            .object({
+              providerID: z.string(),
+              modelID: z.string(),
+            })
+            .nullable()
+            .optional(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const updates = c.req.valid("json")
 
-      const applyOtherUpdates = (session: Session.Info) => {
-        if (updates.title !== undefined) session.title = updates.title
-        if (updates.pinned !== undefined) session.pinned = updates.pinned
-        if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
-        if (updates.completionNotice?.unread === false) {
-          session.completionNotice.unread = false
-          session.completionNotice.unreadCount = 0
+        const applyOtherUpdates = (session: Session.Info) => {
+          if (updates.title !== undefined) session.title = updates.title
+          if (updates.tags !== undefined) session.tags = updates.tags
+          if (updates.pinned !== undefined) session.pinned = updates.pinned
+          if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
+          if (updates.completionNotice?.unread === false) {
+            session.completionNotice.unread = false
+            session.completionNotice.unreadCount = 0
+          }
+          if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
         }
-        if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
-      }
 
-      if (updates.resolvePendingPermissions === true) {
-        if (updates.controlProfile !== "full_access") {
-          return c.json(
-            {
-              name: "BadRequestError",
-              message: "resolvePendingPermissions requires controlProfile: full_access",
+        if (updates.resolvePendingPermissions === true) {
+          if (updates.controlProfile !== "full_access") {
+            return c.json(
+              {
+                name: "BadRequestError",
+                message: "resolvePendingPermissions requires controlProfile: full_access",
+              },
+              400,
+            )
+          }
+          const result = await Session.transitionControlProfileAndResolve(sessionID, "full_access", applyOtherUpdates)
+          return c.json(result)
+        }
+
+        const hasOtherUpdates =
+          updates.title !== undefined ||
+          updates.tags !== undefined ||
+          updates.pinned !== undefined ||
+          updates.controlProfile !== undefined ||
+          updates.time?.archived !== undefined ||
+          updates.modelOverride !== undefined
+
+        if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
+          return c.json(await Session.clearCompletionNotice(sessionID))
+        }
+
+        const updatedSession =
+          updates.controlProfile === undefined
+            ? await Session.update(sessionID, applyOtherUpdates)
+            : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
+
+        return c.json(updatedSession)
+      },
+    )
+    .post(
+      "/:sessionID/init",
+      describeRoute({
+        summary: "Initialize session",
+        description:
+          "Analyze the current application and create an AGENTS.md file with project-specific agent configurations.",
+        operationId: "session.init",
+        responses: {
+          200: {
+            description: "200",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
             },
-            400,
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", SessionInvoke.initialize.schema.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        await SessionInvoke.initialize({ ...body, sessionID })
+        return c.json(true)
+      },
+    )
+    .post(
+      "/:sessionID/fork",
+      describeRoute({
+        summary: "Fork session",
+        description: "Create a new session by forking an existing session at a specific message point.",
+        operationId: "session.fork",
+        responses: {
+          200: {
+            description: "200",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info),
+              },
+            },
+          },
+          ...errors(400, 404),
+          409: {
+            description: "Fork point message is no longer part of the effective history",
+            content: {
+              "application/json": {
+                schema: resolver(Session.ForkPointMissingError.Schema),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.fork.schema.shape.sessionID,
+        }),
+      ),
+      validator("json", Session.fork.schema.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        const result = await Session.fork({ ...body, sessionID })
+        return c.json(result)
+      },
+    )
+    .post(
+      "/:sessionID/continue",
+      describeRoute({
+        summary: "Continue a paused session",
+        description:
+          "Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.",
+        operationId: "session.continue",
+        responses: {
+          200: {
+            description: "Continue result",
+            content: {
+              "application/json": {
+                schema: resolver(SessionContinueResult),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        return c.json({ handled: await continueSession(sessionID) })
+      },
+    )
+    .post(
+      "/:sessionID/abandon",
+      describeRoute({
+        summary: "Abandon a stopped session",
+        description:
+          "Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.",
+        operationId: "session.abandon",
+        responses: {
+          200: {
+            description: "Abandon result",
+            content: {
+              "application/json": {
+                schema: resolver(SessionAbandonResult),
+              },
+            },
+          },
+          409: {
+            description: "Abandonment failed; the session remains paused and can be retried",
+            content: { "application/json": { schema: resolver(SessionInvoke.AbandonError.Schema) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(await abandonSession(c.req.valid("param").sessionID))
+        } catch (error) {
+          if (SessionInvoke.AbandonError.isInstance(error)) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .post(
+      "/:sessionID/abort",
+      describeRoute({
+        summary: "Abort session",
+        description:
+          "Stop an active session's ongoing AI processing or command execution. A user stop leaves the session paused and awaiting an explicit continue or abandon, so the work is not restarted behind the user's back.",
+        operationId: "session.abort",
+        responses: {
+          200: {
+            description: "Abort result",
+            content: {
+              "application/json": {
+                schema: resolver(SessionAbort.Result),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      async (c) => {
+        const result = await SessionAbort.abort(c.req.valid("param").sessionID)
+        return c.json(result)
+      },
+    )
+
+    .get(
+      "/:sessionID/inbox",
+      describeRoute({
+        summary: "List session inbox items",
+        description: "Get active queued user messages and agent updates for a session.",
+        operationId: "session.inbox",
+        responses: {
+          200: {
+            description: "Session inbox items",
+            content: {
+              "application/json": {
+                schema: resolver(SessionInbox.Item.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        return c.json(await SessionInbox.list(sessionID))
+      },
+    )
+    .post(
+      "/:sessionID/input",
+      describeRoute({
+        summary: "Submit session input",
+        description:
+          "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.",
+        operationId: "session.input",
+        responses: {
+          200: {
+            description: "Input accepted",
+            content: {
+              "application/json": {
+                schema: resolver(SessionInbox.InputResult),
+              },
+            },
+          },
+          ...errors(400, 404),
+          409: {
+            description: "Session worktree unavailable",
+            content: {
+              "application/json": {
+                schema: resolver(Worktree.UnavailableError.Schema),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", InvokeInput.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        return c.json(await submitInput({ ...body, sessionID }))
+      },
+    )
+    .post(
+      "/:sessionID/inbox/:itemID/retry",
+      describeRoute({
+        summary: "Retry durable session inbox item",
+        description: "Resume processing for an existing durable inbox item without creating a duplicate message.",
+        operationId: "session.inbox_retry",
+        responses: {
+          200: {
+            description: "Inbox item scheduled for processing",
+            content: {
+              "application/json": {
+                schema: resolver(SessionInbox.Item),
+              },
+            },
+          },
+          ...errors(400, 404),
+          409: {
+            description: "Session worktree unavailable",
+            content: {
+              "application/json": {
+                schema: resolver(Worktree.UnavailableError.Schema),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          itemID: z.string().meta({ description: "Inbox item ID" }),
+        }),
+      ),
+      async (c) => {
+        const params = c.req.valid("param")
+        await Session.assertWorkspaceAvailable(params.sessionID)
+        // A parked failure must be cleared before the wake, or the loop would
+        // peek past the failed item and report nothing to do. A failed rearm
+        // write propagates: the endpoint must not report accepted retry work
+        // it did not perform.
+        const item = await SessionInbox.rearm(params)
+        await SessionDrive.request(params.sessionID, "user-input-retry")
+        return c.json(item)
+      },
+    )
+    .post(
+      "/:sessionID/inbox/:itemID/guide",
+      describeRoute({
+        summary: "Guide current run with inbox item",
+        description: "Promote a queued user message so it is added before the next model request in the current run.",
+        operationId: "session.inbox_guide",
+        responses: {
+          200: {
+            description: "Promoted inbox item",
+            content: {
+              "application/json": {
+                schema: resolver(SessionInbox.Item),
+              },
+            },
+          },
+          ...errors(400, 404),
+          409: {
+            description: "First task is locked until its root is ready, or the item is parked as failed",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.union([SessionInbox.FirstTaskLockedError.Schema, SessionInbox.ItemFailedError.Schema]),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          itemID: z.string().meta({ description: "Inbox item ID" }),
+        }),
+      ),
+      async (c) => {
+        const params = c.req.valid("param")
+        try {
+          return c.json(await SessionInbox.guide(params))
+        } catch (error) {
+          if (error instanceof SessionInbox.FirstTaskLockedError || error instanceof SessionInbox.ItemFailedError) {
+            return c.json(error.toObject(), 409)
+          }
+          throw error
+        }
+      },
+    )
+    .delete(
+      "/:sessionID/inbox/:itemID",
+      describeRoute({
+        summary: "Remove inbox item",
+        description: "Remove a queued user message from the session inbox.",
+        operationId: "session.inbox_remove",
+        responses: {
+          204: {
+            description: "Inbox item removed",
+          },
+          ...errors(400, 404),
+          409: {
+            description: "First task is locked until its root is ready",
+            content: {
+              "application/json": {
+                schema: resolver(SessionInbox.FirstTaskLockedError.Schema),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          itemID: z.string().meta({ description: "Inbox item ID" }),
+        }),
+      ),
+      async (c) => {
+        const params = c.req.valid("param")
+        try {
+          await SessionInbox.assertMutable(params)
+          await SessionInbox.remove(params)
+          return c.body(null, 204)
+        } catch (error) {
+          if (error instanceof SessionInbox.FirstTaskLockedError) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+
+    .post(
+      "/:sessionID/summarize",
+      describeRoute({
+        summary: "Summarize session",
+        description: "Generate a concise summary of the session using AI compaction to preserve key information.",
+        operationId: "session.summarize",
+        responses: {
+          200: {
+            description: "Summarized session",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          providerID: z.string(),
+          modelID: z.string(),
+          auto: z.boolean().optional().default(false),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        const msgs = await Session.messages({ sessionID })
+        let currentAgent = await Agent.defaultAgent()
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const info = msgs[i].info
+          if (info.role === "user") {
+            currentAgent = info.agent || (await Agent.defaultAgent())
+            break
+          }
+        }
+        const messageID = Identifier.ascending("message")
+        const msg = await Session.updateMessage({
+          id: messageID,
+          role: "user",
+          model: {
+            providerID: body.providerID,
+            modelID: body.modelID,
+          },
+          sessionID,
+          agent: currentAgent,
+          isRoot: true,
+          rootID: messageID,
+          visible: true,
+          // Mark this as a compaction boundary so the frontend suppresses the
+          // user chrome (the "What did we do so far?" prompt is internal) and
+          // renders only the compaction card for the turn (issue #326).
+          metadata: {
+            compactionBoundary: true,
+          },
+          time: {
+            created: Date.now(),
+          },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: msg.id,
+          sessionID,
+          type: "compaction",
+          auto: body.auto,
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: msg.id,
+          sessionID,
+          type: "text",
+          text: "What did we do so far?",
+        })
+        await SessionInvoke.loop(sessionID)
+        return c.json(true)
+      },
+    )
+    .get(
+      "/:sessionID/message",
+      describeRoute({
+        summary: "Get session messages",
+        description: "Retrieve all messages in a session, including user prompts and AI responses.",
+        operationId: "session.messages",
+        responses: {
+          200: {
+            description: "List of messages",
+            content: {
+              "application/json": {
+                schema: resolver(MessageV2.WithParts.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "query",
+        z.object({
+          limit: z.coerce.number().optional(),
+          raw: booleanQuery.optional(),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        const messages = await Session.messages({
+          sessionID: c.req.valid("param").sessionID,
+          limit: query.limit,
+          raw: query.raw,
+        })
+        return c.json(messages)
+      },
+    )
+    .get(
+      "/:sessionID/message/page",
+      describeRoute({
+        summary: "Get a page of session messages",
+        description: "Retrieve a bounded session message window and an opaque cursor for loading older history.",
+        operationId: "session.messagePage",
+        responses: {
+          200: {
+            description: "Cursor-paged session messages",
+            content: {
+              "application/json": {
+                schema: resolver(SessionHistory.MessagePage),
+              },
+            },
+          },
+          400: {
+            description: "Invalid or stale message cursor",
+            content: {
+              "application/json": {
+                schema: resolver(SessionMessagePageBadRequestError),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.messagePage.schema.shape.sessionID,
+        }),
+      ),
+      validator(
+        "query",
+        z.object({
+          cursor: Session.messagePage.schema.shape.cursor,
+          limit: z.coerce.number().int().min(1).max(500).optional(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const query = c.req.valid("query")
+        try {
+          return c.json(await Session.messagePage({ sessionID, ...query }))
+        } catch (error) {
+          if (
+            error instanceof SessionHistory.MessagePageCursorInvalidError ||
+            error instanceof SessionHistory.MessagePageCursorStaleError
+          ) {
+            return c.json(error.toObject(), 400)
+          }
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/diff",
+      describeRoute({
+        summary: "Get session diff",
+        description: "Get all file changes (diffs) made during this session.",
+        operationId: "session.diff",
+        responses: {
+          200: {
+            description: "List of diffs",
+            content: {
+              "application/json": {
+                schema: resolver(SnapshotSchema.FileDiff.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const diff = await Session.diff(c.req.valid("param").sessionID)
+        return c.json(diff)
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID",
+      describeRoute({
+        summary: "Get message",
+        description: "Retrieve a specific message from a session by its message ID.",
+        operationId: "session.message",
+        responses: {
+          200: {
+            description: "Message",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    info: MessageV2.Info,
+                    parts: MessageV2.Part.array(),
+                  }),
+                ),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          messageID: z.string().meta({ description: "Message ID" }),
+        }),
+      ),
+      async (c) => {
+        const params = c.req.valid("param")
+        const message = await MessageV2.get({
+          sessionID: params.sessionID,
+          messageID: params.messageID,
+        })
+        return c.json(message)
+      },
+    )
+    .delete(
+      "/:sessionID/message/:messageID/part/:partID",
+      describeRoute({
+        description: "Delete a part from a message",
+        operationId: "part.delete",
+        responses: {
+          200: {
+            description: "Successfully deleted part",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          messageID: z.string().meta({ description: "Message ID" }),
+          partID: z.string().meta({ description: "Part ID" }),
+        }),
+      ),
+      async (c) => {
+        const params = c.req.valid("param")
+        await Session.removePart({
+          sessionID: params.sessionID,
+          messageID: params.messageID,
+          partID: params.partID,
+        })
+        return c.json(true)
+      },
+    )
+    .patch(
+      "/:sessionID/message/:messageID/part/:partID",
+      describeRoute({
+        description: "Update a part in a message",
+        operationId: "part.update",
+        responses: {
+          200: {
+            description: "Successfully updated part",
+            content: {
+              "application/json": {
+                schema: resolver(MessageV2.Part),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          messageID: z.string().meta({ description: "Message ID" }),
+          partID: z.string().meta({ description: "Part ID" }),
+        }),
+      ),
+      validator("json", MessageV2.Part),
+      async (c) => {
+        const params = c.req.valid("param")
+        const body = c.req.valid("json")
+        if (body.id !== params.partID || body.messageID !== params.messageID || body.sessionID !== params.sessionID) {
+          throw new Error(
+            `Part mismatch: body.id='${body.id}' vs partID='${params.partID}', body.messageID='${body.messageID}' vs messageID='${params.messageID}', body.sessionID='${body.sessionID}' vs sessionID='${params.sessionID}'`,
           )
         }
-        const result = await Session.transitionControlProfileAndResolve(sessionID, "full_access", applyOtherUpdates)
-        return c.json(result)
-      }
-
-      const hasOtherUpdates =
-        updates.title !== undefined ||
-        updates.pinned !== undefined ||
-        updates.controlProfile !== undefined ||
-        updates.time?.archived !== undefined ||
-        updates.modelOverride !== undefined
-
-      if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
-        return c.json(await Session.clearCompletionNotice(sessionID))
-      }
-
-      const updatedSession =
-        updates.controlProfile === undefined
-          ? await Session.update(sessionID, applyOtherUpdates)
-          : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
-
-      return c.json(updatedSession)
-    },
-  )
-  .post(
-    "/:sessionID/init",
-    describeRoute({
-      summary: "Initialize session",
-      description:
-        "Analyze the current application and create an AGENTS.md file with project-specific agent configurations.",
-      operationId: "session.init",
-      responses: {
-        200: {
-          description: "200",
-          content: {
-            "application/json": {
-              schema: resolver(z.boolean()),
-            },
-          },
-        },
-        ...errors(400, 404),
+        const part = await Session.updatePart(body)
+        return c.json(part)
       },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator("json", SessionInvoke.initialize.schema.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      await SessionInvoke.initialize({ ...body, sessionID })
-      return c.json(true)
-    },
-  )
-  .post(
-    "/:sessionID/fork",
-    describeRoute({
-      summary: "Fork session",
-      description: "Create a new session by forking an existing session at a specific message point.",
-      operationId: "session.fork",
-      responses: {
-        200: {
-          description: "200",
-          content: {
-            "application/json": {
-              schema: resolver(Session.Info),
+    )
+    .post(
+      "/:sessionID/message",
+      describeRoute({
+        summary: "Send message",
+        description: "Create and send a new message to a session, streaming the AI response.",
+        operationId: "session.prompt",
+        responses: {
+          200: {
+            description: "Created message",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    info: MessageV2.Assistant,
+                    parts: MessageV2.Part.array(),
+                  }),
+                ),
+              },
             },
           },
+          ...errors(400, 404),
         },
-        ...errors(400, 404),
-        409: {
-          description: "Fork point message is no longer part of the effective history",
-          content: {
-            "application/json": {
-              schema: resolver(Session.ForkPointMissingError.Schema),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.fork.schema.shape.sessionID,
       }),
-    ),
-    validator("json", Session.fork.schema.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      const result = await Session.fork({ ...body, sessionID })
-      return c.json(result)
-    },
-  )
-  .post(
-    "/:sessionID/continue",
-    describeRoute({
-      summary: "Continue a paused session",
-      description:
-        "Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.",
-      operationId: "session.continue",
-      responses: {
-        200: {
-          description: "Continue result",
-          content: {
-            "application/json": {
-              schema: resolver(SessionContinueResult),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      return c.json({ handled: await continueSession(sessionID) })
-    },
-  )
-  .post(
-    "/:sessionID/abandon",
-    describeRoute({
-      summary: "Abandon a stopped session",
-      description:
-        "Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.",
-      operationId: "session.abandon",
-      responses: {
-        200: {
-          description: "Abandon result",
-          content: {
-            "application/json": {
-              schema: resolver(SessionAbandonResult),
-            },
-          },
-        },
-        409: {
-          description: "Abandonment failed; the session remains paused and can be retried",
-          content: { "application/json": { schema: resolver(SessionInvoke.AbandonError.Schema) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    async (c) => {
-      try {
-        return c.json(await abandonSession(c.req.valid("param").sessionID))
-      } catch (error) {
-        if (SessionInvoke.AbandonError.isInstance(error)) return c.json(error.toObject(), 409)
-        throw error
-      }
-    },
-  )
-  .post(
-    "/:sessionID/abort",
-    describeRoute({
-      summary: "Abort session",
-      description:
-        "Stop an active session's ongoing AI processing or command execution. A user stop leaves the session paused and awaiting an explicit continue or abandon, so the work is not restarted behind the user's back.",
-      operationId: "session.abort",
-      responses: {
-        200: {
-          description: "Abort result",
-          content: {
-            "application/json": {
-              schema: resolver(SessionAbort.Result),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string(),
-      }),
-    ),
-    async (c) => {
-      const result = await SessionAbort.abort(c.req.valid("param").sessionID)
-      return c.json(result)
-    },
-  )
-
-  .get(
-    "/:sessionID/inbox",
-    describeRoute({
-      summary: "List session inbox items",
-      description: "Get active queued user messages and agent updates for a session.",
-      operationId: "session.inbox",
-      responses: {
-        200: {
-          description: "Session inbox items",
-          content: {
-            "application/json": {
-              schema: resolver(SessionInbox.Item.array()),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      return c.json(await SessionInbox.list(sessionID))
-    },
-  )
-  .post(
-    "/:sessionID/input",
-    describeRoute({
-      summary: "Submit session input",
-      description:
-        "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.",
-      operationId: "session.input",
-      responses: {
-        200: {
-          description: "Input accepted",
-          content: {
-            "application/json": {
-              schema: resolver(SessionInbox.InputResult),
-            },
-          },
-        },
-        ...errors(400, 404),
-        409: {
-          description: "Session worktree unavailable",
-          content: {
-            "application/json": {
-              schema: resolver(Worktree.UnavailableError.Schema),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator("json", InvokeInput.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      return c.json(await submitInput({ ...body, sessionID }))
-    },
-  )
-  .post(
-    "/:sessionID/inbox/:itemID/retry",
-    describeRoute({
-      summary: "Retry durable session inbox item",
-      description: "Resume processing for an existing durable inbox item without creating a duplicate message.",
-      operationId: "session.inbox_retry",
-      responses: {
-        200: {
-          description: "Inbox item scheduled for processing",
-          content: {
-            "application/json": {
-              schema: resolver(SessionInbox.Item),
-            },
-          },
-        },
-        ...errors(400, 404),
-        409: {
-          description: "Session worktree unavailable",
-          content: {
-            "application/json": {
-              schema: resolver(Worktree.UnavailableError.Schema),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-        itemID: z.string().meta({ description: "Inbox item ID" }),
-      }),
-    ),
-    async (c) => {
-      const params = c.req.valid("param")
-      await assertSessionWorkspaceAvailable(params.sessionID)
-      // A parked failure must be cleared before the wake, or the loop would
-      // peek past the failed item and report nothing to do. A failed rearm
-      // write propagates: the endpoint must not report accepted retry work
-      // it did not perform.
-      const item = await SessionInbox.rearm(params)
-      await SessionDrive.request(params.sessionID, "user-input-retry")
-      return c.json(item)
-    },
-  )
-  .post(
-    "/:sessionID/inbox/:itemID/guide",
-    describeRoute({
-      summary: "Guide current run with inbox item",
-      description: "Promote a queued user message so it is added before the next model request in the current run.",
-      operationId: "session.inbox_guide",
-      responses: {
-        200: {
-          description: "Promoted inbox item",
-          content: {
-            "application/json": {
-              schema: resolver(SessionInbox.Item),
-            },
-          },
-        },
-        ...errors(400, 404),
-        409: {
-          description: "First task is locked until its root is ready, or the item is parked as failed",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.union([SessionInbox.FirstTaskLockedError.Schema, SessionInbox.ItemFailedError.Schema]),
-              ),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-        itemID: z.string().meta({ description: "Inbox item ID" }),
-      }),
-    ),
-    async (c) => {
-      const params = c.req.valid("param")
-      try {
-        return c.json(await SessionInbox.guide(params))
-      } catch (error) {
-        if (error instanceof SessionInbox.FirstTaskLockedError || error instanceof SessionInbox.ItemFailedError) {
-          return c.json(error.toObject(), 409)
-        }
-        throw error
-      }
-    },
-  )
-  .delete(
-    "/:sessionID/inbox/:itemID",
-    describeRoute({
-      summary: "Remove inbox item",
-      description: "Remove a queued user message from the session inbox.",
-      operationId: "session.inbox_remove",
-      responses: {
-        204: {
-          description: "Inbox item removed",
-        },
-        ...errors(400, 404),
-        409: {
-          description: "First task is locked until its root is ready",
-          content: {
-            "application/json": {
-              schema: resolver(SessionInbox.FirstTaskLockedError.Schema),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-        itemID: z.string().meta({ description: "Inbox item ID" }),
-      }),
-    ),
-    async (c) => {
-      const params = c.req.valid("param")
-      try {
-        await SessionInbox.assertMutable(params)
-        await SessionInbox.remove(params)
-        return c.body(null, 204)
-      } catch (error) {
-        if (error instanceof SessionInbox.FirstTaskLockedError) return c.json(error.toObject(), 409)
-        throw error
-      }
-    },
-  )
-
-  .post(
-    "/:sessionID/summarize",
-    describeRoute({
-      summary: "Summarize session",
-      description: "Generate a concise summary of the session using AI compaction to preserve key information.",
-      operationId: "session.summarize",
-      responses: {
-        200: {
-          description: "Summarized session",
-          content: {
-            "application/json": {
-              schema: resolver(z.boolean()),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator(
-      "json",
-      z.object({
-        providerID: z.string(),
-        modelID: z.string(),
-        auto: z.boolean().optional().default(false),
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      const msgs = await Session.messages({ sessionID })
-      let currentAgent = await Agent.defaultAgent()
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        const info = msgs[i].info
-        if (info.role === "user") {
-          currentAgent = info.agent || (await Agent.defaultAgent())
-          break
-        }
-      }
-      const messageID = Identifier.ascending("message")
-      const msg = await Session.updateMessage({
-        id: messageID,
-        role: "user",
-        model: {
-          providerID: body.providerID,
-          modelID: body.modelID,
-        },
-        sessionID,
-        agent: currentAgent,
-        isRoot: true,
-        rootID: messageID,
-        visible: true,
-        // Mark this as a compaction boundary so the frontend suppresses the
-        // user chrome (the "What did we do so far?" prompt is internal) and
-        // renders only the compaction card for the turn (issue #326).
-        metadata: {
-          compactionBoundary: true,
-        },
-        time: {
-          created: Date.now(),
-        },
-      })
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: msg.id,
-        sessionID,
-        type: "compaction",
-        auto: body.auto,
-      })
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: msg.id,
-        sessionID,
-        type: "text",
-        text: "What did we do so far?",
-      })
-      await SessionInvoke.loop(sessionID)
-      return c.json(true)
-    },
-  )
-  .get(
-    "/:sessionID/message",
-    describeRoute({
-      summary: "Get session messages",
-      description: "Retrieve all messages in a session, including user prompts and AI responses.",
-      operationId: "session.messages",
-      responses: {
-        200: {
-          description: "List of messages",
-          content: {
-            "application/json": {
-              schema: resolver(MessageV2.WithParts.array()),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator(
-      "query",
-      z.object({
-        limit: z.coerce.number().optional(),
-        raw: booleanQuery.optional(),
-      }),
-    ),
-    async (c) => {
-      const query = c.req.valid("query")
-      const messages = await Session.messages({
-        sessionID: c.req.valid("param").sessionID,
-        limit: query.limit,
-        raw: query.raw,
-      })
-      return c.json(messages)
-    },
-  )
-  .get(
-    "/:sessionID/message/page",
-    describeRoute({
-      summary: "Get a page of session messages",
-      description: "Retrieve a bounded session message window and an opaque cursor for loading older history.",
-      operationId: "session.messagePage",
-      responses: {
-        200: {
-          description: "Cursor-paged session messages",
-          content: {
-            "application/json": {
-              schema: resolver(SessionHistory.MessagePage),
-            },
-          },
-        },
-        400: {
-          description: "Invalid or stale message cursor",
-          content: {
-            "application/json": {
-              schema: resolver(SessionMessagePageBadRequestError),
-            },
-          },
-        },
-        ...errors(404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.messagePage.schema.shape.sessionID,
-      }),
-    ),
-    validator(
-      "query",
-      z.object({
-        cursor: Session.messagePage.schema.shape.cursor,
-        limit: z.coerce.number().int().min(1).max(500).optional(),
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const query = c.req.valid("query")
-      try {
-        return c.json(await Session.messagePage({ sessionID, ...query }))
-      } catch (error) {
-        if (
-          error instanceof SessionHistory.MessagePageCursorInvalidError ||
-          error instanceof SessionHistory.MessagePageCursorStaleError
-        ) {
-          return c.json(error.toObject(), 400)
-        }
-        throw error
-      }
-    },
-  )
-  .get(
-    "/:sessionID/diff",
-    describeRoute({
-      summary: "Get session diff",
-      description: "Get all file changes (diffs) made during this session.",
-      operationId: "session.diff",
-      responses: {
-        200: {
-          description: "List of diffs",
-          content: {
-            "application/json": {
-              schema: resolver(SnapshotSchema.FileDiff.array()),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    async (c) => {
-      const diff = await Session.diff(c.req.valid("param").sessionID)
-      return c.json(diff)
-    },
-  )
-  .get(
-    "/:sessionID/message/:messageID",
-    describeRoute({
-      summary: "Get message",
-      description: "Retrieve a specific message from a session by its message ID.",
-      operationId: "session.message",
-      responses: {
-        200: {
-          description: "Message",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  info: MessageV2.Info,
-                  parts: MessageV2.Part.array(),
-                }),
-              ),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-        messageID: z.string().meta({ description: "Message ID" }),
-      }),
-    ),
-    async (c) => {
-      const params = c.req.valid("param")
-      const message = await MessageV2.get({
-        sessionID: params.sessionID,
-        messageID: params.messageID,
-      })
-      return c.json(message)
-    },
-  )
-  .delete(
-    "/:sessionID/message/:messageID/part/:partID",
-    describeRoute({
-      description: "Delete a part from a message",
-      operationId: "part.delete",
-      responses: {
-        200: {
-          description: "Successfully deleted part",
-          content: {
-            "application/json": {
-              schema: resolver(z.boolean()),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-        messageID: z.string().meta({ description: "Message ID" }),
-        partID: z.string().meta({ description: "Part ID" }),
-      }),
-    ),
-    async (c) => {
-      const params = c.req.valid("param")
-      await Session.removePart({
-        sessionID: params.sessionID,
-        messageID: params.messageID,
-        partID: params.partID,
-      })
-      return c.json(true)
-    },
-  )
-  .patch(
-    "/:sessionID/message/:messageID/part/:partID",
-    describeRoute({
-      description: "Update a part in a message",
-      operationId: "part.update",
-      responses: {
-        200: {
-          description: "Successfully updated part",
-          content: {
-            "application/json": {
-              schema: resolver(MessageV2.Part),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-        messageID: z.string().meta({ description: "Message ID" }),
-        partID: z.string().meta({ description: "Part ID" }),
-      }),
-    ),
-    validator("json", MessageV2.Part),
-    async (c) => {
-      const params = c.req.valid("param")
-      const body = c.req.valid("json")
-      if (body.id !== params.partID || body.messageID !== params.messageID || body.sessionID !== params.sessionID) {
-        throw new Error(
-          `Part mismatch: body.id='${body.id}' vs partID='${params.partID}', body.messageID='${body.messageID}' vs messageID='${params.messageID}', body.sessionID='${body.sessionID}' vs sessionID='${params.sessionID}'`,
-        )
-      }
-      const part = await Session.updatePart(body)
-      return c.json(part)
-    },
-  )
-  .post(
-    "/:sessionID/message",
-    describeRoute({
-      summary: "Send message",
-      description: "Create and send a new message to a session, streaming the AI response.",
-      operationId: "session.prompt",
-      responses: {
-        200: {
-          description: "Created message",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  info: MessageV2.Assistant,
-                  parts: MessageV2.Part.array(),
-                }),
-              ),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator("json", InvokeInput.omit({ sessionID: true })),
-    async (c) => {
-      c.status(200)
-      c.header("Content-Type", "application/json")
-      return stream(c, async (stream) => {
-        const sessionID = c.req.valid("param").sessionID
-        const body = c.req.valid("json")
-        const msg = await SessionInvoke.invoke({ ...body, sessionID })
-        stream.write(JSON.stringify(msg))
-      })
-    },
-  )
-  .post(
-    "/:sessionID/prompt_async",
-    describeRoute({
-      summary: "Send async message",
-      description:
-        "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
-      operationId: "session.prompt_async",
-      responses: {
-        204: {
-          description: "Prompt accepted",
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator("json", InvokeInput.omit({ sessionID: true })),
-    async (c) => {
-      c.status(204)
-      c.header("Content-Type", "application/json")
-      return stream(c, async () => {
-        const sessionID = c.req.valid("param").sessionID
-        const body = c.req.valid("json")
-        await submitInput({ ...body, sessionID })
-      })
-    },
-  )
-  .post(
-    "/:sessionID/command",
-    describeRoute({
-      summary: "Send command",
-      description:
-        "Send a new command to a session for execution by the AI assistant. Returns immediately; the agent processes the command asynchronously.",
-      operationId: "session.command",
-      responses: {
-        204: {
-          description: "Command accepted",
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator("json", SessionInvoke.CommandInput.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      await submitCommand({ ...body, sessionID })
-      return c.body(null, 204)
-    },
-  )
-  .post(
-    "/:sessionID/shell",
-    describeRoute({
-      summary: "Run shell command",
-      description: "Execute a shell command within the session context and return the AI's response.",
-      operationId: "session.shell",
-      responses: {
-        200: {
-          description: "Created message",
-          content: {
-            "application/json": {
-              schema: resolver(MessageV2.Assistant),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: z.string().meta({ description: "Session ID" }),
-      }),
-    ),
-    validator("json", ShellInput.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      const msg = await invokeShell({ ...body, sessionID })
-      return c.json(msg)
-    },
-  )
-  .post(
-    "/:sessionID/rollback",
-    describeRoute({
-      summary: "Rollback session history",
-      description: "Hide the latest user turn(s) from effective message history without modifying local files.",
-      operationId: "session.rollback",
-      responses: {
-        200: {
-          description: "Rollback event",
-          content: {
-            "application/json": {
-              schema: resolver(SessionHistory.RollbackEvent),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.rollback.schema.shape.sessionID,
-      }),
-    ),
-    validator("json", Session.rollback.schema.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
-      const event = await Session.rollback({ sessionID, ...body })
-      return c.json(event)
-    },
-  )
-  .post(
-    "/:sessionID/rollback/ack",
-    describeRoute({
-      summary: "Acknowledge rollback feedback",
-      description: "Persist that the current rollback feedback has been presented to a client.",
-      operationId: "session.rollbackAck",
-      requestBody: {
-        required: true,
-        content: {},
-      },
-      responses: {
-        200: {
-          description: "Persisted rollback acknowledgment",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ rollbackAck: Session.RollbackAck })),
-            },
-          },
-        },
-        409: {
-          description: "Rollback acknowledgment conflict",
-          content: {
-            "application/json": {
-              schema: resolver(Session.RollbackAckConflictError.Schema),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Identifier.schema("session"),
-      }),
-    ),
-    validator("json", SessionRollbackAckInput),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const { rollbackID } = c.req.valid("json")
-      try {
-        const rollbackAck = await Session.acknowledgeRollback(sessionID, rollbackID)
-        return c.json({ rollbackAck })
-      } catch (error) {
-        if (error instanceof Session.RollbackAckConflictError) return c.json(error.toObject(), 409)
-        throw error
-      }
-    },
-  )
-  .post(
-    "/:sessionID/unrollback",
-    describeRoute({
-      summary: "Restore rolled-back session history",
-      description: "Restore the latest rollback when no new user or assistant turn has been added after it.",
-      operationId: "session.unrollback",
-      responses: {
-        200: {
-          description: "Unrollback event or current rollback state",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.union([
-                  SessionHistory.UnrollbackEvent,
-                  z
-                    .object({
-                      rollback: SessionHistory.RollbackSummary,
-                    })
-                    .optional(),
-                ]),
-              ),
-            },
-          },
-        },
-        ...errors(400, 404, 409),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.unrollback.schema.shape.sessionID,
-      }),
-    ),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = await c.req.json().catch(() => ({}))
-      const parsed = Session.unrollback.schema.omit({ sessionID: true }).parse(body)
-      try {
-        const event = await Session.unrollback({ sessionID, ...parsed })
-        return c.json(event)
-      } catch (error) {
-        log.warn("session.unrollback failed", {
-          sessionID,
-          error: error instanceof Error ? error.message : String(error),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", InvokeInput.omit({ sessionID: true })),
+      async (c) => {
+        c.status(200)
+        c.header("Content-Type", "application/json")
+        return stream(c, async (stream) => {
+          const sessionID = c.req.valid("param").sessionID
+          const body = c.req.valid("json")
+          const msg = await SessionInvoke.invoke({ ...body, sessionID })
+          stream.write(JSON.stringify(msg))
         })
-        if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
-        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
-          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
-        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
-      }
-    },
-  )
-  .post(
-    "/:sessionID/files/restore",
-    describeRoute({
-      summary: "Restore session files",
-      description: "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
-      operationId: "session.files.restore",
-      responses: {
-        200: {
-          description: "Restored files",
-          content: {
-            "application/json": {
-              schema: resolver(SessionHistory.FileRestoreResult),
+      },
+    )
+    .post(
+      "/:sessionID/prompt_async",
+      describeRoute({
+        summary: "Send async message",
+        description:
+          "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
+        operationId: "session.prompt_async",
+        responses: {
+          204: {
+            description: "Prompt accepted",
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", InvokeInput.omit({ sessionID: true })),
+      async (c) => {
+        c.status(204)
+        c.header("Content-Type", "application/json")
+        return stream(c, async () => {
+          const sessionID = c.req.valid("param").sessionID
+          const body = c.req.valid("json")
+          await submitInput({ ...body, sessionID })
+        })
+      },
+    )
+    .post(
+      "/:sessionID/command",
+      describeRoute({
+        summary: "Send command",
+        description:
+          "Send a new command to a session for execution by the AI assistant. Returns immediately; the agent processes the command asynchronously.",
+        operationId: "session.command",
+        responses: {
+          204: {
+            description: "Command accepted",
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", SessionInvoke.CommandInput.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        await submitCommand({ ...body, sessionID })
+        return c.body(null, 204)
+      },
+    )
+    .post(
+      "/:sessionID/shell",
+      describeRoute({
+        summary: "Run shell command",
+        description: "Execute a shell command within the session context and return the AI's response.",
+        operationId: "session.shell",
+        responses: {
+          200: {
+            description: "Created message",
+            content: {
+              "application/json": {
+                schema: resolver(MessageV2.Assistant),
+              },
             },
           },
+          ...errors(400, 404),
         },
-        ...errors(400, 404),
-      },
-    }),
-    validator(
-      "param",
-      z.object({
-        sessionID: Session.restoreFiles.schema.shape.sessionID,
       }),
-    ),
-    validator("json", Session.restoreFiles.schema.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      try {
-        const result = await Session.restoreFiles({ sessionID, ...body })
-        return c.json(result)
-      } catch (error) {
-        if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
-        throw error
-      }
-    },
-  )
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", ShellInput.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        const msg = await invokeShell({ ...body, sessionID })
+        return c.json(msg)
+      },
+    )
+    .post(
+      "/:sessionID/rollback",
+      describeRoute({
+        summary: "Rollback session history",
+        description: "Hide the latest user turn(s) from effective message history without modifying local files.",
+        operationId: "session.rollback",
+        responses: {
+          200: {
+            description: "Rollback event",
+            content: {
+              "application/json": {
+                schema: resolver(SessionHistory.RollbackEvent),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.rollback.schema.shape.sessionID,
+        }),
+      ),
+      validator("json", Session.rollback.schema.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
+        const event = await Session.rollback({ sessionID, ...body })
+        return c.json(event)
+      },
+    )
+    .post(
+      "/:sessionID/rollback/ack",
+      describeRoute({
+        summary: "Acknowledge rollback feedback",
+        description: "Persist that the current rollback feedback has been presented to a client.",
+        operationId: "session.rollbackAck",
+        requestBody: {
+          required: true,
+          content: {},
+        },
+        responses: {
+          200: {
+            description: "Persisted rollback acknowledgment",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ rollbackAck: Session.RollbackAck })),
+              },
+            },
+          },
+          409: {
+            description: "Rollback acknowledgment conflict",
+            content: {
+              "application/json": {
+                schema: resolver(Session.RollbackAckConflictError.Schema),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+        }),
+      ),
+      validator("json", SessionRollbackAckInput),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const { rollbackID } = c.req.valid("json")
+        try {
+          const rollbackAck = await Session.acknowledgeRollback(sessionID, rollbackID)
+          return c.json({ rollbackAck })
+        } catch (error) {
+          if (error instanceof Session.RollbackAckConflictError) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .post(
+      "/:sessionID/unrollback",
+      describeRoute({
+        summary: "Restore rolled-back session history",
+        description: "Restore the latest rollback when no new user or assistant turn has been added after it.",
+        operationId: "session.unrollback",
+        responses: {
+          200: {
+            description: "Unrollback event or current rollback state",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.union([
+                    SessionHistory.UnrollbackEvent,
+                    z
+                      .object({
+                        rollback: SessionHistory.RollbackSummary,
+                      })
+                      .optional(),
+                  ]),
+                ),
+              },
+            },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.unrollback.schema.shape.sessionID,
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = await c.req.json().catch(() => ({}))
+        const parsed = Session.unrollback.schema.omit({ sessionID: true }).parse(body)
+        try {
+          const event = await Session.unrollback({ sessionID, ...parsed })
+          return c.json(event)
+        } catch (error) {
+          log.warn("session.unrollback failed", {
+            sessionID,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
+          if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
+            return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
+          return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
+        }
+      },
+    )
+    .post(
+      "/:sessionID/files/restore",
+      describeRoute({
+        summary: "Restore session files",
+        description:
+          "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+        operationId: "session.files.restore",
+        responses: {
+          200: {
+            description: "Restored files",
+            content: {
+              "application/json": {
+                schema: resolver(SessionHistory.FileRestoreResult),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Session.restoreFiles.schema.shape.sessionID,
+        }),
+      ),
+      validator("json", Session.restoreFiles.schema.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        try {
+          const result = await Session.restoreFiles({ sessionID, ...body })
+          return c.json(result)
+        } catch (error) {
+          if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
+          throw error
+        }
+      },
+    )

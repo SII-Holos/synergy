@@ -205,7 +205,7 @@ function formatSessionJSON(sessions: Session.Info[]): string {
       updated: session.time.updated,
       created: session.time.created,
       scopeID: scope.id,
-      directory: scope.directory,
+      directory: scope.local?.directory,
     }
   })
   return JSON.stringify(jsonData, null, 2)

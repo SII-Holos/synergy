@@ -36,7 +36,9 @@ export default function Layout(props: ParentProps) {
               <DataProvider
                 data={sync.data}
                 runtime={createSessionDataRuntime(globalSync)}
-                directory={scopeKey()}
+                directory={
+                  params.id ? (sync.session.get(params.id)?.workspace?.path ?? null) : sync.data.path.directory
+                }
                 serverUrl={sdk.url}
                 onPermissionRespond={respond}
                 onNavigateToSession={navigateToSession}

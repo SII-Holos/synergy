@@ -1,18 +1,25 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import { ProcessRegistry } from "../../process/registry"
 import { RolloutArtifact } from "./artifact"
 import { RolloutLedger } from "./ledger"
 import type { RolloutSchema } from "./schema"
 
 export namespace RolloutProcess {
-  const active = new Map<string, { owner: RolloutSchema.Owner; runID: string; done: Promise<void> }>()
+  const runtimeState = RuntimeContext.state(() => ({
+    active: new Map<string, { owner: RolloutSchema.Owner; runID: string; done: Promise<void> }>(),
+  }))
 
   export function isActive(owner: RolloutSchema.Owner, runID: string, processID: string) {
-    const entry = active.get(processID)
+    const instanceState = runtimeState()
+
+    const entry = instanceState.active.get(processID)
     return entry?.runID === runID && JSON.stringify(entry.owner) === JSON.stringify(owner)
   }
 
   export async function cancel(owner: RolloutSchema.Owner, runID: string) {
-    const owned = [...active.entries()].filter(
+    const instanceState = runtimeState()
+
+    const owned = [...instanceState.active.entries()].filter(
       ([, entry]) => entry.runID === runID && JSON.stringify(entry.owner) === JSON.stringify(owner),
     )
     await Promise.all(
@@ -35,6 +42,8 @@ export namespace RolloutProcess {
     input: { owner: RolloutSchema.Owner; runID: string; toolExecutionID: string; processID: string },
     onFailure: (error: unknown) => Promise<never>,
   ): Promise<Writer> {
+    const instanceState = runtimeState()
+
     const stream = await RolloutArtifact.open(input.owner, "application/vnd.synergy.process-stream;version=1").catch(
       onFailure,
     )
@@ -51,7 +60,7 @@ export namespace RolloutProcess {
     await RolloutLedger.writeProcess(process).catch(onFailure)
     const settled = Promise.withResolvers<void>()
     void settled.promise.catch(() => {})
-    active.set(input.processID, { owner: input.owner, runID: input.runID, done: settled.promise })
+    instanceState.active.set(input.processID, { owner: input.owner, runID: input.runID, done: settled.promise })
     let pending = Promise.resolve()
     let finishing: Promise<void> | undefined
     return {
@@ -92,7 +101,7 @@ export namespace RolloutProcess {
               throw error
             },
           )
-          .finally(() => active.delete(input.processID))
+          .finally(() => instanceState.active.delete(input.processID))
         return finishing
       },
     }

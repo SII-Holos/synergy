@@ -1,34 +1,43 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 
 export namespace ObservabilityConfig {
-  let dirty = true
-  let cached: Info | undefined
-  let mirrorEnabled = false
+  const runtimeState = RuntimeContext.state(() => ({
+    dirty: true,
+    cached: undefined as Info | undefined,
+    mirrorEnabled: false,
+  }))
 
   // Resolved from the observability domain rather than the performance schema,
   // so the opt-in log mirror never widens the performance config API.
   export function logMirror() {
-    return mirrorEnabled
+    const instanceState = runtimeState()
+
+    return instanceState.mirrorEnabled
   }
 
   export function current() {
-    if (cached && !dirty) return cached
-    cached = effective()
-    dirty = false
-    return cached
+    const instanceState = runtimeState()
+
+    if (instanceState.cached && !instanceState.dirty) return instanceState.cached
+    instanceState.cached = effective()
+    instanceState.dirty = false
+    return instanceState.cached
   }
 
   export function refresh(input?: {
     observability?: { enabled?: boolean; maxBytes?: number; logMirror?: boolean; performance?: Raw }
   }) {
+    const instanceState = runtimeState()
+
     if (input) {
-      mirrorEnabled = input.observability?.logMirror === true
-      cached = effective(input)
-      dirty = false
+      instanceState.mirrorEnabled = input.observability?.logMirror === true
+      instanceState.cached = effective(input)
+      instanceState.dirty = false
       return
     }
-    mirrorEnabled = false
-    dirty = true
+    instanceState.mirrorEnabled = false
+    instanceState.dirty = true
   }
 
   export interface Raw {
@@ -212,8 +221,8 @@ export namespace ObservabilityConfig {
     const observability = input?.observability
     const raw = observability?.performance as Raw | undefined
     const enabled =
-      process.env.SYNERGY_AGENT_WORKER !== "1" &&
-      process.env.SYNERGY_POLICY_WORKER !== "1" &&
+      RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER !== "1" &&
+      RuntimeContext.current().host.env.SYNERGY_POLICY_WORKER !== "1" &&
       (raw?.enabled ?? observability?.enabled !== false)
     return Schema.parse({
       ...defaults,

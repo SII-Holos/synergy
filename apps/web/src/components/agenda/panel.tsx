@@ -125,7 +125,7 @@ export function AgendaPanel() {
     const dir = item ? directoryForItem(item) : directory()
     if (!dir) return
     try {
-      const result = await sdk.client.agenda.runs({ id, directory: dir })
+      const result = await sdk.client.agenda.runs({ id, scopeID: dir })
       if (result.data) setRunsCache((prev) => ({ ...prev, [id]: result.data as AgendaRunLog[] }))
     } catch {}
   }
@@ -137,12 +137,12 @@ export function AgendaPanel() {
     setActionLoading((prev) => new Set(prev).add(`${id}-${action}`))
     try {
       const ops: Record<string, () => Promise<unknown>> = {
-        trigger: () => sdk.client.agenda.trigger({ id, directory: dir }),
-        activate: () => sdk.client.agenda.activate({ id, directory: dir }),
-        pause: () => sdk.client.agenda.pause({ id, directory: dir }),
-        complete: () => sdk.client.agenda.complete({ id, directory: dir }),
-        cancel: () => sdk.client.agenda.cancel({ id, directory: dir }),
-        remove: () => sdk.client.agenda.remove({ id, directory: dir }),
+        trigger: () => sdk.client.agenda.trigger({ id, scopeID: dir }),
+        activate: () => sdk.client.agenda.activate({ id, scopeID: dir }),
+        pause: () => sdk.client.agenda.pause({ id, scopeID: dir }),
+        complete: () => sdk.client.agenda.complete({ id, scopeID: dir }),
+        cancel: () => sdk.client.agenda.cancel({ id, scopeID: dir }),
+        remove: () => sdk.client.agenda.remove({ id, scopeID: dir }),
       }
       await ops[action]()
       setRunsCache((prev) => {
@@ -244,8 +244,7 @@ export function AgendaPanel() {
       const query = options?.query ?? activityQuery()
       const page = await requestAgendaActivity({
         client: sdk.client,
-        directory: directory() ?? globalSync.data.paths.home,
-        scopeID: directory() === "home" ? "home" : undefined,
+        scopeID: directory() ?? "home",
         query,
         append,
         state: activity(),

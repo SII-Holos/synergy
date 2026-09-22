@@ -97,7 +97,7 @@ export type PluginStatus = z.infer<typeof PluginStatusSchema>
 
 export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<PluginStatus> {
   const capabilities = plugin.manifest.capabilities.map((item) => item.id)
-  const runtime = pluginRuntimeManager.registry.active(plugin.id)
+  const runtime = pluginRuntimeManager().registry.active(plugin.id)
   return {
     id: plugin.id,
     name: plugin.name,

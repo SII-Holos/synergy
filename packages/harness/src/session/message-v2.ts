@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { RolloutRecordingError } from "./rollout/error"
 import { BusEvent } from "../bus/bus-event"
 import path from "path"
@@ -48,12 +49,16 @@ export namespace MessageV2 {
     scope: Scope
   }
 
-  let requireSession = async (sessionID: string): Promise<SessionLookup> => {
-    throw new Error(`Session resolver is not installed for ${sessionID}`)
-  }
+  const runtimeState = RuntimeContext.state(() => ({
+    requireSession: async (sessionID: string): Promise<SessionLookup> => {
+      throw new Error(`Session resolver is not installed for ${sessionID}`)
+    },
+  }))
 
   export function installSessionResolver(resolver: (sessionID: string) => Promise<SessionLookup>) {
-    requireSession = resolver
+    const instanceState = runtimeState()
+
+    instanceState.requireSession = resolver
   }
 
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
@@ -671,8 +676,8 @@ export namespace MessageV2 {
     mode: z.string(),
     agent: z.string(),
     path: z.object({
-      cwd: z.string(),
-      root: z.string(),
+      cwd: z.string().nullable(),
+      root: z.string().nullable(),
     }),
     summary: z.boolean().optional(),
     accounting: RolloutSchema.MessageAccounting.optional(),
@@ -1576,7 +1581,9 @@ export namespace MessageV2 {
       sessionID: Identifier.schema("session"),
     }),
     async function* (input) {
-      const session = input.scopeID ? undefined : await requireSession(input.sessionID)
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
 
@@ -1608,7 +1615,9 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const session = input.scopeID ? undefined : await requireSession(input.sessionID)
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
@@ -1653,7 +1662,9 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const session = input.scopeID ? undefined : await requireSession(input.sessionID)
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID

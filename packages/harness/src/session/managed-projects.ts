@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9c source inversion: the L1 session navigation index annotates managed
  * Project scopes through this registry instead of importing the channel
@@ -15,17 +16,28 @@ export namespace SessionManagedProjects {
 
   type Source = () => Promise<OwnershipRow[]>
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("session/managed-projects")
+    if (instanceState.source && value !== undefined) throw new Error("session/managed-projects is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 
   export function listOwnership(): Promise<OwnershipRow[]> {
-    return source?.() ?? Promise.resolve([])
+    const instanceState = runtimeState()
+
+    return instanceState.source?.() ?? Promise.resolve([])
   }
 }

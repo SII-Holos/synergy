@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Provider as SDK } from "ai"
 
 export namespace ProviderSdkSource {
@@ -8,16 +9,25 @@ export namespace ProviderSdkSource {
     loadSync(packageName: string): Factory | undefined
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source | undefined): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("provider/sdk-source")
+    if (instanceState.source && value) throw new Error("provider/sdk-source is already registered")
+    instanceState.source = value
   }
 
   function requireSource(): Source {
-    if (!source)
+    const instanceState = runtimeState()
+
+    if (!instanceState.source)
       throw new Error("Provider SDK source is not registered; compose a runtime or register a research SDK source")
-    return source
+    return instanceState.source
   }
 
   function requireFactory(packageName: string, factory: Factory | undefined): Factory {

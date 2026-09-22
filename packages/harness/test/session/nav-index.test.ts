@@ -10,555 +10,577 @@ import { SessionEndpoint } from "../../src/session/endpoint"
 import { Identifier } from "../../src/id/id"
 import type { Scope } from "../../src/scope/types"
 import { migrations } from "../../src/session/migration"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+import { runMigrations } from "../../src/migration"
+import { Scope as ScopeRegistry } from "../../src/scope"
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 describe("SessionNav.buildNavIndex", () => {
-  test("builds scope nav index from session info files", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("builds scope nav index from session info files", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    let sessionA: Session.Info | undefined
-    let sessionB: Session.Info | undefined
+      let sessionA: Session.Info | undefined
+      let sessionB: Session.Info | undefined
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        sessionA = await Session.create({ title: "Alpha Session" })
-        sessionB = await Session.create({ title: "Beta Session" })
-      },
-    })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          sessionA = await Session.create({ title: "Alpha Session" })
+          sessionB = await Session.create({ title: "Beta Session" })
+        },
+      })
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const index = await SessionNav.buildNavIndex(scope.id)
-        expect(index.version).toBe(1)
-        expect(index.scopeID).toBe(scope.id)
-        expect(index.entries.length).toBeGreaterThanOrEqual(2)
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const index = await SessionNav.buildNavIndex(scope.id)
+          expect(index.version).toBe(1)
+          expect(index.scopeID).toBe(scope.id)
+          expect(index.entries.length).toBeGreaterThanOrEqual(2)
 
-        const ids = index.entries.map((e) => e.id)
-        expect(ids).toContain(sessionA!.id)
-        expect(ids).toContain(sessionB!.id)
+          const ids = index.entries.map((e) => e.id)
+          expect(ids).toContain(sessionA!.id)
+          expect(ids).toContain(sessionB!.id)
 
-        // All entries should have category derived
-        for (const entry of index.entries) {
-          expect(entry.category).toBeOneOf(["project", "home", "channel", "background"])
-          expect(typeof entry.title).toBe("string")
-          expect(typeof entry.lastActivityAt).toBe("number")
-          expect(entry.scopeID).toBe(scope.id)
-        }
+          // All entries should have category derived
+          for (const entry of index.entries) {
+            expect(entry.category).toBeOneOf(["project", "home", "channel", "background"])
+            expect(typeof entry.title).toBe("string")
+            expect(typeof entry.lastActivityAt).toBe("number")
+            expect(entry.scopeID).toBe(scope.id)
+          }
 
-        // Cleanup
-        await Session.remove(sessionB!.id)
-        await Session.remove(sessionA!.id)
-      },
-    })
-  })
+          // Cleanup
+          await Session.remove(sessionB!.id)
+          await Session.remove(sessionA!.id)
+        },
+      })
+    }))
 
-  test("derives project category for project-scope sessions without endpoint", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("derives project category for project-scope sessions without endpoint", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Plain Project Session" })
-        const index = await SessionNav.buildNavIndex(scope.id)
-        const entry = index.entries.find((e) => e.id === session.id)
-        expect(entry).toBeDefined()
-        expect(entry!.category).toBe("project")
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Plain Project Session" })
+          const index = await SessionNav.buildNavIndex(scope.id)
+          const entry = index.entries.find((e) => e.id === session.id)
+          expect(entry).toBeDefined()
+          expect(entry!.category).toBe("project")
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("derives background category for child sessions", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("derives background category for child sessions", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const parent = await Session.create({ title: "Parent" })
-        const child = await Session.create({ title: "Child", parentID: parent.id })
-        const index = await SessionNav.buildNavIndex(scope.id)
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const parent = await Session.create({ title: "Parent" })
+          const child = await Session.create({ title: "Child", parentID: parent.id })
+          const index = await SessionNav.buildNavIndex(scope.id)
 
-        const childEntry = index.entries.find((e) => e.id === child.id)
-        expect(childEntry).toBeDefined()
-        expect(childEntry!.category).toBe("background")
-        expect(childEntry!.parentID).toBe(parent.id)
+          const childEntry = index.entries.find((e) => e.id === child.id)
+          expect(childEntry).toBeDefined()
+          expect(childEntry!.category).toBe("background")
+          expect(childEntry!.parentID).toBe(parent.id)
 
-        await Session.remove(child.id)
-        await Session.remove(parent.id)
-      },
-    })
-  })
+          await Session.remove(child.id)
+          await Session.remove(parent.id)
+        },
+      })
+    }))
 
-  test("skips malformed session info without failing the build", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("skips malformed session info without failing the build", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        // Create a valid session first
-        const goodSession = await Session.create({ title: "Good" })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          // Create a valid session first
+          const goodSession = await Session.create({ title: "Good" })
 
-        // Write a malformed info.json manually
-        const malformedID = Identifier.descending("session")
-        const badPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(malformedID))
-        // Write something that is not valid Session.Info JSON (missing required fields)
-        await Storage.write(badPath, { corrupt: true, id: malformedID })
+          // Write a malformed info.json manually
+          const malformedID = Identifier.descending("session")
+          const badPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(malformedID))
+          // Write something that is not valid Session.Info JSON (missing required fields)
+          await Storage.write(badPath, { corrupt: true, id: malformedID })
 
-        // Build should succeed despite the malformed entry
-        const index = await SessionNav.buildNavIndex(scope.id)
-        expect(index.entries.length).toBeGreaterThanOrEqual(1)
+          // Build should succeed despite the malformed entry
+          const index = await SessionNav.buildNavIndex(scope.id)
+          expect(index.entries.length).toBeGreaterThanOrEqual(1)
 
-        const goodEntry = index.entries.find((e) => e.id === goodSession.id)
-        expect(goodEntry).toBeDefined()
-        expect(goodEntry!.category).toBe("project")
+          const goodEntry = index.entries.find((e) => e.id === goodSession.id)
+          expect(goodEntry).toBeDefined()
+          expect(goodEntry!.category).toBe("project")
 
-        // The malformed entry should NOT appear in the index
-        const badEntry = index.entries.find((e) => e.id === malformedID)
-        expect(badEntry).toBeUndefined()
+          // The malformed entry should NOT appear in the index
+          const badEntry = index.entries.find((e) => e.id === malformedID)
+          expect(badEntry).toBeUndefined()
 
-        // Cleanup
-        await Session.remove(goodSession.id)
-        await Storage.remove(badPath)
-      },
-    })
-  })
+          // Cleanup
+          await Session.remove(goodSession.id)
+          await Storage.remove(badPath)
+        },
+      })
+    }))
 
-  test("skips session info with scope but missing required fields", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("skips session info with scope but missing required fields", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const goodSession = await Session.create({ title: "Good" })
-        const malformedID = Identifier.descending("session")
-        const badPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(malformedID))
-        await Storage.write(badPath, {
-          id: malformedID,
-          scope: { id: scope.id, directory: scope.directory },
-          title: "Missing time",
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const goodSession = await Session.create({ title: "Good" })
+          const malformedID = Identifier.descending("session")
+          const badPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(malformedID))
+          await Storage.write(badPath, {
+            id: malformedID,
+            scope: { id: scope.id, directory: scope.local!.directory },
+            title: "Missing time",
+          })
 
-        const index = await SessionNav.buildNavIndex(scope.id)
-        expect(index.entries.map((entry) => entry.id)).toContain(goodSession.id)
-        expect(index.entries.map((entry) => entry.id)).not.toContain(malformedID)
+          const index = await SessionNav.buildNavIndex(scope.id)
+          expect(index.entries.map((entry) => entry.id)).toContain(goodSession.id)
+          expect(index.entries.map((entry) => entry.id)).not.toContain(malformedID)
 
-        await Session.remove(goodSession.id)
-        await Storage.remove(badPath)
-      },
-    })
-  })
+          await Session.remove(goodSession.id)
+          await Storage.remove(badPath)
+        },
+      })
+    }))
 
-  test("is idempotent: calling twice produces identical output", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("is idempotent: calling twice produces identical output", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Idempotency Check" })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Idempotency Check" })
 
-        const index1 = await SessionNav.buildNavIndex(scope.id)
-        const index2 = await SessionNav.buildNavIndex(scope.id)
+          const index1 = await SessionNav.buildNavIndex(scope.id)
+          const index2 = await SessionNav.buildNavIndex(scope.id)
 
-        // entries should be identical (except updatedAt timestamp may differ slightly)
-        expect(index1.entries.length).toBe(index2.entries.length)
-        expect(index1.scopeID).toBe(index2.scopeID)
-        expect(index1.version).toBe(index2.version)
+          // entries should be identical (except updatedAt timestamp may differ slightly)
+          expect(index1.entries.length).toBe(index2.entries.length)
+          expect(index1.scopeID).toBe(index2.scopeID)
+          expect(index1.version).toBe(index2.version)
 
-        for (const e1 of index1.entries) {
-          const e2 = index2.entries.find((e) => e.id === e1.id)
-          expect(e2).toBeDefined()
-          expect(e1.category).toBe(e2!.category)
-          expect(e1.lastActivityAt).toBe(e2!.lastActivityAt)
-          expect(e1.pinned).toBe(e2!.pinned)
-          expect(e1.archived).toBe(e2!.archived)
-        }
+          for (const e1 of index1.entries) {
+            const e2 = index2.entries.find((e) => e.id === e1.id)
+            expect(e2).toBeDefined()
+            expect(e1.category).toBe(e2!.category)
+            expect(e1.lastActivityAt).toBe(e2!.lastActivityAt)
+            expect(e1.pinned).toBe(e2!.pinned)
+            expect(e1.archived).toBe(e2!.archived)
+          }
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("entries are sorted by lastActivityAt DESC", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("entries are sorted by lastActivityAt DESC", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const older = await Session.create({ title: "Older" })
-        const newer = await Session.create({ title: "Newer" })
-        // Touch newer to ensure it has higher lastActivityAt
-        await Session.touch(newer.id)
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const older = await Session.create({ title: "Older" })
+          const newer = await Session.create({ title: "Newer" })
+          // Touch newer to ensure it has higher lastActivityAt
+          await Session.touch(newer.id)
 
-        const index = await SessionNav.buildNavIndex(scope.id)
-        const newerIdx = index.entries.findIndex((e) => e.id === newer.id)
-        const olderIdx = index.entries.findIndex((e) => e.id === older.id)
+          const index = await SessionNav.buildNavIndex(scope.id)
+          const newerIdx = index.entries.findIndex((e) => e.id === newer.id)
+          const olderIdx = index.entries.findIndex((e) => e.id === older.id)
 
-        expect(newerIdx).toBeLessThan(olderIdx)
-        expect(index.entries[newerIdx].lastActivityAt).toBeGreaterThanOrEqual(index.entries[olderIdx].lastActivityAt)
+          expect(newerIdx).toBeLessThan(olderIdx)
+          expect(index.entries[newerIdx].lastActivityAt).toBeGreaterThanOrEqual(index.entries[olderIdx].lastActivityAt)
 
-        await Session.remove(newer.id)
-        await Session.remove(older.id)
-      },
-    })
-  })
+          await Session.remove(newer.id)
+          await Session.remove(older.id)
+        },
+      })
+    }))
 
-  test("includes archived sessions only when present", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("includes archived sessions only when present", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Will Be Archived" })
-        await Session.update(session.id, (draft) => {
-          draft.time.archived = Date.now()
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Will Be Archived" })
+          await Session.update(session.id, (draft) => {
+            draft.time.archived = Date.now()
+          })
 
-        const index = await SessionNav.buildNavIndex(scope.id)
-        const entry = index.entries.find((e) => e.id === session.id)
-        expect(entry).toBeDefined()
-        expect(entry!.archived).toBe(true)
+          const index = await SessionNav.buildNavIndex(scope.id)
+          const entry = index.entries.find((e) => e.id === session.id)
+          expect(entry).toBeDefined()
+          expect(entry!.archived).toBe(true)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("preserves pinned state in nav entries", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("preserves pinned state in nav entries", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Pinned Session" })
-        await Session.update(session.id, (draft) => {
-          draft.pinned = 1717000000000
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Pinned Session" })
+          await Session.update(session.id, (draft) => {
+            draft.pinned = 1717000000000
+          })
 
-        const index = await SessionNav.buildNavIndex(scope.id)
-        const entry = index.entries.find((e) => e.id === session.id)
-        expect(entry).toBeDefined()
-        expect(entry!.pinned).toBe(1717000000000)
+          const index = await SessionNav.buildNavIndex(scope.id)
+          const entry = index.entries.find((e) => e.id === session.id)
+          expect(entry).toBeDefined()
+          expect(entry!.pinned).toBe(1717000000000)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("projects completion unread state into nav entries", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("projects completion unread state into nav entries", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Unread Session" })
-        await Session.update(session.id, (draft) => {
-          draft.completionNotice.unread = true
-          draft.completionNotice.unreadCount = 1
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Unread Session" })
+          await Session.update(session.id, (draft) => {
+            draft.completionNotice.unread = true
+            draft.completionNotice.unreadCount = 1
+          })
 
-        const index = await SessionNav.buildNavIndex(scope.id)
-        const entry = index.entries.find((e) => e.id === session.id)
-        expect(entry?.completionNotice).toEqual({ unread: true, unreadCount: 1 })
+          const index = await SessionNav.buildNavIndex(scope.id)
+          const entry = index.entries.find((e) => e.id === session.id)
+          expect(entry?.completionNotice).toEqual({ unread: true, unreadCount: 1 })
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("updates nav activity at reply start and finish while keeping in-flight updates stable", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("updates nav activity at reply start and finish while keeping in-flight updates stable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Running Session" })
-        const initial = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
-        expect(initial).toBeDefined()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Running Session" })
+          const initial = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+          expect(initial).toBeDefined()
 
-        await Bun.sleep(5)
-        const pending = await Session.update(session.id, (draft) => {
-          draft.paused = { reason: "aborted", since: Date.now() }
-          draft.title = "Running Session Started"
-        })
-        const started = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
-        expect(started).toBeDefined()
-        expect(pending.time.updated).toBeGreaterThan(initial!.lastActivityAt)
-        expect(started!.title).toBe("Running Session Started")
-        expect(started!.lastActivityAt).toBeGreaterThan(initial!.lastActivityAt)
+          await Bun.sleep(5)
+          const pending = await Session.update(session.id, (draft) => {
+            draft.paused = { reason: "aborted", since: Date.now() }
+            draft.title = "Running Session Started"
+          })
+          const started = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+          expect(started).toBeDefined()
+          expect(pending.time.updated).toBeGreaterThan(initial!.lastActivityAt)
+          expect(started!.title).toBe("Running Session Started")
+          expect(started!.lastActivityAt).toBeGreaterThan(initial!.lastActivityAt)
 
-        await Bun.sleep(5)
-        const midRun = await Session.update(session.id, (draft) => {
-          draft.title = "Running Session Updated"
-        })
-        const duringRun = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
-        expect(duringRun).toBeDefined()
-        expect(midRun.time.updated).toBeGreaterThan(started!.lastActivityAt)
-        expect(duringRun!.title).toBe("Running Session Updated")
-        expect(duringRun!.lastActivityAt).toBe(started!.lastActivityAt)
+          await Bun.sleep(5)
+          const midRun = await Session.update(session.id, (draft) => {
+            draft.title = "Running Session Updated"
+          })
+          const duringRun = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+          expect(duringRun).toBeDefined()
+          expect(midRun.time.updated).toBeGreaterThan(started!.lastActivityAt)
+          expect(duringRun!.title).toBe("Running Session Updated")
+          expect(duringRun!.lastActivityAt).toBe(started!.lastActivityAt)
 
-        await Bun.sleep(5)
-        await Session.update(session.id, (draft) => {
-          draft.paused = undefined
-          draft.completionNotice.unread = true
-          draft.completionNotice.unreadCount = 1
-        })
-        const finished = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
-        expect(finished).toBeDefined()
-        expect(finished!.lastActivityAt).toBeGreaterThan(duringRun!.lastActivityAt)
-        expect(finished!.completionNotice).toEqual({ unread: true, unreadCount: 1 })
+          await Bun.sleep(5)
+          await Session.update(session.id, (draft) => {
+            draft.paused = undefined
+            draft.completionNotice.unread = true
+            draft.completionNotice.unreadCount = 1
+          })
+          const finished = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+          expect(finished).toBeDefined()
+          expect(finished!.lastActivityAt).toBeGreaterThan(duringRun!.lastActivityAt)
+          expect(finished!.completionNotice).toEqual({ unread: true, unreadCount: 1 })
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("ignores stale session.scope.id when building index for a project scope", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("ignores stale session.scope.id when building index for a project scope", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Stale Scope Session" })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Stale Scope Session" })
 
-        // Simulate stale scope data: overwrite the stored scope.id to "global"
-        // while the session is actually in a project scope.
-        const sid = Identifier.asScopeID(scope.id)
-        const ssid = Identifier.asSessionID(session.id)
-        const key = StoragePath.sessionInfo(sid, ssid)
-        const raw = await Storage.read<any>(key)
-        raw.scope = { ...raw.scope, id: "global" }
-        await Storage.write(key, raw)
+          // Simulate stale scope data: overwrite the stored scope.id to "global"
+          // while the session is actually in a project scope.
+          const sid = Identifier.asScopeID(scope.id)
+          const ssid = Identifier.asSessionID(session.id)
+          const key = StoragePath.sessionInfo(sid, ssid)
+          const raw = await Storage.read<any>(key)
+          raw.scope = { ...raw.scope, id: "global" }
+          await Storage.write(key, raw)
 
-        // buildNavIndex must use the authoritative scopeID parameter,
-        // not the stale session.scope.id.
-        const index = await SessionNav.buildNavIndex(scope.id)
-        const entry = index.entries.find((e) => e.id === session.id)
-        expect(entry).toBeDefined()
-        expect(entry!.scopeType).toBe("project")
-        expect(entry!.category).toBe("project")
-        expect(entry!.scopeID).toBe(scope.id)
+          // buildNavIndex must use the authoritative scopeID parameter,
+          // not the stale session.scope.id.
+          const index = await SessionNav.buildNavIndex(scope.id)
+          const entry = index.entries.find((e) => e.id === session.id)
+          expect(entry).toBeDefined()
+          expect(entry!.scopeType).toBe("project")
+          expect(entry!.category).toBe("project")
+          expect(entry!.scopeID).toBe(scope.id)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 })
 
 describe("SessionNav.rebuildAllNavIndexes", () => {
-  test("rebuilds nav indexes for all scopes", async () => {
-    await using tmpA = await tmpdir({ git: true })
-    await using tmpB = await tmpdir({ git: true })
-    const scopeA = await tmpA.scope()
-    const scopeB = await tmpB.scope()
+  test("rebuilds nav indexes for all scopes", () =>
+    runtime.run(async () => {
+      await using tmpA = await tmpdir({ git: true })
+      await using tmpB = await tmpdir({ git: true })
+      const scopeA = await tmpA.scope()
+      const scopeB = await tmpB.scope()
 
-    await ScopeContext.provide({
-      scope: scopeA,
-      fn: async () => {
-        await Session.create({ title: "A1" })
-      },
-    })
-    await ScopeContext.provide({
-      scope: scopeB,
-      fn: async () => {
-        await Session.create({ title: "B1" })
-      },
-    })
+      await ScopeContext.provide({
+        scope: scopeA,
+        fn: async () => {
+          await Session.create({ title: "A1" })
+        },
+      })
+      await ScopeContext.provide({
+        scope: scopeB,
+        fn: async () => {
+          await Session.create({ title: "B1" })
+        },
+      })
 
-    let progressCalls: Array<{ done: number; total: number }> = []
-    await SessionNav.rebuildAllNavIndexes((done, total) => {
-      progressCalls.push({ done, total })
-    })
+      let progressCalls: Array<{ done: number; total: number }> = []
+      await SessionNav.rebuildAllNavIndexes((done, total) => {
+        progressCalls.push({ done, total })
+      })
 
-    // Progress should have been reported
-    expect(progressCalls.length).toBeGreaterThan(0)
+      // Progress should have been reported
+      expect(progressCalls.length).toBeGreaterThan(0)
 
-    // Both scopes should have nav indexes now
-    const indexA = await SessionNav.readNavIndex(scopeA.id)
-    const indexB = await SessionNav.readNavIndex(scopeB.id)
+      // Both scopes should have nav indexes now
+      const indexA = await SessionNav.readNavIndex(scopeA.id)
+      const indexB = await SessionNav.readNavIndex(scopeB.id)
 
-    expect(indexA.scopeID).toBe(scopeA.id)
-    expect(indexA.entries.length).toBeGreaterThanOrEqual(1)
-    expect(indexB.scopeID).toBe(scopeB.id)
-    expect(indexB.entries.length).toBeGreaterThanOrEqual(1)
+      expect(indexA.scopeID).toBe(scopeA.id)
+      expect(indexA.entries.length).toBeGreaterThanOrEqual(1)
+      expect(indexB.scopeID).toBe(scopeB.id)
+      expect(indexB.entries.length).toBeGreaterThanOrEqual(1)
 
-    // Cleanup
-    const sessionsA = await ScopeContext.provide({
-      scope: scopeA,
-      fn: async () => {
-        const s = await Session.list({ limit: 100 })
-        return s.data
-      },
-    })
-    const sessionsB = await ScopeContext.provide({
-      scope: scopeB,
-      fn: async () => {
-        const s = await Session.list({ limit: 100 })
-        return s.data
-      },
-    })
-    // Can't easily clean up in the right scope context, skip explicit cleanup
-  })
+      // Cleanup
+      const sessionsA = await ScopeContext.provide({
+        scope: scopeA,
+        fn: async () => {
+          const s = await Session.list({ limit: 100 })
+          return s.data
+        },
+      })
+      const sessionsB = await ScopeContext.provide({
+        scope: scopeB,
+        fn: async () => {
+          const s = await Session.list({ limit: 100 })
+          return s.data
+        },
+      })
+      // Can't easily clean up in the right scope context, skip explicit cleanup
+    }))
 })
 
-test("sets endpointKind on entries from session endpoint info", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const scope = await tmp.scope()
+test("sets endpointKind on entries from session endpoint info", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
 
-  await ScopeContext.provide({
-    scope,
-    fn: async () => {
-      const channelSession = await Session.create({
-        title: "Channel DM",
-        endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-1" }),
-      })
-      const holosSession = await Session.create({
-        title: "Holos Friend",
-        endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-holos" }),
-      })
-      const plainSession = await Session.create({ title: "Plain Project" })
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const channelSession = await Session.create({
+          title: "Channel DM",
+          endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-1" }),
+        })
+        const holosSession = await Session.create({
+          title: "Holos Friend",
+          endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-holos" }),
+        })
+        const plainSession = await Session.create({ title: "Plain Project" })
 
-      const index = await SessionNav.buildNavIndex(scope.id)
+        const index = await SessionNav.buildNavIndex(scope.id)
 
-      const channelEntry = index.entries.find((e) => e.id === channelSession.id)
-      expect(channelEntry).toBeDefined()
-      expect(channelEntry!.endpointKind).toBe("channel")
-      expect(channelEntry!.category).toBe("channel")
+        const channelEntry = index.entries.find((e) => e.id === channelSession.id)
+        expect(channelEntry).toBeDefined()
+        expect(channelEntry!.endpointKind).toBe("channel")
+        expect(channelEntry!.category).toBe("channel")
 
-      const holosEntry = index.entries.find((e) => e.id === holosSession.id)
-      expect(holosEntry).toBeDefined()
-      expect(holosEntry!.endpointKind).toBe("channel")
-      expect(holosEntry!.category).toBe("channel")
+        const holosEntry = index.entries.find((e) => e.id === holosSession.id)
+        expect(holosEntry).toBeDefined()
+        expect(holosEntry!.endpointKind).toBe("channel")
+        expect(holosEntry!.category).toBe("channel")
 
-      const plainEntry = index.entries.find((e) => e.id === plainSession.id)
-      expect(plainEntry).toBeDefined()
-      expect(plainEntry!.endpointKind).toBeUndefined()
-      expect(plainEntry!.category).toBe("project")
+        const plainEntry = index.entries.find((e) => e.id === plainSession.id)
+        expect(plainEntry).toBeDefined()
+        expect(plainEntry!.endpointKind).toBeUndefined()
+        expect(plainEntry!.category).toBe("project")
 
-      await Session.remove(channelSession.id)
-      await Session.remove(holosSession.id)
-      await Session.remove(plainSession.id)
-    },
-  })
-})
+        await Session.remove(channelSession.id)
+        await Session.remove(holosSession.id)
+        await Session.remove(plainSession.id)
+      },
+    })
+  }))
 
 describe("SessionNav timestamps", () => {
-  test("upsertNavEntry and buildNavIndex carry createdAt and archivedAt", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("upsertNavEntry and buildNavIndex carry createdAt and archivedAt", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    let session: Session.Info | undefined
+      let session: Session.Info | undefined
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        session = await Session.create({ title: "Timestamped" })
-        await Session.update(session.id, (draft) => {
-          draft.time.created = 111
-          draft.time.archived = 222
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          session = await Session.create({ title: "Timestamped" })
+          await Session.update(session.id, (draft) => {
+            draft.time.created = 111
+            draft.time.archived = 222
+          })
 
-        const live = await SessionNav.readNavIndex(scope.id)
-        const liveEntry = live.entries.find((e) => e.id === session!.id)
-        expect(liveEntry).toBeDefined()
-        expect(liveEntry!.createdAt).toBe(111)
-        expect(liveEntry!.archivedAt).toBe(222)
+          const live = await SessionNav.readNavIndex(scope.id)
+          const liveEntry = live.entries.find((e) => e.id === session!.id)
+          expect(liveEntry).toBeDefined()
+          expect(liveEntry!.createdAt).toBe(111)
+          expect(liveEntry!.archivedAt).toBe(222)
 
-        const rebuilt = await SessionNav.buildNavIndex(scope.id)
-        const rebuiltEntry = rebuilt.entries.find((e) => e.id === session!.id)
-        expect(rebuiltEntry).toBeDefined()
-        expect(rebuiltEntry!.createdAt).toBe(111)
-        expect(rebuiltEntry!.archivedAt).toBe(222)
+          const rebuilt = await SessionNav.buildNavIndex(scope.id)
+          const rebuiltEntry = rebuilt.entries.find((e) => e.id === session!.id)
+          expect(rebuiltEntry).toBeDefined()
+          expect(rebuiltEntry!.createdAt).toBe(111)
+          expect(rebuiltEntry!.archivedAt).toBe(222)
 
-        await Session.remove(session!.id)
-      },
-    })
-  })
+          await Session.remove(session!.id)
+        },
+      })
+    }))
 
-  test("archivedAt clears when a session is restored", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("archivedAt clears when a session is restored", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    let session: Session.Info | undefined
+      let session: Session.Info | undefined
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        session = await Session.create({ title: "Restore Timestamp" })
-        await Session.update(session.id, (draft) => {
-          draft.time.archived = 400
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          session = await Session.create({ title: "Restore Timestamp" })
+          await Session.update(session.id, (draft) => {
+            draft.time.archived = 400
+          })
 
-        const archived = await SessionNav.readNavIndex(scope.id)
-        const archivedEntry = archived.entries.find((e) => e.id === session!.id)
-        expect(archivedEntry!.archivedAt).toBe(400)
-        expect(archivedEntry!.archived).toBe(true)
+          const archived = await SessionNav.readNavIndex(scope.id)
+          const archivedEntry = archived.entries.find((e) => e.id === session!.id)
+          expect(archivedEntry!.archivedAt).toBe(400)
+          expect(archivedEntry!.archived).toBe(true)
 
-        await Session.update(session.id, (draft) => {
-          draft.time.archived = 0
-        })
+          await Session.update(session.id, (draft) => {
+            draft.time.archived = 0
+          })
 
-        const restored = await SessionNav.readNavIndex(scope.id)
-        const restoredEntry = restored.entries.find((e) => e.id === session!.id)
-        expect(restoredEntry!.archived).toBe(false)
+          const restored = await SessionNav.readNavIndex(scope.id)
+          const restoredEntry = restored.entries.find((e) => e.id === session!.id)
+          expect(restoredEntry!.archived).toBe(false)
 
-        await Session.remove(session!.id)
-      },
-    })
-  })
+          await Session.remove(session!.id)
+        },
+      })
+    }))
 })
 
 describe("SessionNav updatedAt authority", () => {
-  test("updatedAt tracks info time.updated while lastActivityAt stays frozen during a pause", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("updatedAt tracks info time.updated while lastActivityAt stays frozen during a pause", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    let session: Session.Info | undefined
+      let session: Session.Info | undefined
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        session = await Session.create({ title: "Paused Freeze" })
-        await Session.update(session.id, (draft) => {
-          draft.paused = { reason: "aborted", since: Date.now() }
-        })
-        const afterReply = await SessionNav.readNavIndex(scope.id)
-        const frozen = afterReply.entries.find((e) => e.id === session!.id)!
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          session = await Session.create({ title: "Paused Freeze" })
+          await Session.update(session.id, (draft) => {
+            draft.paused = { reason: "aborted", since: Date.now() }
+          })
+          const afterReply = await SessionNav.readNavIndex(scope.id)
+          const frozen = afterReply.entries.find((e) => e.id === session!.id)!
 
-        await Bun.sleep(5)
-        await Session.update(session.id, (draft) => {
-          draft.title = "Pending Reply Freeze Renamed"
-        })
+          await Bun.sleep(5)
+          await Session.update(session.id, (draft) => {
+            draft.title = "Pending Reply Freeze Renamed"
+          })
 
-        const afterSecond = await SessionNav.readNavIndex(scope.id)
-        const entry = afterSecond.entries.find((e) => e.id === session!.id)!
-        const info = await Storage.read<any>(
-          StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session!.id)),
-        )
+          const afterSecond = await SessionNav.readNavIndex(scope.id)
+          const entry = afterSecond.entries.find((e) => e.id === session!.id)!
+          const info = await Storage.read<any>(
+            StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session!.id)),
+          )
 
-        expect(entry.lastActivityAt).toBe(frozen.lastActivityAt)
-        expect(entry.updatedAt).toBe(info.time.updated)
-        expect(entry.updatedAt!).toBeGreaterThan(frozen.lastActivityAt)
+          expect(entry.lastActivityAt).toBe(frozen.lastActivityAt)
+          expect(entry.updatedAt).toBe(info.time.updated)
+          expect(entry.updatedAt!).toBeGreaterThan(frozen.lastActivityAt)
 
-        await Session.remove(session!.id)
-      },
-    })
-  })
+          await Session.remove(session!.id)
+        },
+      })
+    }))
 })
 
 describe("SessionNav session identity", () => {
@@ -569,7 +591,7 @@ describe("SessionNav session identity", () => {
   async function identitySession(scope: Scope) {
     return Session.create({
       title: "Identity Session",
-      workspace: { type: "git_worktree", path: scope.directory, scopeID: scope.id },
+      workspace: { type: "git_worktree", path: scope.local!.directory, scopeID: scope.id },
       workflow: { kind: "plan" },
     })
   }
@@ -588,86 +610,153 @@ describe("SessionNav session identity", () => {
     })
   }
 
-  test("both producers project the same identity fields for the same session", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("both producers project the same identity fields for the same session", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await identitySession(scope)
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await identitySession(scope)
 
-        const live = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
-        const rebuilt = (await SessionNav.buildNavIndex(scope.id)).entries.find((e) => e.id === session.id)
-        expect(live).toBeDefined()
-        expect(rebuilt).toBeDefined()
+          const live = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+          const rebuilt = (await SessionNav.buildNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+          expect(live).toBeDefined()
+          expect(rebuilt).toBeDefined()
 
-        expect(live!.workspaceType).toBe("git_worktree")
-        expect(live!.workflow).toEqual({ kind: "plan", active: false })
-        expect(rebuilt!.workspaceType).toBe(live!.workspaceType)
-        expect(rebuilt!.workflow).toEqual(live!.workflow)
+          expect(live!.workspaceType).toBe("git_worktree")
+          expect(live!.workflow).toEqual({ kind: "plan", active: false })
+          expect(rebuilt!.workspaceType).toBe(live!.workspaceType)
+          expect(rebuilt!.workflow).toEqual(live!.workflow)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("keeps identity through later updates and parses entries written without it", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("keeps identity through later updates and parses entries written without it", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await identitySession(scope)
-        const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await identitySession(scope)
+          const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
 
-        await Session.update(session.id, (draft) => {
-          draft.title = "Identity Session Renamed"
-        })
-        const renamed = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
-        expect(renamed.title).toBe("Identity Session Renamed")
-        expect(renamed.workspaceType).toBe("git_worktree")
-        expect(renamed.workflow).toEqual({ kind: "plan", active: false })
+          await Session.update(session.id, (draft) => {
+            draft.title = "Identity Session Renamed"
+          })
+          const renamed = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+          expect(renamed.title).toBe("Identity Session Renamed")
+          expect(renamed.workspaceType).toBe("git_worktree")
+          expect(renamed.workflow).toEqual({ kind: "plan", active: false })
 
-        const stored = await Storage.read<ScopeNavIndex>(key)
-        expect(SessionNavEntry.safeParse(stored.entries.find((e) => e.id === session.id)).success).toBe(true)
+          const stored = await Storage.read<ScopeNavIndex>(key)
+          expect(SessionNavEntry.safeParse(stored.entries.find((e) => e.id === session.id)).success).toBe(true)
 
-        await stripStoredIdentity(scope.id, session.id)
-        const legacy = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
-        expect(legacy.workspaceType).toBeUndefined()
-        expect(legacy.workflow).toBeUndefined()
-        expect(SessionNavEntry.safeParse(legacy).success).toBe(true)
+          await stripStoredIdentity(scope.id, session.id)
+          const legacy = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+          expect(legacy.workspaceType).toBeUndefined()
+          expect(legacy.workflow).toBeUndefined()
+          expect(SessionNavEntry.safeParse(legacy).success).toBe(true)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("backfills identity into an index that predates the fields", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
+  test("backfills identity into an index that predates the fields", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await identitySession(scope)
-        await stripStoredIdentity(scope.id, session.id)
-        expect(
-          (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!.workspaceType,
-        ).toBeUndefined()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await identitySession(scope)
+          await stripStoredIdentity(scope.id, session.id)
 
-        const migration = migrations.find((entry) => entry.id === "20260918-session-nav-identity")
-        expect(migration).toBeDefined()
-        await migration!.up(() => {})
-        await migration!.up(() => {})
+          const stored = await Storage.read<ScopeNavIndex>(StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id)))
+          expect(stored.entries.find((e) => e.id === session.id)!.workspaceType).toBeUndefined()
 
-        const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
-        expect(migrated.workspaceType).toBe("git_worktree")
-        expect(migrated.workflow).toEqual({ kind: "plan", active: false })
+          const migration = migrations.find((entry) => entry.id === "20260918-session-nav-identity")
+          expect(migration).toBeDefined()
+          await migration!.up(() => {})
+          await migration!.up(() => {})
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+          expect(migrated.workspaceType).toBe("git_worktree")
+          expect(migrated.workflow).toEqual({ kind: "plan", active: false })
+
+          await Session.remove(session.id)
+        },
+      })
+    }))
+
+  test("backfills canonical tags into stale v1 nav indexes without changing session info", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Tagged Session", tags: ["focus", "release"] })
+          const homeSession = await ScopeContext.provide({
+            scope: ScopeRegistry.home(),
+            fn: () => Session.create({ title: "Tagged Home Session", tags: ["focus", "home"] }),
+          })
+          const home = ScopeRegistry.home()
+          const key = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
+          const info = await Storage.read<Session.Info>(key)
+          const projectStore = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
+          const homeStore = StoragePath.sessionNavIndex(Identifier.asScopeID(home.id))
+          const projectIndex = await Storage.read<ScopeNavIndex>(projectStore)
+          const homeIndex = await Storage.read<ScopeNavIndex>(homeStore)
+          const clearTags = (entry: SessionNavEntry, targetID: string): SessionNavEntry =>
+            entry.id === targetID ? { ...entry, tags: undefined } : entry
+          await Storage.write(projectStore, {
+            ...projectIndex,
+            entries: projectIndex.entries.map((entry) => clearTags(entry, session.id)),
+          })
+          await Storage.write(homeStore, {
+            ...homeIndex,
+            entries: homeIndex.entries.map((entry) => clearTags(entry, homeSession.id)),
+          })
+
+          const migration = migrations.find((candidate) => candidate.id === "20260921-session-nav-tags")
+          expect(migration).toBeDefined()
+          const tracking = StoragePath.metaMigrationLogDomain("session")
+          const [previous] = await Storage.readMany<Record<string, number>>([tracking])
+          try {
+            await Storage.write(
+              tracking,
+              Object.fromEntries(
+                migrations.filter((candidate) => candidate.id !== migration!.id).map((candidate) => [candidate.id, 1]),
+              ),
+            )
+            expect((await runMigrations({ targetDomain: "session", output: "silent" })).completed).toBe(1)
+            expect((await runMigrations({ targetDomain: "session", output: "silent" })).completed).toBe(0)
+          } finally {
+            if (previous) await Storage.write(tracking, previous)
+            else await Storage.remove(tracking)
+          }
+
+          const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
+          expect(migrated.tags).toEqual(["focus", "release"])
+          expect(await Storage.read<Session.Info>(key)).toEqual(info)
+          expect(await Session.list({ tag: "focus" })).toMatchObject({
+            total: 1,
+            data: [{ id: session.id, tags: ["focus", "release"] }],
+          })
+
+          await Session.remove(session.id)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

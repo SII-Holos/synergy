@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { MessageV2 } from "./message-v2"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
@@ -32,7 +33,7 @@ export namespace SessionMessageCache {
   // Read on each eviction so SYNERGY_SESSION_CACHE_MAX_BYTES can be tuned (and
   // set by tests) without a restart; the cost is a trivial env parse on writes.
   function byteBudget() {
-    const env = Number.parseInt(process.env.SYNERGY_SESSION_CACHE_MAX_BYTES ?? "", 10)
+    const env = Number.parseInt(RuntimeContext.current().host.env.SYNERGY_SESSION_CACHE_MAX_BYTES ?? "", 10)
     return Number.isFinite(env) && env > 0 ? env : DEFAULT_BYTE_BUDGET
   }
   /** Begin the single-writer window for a session (loop start). */

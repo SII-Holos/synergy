@@ -12,6 +12,9 @@ import {
 import fs from "node:fs/promises"
 import { PluginPaths } from "../../src/plugin/paths"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function generateKeyPair() {
   const key = (await subtle.generateKey("Ed25519" as any, true, ["sign", "verify"])) as CryptoKeyPair
@@ -54,69 +57,74 @@ async function signMetadata(input: {
 }
 
 describe("plugin signature verification", () => {
-  test("trusted-key verification binds installed hashes and tarball bytes, and rejects malformed signature files", async () => {
-    await using tmp = await tmpdir()
-    const tarballPath = path.join(tmp.path, "verified.tgz")
-    await Bun.write(tarballPath, "signed artifact")
-    const key = await generateKeyPair()
-    const metadata = await signMetadata({
-      tarballPath,
-      pluginId: "trusted-fixture",
-      version: "1.0.0",
-      privateKeyHex: key.privateKey,
-      publicKeyHex: key.publicKey,
-    })
-    const keyPath = path.join(PluginPaths.trustedSigningKeysDir(), `fixture-${crypto.randomUUID()}.pub`)
-    expect(await verifySignature(tarballPath, metadata)).toBe(false)
-    await Bun.write(keyPath, key.publicKey)
-    try {
-      expect(await verifySignature(tarballPath, metadata)).toBe(true)
-      expect(await verifySignatureFromHashes(metadata, "manifest-hash", "permissions-hash")).toBe(true)
-      expect(await verifySignatureFromHashes(metadata, "changed", "permissions-hash")).toBe(false)
-      expect(await verifySignatureFromHashes(metadata, "manifest-hash", "changed")).toBe(false)
-      expect(await verifySignature(tarballPath, { ...metadata, algorithm: "unsupported" })).toBe(false)
-      await Bun.write(tarballPath, "tampered artifact")
+  test("trusted-key verification binds installed hashes and tarball bytes, and rejects malformed signature files", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const tarballPath = path.join(tmp.path, "verified.tgz")
+      await Bun.write(tarballPath, "signed artifact")
+      const key = await generateKeyPair()
+      const metadata = await signMetadata({
+        tarballPath,
+        pluginId: "trusted-fixture",
+        version: "1.0.0",
+        privateKeyHex: key.privateKey,
+        publicKeyHex: key.publicKey,
+      })
+      const keyPath = path.join(PluginPaths.trustedSigningKeysDir(), `fixture-${crypto.randomUUID()}.pub`)
       expect(await verifySignature(tarballPath, metadata)).toBe(false)
-      expect(readSignatureFile(tarballPath)).toBeNull()
-      await Bun.write(`${tarballPath}.sig`, "malformed")
-      expect(readSignatureFile(tarballPath)).toBeNull()
-      await Bun.write(`${tarballPath}.sig`, JSON.stringify(metadata))
-      expect(readSignatureFile(tarballPath)).toEqual(metadata)
-    } finally {
-      await fs.rm(keyPath, { force: true })
-    }
-  })
+      await Bun.write(keyPath, key.publicKey)
+      try {
+        expect(await verifySignature(tarballPath, metadata)).toBe(true)
+        expect(await verifySignatureFromHashes(metadata, "manifest-hash", "permissions-hash")).toBe(true)
+        expect(await verifySignatureFromHashes(metadata, "changed", "permissions-hash")).toBe(false)
+        expect(await verifySignatureFromHashes(metadata, "manifest-hash", "changed")).toBe(false)
+        expect(await verifySignature(tarballPath, { ...metadata, algorithm: "unsupported" })).toBe(false)
+        await Bun.write(tarballPath, "tampered artifact")
+        expect(await verifySignature(tarballPath, metadata)).toBe(false)
+        expect(readSignatureFile(tarballPath)).toBeNull()
+        await Bun.write(`${tarballPath}.sig`, "malformed")
+        expect(readSignatureFile(tarballPath)).toBeNull()
+        await Bun.write(`${tarballPath}.sig`, JSON.stringify(metadata))
+        expect(readSignatureFile(tarballPath)).toEqual(metadata)
+      } finally {
+        await fs.rm(keyPath, { force: true })
+      }
+    }))
 
-  test("verifies a tarball signature with an explicit registry-reviewed public key", async () => {
-    await using tmp = await tmpdir()
-    const tarballPath = path.join(tmp.path, "plugin.synergy-plugin.tgz")
-    await Bun.write(tarballPath, "signed artifact")
-    const key = await generateKeyPair()
-    const metadata = await signMetadata({
-      tarballPath,
-      pluginId: "signed-plugin",
-      version: "1.0.0",
-      privateKeyHex: key.privateKey,
-      publicKeyHex: key.publicKey,
-    })
+  test("verifies a tarball signature with an explicit registry-reviewed public key", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const tarballPath = path.join(tmp.path, "plugin.synergy-plugin.tgz")
+      await Bun.write(tarballPath, "signed artifact")
+      const key = await generateKeyPair()
+      const metadata = await signMetadata({
+        tarballPath,
+        pluginId: "signed-plugin",
+        version: "1.0.0",
+        privateKeyHex: key.privateKey,
+        publicKeyHex: key.publicKey,
+      })
 
-    await expect(verifySignatureWithPublicKey(tarballPath, metadata, key.publicKey)).resolves.toBe(true)
-  })
+      await expect(verifySignatureWithPublicKey(tarballPath, metadata, key.publicKey)).resolves.toBe(true)
+    }))
 
-  test("rejects a valid signature when the registry-reviewed signer differs", async () => {
-    await using tmp = await tmpdir()
-    const tarballPath = path.join(tmp.path, "plugin.synergy-plugin.tgz")
-    await Bun.write(tarballPath, "signed artifact")
-    const key = await generateKeyPair()
-    const other = await generateKeyPair()
-    const metadata = await signMetadata({
-      tarballPath,
-      pluginId: "signed-plugin",
-      version: "1.0.0",
-      privateKeyHex: key.privateKey,
-      publicKeyHex: key.publicKey,
-    })
+  test("rejects a valid signature when the registry-reviewed signer differs", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const tarballPath = path.join(tmp.path, "plugin.synergy-plugin.tgz")
+      await Bun.write(tarballPath, "signed artifact")
+      const key = await generateKeyPair()
+      const other = await generateKeyPair()
+      const metadata = await signMetadata({
+        tarballPath,
+        pluginId: "signed-plugin",
+        version: "1.0.0",
+        privateKeyHex: key.privateKey,
+        publicKeyHex: key.publicKey,
+      })
 
-    await expect(verifySignatureWithPublicKey(tarballPath, metadata, other.publicKey)).resolves.toBe(false)
-  })
+      await expect(verifySignatureWithPublicKey(tarballPath, metadata, other.publicKey)).resolves.toBe(false)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

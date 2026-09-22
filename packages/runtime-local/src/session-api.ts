@@ -14,19 +14,12 @@ import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { Worktree } from "./workspace/worktree"
 import { Command } from "./command/command"
 
 const log = Log.create({ service: "session-api" })
 
-export async function assertSessionWorkspaceAvailable(sessionID: string) {
-  const session = await Session.get(sessionID)
-  if (session.workspace?.type !== "git_worktree") return
-  await Worktree.assertAvailable(session.workspace.path)
-}
-
 export async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  await assertSessionWorkspaceAvailable(input.sessionID)
+  await Session.assertWorkspaceAvailable(input.sessionID)
   if (input.model) await Provider.getModel(input.model.providerID, input.model.modelID)
   if (input.agent && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
   if (input.noReply === true && !SessionManager.isRunning(input.sessionID)) {
@@ -85,6 +78,7 @@ export async function createSession(
 }
 
 export async function submitCommand(input: Parameters<typeof SessionInvoke.command>[0]): Promise<void> {
+  await Session.assertWorkspaceAvailable(input.sessionID)
   const command = await Command.require(input.command)
   const messageID = input.messageID ?? Identifier.ascending("message")
   await RolloutLifecycle.configuration(

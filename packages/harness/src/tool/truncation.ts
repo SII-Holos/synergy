@@ -7,7 +7,9 @@ import type { Agent } from "../agent/agent"
 export namespace Truncate {
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
-  export const DIR = Global.Path.toolOutput
+  export function directory() {
+    return Global.Path.toolOutput
+  }
 
   export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
 
@@ -66,7 +68,7 @@ export namespace Truncate {
     const preview = out.join("\n")
 
     const id = Identifier.ascending("tool")
-    const filepath = path.join(DIR, id)
+    const filepath = path.join(directory(), id)
     await Bun.write(Bun.file(filepath), text)
 
     const hint = hasTaskTool(agent)

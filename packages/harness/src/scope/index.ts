@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 import path from "path"
 import { $ } from "bun"
@@ -7,12 +8,19 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { Flag } from "../flag/flag"
-import { Global } from "../global"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Identifier } from "../id/id"
 import { iife } from "../util/iife"
 import { GlobalBus } from "../bus/global"
 import { BusEvent } from "../bus/bus-event"
-import { type Home as HomeType, type Project as ProjectType, Info as InfoSchema, type Info as InfoType } from "./types"
+import {
+  Local as LocalSchema,
+  type Home as HomeType,
+  type Project as ProjectType,
+  Runtime as RuntimeSchema,
+  Info as InfoSchema,
+  type Info as InfoType,
+} from "./types"
 import { ScopeRoots } from "./roots"
 import { isEphemeralTestWorktree } from "./test-artifacts"
 
@@ -21,8 +29,43 @@ export type Scope = Scope.Home | Scope.Project
 export namespace Scope {
   const log = Log.create({ service: "scope" })
 
+  export const Local = LocalSchema
+  export type Local = import("./types").Local
+  export const RequiredError = NamedError.create("ScopeRequired", z.object({ message: z.string() }))
+  export const NotFoundError = NamedError.create(
+    "ScopeNotFound",
+    z.object({ message: z.string(), scopeID: z.string() }),
+  )
+  export async function resolve(selector: { scopeID?: string; directory?: string }): Promise<Scope> {
+    if (selector.scopeID) {
+      const scope = await fromID(selector.scopeID)
+      if (!scope) throw new NotFoundError({ message: "Scope not found", scopeID: selector.scopeID })
+      return scope
+    }
+    if (selector.directory) return (await fromDirectory(selector.directory)).scope
+    throw new RequiredError({ message: "An explicit Scope ID or directory is required." })
+  }
+  export const WorkspaceRequiredError = NamedError.create(
+    "WorkspaceRequired",
+    z.object({ message: z.string(), scopeID: z.string() }),
+  )
+  export const WorkspaceUnavailableError = NamedError.create(
+    "WorkspaceUnavailable",
+    z.object({ message: z.string(), path: z.string() }),
+  )
+
+  export function requireLocal(scope: Scope): Local {
+    if (!scope.local)
+      throw new WorkspaceRequiredError({
+        message: "A local workspace is required for this operation.",
+        scopeID: scope.id,
+      })
+    return scope.local
+  }
+
   export type Home = HomeType
   export type Project = ProjectType
+  export const Runtime = RuntimeSchema
   export const Info = InfoSchema
   export type Info = InfoType
   export const Root = ScopeRoots
@@ -32,29 +75,23 @@ export namespace Scope {
   }
   export type ArchiveGuard = (scopeID: string) => void | Promise<void>
 
-  const archiveGuards = new Set<ArchiveGuard>()
+  const runtimeState = RuntimeContext.state(() => ({
+    archiveGuards: new Set<ArchiveGuard>(),
+  }))
 
   export function registerArchiveGuard(guard: ArchiveGuard): () => void {
-    archiveGuards.add(guard)
-    return () => archiveGuards.delete(guard)
+    const instanceState = runtimeState()
+
+    instanceState.archiveGuards.add(guard)
+    return () => instanceState.archiveGuards.delete(guard)
   }
 
   export function contains(scope: Scope, targetPath: string): boolean {
-    // projectRoots is empty for the home scope; fall back to the legacy
-    // single-directory containment so home-scope contexts (e.g. CLI file
-    // reads without a workspace binding) keep working.
-    if (scope.type !== "project") return Filesystem.contains(scope.directory, targetPath)
     return ScopeRoots.projectRoots(scope).some((root) => Filesystem.contains(root, targetPath))
   }
 
   export function home(): Scope.Home {
-    const home = Global.Path.home
-    return {
-      type: "home",
-      id: "home",
-      directory: home,
-      worktree: home,
-    }
+    return { type: "home", id: "home", local: null }
   }
 
   function dirHash(directory: string): string {
@@ -77,19 +114,7 @@ export namespace Scope {
   export async function fromID(scopeID: string): Promise<Scope | undefined> {
     if (scopeID === "home") return home()
     const data = await readPersisted(scopeID)
-    if (!data || data.time?.archived) return undefined
-    return {
-      type: "project" as const,
-      id: data.id,
-      directory: data.worktree,
-      worktree: data.worktree,
-      vcs: data.vcs,
-      name: data.name,
-      icon: data.icon,
-      pinned: data.pinned,
-      sandboxes: data.sandboxes,
-      time: data.time,
-    }
+    return data
   }
 
   function publish<Definition extends BusEvent.Definition>(
@@ -99,7 +124,7 @@ export namespace Scope {
   ) {
     const payload = { type: definition.type, properties: structuredClone(properties) }
     return Storage.enqueue({ id: crypto.randomUUID(), scopeID, type: definition.type, payload }, async () => {
-      GlobalBus.emit("event", { payload })
+      GlobalBus().emit("event", { scopeID, payload })
     })
   }
 
@@ -112,7 +137,7 @@ export namespace Scope {
     for (const rawID of await Storage.scan(StoragePath.scopeRoot())) {
       const data = await readPersisted(rawID)
       if (!data || data.time?.archived) continue
-      if (path.resolve(data.worktree) === resolved) return data
+      if (data.local && path.resolve(data.local.worktree) === resolved) return data
     }
     return undefined
   }
@@ -126,14 +151,10 @@ export namespace Scope {
     log.info("fromDirectory", { directory })
 
     if (!existsSync(directory) || !statSync(directory).isDirectory()) {
-      if (persist) {
-        const existing = await readPersisted(dirHash(directory))
-        if (existing && !existing.time?.archived) {
-          await remove(existing.id)
-          log.info("archived scope for missing directory", { directory, scopeID: existing.id })
-        }
-      }
-      return { scope: home(), sandbox: Global.Path.home }
+      throw new WorkspaceUnavailableError({
+        message: "The requested workspace is no longer available.",
+        path: directory,
+      })
     }
 
     // TODO: [scope-boundary] Upward .git traversal disabled — see analysis below.
@@ -190,7 +211,7 @@ export namespace Scope {
             id: id ?? dirHash(directory),
             worktree: directory,
             sandbox: directory,
-            vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
+            vcs: Local.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
@@ -239,7 +260,7 @@ export namespace Scope {
             id,
             sandbox: directory,
             worktree: directory,
-            vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
+            vcs: Local.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
@@ -260,7 +281,7 @@ export namespace Scope {
             id,
             sandbox: directory,
             worktree: directory,
-            vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
+            vcs: Local.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
@@ -309,93 +330,37 @@ export namespace Scope {
       }
     }
 
-    if (existing?.time?.archived) {
-      const scope: Scope.Project = {
-        type: "project",
-        id: existing.id,
-        directory: sandbox,
-        worktree: existing.worktree,
-        vcs: existing.vcs,
-        name: existing.name,
-        icon: existing.icon,
-        pinned: existing.pinned,
-        sandboxes: existing.sandboxes ?? [],
-        time: existing.time,
-      }
-      return { scope, sandbox }
-    }
+    if (existing?.time?.archived) return { scope: existing, sandbox }
 
-    const existed = !!existing
-    if (!existing) {
-      existing = {
-        id,
-        type: "project" as const,
-        directory: sandbox,
-        worktree,
-        vcs: vcs as Scope.Project["vcs"],
-        sandboxes: [],
-        time: {
-          created: Date.now(),
-          updated: Date.now(),
-        },
-      }
-    }
-
-    const previousSandboxes = [...(existing.sandboxes ?? [])]
-    if (!existing.sandboxes) existing.sandboxes = []
-
-    const project: z.infer<typeof Info> = {
-      ...existing,
-      type: "project" as const,
+    const local: Local = {
       directory: worktree,
       worktree,
-      vcs: vcs as Scope.Project["vcs"],
-      time: { ...existing.time },
+      vcs: vcs as Local["vcs"],
+      sandboxes: [...new Set([...(existing?.local?.sandboxes ?? []), ...(sandbox !== worktree ? [sandbox] : [])])],
     }
-    if (sandbox !== project.worktree && !project.sandboxes.includes(sandbox)) project.sandboxes.push(sandbox)
-    project.sandboxes = project.sandboxes.filter((x) => existsSync(x))
-
-    // Persist and broadcast only when the record actually changed. Repeated
-    // lookups of the same directory used to rewrite the scope file and emit
-    // scope.updated on every request, driving frontend scope-index refreshes
-    // and sidebar re-renders on unrelated navigation.
-    const recordChanged =
-      !existed ||
-      project.directory !== existing.directory ||
-      project.worktree !== existing.worktree ||
-      project.vcs !== existing.vcs ||
-      project.sandboxes.length !== previousSandboxes.length ||
-      project.sandboxes.some((entry, index) => entry !== previousSandboxes[index])
-    if (persist && recordChanged)
+    const project: Info = {
+      ...existing,
+      id: existing?.id ?? id,
+      type: "project",
+      local,
+      time: existing?.time ?? { created: Date.now(), updated: Date.now() },
+    }
+    if (persist && (!existing || JSON.stringify(existing.local) !== JSON.stringify(local))) {
       await Storage.transaction(async () => {
         const latest = await readPersisted(project.id)
-        const merged = latest
-          ? {
-              ...latest,
-              directory: project.directory,
-              worktree: project.worktree,
-              vcs: project.vcs,
-              sandboxes: [...new Set([...(latest.sandboxes ?? []), ...project.sandboxes])].filter((entry) =>
-                existsSync(entry),
-              ),
-            }
-          : project
+        const merged = {
+          ...latest,
+          ...project,
+          local: {
+            ...local,
+            sandboxes: [...new Set([...(latest?.local?.sandboxes ?? []), ...local.sandboxes])],
+          },
+        }
         await writePersisted(merged)
         await publish(Event.Updated, merged, merged.id)
       })
-
-    const scope: Scope.Project = {
-      type: "project",
-      id: project.id,
-      directory: sandbox,
-      worktree: project.worktree,
-      vcs: project.vcs,
-      name: project.name,
-      icon: project.icon,
-      pinned: project.pinned,
-      sandboxes: project.sandboxes,
-      time: project.time,
     }
+    const scope: Scope.Project = { ...project, local: { ...local, directory: sandbox } }
 
     return { scope, sandbox }
   }
@@ -409,35 +374,7 @@ export namespace Scope {
     const results = await Promise.all(ids.map((id) => readPersisted(id)))
     const active = results.filter((data): data is z.infer<typeof Info> => !!data && !data.time?.archived)
 
-    const detached: string[] = []
-    const valid = active.filter((data) => {
-      if (existsSync(data.worktree)) return true
-      detached.push(data.id)
-      return false
-    })
-
-    if (detached.length > 0) {
-      await Promise.all(detached.map((id) => remove(id)))
-      log.info("archived scopes with missing worktrees", { ids: detached })
-    }
-
-    // Ephemeral test-artifact scopes (worktrees under the OS temp dir with a
-    // synergy-test-*/synergy-orchestrated-* basename) are created by test
-    // scaffolding and must never surface in project lists. See test-artifacts.ts.
-    const visible = valid.filter((data) => !isEphemeralTestWorktree(data.worktree))
-
-    return visible.map((data) => ({
-      type: "project" as const,
-      id: data.id,
-      directory: data.worktree,
-      worktree: data.worktree,
-      vcs: data.vcs,
-      name: data.name,
-      icon: data.icon,
-      pinned: data.pinned,
-      sandboxes: data.sandboxes,
-      time: data.time,
-    }))
+    return active.filter((data) => !data.local || !isEphemeralTestWorktree(data.local.worktree))
   }
 
   export async function setInitialized(scopeID: string) {
@@ -462,10 +399,12 @@ export namespace Scope {
     archived?: number | null
     sandboxes?: string[]
   }) {
+    const instanceState = runtimeState()
+
     return Storage.transaction(async () => {
       if (input.scopeID === "home") return undefined
       if (input.archived !== undefined && input.archived !== null) {
-        for (const guard of archiveGuards) await guard(input.scopeID)
+        for (const guard of instanceState.archiveGuards) await guard(input.scopeID)
       }
       const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
         if (input.name !== undefined) draft.name = input.name
@@ -481,9 +420,10 @@ export namespace Scope {
           draft.time.archived = input.archived ?? undefined
         }
         if (input.sandboxes !== undefined) {
-          const worktree = path.resolve(draft.worktree)
+          const local = requireLocal(draft)
+          const worktree = path.resolve(local.worktree)
           const seen = new Set<string>()
-          draft.sandboxes = input.sandboxes
+          local.sandboxes = input.sandboxes
             .filter((s) => path.isAbsolute(s))
             .filter((s) => {
               const resolved = path.resolve(s)
@@ -501,23 +441,25 @@ export namespace Scope {
   }
 
   export async function remove(scopeID: string) {
+    const instanceState = runtimeState()
+
     return Storage.transaction(async () => {
       if (scopeID === "home") return undefined
-      for (const guard of archiveGuards) await guard(scopeID)
+      for (const guard of instanceState.archiveGuards) await guard(scopeID)
       const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
         draft.time.archived = Date.now()
       })
-      await publish(Event.Removed, { id: scopeID, directory: result.worktree }, scopeID)
+      await publish(Event.Removed, { id: scopeID, directory: result.local?.worktree }, scopeID)
       return result
     })
   }
 
   export async function sandboxes(scopeID: string) {
     const data = await readPersisted(scopeID)
-    if (!data?.sandboxes) return []
+    if (!data?.local?.sandboxes) return []
     const { stat } = await import("fs/promises")
     const valid: string[] = []
-    for (const dir of data.sandboxes) {
+    for (const dir of data.local.sandboxes) {
       const s = await stat(dir).catch(() => undefined)
       if (s?.isDirectory()) valid.push(dir)
     }

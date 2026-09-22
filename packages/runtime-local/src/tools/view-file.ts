@@ -78,114 +78,118 @@ function viewContent(snapshotAvailable: boolean, content: string): string | unde
   return content
 }
 
-export const ViewFileTool = Tool.define("view_file", {
-  description: DESCRIPTION,
-  parameters: z.object({
-    filePath: z.string().describe("The absolute path to the file to view and prepare for anchored editing"),
-    offset: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .describe("The 0-based line offset to display; use this to inspect unseen ranges before revise_file")
-      .optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .describe("The number of lines to display; use ranges or another view_file call for hidden regions")
-      .optional(),
-    ranges: z.array(RangeSchema).optional().describe("Optional non-contiguous ranges to display from the same file"),
-  }),
-  async execute(params, ctx) {
-    const filePath = resolveFilePath(params.filePath)
-    await ctx.ask({ permission: "view_file", patterns: [filePath], metadata: {} })
+export const ViewFileTool = Tool.define(
+  "view_file",
+  {
+    description: DESCRIPTION,
+    parameters: z.object({
+      filePath: z.string().describe("The absolute path to the file to view and prepare for anchored editing"),
+      offset: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .describe("The 0-based line offset to display; use this to inspect unseen ranges before revise_file")
+        .optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .describe("The number of lines to display; use ranges or another view_file call for hidden regions")
+        .optional(),
+      ranges: z.array(RangeSchema).optional().describe("Optional non-contiguous ranges to display from the same file"),
+    }),
+    async execute(params, ctx) {
+      const filePath = resolveFilePath(params.filePath)
+      await ctx.ask({ permission: "view_file", patterns: [filePath], metadata: {} })
 
-    let content = await readTextFileUnderSnapshotCap(filePath)
-    const snapshotAvailable = content !== undefined
-    if (content === undefined) {
-      const file = Bun.file(filePath)
-      content = await file.slice(0, DEFAULT_VIEW_BYTES).text()
-    }
-
-    const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
-    const tag = snapshotAvailable ? formatRecordedBlock(ctx.sessionID, filePath, content).tag : undefined
-    markFileRead(ctx.sessionID, filePath)
-    void ToolLspSource.get()?.touchFile(filePath, false)
-
-    const lines = splitDisplayLines(content)
-    const display = displayPath(filePath)
-    const conflict = detectConflicts(fullContentForConflict)
-    const warning = conflictWarning(conflict)
-    const header = tag ? `[${display}#${tag}]` : cappedPreviewMessage(filePath)
-
-    const emptyRangeMetadata: RangeMetadata[] = []
-    if (params.ranges) {
-      const blocks: string[] = []
-      const rangeMetadata: RangeMetadata[] = params.ranges.map((range, index) => {
-        const limit = normalizeLineLimit(range.limit)
-        const formatted = formatLineRange(lines, range.offset, limit)
-        if (formatted.body)
-          blocks.push(`## Range ${index + 1}: lines ${range.offset + 1}-${formatted.endLine}\n${formatted.body}`)
-        return {
-          offset: range.offset,
-          limit,
-          startLine: range.offset + 1,
-          endLine: formatted.endLine,
-          truncated: formatted.truncated,
-          truncatedLines: formatted.truncatedLines,
-        }
-      })
-
-      // Record all displayed ranges as seen lines
-      for (const rm of rangeMetadata) {
-        recordDisplayLines(ctx.sessionID, filePath, tag, rm.startLine, rm.endLine)
+      let content = await readTextFileUnderSnapshotCap(filePath)
+      const snapshotAvailable = content !== undefined
+      if (content === undefined) {
+        const file = Bun.file(filePath)
+        content = await file.slice(0, DEFAULT_VIEW_BYTES).text()
       }
 
-      const outputParts = [warning, header, ...blocks].filter(Boolean)
+      const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
+      const tag = snapshotAvailable ? formatRecordedBlock(ctx.sessionID, filePath, content).tag : undefined
+      markFileRead(ctx.sessionID, filePath)
+      void ToolLspSource.get()?.touchFile(filePath, false)
+
+      const lines = splitDisplayLines(content)
+      const display = displayPath(filePath)
+      const conflict = detectConflicts(fullContentForConflict)
+      const warning = conflictWarning(conflict)
+      const header = tag ? `[${display}#${tag}]` : cappedPreviewMessage(filePath)
+
+      const emptyRangeMetadata: RangeMetadata[] = []
+      if (params.ranges) {
+        const blocks: string[] = []
+        const rangeMetadata: RangeMetadata[] = params.ranges.map((range, index) => {
+          const limit = normalizeLineLimit(range.limit)
+          const formatted = formatLineRange(lines, range.offset, limit)
+          if (formatted.body)
+            blocks.push(`## Range ${index + 1}: lines ${range.offset + 1}-${formatted.endLine}\n${formatted.body}`)
+          return {
+            offset: range.offset,
+            limit,
+            startLine: range.offset + 1,
+            endLine: formatted.endLine,
+            truncated: formatted.truncated,
+            truncatedLines: formatted.truncatedLines,
+          }
+        })
+
+        // Record all displayed ranges as seen lines
+        for (const rm of rangeMetadata) {
+          recordDisplayLines(ctx.sessionID, filePath, tag, rm.startLine, rm.endLine)
+        }
+
+        const outputParts = [warning, header, ...blocks].filter(Boolean)
+        return {
+          title: display,
+          output: `${outputParts.join("\n")}${blocks.length ? "" : "\n"}`,
+          metadata: {
+            path: display,
+            tag,
+            totalLines: lines.length,
+            ranges: rangeMetadata,
+            offset: undefined as number | undefined,
+            limit: undefined as number | undefined,
+            truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
+            truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
+            snapshotAvailable,
+            content: viewContent(snapshotAvailable, content),
+            hasConflicts: conflict.hasConflicts,
+            conflicts: conflict.conflicts,
+          },
+        }
+      }
+      const offset = params.offset ?? 0
+      const rawLimit = Math.max(params.limit ?? DEFAULT_VIEW_LINES, MIN_VIEW_LINES)
+      const limit = normalizeLineLimit(rawLimit)
+      const formatted = formatLineRange(lines, offset, limit)
+      const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
+
+      // Record the displayed offset..offset+limit range as seen lines
+      recordDisplayLines(ctx.sessionID, filePath, tag, offset + 1, formatted.endLine)
       return {
         title: display,
-        output: `${outputParts.join("\n")}${blocks.length ? "" : "\n"}`,
+        output,
         metadata: {
           path: display,
           tag,
+          offset,
+          limit,
+          ranges: emptyRangeMetadata,
           totalLines: lines.length,
-          ranges: rangeMetadata,
-          offset: undefined as number | undefined,
-          limit: undefined as number | undefined,
-          truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
-          truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
+          truncated: !snapshotAvailable || formatted.truncated,
+          truncatedLines: formatted.truncatedLines,
           snapshotAvailable,
           content: viewContent(snapshotAvailable, content),
           hasConflicts: conflict.hasConflicts,
           conflicts: conflict.conflicts,
         },
       }
-    }
-    const offset = params.offset ?? 0
-    const rawLimit = Math.max(params.limit ?? DEFAULT_VIEW_LINES, MIN_VIEW_LINES)
-    const limit = normalizeLineLimit(rawLimit)
-    const formatted = formatLineRange(lines, offset, limit)
-    const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
-
-    // Record the displayed offset..offset+limit range as seen lines
-    recordDisplayLines(ctx.sessionID, filePath, tag, offset + 1, formatted.endLine)
-    return {
-      title: display,
-      output,
-      metadata: {
-        path: display,
-        tag,
-        offset,
-        limit,
-        ranges: emptyRangeMetadata,
-        totalLines: lines.length,
-        truncated: !snapshotAvailable || formatted.truncated,
-        truncatedLines: formatted.truncatedLines,
-        snapshotAvailable,
-        content: viewContent(snapshotAvailable, content),
-        hasConflicts: conflict.hasConflicts,
-        conflicts: conflict.conflicts,
-      },
-    }
+    },
   },
-})
+  { requiresWorkspace: true },
+)
