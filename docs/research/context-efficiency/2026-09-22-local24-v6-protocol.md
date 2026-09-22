@@ -1,6 +1,6 @@
 # Local-24 paired study v6
 
-Execution is deferred by the latest user instruction: finish and commit benchmark repairs first; do not launch the 24-task study. This reference defines the prospective study following the [infrastructure audit](2026-09-22-local24-infrastructure-audit.md). It does not resume v5, replace its failed admission or reinterpret its scores. Model quality failures remain in the sample; infrastructure and evidence failures stop further dispatch.
+The user authorized the full paired study after the benchmark repairs were committed. This protocol defines the prospective study following the [infrastructure audit](2026-09-22-local24-infrastructure-audit.md). Its new execution identity is local24-v7; the dependency task revision remains v6. It does not resume v5, replace its failed admission or reinterpret its scores. Model quality failures remain in the sample; infrastructure and evidence failures stop further dispatch.
 
 ## Frozen comparison
 
@@ -21,11 +21,13 @@ Evaluator and documentation commits do not change the measured candidate. Neithe
 
 ## Task population and readiness
 
-The population retains all 24 selections from [local-24](../../../benchmark/suites/local-24.json): 12 DeepSWE and 12 Terminal-Bench tasks. Twenty-two task payloads remain unchanged. The Cython and Stan tasks use explicitly versioned dependency/reference repairs, with the original instructions, verifier assertions, resources preserved; execution uses the fixed three-hour policy. The task provenance maps each derivative to its original digest and enumerates changes. Scores for these two derivatives are not scores for the unmodified upstream tasks or an official benchmark leaderboard.
+The [frozen derivative suite](../../../benchmark/suites/local-24-repro-v6.json) retains all 24 selections from [local-24](../../../benchmark/suites/local-24.json): 12 DeepSWE and 12 Terminal-Bench tasks. Twenty-two task payloads remain unchanged. The Cython and Stan tasks use explicitly versioned dependency/reference repairs, with the original instructions, verifier assertions, resources preserved; execution uses the fixed three-hour policy. The task provenance maps each derivative to its original digest and enumerates changes. Scores for these two derivatives are not scores for the unmodified upstream tasks or an official benchmark leaderboard.
 
 Readiness requires native reference validation for every task, independent evidence validation, and actual tool execution by both frozen products. Prior reference controls are reusable only for identical task content, with their original evaluator identity and limitations retained. New dependency layers require new reference controls, recorded actual image identities and tool-visible cache/configuration checks. A failed reference, failed image build or incomplete preflight remains retained and cannot be replaced by a later success under the same identity.
 
 The final task suite and readiness inventory must be committed before paid dispatch. Reference solutions run only in isolated oracle environments. Model attempts start from fresh task state and never receive reference output.
+
+The run performs one real-provider doctor for each frozen task/product cell before formal execution. These 48 tool checks are preflights, separate from the 48 scored cells, and their helper requests and costs remain in the ledger. The free prerequisites reuse independently revalidated controls for identical inputs, add final-image references for the two derivatives, and exercise both products with two deterministic models on those tasks and bandit. The earlier bandit cleanup failure remains a failed historical observation.
 
 ## Dispatch and scoring
 
