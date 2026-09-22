@@ -31,7 +31,7 @@ export namespace SecretPatterns {
     [/(Digest\s+)[A-Za-z0-9+/=]+/gi, "$1[redacted]"],
   ]
 
-  export const keyValue = /(?<=(token|secret|password|authorization|api[_-]?key|cookie)"?\s*[:=]\s*"?)\s*[^\s"'&,}]+/gi
+  export const keyValue = /((?:token|secret|password|authorization|api[_-]?key|cookie)["']?\s*[:=]\s*["']?)[^\s"'&]+/gi
 
   export const queryParam = /([?&](?:token|secret|password|authorization|api[_-]?key|cookie|key)=)[^&#\s"']+/gi
 
