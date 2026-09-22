@@ -290,6 +290,7 @@ class Gateway:
                         body=payload,
                         headers={
                             "Content-Type": upstream.headers.get("Content-Type", "application/octet-stream"),
+                            "X-Request-ID": "synergy-benchmark:" + identity,
                             **({"Retry-After": record["retry_after"]} if record["retry_after"] else {}),
                         },
                     )
@@ -298,6 +299,7 @@ class Gateway:
                     headers={
                         "Content-Type": "text/event-stream" if streaming else "application/json",
                         "X-Benchmark-Request": identity,
+                        "X-Request-ID": "synergy-benchmark:" + identity,
                     }
                 )
                 await response.prepare(request)

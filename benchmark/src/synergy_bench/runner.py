@@ -350,11 +350,9 @@ async def execute_plan(
     pool = ResourcePool(
         Capacity(**capacity), concurrency, admission=admission_for(root, plan), **shared_pool_options(root, plan)
     )
-    pairs: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-    for index, item in enumerate(plan["schedule"]):
-        pairs.setdefault(item["pair"], []).append((f"{index:04d}", item))
+    schedule = [(f"{index:04d}", item) for index, item in enumerate(plan["schedule"])]
 
-    async def pair(items: list[tuple[str, dict[str, Any]]]) -> None:
+    async def execute_items(items: list[tuple[str, dict[str, Any]]]) -> None:
         for trial_id, item in items:
             request = Request(
                 **plan.get("tasks", {}).get(item.get("task"), {}).get("resources", {"cpus": 1, "memory_bytes": 1024**3})
@@ -448,9 +446,16 @@ async def execute_plan(
                     if startup_attempt >= 3 or not startup_retryable(attempt, result):
                         break
 
+    if concurrency == 1:
+        await execute_items(schedule)
+        return
+
+    pairs: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for trial_id, item in schedule:
+        pairs.setdefault(item["pair"], []).append((trial_id, item))
     async with asyncio.TaskGroup() as group:
         for items in pairs.values():
-            group.create_task(pair(items))
+            group.create_task(execute_items(items))
 
 
 async def execute_trial(

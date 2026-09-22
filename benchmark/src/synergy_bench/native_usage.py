@@ -155,7 +155,7 @@ def reconcile_requests(wire: list[dict[str, Any]], native: dict[str, Any] | None
         result["coverage"] = len(result["completed_usage_crosschecked"]) / len(wire) if wire else None
         return result
     if native and native.get("source") == "synergy-rollout-v1":
-        return reconcile_request_bodies(wire, native["request_records"])
+        return reconcile_synergy_requests(wire, native["request_records"])
     if not (native or {}).get("source", "").startswith("native-transport-"):
         return {"mode": "aggregate", "status": "unknown", "wire_requests": len(wire), "coverage": None}
     identifiers = {row["id"] for row in (native or {}).get("records", [])}
@@ -240,6 +240,7 @@ def attach_synergy_requests(agent: Path, accounting: dict[str, Any] | None) -> d
                             "id": attempt["id"],
                             "purpose": calls.get(attempt["callID"], {}).get("purpose"),
                             "request_digest": request_digest,
+                            "response_request_id": (attempt.get("responseHeaders") or {}).get("x-request-id"),
                             "status": attempt["status"],
                             "protocol": "responses"
                             if attempt["url"].rstrip("/").endswith("/responses")
@@ -251,6 +252,68 @@ def attach_synergy_requests(agent: Path, accounting: dict[str, Any] | None) -> d
     except (OSError, ValueError, KeyError, zipfile.BadZipFile):
         return accounting
     return {**accounting, "source": "synergy-rollout-v1", "request_records": records}
+
+
+def reconcile_synergy_requests(wire: list[dict[str, Any]], native: list[dict[str, Any]]) -> dict[str, Any]:
+    identified = [row for row in native if row.get("response_request_id") is not None]
+    if not identified:
+        return reconcile_request_bodies(wire, native)
+    identities = Counter(row["response_request_id"] for row in identified)
+    wire_identities = Counter("synergy-benchmark:" + row["id"] for row in wire)
+    claimed = [row for row in wire if "synergy-benchmark:" + row["id"] in identities]
+    by_identity = {row["response_request_id"]: row for row in identified}
+    unique = {key for key in identities.keys() & wire_identities.keys() if identities[key] == wire_identities[key] == 1}
+    mismatched_bodies, unverified_bodies = [], []
+    for row in claimed:
+        key = "synergy-benchmark:" + row["id"]
+        if key not in unique:
+            continue
+        other = by_identity[key]
+        if row.get("request_digest") is None or other.get("request_digest") is None:
+            unverified_bodies.append(key)
+        elif row["request_digest"] != other["request_digest"]:
+            mismatched_bodies.append(key)
+    invalid_bodies = set(mismatched_bodies + unverified_bodies)
+    response = reconcile_request_bodies(
+        [{**row, "request_digest": "synergy-benchmark:" + row["id"]} for row in claimed],
+        [{**row, "request_digest": row["response_request_id"]} for row in identified],
+    )
+    fallback = reconcile_request_bodies(
+        [row for row in wire if "synergy-benchmark:" + row["id"] not in identities],
+        [row for row in native if row.get("response_request_id") is None],
+    )
+    duplicates = sorted(key for key in identities if identities[key] > 1 or wire_identities.get(key, 0) > 1)
+    statuses = {response["status"], fallback["status"]}
+    status = (
+        "mismatch"
+        if "mismatch" in statuses or mismatched_bodies or duplicates
+        else "partial"
+        if "partial" in statuses or unverified_bodies or any(row.get("status") != "completed" for row in native)
+        else "matched"
+    )
+    matched = len(unique - invalid_bodies) + fallback["matched_requests"]
+    return {
+        **fallback,
+        **{
+            key: sorted(response[key] + fallback[key])
+            for key in ["missing_native", "missing_wire", "usage_mismatches", "unknown_completed_usage"]
+        },
+        "mode": "response_id",
+        "response_id_source": "gateway_x_request_id",
+        "status": status,
+        "wire_requests": len(wire),
+        "native_requests": len(native),
+        "duplicate_response_ids": duplicates,
+        "request_body_mismatches": sorted(mismatched_bodies),
+        "unverified_request_bodies": sorted(unverified_bodies),
+        "body_fallback_matches": fallback["matched_requests"],
+        "completed_usage_crosschecked": sorted(
+            (set(response["completed_usage_crosschecked"]) - invalid_bodies)
+            | set(fallback["completed_usage_crosschecked"])
+        ),
+        "matched_requests": matched,
+        "coverage": matched / max(len(wire), len(native)),
+    }
 
 
 def reconcile_request_bodies(wire: list[dict[str, Any]], native: list[dict[str, Any]]) -> dict[str, Any]:
@@ -280,6 +343,7 @@ def reconcile_request_bodies(wire: list[dict[str, Any]], native: list[dict[str, 
         ambiguous_request_bodies=ambiguous,
         unidentified_wire_requests=left.get(None, 0),
         unidentified_native_requests=right.get(None, 0),
+        matched_requests=len(unique),
         coverage=len(unique) / max(len(wire), len(native)) if wire or native else None,
     )
     return result

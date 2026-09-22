@@ -98,6 +98,10 @@ Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree
 
 模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。预检不能预置解题依赖、答案或 oracle 产物。
 
+Synergy 的两种原生适配器保留任务镜像的 `HOME` 和 XDG 环境，仅用独立 `SYNERGY_HOME` 隔离产品数据。原生 shell 的环境变量过滤属于被测产品行为；评测器不能搬移依赖缓存来掩盖环境差异。隔离原理与请求关联见[评测修复决策](../docs/decisions/implemented/bug-fix/2026-09-22-benchmark-execution-evidence-integrity.md)。
+
+并发为 1 时，正式执行严格遍历冻结 `schedule`，恢复时跳过已完成尝试并保留剩余顺序；并发大于 1 时保留各配对内的先后顺序。原生 reward 为 0 不改变调度。doctor 除核查实际工具往返、完成请求 usage 和归档外，还要求终态证据有效且无基础设施错误；清理失败不能通过预检。有效的 partial recording 与未知中断用量仍按原始口径保留。
+
 ## 证据与统计
 
 ```text
@@ -138,7 +142,7 @@ run/
   recoveries/
 ```
 
-账本在发送网络请求前持久化意图，正常结束、错误、取消、未知送达和缺失 usage 分开记录。原生记录交叉核对主任务、辅助调用、重试和压缩请求。累计 usage 帧及重复终态不重复计量；未知输入/输出保留已知下界，缓存和推理保持输入/输出子集关系。字节不冒充 token。Synergy 继续使用公开 rollout/accounting 合同；按公开归档中的请求摘要逐条核对。Codex 使用原生 token_usage_record 的 response ID，与账本中的下游 response ID 逐条核对，累计事件不重复计量。协议桥同时保留转换前后的响应字节。
+账本在发送网络请求前持久化意图，正常结束、错误、取消、未知送达和缺失 usage 分开记录。原生记录交叉核对主任务、辅助调用、重试和压缩请求。累计 usage 帧及重复终态不重复计量；未知输入/输出保留已知下界，缓存和推理保持输入/输出子集关系。字节不冒充 token。Synergy 继续使用公开 rollout/accounting 合同：网关返回带命名空间的 `X-Request-ID`，与原生归档的响应头关联后，再核对请求摘要和逐次 usage。没有响应头的历史或中断记录只允许唯一请求摘要匹配；重复、矛盾或缺失证据不能由聚合用量补足。Codex 使用原生 token_usage_record 的 response ID，与账本中的下游 response ID 逐条核对，累计事件不重复计量。协议桥同时保留转换前后的响应字节。
 
 报告统计所有 attempts，包括预检和失败重跑；评分预先选定每个计划单元的首次模型执行。已结束的失败是终态，resume 不自动重抽样。恢复先核对原有执行终态、归档和账本摘要，再修复调度状态；改变 evaluator、Python 版本、冻结输入或任务摘要会拒绝续跑。`resume`、`doctor`、`prewarm` 和 `debug` 的 `--recorded-evaluator` 显式使用已校验的冻结评测器；它不会用新代码续跑旧实验。
 

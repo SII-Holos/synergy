@@ -1,6 +1,60 @@
 from synergy_bench.maintenance import prepare_items, probe_observed
 
 
+def test_tool_roundtrip_cannot_admit_invalid_evidence_or_infrastructure_failure(tmp_path):
+    from synergy_bench.maintenance import probe_result
+    from synergy_bench.storage import atomic_json
+
+    marker = "observed-tool-output"
+    atomic_json(
+        tmp_path / "wire/completed/upstream.json",
+        {"messages": [{"role": "tool", "content": marker}]},
+    )
+    atomic_json(
+        tmp_path / "wire/completed/request.json",
+        {
+            "id": "completed",
+            "protocol": "chat-completions",
+            "status": "completed",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+        },
+    )
+    atomic_json(
+        tmp_path / "wire/interrupted/request.json",
+        {"id": "interrupted", "protocol": "chat-completions", "status": "interrupted", "usage": None},
+    )
+    result = {
+        "execution": {"outcome": "completed"},
+        "wire_usage": {"attempts": 2},
+        "reconciliation": {
+            "status": "partial",
+            "requests": {
+                "mode": "response_id",
+                "status": "partial",
+                "completed_usage_crosschecked": ["completed"],
+            },
+        },
+        "evidence": {"valid": True, "archive_valid": True, "recording": "partial", "usage": "partial"},
+    }
+    row = probe_result({}, tmp_path, marker, 1, result)
+    assert row["status"] == "completed"
+    assert row["evidence"]["recording"] == "partial"
+    for issue in ["environment-cleanup_failed", "credential-cleanup_failed", "execution_truncated", "export_failed"]:
+        row = probe_result(
+            {},
+            tmp_path,
+            marker,
+            1,
+            {**result, "evidence": {**result["evidence"], "valid": False, "issues": [issue]}},
+        )
+        assert row["status"] == "failed"
+        assert row["evidence"]["issues"] == [issue]
+    assert (
+        probe_result({}, tmp_path, marker, 1, {**result, "infrastructure_error": {"type": "RuntimeError"}})["status"]
+        == "failed"
+    )
+
+
 def test_prewarm_deduplicates_models_but_not_task_images():
     plan = {
         "schedule": [
@@ -319,6 +373,7 @@ async def test_successful_startup_retry_is_reused_without_repeating_model_work(t
         atomic_json(attempt / "wire/request/request.json", call)
         atomic_json(attempt / "wire/request/upstream.json", {"messages": [{"role": "tool", "content": marker}]})
         result["execution"] = {"outcome": "completed"}
+        result["evidence"].update(valid=True, issues=[])
         result["wire_usage"] = aggregate_usage([call])
         result["reconciliation"] = {
             "status": "matched",

@@ -304,7 +304,9 @@ def probe_result(
         and usage.get("attempts", 0) > 0
         and completed_usage_observed(read_ledger(attempt / "wire"))
         and completed_usage_reconciled(result, read_ledger(attempt / "wire"))
+        and result.get("evidence", {}).get("valid") is True
         and result.get("evidence", {}).get("archive_valid") is True
+        and not result.get("infrastructure_error")
         and (result.get("reconciliation") or {}).get("status") != "mismatch"
         else "failed"
     )

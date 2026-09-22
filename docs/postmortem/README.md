@@ -64,6 +64,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0020 | Managed startup maintenance outgrew Desktop progress | implemented | 2026-09-20 |
 
 | 0021 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
+| 0022 | Benchmark environment, scheduling and admission defects | implemented | 2026-09-22 |
 
 ## History rules
 

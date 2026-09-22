@@ -6,6 +6,33 @@ from synergy_bench.runner import execute_plan
 from synergy_bench.storage import atomic_json, read_json
 
 
+@pytest.mark.parametrize("completed", [0, 2])
+async def test_serial_execution_follows_frozen_schedule_including_resume(tmp_path, completed):
+    import asyncio
+
+    schedule = [
+        {"pair": pair, "variant": side, "task": pair}
+        for pair, sides in [("one", ["A", "B"]), ("two", ["B", "A"]), ("three", ["A", "B"])]
+        for side in sides
+    ]
+    plan = {"schedule": schedule, "concurrency": 1}
+    atomic_json(
+        tmp_path / "state.json",
+        {"trials": {f"{index:04d}": {"status": "completed", "attempt": 1} for index in range(completed)}},
+    )
+    observed = []
+
+    async def execute(item, attempt):
+        observed.append(item)
+        await asyncio.sleep(0)
+        return {"execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 0}}}
+
+    await execute_plan(tmp_path, plan, execute)
+    assert observed == schedule[completed:]
+    await execute_plan(tmp_path, plan, execute)
+    assert observed == schedule[completed:]
+
+
 @pytest.mark.parametrize("startup_failures,requests,expected", [(1, 0, 2), (5, 0, 3), (1, 1, 1)])
 async def test_only_unstarted_native_timeouts_retry_with_a_durable_bound(
     tmp_path, monkeypatch, startup_failures, requests, expected

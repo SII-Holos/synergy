@@ -60,10 +60,14 @@ const env = {
   ...process.env,
   ...credentials,
   ...native.env,
-  HOME: home,
-  XDG_CONFIG_HOME: path.join(home, ".config"),
-  XDG_DATA_HOME: path.join(home, ".local/share"),
-  XDG_CACHE_HOME: path.join(home, ".cache"),
+  ...(options.harness === "synergy"
+    ? {}
+    : {
+        HOME: home,
+        XDG_CONFIG_HOME: path.join(home, ".config"),
+        XDG_DATA_HOME: path.join(home, ".local/share"),
+        XDG_CACHE_HOME: path.join(home, ".cache"),
+      }),
   PATH: `/opt/synergy/bin:/opt/synergy/node/bin:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}`,
 }
 const capture =

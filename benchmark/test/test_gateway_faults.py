@@ -87,7 +87,9 @@ async def test_first_byte_and_midstream_deadlines_preserve_unknown_usage(tmp_pat
 async def test_proxy_failure_is_durable_before_any_provider_response(tmp_path, monkeypatch):
     monkeypatch.setenv("FIXTURE_KEY", "fixture")
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
     monkeypatch.setenv("NO_PROXY", "")
+    monkeypatch.setenv("no_proxy", "")
     async with Gateway(
         model("http://unresolvable.invalid/v1"), tmp_path, bind="127.0.0.1", connect_timeout=0.05
     ) as gateway:

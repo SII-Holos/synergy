@@ -6,6 +6,7 @@ import shlex
 import shutil
 import sys
 import uuid
+import zipfile
 
 import pytest
 import yaml
@@ -262,8 +263,34 @@ async def test_synergy_long_sessions_preserve_native_tools_and_usage(
     await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True, tool_turns=tool_turns, bun_jit=bun_jit)
 
 
-async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=False, tool_turns=120, bun_jit=False):
-    create_matrix_suite(tmp_path)
+@pytest.mark.parametrize("empty_stop", [False, True], ids=["tool-roundtrip", "empty-provider-stop"])
+async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeypatch, empty_stop):
+    if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
+        pytest.skip("Task-home and native-stop controls belong to the Synergy native matrix")
+    await run_native_matrix(
+        tmp_path,
+        monkeypatch,
+        "chat-completions",
+        long_session=True,
+        tool_turns=3,
+        bun_jit=True,
+        task_home=True,
+        empty_stop=empty_stop,
+    )
+
+
+async def run_native_matrix(
+    tmp_path,
+    monkeypatch,
+    protocol,
+    *,
+    long_session=False,
+    tool_turns=120,
+    bun_jit=False,
+    task_home=False,
+    empty_stop=False,
+):
+    create_matrix_suite(tmp_path, task_home=task_home)
 
     native_probe = shlex.join(
         [
@@ -294,11 +321,44 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             if isinstance(message, dict)
         )
         probe = "BENCHMARK_TOOL_" in json.dumps(messages)
+        if empty_stop and not probe and count >= tool_turns:
+            return web.Response(
+                text='data: {"id":"empty-stop","object":"chat.completion.chunk","created":0,'
+                '"model":"fixture","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+                'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":0}}\n\n'
+                "data: [DONE]\n\n",
+                content_type="text/event-stream",
+            )
+        environment_check = (
+            shlex.join(
+                [
+                    "python3",
+                    "-c",
+                    "from pathlib import Path; "
+                    "pid=Path('/logs/agent/runner.pid').read_text().strip(); "
+                    "children=(Path('/proc')/pid/'task'/pid/'children').read_text().split(); "
+                    "assert children; "
+                    "expected={b'HOME':b'/root',b'XDG_CONFIG_HOME':b'/root/native-config',"
+                    "b'XDG_DATA_HOME':b'/root/native-data',b'XDG_CACHE_HOME':b'/root/native-cache'}; "
+                    "environments=[dict(entry.split(b'=',1) for entry in "
+                    "(Path('/proc')/child/'environ').read_bytes().split(bytes([0])) if b'=' in entry) "
+                    "for child in [pid,*children]]; "
+                    "assert all({key:env.get(key) for key in expected}==expected for env in environments); "
+                    "print('BENCH_NATIVE_TASK_HOME_PRESERVED')",
+                ]
+            )
+            + ' && test "$HOME" = /root && test "$(cat "$HOME/preinstalled-fixture")" = native-cache && '
+            if task_home
+            else ""
+        )
         return await fixture_provider(
             request,
-            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ' + native_probe + "; ",
+            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
+            + native_probe
+            + "; "
+            + environment_check,
             force_tool=count < tool_turns if long_session and not probe else None,
-            observation_turn=count if long_session and not probe else None,
+            observation_turn=count if long_session and not probe and not task_home else None,
         )
 
     app = web.Application(client_max_size=128 * 1024**2)
@@ -314,7 +374,14 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
             "kind": kind,
             "source": {"artifact": artifacts[kind]}
             if kind in artifacts
-            else {"path": str(BENCHMARK.parent)}
+            else {
+                "path": str(BENCHMARK.parent),
+                **(
+                    {"revision": os.environ["SYNERGY_BENCH_TEST_SYNERGY_REVISION"]}
+                    if os.environ.get("SYNERGY_BENCH_TEST_SYNERGY_REVISION")
+                    else {}
+                ),
+            }
             if kind == "synergy"
             else {},
         }
@@ -357,7 +424,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         "timeout_seconds": 900 if long_session else "native",
         "preflight_timeout_seconds": 600 if long_session else 120,
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
-        "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
+        "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
     }
     path = tmp_path / "matrix.yaml"
@@ -443,6 +510,29 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         assert all(result["evidence"]["valid"] for result in results), results
         assert all(result["reconciliation"]["status"] != "mismatch" for result in results), results
         assert all(result["wire_usage"]["tokens"]["total"]["unknown"] == 0 for result in results), results
+        for result in results:
+            assert not any(result["execution"].get(key) for key in ["timed_out", "interrupted", "forced"])
+        assert all(result["reconciliation"]["requests"]["coverage"] == 1 for result in results), results
+
+        def check_native_transport():
+            for archive_path in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
+                with zipfile.ZipFile(archive_path) as archive:
+                    manifest = json.loads(archive.read("manifest.json"))
+                attempts = [attempt for snapshot in manifest["snapshots"] for attempt in snapshot["attempts"]]
+                assert attempts
+                assert all(
+                    attempt.get("responseHeaders", {}).get("x-request-id", "").startswith("synergy-benchmark:")
+                    for attempt in attempts
+                    if attempt["status"] == "completed"
+                )
+            if empty_stop:
+                for file in root.glob("trials/*/attempt-*/evidence.json"):
+                    result = read_json(file)
+                    bodies = [path.read_bytes() for path in (file.parent / "wire").glob("*/response.bin")]
+                    assert any(b'"empty-stop"' in body for body in bodies)
+                    assert result["wire_usage"]["attempts"] >= tool_turns + 1
+
+        await asyncio.to_thread(check_native_transport)
         assert read_json(root / "doctor.json")["status"] == "completed"
         for attempt in (root / "probes").glob("*/attempt-*"):
             assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == config["preflight_timeout_seconds"]
@@ -450,7 +540,7 @@ async def run_native_matrix(tmp_path, monkeypatch, protocol, *, long_session=Fal
         await provider.cleanup()
 
 
-def create_matrix_suite(tmp_path, *, workload: bool = False):
+def create_matrix_suite(tmp_path, *, workload: bool = False, task_home: bool = False):
     dataset = tmp_path / "dataset"
     task = dataset / "tasks/marker"
     shutil.copytree(BENCHMARK / "test/fixtures/task", task)
@@ -459,6 +549,12 @@ def create_matrix_suite(tmp_path, *, workload: bool = False):
         dockerfile.read_text() + "\nRUN git init --quiet && git -c user.name=Fixture "
         "-c user.email=fixture@example.test commit --quiet --allow-empty -m fixture\n"
     )
+    if task_home:
+        dockerfile.write_text(
+            dockerfile.read_text()
+            + "\nENV HOME=/root XDG_CONFIG_HOME=/root/native-config XDG_DATA_HOME=/root/native-data "
+            "XDG_CACHE_HOME=/root/native-cache\nRUN printf native-cache > /root/preinstalled-fixture\n"
+        )
     if workload:
         (task / "environment/workload.py").write_text(
             "import hashlib\ndata = bytearray(192 * 1024**2)\n"

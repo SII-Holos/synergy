@@ -37,6 +37,28 @@ def model(url):
     )
 
 
+@pytest.mark.parametrize("status", [200, 429])
+async def test_each_repeated_request_has_a_native_visible_response_identity(tmp_path, monkeypatch, status):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+
+    async def handler(request):
+        return web.json_response({"usage": {"prompt_tokens": 10, "completion_tokens": 0}}, status=status)
+
+    identifiers = []
+    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+        async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
+            for _ in range(3):
+                async with client.post(
+                    gateway.url + "/chat/completions", json={"model": "fixture-one", "messages": [], "stream": False}
+                ) as response:
+                    assert response.status == status
+                    await response.read()
+                    identifiers.append(response.headers.get("X-Request-ID"))
+    ledger = read_ledger(tmp_path)
+    assert len(set(identifiers)) == 3
+    assert set(identifiers) == {"synergy-benchmark:" + row["id"] for row in ledger}
+
+
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_native_unpaired_utf16_is_forwarded_and_recorded_losslessly(tmp_path, monkeypatch, protocol, streaming):
