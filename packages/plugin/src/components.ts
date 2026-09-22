@@ -1,6 +1,7 @@
 import type { SemanticIconTokenName } from "./icons.js"
 import type { Component, JSX } from "solid-js"
 import type { PluginHostViewId, PluginShellService } from "./ui.js"
+import { PLUGIN_UI_API_VERSION } from "./version.js"
 
 export const PLUGIN_UI_RUNTIME_KEY = "__SYNERGY_PLUGIN_UI_RUNTIME__"
 export type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -101,7 +102,10 @@ function component<K extends keyof PluginUIComponents>(name: K): PluginUICompone
     const runtime = (globalThis as typeof globalThis & { [PLUGIN_UI_RUNTIME_KEY]?: PluginUIComponents })[
       PLUGIN_UI_RUNTIME_KEY
     ]
-    if (!runtime) throw new Error("Synergy UI runtime is unavailable. Mount plugin UI through a UI API 5 host.")
+    if (!runtime)
+      throw new Error(
+        `Synergy UI runtime is unavailable. Mount plugin UI through a UI API ${PLUGIN_UI_API_VERSION} host.`,
+      )
     return runtime[name](props)
   }) as PluginUIComponents[K]
 }

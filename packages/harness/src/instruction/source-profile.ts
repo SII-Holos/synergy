@@ -144,8 +144,9 @@ export namespace SkillSourceProfile {
     },
   ] as const satisfies readonly Profile[]
 
-  function ancestors(instanceDirectory: string) {
+  function ancestors(instanceDirectory: string | null) {
     const result: string[] = []
+    if (!instanceDirectory) return []
     const start = path.resolve(instanceDirectory)
     const home = path.resolve(Global.Path.home)
     let current = start
@@ -159,7 +160,7 @@ export namespace SkillSourceProfile {
     return result
   }
 
-  function anchors(definition: RootDefinition, instanceDirectory: string) {
+  function anchors(definition: RootDefinition, instanceDirectory: string | null) {
     if (definition.anchor === "ancestor") return ancestors(instanceDirectory)
     if (definition.anchor === "home") return [Global.Path.home]
     if (definition.anchor === "config") return [Global.Path.config]
@@ -167,7 +168,7 @@ export namespace SkillSourceProfile {
     return []
   }
 
-  export function allRoots(instanceDirectory: string): ResolvedRoot[] {
+  export function allRoots(instanceDirectory: string | null): ResolvedRoot[] {
     const result: ResolvedRoot[] = []
     const seen = new Set<string>()
 
@@ -201,19 +202,19 @@ export namespace SkillSourceProfile {
     return result
   }
 
-  export function existingRoots(instanceDirectory: string) {
+  export function existingRoots(instanceDirectory: string | null) {
     return allRoots(instanceDirectory).filter((root) => existsSync(root.path))
   }
 
-  export function allRootPaths(instanceDirectory: string) {
+  export function allRootPaths(instanceDirectory: string | null) {
     return [...new Set(allRoots(instanceDirectory).map((root) => root.path))]
   }
 
-  export function existingRootPaths(instanceDirectory: string) {
+  export function existingRootPaths(instanceDirectory: string | null) {
     return [...new Set(existingRoots(instanceDirectory).map((root) => root.path))]
   }
 
-  export async function containsCanonicalPath(candidate: string, instanceDirectory: string) {
+  export async function containsCanonicalPath(candidate: string, instanceDirectory: string | null) {
     const realCandidate = await fs.realpath(candidate).catch(() => undefined)
     if (!realCandidate) return false
     for (const root of existingRoots(instanceDirectory)) {
@@ -224,7 +225,7 @@ export namespace SkillSourceProfile {
     return false
   }
 
-  export function matchesEntryFile(filePath: string, instanceDirectory: string) {
+  export function matchesEntryFile(filePath: string, instanceDirectory: string | null) {
     const normalized = path.resolve(filePath)
     return allRoots(instanceDirectory).some((root) => {
       if (!root.acceptedEntryNames.includes(path.basename(normalized))) return false
@@ -233,11 +234,12 @@ export namespace SkillSourceProfile {
     })
   }
 
-  export function writableDestination(scope: "project" | "global", instanceDirectory: string) {
+  export function writableDestination(scope: "project" | "global", instanceDirectory: string | null) {
     const profile = profiles.find((item) => item.id === "synergy")
     const destination = profile?.writable?.[scope]
     if (!destination) return undefined
     const base = destination.anchor === "instance" ? instanceDirectory : Global.Path.config
+    if (!base) return undefined
     const canonical = path.resolve(base, destination.path)
     if (existsSync(canonical)) return canonical
     const existingCompatibilityPath = destination.compatibilityPaths

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
@@ -25,17 +26,19 @@ export namespace Storage {
     artifactDirectory: string
   }
   interface Context extends Handle {
+    owner?: RuntimeContext.Instance
+    migrationAccess?: boolean
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
     pending?: Promise<unknown>[]
   }
   const context = new AsyncLocalStorage<Context>()
-  let installed: Handle | undefined
 
   export function state<T>(create: () => T): () => T {
-    const values = new WeakMap<TransactionalStore, T>()
+    const runtimeValues = RuntimeContext.state(() => new WeakMap<TransactionalStore, T>())
     return () => {
       const store = current().store
+      const values = runtimeValues()
       let value = values.get(store)
       if (value === undefined) {
         value = create()
@@ -45,36 +48,39 @@ export namespace Storage {
     }
   }
 
-  export function install(handle: Handle) {
-    if (installed === handle) return () => {}
-    if (installed && installed !== handle) throw new StorageConflictError("A storage Handle is already installed")
-    installed = handle
-    return () => {
-      if (installed === handle) installed = undefined
-    }
-  }
-
   export function current(): Context {
-    const value = context.getStore() ?? installed
+    const owner = RuntimeContext.tryCurrent()
+    const active = context.getStore()
+    const value = active?.owner === owner ? (active ?? owner?.storage) : owner?.storage
     if (!value) throw new StorageClosedError()
     return value
   }
 
   export function available() {
-    return Boolean(context.getStore() ?? installed)
+    const owner = RuntimeContext.tryCurrent()
+    return Boolean((context.getStore()?.owner === owner && context.getStore()) || owner?.storage)
   }
 
   /** Reports a terminally failed store; the host must restart the Runtime
    *  because the installed Handle cannot serve further work. Safe to call
    *  before any Handle is installed. */
   export function onUnavailable(listener: (error: Error) => void): () => void {
-    const handle = context.getStore() ?? installed
+    const handle = available() ? current() : undefined
     if (!handle) return () => {}
     return handle.store.onUnavailable(listener)
   }
 
   export function provide<T>(handle: Handle, body: () => T): T {
-    return context.run(handle, body)
+    if (inTransaction() && current().store !== handle.store)
+      throw new StorageConflictError("Cannot replace storage inside a transaction")
+    return context.run({ ...handle, owner: RuntimeContext.current() }, body)
+  }
+
+  export function withMigrationRecords<T>(body: () => T): T {
+    const parent = current()
+    if (parent.transaction && !parent.migrationAccess)
+      throw new StorageConflictError("Migration access must precede a business transaction")
+    return context.run({ ...parent, owner: RuntimeContext.current(), migrationAccess: true }, body)
   }
 
   export async function transaction<T>(
@@ -88,17 +94,20 @@ export namespace Storage {
     }
     let effects: Array<() => Promise<unknown> | void> = []
     const result = await parent.store.transaction(async (tx) => {
+      if (!parent.migrationAccess) tx.restrictToPublishedOwners()
       effects = []
       const pending: Promise<unknown>[] = []
-      return context.run({ ...parent, transaction: tx, effects, pending }, async () => {
-        const result = await body(tx)
-        for (let offset = 0; offset < pending.length; ) {
-          const batch = pending.slice(offset)
-          offset += batch.length
-          await Promise.all(batch)
-        }
-        return result
-      })
+      return RuntimeContext.transaction(() =>
+        context.run({ ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending }, async () => {
+          const result = await body(tx)
+          for (let offset = 0; offset < pending.length; ) {
+            const batch = pending.slice(offset)
+            offset += batch.length
+            await Promise.all(batch)
+          }
+          return result
+        }),
+      )
     }, options)
     for (const effect of effects) {
       try {
@@ -123,11 +132,23 @@ export namespace Storage {
   ): Promise<T> {
     const parent = current()
     if (parent.transaction) return body(parent.transaction)
-    return parent.store.snapshot((tx) => context.run({ ...parent, transaction: tx }, () => body(tx)), options)
+    return parent.store.snapshot(
+      (tx) => {
+        if (!parent.migrationAccess) tx.restrictToPublishedOwners()
+        return RuntimeContext.transaction(() =>
+          context.run({ ...parent, owner: RuntimeContext.current(), transaction: tx }, () => body(tx)),
+        )
+      },
+      {
+        ...options,
+        singleStatement: options.singleStatement && (parent.migrationAccess || !parent.store.hasUnpublishedOwners()),
+      },
+    )
   }
 
   export function inTransaction() {
-    return Boolean(context.getStore()?.transaction)
+    const active = context.getStore()
+    return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction)
   }
 
   export function afterCommit(effect: () => Promise<unknown> | void): void {
@@ -207,11 +228,14 @@ export namespace Storage {
     }
   }
 
-  const artifactPacks = new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue }>()
+  const runtimePacks = RuntimeContext.state(
+    () => new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue }>(),
+  )
   function artifactPack(key: string[]) {
     if (!key.length || key.some((part) => !part || part === "." || part === ".." || /[\\/\0]/.test(part)))
       throw new StorageConflictError("Invalid artifact key")
     const handle = current()
+    const artifactPacks = runtimePacks()
     let pack = artifactPacks.get(handle.store)
     if (!pack) {
       pack = {
@@ -230,12 +254,10 @@ export namespace Storage {
     const bytes = new Uint8Array(content)
     await state.gate.run(async () => {
       const hash = createHash("sha256").update(bytes).digest("hex")
-      const previous = await current()
-        .store.snapshot((tx) => tx.artifact(key))
-        .catch((error: unknown) => {
-          if (error instanceof NotFoundError) return undefined
-          throw error
-        })
+      const previous = await snapshot((tx) => tx.artifact(key)).catch((error: unknown) => {
+        if (error instanceof NotFoundError) return undefined
+        throw error
+      })
       if (previous?.sha256 === hash && previous.size === bytes.byteLength) {
         await state.pack.verify(previous)
         return
@@ -253,7 +275,7 @@ export namespace Storage {
     const read = async () => {
       const location = handle.transaction
         ? await handle.transaction.artifact(key)
-        : await handle.store.snapshot((tx) => tx.artifact(key))
+        : await snapshot((tx) => tx.artifact(key))
       const content = await state.pack.read(location, options?.maxBytes)
       ObservabilityResources.addRead(content.byteLength)
       return content
@@ -298,22 +320,30 @@ export namespace Storage {
         () =>
           state.gate.run(async () => {
             let removed = 0
+            const reclaimed = new Set<string>()
             if (options.scanOrphans) {
               const referenced = await store.snapshot(async (tx) => {
                 const result = new Set<string>()
                 for await (const pack of tx.artifactPacks()) result.add(pack)
                 return result
               })
+              for (const key of await store.list(["storage_pack_pins"])) referenced.add(key[1])
               const orphans = await state.pack.orphaned(referenced)
               await state.pack.prune(orphans)
+              for (const name of orphans) reclaimed.add(name)
               removed += orphans.length
             }
             for (;;) {
               const candidates = await store.snapshot((tx) => tx.artifactGarbage())
               if (!candidates.length) return removed
-              const unused = candidates.filter((entry) => !entry.used).map((entry) => entry.pack)
+              const pins = new Set((await store.list(["storage_pack_pins"])).map((key) => key[1]))
+              const unused = candidates
+                .filter((entry) => !entry.used && !pins.has(entry.pack) && !reclaimed.has(entry.pack))
+                .map((entry) => entry.pack)
               await state.pack.prune(unused)
-              await store.transaction((tx) => tx.acknowledgeArtifactGarbage(candidates.map((entry) => entry.pack)))
+              const acknowledged = candidates.filter((entry) => !pins.has(entry.pack)).map((entry) => entry.pack)
+              await store.transaction((tx) => tx.acknowledgeArtifactGarbage(acknowledged))
+              if (acknowledged.length < candidates.length) return removed + unused.length
               removed += unused.length
             }
           }),

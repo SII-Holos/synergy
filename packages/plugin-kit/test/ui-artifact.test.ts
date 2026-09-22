@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PLUGIN_UI_API_VERSION, PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { buildPluginProject } from "../src/commands/build"
 import { validatePluginProject } from "../src/commands/validate"
 import { sha256File } from "../src/lib/crypto"
@@ -39,7 +39,7 @@ export default function Panel(props) {
     const manifest = PluginManifest.parse(await Bun.file(path.join(project.root, "dist/plugin.json")).json())
     expect(manifest.apiVersion).toBe("4.0")
     expect(manifest.artifacts.ui).toMatchObject({
-      apiVersion: "5.0",
+      apiVersion: PLUGIN_UI_API_VERSION,
       entry: "ui/index.js",
       resources: [
         {

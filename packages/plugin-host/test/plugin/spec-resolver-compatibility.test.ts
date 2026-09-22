@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
+import { PLUGIN_UI_API_VERSION, compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
 import { assertPluginCompatibility, readPluginManifest } from "../../src/plugin/spec-resolver"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -21,14 +21,14 @@ describe("Plugin API compatibility", () => {
     const manifest = compilePluginManifest(definition, {
       generation: "ui-resource-generation",
       ui: {
-        apiVersion: "5.0",
+        apiVersion: PLUGIN_UI_API_VERSION,
         entry: "ui/index.js",
         sha256: sha256File(script),
         resources: [{ entry: "ui/panel.css", kind: "stylesheet", sha256: sha256File(stylesheet) }],
       },
     })
     await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(manifest))
-    expect((await readPluginManifest(tmp.path)).artifacts.ui?.apiVersion).toBe("5.0")
+    expect((await readPluginManifest(tmp.path)).artifacts.ui?.apiVersion).toBe(PLUGIN_UI_API_VERSION)
     await Bun.write(stylesheet, ".panel { display: none; }")
     await expect(readPluginManifest(tmp.path)).rejects.toThrow("ui resource artifact integrity mismatch")
   })

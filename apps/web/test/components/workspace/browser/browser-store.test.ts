@@ -119,7 +119,7 @@ describe("createBrowserStore viewport", () => {
       const sent: Record<string, unknown>[] = []
       store._setSend((msg) => sent.push(msg))
       store.setPresentation({
-        protocolVersion: 2,
+        protocolVersion: 3,
         kind: "webrtc",
         capabilities: { native: true, webrtc: true },
         reason: "remote-client",

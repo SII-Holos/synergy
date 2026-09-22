@@ -141,11 +141,6 @@
   background: color-mix(in srgb, var(--surface-success-base) 8%, var(--surface-raised-base));
 }
 
-.note-card--blueprint-waiting {
-  border-color: color-mix(in srgb, var(--border-warning-base) 26%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-warning-base) 6%, var(--surface-raised-base));
-}
-
 .note-card--blueprint-failed {
   border-color: color-mix(in srgb, var(--border-diff-delete-base) 24%, var(--border-weaker-base));
   background: color-mix(in srgb, var(--surface-diff-delete-base) 5%, var(--surface-raised-base));
@@ -180,11 +175,6 @@
 .note-blueprint-card-header--auditing {
   border-bottom-color: color-mix(in srgb, var(--border-success-base) 20%, var(--border-weaker-base));
   background: color-mix(in srgb, var(--surface-success-base) 8%, var(--surface-inset-base));
-}
-
-.note-blueprint-card-header--waiting {
-  border-bottom-color: color-mix(in srgb, var(--border-warning-base) 20%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-warning-base) 7%, var(--surface-inset-base));
 }
 
 .note-blueprint-card-header--failed {
@@ -244,11 +234,6 @@
 .note-card-status--auditing {
   background: color-mix(in srgb, var(--surface-success-base) 16%, var(--surface-raised-base));
   color: var(--text-diff-add-base);
-}
-
-.note-card-status--waiting {
-  background: color-mix(in srgb, var(--surface-warning-base) 14%, var(--surface-raised-base));
-  color: var(--text-on-warning-base);
 }
 
 .note-card-status--failed {
@@ -401,10 +386,6 @@
 .note-blueprint-state--auditing,
 .note-blueprint-state--completed {
   color: var(--text-diff-add-base);
-}
-
-.note-blueprint-state--waiting {
-  color: var(--text-on-warning-base);
 }
 
 .note-blueprint-state--failed {

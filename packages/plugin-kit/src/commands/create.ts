@@ -102,6 +102,7 @@ export default definePlugin({
     tool({
       id: "greet",
       description: "Greet a user by name",
+      requiresWorkspace: false,
       input: z.object({ name: z.string() }),
       handler: async ({ name }) => ({ output: \`Hello, \${name}!\` }),
     }),
@@ -162,6 +163,7 @@ export default definePlugin({
   contributions: [tool({
     id: "get-json",
     description: "Fetch JSON from a trusted API",
+    requiresWorkspace: false,
     input: z.object({ url: z.string().url() }),
     handler: async ({ url }) => ({ output: JSON.stringify(await fetch(url).then((response) => response.json()), null, 2) }),
   })],

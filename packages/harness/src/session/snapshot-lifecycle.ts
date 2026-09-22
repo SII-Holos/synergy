@@ -6,6 +6,7 @@ import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SnapshotStore } from "./snapshot-store"
+import { SnapshotProtection } from "./snapshot-protection"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotTransfer } from "./snapshot-transfer"
 import { SnapshotGit } from "./snapshot-git"
@@ -29,7 +30,6 @@ export namespace SnapshotLifecycle {
     scopeID: string
     sourceSessionID: string
     targetSessionID: string
-    workspace: string
     hashes: string[]
     allowMissing?: boolean
   }) {
@@ -63,7 +63,7 @@ export namespace SnapshotLifecycle {
       if (missing.length && !input.allowMissing)
         throw new SnapshotStore.StorageError("Fork source has missing snapshot history")
       if (!retained.length) return { missing }
-      const target = await SnapshotStore.resolve(input.scopeID, input.targetSessionID, input.workspace)
+      const target = await SnapshotStore.resolveRepository(input.scopeID, input.targetSessionID)
       await SnapshotStore.initialize(target)
       if (target.backend !== "shared") throw new SnapshotStore.StorageError("Snapshot adoption requires a new session")
       if (sourceOwner?.backend === "legacy") {
@@ -138,7 +138,7 @@ export namespace SnapshotLifecycle {
         await SnapshotGit.checked(repo, ["update-ref", "--stdin"], { input: file })
         await SnapshotTransfer.releaseKeeps(repo, `synergy-migration-${sessionID}`)
       }
-      if (job.backend === "legacy")
+      if (job.backend === "legacy" && !(await SnapshotProtection.active(Storage.current().artifactDirectory)))
         await fs.rm(SnapshotStore.legacyRepository(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(SnapshotStore.cache(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(canonical, { recursive: true, force: true })

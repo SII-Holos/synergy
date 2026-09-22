@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserEventSchema,
@@ -19,7 +20,9 @@ interface State {
   listeners: Set<Listener>
 }
 
-const states = new Map<string, State>()
+const runtimeState = RuntimeContext.state(() => ({
+  states: new Map<string, State>(),
+}))
 
 export namespace BrowserEvent {
   export function publish<Input extends EventInput>(
@@ -63,19 +66,25 @@ export namespace BrowserEvent {
   }
 
   export function remove(owner: BrowserOwner.Info): void {
-    states.delete(BrowserOwner.key(owner))
+    const instanceState = runtimeState()
+
+    instanceState.states.delete(BrowserOwner.key(owner))
   }
 
   export function resetForTest(): void {
-    states.clear()
+    const instanceState = runtimeState()
+
+    instanceState.states.clear()
   }
 }
 
 function get(owner: BrowserOwner.Info): State {
+  const instanceState = runtimeState()
+
   const key = BrowserOwner.key(owner)
-  const existing = states.get(key)
+  const existing = instanceState.states.get(key)
   if (existing) return existing
   const state = { sequencer: new SyncSequencer(crypto.randomUUID()), listeners: new Set<Listener>() }
-  states.set(key, state)
+  instanceState.states.set(key, state)
   return state
 }

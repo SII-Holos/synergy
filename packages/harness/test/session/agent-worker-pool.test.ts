@@ -1873,54 +1873,45 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("records metric rows forwarded by an idle worker", async () => {
+  test("drops late metrics instead of attributing them to the next turn", async () => {
     const fake = fakeWorkers()
-    const pool = new AgentWorkerPool({ ...options, minIdle: 1 }, fake.spawn)
-    using _metrics = spyOn(ObservabilityMetrics, "record")
-    fake.workers[0].ready()
+    const pool = new AgentWorkerPool({ ...options, minIdle: 1, idleBaselineRecycle: false }, fake.spawn)
+    using recorded = spyOn(ObservabilityMetrics, "record")
+    const worker = fake.workers[0]
+    worker.ready()
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const first = startTurn(worker)
+    worker.receive({ type: "started", requestId: first.requestId })
+    const stream = await firstPromise
+    worker.receive({
+      type: "complete",
+      requestId: first.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
+    })
+    releaseTurn(worker, first.requestId)
+    await stream.dispose()
 
-    fake.workers[0].receive({
-      type: "metrics",
-      rows: [
-        {
-          name: "llm.fetch.headers",
-          value: 42,
-          unit: "ms",
-          module: "llm",
-          labels: { provider: "provider", model: "model" },
-        },
-        {
-          name: "llm.watchdog.fired",
-          value: 1,
-          unit: "count",
-          module: "llm",
-          labels: { kind: "ttfb" },
-          sessionID: "ses",
-        },
-      ],
+    const secondPromise = inScope(() => pool.run({ ...input(new AbortController().signal), sessionID: "ses_second" }))
+    const second = startTurn(worker)
+    worker.receive({ type: "started", requestId: second.requestId })
+    const next = await secondPromise
+    const row = { name: "llm.fetch.headers", value: 42, unit: "ms" as const, module: "llm" as const, labels: {} }
+    worker.receive({ type: "metrics", requestId: first.requestId, rows: [row] })
+    worker.receive({ type: "metrics", requestId: second.requestId, rows: [row] })
+    expect(recorded.mock.calls.map(([value]) => value).filter((value) => value.name === row.name)).toEqual([
+      expect.objectContaining({ sessionID: "ses_second", messageID: "msg_user", value: 42 }),
+    ])
+    worker.receive({
+      type: "complete",
+      requestId: second.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
     })
-
-    const calls = (
-      _metrics as unknown as {
-        mock: {
-          calls: Array<Array<{ name?: string; value?: number; unit?: string; labels?: Record<string, unknown> }>>
-        }
-      }
-    ).mock.calls.map((call) => call[0])
-    expect(calls.some((call) => call?.name === "llm.fetch.headers" && call.value === 42 && call.unit === "ms")).toBe(
-      true,
-    )
-    expect(calls.find((call) => call?.name === "llm.fetch.headers")?.labels).toEqual({
-      provider: "provider",
-      model: "model",
-    })
-    expect(calls.find((call) => call?.name === "llm.watchdog.fired")).toMatchObject({
-      value: 1,
-      unit: "count",
-      labels: { kind: "ttfb" },
-    })
-    expect(calls.some((call) => call?.name === "agent.worker.recycle")).toBe(false)
-    expect(fake.workers).toHaveLength(1)
+    releaseTurn(worker, second.requestId, 2)
+    await next.dispose()
     await pool.stop()
   })
 })

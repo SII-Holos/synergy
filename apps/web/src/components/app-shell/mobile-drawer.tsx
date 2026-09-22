@@ -150,10 +150,10 @@ export function MobileDrawer() {
                   notification={notification}
                   onBack={() => setDrilldown(null)}
                   onSelectSession={(session) => {
-                    const scopeKey = session.scope.type === "home" ? "home" : session.scope.directory!
+                    const scopeKey = session.scope.type === "home" ? "home" : session.scope.id!
                     navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
                   }}
-                  onNewSession={() => navigateAndClose(`/${base64Encode(scope().worktree)}/session`)}
+                  onNewSession={() => navigateAndClose(`/${base64Encode(scope().id)}/session`)}
                   onClose={close}
                 />
               )}
@@ -192,6 +192,7 @@ function ScopeListView(props: {
 }) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
+  const globalSDK = useGlobalSDK()
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
@@ -227,7 +228,7 @@ function ScopeListView(props: {
 
   const resolveEntryRouteDirectory = (entry: NavEntry) => {
     if (entry.scopeID === "home" || entry.scopeType === "home") return "home"
-    return globalSync.data.scope.find((scope) => scope.id === entry.scopeID)?.worktree ?? entry.scopeID
+    return globalSync.data.scope.find((scope) => scope.id === entry.scopeID)?.id ?? entry.scopeID
   }
 
   const selectRecentSession = (entry: NavEntry) => {
@@ -258,9 +259,9 @@ function ScopeListView(props: {
     const homePath = globalSync.data.paths?.home
     const seen = new Set<string>()
     return layout.scopes.list().filter((s) => {
-      if (s.worktree === homePath) return false
-      if (seen.has(s.worktree)) return false
-      seen.add(s.worktree)
+      if (s.id === homePath) return false
+      if (seen.has(s.id)) return false
+      seen.add(s.id)
       return true
     })
   })
@@ -298,6 +299,7 @@ function ScopeListView(props: {
         loadMoreLabel={_(sidebar.loadMore)}
         untitledLabel={_(sidebar.untitled)}
         draftLabel={_(sidebar.draftBadge)}
+        hasDraft={(id) => globalSDK.drafts.hasDraftSession(id)}
         entries={layout.nav.recentEntries()}
         currentSessionID={params.id}
         visualFor={recentVisualFor}
@@ -313,7 +315,7 @@ function ScopeListView(props: {
       </div>
       <For each={scopes()}>
         {(scope) => {
-          const isActive = createMemo(() => activeProjectScope()?.worktree === scope.worktree)
+          const isActive = createMemo(() => activeProjectScope()?.id === scope.id)
 
           return (
             <button
@@ -431,7 +433,7 @@ function SessionListDrawerView(props: {
   function fetchPage(page: number) {
     setLoading(true)
     const offset = (page - 1) * SESSION_PAGE_SIZE
-    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory: props.scope.worktree, throwOnError: true })
+    const sdk = createSynergyClient({ baseUrl: globalSDK.url, scopeID: props.scope.id, throwOnError: true })
     sdk.session
       .list({ offset, limit: SESSION_PAGE_SIZE })
       .then((x) => {
@@ -470,10 +472,10 @@ function SessionListDrawerView(props: {
 
         if (session.id !== props.currentSessionID) return
         if (nextSession) {
-          const nextScopeKey = nextSession.scope.type === "home" ? "home" : nextSession.scope.directory!
+          const nextScopeKey = nextSession.scope.type === "home" ? "home" : nextSession.scope.id!
           navigate(`/${base64Encode(nextScopeKey)}/session/${nextSession.id}`)
         } else {
-          const scopeKey = session.scope.type === "home" ? "home" : session.scope.directory!
+          const scopeKey = session.scope.type === "home" ? "home" : session.scope.id!
           navigate(`/${base64Encode(scopeKey)}/session`)
         }
         props.onClose()
@@ -519,6 +521,7 @@ function SessionListDrawerView(props: {
             return (
               <SessionRow
                 session={session}
+                hasDraft={globalSDK.drafts.hasDraftSession(session.id)}
                 isActive={session.id === props.currentSessionID}
                 isWorking={state.isWorking}
                 hasPermission={state.hasPermission}

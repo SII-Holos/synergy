@@ -180,7 +180,7 @@ export default function Layout(props: ParentProps) {
     const scopes = layout.scopes.list()
     const resolved = resolveProjectScope(directory, undefined, scopes)
     if (!resolved) return undefined
-    return scopes.find((scope) => scope.worktree === resolved.worktree)
+    return scopes.find((scope) => scope.id === resolved.id)
   })
 
   const currentSessions = createMemo(() => layout.nav.projectSessions(currentProject()))
@@ -198,11 +198,11 @@ export default function Layout(props: ParentProps) {
     if (scopes.length === 0) return
 
     const project = currentProject()
-    const projectIndex = project ? scopes.findIndex((p) => p.worktree === project.worktree) : -1
+    const projectIndex = project ? scopes.findIndex((p) => p.id === project.id) : -1
 
     if (projectIndex === -1) {
       const targetProject = offset > 0 ? scopes[0] : scopes[scopes.length - 1]
-      if (targetProject) navigateToProject(targetProject.worktree)
+      if (targetProject) navigateToProject(targetProject.id)
       return
     }
 
@@ -232,7 +232,7 @@ export default function Layout(props: ParentProps) {
 
       if (import.meta.env.DEV) {
         navStart({
-          dir: base64Encode(session.scope.directory!),
+          dir: base64Encode(session.scope.id!),
           from: params.id,
           to: session.id,
           trigger: offset > 0 ? "alt+arrowdown" : "alt+arrowup",
@@ -248,7 +248,7 @@ export default function Layout(props: ParentProps) {
 
     const nextProjectSessions = layout.nav.projectSessions(nextProject)
     if (nextProjectSessions.length === 0) {
-      navigateToProject(nextProject.worktree)
+      navigateToProject(nextProject.id)
       return
     }
 
@@ -262,7 +262,7 @@ export default function Layout(props: ParentProps) {
 
     if (import.meta.env.DEV) {
       navStart({
-        dir: base64Encode(targetSession.scope.directory!),
+        dir: base64Encode(targetSession.scope.id!),
         from: params.id,
         to: targetSession.id,
         trigger: offset > 0 ? "alt+arrowdown" : "alt+arrowup",
@@ -388,22 +388,20 @@ export default function Layout(props: ParentProps) {
   }
 
   function navigateToSession(session: Session | undefined) {
-    const directory = session?.scope.directory
+    const directory = session?.scope.id
     if (!session || !directory) return
     navigate(`/${base64Encode(directory)}/session/${session.id}`)
   }
 
-  function openProject(directory: string, nav = true) {
-    layout.scopes.open(directory)
-    if (nav) navigateToProject(directory)
+  async function openProject(directory: string, nav = true) {
+    const scopeID = await layout.scopes.open(directory)
+    if (nav && scopeID) navigateToProject(scopeID)
   }
   async function chooseProject() {
     const result = await pickProjectDirectories({ title: i18n._(AP.layoutOpenProjectDialogTitle.id), multiple: true })
     if (!result) return
-    for (const directory of result.directoryPaths) {
-      openProject(directory, false)
-    }
-    navigateToProject(result.directoryPaths[0])
+    const scopes = await Promise.all(result.directoryPaths.map((directory) => layout.scopes.open(directory)))
+    navigateToProject(scopes[0])
   }
   // Track last viewed session
   createEffect(() => {

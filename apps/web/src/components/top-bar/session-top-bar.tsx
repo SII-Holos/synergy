@@ -1,4 +1,5 @@
 import { useLingui } from "@lingui/solid"
+import { PI } from "@/components/prompt-input/prompt-input-i18n"
 import { topBar } from "@/locales/messages"
 import { Show, createMemo, createSignal, type Accessor } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
@@ -11,6 +12,7 @@ import { archiveSessionConfirm, leaveWorktreeConfirm } from "@/components/dialog
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
 import { DialogSessionImport } from "@/components/dialog/dialog-session-import"
 import { useLayout } from "@/context/layout"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -33,6 +35,7 @@ import {
 import { copySessionID } from "@/utils/session-copy"
 import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
+import { SessionTagMenu } from "@/components/session/session-tag-menu"
 
 function SessionActionMenu(props: {
   visibility: ReturnType<typeof sessionActionVisibility>
@@ -43,7 +46,11 @@ function SessionActionMenu(props: {
   onWorktreeToggle: () => void
   onExport: () => void
   onImport: () => void
+  onAbandon?: () => void
   onArchive: () => void
+  tags: string[]
+  availableTags: string[]
+  onTagsChange: (tags: string[]) => Promise<string[]>
 }) {
   const [open, setOpen] = createSignal(false)
   const { _ } = useLingui()
@@ -96,6 +103,9 @@ function SessionActionMenu(props: {
             <span>{_(topBar.copySessionID)}</span>
           </button>
         </Show>
+        <Show when={props.visibility.menu}>
+          <SessionTagMenu tags={props.tags} availableTags={props.availableTags} onChange={props.onTagsChange} />
+        </Show>
         <Show when={props.visibility.worktree}>
           <button
             type="button"
@@ -122,6 +132,17 @@ function SessionActionMenu(props: {
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onImport)}>
             <Icon name={getSemanticIcon("action.import")} size="small" />
             <span>{_(topBar.importSessionData)}</span>
+          </button>
+        </Show>
+        <Show when={props.onAbandon}>
+          <button
+            type="button"
+            class="stb-menu-item stb-menu-item--danger"
+            role="menuitem"
+            onClick={() => run(props.onAbandon!)}
+          >
+            <Icon name={getSemanticIcon("action.stop")} size="small" />
+            <span>{_(PI.abandonExecution)}</span>
           </button>
         </Show>
         <Show when={props.visibility.archive}>
@@ -151,6 +172,7 @@ export function SessionTopBar(props: {
   const dialog = useDialog()
   const confirm = useConfirm()
   const layout = useLayout()
+  const globalSDK = useGlobalSDK()
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
@@ -165,10 +187,22 @@ export function SessionTopBar(props: {
 
   const projectScope = createMemo(() => resolveProjectScope(directory() || undefined, sync.scope, layout.scopes.list()))
   const projectLabel = createMemo(() => getScopeLabel(projectScope(), directory()))
-  const projectPath = createMemo(() => directory())
+  const projectPath = createMemo(() => projectScope()?.local?.directory)
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
+  const availableSessionTags = createMemo(() => {
+    const tags = new Set(sessionInfo()?.tags ?? [])
+    const entries = [
+      ...layout.nav.recentEntries(),
+      ...layout.nav.rootNavEntries("home"),
+      ...layout.nav.rootNavEntries("channel"),
+      ...layout.nav.rootNavEntries("background"),
+      ...layout.scopes.list().flatMap((scope) => layout.nav.projectNavEntries(scope)),
+    ]
+    for (const entry of entries) for (const tag of entry.tags ?? []) tags.add(tag)
+    return [...tags].sort()
+  })
+  const sessionDirectory = createMemo(() => sessionInfo()?.scope.id ?? directory())
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({
@@ -339,6 +373,26 @@ export function SessionTopBar(props: {
               onExport={() => dialog.show(() => <DialogSessionExport />)}
               onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
+              tags={sessionInfo()?.tags ?? []}
+              availableTags={availableSessionTags()}
+              onTagsChange={async (tags) => {
+                const session = sessionInfo()
+                if (!session) throw new Error("Session is unavailable")
+                const result = await globalSDK.client.session.update(
+                  {
+                    ...sessionScopeRequestFor(session),
+                    sessionID: session.id,
+                    tags,
+                  },
+                  { throwOnError: true },
+                )
+                return result.data.tags ?? []
+              }}
+              onAbandon={
+                command.options.some((option) => option.id === "session.abandon" && !option.disabled)
+                  ? () => command.trigger("session.abandon")
+                  : undefined
+              }
             />
           </Show>
         </div>
@@ -371,6 +425,26 @@ export function SessionTopBar(props: {
               onExport={() => dialog.show(() => <DialogSessionExport />)}
               onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
+              tags={sessionInfo()?.tags ?? []}
+              availableTags={availableSessionTags()}
+              onTagsChange={async (tags) => {
+                const session = sessionInfo()
+                if (!session) throw new Error("Session is unavailable")
+                const result = await globalSDK.client.session.update(
+                  {
+                    ...sessionScopeRequestFor(session),
+                    sessionID: session.id,
+                    tags,
+                  },
+                  { throwOnError: true },
+                )
+                return result.data.tags ?? []
+              }}
+              onAbandon={
+                command.options.some((option) => option.id === "session.abandon" && !option.disabled)
+                  ? () => command.trigger("session.abandon")
+                  : undefined
+              }
             />
           </Show>
           <Tooltip

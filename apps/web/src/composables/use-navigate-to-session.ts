@@ -24,8 +24,7 @@ export function useNavigateToSession() {
   const basePath = proxyPrefix()
   let navigationGeneration = 0
 
-  const routeDir = (scope: { type?: string; directory?: string }) =>
-    base64Encode(scope.type === "home" ? HOME_SCOPE_KEY : (scope.directory ?? sdk.scopeKey))
+  const routeDir = (scope: { id: string }) => base64Encode(scope.id)
 
   return (sessionID: string, intent: SessionNavigationIntent = "open") => {
     const generation = ++navigationGeneration
@@ -51,7 +50,7 @@ export function useNavigateToSession() {
     }
 
     for (const scope of globalSync.data.scope) {
-      const [store] = globalSync.ensureScopeState(scope.worktree)
+      const [store] = globalSync.ensureScopeState(scope.id)
       const match = store.session.find((s) => s.id === sessionID)
       if (match) {
         navigateResolved(`/${routeDir(match.scope)}/session/${sessionID}`)

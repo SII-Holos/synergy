@@ -78,6 +78,8 @@ Derive activity steps and counts from canonical tool parts. Display preferences 
 
 For streaming-sync changes, test a checkpoint followed by a delta in one hidden-page flush, both with and without an existing part. Exercise background repair against the actual store provider while entering history and while compaction is pending. Evaluate all snapshot rejection conditions before advancing a resource watermark; preserve stronger reload ownership when requests share a loader.
 
+Rewind and redo must converge through the server's effective message window, including retained caches with earlier rollback branches. Observe rollback identity and redo-validity transitions separately from ordinary metadata events, force message reloads after transitions, and verify removed messages also lose their part buckets without reconnecting. A new root can invalidate redo without changing the rollback ID and expose previously prefix-hidden injections. A latest rollback summary is only an immediate display filter; it cannot reconstruct the complete history projection.
+
 ## Preserve Loading Boundaries
 
 1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
@@ -148,3 +150,5 @@ For UI API 5 changes, build the production App and run bun run plugin-ui:test. I
 Keep question and permission ownership above replaceable session pages. Native presentation may register an inline outlet; a missing outlet must retain an accessible host surface automatically. Bound the combined decision region, reset plugin style ownership, and verify both native and custom-page composition.
 
 For navigation performance, test leaving the last Scope view for a global panel and returning, not only overlapping Session views. Retain recently viewed stores within the bounded inactive LRU, isolate panel data suspension below navigation controls, and verify canonical handoff convergence after a displayed timeout. A deadline sample must not replace the eventual completed navigation duration.
+
+When a mutation replaces a collection (such as session tags), serialize pending edits and use the accepted response as the next edit baseline. Do not wait for an asynchronous event to update that baseline. Preserve failed input, expose retryable errors, and test a second edit before the first event arrives. Query filters must reach canonical pagination; filtering only the loaded navigation window cannot represent all matching history.

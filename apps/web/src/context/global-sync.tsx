@@ -7,8 +7,6 @@ import {
   type Scope,
   type FileDiff,
   type Todo,
-  type SessionStatus,
-  type SessionWorkingInfo,
   type ProviderListResponse,
   type ProviderAuthResponse,
   type Command,
@@ -105,6 +103,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
+import { sessionStatusFromWorking } from "@/utils/session-status"
 import {
   browserPerformanceEnabled,
   browserTokenDurationSampleRate,
@@ -126,8 +125,8 @@ type GlobalPaths = {
 type ScopedPath = {
   state: string
   config: string
-  worktree: string
-  directory: string
+  worktree: string | null
+  directory: string | null
   home: string
 }
 
@@ -266,23 +265,9 @@ function removePendingRequest<T extends { id: string }>(
   if (!requests.length) delete index[sessionID]
 }
 
-// `recovering` is derived from persisted session state and never published on
-// the status event bus, so the `working` field of a session.updated payload is
-// its only event-side source.
-function sessionStatusFromWorking(working: SessionWorkingInfo): SessionStatus {
-  switch (working.status) {
-    case "busy":
-      return { type: "busy", description: working.description }
-    case "retry":
-      return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
-    case "recovering":
-      return {
-        type: "recovering",
-        ...(working.reason ? { reason: working.reason } : {}),
-        ...(working.description ? { description: working.description } : {}),
-      }
-  }
-}
+// A paused session is derived from persisted session state and never published
+// on the status event bus, so the `working` field of a session.updated payload
+// is its only event-side source.
 
 function createGlobalSync() {
   const contextProjectionRevision = createSessionContextProjectionRevision()
@@ -391,13 +376,13 @@ function createGlobalSync() {
   function createScopedClient(scopeKey: string) {
     return createSynergyClient({
       baseUrl: globalSDK.url,
-      ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
+      scopeID: scopeKey,
       throwOnError: true,
     })
   }
 
   function scopeRequest(scopeKey: string) {
-    return isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+    return { scopeID: scopeKey }
   }
 
   function scopeReconnectVersion(scopeKey: string) {
@@ -534,7 +519,7 @@ function createGlobalSync() {
           modelCatalog: {},
         },
         config: {},
-        path: { state: "", config: "", worktree: "", directory: "", home: "" },
+        path: { state: "", config: "", worktree: null, directory: null, home: "" },
         status: "loading" as const,
         agent: [],
         command: [],
@@ -662,8 +647,8 @@ function createGlobalSync() {
   // The cross-Scope status snapshot. This is the only source for a session that
   // was already running before this client connected in a project it has not
   // leased — no status event of its own arrives until it transitions — and it
-  // is the only path by which `recovering` reaches a client at all, because no
-  // producer publishes it on the event bus.
+  // is the only path by which a paused session reaches a client at all, because
+  // no producer publishes a pause latch on the event bus.
   async function loadGlobalSessionStatus() {
     return globalSDK.client.session
       .statuses()
@@ -952,8 +937,8 @@ function createGlobalSync() {
         // Seed the global index and converge it. A session that was already
         // running before this client connected never receives a status event of
         // its own, so without the seed the index renders it as idle until its
-        // next transition — and `recovering` would never appear at all, since
-        // no producer publishes it on the bus. The drop list carries the same
+        // next transition — and a paused session would never appear at all,
+        // since no producer publishes the latch on the bus. The drop list carries the same
         // convergence the per-Scope bucket had: a session this Scope still owns
         // but the snapshot no longer reports as running was left stale by a
         // missed `idle` or an archive, and must not survive a fail-open resync.
@@ -1523,7 +1508,7 @@ function createGlobalSync() {
           scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
           if (touchedCortex) globalRuntimeTracker.cortexWrite(stamp, touchedCortex)
         }
-        // `recovering` reaches the client only through snapshots and this
+        // A paused session reaches the client only through snapshots and this
         // derived field, so fill a status the index holds no event for. A real
         // status event always wins, mirroring SessionManager.listStatuses.
         const working = info.working
@@ -1579,7 +1564,7 @@ function createGlobalSync() {
         break
       }
       case "session.status": {
-        // Handles busy, retry, idle, and recovering statuses
+        // Handles busy, retry, paused, and idle statuses
         if (stamp) globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
         // The global index is shared by every Scope and holds only non-idle
         // sessions, so an idle status deletes the key instead of storing it.
@@ -2144,9 +2129,10 @@ function createGlobalSync() {
       ),
       retry(() =>
         globalSDK.client.scope.list().then(async (result) => {
+          globalSDK.prepareScopeState(result.data ?? [])
           const scopes = (result.data ?? [])
             .filter((scope) => !!scope?.id)
-            .filter((scope) => !!scope.worktree && !isEphemeralTestWorktree(scope.worktree))
+            .filter((scope) => !scope.local || !isEphemeralTestWorktree(scope.local.worktree))
             .filter((scope) => !scope.time?.archived)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
@@ -2251,6 +2237,13 @@ function createGlobalSync() {
     refreshConfig,
     refreshAllConfigs,
     refreshTargeted,
+    refreshScopes: async () => {
+      const response = await globalSDK.client.scope.list()
+      if (!disposed && response.data) {
+        globalSDK.prepareScopeState(response.data)
+        setGlobalStore("scope", reconcile(response.data))
+      }
+    },
     refreshProviders: () => refreshTargeted(["provider"]),
     scope: {
       loadSessions,

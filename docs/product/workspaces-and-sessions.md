@@ -138,3 +138,11 @@ See [Browser workspace](browser.md).
 - Scheduling, visibility, model inclusion, and provenance are independent semantics.
 - Delegation hierarchy and fork provenance are different relationships.
 - Compaction changes model context without erasing durable history.
+
+## Pause, continue and abandon
+
+Pause stops current execution and keeps its task resumable. Continue resumes it; typing new requirements in the ordinary composer and choosing Send and continue supplies those requirements before the next model call. Abandon current execution is available through the session actions menu with confirmation or a three-second hold on the primary composer control. It cancels the current workflow and queued messages while preserving history, generated files and the unsent draft. Releasing a partial hold cancels the gesture. A service restart leaves interrupted sessions paused and marks unfinished tool calls as interrupted rather than running.
+
+## Session tags
+
+Sessions carry optional user-defined tags, with up to 20 tags of 40 characters each. The session actions menu adds or removes tags. Sidebar tag search filters matching sessions across Home and Projects, including paginated history; pressing Enter also searches a tag absent from the loaded suggestions. Clearing the filter restores normal navigation.

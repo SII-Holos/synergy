@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { AuthOuathResult } from "./auth-types"
@@ -167,7 +168,7 @@ export namespace GitHubProvider {
       cmd: ["gh", "auth", "token"],
       stdout: "pipe",
       stderr: "pipe",
-      env: process.env,
+      env: RuntimeContext.current().host.env,
     })
     const [exitCode, stdout, stderr] = await Promise.all([
       proc.exited,
@@ -201,7 +202,7 @@ export namespace GitHubProvider {
     | undefined
   > {
     for (const env of ["GH_TOKEN", "GITHUB_TOKEN"]) {
-      const value = process.env[env]
+      const value = RuntimeContext.current().host.env[env]
       if (value?.trim()) {
         return {
           token: value,

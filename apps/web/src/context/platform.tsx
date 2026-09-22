@@ -112,11 +112,20 @@ export type DesktopServerStatus = {
   lastError: string | null
   logFile: string | null
   shellEnvironment: DesktopShellEnvironmentDiagnostics | null
+  maintenance?: {
+    state: "idle" | "running" | "completed" | "failed"
+    progress: { phase: "migration"; step: number; current: number; total: number } | null
+    error: string | null
+    detail?: string
+  }
 }
 
 export type DesktopServerBridge = {
   status(): Promise<DesktopServerStatus | null>
   restart(): Promise<DesktopServerStatus | null>
+  maintenance?(): Promise<DesktopServerStatus | null>
+  cancelMaintenance?(): Promise<DesktopServerStatus | null>
+  diagnostics?(): Promise<string>
 }
 
 export type DesktopWindowState = {

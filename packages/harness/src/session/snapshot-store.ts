@@ -10,6 +10,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotLease } from "./snapshot-lease"
+import { SnapshotProtection } from "./snapshot-protection"
 
 export namespace SnapshotStore {
   export const Owner = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared", "deleted"]) })
@@ -82,11 +83,21 @@ export namespace SnapshotStore {
     return stored === undefined ? undefined : Owner.parse(stored)
   }
 
-  export async function resolve(scopeID: string, sessionID: string, workspace: string): Promise<Operation> {
+  export async function resolveRepository(scopeID: string, sessionID: string) {
     const record = await owner(scopeID, sessionID)
     if (record?.backend === "deleted") throw new StorageError("Snapshot session has been permanently deleted")
     const backend = record?.backend ?? "shared"
-    const repo = backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID)
+    return {
+      scopeID,
+      sessionID,
+      backend,
+      repository: backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID),
+    }
+  }
+
+  export async function resolve(scopeID: string, sessionID: string, workspace: string): Promise<Operation> {
+    const owned = await resolveRepository(scopeID, sessionID)
+    const { backend, repository: repo } = owned
     const real = await fs.realpath(workspace).catch(() => path.resolve(workspace))
     const identity = process.platform === "win32" ? real.toLowerCase() : real
     const temporary = path.join(cache(scopeID, sessionID), createHash("sha256").update(identity).digest("hex"))
@@ -108,6 +119,15 @@ export namespace SnapshotStore {
   export async function withSession<T>(sessionID: string, fn: () => Promise<T>, signal?: AbortSignal) {
     const scopeID = ScopeContext.current.scope.id
     component(sessionID)
+    if (
+      (await owner(scopeID, sessionID))?.backend === "legacy" &&
+      (await SnapshotProtection.active(Storage.current().artifactDirectory))
+    ) {
+      const { SnapshotMaintenance } = await import("./snapshot-maintenance")
+      const result = await SnapshotMaintenance.migrate(scopeID, { apply: true, sessionID, signal })
+      if (result.results.some((result) => result.status !== "migrated"))
+        throw new StorageError("Protected historical snapshots are not ready")
+    }
     return SnapshotLease.use(
       scopeID,
       false,
@@ -140,11 +160,12 @@ export namespace SnapshotStore {
     return result.text.trim()
   }
 
-  export async function initialize(operation: Operation) {
+  export async function initialize(operation: Awaited<ReturnType<typeof resolveRepository>>) {
     await withFileLock(
       { directory: SnapshotLease.directory(), key: `snapshot-init:${operation.repository}` },
       async () => {
         if (operation.backend === "legacy") {
+          await SnapshotProtection.assertWritable(Storage.current().artifactDirectory)
           if (!(await Bun.file(path.join(operation.repository, "HEAD")).exists()))
             throw new StorageError("Legacy snapshot repository is missing")
           return

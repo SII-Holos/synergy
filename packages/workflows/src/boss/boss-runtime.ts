@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { readConfig } from "../config-schema"
 import { Agenda } from "../agenda"
 import { AgendaStore } from "../agenda/store"
@@ -50,7 +51,10 @@ export namespace BossRuntime {
   }
 
   /** Registered per-account boss sessions (accountId → sessionID). */
-  const accountBossSessions = new Map<string, string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    accountBossSessions: new Map<string, string>(),
+    accountSource: undefined as (() => Promise<Account[]>) | undefined,
+  }))
 
   export interface Account {
     id: string
@@ -58,19 +62,23 @@ export namespace BossRuntime {
     hasProjectDirectory: boolean
   }
 
-  let accountSource: (() => Promise<Account[]>) | undefined
-
   export function registerAccountSource(source: () => Promise<Account[]>) {
-    const previous = accountSource
-    accountSource = source
+    const instanceState = runtimeState()
+
+    const previous = instanceState.accountSource
+    instanceState.accountSource = source
     return () => {
-      if (accountSource === source) accountSource = previous
+      const instanceState = runtimeState()
+
+      if (instanceState.accountSource === source) instanceState.accountSource = previous
     }
   }
 
   async function accounts(): Promise<Account[]> {
-    if (!accountSource) throw new Error("Boss Channel account source is not registered in this runtime")
-    return accountSource()
+    const instanceState = runtimeState()
+
+    if (!instanceState.accountSource) throw new Error("Boss Channel account source is not registered in this runtime")
+    return instanceState.accountSource()
   }
 
   /** Instruction text injected by the periodic Agenda item. */
@@ -94,7 +102,9 @@ export namespace BossRuntime {
   const LOCAL_BOSS_KICKOFF_KEY_PREFIX = "boss-open:"
 
   export function bossSessionForAccount(accountId: string): string | undefined {
-    return accountBossSessions.get(accountId)
+    const instanceState = runtimeState()
+
+    return instanceState.accountBossSessions.get(accountId)
   }
 
   /**
@@ -114,12 +124,14 @@ export namespace BossRuntime {
    * sessions and the fixed deliveryKey prevents briefing re-delivery.
    */
   export async function ensure(): Promise<void> {
+    const instanceState = runtimeState()
+
     const config = await readConfig().catch(() => undefined)
     const enabled = config?.boss?.enabled === true
     // Reconcile: start from an empty routing map so removed accounts (or a
     // disabled mode) never leave stale entries behind. Re-provisioning is
     // idempotent per account (existing endpoint sessions are reused).
-    accountBossSessions.clear()
+    instanceState.accountBossSessions.clear()
     if (!enabled) return
     const configuredAccounts = await accounts()
     await ScopeContext.provide({
@@ -127,6 +139,8 @@ export namespace BossRuntime {
       fn: async () => {
         await Promise.all(
           configuredAccounts.map(async (account) => {
+            const instanceState = runtimeState()
+
             const accountId = account.id
             if (!account.enabled) return
             if (account.hasProjectDirectory) {
@@ -136,7 +150,7 @@ export namespace BossRuntime {
               return
             }
             const sessionID = await ensureBossSession(accountId)
-            if (sessionID) accountBossSessions.set(accountId, sessionID)
+            if (sessionID) instanceState.accountBossSessions.set(accountId, sessionID)
           }),
         )
         await syncBriefingSchedule()
@@ -146,11 +160,13 @@ export namespace BossRuntime {
 
   /** Hot-reload entry: enabled → ensure(); disabled → clear routing map only. */
   export async function sync(enabled: boolean): Promise<void> {
+    const instanceState = runtimeState()
+
     if (enabled) {
       await ensure()
       return
     }
-    accountBossSessions.clear()
+    instanceState.accountBossSessions.clear()
     await removeBriefingSchedule()
   }
 
@@ -160,10 +176,12 @@ export namespace BossRuntime {
    * periodic snapshot); the default fixed deliveryKey keeps startup idempotent.
    */
   export async function refreshIdentity(options?: { versioned?: boolean }): Promise<void> {
-    if (accountBossSessions.size === 0) return
+    const instanceState = runtimeState()
+
+    if (instanceState.accountBossSessions.size === 0) return
     const persona = await resolveBossPersona().catch(() => undefined)
     const identityText = persona?.identityText || DEFAULT_IDENTITY_TEXT
-    for (const sessionID of accountBossSessions.values()) {
+    for (const sessionID of instanceState.accountBossSessions.values()) {
       await deliverBriefing(sessionID, identityText, { versioned: options?.versioned === true })
     }
   }
@@ -191,6 +209,8 @@ export namespace BossRuntime {
    * @throws BossSessionOpenError when `boss_mode` is not enabled.
    */
   export async function openSession(): Promise<string> {
+    const instanceState = runtimeState()
+
     const config = await readConfig().catch(() => undefined)
     if (config?.boss?.enabled !== true) {
       throw new BossSessionOpenError("Boss Mode is disabled")
@@ -199,16 +219,18 @@ export namespace BossRuntime {
     // config has an enabled routable account (startup/reload already ran
     // ensure()); skipping a redundant ensure() avoids re-delivering the
     // world-overview briefing on every "Open boss session" click.
-    if (accountBossSessions.size === 0) {
+    if (instanceState.accountBossSessions.size === 0) {
       const hasRoutableAccount = (await accounts()).some((account) => account.enabled && !account.hasProjectDirectory)
       if (hasRoutableAccount) await ensure()
     }
     return ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
+        const instanceState = runtimeState()
+
         // 1. Prefer an account-routed boss session already registered.
         let sessionID: string | undefined
-        for (const id of accountBossSessions.values()) {
+        for (const id of instanceState.accountBossSessions.values()) {
           const session = await Session.get(id)
           if (session?.endpoint?.kind === "channel" && !session.time?.archived) {
             sessionID = id
@@ -419,7 +441,7 @@ export namespace BossRuntime {
 
     const projectLines = scopes
       .slice(0, BRIEFING_LIMIT)
-      .map((s) => `- ${s.name ?? s.id} (${s.id}, 目录: ${s.directory})`)
+      .map((s) => `- ${s.name ?? s.id} (${s.id}, 目录: ${s.local?.directory})`)
     lines.push("", `## 项目 (${scopes.length}${scopes.length > BRIEFING_LIMIT ? `, 显示前 ${BRIEFING_LIMIT}` : ""})`)
     lines.push(...(projectLines.length > 0 ? projectLines : ["- (无)"]))
 
@@ -459,6 +481,8 @@ export namespace BossRuntime {
 
   /** Register or update one periodic briefing Agenda item per boss account. */
   async function syncBriefingSchedule(): Promise<void> {
+    const instanceState = runtimeState()
+
     const config = await readConfig().catch(() => undefined)
     const days = config?.boss?.briefingIntervalDays
     if (!days) {
@@ -467,7 +491,7 @@ export namespace BossRuntime {
     }
     // Migrate the legacy single-account item (pre-multi-account) away.
     await Agenda.remove(BRIEFING_AGENDA_ID).catch(() => undefined)
-    const entries = [...accountBossSessions.entries()]
+    const entries = [...instanceState.accountBossSessions.entries()]
     if (entries.length === 0) return
     for (const [accountId, sessionID] of entries) {
       const itemID = briefingAgendaID(accountId)

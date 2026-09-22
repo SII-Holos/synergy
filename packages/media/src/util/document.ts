@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as path from "path"
 import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
@@ -139,7 +140,9 @@ interface MarkItDownConverter {
 }
 
 /** Singleton converter — jsdom/turndown/pdf-parse are expensive to re-instantiate. */
-let _converter: MarkItDownConverter | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  _converter: undefined as MarkItDownConverter | undefined,
+}))
 
 function conversionEngineError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error)
@@ -150,11 +153,13 @@ function conversionEngineError(error: unknown): Error {
 }
 
 async function converter(): Promise<MarkItDownConverter> {
-  if (_converter) return _converter
+  const instanceState = runtimeState()
+
+  if (instanceState._converter) return instanceState._converter
   try {
     const { MarkItDown } = await import("markitdown-ts")
-    _converter = new MarkItDown()
-    return _converter
+    instanceState._converter = new MarkItDown()
+    return instanceState._converter
   } catch (error) {
     throw conversionEngineError(error)
   }

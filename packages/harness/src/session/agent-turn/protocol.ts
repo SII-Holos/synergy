@@ -10,7 +10,7 @@ export namespace AgentTurnProtocol {
   // An older host fails `parseWorkerToHost` inside the IPC handler, which kills
   // the worker, so an incompatible pair must instead be rejected by the `ready`
   // handshake's version check.
-  export const VERSION = 10
+  export const VERSION = 11
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -186,7 +186,7 @@ export namespace AgentTurnProtocol {
   export const TurnEnvelopeSchema = z
     .object({
       scope: ScopeRuntime,
-      workspace: Workspace.optional(),
+      workspace: Workspace.nullable(),
       input: TurnInputSchema,
     })
     .strict()
@@ -271,7 +271,7 @@ export namespace AgentTurnProtocol {
         collection: "full" | "none"
         memory: WorkerMemory
       }
-    | { type: "metrics"; rows: MetricRow[] }
+    | { type: "metrics"; requestId: string; rows: MetricRow[] }
     | { type: "pong" }
 
   export const HostToWorkerSchema: z.ZodType<HostToWorker> = z.discriminatedUnion("type", [
@@ -394,6 +394,7 @@ export namespace AgentTurnProtocol {
     z
       .object({
         type: z.literal("metrics"),
+        requestId: z.string(),
         rows: z.array(MetricRow).min(1).max(METRIC_ROWS_MAX),
       })
       .strict(),

@@ -40,106 +40,110 @@ interface ViewImageMetadata {
   supportedMimeTypes?: string[]
 }
 
-export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>("view_image", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params, ctx) {
-    const filepath = path.isAbsolute(params.filePath)
-      ? params.filePath
-      : path.join(ScopeContext.current.directory, params.filePath)
-    const filename = path.basename(filepath)
-    const file = Bun.file(filepath)
+export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>(
+  "view_image",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params, ctx) {
+      const filepath = path.isAbsolute(params.filePath)
+        ? params.filePath
+        : path.join(ScopeContext.current.directory, params.filePath)
+      const filename = path.basename(filepath)
+      const file = Bun.file(filepath)
 
-    if (!(await file.exists())) {
-      return {
-        title: "File not found",
-        output: `Error: File not found: ${filepath}`,
-        metadata: { filePath: filepath, filename, error: "file_not_found" },
+      if (!(await file.exists())) {
+        return {
+          title: "File not found",
+          output: `Error: File not found: ${filepath}`,
+          metadata: { filePath: filepath, filename, error: "file_not_found" },
+        }
       }
-    }
 
-    const mimeType = inferImageMimeType(filepath, file.type)
-    if (!mimeType.startsWith("image/")) {
+      const mimeType = inferImageMimeType(filepath, file.type)
+      if (!mimeType.startsWith("image/")) {
+        return {
+          title: "Unsupported file type",
+          output: `${filename}: ${mimeType} is not an image. Use read/scan_document for text or document extraction.`,
+          metadata: {
+            filePath: filepath,
+            filename,
+            mimeType,
+            error: "unsupported_file_type",
+          },
+        }
+      }
+
+      const model = ctx.extra?.model as Provider.Model | undefined
+      if (model && !supportsImageMediaType(model, mimeType)) {
+        const supportedMimeTypes = model.capabilities.input.supportedImageMediaTypes ?? []
+        const fallback = ctx.extra?.lookAtAvailable
+          ? " Use look_at for separate vision-model analysis or convert the image to a supported format."
+          : " Convert the image to a supported format."
+        return {
+          title: "Unsupported image format",
+          output: `${filename}: ${mimeType} is not supported by the active model. Supported formats: ${supportedMimeTypes.join(", ")}.${fallback}`,
+          metadata: {
+            filePath: filepath,
+            filename,
+            mimeType,
+            supportedMimeTypes,
+            error: "unsupported_model_image_type",
+          },
+        }
+      }
+
+      await ctx.ask({
+        permission: "read",
+        patterns: [filepath],
+        metadata: {},
+      })
+
+      const sizeBytes = (await file.stat()).size
+      if (!(await isValidImageFile(file, mimeType))) {
+        return {
+          title: "Unsupported file type",
+          output: `${filename}: content does not match ${mimeType}. Use read/scan_document for text or document extraction.`,
+          metadata: {
+            filePath: filepath,
+            filename,
+            mimeType,
+            error: "unsupported_file_type",
+          },
+        }
+      }
+      const summary = `${filename} (${mimeType}) loaded by view_image`
+      const preview = `Image loaded into the current model context: ${filename} (${mimeType}, ${formatSize(sizeBytes)}). The active model can inspect it directly on the next model step.`
+
       return {
-        title: "Unsupported file type",
-        output: `${filename}: ${mimeType} is not an image. Use read/scan_document for text or document extraction.`,
+        title: `Viewed Image: ${filename}`,
+        output: preview,
         metadata: {
           filePath: filepath,
           filename,
           mimeType,
-          error: "unsupported_file_type",
+          sizeBytes,
+          modelContext: true,
+          truncated: false,
+          preview,
         },
+        attachments: [
+          await Attachment.toPart({
+            filepath,
+            mime: mimeType,
+            filename,
+            localPath: filepath,
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            presentation: { renderer: "image", size: "medium", crop: false },
+            model: { mode: "provider-file", summary },
+          }),
+        ],
       }
-    }
-
-    const model = ctx.extra?.model as Provider.Model | undefined
-    if (model && !supportsImageMediaType(model, mimeType)) {
-      const supportedMimeTypes = model.capabilities.input.supportedImageMediaTypes ?? []
-      const fallback = ctx.extra?.lookAtAvailable
-        ? " Use look_at for separate vision-model analysis or convert the image to a supported format."
-        : " Convert the image to a supported format."
-      return {
-        title: "Unsupported image format",
-        output: `${filename}: ${mimeType} is not supported by the active model. Supported formats: ${supportedMimeTypes.join(", ")}.${fallback}`,
-        metadata: {
-          filePath: filepath,
-          filename,
-          mimeType,
-          supportedMimeTypes,
-          error: "unsupported_model_image_type",
-        },
-      }
-    }
-
-    await ctx.ask({
-      permission: "read",
-      patterns: [filepath],
-      metadata: {},
-    })
-
-    const sizeBytes = (await file.stat()).size
-    if (!(await isValidImageFile(file, mimeType))) {
-      return {
-        title: "Unsupported file type",
-        output: `${filename}: content does not match ${mimeType}. Use read/scan_document for text or document extraction.`,
-        metadata: {
-          filePath: filepath,
-          filename,
-          mimeType,
-          error: "unsupported_file_type",
-        },
-      }
-    }
-    const summary = `${filename} (${mimeType}) loaded by view_image`
-    const preview = `Image loaded into the current model context: ${filename} (${mimeType}, ${formatSize(sizeBytes)}). The active model can inspect it directly on the next model step.`
-
-    return {
-      title: `Viewed Image: ${filename}`,
-      output: preview,
-      metadata: {
-        filePath: filepath,
-        filename,
-        mimeType,
-        sizeBytes,
-        modelContext: true,
-        truncated: false,
-        preview,
-      },
-      attachments: [
-        await Attachment.toPart({
-          filepath,
-          mime: mimeType,
-          filename,
-          localPath: filepath,
-          sessionID: ctx.sessionID,
-          messageID: ctx.messageID,
-          presentation: { renderer: "image", size: "medium", crop: false },
-          model: { mode: "provider-file", summary },
-        }),
-      ],
-    }
+    },
   },
-})
+  { requiresWorkspace: true },
+)
 
 function inferImageMimeType(filepath: string, fileType: string): string {
   if (fileType.startsWith("image/")) return fileType

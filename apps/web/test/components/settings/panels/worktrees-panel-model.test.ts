@@ -3,8 +3,8 @@ import type { Worktree } from "@ericsanchezok/synergy-sdk/client"
 import {
   canDeleteWorktree,
   gitProjectScopes,
-  groupWorktreesByDirectory,
-  loadWorktreesByDirectory,
+  groupWorktreesByScope,
+  loadWorktreesByScope,
   worktreeLifecycleLabel,
 } from "../../../../src/components/settings/panels/worktrees-panel-model"
 
@@ -22,7 +22,7 @@ describe("worktrees panel model", () => {
     expect(worktreeLifecycleLabel(undefined)).toBeNull()
   })
 
-  test("groups worktrees by scope directory", () => {
+  test("groups worktrees by Scope ID", () => {
     const items: Worktree[] = [
       {
         id: "wt_1",
@@ -31,31 +31,30 @@ describe("worktrees panel model", () => {
         scopeID: "scope_1",
       },
     ]
-    const grouped = groupWorktreesByDirectory(
+    const grouped = groupWorktreesByScope(
       [
-        { worktree: "/repo", name: "Synergy" },
-        { worktree: "/other", name: "Other" },
+        { id: "scope_1", name: "Synergy", local: { worktree: "/repo" } },
+        { id: "scope_2", name: "Other", local: { worktree: "/other" } },
       ],
-      new Map([["/repo", items]]),
+      new Map([["scope_1", items]]),
       (directory, name) => name ?? directory,
     )
     expect(grouped).toEqual([
-      { scopeLabel: "Synergy", directory: "/repo", worktrees: items },
-      { scopeLabel: "Other", directory: "/other", worktrees: [] },
+      { scopeLabel: "Synergy", scopeID: "scope_1", worktrees: items },
+      { scopeLabel: "Other", scopeID: "scope_2", worktrees: [] },
     ])
   })
 
-  test("selects only git project scopes", () => {
+  test("selects only project Scopes with a local Git binding", () => {
+    const git = { id: "git", type: "project", local: { directory: "/git", worktree: "/git", vcs: "git" as const } }
     expect(
-      gitProjectScopes(
-        [
-          { type: "home", vcs: "git", worktree: "/home" },
-          { type: "project", vcs: "git", worktree: "/git" },
-          { type: "project", worktree: "/plain" },
-        ],
-        "/home",
-      ),
-    ).toEqual([{ type: "project", vcs: "git", worktree: "/git" }])
+      gitProjectScopes([
+        { id: "home", type: "home", local: null },
+        git,
+        { id: "archived", type: "project", local: null },
+        { id: "plain", type: "project", local: { worktree: "/plain" } },
+      ]),
+    ).toEqual([git])
   })
 
   test("keeps successful scope results when another scope fails", async () => {
@@ -65,17 +64,17 @@ describe("worktrees panel model", () => {
       path: "/repo/.synergy/worktrees/feature",
       scopeID: "scope_1",
     }
-    const result = await loadWorktreesByDirectory(
-      [{ worktree: "/repo" }, { worktree: "/missing" }],
+    const result = await loadWorktreesByScope(
+      [{ id: "scope_1" }, { id: "scope_2" }],
       async (directory) => {
-        if (directory === "/missing") throw { data: { message: "Repository moved" } }
+        if (directory === "scope_2") throw { data: { message: "Repository moved" } }
         return [item]
       },
       1,
     )
 
-    expect(result.worktrees.get("/repo")).toEqual([item])
+    expect(result.worktrees.get("scope_1")).toEqual([item])
     expect(result.failures).toHaveLength(1)
-    expect(result.failures[0]?.directory).toBe("/missing")
+    expect(result.failures[0]?.scopeID).toBe("scope_2")
   })
 })

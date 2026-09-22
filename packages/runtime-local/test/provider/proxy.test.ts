@@ -1,9 +1,9 @@
-import { registerLocalProviderSdks } from "../../src/provider/sdk-registry"
 import { test, expect } from "bun:test"
 import { generateText, streamText } from "ai"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
-
-registerLocalProviderSdks()
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function makeModel(overrides: Partial<Provider.Model> = {}): Provider.Model {
   return {
@@ -198,183 +198,194 @@ async function tryFetch(patchedFetch: (input: any, init?: any) => Promise<Respon
   } catch {}
 }
 
-test("proxy option routes wrapped fetch through configured proxy", async () => {
-  const configuredProxy = createProbeProxy("configured")
-  try {
+test("proxy option routes wrapped fetch through configured proxy", () =>
+  runtime.run(async () => {
+    const configuredProxy = createProbeProxy("configured")
+    try {
+      const sdk = Provider.createSDKFromSpec(makeModel(), {
+        options: { proxy: configuredProxy.url, apiKey: "test-key" },
+      })
+
+      await tryFetch((sdk as any).fetch)
+
+      expect(configuredProxy.hits).toBe(1)
+    } finally {
+      configuredProxy.stop()
+    }
+  }))
+
+test("noProxy takes precedence when proxy is also set", () =>
+  runtime.run(async () => {
+    const configuredProxy = createProbeProxy("configured")
+    try {
+      const sdk = Provider.createSDKFromSpec(makeModel(), {
+        options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" },
+      })
+
+      await tryFetch((sdk as any).fetch)
+
+      expect(configuredProxy.hits).toBe(0)
+    } finally {
+      configuredProxy.stop()
+    }
+  }))
+
+test("noProxy direct fetch decodes chunked responses", () =>
+  runtime.run(async () => {
+    const server = createChunkedServer()
+    try {
+      const sdk = Provider.createSDKFromSpec(makeModel(), {
+        options: { noProxy: true, apiKey: "test-key" },
+      })
+
+      const response = await (sdk as any).fetch(`${server.url}/stream`, { signal: AbortSignal.timeout(1_000) })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe("hello world")
+    } finally {
+      server.stop()
+    }
+  }))
+
+test("noProxy uses direct transport for generateText requests", () =>
+  runtime.run(async () => {
+    const server = createOpenAICompatibleServer()
+    try {
+      const sdk = Provider.createSDKFromSpec(
+        makeModel({
+          api: {
+            id: "test-model",
+            url: `${server.url}/v1`,
+            npm: "@ai-sdk/openai-compatible",
+          },
+        }),
+        { options: { noProxy: true, apiKey: "test-key" } },
+      )
+
+      const result = await generateText({
+        model: sdk.languageModel("test-model"),
+        prompt: "ping",
+        abortSignal: AbortSignal.timeout(1_000),
+      })
+
+      expect(result.text).toBe("OK")
+      expect(server.hits).toBe(1)
+    } finally {
+      server.stop()
+    }
+  }))
+
+test("noProxy takes precedence over explicit proxy for generateText requests", () =>
+  runtime.run(async () => {
+    const configuredProxy = createProbeProxy("configured")
+    const server = createOpenAICompatibleServer()
+    try {
+      const sdk = Provider.createSDKFromSpec(
+        makeModel({
+          api: {
+            id: "test-model",
+            url: `${server.url}/v1`,
+            npm: "@ai-sdk/openai-compatible",
+          },
+        }),
+        { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
+      )
+
+      const result = await generateText({
+        model: sdk.languageModel("test-model"),
+        prompt: "ping",
+        abortSignal: AbortSignal.timeout(1_000),
+      })
+
+      expect(result.text).toBe("OK")
+      expect(server.hits).toBe(1)
+      expect(configuredProxy.hits).toBe(0)
+    } finally {
+      configuredProxy.stop()
+      server.stop()
+    }
+  }))
+
+test("noProxy takes precedence over explicit proxy for OpenAI responses requests", () =>
+  runtime.run(async () => {
+    const configuredProxy = createProbeProxy("configured")
+    const server = createOpenAIResponsesServer()
+    try {
+      const sdk = Provider.createSDKFromSpec(
+        makeModel({
+          api: {
+            id: "test-model",
+            url: `${server.url}/v1`,
+            npm: "@ai-sdk/openai",
+          },
+        }),
+        { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
+      )
+
+      const result = await generateText({
+        model: (sdk as any).responses("test-model"),
+        prompt: "ping",
+        abortSignal: AbortSignal.timeout(1_000),
+      })
+
+      expect(result.text).toBe("OK")
+      expect(server.hits).toBe(1)
+      expect(server.lines[0]).toBe("POST /v1/responses HTTP/1.1")
+      expect(configuredProxy.hits).toBe(0)
+    } finally {
+      configuredProxy.stop()
+      server.stop()
+    }
+  }))
+
+test("noProxy takes precedence over explicit proxy for streamText requests", () =>
+  runtime.run(async () => {
+    const configuredProxy = createProbeProxy("configured")
+    const server = createOpenAICompatibleServer()
+    try {
+      const sdk = Provider.createSDKFromSpec(
+        makeModel({
+          api: {
+            id: "test-model",
+            url: `${server.url}/v1`,
+            npm: "@ai-sdk/openai-compatible",
+          },
+        }),
+        { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
+      )
+
+      const result = streamText({
+        model: sdk.languageModel("test-model"),
+        prompt: "ping",
+        abortSignal: AbortSignal.timeout(1_000),
+      })
+
+      expect(await result.text).toBe("OK")
+      expect(server.hits).toBe(1)
+      expect(configuredProxy.hits).toBe(0)
+    } finally {
+      configuredProxy.stop()
+      server.stop()
+    }
+  }))
+
+test("createSDKFromSpec returns unwrapped SDK when no proxy option is configured", () =>
+  runtime.run(() => {
     const sdk = Provider.createSDKFromSpec(makeModel(), {
-      options: { proxy: configuredProxy.url, apiKey: "test-key" },
+      options: { apiKey: "test-key" },
     })
 
-    await tryFetch((sdk as any).fetch)
+    expect(sdk).toBeDefined()
+    expect((sdk as any).fetch).not.toBeTypeOf("function")
+  }))
 
-    expect(configuredProxy.hits).toBe(1)
-  } finally {
-    configuredProxy.stop()
-  }
-})
-
-test("noProxy takes precedence when proxy is also set", async () => {
-  const configuredProxy = createProbeProxy("configured")
-  try {
+test('noProxy string "true" does not enable noProxy', () =>
+  runtime.run(() => {
     const sdk = Provider.createSDKFromSpec(makeModel(), {
-      options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" },
+      options: { noProxy: "true", apiKey: "test-key" },
     })
 
-    await tryFetch((sdk as any).fetch)
+    expect((sdk as any).fetch).not.toBeTypeOf("function")
+  }))
 
-    expect(configuredProxy.hits).toBe(0)
-  } finally {
-    configuredProxy.stop()
-  }
-})
-
-test("noProxy direct fetch decodes chunked responses", async () => {
-  const server = createChunkedServer()
-  try {
-    const sdk = Provider.createSDKFromSpec(makeModel(), {
-      options: { noProxy: true, apiKey: "test-key" },
-    })
-
-    const response = await (sdk as any).fetch(`${server.url}/stream`, { signal: AbortSignal.timeout(1_000) })
-
-    expect(response.status).toBe(200)
-    expect(await response.text()).toBe("hello world")
-  } finally {
-    server.stop()
-  }
-})
-
-test("noProxy uses direct transport for generateText requests", async () => {
-  const server = createOpenAICompatibleServer()
-  try {
-    const sdk = Provider.createSDKFromSpec(
-      makeModel({
-        api: {
-          id: "test-model",
-          url: `${server.url}/v1`,
-          npm: "@ai-sdk/openai-compatible",
-        },
-      }),
-      { options: { noProxy: true, apiKey: "test-key" } },
-    )
-
-    const result = await generateText({
-      model: sdk.languageModel("test-model"),
-      prompt: "ping",
-      abortSignal: AbortSignal.timeout(1_000),
-    })
-
-    expect(result.text).toBe("OK")
-    expect(server.hits).toBe(1)
-  } finally {
-    server.stop()
-  }
-})
-
-test("noProxy takes precedence over explicit proxy for generateText requests", async () => {
-  const configuredProxy = createProbeProxy("configured")
-  const server = createOpenAICompatibleServer()
-  try {
-    const sdk = Provider.createSDKFromSpec(
-      makeModel({
-        api: {
-          id: "test-model",
-          url: `${server.url}/v1`,
-          npm: "@ai-sdk/openai-compatible",
-        },
-      }),
-      { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
-    )
-
-    const result = await generateText({
-      model: sdk.languageModel("test-model"),
-      prompt: "ping",
-      abortSignal: AbortSignal.timeout(1_000),
-    })
-
-    expect(result.text).toBe("OK")
-    expect(server.hits).toBe(1)
-    expect(configuredProxy.hits).toBe(0)
-  } finally {
-    configuredProxy.stop()
-    server.stop()
-  }
-})
-
-test("noProxy takes precedence over explicit proxy for OpenAI responses requests", async () => {
-  const configuredProxy = createProbeProxy("configured")
-  const server = createOpenAIResponsesServer()
-  try {
-    const sdk = Provider.createSDKFromSpec(
-      makeModel({
-        api: {
-          id: "test-model",
-          url: `${server.url}/v1`,
-          npm: "@ai-sdk/openai",
-        },
-      }),
-      { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
-    )
-
-    const result = await generateText({
-      model: (sdk as any).responses("test-model"),
-      prompt: "ping",
-      abortSignal: AbortSignal.timeout(1_000),
-    })
-
-    expect(result.text).toBe("OK")
-    expect(server.hits).toBe(1)
-    expect(server.lines[0]).toBe("POST /v1/responses HTTP/1.1")
-    expect(configuredProxy.hits).toBe(0)
-  } finally {
-    configuredProxy.stop()
-    server.stop()
-  }
-})
-
-test("noProxy takes precedence over explicit proxy for streamText requests", async () => {
-  const configuredProxy = createProbeProxy("configured")
-  const server = createOpenAICompatibleServer()
-  try {
-    const sdk = Provider.createSDKFromSpec(
-      makeModel({
-        api: {
-          id: "test-model",
-          url: `${server.url}/v1`,
-          npm: "@ai-sdk/openai-compatible",
-        },
-      }),
-      { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
-    )
-
-    const result = streamText({
-      model: sdk.languageModel("test-model"),
-      prompt: "ping",
-      abortSignal: AbortSignal.timeout(1_000),
-    })
-
-    expect(await result.text).toBe("OK")
-    expect(server.hits).toBe(1)
-    expect(configuredProxy.hits).toBe(0)
-  } finally {
-    configuredProxy.stop()
-    server.stop()
-  }
-})
-
-test("createSDKFromSpec returns unwrapped SDK when no proxy option is configured", () => {
-  const sdk = Provider.createSDKFromSpec(makeModel(), {
-    options: { apiKey: "test-key" },
-  })
-
-  expect(sdk).toBeDefined()
-  expect((sdk as any).fetch).not.toBeTypeOf("function")
-})
-
-test('noProxy string "true" does not enable noProxy', () => {
-  const sdk = Provider.createSDKFromSpec(makeModel(), {
-    options: { noProxy: "true", apiKey: "test-key" },
-  })
-
-  expect((sdk as any).fetch).not.toBeTypeOf("function")
-})
+afterRuntimeTests(() => runtime.close())

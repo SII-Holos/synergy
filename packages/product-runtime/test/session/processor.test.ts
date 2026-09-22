@@ -19,7 +19,10 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { ObservabilityToolFailures } from "@ericsanchezok/synergy-harness/test/internal/observability/tool-failures"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
-import { cleanupObservabilityHomes, resetObservabilityHome } from "../../../harness/test/observability/fixture"
+import { clearObservabilityState, resetObservabilityState } from "../../../harness/test/observability/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function toolPart(
   callID: string,
@@ -65,89 +68,94 @@ function toolPart(
 }
 
 describe("SessionProcessor.shouldAskDoomLoop", () => {
-  test("asks when the same edit input appears three times in a row", () => {
-    const input = {
-      filePath: "/tmp/example.ts",
-      oldString: "const value = foo()",
-      newString: "const value = bar()",
-    }
-
-    const parts: MessageV2.Part[] = [toolPart("1", input), toolPart("2", input), toolPart("3", input)]
-
-    expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(true)
-  })
-
-  test("does not ask when repeated edit calls vary the input slightly", () => {
-    const parts: MessageV2.Part[] = [
-      toolPart("1", {
+  test("asks when the same edit input appears three times in a row", () =>
+    runtime.run(() => {
+      const input = {
         filePath: "/tmp/example.ts",
         oldString: "const value = foo()",
         newString: "const value = bar()",
-      }),
-      toolPart("2", {
+      }
+
+      const parts: MessageV2.Part[] = [toolPart("1", input), toolPart("2", input), toolPart("3", input)]
+
+      expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(true)
+    }))
+
+  test("does not ask when repeated edit calls vary the input slightly", () =>
+    runtime.run(() => {
+      const parts: MessageV2.Part[] = [
+        toolPart("1", {
+          filePath: "/tmp/example.ts",
+          oldString: "const value = foo()",
+          newString: "const value = bar()",
+        }),
+        toolPart("2", {
+          filePath: "/tmp/example.ts",
+          oldString: "  const value = foo()",
+          newString: "const value = bar()",
+        }),
+        toolPart("3", {
+          filePath: "/tmp/example.ts",
+          oldString: "const value = foo()\nreturn value",
+          newString: "const value = bar()\nreturn value",
+        }),
+      ]
+
+      expect(
+        SessionProcessor.shouldAskDoomLoop(parts, "edit", {
+          filePath: "/tmp/example.ts",
+          oldString: "const value = foo()\nreturn value",
+          newString: "const value = bar()\nreturn value",
+        }),
+      ).toBe(false)
+    }))
+
+  test("ignores pending tool parts when checking for repeated calls", () =>
+    runtime.run(() => {
+      const input = {
         filePath: "/tmp/example.ts",
-        oldString: "  const value = foo()",
+        oldString: "const value = foo()",
         newString: "const value = bar()",
-      }),
-      toolPart("3", {
-        filePath: "/tmp/example.ts",
-        oldString: "const value = foo()\nreturn value",
-        newString: "const value = bar()\nreturn value",
-      }),
-    ]
+      }
 
-    expect(
-      SessionProcessor.shouldAskDoomLoop(parts, "edit", {
-        filePath: "/tmp/example.ts",
-        oldString: "const value = foo()\nreturn value",
-        newString: "const value = bar()\nreturn value",
-      }),
-    ).toBe(false)
-  })
+      const parts: MessageV2.Part[] = [toolPart("1", input), toolPart("2", input), toolPart("3", input, "pending")]
 
-  test("ignores pending tool parts when checking for repeated calls", () => {
-    const input = {
-      filePath: "/tmp/example.ts",
-      oldString: "const value = foo()",
-      newString: "const value = bar()",
-    }
-
-    const parts: MessageV2.Part[] = [toolPart("1", input), toolPart("2", input), toolPart("3", input, "pending")]
-
-    expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(false)
-  })
+      expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(false)
+    }))
 })
 
 describe("SessionProcessor.streamToolErrorOutcome", () => {
-  test("turns unavailable synthetic tool errors into unknown_tool diagnostics", () => {
-    const part = toolPart("unknown", { x: 1 }, "running")
-    const outcome = SessionProcessor.streamToolErrorOutcome(
-      { ...part, tool: "hallucinated_tool" },
-      new Error("Model tried to call unavailable tool 'hallucinated_tool'. Available tools: bash, read"),
-    )
+  test("turns unavailable synthetic tool errors into unknown_tool diagnostics", () =>
+    runtime.run(() => {
+      const part = toolPart("unknown", { x: 1 }, "running")
+      const outcome = SessionProcessor.streamToolErrorOutcome(
+        { ...part, tool: "hallucinated_tool" },
+        new Error("Model tried to call unavailable tool 'hallucinated_tool'. Available tools: bash, read"),
+      )
 
-    expect(outcome.status).toBe("error")
-    if (outcome.status === "error") {
-      expect(outcome.error).toContain("unavailable tool")
-      expect(outcome.error).not.toBe("Tool execution aborted")
-      expect(outcome.metadata?.toolDiagnostic.code).toBe("unknown_tool")
-      expect(outcome.metadata?.toolDiagnostic.toolName).toBe("hallucinated_tool")
-    }
-  })
+      expect(outcome.status).toBe("error")
+      if (outcome.status === "error") {
+        expect(outcome.error).toContain("unavailable tool")
+        expect(outcome.error).not.toBe("Tool execution aborted")
+        expect(outcome.metadata?.toolDiagnostic.code).toBe("unknown_tool")
+        expect(outcome.metadata?.toolDiagnostic.toolName).toBe("hallucinated_tool")
+      }
+    }))
 
-  test("turns schema synthetic tool errors into invalid_arguments diagnostics", () => {
-    const part = toolPart("bad_args", { command: 42 }, "running")
-    const outcome = SessionProcessor.streamToolErrorOutcome(
-      { ...part, tool: "bash" },
-      new Error("Invalid tool input: expected command to be a string"),
-    )
+  test("turns schema synthetic tool errors into invalid_arguments diagnostics", () =>
+    runtime.run(() => {
+      const part = toolPart("bad_args", { command: 42 }, "running")
+      const outcome = SessionProcessor.streamToolErrorOutcome(
+        { ...part, tool: "bash" },
+        new Error("Invalid tool input: expected command to be a string"),
+      )
 
-    expect(outcome.status).toBe("error")
-    if (outcome.status === "error") {
-      expect(outcome.metadata?.toolDiagnostic.code).toBe("invalid_arguments")
-      expect(outcome.error).toContain("could not be accepted")
-    }
-  })
+      expect(outcome.status).toBe("error")
+      if (outcome.status === "error") {
+        expect(outcome.metadata?.toolDiagnostic.code).toBe("invalid_arguments")
+        expect(outcome.error).toContain("could not be accepted")
+      }
+    }))
 })
 
 type SettlementScenario = {
@@ -285,265 +293,274 @@ async function runSettlementScenario(scenario: SettlementScenario) {
 
 describe("SessionProcessor stream lifecycle", () => {
   for (const testCase of ["completion", "failure", "abort"] as const) {
-    test(`cancels the residual AI SDK stream branch after ${testCase}`, async () => {
-      let cancelCount = 0
-      const controller = new AbortController()
-      await runSettlementScenario({
-        messageID: `msg_stream_${testCase}`,
-        abort: controller.signal,
-        residualStream: {
-          async cancel() {
-            cancelCount++
+    test(`cancels the residual AI SDK stream branch after ${testCase}`, () =>
+      runtime.run(async () => {
+        let cancelCount = 0
+        const controller = new AbortController()
+        await runSettlementScenario({
+          messageID: `msg_stream_${testCase}`,
+          abort: controller.signal,
+          residualStream: {
+            async cancel() {
+              cancelCount++
+            },
           },
-        },
-        async *stream() {
-          if (testCase === "failure") throw new Error("stream failed")
-          if (testCase === "abort") controller.abort()
-          yield { type: "finish" }
-        },
-      })
+          async *stream() {
+            if (testCase === "failure") throw new Error("stream failed")
+            if (testCase === "abort") controller.abort()
+            yield { type: "finish" }
+          },
+        })
 
-      expect(cancelCount).toBe(1)
-    })
+        expect(cancelCount).toBe(1)
+      }))
   }
 })
 
 describe("SessionProcessor terminal assistant persistence", () => {
-  test("persists stream failures with the canonical error finish", async () => {
-    let persisted: MessageV2.Assistant | undefined
+  test("persists stream failures with the canonical error finish", () =>
+    runtime.run(async () => {
+      let persisted: MessageV2.Assistant | undefined
 
-    await runSettlementScenario({
-      messageID: "msg_terminal_stream_failure",
-      updateMessage(message) {
-        persisted = structuredClone(message)
-      },
-      async *stream() {
-        yield await Promise.reject(new Error("stream failed after assistant creation"))
-      },
-    })
+      await runSettlementScenario({
+        messageID: "msg_terminal_stream_failure",
+        updateMessage(message) {
+          persisted = structuredClone(message)
+        },
+        async *stream() {
+          yield await Promise.reject(new Error("stream failed after assistant creation"))
+        },
+      })
 
-    expect(persisted?.error).toBeDefined()
-    expect(persisted?.finish).toBe("error")
-    expect(persisted?.time.completed).toBeNumber()
-  })
+      expect(persisted?.error).toBeDefined()
+      expect(persisted?.finish).toBe("error")
+      expect(persisted?.time.completed).toBeNumber()
+    }))
 })
 
 describe("SessionProcessor execution layering", () => {
-  test("releases the Agent stream before starting a proposed tool", async () => {
-    let streamDisposed = false
-    let executedAfterDispose = false
-    const parts = await runSettlementScenario({
-      messageID: "msg_layered_tool",
-      async *stream() {
-        yield {
-          type: "tool-call",
-          toolCallId: "call_layered",
-          toolName: "layered_probe",
-          input: { value: 1 },
-        }
-      },
-      residualStream: {
-        async cancel() {
-          streamDisposed = true
+  test("releases the Agent stream before starting a proposed tool", () =>
+    runtime.run(async () => {
+      let streamDisposed = false
+      let executedAfterDispose = false
+      const parts = await runSettlementScenario({
+        messageID: "msg_layered_tool",
+        async *stream() {
+          yield {
+            type: "tool-call",
+            toolCallId: "call_layered",
+            toolName: "layered_probe",
+            input: { value: 1 },
+          }
         },
-      },
-      executionTools: (processor) => ({
-        layered_probe: {
-          async execute(input: unknown) {
-            executedAfterDispose = streamDisposed
-            processor.beginExecution("call_layered").complete(input, {
-              title: "Layered",
-              output: "done",
-              metadata: {},
-            })
-            return { title: "Layered", output: "done", metadata: {} }
+        residualStream: {
+          async cancel() {
+            streamDisposed = true
           },
         },
-      }),
-    })
-
-    expect(executedAfterDispose).toBe(true)
-    expect(parts.find((part) => part.type === "tool" && part.callID === "call_layered")).toMatchObject({
-      state: { status: "completed", output: "done" },
-    })
-  })
-
-  test("contains process output overflow as one terminal ToolTask failure", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_layered_output_limit",
-      async *stream() {
-        yield {
-          type: "tool-call",
-          toolCallId: "call_output_limit",
-          toolName: "layered_probe",
-          input: { path: "large-tree" },
-        }
-      },
-      executionTools: () => ({
-        layered_probe: {
-          async execute() {
-            throw new ProcessOutput.LimitError("max_output_bytes", 20 * 1024 * 1024)
+        executionTools: (processor) => ({
+          layered_probe: {
+            async execute(input: unknown) {
+              executedAfterDispose = streamDisposed
+              processor.beginExecution("call_layered").complete(input, {
+                title: "Layered",
+                output: "done",
+                metadata: {},
+              })
+              return { title: "Layered", output: "done", metadata: {} }
+            },
           },
+        }),
+      })
+
+      expect(executedAfterDispose).toBe(true)
+      expect(parts.find((part) => part.type === "tool" && part.callID === "call_layered")).toMatchObject({
+        state: { status: "completed", output: "done" },
+      })
+    }))
+
+  test("contains process output overflow as one terminal ToolTask failure", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_layered_output_limit",
+        async *stream() {
+          yield {
+            type: "tool-call",
+            toolCallId: "call_output_limit",
+            toolName: "layered_probe",
+            input: { path: "large-tree" },
+          }
         },
-      }),
-    })
+        executionTools: () => ({
+          layered_probe: {
+            async execute() {
+              throw new ProcessOutput.LimitError("max_output_bytes", 20 * 1024 * 1024)
+            },
+          },
+        }),
+      })
 
-    expect(parts.find((part) => part.type === "tool" && part.callID === "call_output_limit")).toMatchObject({
-      state: {
-        status: "error",
-        error: "Process output exceeded total limit of 20971520 bytes",
-      },
-    })
-  })
-
-  test("does not pass executable tools or Control Plane handles into the Agent layer", async () => {
-    let keys: string[] = []
-    await runSettlementScenario({
-      messageID: "msg_layer_boundary",
-      async *stream() {
-        yield { type: "finish" }
-      },
-      inspectAgentInput(input) {
-        keys = Object.keys(input)
-      },
-      executionTools: () => ({
-        layered_probe: {
-          async execute() {},
+      expect(parts.find((part) => part.type === "tool" && part.callID === "call_output_limit")).toMatchObject({
+        state: {
+          status: "error",
+          error: "Process output exceeded total limit of 20971520 bytes",
         },
-      }),
-    })
+      })
+    }))
 
-    expect(keys).not.toContain("executionTools")
-    expect(keys).not.toContain("executorKinds")
-    expect(keys).not.toContain("memoryTurn")
-  })
+  test("does not pass executable tools or Control Plane handles into the Agent layer", () =>
+    runtime.run(async () => {
+      let keys: string[] = []
+      await runSettlementScenario({
+        messageID: "msg_layer_boundary",
+        async *stream() {
+          yield { type: "finish" }
+        },
+        inspectAgentInput(input) {
+          keys = Object.keys(input)
+        },
+        executionTools: () => ({
+          layered_probe: {
+            async execute() {},
+          },
+        }),
+      })
 
-  test("releases model request collections after the Agent turn settles", async () => {
-    let system: unknown[] | undefined
-    let messages: unknown[] | undefined
-    let toolDefinitions: unknown[] | undefined
-    await runSettlementScenario({
-      messageID: "msg_layer_release",
-      async *stream() {
-        yield { type: "finish" }
-      },
-      inspectAgentInput(input) {
-        system = input.system as unknown[]
-        messages = input.messages as unknown[]
-        toolDefinitions = input.toolDefinitions as unknown[]
-      },
-      agentInput: {
+      expect(keys).not.toContain("executionTools")
+      expect(keys).not.toContain("executorKinds")
+      expect(keys).not.toContain("memoryTurn")
+    }))
+
+  test("releases model request collections after the Agent turn settles", () =>
+    runtime.run(async () => {
+      let system: unknown[] | undefined
+      let messages: unknown[] | undefined
+      let toolDefinitions: unknown[] | undefined
+      await runSettlementScenario({
+        messageID: "msg_layer_release",
+        async *stream() {
+          yield { type: "finish" }
+        },
+        inspectAgentInput(input) {
+          system = input.system as unknown[]
+          messages = input.messages as unknown[]
+          toolDefinitions = input.toolDefinitions as unknown[]
+        },
+        agentInput: {
+          system: ["system"],
+          messages: [{ role: "user", content: "message" }],
+          toolDefinitions: [{ id: "probe", description: "probe", inputSchema: { type: "object" } }],
+        },
+      })
+
+      expect(system).toEqual([])
+      expect(messages).toEqual([])
+      expect(toolDefinitions).toEqual([])
+    }))
+
+  test("preserves model request collections for a retryable Agent failure", () =>
+    runtime.run(async () => {
+      const attempts: Array<{
+        system: unknown[]
+        lateSystem: unknown[]
+        messages: unknown[]
+        toolDefinitions: unknown[]
+        activeToolIDs: unknown[]
+      }> = []
+      const agentInput = {
         system: ["system"],
+        lateSystem: ["runtime"],
         messages: [{ role: "user", content: "message" }],
         toolDefinitions: [{ id: "probe", description: "probe", inputSchema: { type: "object" } }],
-      },
-    })
+        activeToolIDs: ["probe"],
+      }
+      const expected = structuredClone(agentInput)
 
-    expect(system).toEqual([])
-    expect(messages).toEqual([])
-    expect(toolDefinitions).toEqual([])
-  })
-
-  test("preserves model request collections for a retryable Agent failure", async () => {
-    const attempts: Array<{
-      system: unknown[]
-      lateSystem: unknown[]
-      messages: unknown[]
-      toolDefinitions: unknown[]
-      activeToolIDs: unknown[]
-    }> = []
-    const agentInput = {
-      system: ["system"],
-      lateSystem: ["runtime"],
-      messages: [{ role: "user", content: "message" }],
-      toolDefinitions: [{ id: "probe", description: "probe", inputSchema: { type: "object" } }],
-      activeToolIDs: ["probe"],
-    }
-    const expected = structuredClone(agentInput)
-
-    await runSettlementScenario({
-      messageID: "msg_layer_retry",
-      async *stream() {
-        if (attempts.length === 1) {
-          throw new APICallError({
-            message: "The operation timed out.",
-            url: "https://provider.invalid",
-            requestBodyValues: {},
-            isRetryable: true,
-            responseHeaders: { "retry-after-ms": "1" },
+      await runSettlementScenario({
+        messageID: "msg_layer_retry",
+        async *stream() {
+          if (attempts.length === 1) {
+            throw new APICallError({
+              message: "The operation timed out.",
+              url: "https://provider.invalid",
+              requestBodyValues: {},
+              isRetryable: true,
+              responseHeaders: { "retry-after-ms": "1" },
+            })
+          }
+          yield { type: "finish" }
+        },
+        inspectAgentInput(input) {
+          attempts.push({
+            system: [...(input.system as unknown[])],
+            lateSystem: [...(input.lateSystem as unknown[])],
+            messages: [...(input.messages as unknown[])],
+            toolDefinitions: [...(input.toolDefinitions as unknown[])],
+            activeToolIDs: [...(input.activeToolIDs as unknown[])],
           })
-        }
-        yield { type: "finish" }
-      },
-      inspectAgentInput(input) {
-        attempts.push({
-          system: [...(input.system as unknown[])],
-          lateSystem: [...(input.lateSystem as unknown[])],
-          messages: [...(input.messages as unknown[])],
-          toolDefinitions: [...(input.toolDefinitions as unknown[])],
-          activeToolIDs: [...(input.activeToolIDs as unknown[])],
-        })
-      },
-      agentInput,
-    })
+        },
+        agentInput,
+      })
 
-    expect(attempts).toEqual([expected, expected])
-  })
+      expect(attempts).toEqual([expected, expected])
+    }))
 })
 
 describe("SessionProcessor terminal part checkpoints", () => {
   for (const testCase of ["failure", "signal-abort", "provider-abort"] as const) {
-    test(`publishes the complete active text part after ${testCase}`, async () => {
-      const controller = new AbortController()
-      const checkpoints: string[] = []
+    test(`publishes the complete active text part after ${testCase}`, () =>
+      runtime.run(async () => {
+        const controller = new AbortController()
+        const checkpoints: string[] = []
 
-      await runSettlementScenario({
-        messageID: `msg_terminal_checkpoint_${testCase}`,
-        abort: controller.signal,
-        async updatePart(input) {
-          const part = "part" in input ? input.part : input
-          if (part.type === "text") checkpoints.push(part.text)
-          return part
-        },
-        async *stream() {
-          yield { type: "text-start", id: "text_1" }
-          yield { type: "text-delta", id: "text_1", text: "partial response" }
-          if (testCase === "failure") throw new Error("stream failed")
-          if (testCase === "signal-abort") controller.abort()
-          yield { type: "abort" }
-        },
-      })
+        await runSettlementScenario({
+          messageID: `msg_terminal_checkpoint_${testCase}`,
+          abort: controller.signal,
+          async updatePart(input) {
+            const part = "part" in input ? input.part : input
+            if (part.type === "text") checkpoints.push(part.text)
+            return part
+          },
+          async *stream() {
+            yield { type: "text-start", id: "text_1" }
+            yield { type: "text-delta", id: "text_1", text: "partial response" }
+            if (testCase === "failure") throw new Error("stream failed")
+            if (testCase === "signal-abort") controller.abort()
+            yield { type: "abort" }
+          },
+        })
 
-      // The failure path may checkpoint the active text part more than once
-      // (terminal part write plus the interrupted-stream flush). The contract
-      // is that the complete text is published, not that it is published
-      // exactly once.
-      expect([...new Set(checkpoints)]).toEqual(["partial response"])
-    })
+        // The failure path may checkpoint the active text part more than once
+        // (terminal part write plus the interrupted-stream flush). The contract
+        // is that the complete text is published, not that it is published
+        // exactly once.
+        expect([...new Set(checkpoints)]).toEqual(["partial response"])
+      }))
   }
 })
 
-test("assistant and step projections use the committed attempt accounting", async () => {
-  await rolloutFixture(async ({ call }) => {
-    await completeRollout(call)
-    let persisted: MessageV2.Assistant | undefined
-    const parts = await runSettlementScenario({
-      messageID: "msg_accounting_projection",
-      rollout: { owner: call.owner, runID: call.runID, callID: call.id },
-      updateMessage(message) {
-        persisted = structuredClone(message)
-      },
-      async *stream() {
-        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 3, outputTokens: 2 } }
-      },
+test("assistant and step projections use the committed attempt accounting", () =>
+  runtime.run(async () => {
+    await rolloutFixture(async ({ call }) => {
+      await completeRollout(call)
+      let persisted: MessageV2.Assistant | undefined
+      const parts = await runSettlementScenario({
+        messageID: "msg_accounting_projection",
+        rollout: { owner: call.owner, runID: call.runID, callID: call.id },
+        updateMessage(message) {
+          persisted = structuredClone(message)
+        },
+        async *stream() {
+          yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 3, outputTokens: 2 } }
+        },
+      })
+      expect(persisted?.cost).toBeCloseTo(0.0105)
+      expect(persisted?.tokens.output).toBe(500)
+      expect(persisted?.accounting?.kind).toBe("rollout")
+      const step = parts.find((part) => part.type === "step-finish")
+      expect(step?.type === "step-finish" && step.cost).toBeCloseTo(0.0105)
     })
-    expect(persisted?.cost).toBeCloseTo(0.0105)
-    expect(persisted?.tokens.output).toBe(500)
-    expect(persisted?.accounting?.kind).toBe("rollout")
-    const step = parts.find((part) => part.type === "step-finish")
-    expect(step?.type === "step-finish" && step.cost).toBeCloseTo(0.0105)
-  })
-})
+  }))
 
 describe("SessionProcessor context usage persistence", () => {
   const contextUsageDraft: ContextUsage.Draft = {
@@ -560,37 +577,11 @@ describe("SessionProcessor context usage persistence", () => {
     estimator: { kind: "model-tokenizer", encoding: "o200k_base" },
   }
 
-  test("persists a provider-exact reconciled snapshot with normalized usage", async () => {
-    const persisted: MessageV2.Assistant[] = []
-    await runSettlementScenario({
-      messageID: "msg_context_usage",
-      contextUsageDraft,
-      updateMessage(message) {
-        persisted.push(structuredClone(message))
-      },
-      async *stream() {
-        yield {
-          type: "finish-step",
-          finishReason: "stop",
-          usage: { inputTokens: 12, cachedInputTokens: 3, outputTokens: 2, reasoningTokens: 1 },
-        }
-      },
-    })
-
-    const enriched = persisted.findLast((message) => message.contextUsage !== undefined)
-    expect(enriched?.tokens).toEqual({ input: 9, output: 2, reasoning: 1, cache: { read: 3, write: 0 } })
-    expect(enriched?.contextUsage?.totalInput).toBe(12)
-    expect(enriched?.contextUsage && ContextUsage.attributedTotal(enriched.contextUsage)).toBe(12)
-    expect(JSON.stringify(enriched?.contextUsage)).not.toContain("prompt")
-  })
-
-  test("uses rollout input total when cache breakdown is unavailable", async () => {
-    await rolloutFixture(async ({ call }) => {
-      await completeRollout(call, { inputTokens: 93_898, omitCacheDetails: true })
+  test("persists a provider-exact reconciled snapshot with normalized usage", () =>
+    runtime.run(async () => {
       const persisted: MessageV2.Assistant[] = []
       await runSettlementScenario({
-        messageID: "msg_context_usage_rollout_cache_gap",
-        rollout: { owner: call.owner, runID: call.runID, callID: call.id },
+        messageID: "msg_context_usage",
         contextUsageDraft,
         updateMessage(message) {
           persisted.push(structuredClone(message))
@@ -599,191 +590,226 @@ describe("SessionProcessor context usage persistence", () => {
           yield {
             type: "finish-step",
             finishReason: "stop",
-            usage: { inputTokens: 93_898, outputTokens: 306 },
+            usage: { inputTokens: 12, cachedInputTokens: 3, outputTokens: 2, reasoningTokens: 1 },
           }
         },
       })
 
       const enriched = persisted.findLast((message) => message.contextUsage !== undefined)
-      expect(enriched?.tokens).toEqual({ input: 0, output: 500, reasoning: 100, cache: { read: 0, write: 0 } })
-      expect(enriched?.contextUsage?.totalInput).toBe(93_898)
-      expect(enriched?.contextUsage?.reconciliation).toEqual({ mode: "residual", factor: 1 })
-      expect(enriched?.contextUsage?.overhead.attributedTokens).toBe(93_888)
-      expect(enriched?.contextUsage && ContextUsage.attributedTotal(enriched.contextUsage)).toBe(93_898)
-    })
-  })
+      expect(enriched?.tokens).toEqual({ input: 9, output: 2, reasoning: 1, cache: { read: 3, write: 0 } })
+      expect(enriched?.contextUsage?.totalInput).toBe(12)
+      expect(enriched?.contextUsage && ContextUsage.attributedTotal(enriched.contextUsage)).toBe(12)
+      expect(JSON.stringify(enriched?.contextUsage)).not.toContain("prompt")
+    }))
 
-  test("does not persist a snapshot when provider input usage is unavailable", async () => {
-    let persisted: MessageV2.Assistant | undefined
-    await runSettlementScenario({
-      messageID: "msg_context_usage_missing",
-      contextUsageDraft,
-      updateMessage(message) {
-        persisted = structuredClone(message)
-      },
-      async *stream() {
-        yield {
-          type: "finish-step",
-          finishReason: "stop",
-          usage: { outputTokens: 2, reasoningTokens: 1 },
-        }
-      },
-    })
+  test("uses rollout input total when cache breakdown is unavailable", () =>
+    runtime.run(async () => {
+      await rolloutFixture(async ({ call }) => {
+        await completeRollout(call, { inputTokens: 93_898, omitCacheDetails: true })
+        const persisted: MessageV2.Assistant[] = []
+        await runSettlementScenario({
+          messageID: "msg_context_usage_rollout_cache_gap",
+          rollout: { owner: call.owner, runID: call.runID, callID: call.id },
+          contextUsageDraft,
+          updateMessage(message) {
+            persisted.push(structuredClone(message))
+          },
+          async *stream() {
+            yield {
+              type: "finish-step",
+              finishReason: "stop",
+              usage: { inputTokens: 93_898, outputTokens: 306 },
+            }
+          },
+        })
 
-    expect(persisted?.contextUsage).toBeUndefined()
-  })
-  test("does not treat cache-only metadata as an exact provider input total", async () => {
-    let persisted: MessageV2.Assistant | undefined
-    await runSettlementScenario({
-      messageID: "msg_context_usage_cache_only",
-      contextUsageDraft,
-      updateMessage(message) {
-        persisted = structuredClone(message)
-      },
-      async *stream() {
-        yield {
-          type: "finish-step",
-          finishReason: "stop",
-          usage: { outputTokens: 2 },
-          providerMetadata: { anthropic: { cacheCreationInputTokens: 8 } },
-        }
-      },
-    })
+        const enriched = persisted.findLast((message) => message.contextUsage !== undefined)
+        expect(enriched?.tokens).toEqual({ input: 0, output: 500, reasoning: 100, cache: { read: 0, write: 0 } })
+        expect(enriched?.contextUsage?.totalInput).toBe(93_898)
+        expect(enriched?.contextUsage?.reconciliation).toEqual({ mode: "residual", factor: 1 })
+        expect(enriched?.contextUsage?.overhead.attributedTokens).toBe(93_888)
+        expect(enriched?.contextUsage && ContextUsage.attributedTotal(enriched.contextUsage)).toBe(93_898)
+      })
+    }))
 
-    expect(persisted?.contextUsage).toBeUndefined()
-  })
+  test("does not persist a snapshot when provider input usage is unavailable", () =>
+    runtime.run(async () => {
+      let persisted: MessageV2.Assistant | undefined
+      await runSettlementScenario({
+        messageID: "msg_context_usage_missing",
+        contextUsageDraft,
+        updateMessage(message) {
+          persisted = structuredClone(message)
+        },
+        async *stream() {
+          yield {
+            type: "finish-step",
+            finishReason: "stop",
+            usage: { outputTokens: 2, reasoningTokens: 1 },
+          }
+        },
+      })
 
-  test("does not wait for unavailable Context Usage enrichment", async () => {
-    let persisted: MessageV2.Assistant | undefined
-    let settleDraft!: (draft: ContextUsage.Draft | undefined) => void
-    const draft = new Promise<ContextUsage.Draft | undefined>((resolve) => {
-      settleDraft = resolve
-    })
-    const processing = runSettlementScenario({
-      messageID: "msg_context_usage_fail_open",
-      contextUsageDraft: draft,
-      updateMessage(message) {
-        persisted = structuredClone(message)
-      },
-      async *stream() {
-        yield {
-          type: "finish-step",
-          finishReason: "stop",
-          usage: { inputTokens: 12, outputTokens: 2 },
-        }
-      },
-    })
+      expect(persisted?.contextUsage).toBeUndefined()
+    }))
+  test("does not treat cache-only metadata as an exact provider input total", () =>
+    runtime.run(async () => {
+      let persisted: MessageV2.Assistant | undefined
+      await runSettlementScenario({
+        messageID: "msg_context_usage_cache_only",
+        contextUsageDraft,
+        updateMessage(message) {
+          persisted = structuredClone(message)
+        },
+        async *stream() {
+          yield {
+            type: "finish-step",
+            finishReason: "stop",
+            usage: { outputTokens: 2 },
+            providerMetadata: { anthropic: { cacheCreationInputTokens: 8 } },
+          }
+        },
+      })
 
-    await expect(
-      Promise.race([processing, Bun.sleep(100).then(() => Promise.reject(new Error("blocked")))]),
-    ).resolves.toBeDefined()
-    expect(persisted?.finish).toBe("stop")
-    expect(persisted?.contextUsage).toBeUndefined()
-    settleDraft(undefined)
-  })
+      expect(persisted?.contextUsage).toBeUndefined()
+    }))
+
+  test("does not wait for unavailable Context Usage enrichment", () =>
+    runtime.run(async () => {
+      let persisted: MessageV2.Assistant | undefined
+      let settleDraft!: (draft: ContextUsage.Draft | undefined) => void
+      const draft = new Promise<ContextUsage.Draft | undefined>((resolve) => {
+        settleDraft = resolve
+      })
+      const processing = runSettlementScenario({
+        messageID: "msg_context_usage_fail_open",
+        contextUsageDraft: draft,
+        updateMessage(message) {
+          persisted = structuredClone(message)
+        },
+        async *stream() {
+          yield {
+            type: "finish-step",
+            finishReason: "stop",
+            usage: { inputTokens: 12, outputTokens: 2 },
+          }
+        },
+      })
+
+      await expect(
+        Promise.race([processing, Bun.sleep(100).then(() => Promise.reject(new Error("blocked")))]),
+      ).resolves.toBeDefined()
+      expect(persisted?.finish).toBe("stop")
+      expect(persisted?.contextUsage).toBeUndefined()
+      settleDraft(undefined)
+    }))
 })
 describe("SessionProcessor tool input bounds", () => {
-  test("persists the canonical AI SDK input when streamed JSON differs", async () => {
-    let runningInput: Record<string, unknown> | undefined
-    const canonicalInput = {
-      command: "git status",
-      workdir: "/workspace",
-      description: "Inspect repository status",
-    }
+  test("persists the canonical AI SDK input when streamed JSON differs", () =>
+    runtime.run(async () => {
+      let runningInput: Record<string, unknown> | undefined
+      const canonicalInput = {
+        command: "git status",
+        workdir: "/workspace",
+        description: "Inspect repository status",
+      }
 
-    const parts = await runSettlementScenario({
-      messageID: "msg_streamed_tool_input",
-      async updatePart(input) {
-        const part = "part" in input ? input.part : input
-        if (part.type === "tool" && part.state.status === "running") runningInput = part.state.input
-        return part
-      },
-      async *stream() {
-        yield { type: "tool-input-start", id: "call_streamed", toolName: "bash" }
-        yield {
-          type: "tool-input-delta",
-          id: "call_streamed",
-          delta: '{"command":"git status","workdir":"/tmp"}',
-        }
-        yield {
-          type: "tool-call",
-          toolCallId: "call_streamed",
-          toolName: "bash",
-          input: canonicalInput,
-        }
-      },
-    })
+      const parts = await runSettlementScenario({
+        messageID: "msg_streamed_tool_input",
+        async updatePart(input) {
+          const part = "part" in input ? input.part : input
+          if (part.type === "tool" && part.state.status === "running") runningInput = part.state.input
+          return part
+        },
+        async *stream() {
+          yield { type: "tool-input-start", id: "call_streamed", toolName: "bash" }
+          yield {
+            type: "tool-input-delta",
+            id: "call_streamed",
+            delta: '{"command":"git status","workdir":"/tmp"}',
+          }
+          yield {
+            type: "tool-call",
+            toolCallId: "call_streamed",
+            toolName: "bash",
+            input: canonicalInput,
+          }
+        },
+      })
 
-    expect(runningInput).toEqual(canonicalInput)
-    const settledPart = firstTool(parts, "call_streamed")
-    expect(settledPart?.state.input).toEqual(canonicalInput)
-  })
+      expect(runningInput).toEqual(canonicalInput)
+      const settledPart = firstTool(parts, "call_streamed")
+      expect(settledPart?.state.input).toEqual(canonicalInput)
+    }))
 
-  test("bounds the canonical AI SDK input even when streamed JSON is smaller", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_streamed_final_tool_input_limit",
-      async *stream() {
-        yield { type: "tool-input-start", id: "call_streamed_final_large", toolName: "edit" }
-        yield {
-          type: "tool-input-delta",
-          id: "call_streamed_final_large",
-          delta: '{"value":"small"}',
-        }
-        yield {
-          type: "tool-call",
-          toolCallId: "call_streamed_final_large",
-          toolName: "edit",
-          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
-        }
-      },
-    })
+  test("bounds the canonical AI SDK input even when streamed JSON is smaller", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_streamed_final_tool_input_limit",
+        async *stream() {
+          yield { type: "tool-input-start", id: "call_streamed_final_large", toolName: "edit" }
+          yield {
+            type: "tool-input-delta",
+            id: "call_streamed_final_large",
+            delta: '{"value":"small"}',
+          }
+          yield {
+            type: "tool-call",
+            toolCallId: "call_streamed_final_large",
+            toolName: "edit",
+            input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+          }
+        },
+      })
 
-    const part = firstTool(parts, "call_streamed_final_large")
-    expect(part?.state.status).toBe("error")
-    if (part?.state.status === "error") {
-      expect(part.state.error).toContain("exceeded")
-    }
-  })
+      const part = firstTool(parts, "call_streamed_final_large")
+      expect(part?.state.status).toBe("error")
+      if (part?.state.status === "error") {
+        expect(part.state.error).toContain("exceeded")
+      }
+    }))
 
-  test("terminates a tool part when streamed input exceeds the byte limit", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_tool_input_limit",
-      async *stream() {
-        yield { type: "tool-input-start", id: "call_large", toolName: "edit" }
-        yield {
-          type: "tool-input-delta",
-          id: "call_large",
-          delta: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1),
-        }
-      },
-    })
+  test("terminates a tool part when streamed input exceeds the byte limit", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_tool_input_limit",
+        async *stream() {
+          yield { type: "tool-input-start", id: "call_large", toolName: "edit" }
+          yield {
+            type: "tool-input-delta",
+            id: "call_large",
+            delta: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1),
+          }
+        },
+      })
 
-    const part = firstTool(parts, "call_large")
-    expect(part?.state.status).toBe("error")
-    if (part?.state.status === "error") {
-      expect(part.state.error).toContain("exceeded")
-    }
-  })
+      const part = firstTool(parts, "call_large")
+      expect(part?.state.status).toBe("error")
+      if (part?.state.status === "error") {
+        expect(part.state.error).toContain("exceeded")
+      }
+    }))
 
-  test("terminates a final-only tool call when input exceeds the byte limit", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_final_tool_input_limit",
-      async *stream() {
-        yield {
-          type: "tool-call",
-          toolCallId: "call_final_large",
-          toolName: "edit",
-          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
-        }
-      },
-    })
+  test("terminates a final-only tool call when input exceeds the byte limit", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_final_tool_input_limit",
+        async *stream() {
+          yield {
+            type: "tool-call",
+            toolCallId: "call_final_large",
+            toolName: "edit",
+            input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+          }
+        },
+      })
 
-    const part = firstTool(parts, "call_final_large")
-    expect(part?.state.status).toBe("error")
-    if (part?.state.status === "error") {
-      expect(part.state.error).toContain("exceeded")
-    }
-  })
+      const part = firstTool(parts, "call_final_large")
+      expect(part?.state.status).toBe("error")
+      if (part?.state.status === "error") {
+        expect(part.state.error).toContain("exceeded")
+      }
+    }))
 })
 
 function firstTool(parts: MessageV2.Part[], callID?: string) {
@@ -799,279 +825,293 @@ function completedOutcome(tool: string, output: string, metadata: Record<string,
 }
 
 describe("SessionProcessor execution slot settlement", () => {
-  test("settles a synthetic non-bash slot that resolves before the running part exists", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_slot_first",
-      async *stream(processor) {
-        yield { type: "start" }
-        processor
-          .beginExecution("call_slot_first")
-          .complete({ value: 1 }, completedOutcome("synthetic", "slot completed first", { family: "synthetic" }))
-        yield { type: "tool-call", toolCallId: "call_slot_first", toolName: "synthetic", input: { value: 1 } }
-      },
-    })
+  test("settles a synthetic non-bash slot that resolves before the running part exists", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_slot_first",
+        async *stream(processor) {
+          yield { type: "start" }
+          processor
+            .beginExecution("call_slot_first")
+            .complete({ value: 1 }, completedOutcome("synthetic", "slot completed first", { family: "synthetic" }))
+          yield { type: "tool-call", toolCallId: "call_slot_first", toolName: "synthetic", input: { value: 1 } }
+        },
+      })
 
-    const tool = firstTool(parts, "call_slot_first")
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") {
-      expect(tool.state.output).toBe("slot completed first")
-      expect(tool.state.metadata.family).toBe("synthetic")
-    }
-  })
+      const tool = firstTool(parts, "call_slot_first")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.state.output).toBe("slot completed first")
+        expect(tool.state.metadata.family).toBe("synthetic")
+      }
+    }))
 
-  test("applies execution metadata staged before the running part exists", async () => {
-    const callID = "call_staged_execution_metadata"
-    const executionStartedAt = 123_456
-    const toolTimeout = {
-      toolTimeoutMs: 300_000,
-      operationTimeoutMs: 15_000,
-      displayMs: 15_000,
-      source: "search",
-    }
-    let runningPart: MessageV2.ToolPart | undefined
+  test("applies execution metadata staged before the running part exists", () =>
+    runtime.run(async () => {
+      const callID = "call_staged_execution_metadata"
+      const executionStartedAt = 123_456
+      const toolTimeout = {
+        toolTimeoutMs: 300_000,
+        operationTimeoutMs: 15_000,
+        displayMs: 15_000,
+        source: "search",
+      }
+      let runningPart: MessageV2.ToolPart | undefined
 
-    await runSettlementScenario({
-      messageID: "msg_assistant_staged_execution_metadata",
-      updatePart: async (input) => {
-        const part = "part" in input ? input.part : input
-        if (part.type === "tool" && part.state.status === "running") {
-          runningPart = structuredClone(part)
-        }
-        return part
-      },
-      async *stream(processor) {
-        yield { type: "start" }
-        const slot = processor.beginExecution(callID)
-        await processor.updateToolCallState(callID, {
-          input: { pattern: "**/*.ts" },
-          metadata: { toolTimeout },
-          start: executionStartedAt,
-        })
-        await processor.updateToolCallState(callID, {
-          input: { pattern: "**/*.ts" },
-          title: "Glob files",
-          metadata: { approval: { status: "auto_allowed" } },
-        })
-        slot.complete({ pattern: "**/*.ts" }, completedOutcome("glob", "done"))
-        yield { type: "tool-call", toolCallId: callID, toolName: "glob", input: { pattern: "**/*.ts" } }
-      },
-    })
-
-    expect(runningPart?.state.status).toBe("running")
-    if (runningPart?.state.status === "running") {
-      expect(runningPart.state.metadata?.toolTimeout).toEqual(toolTimeout)
-      expect(runningPart.state.time.start).toBe(executionStartedAt)
-      expect(runningPart.state.title).toBe("Glob files")
-      expect(runningPart.state.metadata?.approval).toEqual({ status: "auto_allowed" })
-    }
-  })
-
-  test("applies execution metadata that arrives while the running part is persisted", async () => {
-    const callID = "call_inflight_execution_metadata"
-    const executionStartedAt = 456_789
-    const toolTimeout = {
-      toolTimeoutMs: 300_000,
-      operationTimeoutMs: 15_000,
-      displayMs: 15_000,
-      source: "search",
-    }
-    let processorDuringWrite: SessionProcessor.Info | undefined
-    let injected = false
-
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_inflight_execution_metadata",
-      updatePart: async (input) => {
-        const part = "part" in input ? input.part : input
-        if (
-          !injected &&
-          processorDuringWrite &&
-          part.type === "tool" &&
-          part.state.status === "running" &&
-          !part.state.metadata?.toolTimeout
-        ) {
-          injected = true
-          await processorDuringWrite.updateToolCallState(callID, {
+      await runSettlementScenario({
+        messageID: "msg_assistant_staged_execution_metadata",
+        updatePart: async (input) => {
+          const part = "part" in input ? input.part : input
+          if (part.type === "tool" && part.state.status === "running") {
+            runningPart = structuredClone(part)
+          }
+          return part
+        },
+        async *stream(processor) {
+          yield { type: "start" }
+          const slot = processor.beginExecution(callID)
+          await processor.updateToolCallState(callID, {
             input: { pattern: "**/*.ts" },
             metadata: { toolTimeout },
             start: executionStartedAt,
           })
-        }
-        return part
-      },
-      async *stream(processor) {
-        yield { type: "start" }
-        processorDuringWrite = processor
-        const slot = processor.beginExecution(callID)
-        yield { type: "tool-call", toolCallId: callID, toolName: "glob", input: { pattern: "**/*.ts" } }
-        slot.complete({ pattern: "**/*.ts" }, completedOutcome("glob", "done"))
-      },
-    })
+          await processor.updateToolCallState(callID, {
+            input: { pattern: "**/*.ts" },
+            title: "Glob files",
+            metadata: { approval: { status: "auto_allowed" } },
+          })
+          slot.complete({ pattern: "**/*.ts" }, completedOutcome("glob", "done"))
+          yield { type: "tool-call", toolCallId: callID, toolName: "glob", input: { pattern: "**/*.ts" } }
+        },
+      })
 
-    expect(injected).toBe(true)
-    const tool = firstTool(parts, callID)
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") {
-      expect(tool.state.metadata.toolTimeout).toEqual(toolTimeout)
-      expect(tool.state.time.start).toBe(executionStartedAt)
-    }
-  })
+      expect(runningPart?.state.status).toBe("running")
+      if (runningPart?.state.status === "running") {
+        expect(runningPart.state.metadata?.toolTimeout).toEqual(toolTimeout)
+        expect(runningPart.state.time.start).toBe(executionStartedAt)
+        expect(runningPart.state.title).toBe("Glob files")
+        expect(runningPart.state.metadata?.approval).toEqual({ status: "auto_allowed" })
+      }
+    }))
 
-  test("preserves staged execution metadata when oversized input errors", async () => {
-    const callID = "call_oversized_execution_metadata"
-    const toolTimeout = {
-      toolTimeoutMs: 300_000,
-      operationTimeoutMs: 15_000,
-      displayMs: 15_000,
-      source: "search",
-    }
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_oversized_execution_metadata",
-      async *stream(processor) {
-        yield { type: "start" }
-        await processor.updateToolCallState(callID, {
-          input: { value: "oversized" },
-          metadata: { toolTimeout },
-        })
-        yield {
-          type: "tool-call",
-          toolCallId: callID,
-          toolName: "glob",
-          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
-        }
-      },
-    })
+  test("applies execution metadata that arrives while the running part is persisted", () =>
+    runtime.run(async () => {
+      const callID = "call_inflight_execution_metadata"
+      const executionStartedAt = 456_789
+      const toolTimeout = {
+        toolTimeoutMs: 300_000,
+        operationTimeoutMs: 15_000,
+        displayMs: 15_000,
+        source: "search",
+      }
+      let processorDuringWrite: SessionProcessor.Info | undefined
+      let injected = false
 
-    const tool = firstTool(parts, callID)
-    expect(tool?.state.status).toBe("error")
-    if (tool?.state.status === "error") expect(tool.state.metadata?.toolTimeout).toEqual(toolTimeout)
-  })
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_inflight_execution_metadata",
+        updatePart: async (input) => {
+          const part = "part" in input ? input.part : input
+          if (
+            !injected &&
+            processorDuringWrite &&
+            part.type === "tool" &&
+            part.state.status === "running" &&
+            !part.state.metadata?.toolTimeout
+          ) {
+            injected = true
+            await processorDuringWrite.updateToolCallState(callID, {
+              input: { pattern: "**/*.ts" },
+              metadata: { toolTimeout },
+              start: executionStartedAt,
+            })
+          }
+          return part
+        },
+        async *stream(processor) {
+          yield { type: "start" }
+          processorDuringWrite = processor
+          const slot = processor.beginExecution(callID)
+          yield { type: "tool-call", toolCallId: callID, toolName: "glob", input: { pattern: "**/*.ts" } }
+          slot.complete({ pattern: "**/*.ts" }, completedOutcome("glob", "done"))
+        },
+      })
 
-  test("settles a synthetic non-bash slot when the running part exists before resolution", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_part_first",
-      async *stream(processor) {
-        yield { type: "start" }
-        yield { type: "tool-call", toolCallId: "call_part_first", toolName: "synthetic", input: { value: 2 } }
-        processor
-          .beginExecution("call_part_first")
-          .complete({ value: 2 }, completedOutcome("synthetic", "part completed first"))
-      },
-    })
+      expect(injected).toBe(true)
+      const tool = firstTool(parts, callID)
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.state.metadata.toolTimeout).toEqual(toolTimeout)
+        expect(tool.state.time.start).toBe(executionStartedAt)
+      }
+    }))
 
-    const tool = firstTool(parts, "call_part_first")
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") expect(tool.state.output).toBe("part completed first")
-  })
+  test("preserves staged execution metadata when oversized input errors", () =>
+    runtime.run(async () => {
+      const callID = "call_oversized_execution_metadata"
+      const toolTimeout = {
+        toolTimeoutMs: 300_000,
+        operationTimeoutMs: 15_000,
+        displayMs: 15_000,
+        source: "search",
+      }
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_oversized_execution_metadata",
+        async *stream(processor) {
+          yield { type: "start" }
+          await processor.updateToolCallState(callID, {
+            input: { value: "oversized" },
+            metadata: { toolTimeout },
+          })
+          yield {
+            type: "tool-call",
+            toolCallId: callID,
+            toolName: "glob",
+            input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+          }
+        },
+      })
 
-  test("settles a synthetic non-bash slot without any tool-result stream event", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_no_tool_result",
-      async *stream(processor) {
-        yield { type: "start" }
-        const slot = processor.beginExecution("call_no_tool_result")
-        yield { type: "tool-call", toolCallId: "call_no_tool_result", toolName: "synthetic", input: { value: 3 } }
-        slot.complete({ value: 3 }, completedOutcome("synthetic", "no tool-result needed"))
-      },
-    })
+      const tool = firstTool(parts, callID)
+      expect(tool?.state.status).toBe("error")
+      if (tool?.state.status === "error") expect(tool.state.metadata?.toolTimeout).toEqual(toolTimeout)
+    }))
 
-    const tool = firstTool(parts, "call_no_tool_result")
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") expect(tool.state.output).toBe("no tool-result needed")
-  })
+  test("settles a synthetic non-bash slot when the running part exists before resolution", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_part_first",
+        async *stream(processor) {
+          yield { type: "start" }
+          yield { type: "tool-call", toolCallId: "call_part_first", toolName: "synthetic", input: { value: 2 } }
+          processor
+            .beginExecution("call_part_first")
+            .complete({ value: 2 }, completedOutcome("synthetic", "part completed first"))
+        },
+      })
 
-  test("runs a completed tool post-persist effect after the tool part is durable", async () => {
-    let persisted = false
-    let committed = false
-    await runSettlementScenario({
-      messageID: "msg_assistant_post_persist",
-      updatePart: async (input) => {
-        const part = "part" in input ? input.part : input
-        if (part.type === "tool" && part.state.status === "completed") {
-          expect(committed).toBe(false)
-          persisted = true
-        }
-        return part
-      },
-      async *stream(processor) {
-        yield { type: "start" }
-        const slot = processor.beginExecution("call_post_persist")
-        yield { type: "tool-call", toolCallId: "call_post_persist", toolName: "synthetic", input: {} }
-        slot.complete(
-          {},
-          {
-            ...completedOutcome("synthetic", "persisted result"),
-            afterPersist: async () => {
-              expect(persisted).toBe(true)
-              committed = true
+      const tool = firstTool(parts, "call_part_first")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") expect(tool.state.output).toBe("part completed first")
+    }))
+
+  test("settles a synthetic non-bash slot without any tool-result stream event", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_no_tool_result",
+        async *stream(processor) {
+          yield { type: "start" }
+          const slot = processor.beginExecution("call_no_tool_result")
+          yield { type: "tool-call", toolCallId: "call_no_tool_result", toolName: "synthetic", input: { value: 3 } }
+          slot.complete({ value: 3 }, completedOutcome("synthetic", "no tool-result needed"))
+        },
+      })
+
+      const tool = firstTool(parts, "call_no_tool_result")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") expect(tool.state.output).toBe("no tool-result needed")
+    }))
+
+  test("runs a completed tool post-persist effect after the tool part is durable", () =>
+    runtime.run(async () => {
+      let persisted = false
+      let committed = false
+      await runSettlementScenario({
+        messageID: "msg_assistant_post_persist",
+        updatePart: async (input) => {
+          const part = "part" in input ? input.part : input
+          if (part.type === "tool" && part.state.status === "completed") {
+            expect(committed).toBe(false)
+            persisted = true
+          }
+          return part
+        },
+        async *stream(processor) {
+          yield { type: "start" }
+          const slot = processor.beginExecution("call_post_persist")
+          yield { type: "tool-call", toolCallId: "call_post_persist", toolName: "synthetic", input: {} }
+          slot.complete(
+            {},
+            {
+              ...completedOutcome("synthetic", "persisted result"),
+              afterPersist: async () => {
+                expect(persisted).toBe(true)
+                committed = true
+              },
             },
-          },
-        )
-      },
-    })
+          )
+        },
+      })
 
-    expect(committed).toBe(true)
-  })
+      expect(committed).toBe(true)
+    }))
 
-  test("settles a synthetic tool error outcome instead of unresolved", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_slot_error",
-      async *stream(processor) {
-        yield { type: "start" }
-        const slot = processor.beginExecution("call_slot_error")
-        yield { type: "tool-call", toolCallId: "call_slot_error", toolName: "synthetic", input: { value: 4 } }
-        slot.fail({ value: 4 }, "synthetic failed", { reason: "expected_failure" })
-      },
-    })
+  test("settles a synthetic tool error outcome instead of unresolved", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_slot_error",
+        async *stream(processor) {
+          yield { type: "start" }
+          const slot = processor.beginExecution("call_slot_error")
+          yield { type: "tool-call", toolCallId: "call_slot_error", toolName: "synthetic", input: { value: 4 } }
+          slot.fail({ value: 4 }, "synthetic failed", { reason: "expected_failure" })
+        },
+      })
 
-    const tool = firstTool(parts, "call_slot_error")
-    expect(tool?.state.status).toBe("error")
-    if (tool?.state.status === "error") {
-      expect(tool.state.error).toBe("synthetic failed")
-      expect(tool.state.metadata?.reason).toBe("expected_failure")
-    }
-  })
+      const tool = firstTool(parts, "call_slot_error")
+      expect(tool?.state.status).toBe("error")
+      if (tool?.state.status === "error") {
+        expect(tool.state.error).toBe("synthetic failed")
+        expect(tool.state.metadata?.reason).toBe("expected_failure")
+      }
+    }))
 
-  test("does not persist a duplicate tool part when a settled call is replayed before tool-error", async () => {
-    const callID = "call_replayed_after_settlement"
-    const input = { filePath: "/tmp/missing.txt" }
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_replayed_after_settlement",
-      async *stream(processor) {
-        yield { type: "start" }
-        processor.beginExecution(callID).fail(input, "file not found", { source: "execution" })
-        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
-        yield { type: "tool-input-start", id: callID, toolName: "view_file" }
-        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
-        yield { type: "tool-error", toolCallId: callID, error: new Error("AI SDK tool error") }
-      },
-    })
+  test("does not persist a duplicate tool part when a settled call is replayed before tool-error", () =>
+    runtime.run(async () => {
+      const callID = "call_replayed_after_settlement"
+      const input = { filePath: "/tmp/missing.txt" }
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_replayed_after_settlement",
+        async *stream(processor) {
+          yield { type: "start" }
+          processor.beginExecution(callID).fail(input, "file not found", { source: "execution" })
+          yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+          yield { type: "tool-input-start", id: callID, toolName: "view_file" }
+          yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+          yield { type: "tool-error", toolCallId: callID, error: new Error("AI SDK tool error") }
+        },
+      })
 
-    const toolParts = parts.filter((part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === callID)
-    expect(toolParts.map((part) => part.state.status)).toEqual(["error"])
-    expect(toolParts[0]?.state.status === "error" ? toolParts[0].state.error : undefined).toBe("file not found")
-  })
+      const toolParts = parts.filter(
+        (part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === callID,
+      )
+      expect(toolParts.map((part) => part.state.status)).toEqual(["error"])
+      expect(toolParts[0]?.state.status === "error" ? toolParts[0].state.error : undefined).toBe("file not found")
+    }))
 
-  test("does not persist a duplicate tool part after fallback tool-error settlement", async () => {
-    const callID = "call_replayed_after_fallback"
-    const input = { path: "missing.txt" }
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_replayed_after_fallback",
-      async *stream() {
-        yield { type: "start" }
-        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
-        yield { type: "tool-error", toolCallId: callID, error: new Error("AI SDK tool error") }
-        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
-      },
-    })
+  test("does not persist a duplicate tool part after fallback tool-error settlement", () =>
+    runtime.run(async () => {
+      const callID = "call_replayed_after_fallback"
+      const input = { path: "missing.txt" }
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_replayed_after_fallback",
+        async *stream() {
+          yield { type: "start" }
+          yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+          yield { type: "tool-error", toolCallId: callID, error: new Error("AI SDK tool error") }
+          yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+        },
+      })
 
-    const toolParts = parts.filter((part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === callID)
-    expect(toolParts).toHaveLength(1)
-    expect(toolParts[0]?.state.status).toBe("error")
-  })
+      const toolParts = parts.filter(
+        (part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === callID,
+      )
+      expect(toolParts).toHaveLength(1)
+      expect(toolParts[0]?.state.status).toBe("error")
+    }))
 
   describe("broad tool failure observability", () => {
-    beforeEach(() => resetObservabilityHome("synergy-processor-tool-failure-"))
-    afterEach(() => cleanupObservabilityHomes())
+    beforeEach(() => runtime.run(() => resetObservabilityState()))
+    afterEach(() => runtime.run(() => clearObservabilityState()))
 
     for (const scenario of [
       {
@@ -1089,21 +1129,99 @@ describe("SessionProcessor execution slot settlement", () => {
         startsToolInput: true,
       },
     ]) {
-      test(`records LLM ${scenario.errorClass} failures that never enter the executor`, async () => {
+      test(`records LLM ${scenario.errorClass} failures that never enter the executor`, () =>
+        runtime.run(async () => {
+          await runSettlementScenario({
+            messageID: `msg_${scenario.callID}`,
+            async *stream() {
+              yield { type: "start" }
+              if (scenario.startsToolInput) {
+                yield { type: "tool-input-start", id: scenario.callID, toolName: scenario.tool }
+              }
+              yield {
+                type: "tool-error",
+                toolCallId: scenario.callID,
+                toolName: scenario.tool,
+                input: {},
+                error: scenario.error,
+              }
+            },
+          })
+          ObservabilityStore.flush()
+
+          const metrics = ObservabilityStore.queryMetrics({
+            since: 0,
+            names: ["tool.execution.count", "tool.execution.error"],
+          })
+          expect(
+            metrics.filter((row) => row.call_id === scenario.callID && row.name === "tool.execution.count"),
+          ).toHaveLength(1)
+          const errors = metrics.filter((row) => row.call_id === scenario.callID && row.name === "tool.execution.error")
+          expect(errors).toHaveLength(1)
+          expect(JSON.parse(errors[0]!.labels_json).errorName).toBe(scenario.errorClass)
+
+          const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool: scenario.tool })
+          expect(issues).toHaveLength(1)
+          expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({
+            tool: scenario.tool,
+            phase: "llm.tool_call",
+            errorClass: scenario.errorClass,
+            owner: "llm",
+            callID: scenario.callID,
+          })
+        }))
+    }
+
+    test("does not double-count executor failures when the stream later emits tool-error", () =>
+      runtime.run(async () => {
+        const callID = "call_executor_then_stream_error"
+        const tool = "bash"
+        const error = new Error("executor failed")
         await runSettlementScenario({
-          messageID: `msg_${scenario.callID}`,
+          messageID: "msg_executor_then_stream_error",
+          async *stream(processor) {
+            yield { type: "start" }
+            const slot = processor.beginExecution(callID)
+            ObservabilityToolFailures.record({
+              tool,
+              sessionID: "ses_test",
+              messageID: "msg_executor_then_stream_error",
+              callID,
+              phase: "tool.execute",
+              error,
+              owner: "builtin",
+            })
+            slot.fail({ command: "exit 1" }, error.message)
+            yield { type: "tool-call", toolCallId: callID, toolName: tool, input: { command: "exit 1" } }
+            yield { type: "tool-error", toolCallId: callID, toolName: tool, input: { command: "exit 1" }, error }
+          },
+        })
+        ObservabilityStore.flush()
+
+        const metrics = ObservabilityStore.queryMetrics({
+          since: 0,
+          names: ["tool.execution.count", "tool.execution.error"],
+          tool,
+        })
+        expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.count")).toHaveLength(1)
+        expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.error")).toHaveLength(1)
+
+        const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool })
+        expect(issues).toHaveLength(1)
+        expect(issues[0]!.occurrence_count).toBe(1)
+        expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({ owner: "builtin", phase: "tool.execute" })
+      }))
+    test("records an LLM tool-error only once when the stream repeats the same call", () =>
+      runtime.run(async () => {
+        const callID = "call_repeated_tool_error"
+        const tool = "hallucinated_tool"
+        const error = new Error("Model tried to call unavailable tool 'hallucinated_tool'")
+        await runSettlementScenario({
+          messageID: "msg_repeated_tool_error",
           async *stream() {
             yield { type: "start" }
-            if (scenario.startsToolInput) {
-              yield { type: "tool-input-start", id: scenario.callID, toolName: scenario.tool }
-            }
-            yield {
-              type: "tool-error",
-              toolCallId: scenario.callID,
-              toolName: scenario.tool,
-              input: {},
-              error: scenario.error,
-            }
+            yield { type: "tool-error", toolCallId: callID, toolName: tool, input: {}, error }
+            yield { type: "tool-error", toolCallId: callID, toolName: tool, input: {}, error }
           },
         })
         ObservabilityStore.flush()
@@ -1112,302 +1230,246 @@ describe("SessionProcessor execution slot settlement", () => {
           since: 0,
           names: ["tool.execution.count", "tool.execution.error"],
         })
-        expect(
-          metrics.filter((row) => row.call_id === scenario.callID && row.name === "tool.execution.count"),
-        ).toHaveLength(1)
-        const errors = metrics.filter((row) => row.call_id === scenario.callID && row.name === "tool.execution.error")
-        expect(errors).toHaveLength(1)
-        expect(JSON.parse(errors[0]!.labels_json).errorName).toBe(scenario.errorClass)
+        expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.count")).toHaveLength(1)
+        expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.error")).toHaveLength(1)
+      }))
+  })
 
-        const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool: scenario.tool })
-        expect(issues).toHaveLength(1)
-        expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({
-          tool: scenario.tool,
-          phase: "llm.tool_call",
-          errorClass: scenario.errorClass,
-          owner: "llm",
-          callID: scenario.callID,
-        })
-      })
-    }
-
-    test("does not double-count executor failures when the stream later emits tool-error", async () => {
-      const callID = "call_executor_then_stream_error"
-      const tool = "bash"
-      const error = new Error("executor failed")
-      await runSettlementScenario({
-        messageID: "msg_executor_then_stream_error",
+  test("settles a save_file create-file outcome without tool-result", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_save_file",
         async *stream(processor) {
           yield { type: "start" }
-          const slot = processor.beginExecution(callID)
-          ObservabilityToolFailures.record({
-            tool,
-            sessionID: "ses_test",
-            messageID: "msg_executor_then_stream_error",
-            callID,
-            phase: "tool.execute",
-            error,
-            owner: "builtin",
+          const input = { filePath: "/tmp/new-file.txt", content: "hello" }
+          const slot = processor.beginExecution("call_save_file")
+          yield { type: "tool-call", toolCallId: "call_save_file", toolName: "save_file", input }
+          slot.complete(input, {
+            output: "[/tmp/new-file.txt#ABCD]\n1:hello",
+            title: "Create File",
+            metadata: { filepath: "/tmp/new-file.txt", exists: false, tag: "ABCD" },
           })
-          slot.fail({ command: "exit 1" }, error.message)
-          yield { type: "tool-call", toolCallId: callID, toolName: tool, input: { command: "exit 1" } }
-          yield { type: "tool-error", toolCallId: callID, toolName: tool, input: { command: "exit 1" }, error }
         },
       })
-      ObservabilityStore.flush()
 
-      const metrics = ObservabilityStore.queryMetrics({
-        since: 0,
-        names: ["tool.execution.count", "tool.execution.error"],
-        tool,
+      const tool = firstTool(parts, "call_save_file")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.tool).toBe("save_file")
+        expect(tool.state.metadata.exists).toBe(false)
+        expect(tool.state.output).toContain("#ABCD")
+      }
+    }))
+
+  test("settles a save_file error outcome as tool error", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_save_file_error",
+        async *stream(processor) {
+          yield { type: "start" }
+          const input = { filePath: "/tmp/denied.txt", content: "hello" }
+          const slot = processor.beginExecution("call_save_file_error")
+          yield { type: "tool-call", toolCallId: "call_save_file_error", toolName: "save_file", input }
+          slot.fail(input, "permission denied", { source: "permission" })
+        },
       })
-      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.count")).toHaveLength(1)
-      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.error")).toHaveLength(1)
 
-      const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool })
-      expect(issues).toHaveLength(1)
-      expect(issues[0]!.occurrence_count).toBe(1)
-      expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({ owner: "builtin", phase: "tool.execute" })
-    })
-    test("records an LLM tool-error only once when the stream repeats the same call", async () => {
-      const callID = "call_repeated_tool_error"
-      const tool = "hallucinated_tool"
-      const error = new Error("Model tried to call unavailable tool 'hallucinated_tool'")
+      const tool = firstTool(parts, "call_save_file_error")
+      expect(tool?.state.status).toBe("error")
+      if (tool?.state.status === "error") {
+        expect(tool.state.error).toBe("permission denied")
+        expect(tool.state.metadata?.source).toBe("permission")
+      }
+    }))
+
+  test("settles a write-like outcome without metadata fallback", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_write",
+        async *stream(processor) {
+          yield { type: "start" }
+          const input = { filePath: "/tmp/write.txt", content: "updated" }
+          const slot = processor.beginExecution("call_write")
+          yield { type: "tool-call", toolCallId: "call_write", toolName: "write", input }
+          slot.complete(input, completedOutcome("write", "Wrote /tmp/write.txt", { filepath: "/tmp/write.txt" }))
+        },
+      })
+
+      const tool = firstTool(parts, "call_write")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.tool).toBe("write")
+        expect(tool.state.output).toBe("Wrote /tmp/write.txt")
+      }
+    }))
+
+  test("settles bash from the slot instead of running metadata", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_bash_slot",
+        async *stream(processor) {
+          yield { type: "start" }
+          const input = { command: "git status --short" }
+          const slot = processor.beginExecution("call_bash")
+          yield { type: "tool-call", toolCallId: "call_bash", toolName: "bash", input }
+          slot.complete(input, completedOutcome("bash", " M file.ts\n", { exit: 0 }))
+        },
+      })
+
+      const tool = firstTool(parts, "call_bash")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.state.output).toBe(" M file.ts\n")
+        expect(tool.state.metadata.exit).toBe(0)
+      }
+    }))
+
+  test("settles parallel tool calls independently", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_parallel",
+        async *stream(processor) {
+          yield { type: "start" }
+          const first = processor.beginExecution("call_parallel_a")
+          const second = processor.beginExecution("call_parallel_b")
+          yield { type: "tool-call", toolCallId: "call_parallel_a", toolName: "write", input: { filePath: "a" } }
+          yield { type: "tool-call", toolCallId: "call_parallel_b", toolName: "bash", input: { command: "git log -1" } }
+          second.complete({ command: "git log -1" }, completedOutcome("bash", "commit b\n"))
+          first.complete({ filePath: "a" }, completedOutcome("write", "wrote a"))
+        },
+      })
+
+      const first = firstTool(parts, "call_parallel_a")
+      const second = firstTool(parts, "call_parallel_b")
+      expect(first?.state.status).toBe("completed")
+      expect(second?.state.status).toBe("completed")
+      if (first?.state.status === "completed") expect(first.state.output).toBe("wrote a")
+      if (second?.state.status === "completed") expect(second.state.output).toBe("commit b\n")
+    }))
+
+  test("keeps a resolved outcome available when the first settlement write fails and retries in finalization", () =>
+    runtime.run(async () => {
+      let failedOnce = false
+      const parts = new Map<string, MessageV2.Part>()
+      const settledParts = await runSettlementScenario({
+        messageID: "msg_assistant_retry_settlement",
+        updatePart: async (input) => {
+          const part = "part" in input ? input.part : input
+          if (part.type === "tool" && part.state.status === "completed" && !failedOnce) {
+            failedOnce = true
+            throw new Error("transient update failure")
+          }
+          parts.set(part.id, part)
+          return part
+        },
+        async *stream(processor) {
+          yield { type: "start" }
+          const slot = processor.beginExecution("call_retry_settlement")
+          yield {
+            type: "tool-call",
+            toolCallId: "call_retry_settlement",
+            toolName: "write",
+            input: { filePath: "retry" },
+          }
+          slot.complete({ filePath: "retry" }, completedOutcome("write", "settled after retry"))
+        },
+      })
+
+      const tool = firstTool(settledParts, "call_retry_settlement")
+      expect(failedOnce).toBe(true)
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") expect(tool.state.output).toBe("settled after retry")
+    }))
+
+  test("does not mark a stale running part unresolved after successful settlement", () =>
+    runtime.run(async () => {
+      let completedWrites = 0
+      let errorWrites = 0
+      const runningParts = new Map<string, MessageV2.ToolPart>()
       await runSettlementScenario({
-        messageID: "msg_repeated_tool_error",
+        messageID: "msg_assistant_stale_running_after_settle",
+        updatePart: async (input) => {
+          const part = "part" in input ? input.part : input
+          if (part.type !== "tool") return part
+          if (part.state.status === "running") runningParts.set(part.callID, part)
+          if (part.state.status === "completed") {
+            completedWrites++
+            return runningParts.get(part.callID) ?? part
+          }
+          if (part.state.status === "error") errorWrites++
+          return part
+        },
+        async *stream(processor) {
+          yield { type: "start" }
+          const input = { command: "git branch --show-current" }
+          const slot = processor.beginExecution("call_stale_settled")
+          yield { type: "tool-call", toolCallId: "call_stale_settled", toolName: "bash", input }
+          slot.complete(input, completedOutcome("bash", "dev\n", { exit: 0 }))
+        },
+      })
+
+      expect(completedWrites).toBe(1)
+      expect(errorWrites).toBe(0)
+    }))
+
+  test("marks a running part without an execution slot as missing_execution_slot", () =>
+    runtime.run(async () => {
+      const parts = await runSettlementScenario({
+        messageID: "msg_assistant_missing_slot",
+        config: { timeout: { tool: { default_sec: 0.001 } } },
         async *stream() {
           yield { type: "start" }
-          yield { type: "tool-error", toolCallId: callID, toolName: tool, input: {}, error }
-          yield { type: "tool-error", toolCallId: callID, toolName: tool, input: {}, error }
+          yield {
+            type: "tool-call",
+            toolCallId: "call_missing_slot",
+            toolName: "bash",
+            input: { command: "git status" },
+          }
         },
       })
-      ObservabilityStore.flush()
 
-      const metrics = ObservabilityStore.queryMetrics({
-        since: 0,
-        names: ["tool.execution.count", "tool.execution.error"],
-      })
-      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.count")).toHaveLength(1)
-      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.error")).toHaveLength(1)
-    })
-  })
-
-  test("settles a save_file create-file outcome without tool-result", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_save_file",
-      async *stream(processor) {
-        yield { type: "start" }
-        const input = { filePath: "/tmp/new-file.txt", content: "hello" }
-        const slot = processor.beginExecution("call_save_file")
-        yield { type: "tool-call", toolCallId: "call_save_file", toolName: "save_file", input }
-        slot.complete(input, {
-          output: "[/tmp/new-file.txt#ABCD]\n1:hello",
-          title: "Create File",
-          metadata: { filepath: "/tmp/new-file.txt", exists: false, tag: "ABCD" },
-        })
-      },
-    })
-
-    const tool = firstTool(parts, "call_save_file")
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") {
-      expect(tool.tool).toBe("save_file")
-      expect(tool.state.metadata.exists).toBe(false)
-      expect(tool.state.output).toContain("#ABCD")
-    }
-  })
-
-  test("settles a save_file error outcome as tool error", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_save_file_error",
-      async *stream(processor) {
-        yield { type: "start" }
-        const input = { filePath: "/tmp/denied.txt", content: "hello" }
-        const slot = processor.beginExecution("call_save_file_error")
-        yield { type: "tool-call", toolCallId: "call_save_file_error", toolName: "save_file", input }
-        slot.fail(input, "permission denied", { source: "permission" })
-      },
-    })
-
-    const tool = firstTool(parts, "call_save_file_error")
-    expect(tool?.state.status).toBe("error")
-    if (tool?.state.status === "error") {
-      expect(tool.state.error).toBe("permission denied")
-      expect(tool.state.metadata?.source).toBe("permission")
-    }
-  })
-
-  test("settles a write-like outcome without metadata fallback", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_write",
-      async *stream(processor) {
-        yield { type: "start" }
-        const input = { filePath: "/tmp/write.txt", content: "updated" }
-        const slot = processor.beginExecution("call_write")
-        yield { type: "tool-call", toolCallId: "call_write", toolName: "write", input }
-        slot.complete(input, completedOutcome("write", "Wrote /tmp/write.txt", { filepath: "/tmp/write.txt" }))
-      },
-    })
-
-    const tool = firstTool(parts, "call_write")
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") {
-      expect(tool.tool).toBe("write")
-      expect(tool.state.output).toBe("Wrote /tmp/write.txt")
-    }
-  })
-
-  test("settles bash from the slot instead of running metadata", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_bash_slot",
-      async *stream(processor) {
-        yield { type: "start" }
-        const input = { command: "git status --short" }
-        const slot = processor.beginExecution("call_bash")
-        yield { type: "tool-call", toolCallId: "call_bash", toolName: "bash", input }
-        slot.complete(input, completedOutcome("bash", " M file.ts\n", { exit: 0 }))
-      },
-    })
-
-    const tool = firstTool(parts, "call_bash")
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") {
-      expect(tool.state.output).toBe(" M file.ts\n")
-      expect(tool.state.metadata.exit).toBe(0)
-    }
-  })
-
-  test("settles parallel tool calls independently", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_parallel",
-      async *stream(processor) {
-        yield { type: "start" }
-        const first = processor.beginExecution("call_parallel_a")
-        const second = processor.beginExecution("call_parallel_b")
-        yield { type: "tool-call", toolCallId: "call_parallel_a", toolName: "write", input: { filePath: "a" } }
-        yield { type: "tool-call", toolCallId: "call_parallel_b", toolName: "bash", input: { command: "git log -1" } }
-        second.complete({ command: "git log -1" }, completedOutcome("bash", "commit b\n"))
-        first.complete({ filePath: "a" }, completedOutcome("write", "wrote a"))
-      },
-    })
-
-    const first = firstTool(parts, "call_parallel_a")
-    const second = firstTool(parts, "call_parallel_b")
-    expect(first?.state.status).toBe("completed")
-    expect(second?.state.status).toBe("completed")
-    if (first?.state.status === "completed") expect(first.state.output).toBe("wrote a")
-    if (second?.state.status === "completed") expect(second.state.output).toBe("commit b\n")
-  })
-
-  test("keeps a resolved outcome available when the first settlement write fails and retries in finalization", async () => {
-    let failedOnce = false
-    const parts = new Map<string, MessageV2.Part>()
-    const settledParts = await runSettlementScenario({
-      messageID: "msg_assistant_retry_settlement",
-      updatePart: async (input) => {
-        const part = "part" in input ? input.part : input
-        if (part.type === "tool" && part.state.status === "completed" && !failedOnce) {
-          failedOnce = true
-          throw new Error("transient update failure")
-        }
-        parts.set(part.id, part)
-        return part
-      },
-      async *stream(processor) {
-        yield { type: "start" }
-        const slot = processor.beginExecution("call_retry_settlement")
-        yield {
-          type: "tool-call",
-          toolCallId: "call_retry_settlement",
-          toolName: "write",
-          input: { filePath: "retry" },
-        }
-        slot.complete({ filePath: "retry" }, completedOutcome("write", "settled after retry"))
-      },
-    })
-
-    const tool = firstTool(settledParts, "call_retry_settlement")
-    expect(failedOnce).toBe(true)
-    expect(tool?.state.status).toBe("completed")
-    if (tool?.state.status === "completed") expect(tool.state.output).toBe("settled after retry")
-  })
-
-  test("does not mark a stale running part unresolved after successful settlement", async () => {
-    let completedWrites = 0
-    let errorWrites = 0
-    const runningParts = new Map<string, MessageV2.ToolPart>()
-    await runSettlementScenario({
-      messageID: "msg_assistant_stale_running_after_settle",
-      updatePart: async (input) => {
-        const part = "part" in input ? input.part : input
-        if (part.type !== "tool") return part
-        if (part.state.status === "running") runningParts.set(part.callID, part)
-        if (part.state.status === "completed") {
-          completedWrites++
-          return runningParts.get(part.callID) ?? part
-        }
-        if (part.state.status === "error") errorWrites++
-        return part
-      },
-      async *stream(processor) {
-        yield { type: "start" }
-        const input = { command: "git branch --show-current" }
-        const slot = processor.beginExecution("call_stale_settled")
-        yield { type: "tool-call", toolCallId: "call_stale_settled", toolName: "bash", input }
-        slot.complete(input, completedOutcome("bash", "dev\n", { exit: 0 }))
-      },
-    })
-
-    expect(completedWrites).toBe(1)
-    expect(errorWrites).toBe(0)
-  })
-
-  test("marks a running part without an execution slot as missing_execution_slot", async () => {
-    const parts = await runSettlementScenario({
-      messageID: "msg_assistant_missing_slot",
-      config: { timeout: { tool: { default_sec: 0.001 } } },
-      async *stream() {
-        yield { type: "start" }
-        yield { type: "tool-call", toolCallId: "call_missing_slot", toolName: "bash", input: { command: "git status" } }
-      },
-    })
-
-    const tool = firstTool(parts, "call_missing_slot")
-    expect(tool?.state.status).toBe("error")
-    if (tool?.state.status === "error") {
-      expect(tool.state.error).toBe("Tool execution did not return a final result")
-      expect(tool.state.metadata?.reason).toBe("missing_execution_slot")
-      expect(tool.state.metadata?.tool).toBe("bash")
-    }
-  })
+      const tool = firstTool(parts, "call_missing_slot")
+      expect(tool?.state.status).toBe("error")
+      if (tool?.state.status === "error") {
+        expect(tool.state.error).toBe("Tool execution did not return a final result")
+        expect(tool.state.metadata?.reason).toBe("missing_execution_slot")
+        expect(tool.state.metadata?.tool).toBe("bash")
+      }
+    }))
 })
 
 describe("SessionProcessor.unresolvedToolError", () => {
-  test("reserves aborted wording for true fast aborts", () => {
-    expect(SessionProcessor.unresolvedToolError(true)).toBe("Tool execution aborted")
-    expect(SessionProcessor.unresolvedToolError(false)).toBe("Tool execution did not return a final result")
-  })
+  test("reserves aborted wording for true fast aborts", () =>
+    runtime.run(() => {
+      expect(SessionProcessor.unresolvedToolError(true)).toBe("Tool execution aborted")
+      expect(SessionProcessor.unresolvedToolError(false)).toBe("Tool execution did not return a final result")
+    }))
 })
 
 describe("SessionProcessor.isFastAbort", () => {
-  test("detects pre-aborted signals", () => {
-    const controller = new AbortController()
-    controller.abort()
+  test("detects pre-aborted signals", () =>
+    runtime.run(() => {
+      const controller = new AbortController()
+      controller.abort()
 
-    expect(SessionProcessor.isFastAbort(controller.signal)).toBe(true)
-  })
+      expect(SessionProcessor.isFastAbort(controller.signal)).toBe(true)
+    }))
 
-  test("detects abort errors", () => {
-    const controller = new AbortController()
+  test("detects abort errors", () =>
+    runtime.run(() => {
+      const controller = new AbortController()
 
-    expect(
-      SessionProcessor.isFastAbort(controller.signal, new DOMException("The operation was aborted.", "AbortError")),
-    ).toBe(true)
-  })
+      expect(
+        SessionProcessor.isFastAbort(controller.signal, new DOMException("The operation was aborted.", "AbortError")),
+      ).toBe(true)
+    }))
 
-  test("ignores normal errors while the signal is active", () => {
-    const controller = new AbortController()
+  test("ignores normal errors while the signal is active", () =>
+    runtime.run(() => {
+      const controller = new AbortController()
 
-    expect(SessionProcessor.isFastAbort(controller.signal, new Error("boom"))).toBe(false)
-  })
+      expect(SessionProcessor.isFastAbort(controller.signal, new Error("boom"))).toBe(false)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

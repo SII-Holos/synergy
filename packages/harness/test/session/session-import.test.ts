@@ -15,8 +15,11 @@ import { SessionNav } from "../../src/session/nav"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
 import { SessionBounds } from "../../src/session/bounds"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 async function writeExchange(sessionID: string, text: string, metadata?: Record<string, any>) {
   const userID = Identifier.ascending("message")
@@ -70,159 +73,228 @@ async function writeExchange(sessionID: string, text: string, metadata?: Record<
 }
 
 describe("SessionImport", () => {
-  test("marks missing originals when importing a transcript without its artifact files", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const source = await Session.create({})
-        await writeExchange(source.id, "test")
-        const messages = await Session.messages({ sessionID: source.id })
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          sessionID: source.id,
-          messageID: messages[1].info.id,
-          type: "tool",
-          tool: "read",
-          callID: "test-call",
-          state: {
-            status: "completed",
-            input: {},
-            output: "x".repeat(50_000),
-            title: "read",
-            metadata: {},
-            time: { start: 1, end: 2 },
-          },
-        })
-        const report = await SessionExport.generate({ sessionID: source.id, mode: "full" })
-        await Session.remove(source.id)
-        const imported = await SessionImport.fromReport(report)
-        try {
-          expect(imported.warnings.some((warning) => warning.includes("artifact"))).toBe(true)
-          const parts = (await Session.messages({ sessionID: imported.rootSessionID })).flatMap(
-            (message) => message.parts,
-          )
-          const tool = parts.find((part) => part.type === "tool")
-          if (!tool || tool.type !== "tool" || tool.state.status !== "completed")
-            throw new Error("Expected imported tool")
-          expect(tool.state.metadata.rolloutImportMissingOutput).toBeDefined()
-          expect(tool.state.outputArtifact?.id).not.toBe(tool.state.metadata.rolloutImportMissingOutput.id)
-        } finally {
-          await Session.remove(imported.rootSessionID)
-        }
-      },
-    })
-  })
-
-  test("imports gzipped full export reports with session tree data and indexes", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scope = ScopeContext.current.scope
-        const root = await Session.create({ title: "Export Root" })
-        const child = await Session.create({ title: "Export Child", parentID: root.id })
-
-        await writeExchange(root.id, "root prompt", {
-          sourceSessionID: child.id,
-          nested: { sessionId: child.id },
-        })
-        await writeExchange(child.id, "child prompt")
-        await Dag.update({
-          sessionID: root.id,
-          nodes: [
-            {
-              id: "root-task",
-              content: "Review imported child",
+  test("marks missing originals when importing a transcript without its artifact files", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const source = await Session.create({})
+          await writeExchange(source.id, "test")
+          const messages = await Session.messages({ sessionID: source.id })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: source.id,
+            messageID: messages[1].info.id,
+            type: "tool",
+            tool: "read",
+            callID: "test-call",
+            state: {
               status: "completed",
-              deps: [],
-              session_id: child.id,
-              assign: "intent-analyst",
+              input: {},
+              output: "x".repeat(50_000),
+              title: "read",
+              metadata: {},
+              time: { start: 1, end: 2 },
             },
-          ],
-        })
-        await Todo.update({
-          sessionID: root.id,
-          todos: [{ id: "todo-1", content: "Check import", status: "completed", priority: "high" }],
-        })
-        await Storage.write(
-          StoragePath.sessionSummary(Identifier.asScopeID(scope.id), Identifier.asSessionID(root.id)),
-          [{ file: "src/example.ts", additions: 2, deletions: 1, preview: "@@ example" }],
-        )
+          })
+          const report = await SessionExport.generate({ sessionID: source.id, mode: "full" })
+          await Session.remove(source.id)
+          const imported = await SessionImport.fromReport(report)
+          try {
+            expect(imported.warnings.some((warning) => warning.includes("artifact"))).toBe(true)
+            const parts = (await Session.messages({ sessionID: imported.rootSessionID })).flatMap(
+              (message) => message.parts,
+            )
+            const tool = parts.find((part) => part.type === "tool")
+            if (!tool || tool.type !== "tool" || tool.state.status !== "completed")
+              throw new Error("Expected imported tool")
+            expect(tool.state.metadata.rolloutImportMissingOutput).toBeDefined()
+            expect(tool.state.outputArtifact?.id).not.toBe(tool.state.metadata.rolloutImportMissingOutput.id)
+          } finally {
+            await Session.remove(imported.rootSessionID)
+          }
+        },
+      })
+    }))
 
-        const report = await SessionExport.generate({ sessionID: root.id, mode: "full" })
-        const compressed = Bun.gzipSync(Buffer.from(JSON.stringify(report)))
+  test("imports gzipped full export reports with session tree data and indexes", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scope = ScopeContext.current.scope
+          const root = await Session.create({ title: "Export Root" })
+          const child = await Session.create({ title: "Export Child", parentID: root.id })
 
-        await Session.remove(root.id)
+          await writeExchange(root.id, "root prompt", {
+            sourceSessionID: child.id,
+            nested: { sessionId: child.id },
+          })
+          await writeExchange(child.id, "child prompt")
+          await Dag.update({
+            sessionID: root.id,
+            nodes: [
+              {
+                id: "root-task",
+                content: "Review imported child",
+                status: "completed",
+                deps: [],
+                session_id: child.id,
+                assign: "intent-analyst",
+              },
+            ],
+          })
+          await Todo.update({
+            sessionID: root.id,
+            todos: [{ id: "todo-1", content: "Check import", status: "completed", priority: "high" }],
+          })
+          await Storage.write(
+            StoragePath.sessionSummary(Identifier.asScopeID(scope.id), Identifier.asSessionID(root.id)),
+            [{ file: "src/example.ts", additions: 2, deletions: 1, preview: "@@ example" }],
+          )
 
-        const result = await SessionImport.fromBuffer(compressed)
-        const importedRoot = await Session.get(result.rootSessionID)
-        const importedChild = result.sessions.find((item) => item.sourceSessionID === child.id)?.session
-        expect(result.sessionCount).toBe(2)
-        expect(result.messageCount).toBe(4)
-        expect(result.warnings).toEqual([])
-        expect(importedRoot.id).not.toBe(root.id)
-        expect((importedRoot.scope as Scope).id).toBe(scope.id)
-        expect(importedRoot.title).toBe("Export Root")
-        expect(importedRoot.endpoint).toBeUndefined()
-        expect("agenda" in importedRoot).toBe(false)
-        expect(importedRoot.workspace?.path).toBe(scope.directory)
+          const report = await SessionExport.generate({ sessionID: root.id, mode: "full" })
+          const compressed = Bun.gzipSync(Buffer.from(JSON.stringify(report)))
 
-        expect(importedChild).toBeDefined()
-        expect(importedChild!.id).not.toBe(child.id)
-        expect(importedChild!.parentID).toBe(importedRoot.id)
+          await Session.remove(root.id)
 
-        const messages = await Session.messages({ sessionID: importedRoot.id, raw: true })
-        expect(MessageV2.extractText(messages[0].parts, { includeSynthetic: true })).toBe("root prompt")
-        expect(messages[0].info.metadata?.sourceSessionID).toBe(importedChild!.id)
-        expect(messages[0].info.metadata?.nested).toEqual({ sessionId: importedChild!.id })
+          const result = await SessionImport.fromBuffer(compressed)
+          const importedRoot = await Session.get(result.rootSessionID)
+          const importedChild = result.sessions.find((item) => item.sourceSessionID === child.id)?.session
+          expect(result.sessionCount).toBe(2)
+          expect(result.messageCount).toBe(4)
+          expect(result.warnings).toEqual([])
+          expect(importedRoot.id).not.toBe(root.id)
+          expect((importedRoot.scope as Scope).id).toBe(scope.id)
+          expect(importedRoot.title).toBe("Export Root")
+          expect(importedRoot.endpoint).toBeUndefined()
+          expect("agenda" in importedRoot).toBe(false)
+          expect(importedRoot.workspace?.path).toBe(scope.local!.directory)
 
-        const dag = await Dag.get(importedRoot.id)
-        expect(dag[0].session_id).toBe(importedChild!.id)
-        expect(dag[0].assign).toBe("self")
-        expect(await Todo.get(importedRoot.id)).toEqual([
-          { id: "todo-1", content: "Check import", status: "completed", priority: "high" },
-        ])
-        expect(await Session.diff(importedRoot.id)).toEqual([
-          { file: "src/example.ts", additions: 2, deletions: 1, preview: "@@ example" },
-        ])
+          expect(importedChild).toBeDefined()
+          expect(importedChild!.id).not.toBe(child.id)
+          expect(importedChild!.parentID).toBe(importedRoot.id)
 
-        const children = await Session.children(importedRoot.id)
-        expect(children.map((item) => item.id)).toEqual([importedChild!.id])
-        const list = await Session.list({ parentOnly: true })
-        expect(list.data.map((item) => item.id)).toContain(importedRoot.id)
-        const nav = await SessionNav.queryScope(scope.id)
-        expect(nav.items.map((item) => item.id)).toContain(importedRoot.id)
-      },
-    })
-  })
+          const messages = await Session.messages({ sessionID: importedRoot.id, raw: true })
+          expect(MessageV2.extractText(messages[0].parts, { includeSynthetic: true })).toBe("root prompt")
+          expect(messages[0].info.metadata?.sourceSessionID).toBe(importedChild!.id)
+          expect(messages[0].info.metadata?.nested).toEqual({ sessionId: importedChild!.id })
 
-  test("does not import rollback acknowledgment without history events", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({ title: "Acknowledged Rollback" })
-        await writeExchange(session.id, "rollback prompt")
-        const rollback = (await Session.rollback({
-          sessionID: session.id,
-          numTurns: 1,
-        })) as SessionHistory.RollbackEvent
-        await Session.acknowledgeRollback(session.id, rollback.id)
+          const dag = await Dag.get(importedRoot.id)
+          expect(dag[0].session_id).toBe(importedChild!.id)
+          expect(dag[0].assign).toBe("self")
+          expect(await Todo.get(importedRoot.id)).toEqual([
+            { id: "todo-1", content: "Check import", status: "completed", priority: "high" },
+          ])
+          expect(await Session.diff(importedRoot.id)).toEqual([
+            { file: "src/example.ts", additions: 2, deletions: 1, preview: "@@ example" },
+          ])
 
-        const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
-        await Session.remove(session.id)
+          const children = await Session.children(importedRoot.id)
+          expect(children.map((item) => item.id)).toEqual([importedChild!.id])
+          const list = await Session.list({ parentOnly: true })
+          expect(list.data.map((item) => item.id)).toContain(importedRoot.id)
+          const nav = await SessionNav.queryScope(scope.id)
+          expect(nav.items.map((item) => item.id)).toContain(importedRoot.id)
+        },
+      })
+    }))
 
-        const result = await SessionImport.fromReport(report)
-        const imported = await Session.get(result.rootSessionID)
-        expect(imported.rollbackAck).toBeUndefined()
-      },
-    })
-  })
+  test("does not import rollback acknowledgment without history events", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Acknowledged Rollback" })
+          await writeExchange(session.id, "rollback prompt")
+          const rollback = (await Session.rollback({
+            sessionID: session.id,
+            numTurns: 1,
+          })) as SessionHistory.RollbackEvent
+          await Session.acknowledgeRollback(session.id, rollback.id)
+
+          const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
+          await Session.remove(session.id)
+
+          const result = await SessionImport.fromReport(report)
+          const imported = await Session.get(result.rootSessionID)
+          expect(imported.rollbackAck).toBeUndefined()
+        },
+      })
+    }))
 
   test(
     "canonicalizes missing root variants while preserving explicit imported variants",
-    async () => {
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          config: {
+            model: "test-provider/test-model",
+            provider: {
+              "test-provider": {
+                name: "Test Provider",
+                npm: "@ai-sdk/openai-compatible",
+                env: [],
+                models: {
+                  "test-model": {
+                    name: "Test Model",
+                    tool_call: true,
+                    limit: { context: 128_000, output: 4_096 },
+                    variants: { high: { reasoningEffort: "high" } },
+                  },
+                },
+                options: { apiKey: "test-key" },
+              },
+            },
+            agent: {
+              variant_agent: {
+                model: "test-provider/test-model",
+                mode: "primary",
+                defaultVariant: "high",
+              },
+            },
+          } as any,
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({ title: "Legacy Variants" })
+            for (const variant of [undefined, "max"]) {
+              const messageID = Identifier.ascending("message")
+              await Session.updateMessage({
+                id: messageID,
+                sessionID: session.id,
+                role: "user",
+                time: { created: Date.now() },
+                agent: "variant_agent",
+                model: { providerID: "test-provider", modelID: "test-model" },
+                isRoot: true,
+                rootID: messageID,
+                origin: { type: "user" },
+                variant,
+              } satisfies MessageV2.User)
+            }
+            const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
+            await Session.remove(session.id)
+
+            const result = await SessionImport.fromReport(report)
+            const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
+            expect(messages.map((message) => message.info.role === "user" && message.info.variant)).toEqual([
+              "high",
+              "max",
+            ])
+          },
+        })
+      }),
+    { timeout: 15_000 },
+  )
+
+  test("imports legacy roots referencing models that no longer exist", () =>
+    runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
         config: {
@@ -255,178 +327,162 @@ describe("SessionImport", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const session = await Session.create({ title: "Legacy Variants" })
-          for (const variant of [undefined, "max"]) {
-            const messageID = Identifier.ascending("message")
-            await Session.updateMessage({
-              id: messageID,
-              sessionID: session.id,
-              role: "user",
-              time: { created: Date.now() },
-              agent: "variant_agent",
-              model: { providerID: "test-provider", modelID: "test-model" },
-              isRoot: true,
-              rootID: messageID,
-              origin: { type: "user" },
-              variant,
-            } satisfies MessageV2.User)
-          }
+          const session = await Session.create({ title: "Ghost Model Import" })
+          const messageID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: messageID,
+            sessionID: session.id,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "variant_agent",
+            // References a model that is not defined in the current config, so
+            // resolveLegacyRoot hits Provider.ModelNotFoundError during import.
+            model: { providerID: "removed-provider", modelID: "removed-model" },
+            isRoot: true,
+            rootID: messageID,
+            origin: { type: "user" },
+          } satisfies MessageV2.User)
           const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
           await Session.remove(session.id)
 
           const result = await SessionImport.fromReport(report)
           const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
-          expect(messages.map((message) => message.info.role === "user" && message.info.variant)).toEqual([
-            "high",
-            "max",
-          ])
+          const imported = messages.find((message) => message.info.role === "user")?.info as MessageV2.User | undefined
+          expect(imported?.variant).toBeUndefined()
         },
       })
-    },
-    { timeout: 15_000 },
-  )
+    }))
 
-  test("imports legacy roots referencing models that no longer exist", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      config: {
-        model: "test-provider/test-model",
-        provider: {
-          "test-provider": {
-            name: "Test Provider",
-            npm: "@ai-sdk/openai-compatible",
-            env: [],
-            models: {
-              "test-model": {
-                name: "Test Model",
-                tool_call: true,
-                limit: { context: 128_000, output: 4_096 },
-                variants: { high: { reasoningEffort: "high" } },
-              },
-            },
-            options: { apiKey: "test-key" },
-          },
+  test("bounds aggregate diff previews before persisting imported summaries", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const root = await Session.create({ title: "Unbounded Diff Export" })
+          const report = await SessionExport.generate({ sessionID: root.id, mode: "full" })
+          report.sessions[0].diffs = Array.from({ length: 50 }, (_, index) => ({
+            file: `large-${index}.txt`,
+            additions: index + 1,
+            deletions: index,
+            preview: "界".repeat(SessionBounds.DIFF_PREVIEW_MAX_CHARS),
+            beforeBytes: index,
+            afterBytes: index + 1,
+          }))
+          await Session.remove(root.id)
+
+          const result = await SessionImport.fromReport(report)
+          const stored = await Storage.read<any[]>(
+            StoragePath.sessionSummary(Identifier.asScopeID(scope.id), Identifier.asSessionID(result.rootSessionID)),
+          )
+          const previewBytes = stored.reduce(
+            (total, diff) => total + (diff.preview ? SessionBounds.byteLength(diff.preview) : 0),
+            0,
+          )
+
+          expect(stored).toHaveLength(50)
+          expect(previewBytes).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
+          expect(stored.some((diff) => !diff.preview && diff.truncated)).toBe(true)
         },
-        agent: {
-          variant_agent: {
-            model: "test-provider/test-model",
-            mode: "primary",
-            defaultVariant: "high",
-          },
+      })
+    }))
+
+  test("rejects import from a different scope", () =>
+    runtime.run(async () => {
+      await using sourceTmp = await tmpdir({ git: true })
+      await using targetTmp = await tmpdir({ git: true })
+      const sourceScope = await sourceTmp.scope()
+      const targetScope = await targetTmp.scope()
+
+      const report = await ScopeContext.provide({
+        scope: sourceScope,
+        fn: async () => {
+          const root = await Session.create({ title: "Cross Scope Export" })
+          await writeExchange(root.id, "test message")
+          return SessionExport.generate({ sessionID: root.id, mode: "full" })
         },
-      } as any,
-    })
+      })
+
+      await ScopeContext.provide({
+        scope: targetScope,
+        fn: async () => {
+          await expect(SessionImport.fromReport(report)).rejects.toThrow("Cannot import session from scope")
+        },
+      })
+    }))
+
+  test("warns when importing into same scope type with different directory", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      const report = await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const root = await Session.create({ title: "Same Scope Export" })
+          await writeExchange(root.id, "test message")
+          return SessionExport.generate({ sessionID: root.id, mode: "full" })
+        },
+      })
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const result = await SessionImport.fromReport(report)
+          expect(result.sessionCount).toBe(1)
+          expect(result.messageCount).toBe(2)
+          expect(result.warnings).toEqual([])
+
+          const root = await Session.get(result.rootSessionID)
+          expect((root.scope as Scope).id).toBe(scope.id)
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())
+
+test("transcript parsing upgrades old Home metadata while preserving message content", () =>
+  runtime.run(async () => {
     await ScopeContext.provide({
-      scope: await tmp.scope(),
+      scope: Scope.home(),
       fn: async () => {
-        const session = await Session.create({ title: "Ghost Model Import" })
+        const session = await Session.create({ title: "Historical Home conversation" })
         const messageID = Identifier.ascending("message")
         await Session.updateMessage({
           id: messageID,
           sessionID: session.id,
           role: "user",
-          time: { created: Date.now() },
-          agent: "variant_agent",
-          // References a model that is not defined in the current config, so
-          // resolveLegacyRoot hits Provider.ModelNotFoundError during import.
-          model: { providerID: "removed-provider", modelID: "removed-model" },
-          isRoot: true,
-          rootID: messageID,
-          origin: { type: "user" },
-        } satisfies MessageV2.User)
-        const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
-        await Session.remove(session.id)
-
+          agent: "synergy",
+          time: { created: 1 },
+          model: { providerID: "test", modelID: "test" },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID,
+          sessionID: session.id,
+          type: "text",
+          text: "Keep the historical content",
+        })
+        const legacy = {
+          info: {
+            ...session,
+            scope: { id: "home", type: "home", directory: "/old/home", worktree: "/old/home" },
+            workspace: undefined,
+          },
+          messages: await Session.messages({ sessionID: session.id }),
+        }
+        const report = SessionImport.parse(new TextEncoder().encode(JSON.stringify(legacy)))
+        expect(report.sessions[0]!.info.scope).toEqual({ id: "home", type: "home", local: null })
+        expect(report.sessions[0]!.info.workspace).toBeNull()
+        expect(report.sessions[0]!.info.title).toBe(session.title)
         const result = await SessionImport.fromReport(report)
-        const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
-        const imported = messages.find((message) => message.info.role === "user")?.info as MessageV2.User | undefined
-        expect(imported?.variant).toBeUndefined()
-      },
-    })
-  })
-
-  test("bounds aggregate diff previews before persisting imported summaries", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const root = await Session.create({ title: "Unbounded Diff Export" })
-        const report = await SessionExport.generate({ sessionID: root.id, mode: "full" })
-        report.sessions[0].diffs = Array.from({ length: 50 }, (_, index) => ({
-          file: `large-${index}.txt`,
-          additions: index + 1,
-          deletions: index,
-          preview: "界".repeat(SessionBounds.DIFF_PREVIEW_MAX_CHARS),
-          beforeBytes: index,
-          afterBytes: index + 1,
-        }))
-        await Session.remove(root.id)
-
-        const result = await SessionImport.fromReport(report)
-        const stored = await Storage.read<any[]>(
-          StoragePath.sessionSummary(Identifier.asScopeID(scope.id), Identifier.asSessionID(result.rootSessionID)),
+        expect(result.sessions[0]!.session.workspace).toBeNull()
+        expect((await Session.messages({ sessionID: result.rootSessionID }))[0]?.parts).toEqual(
+          expect.arrayContaining([expect.objectContaining({ type: "text", text: "Keep the historical content" })]),
         )
-        const previewBytes = stored.reduce(
-          (total, diff) => total + (diff.preview ? SessionBounds.byteLength(diff.preview) : 0),
-          0,
-        )
-
-        expect(stored).toHaveLength(50)
-        expect(previewBytes).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
-        expect(stored.some((diff) => !diff.preview && diff.truncated)).toBe(true)
       },
     })
-  })
-
-  test("rejects import from a different scope", async () => {
-    await using sourceTmp = await tmpdir({ git: true })
-    await using targetTmp = await tmpdir({ git: true })
-    const sourceScope = await sourceTmp.scope()
-    const targetScope = await targetTmp.scope()
-
-    const report = await ScopeContext.provide({
-      scope: sourceScope,
-      fn: async () => {
-        const root = await Session.create({ title: "Cross Scope Export" })
-        await writeExchange(root.id, "test message")
-        return SessionExport.generate({ sessionID: root.id, mode: "full" })
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: targetScope,
-      fn: async () => {
-        await expect(SessionImport.fromReport(report)).rejects.toThrow("Cannot import session from scope")
-      },
-    })
-  })
-
-  test("warns when importing into same scope type with different directory", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-
-    const report = await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const root = await Session.create({ title: "Same Scope Export" })
-        await writeExchange(root.id, "test message")
-        return SessionExport.generate({ sessionID: root.id, mode: "full" })
-      },
-    })
-
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const result = await SessionImport.fromReport(report)
-        expect(result.sessionCount).toBe(1)
-        expect(result.messageCount).toBe(2)
-        expect(result.warnings).toEqual([])
-
-        const root = await Session.get(result.rootSessionID)
-        expect((root.scope as Scope).id).toBe(scope.id)
-      },
-    })
-  })
-})
+  }))

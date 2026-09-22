@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { createReadStream } from "node:fs"
+import { pipeline } from "node:stream/promises"
+import { createReadStream, createWriteStream } from "node:fs"
 import { randomUUID, createHash } from "node:crypto"
 import { gzipSync, gunzipSync } from "node:zlib"
 import { ArtifactLocation, MAX_COMPRESSED_ARTIFACT_BYTES } from "./artifact-location"
@@ -133,7 +134,8 @@ export class ArtifactPack {
     }
   }
 
-  async adopt(input: { filename: string; sha256: string }) {
+  async adopt(input: { filename: string; sha256: string }, signal?: AbortSignal) {
+    signal?.throwIfAborted()
     await this.prepareDirectory()
     const pack = input.sha256 + ".pack"
     if (!/^[a-f0-9]{64}\.pack$/.test(pack)) throw new StorageIntegrityError("Invalid immutable artifact pack identity")
@@ -145,7 +147,9 @@ export class ArtifactPack {
       if (error.code === "EXDEV") {
         const temporary = target + ".tmp-" + randomUUID()
         try {
-          await fs.copyFile(input.filename, temporary)
+          await pipeline(createReadStream(input.filename), createWriteStream(temporary, { flags: "wx", mode: 0o600 }), {
+            signal,
+          })
           const file = await fs.open(temporary, "r+")
           try {
             await file.sync()
@@ -161,7 +165,7 @@ export class ArtifactPack {
         if (!stat.isFile() || stat.isSymbolicLink())
           throw new StorageIntegrityError("Invalid immutable artifact pack destination")
         const actual = createHash("sha256")
-        for await (const bytes of createReadStream(target)) actual.update(bytes)
+        for await (const bytes of createReadStream(target, { signal })) actual.update(bytes)
         if (actual.digest("hex") !== input.sha256)
           throw new StorageIntegrityError("Immutable artifact pack identity collision")
       } else throw error
@@ -219,7 +223,8 @@ export class ArtifactPack {
     }
   }
 
-  async verify(input: ArtifactLocation): Promise<void> {
+  async verify(input: ArtifactLocation, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
     const location = ArtifactLocation.parse(input)
     if (location.size <= MAX_COMPRESSED_ARTIFACT_BYTES) {
       await this.read(location)
@@ -233,6 +238,7 @@ export class ArtifactPack {
       const buffer = Buffer.alloc(1024 * 1024)
       let offset = 0
       while (offset < location.size) {
+        signal?.throwIfAborted()
         const read = await file.read(
           buffer,
           0,

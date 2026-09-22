@@ -8,7 +8,8 @@ import {
 import type { PluginActivationContext } from "./context.js"
 import type { PluginManifest, PluginManifestContribution } from "./manifest.js"
 import {
-  PLUGIN_UI_5_BASE_SYNERGY_RANGE,
+  PLUGIN_UI_6_BASE_SYNERGY_RANGE,
+  PLUGIN_UI_API_VERSION,
   PLUGIN_API_4_BASE_SYNERGY_RANGE,
   PLUGIN_API_VERSION,
   PLUGIN_MANIFEST_VERSION,
@@ -237,6 +238,7 @@ function compileContribution(
       return {
         ...base,
         kind: "tool",
+        ...(contribution.requiresWorkspace === undefined ? {} : { requiresWorkspace: contribution.requiresWorkspace }),
         description: contribution.description,
         input: schemaToJsonSchema(contribution.input),
         ...(contribution.exposure ? { exposure: contribution.exposure } : {}),
@@ -416,18 +418,18 @@ export function compilePluginManifest(
   definition: PluginDefinition,
   artifacts: CompiledPluginArtifacts,
 ): PluginManifest {
-  const needsUI5 =
-    artifacts.ui?.apiVersion === "5.0" ||
+  const requiresUIBaseline =
+    artifacts.ui?.apiVersion === PLUGIN_UI_API_VERSION ||
     definition.contributions.some(
       (item) => item.kind === "ui.skin" || item.kind === "ui.command" || item.kind === "ui.menu",
     )
-  const synergy = !needsUI5
+  const synergy = !requiresUIBaseline
     ? definition.compatibility.synergy
     : definition.compatibility.synergy === PLUGIN_API_4_BASE_SYNERGY_RANGE
-      ? PLUGIN_UI_5_BASE_SYNERGY_RANGE
+      ? PLUGIN_UI_6_BASE_SYNERGY_RANGE
       : definition.compatibility.synergy
           .split("||")
-          .map((range) => `${PLUGIN_UI_5_BASE_SYNERGY_RANGE} ${range.trim()}`)
+          .map((range) => `${PLUGIN_UI_6_BASE_SYNERGY_RANGE} ${range.trim()}`)
           .join(" || ")
   const manifest: PluginManifest = {
     manifestVersion: PLUGIN_MANIFEST_VERSION,

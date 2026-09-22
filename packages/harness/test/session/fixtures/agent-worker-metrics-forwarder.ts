@@ -1,23 +1,36 @@
-// Drives the real Agent worker runner entrypoint in a child process so the
-// process-global metric forwarder is exercised exactly as a spawned worker
-// installs it. The parent observes the frames over the IPC channel.
-const runner = await import("../../../src/session/agent-turn/runner")
-const { ObservabilityMetrics } = await import("../../../src/observability/metrics")
+import { RuntimeContext } from "../../../src/lifecycle/context"
+import { ObservabilityMetrics } from "../../../src/observability/metrics"
+import { createTurnMetrics } from "../../../src/session/agent-turn/metrics"
+import { runtimeHome } from "../../support/runtime-home"
 
-const burst = Number(process.env.SYNERGY_METRIC_BURST ?? "1")
-
-// Let the parent attach to the channel, then record one synchronous burst so
-// the coalescer has to bound both the frame size and the pending queue.
-await Bun.sleep(50)
-for (let index = 0; index < burst; index++) {
-  ObservabilityMetrics.record({
-    name: index % 2 === 0 ? "llm.fetch.headers" : "llm.fetch.first_byte",
-    value: index,
-    unit: "ms",
-    module: "llm",
-    labels: { provider: "provider", model: "model" },
+await using fixture = await runtimeHome()
+const runtime = RuntimeContext.create(fixture.host)
+try {
+  await runtime.run(async () => {
+    const burst = Number(process.env.SYNERGY_METRIC_BURST ?? "1")
+    const expected = Math.ceil(Math.min(burst, 256) / 64)
+    const drained = Promise.withResolvers<void>()
+    let acknowledgements = 0
+    process.on("message", () => {
+      if (++acknowledgements === expected) drained.resolve()
+    })
+    const metrics = createTurnMetrics("fixture-turn", (frame) => process.send?.(frame))
+    ObservabilityMetrics.withForwarder(metrics.record, () => {
+      for (let index = 0; index < burst; index++) {
+        ObservabilityMetrics.record({
+          name: index % 2 === 0 ? "llm.fetch.headers" : "llm.fetch.first_byte",
+          value: index,
+          unit: "ms",
+          module: "llm",
+          labels: { provider: "provider", model: "model" },
+        })
+      }
+    })
+    metrics.close()
+    await drained.promise
+    console.log(JSON.stringify({ dropped: metrics.dropped }))
   })
+} finally {
+  runtime.dispose()
 }
-await Bun.sleep(200)
-console.log(JSON.stringify({ dropped: runner.droppedMetricRows() }))
-process.exit(0)
+process.disconnect?.()

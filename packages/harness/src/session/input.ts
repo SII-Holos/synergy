@@ -1,9 +1,9 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { RolloutArtifact } from "./rollout/artifact"
 import { RolloutAttachment } from "./rollout/attachment"
 import { findRecordingError } from "./rollout/error"
 import path from "path"
 import { pathToFileURL } from "url"
-import os from "os"
 import fs from "fs/promises"
 import z from "zod"
 import { Identifier } from "../id/id"
@@ -100,6 +100,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       text: template,
     },
   ]
+  if (!ScopeContext.current.workspace) return parts
   const files = ConfigMarkdown.files(template)
   const seen = new Set<string>()
   await Promise.all(
@@ -108,7 +109,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       if (seen.has(name)) return
       seen.add(name)
       const filepath = name.startsWith("~/")
-        ? path.join(os.homedir(), name.slice(2))
+        ? path.join(RuntimeContext.current().host.home, name.slice(2))
         : path.resolve(ScopeContext.current.directory, name)
 
       const stats = await fs.stat(filepath).catch(() => undefined)

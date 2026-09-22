@@ -65,7 +65,12 @@ export namespace Snapshot {
 
   export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
     if (signal?.aborted) return
-    if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") return
+    if (
+      !ScopeContext.current.workspace ||
+      ScopeContext.current.scope.type !== "project" ||
+      ScopeContext.current.scope.local?.vcs !== "git"
+    )
+      return
     if ((await Config.current()).snapshot === false) return
     try {
       return await SnapshotStore.withSession(sessionID, () => trackImpl(sessionID, signal), signal)

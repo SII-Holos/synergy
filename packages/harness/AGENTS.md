@@ -5,8 +5,8 @@ Own the harness implementation and its public exports. Read the root AGENTS.md a
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- Register configuration and migration domains before opening `RuntimeHandle`; the process composition is locked for the process lifetime after home ownership is acquired. Migration listings are detached snapshots; use explicit registration APIs before startup. Run real runtime lifecycle suites in isolated test processes.
-- Tests live under test/ and use isolated homes through the testing support package.
+- Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration is sealed for that instance before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances in one process and entrypoint behavior in isolated child processes.
+- Tests live under test/ and use explicit Runtime fixtures with isolated homes. Pure functions need no Runtime; migration mechanism tests use the explicit unsealed migration fixture.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 

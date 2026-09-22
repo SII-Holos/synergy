@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9d library store port: the scope migrations touch library experience data
  * (scope enumeration, orphan cleanup, legacy scope rename) through this
@@ -13,13 +14,22 @@ export namespace ScopeLibraryStore {
     renameExperienceScope(fromScopeID: string, toScopeID: string): number
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("scope/library-store")
+    if (instanceState.source && value) throw new Error("scope/library-store is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

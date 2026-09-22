@@ -63,13 +63,16 @@ describe("resolveSessionVisualState", () => {
     expect(visual.pulse).toBe(true)
   })
 
-  test("treats recovering sessions as retry rather than idle", () => {
-    const visual = resolveSessionVisualState({ entry: entry(), status: { type: "recovering" } })
+  test("renders a paused session as paused rather than working", () => {
+    const visual = resolveSessionVisualState({
+      entry: entry(),
+      status: { type: "paused", reason: "interrupted", since: 1 },
+    })
 
-    expect(visual.icon).toBe(getSemanticIcon("session.retry"))
-    expect(visual.tone).toBe("retry")
-    expect(visual.pulse).toBe(true)
-    expect(msg(visual.label)).toBe("Session recovering")
+    expect(visual.tone).toBe("paused")
+    // A stopped session carries no pulse: nothing is making progress.
+    expect(visual.pulse).toBeUndefined()
+    expect(msg(visual.label)).toBe("Session paused")
   })
 
   test("leaves sessions with no status at the category fallback", () => {
@@ -96,8 +99,12 @@ describe("resolveSessionVisualState", () => {
     expect(visual.pulse).toBe(true)
   })
 
-  test("prioritizes waiting over recovering sessions", () => {
-    const visual = resolveSessionVisualState({ entry: entry(), status: { type: "recovering" }, waiting: true })
+  test("prioritizes waiting over a paused session", () => {
+    const visual = resolveSessionVisualState({
+      entry: entry(),
+      status: { type: "paused", reason: "interrupted", since: 1 },
+      waiting: true,
+    })
 
     expect(visual.icon).toBe(getSemanticIcon("session.waiting"))
     expect(visual.tone).toBe("waiting")

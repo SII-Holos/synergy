@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import path from "path"
 import { Filesystem } from "../util/filesystem"
 
@@ -39,7 +40,7 @@ const PLACEHOLDER_ENV_PATTERN = /(^|[/\\])\.env\.(example|template|sample)$/i
 
 function expandHomeDir(input: string): string {
   const stripped = input.replace(/^[\"']/, "").replace(/[\"']$/, "")
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? ""
+  const home = RuntimeContext.current().host.env.HOME ?? RuntimeContext.current().host.env.USERPROFILE ?? ""
   if (stripped === "~" || stripped === "~/" || stripped === "~\\" || stripped === "$HOME" || stripped === "${HOME}")
     return home
   if (stripped.startsWith("~/") || stripped.startsWith("~\\")) return path.join(home, stripped.slice(2))

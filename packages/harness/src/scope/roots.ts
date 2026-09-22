@@ -5,16 +5,6 @@ import { Filesystem } from "../util/filesystem"
 import type { Scope } from "."
 import type { Workspace } from "../session/workspace-schema"
 
-/**
- * Project folder roots — the single source of truth for "which directories
- * belong to this project Scope" consumed by the execution boundary, sandbox
- * policy, system prompt, and file-tool containment checks.
- *
- * `scope.directory` is the directory represented by the current Scope value
- * and drifts depending on how the Scope was loaded (fromDirectory vs fromID),
- * so root derivation must always use the stable `worktree` + persisted
- * `sandboxes` list instead.
- */
 export namespace ScopeRoots {
   /**
    * All project folders: the main worktree plus every persisted additional
@@ -22,9 +12,9 @@ export namespace ScopeRoots {
    * worktree is always first.
    */
   export function projectRoots(scope: Scope): string[] {
-    if (scope.type !== "project") return []
-    const worktree = path.resolve(scope.worktree)
-    const sandboxes = (scope.sandboxes ?? []).map((dir) => path.resolve(dir)).filter((dir) => dir !== worktree)
+    if (!scope.local) return []
+    const worktree = path.resolve(scope.local.worktree)
+    const sandboxes = (scope.local.sandboxes ?? []).map((dir) => path.resolve(dir)).filter((dir) => dir !== worktree)
     return uniqueRoots([worktree, ...sandboxes]).filter((root) => existsSync(root))
   }
 
@@ -34,7 +24,8 @@ export namespace ScopeRoots {
    * stays outside the trust boundary (explicit authorization required), while
    * every other declared project folder is trusted automatically.
    */
-  export function trustRoots(scope: Scope, workspace?: Workspace): string[] {
+  export function trustRoots(scope: Scope, workspace?: Workspace | null): string[] {
+    if (workspace === null) return []
     const roots = projectRoots(scope)
     if (workspace?.type !== "git_worktree") return roots
     // The original main checkout is never trusted inside a worktree session,
@@ -46,7 +37,8 @@ export namespace ScopeRoots {
     // which would otherwise grant write access into the original checkout
     // from an isolated worktree session.
     const originalCheckout =
-      (workspace as { originalCheckout?: string } | undefined)?.originalCheckout ?? scope.worktree
+      (workspace as { originalCheckout?: string } | undefined)?.originalCheckout ?? scope.local?.worktree
+    if (!originalCheckout) return roots
     const original = path.resolve(originalCheckout)
     return roots.filter((root) => {
       const resolved = path.resolve(root)
@@ -59,7 +51,11 @@ export namespace ScopeRoots {
    * and deduplicated. Every gate creation site must use this instead of
    * building its own root list so project folders stay trusted automatically.
    */
-  export function executionRoots(scope: Scope, workspace: Workspace | undefined, extraRoots: string[] = []): string[] {
+  export function executionRoots(
+    scope: Scope,
+    workspace: Workspace | null | undefined,
+    extraRoots: string[] = [],
+  ): string[] {
     return uniqueRoots([...trustRoots(scope, workspace), ...extraRoots])
   }
 }

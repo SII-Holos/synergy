@@ -1,14 +1,10 @@
-import { describe, expect, spyOn, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import path from "path"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
-import { AgentWorkerPool, type AgentWorkerPoolOptions } from "../../src/session/agent-turn/worker-pool"
-import type { AgentWorkerProcess, SpawnAgentWorkerProcessOptions } from "../../src/session/agent-turn/process-host"
-import { ObservabilityMetrics } from "../../src/observability/metrics"
 
 const fixture = path.join(import.meta.dir, "fixtures/agent-worker-metrics-forwarder.ts")
 
-// The runner installs a process-global metric forwarder at import time, so it is
-// driven in a child process; `bun test` shares one process across test files.
+// Exercise the bounded turn queue over a real Bun IPC channel.
 function spawnWorker(burst: number) {
   const frames: AgentTurnProtocol.WorkerToHost[] = []
   const child = Bun.spawn({
@@ -22,6 +18,7 @@ function spawnWorker(burst: number) {
     },
     ipc(message) {
       frames.push(message as AgentTurnProtocol.WorkerToHost)
+      child.send({ type: "ack" })
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -44,6 +41,7 @@ describe("Agent worker metric forwarding", () => {
     )
     expect(metrics.length).toBeGreaterThan(0)
     for (const frame of metrics) {
+      expect(frame.requestId).toBe("fixture-turn")
       expect(frame.rows.length).toBeGreaterThan(0)
       expect(frame.rows.length).toBeLessThanOrEqual(AgentTurnProtocol.METRIC_ROWS_MAX)
       expect(AgentTurnProtocol.parseWorkerToHost(frame)).toEqual(frame)
@@ -78,73 +76,5 @@ describe("Agent worker metric forwarding", () => {
       expect.objectContaining({ name: "llm.fetch.headers", value: 0, unit: "ms" }),
     ])
     expect((JSON.parse(stdout) as { dropped: number }).dropped).toBe(0)
-  })
-})
-
-const hostOptions: AgentWorkerPoolOptions = {
-  size: 1,
-  minIdle: 1,
-  idleTimeoutMs: 60_000,
-  maxQueued: 8,
-  maxQueuedBytes: 8 * 1024 * 1024,
-  maxTurns: 64,
-  maxRssBytes: 1024 * 1024 * 1024,
-  maxHeapBytes: 768 * 1024 * 1024,
-  idleBaselineRecycle: false,
-  idleBaselineRssGrowthBytes: 256,
-  idleBaselineExternalGrowthBytes: 128,
-  cancelGraceMs: 10,
-  heartbeatTimeoutMs: 60_000,
-}
-
-// Feeds frames captured from a real worker into the real pool handler, so the
-// producer, the protocol parser, and the host recording path are all exercised.
-function hostPool() {
-  let onMessage!: SpawnAgentWorkerProcessOptions["onMessage"]
-  const spawn = (options: SpawnAgentWorkerProcessOptions): AgentWorkerProcess => {
-    onMessage = options.onMessage
-    return {
-      process: { exitCode: null, kill() {} } as unknown as Bun.Subprocess,
-      send() {},
-      async stop() {},
-    }
-  }
-  return { pool: new AgentWorkerPool(hostOptions, spawn), deliver: (frame: unknown) => onMessage(frame as never) }
-}
-
-describe("Agent worker metric forwarding into the host", () => {
-  test("records every forwarded row with its name, value, unit, and labels", async () => {
-    const { child, frames } = spawnWorker(3)
-    using recorded = spyOn(ObservabilityMetrics, "record")
-    await child.exited
-
-    const { pool, deliver } = hostPool()
-    for (const frame of frames) {
-      const parsed = AgentTurnProtocol.parseWorkerToHost(frame)
-      if (parsed.type === "metrics") deliver(parsed)
-    }
-
-    const calls = (
-      recorded as unknown as {
-        mock: { calls: Array<Array<{ name?: string; value?: number; unit?: string; labels?: unknown }>> }
-      }
-    ).mock.calls.map((call) => call[0])
-    const project = (row: {
-      name?: string
-      value?: number
-      unit?: string
-      labels?: unknown
-    }): { name?: string; value?: number; unit?: string; labels?: unknown } => ({
-      name: row.name,
-      value: row.value,
-      unit: row.unit,
-      labels: row.labels,
-    })
-    const expected = frames
-      .flatMap((frame) => (frame.type === "metrics" ? frame.rows : []))
-      .map((row) => ({ name: row.name, value: row.value, unit: row.unit, labels: row.labels }))
-    expect(expected).toHaveLength(3)
-    expect(calls.map(project)).toEqual(expected)
-    await pool.stop()
   })
 })

@@ -40,6 +40,7 @@ import { AgentTurn } from "./agent-turn"
 import { ToolScheduler } from "./tool-scheduler"
 import type { ToolResolver } from "./tool-resolver"
 import { SecretMask } from "../secrets/mask"
+import { PausedTurnAbort } from "./error"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -1869,30 +1870,39 @@ export namespace SessionProcessor {
                 await SessionRetry.sleep(delay, input.abort).catch(() => {})
                 continue
               }
-              input.assistantMessage.finish = "error"
-              input.assistantMessage.error = error
-              ObservabilityMetrics.record({
-                name: "session.turn.error",
-                value: 1,
-                unit: "count",
-                module: "session",
-                sessionID: input.sessionID,
-                messageID: input.assistantMessage.id,
-                labels: { errorName: error.name },
-              })
-              await Observability.emit("session.turn.error", {
-                traceId: turnTraceId,
-                sessionID: input.sessionID,
-                messageID: input.assistantMessage.id,
-                level: "error",
-                data: {
-                  error,
-                },
-              })
-              Bus.publish(SessionEvent.Error, {
-                sessionID: input.assistantMessage.sessionID,
-                error: input.assistantMessage.error,
-              })
+              // A user stop pauses the session; it does not fail it. Writing the
+              // turn's terminal record here — `finish:"error"` plus
+              // `time.completed` below — is what destroys the breakpoint
+              // `session.continue` resumes from, so that record belongs to
+              // Abandon alone. Leaving the message non-terminal is the same
+              // contract `repairIncompleteAssistant` already honours for a stop
+              // observed without a live processor.
+              if (!PausedTurnAbort.is(input.abort.reason)) {
+                input.assistantMessage.finish = "error"
+                input.assistantMessage.error = error
+                ObservabilityMetrics.record({
+                  name: "session.turn.error",
+                  value: 1,
+                  unit: "count",
+                  module: "session",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: { errorName: error.name },
+                })
+                await Observability.emit("session.turn.error", {
+                  traceId: turnTraceId,
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  level: "error",
+                  data: {
+                    error,
+                  },
+                })
+                Bus.publish(SessionEvent.Error, {
+                  sessionID: input.assistantMessage.sessionID,
+                  error: input.assistantMessage.error,
+                })
+              }
             }
             fastAbort ||= input.abort.aborted
             if (snapshot) {
@@ -1946,8 +1956,13 @@ export namespace SessionProcessor {
               })
             }
             await resolveUnsettledParts(parts, fastAbort)
-            input.assistantMessage.time.completed = Date.now()
-            await Session.updateMessage(input.assistantMessage)
+            // The breakpoint `session.continue` resumes from is exactly the
+            // absence of this record, so a paused turn persists its parts and
+            // accounting without ever claiming the message finished.
+            if (!PausedTurnAbort.is(input.abort.reason)) {
+              input.assistantMessage.time.completed = Date.now()
+              await Session.updateMessage(input.assistantMessage)
+            }
             if (contextUsageEnrichment) {
               persistContextUsage({
                 sessionID: input.assistantMessage.sessionID,

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
 
 import { fn } from "../util/fn"
@@ -42,14 +43,16 @@ export namespace SessionSummary {
     files: z.array(z.string()),
   })
   type SummaryCursor = z.infer<typeof SummaryCursor>
-  const active = new Map<string, ActiveSummary>()
+  const runtimeState = RuntimeContext.state(() => ({
+    active: new Map<string, ActiveSummary>(),
+  }))
 
   // Snapshot and LLM work receive the per-run abort signal so the queue only
   // advances after the active worker has fully settled.
   const SUMMARY_LLM_TIMEOUT_MS = 60_000
   const DEFAULT_SUMMARY_RUN_TIMEOUT_MS = 120_000
   function summaryRunTimeoutMs() {
-    const env = Number.parseInt(process.env.SYNERGY_SUMMARY_TIMEOUT_MS ?? "", 10)
+    const env = Number.parseInt(RuntimeContext.current().host.env.SYNERGY_SUMMARY_TIMEOUT_MS ?? "", 10)
     return Number.isFinite(env) && env > 0 ? env : DEFAULT_SUMMARY_RUN_TIMEOUT_MS
   }
 
@@ -110,8 +113,10 @@ export namespace SessionSummary {
       signal: z.instanceof(AbortSignal).optional(),
     }),
     async (input) => {
+      const instanceState = runtimeState()
+
       const historyRevision = SessionManager.historyRevision(input.sessionID)
-      const current = active.get(input.sessionID)
+      const current = instanceState.active.get(input.sessionID)
       if (current) {
         const key = input.revisionID ?? input.messageID
         const queued = current.pending.some((item) => (item.revisionID ?? item.messageID) === key)
@@ -130,15 +135,17 @@ export namespace SessionSummary {
 
       const pending: QueuedSummaryInput[] = [{ ...input, historyRevision }]
       const promise = Promise.resolve().then(() => runSummaries(input.sessionID))
-      active.set(input.sessionID, { promise, pending })
+      instanceState.active.set(input.sessionID, { promise, pending })
       return promise
     },
   )
 
   async function runSummaries(sessionID: string) {
+    const instanceState = runtimeState()
+
     try {
       while (true) {
-        const state = active.get(sessionID)
+        const state = instanceState.active.get(sessionID)
         const current = state?.pending[0]
         if (!current) return
         const controller = new AbortController()
@@ -165,7 +172,7 @@ export namespace SessionSummary {
         state.pending.shift()
       }
     } finally {
-      active.delete(sessionID)
+      instanceState.active.delete(sessionID)
     }
   }
 
@@ -215,7 +222,7 @@ export namespace SessionSummary {
   }) {
     if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
     const session = await SessionManager.requireSession(input.sessionID)
-    const directory = (session.scope as Scope).directory
+    const directory = session.workspace?.path ?? null
     const scopeID = asScopeID((session.scope as Scope).id)
     let cursor = await readSummaryCursor(scopeID, input.sessionID)
     if (!cursor) {
@@ -271,7 +278,7 @@ export namespace SessionSummary {
     return input.messages
   }
 
-  function cursorFromMessages(messages: MessageV2.WithParts[], directory: string): SummaryCursor {
+  function cursorFromMessages(messages: MessageV2.WithParts[], directory: string | null): SummaryCursor {
     const range = diffRange(messages)
     return {
       from: range?.from,
@@ -280,7 +287,7 @@ export namespace SessionSummary {
     }
   }
 
-  function mergeSummaryCursor(cursor: SummaryCursor, messages: MessageV2.WithParts[], directory: string) {
+  function mergeSummaryCursor(cursor: SummaryCursor, messages: MessageV2.WithParts[], directory: string | null) {
     const next = cursorFromMessages(messages, directory)
     return {
       from: cursor.from ?? next.from,
@@ -289,7 +296,8 @@ export namespace SessionSummary {
     }
   }
 
-  function summaryFiles(messages: MessageV2.WithParts[], directory: string) {
+  function summaryFiles(messages: MessageV2.WithParts[], directory: string | null) {
+    if (!directory) return []
     return messages
       .flatMap((message) => message.parts)
       .filter((part) => part.type === "patch")
@@ -580,31 +588,33 @@ export namespace SessionSummary {
   }
 }
 
-LoopJob.register({
-  type: "summarize",
-  phase: "post",
-  blocking: false,
-  detached: true,
-  collect(ctx) {
-    if (!ctx.lastAssistant || !SessionProgress.isTerminalAssistant(ctx.lastAssistant)) return []
-    return [{ type: "summarize" }]
-  },
-  capture(ctx) {
-    return {
-      type: "summarize",
-      sessionID: ctx.sessionID,
-      messageID: ctx.lastUser.id,
-      revisionID: ctx.lastAssistant?.id,
-    }
-  },
-  timeoutMs: 180_000,
-  async execute(input, signal) {
-    await SessionSummary.summarize({
-      sessionID: input.sessionID,
-      messageID: input.messageID,
-      revisionID: input.revisionID,
-      signal,
-    })
-    return "pass"
-  },
-})
+export function registerSummaryJob() {
+  LoopJob.register({
+    type: "summarize",
+    phase: "post",
+    blocking: false,
+    detached: true,
+    collect(ctx) {
+      if (!ctx.lastAssistant || !SessionProgress.isTerminalAssistant(ctx.lastAssistant)) return []
+      return [{ type: "summarize" }]
+    },
+    capture(ctx) {
+      return {
+        type: "summarize",
+        sessionID: ctx.sessionID,
+        messageID: ctx.lastUser.id,
+        revisionID: ctx.lastAssistant?.id,
+      }
+    },
+    timeoutMs: 180_000,
+    async execute(input, signal) {
+      await SessionSummary.summarize({
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+        revisionID: input.revisionID,
+        signal,
+      })
+      return "pass"
+    },
+  })
+}

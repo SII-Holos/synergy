@@ -1,3 +1,4 @@
+import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { createStore, produce } from "solid-js/store"
 import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
@@ -8,7 +9,6 @@ import { useServer } from "../server"
 import { usePlatform } from "../platform"
 import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
-import { forgetDraftSession } from "@/context/prompt/draft-index"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./scroll"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -25,7 +25,7 @@ import {
   channelNavQuery,
   channelGithubNavQuery,
   mergeChannelNavPages,
-  managedProjectScopesByWorktree,
+  managedProjectScopesByID,
   loadNavListToDepth,
   mergeNavListByID,
   navUpdateFromSession,
@@ -40,6 +40,7 @@ import {
   type RootNavSectionKey,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
+import { createCompletionNoticeClearer } from "./completion-notice"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import { planPrefetchApply } from "./prefetch-apply"
@@ -75,7 +76,7 @@ type WorkbenchSurfacesLayoutState = {
   bottom?: WorkbenchSurfaceLayoutState
 }
 
-export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean; pinned?: number }
+export type LocalScope = Partial<Scope> & { id: string; expanded: boolean; pinned?: number }
 
 export type ReviewDiffStyle = "unified" | "split"
 
@@ -89,6 +90,7 @@ export interface NavEntry {
   scopeID: string
   scopeType: "home" | "project"
   title: string
+  tags?: string[]
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
@@ -97,7 +99,7 @@ export interface NavEntry {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
   workspaceType?: string
   workflow?: { kind: string; active: boolean }
@@ -165,7 +167,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const server = useServer()
     const platform = usePlatform()
     const [store, setStore, _, ready] = persisted(
-      { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
+      { ...Persist.connection(globalSdk.url, "layout"), migrate: migrateWorkbenchLayout },
       createStore({
         ...createInitialLayoutDefaults(),
         version: 1,
@@ -195,12 +197,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (!dir) continue
 
         for (const entry of SESSION_STATE_KEYS) {
-          const target = session ? Persist.session(dir, session, entry.key) : Persist.workspace(dir, entry.key)
+          const owner = Persist.scopeKey(globalSdk.url, base64Decode(dir))
+          const target = session ? Persist.session(owner, session, entry.key) : Persist.workspace(owner, entry.key)
           void removePersisted(target)
 
           const legacyKey = `${dir}/${entry.legacy}${session ? "/" + session : ""}.${entry.version}`
           void removePersisted({ key: legacyKey })
-          if (session && entry.key === "prompt") forgetDraftSession(session)
+          if (session && entry.key === "prompt") globalSdk.drafts.forgetDraftSession(session)
         }
       }
     }
@@ -342,7 +345,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(directory)
       try {
         const res = await globalSdk.client.session.index({
-          directory,
+          scopeID: directory,
           parentOnly: "true",
           limit: NAV_FIRST_PAGE_LIMIT,
           ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
@@ -627,7 +630,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       try {
         const existing = navEntries[directory]
         const res = await globalSdk.client.session.index({
-          directory,
+          scopeID: directory,
           parentOnly: "true",
           limit: Math.max(NAV_FIRST_PAGE_LIMIT, existing?.items.length ?? 0),
         })
@@ -674,7 +677,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     function applyScopeRemoval(scopeID: string, directory?: string) {
       const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
-      if (removed.directory) server.scopes.close(removed.directory)
+      server.scopes.close(scopeID)
       if (removed.removed) setScopeIndex(removed.entries)
 
       const navigation = removeScopeFromLoadedNavigation(
@@ -755,7 +758,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         {
           const recentResult = applySessionToNavList(recentEntries, navUpdate)
           if (recentResult.applied) setRecentEntries(recentResult.list)
-          const dir = scope.directory
+          const dir = scope.id
           if (dir && navEntries[dir]) {
             const scopeResult = applySessionToNavList(navEntries[dir], navUpdate)
             if (scopeResult.applied) setNavEntries(dir, scopeResult.list)
@@ -809,7 +812,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             scheduleScopeIndexRefresh()
           }
         }
-        const dir = scope.directory
+        const dir = scope.id
         if (!dir || !navEntries[dir]) return
         const pending = navRefreshTimers.get(dir)
         if (pending) clearTimeout(pending)
@@ -829,13 +832,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const usedColors = new Set<AvatarColorKey>()
 
     function scopeKeyForSession(session: Session): string {
-      return session.scope.type === "home" || session.scope.id === HOME_SCOPE_KEY
-        ? HOME_SCOPE_KEY
-        : (session.scope.directory ?? session.scope.worktree ?? session.scope.id)
+      return session.scope.id
     }
 
-    function scopeRequest(scopeKey: string) {
-      return scopeKey === HOME_SCOPE_KEY ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+    function scopeRequest(scopeID: string) {
+      return { scopeID }
     }
 
     function pickAvailableColor(): AvatarColorKey {
@@ -844,19 +845,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return available[Math.floor(Math.random() * available.length)]
     }
 
-    function enrich(project: { worktree: string; expanded: boolean }) {
-      const childState = globalSync.peekScopeState(project.worktree)
-      const scopeID = childState?.[0].scopeID
-      const metadata = scopeID
-        ? globalSync.data.scope.find((x) => x.id === scopeID)
-        : globalSync.data.scope.find((x) => x.worktree === project.worktree)
-      return [
-        {
-          ...(metadata ?? {}),
-          ...project,
-          icon: { url: metadata?.icon?.url, color: metadata?.icon?.color },
-        },
-      ]
+    function enrich(project: { id: string; expanded: boolean }): LocalScope[] {
+      const metadata = globalSync.data.scope.find((scope) => scope.id === project.id)
+      if (!metadata) return []
+      return [{ ...metadata, ...project }]
     }
 
     function colorize(scope: LocalScope) {
@@ -869,41 +861,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
       return scope
     }
-
-    const roots = createMemo(() => {
-      const map = new Map<string, string>()
-      for (const scope of globalSync.data.scope) {
-        const sandboxes = scope.sandboxes ?? []
-        for (const sandbox of sandboxes) {
-          map.set(sandbox, scope.worktree)
-        }
-      }
-      return map
-    })
-
-    createEffect(() => {
-      const map = roots()
-      if (map.size === 0) return
-
-      const projects = server.scopes.list()
-      const seen = new Set(projects.map((project) => project.worktree))
-
-      batch(() => {
-        for (const project of projects) {
-          const root = map.get(project.worktree)
-          if (!root) continue
-
-          server.scopes.close(project.worktree)
-
-          if (!seen.has(root)) {
-            server.scopes.open(root)
-            seen.add(root)
-          }
-
-          if (project.expanded) server.scopes.expand(root)
-        }
-      })
-    })
 
     // Supplemental project scopes: server-side projects that are NOT in the
     // local server.scopes store. These are shown so the sidebar reflects all
@@ -927,7 +884,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const list = createMemo(() => {
       // Locally-tracked scopes (user-opened, persisted in localStorage).
       const local = enriched()
-        .filter((s) => !isEphemeralTestWorktree(s.worktree))
+        .filter((s) => !s.local || !isEphemeralTestWorktree(s.local.worktree))
         .flatMap(colorize)
       const index = scopeIndex()
       const managedScopeIDs = new Set(
@@ -941,28 +898,25 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // sessions lazily via an explicit "Load sessions" action rather than
       // auto-loading on expand — keeping initial load light even when the
       // server has dozens of projects.
-      const seenDirectories = new Set(local.map((s) => s.worktree))
       const seenIDs = new Set(local.map((s) => s.id).filter(Boolean))
       const expandedSet = supplementalExpanded()
       const supplemented: LocalScope[] = []
       for (const entry of index) {
         if (entry.scopeType !== "project") continue
         if (managedScopeIDs.has(entry.scopeID)) continue
-        if (entry.directory && seenDirectories.has(entry.directory)) continue
         if (entry.scopeID && seenIDs.has(entry.scopeID)) continue
-        const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID || s.worktree === entry.directory)
+        const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID)
         supplemented.push({
           ...(metadata ?? {}),
           id: entry.scopeID,
-          worktree: entry.directory,
-          expanded: expandedSet.has(entry.directory),
+          expanded: expandedSet.has(entry.scopeID),
           icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
         })
       }
 
       const raw = [
         ...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)),
-        ...supplemented.flatMap(colorize).filter((s) => !isEphemeralTestWorktree(s.worktree)),
+        ...supplemented.flatMap(colorize).filter((s) => !s.local || !isEphemeralTestWorktree(s.local.worktree)),
       ]
 
       // Stable sort: pinned projects first (most-recently-pinned on top),
@@ -979,12 +933,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const bCreated = (b as { time?: { created?: number } }).time?.created ?? 0
         if (aCreated !== bCreated) return bCreated - aCreated
         if (aCreated !== bCreated) return aCreated - bCreated
-        return a.worktree.localeCompare(b.worktree)
+        return a.id.localeCompare(b.id)
       })
     })
 
-    const managedScopesByWorktree = createMemo(() =>
-      managedProjectScopesByWorktree(
+    const managedScopesByID = createMemo(() =>
+      managedProjectScopesByID(
         channelProjection().channelAccounts,
         new Map(globalSync.data.scope.map((scope) => [scope.id, scope])),
         supplementalExpanded(),
@@ -993,8 +947,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     // Whether a project is supplemental (not locally tracked). Supplemental
     // projects manage expand state in-memory and load sessions lazily.
-    function isSupplementalScope(scope: { worktree: string }): boolean {
-      return !server.scopes.list().some((s) => s.worktree === scope.worktree)
+    function isSupplementalScope(scope: { id: string }): boolean {
+      return !server.scopes.list().some((s) => s.id === scope.id)
     }
 
     onMount(() => {
@@ -1007,24 +961,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const loaded = new Set<string>()
         for (const project of projects) {
           if (project.expanded) {
-            loadScopeNav(project.worktree)
-            loaded.add(project.worktree)
+            loadScopeNav(project.id)
+            loaded.add(project.id)
           }
         }
-        const scopeMetadata = new Map(globalSync.data.scope.map((scope) => [scope.id, scope]))
         let count = 0
         for (const entry of scopeIndex()) {
           if (count >= 3) break
-          if (entry.scopeType !== "project") continue
-          const metadata = scopeMetadata.get(entry.scopeID)
-          const dir = metadata?.worktree ?? entry.directory
-          const project = projects.find((candidate) => candidate.worktree === dir || candidate.id === entry.scopeID)
-          const worktree = project?.worktree ?? dir
-          if (worktree && !loaded.has(worktree)) {
-            loadScopeNav(worktree)
-            loaded.add(worktree)
-            count++
-          }
+          if (entry.scopeType !== "project" || loaded.has(entry.scopeID)) continue
+          void loadScopeNav(entry.scopeID)
+          loaded.add(entry.scopeID)
+          count++
         }
       })
     })
@@ -1040,24 +987,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     function projectSessions(scope: LocalScope | undefined): Session[] {
       if (!scope) return []
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      const stores = dirs
-        .map((dir) => globalSync.peekScopeState(dir)?.[0])
-        .filter((store): store is NonNullable<typeof store> => !!store)
-      const byID = new Map<string, Session>()
-      for (const session of stores.flatMap((s) =>
-        s.session.filter((session) => session.scope.directory === s.path.directory),
-      )) {
-        if (!session.parentID) byID.set(session.id, session)
-      }
-      return [...byID.values()].toSorted(sortSessions)
+      return (globalSync.peekScopeState(scope.id)?.[0].session ?? [])
+        .filter((session) => !session.parentID && session.scope.id === scope.id)
+        .toSorted(sortSessions)
     }
 
     function projectNavEntries(scope: LocalScope | undefined): NavEntry[] {
       if (!scope) return []
-      const entry = navEntries[scope.worktree]
-      if (!entry) return []
-      return orderNavEntries(entry.items)
+      return orderNavEntries(navEntries[scope.id]?.items ?? [])
     }
 
     function recentNavEntries(): NavEntry[] {
@@ -1204,21 +1141,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
     }
 
-    async function clearCompletionNotice(directory: string, sessionID: string) {
-      const entry = navEntryForSession(directory, sessionID)
-      if (!entry?.completionNotice.unread) return
-      setNavEntryCompletionNotice(directory, sessionID, { unread: false, unreadCount: 0 })
-      try {
-        await globalSdk.client.session.update({
+    const clearCompletionNotice = createCompletionNoticeClearer({
+      server: () => server.url,
+      read: (directory, sessionID) => navEntryForSession(directory, sessionID)?.completionNotice,
+      write: setNavEntryCompletionNotice,
+      ready: async (sessionID) =>
+        (await globalSdk.client.storage.upgradeSession({ sessionID }, { throwOnError: true })).data?.state === "ready",
+      update: (directory, sessionID) =>
+        globalSdk.client.session.update({
           ...scopeRequest(directory),
           sessionID,
           completionNotice: { unread: false },
-        })
-      } catch (err) {
-        console.warn("Failed to clear session completion notice", err)
-        if (entry) setNavEntryCompletionNotice(directory, sessionID, entry.completionNotice)
-      }
-    }
+        }),
+      failed: (error) => console.warn("Failed to clear session completion notice", error),
+    })
 
     async function archiveSession(session: Session) {
       const scopeKey = scopeKeyForSession(session)
@@ -1303,15 +1239,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       scopes: {
         list,
-        managed: (directory: string) => managedScopesByWorktree().get(directory),
+        managed: (directory: string) => managedScopesByID().get(directory),
         isSupplemental: isSupplementalScope,
         toggleSupplementalExpand,
         async open(directory: string) {
-          const root = roots().get(directory) ?? directory
-          if (server.scopes.list().find((x) => x.worktree === root)) return
-          server.scopes.open(root)
-          await loadScopeNav(root)
-          loadScopeIndex()
+          const { data: scope } = await globalSdk.client.scope.current({ directory })
+          if (!scope || scope.type === "home") return
+          server.scopes.open(scope.id)
+          await Promise.all([loadScopeNav(scope.id), globalSync.refreshScopes()])
+          void loadScopeIndex()
+          return scope.id
         },
         close(directory: string) {
           server.scopes.close(directory)
@@ -1328,10 +1265,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         move(directory: string, toIndex: number) {
           server.scopes.move(directory, toIndex)
         },
-        async pinScope(scope: { worktree: string; pinned?: number; id?: string }) {
+        async pinScope(scope: { pinned?: number; id: string }) {
           const isPinned = (scope.pinned ?? 0) > 0
           const value = isPinned ? 0 : Date.now()
-          server.scopes.pin(scope.worktree, value)
+          server.scopes.pin(scope.id, value)
           if (scope.id) {
             try {
               await globalSdk.client.scope.update({ path_scopeID: scope.id, pinned: value })

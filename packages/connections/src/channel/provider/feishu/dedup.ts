@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
@@ -127,4 +128,4 @@ export class FeishuDedup {
   }
 }
 
-export const feishuDedup = new FeishuDedup()
+export const feishuDedup = RuntimeContext.state(() => new FeishuDedup())

@@ -8,7 +8,7 @@ import { LatticeTypes } from "./types"
 
 const log = Log.create({ service: "lattice.migration" })
 
-const ACTIVE_LOOP_STATUSES = new Set(["armed", "running", "waiting", "auditing"])
+const ACTIVE_LOOP_STATUSES = new Set(["armed", "running", "auditing"])
 
 type StrictV2Index = {
   runsByID: Map<string, LatticeTypes.Run>
@@ -475,4 +475,6 @@ export const migrations: Migration[] = [
   },
 ]
 
-MigrationRegistry.register("lattice", migrations)
+export function registerLatticeMigrations() {
+  MigrationRegistry.register("lattice", migrations)
+}

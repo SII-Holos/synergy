@@ -1,33 +1,69 @@
-import z from "zod"
+import { z } from "zod"
 import { SessionSchemaRegistry } from "./schema-registry"
 
 export interface SessionExtensionShape {}
-export interface SessionCreationExtensions {}
+export interface SessionCreationExtensions {
+  tags?: string[]
+}
+export const SESSION_TAG_MAX_LENGTH = 40
+export const SESSION_TAG_MAX_COUNT = 20
+
+export function normalizeSessionTags(values: unknown): string[] {
+  return Tags.parse(values === undefined ? [] : values)
+}
+
+export function normalizeSessionTag(value: unknown): string | undefined {
+  const parsed = TagQuery.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
+export const TagQuery = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/^(?:#\s*)+/, ""))
+  .pipe(z.string().min(1).max(SESSION_TAG_MAX_LENGTH))
+  .meta({ ref: "SessionTagQuery" })
+
+export const Tags = z
+  .array(z.string())
+  .transform((values, context) => {
+    const tags: string[] = []
+    values.forEach((value, index) => {
+      const parsed = TagQuery.safeParse(value)
+      if (!parsed.success) {
+        const tooLong = parsed.error.issues.some((issue) => issue.code === z.ZodIssueCode.too_big)
+        if (!tooLong) return
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index],
+          message: "Session tags must be at most 40 characters after removing a leading hash",
+        })
+        return
+      }
+      tags.push(parsed.data)
+    })
+    return [...new Set(tags)]
+  })
+  .refine((tags) => tags.every((tag) => tag.length <= SESSION_TAG_MAX_LENGTH), {
+    message: `Session tags can be at most ${SESSION_TAG_MAX_LENGTH} characters`,
+  })
+  .refine((tags) => tags.length <= SESSION_TAG_MAX_COUNT, {
+    message: `Sessions can have at most ${SESSION_TAG_MAX_COUNT} tags`,
+  })
+  .meta({ ref: "SessionTags" })
+
 import { Identifier } from "../id/id"
 import type { Scope } from "../scope/types"
 import { SnapshotSchema } from "./snapshot-schema"
 import { PermissionNext } from "../permission/next"
 import { SessionInteraction } from "./interaction"
-import { opaque } from "../util/schema"
+import { Runtime as ScopeRuntime } from "../scope/types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionCortexContract as CortexTypes } from "./cortex-contract"
 import { Workspace } from "./workspace-schema"
 
 export { Workspace }
-const ScopeField = opaque<Scope>(
-  z.object({
-    id: z.string(),
-    type: z.string().optional(),
-    directory: z.string().optional(),
-    worktree: z.string().optional(),
-    vcs: z.literal("git").optional(),
-    name: z.string().optional(),
-    icon: z.object({ url: z.string().optional(), color: z.string().optional() }).optional(),
-    time: z.object({ created: z.number(), updated: z.number(), initialized: z.number().optional() }).optional(),
-    sandboxes: z.array(z.string()).optional(),
-  }),
-  { ref: "SessionScope" },
-)
+const ScopeField = ScopeRuntime.meta({ ref: "SessionScope" })
 
 const CortexDelegationInfoInner = z.object({
   taskID: z.string(),
@@ -84,14 +120,26 @@ export const HistoryInfo = z
   .meta({ ref: "SessionHistoryInfo" })
 export type HistoryInfo = z.infer<typeof HistoryInfo>
 
-/** Why a session reports `recovering`. Carried through to clients so a
- * recovery state is diagnosable instead of collapsing three unrelated causes
- * into one opaque status. `workflow`-caused recovery needs no data repair and
- * is the only reason a session can remain recovering indefinitely. */
-export const RecoveringReason = z
-  .enum(["workflow", "incomplete-turn", "pending-reply"])
-  .meta({ ref: "SessionRecoveringReason" })
-export type RecoveringReason = z.infer<typeof RecoveringReason>
+/** Why a session is `paused`. A pause is the single intermediate state for every
+ * abnormal end, so the reason carries the cause through to clients instead of
+ * collapsing unrelated failures into one opaque status. The session itself is
+ * the only pause authority; workflow state never produces one. */
+export const PausedReason = z
+  .enum(["aborted", "failed", "interrupted", "workflow"])
+  .meta({ ref: "SessionPausedReason" })
+export type PausedReason = z.infer<typeof PausedReason>
+
+/** The durable pause latch on a session. Present means the session is stopped
+ * mid-work and will not be driven again until the user continues, abandons, or
+ * sends new input. */
+export const PausedInfo = z
+  .object({
+    reason: PausedReason,
+    description: z.string().optional(),
+    since: z.number(),
+  })
+  .meta({ ref: "SessionPaused" })
+export type PausedInfo = z.infer<typeof PausedInfo>
 
 export const WorkingInfo = z
   .union([
@@ -106,9 +154,10 @@ export const WorkingInfo = z
       next: z.number(),
     }),
     z.object({
-      status: z.literal("recovering"),
-      reason: RecoveringReason.optional(),
+      status: z.literal("paused"),
+      reason: PausedReason,
       description: z.string().optional(),
+      since: z.number(),
     }),
   ])
   .meta({ ref: "SessionWorkingInfo" })
@@ -159,6 +208,7 @@ const BaseInfo = z.preprocess(
       })
       .optional(),
     category: z.enum(["project", "home", "channel", "background", "github"]).optional(),
+    tags: Tags.default([]),
     provenance: z.literal("github").optional(),
     endpoint: SessionEndpoint.Info.optional(),
     summary: z
@@ -201,7 +251,7 @@ const BaseInfo = z.preprocess(
       .optional()
       .describe("Per-session model override set by /model command"),
     agentOverride: z.string().optional().describe("Per-session agent override set by session control"),
-    pendingReply: z.boolean().optional(),
+    paused: PausedInfo.optional(),
     interaction: SessionInteraction.Info.optional(),
     lastExchange: z
       .object({
@@ -213,7 +263,7 @@ const BaseInfo = z.preprocess(
     rollbackAck: RollbackAck.optional(),
     cortex: CortexDelegationInfo.optional(),
     working: WorkingInfo.optional(),
-    workspace: Workspace.optional(),
+    workspace: Workspace.nullable(),
     workflow: z
       .object({
         kind: z.string(),
@@ -245,9 +295,10 @@ export const StatusInfo = z
       description: z.string().optional(),
     }),
     z.object({
-      type: z.literal("recovering"),
-      reason: RecoveringReason.optional(),
+      type: z.literal("paused"),
+      reason: PausedReason,
       description: z.string().optional(),
+      since: z.number(),
     }),
   ])
   .meta({

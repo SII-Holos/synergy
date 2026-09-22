@@ -64,7 +64,7 @@ describe("Electron Browser Host broker contract", () => {
   )
 
   runtimeTest(
-    "executes protocol v2 through the same CDP controller without a control fallback",
+    "executes protocol v3 through the same CDP controller without a control fallback",
     async () => {
       const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-host-smoke-"))
       temporaryDirectories.push(directory)

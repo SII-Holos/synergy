@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 export namespace CortexWorkspace {
   export interface CreateInput {
     sessionID: string
@@ -11,18 +12,26 @@ export namespace CortexWorkspace {
     cleanup(input: { sessionID: string; taskID: string }): Promise<void>
   }
 
-  let adapter: Adapter | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    adapter: undefined as Adapter | undefined,
+  }))
 
   export function register(value: Adapter) {
-    adapter = value
+    const instanceState = runtimeState()
+
+    instanceState.adapter = value
   }
 
   export function create(input: CreateInput) {
-    if (!adapter) throw new Error("Worktree execution requires a workspace adapter")
-    return adapter.create(input)
+    const instanceState = runtimeState()
+
+    if (!instanceState.adapter) throw new Error("Worktree execution requires a workspace adapter")
+    return instanceState.adapter.create(input)
   }
 
   export async function cleanup(input: { sessionID: string; taskID: string }) {
-    await adapter?.cleanup(input)
+    const instanceState = runtimeState()
+
+    await instanceState.adapter?.cleanup(input)
   }
 }

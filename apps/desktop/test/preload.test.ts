@@ -25,7 +25,13 @@ await import("../src/preload.js")
 type SynergyDesktop = {
   platform: string
   openDirectoryPickerDialog: (opts?: { title?: string; multiple?: boolean }) => Promise<unknown>
-  server: { status(): Promise<unknown>; restart(): Promise<unknown> }
+  server: {
+    status(): Promise<unknown>
+    restart(): Promise<unknown>
+    maintenance(): Promise<unknown>
+    cancelMaintenance(): Promise<unknown>
+    diagnostics(): Promise<unknown>
+  }
   update: {
     status(): Promise<unknown>
     setMode(mode: unknown): Promise<unknown>
@@ -85,6 +91,11 @@ describe("desktop preload bridge", () => {
 
     expectInvoke("desktop.server.restart", [], { mode: "managed" })
     expect(await desktop.server.restart()).toEqual({ mode: "managed" })
+
+    for (const action of ["maintenance", "cancelMaintenance", "diagnostics"] as const) {
+      expectInvoke(`desktop.server.${action}`, [], { ok: true })
+      expect(await desktop.server[action]()).toEqual({ ok: true })
+    }
 
     expectInvoke("desktop.shell.openExternal", ["https://example.com"], undefined)
     await desktop.shell.openExternal("https://example.com")
@@ -221,11 +232,11 @@ describe("desktop preload bridge", () => {
 
     nativeListener!.wrapped(null, {
       type: "native.loaded",
-      protocolVersion: 2,
+      protocolVersion: 3,
       pageId: "p1",
       url: "https://example.com",
     })
-    expect(events).toEqual([{ type: "native.loaded", protocolVersion: 2, pageId: "p1", url: "https://example.com" }])
+    expect(events).toEqual([{ type: "native.loaded", protocolVersion: 3, pageId: "p1", url: "https://example.com" }])
   })
 
   test("routes browser native control invocations", async () => {

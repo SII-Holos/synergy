@@ -499,7 +499,7 @@ export type DiagnosticsSummary = {
     }>
   }
   sessions: {
-    pendingReply: Array<{
+    paused: Array<{
       sessionID: string
       path: string
       updated?: number
@@ -1027,6 +1027,11 @@ export type PerfConfig = {
     retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
+    requestDeadlineMs: number
+    probeTimeoutMs: number
+    probeAttempts: number
+    hardCeilingMs: number
+    chunkBudgetMs: number
   }
   thresholds: {
     [key: string]: number
@@ -1065,6 +1070,11 @@ export type PerformanceConfigPatch = {
     retentionBytes: number
     retentionMs: number
     walCheckpointIntervalMs: number
+    requestDeadlineMs: number
+    probeTimeoutMs: number
+    probeAttempts: number
+    hardCeilingMs: number
+    chunkBudgetMs: number
   }
   thresholds?: {
     [key: string]: number
@@ -1115,8 +1125,39 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageMaintenanceStatus = {
+  format: {
+    current: number
+    target: number
+    maintenanceRequired: boolean
+    phase?: "records" | "nodes" | "artifacts" | "swap" | "reclaim" | "complete"
+    restartRequired: boolean
+  }
+  reclaim: {
+    pending: boolean
+    running: boolean
+    paused: boolean
+    remainingPages?: number
+    releasedPages: number
+    error?: string
+  }
+}
+
+export type StorageReclaimControlInput = {
+  action: "pause" | "resume"
+}
+
 export type StorageUpgradeStatus = {
   ready: true
+  historyReady: boolean
+  paused: boolean
+  pauseReason?: "user" | "foreground" | "disk" | "wal"
+  backup: {
+    complete: boolean
+    attention?: boolean
+    sealed: number
+    total: number
+  }
   pending: number
   partial: number
   imported: number
@@ -1131,6 +1172,18 @@ export type StorageUpgradeCatalog = {
     status: "pending" | "partial" | "imported" | "quarantined"
   }>
   next?: Array<string>
+}
+
+export type StorageSessionPreparation = {
+  sessionID: string
+  state: "ready" | "pending" | "preparing" | "blocked" | "failed"
+  phase?: "backup" | "import" | "migrate" | "verify" | "publish" | "complete"
+  files: number
+  bytes: number
+  error?: {
+    category: "retryable" | "integrity" | "data"
+    message: string
+  }
 }
 
 export type StorageSnapshotOwnerCounts = {
@@ -1733,7 +1786,7 @@ export type GlobalActivity = {
   backgroundJobs: number
 }
 
-export type SessionRecoveringReason = "workflow" | "incomplete-turn" | "pending-reply"
+export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
 
 export type SessionStatus =
   | {
@@ -1750,9 +1803,10 @@ export type SessionStatus =
       description?: string
     }
   | {
-      type: "recovering"
-      reason?: SessionRecoveringReason
+      type: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionNavEntry = {
@@ -1760,6 +1814,7 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
+  tags?: Array<string>
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   createdAt?: number
@@ -1791,7 +1846,7 @@ export type SessionNavEntry = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
   workspaceType?: string
   workflow?: {
@@ -1816,6 +1871,11 @@ export type GlobalRecentResponse = {
   unreadCompletionCount: number
 }
 
+/**
+ * Filter sessions by tag
+ */
+export type SessionTagQuery = string
+
 export type GlobalAcknowledgeCompletionsResponse = {
   acknowledgedCount: number
   modifiedSessionCount: number
@@ -1832,11 +1892,14 @@ export type AgendaWebhookResult = {
 }
 
 export type Scope = {
+  type: "project"
   id: string
-  type: "home" | "project"
-  directory: string
-  worktree: string
-  vcs?: "git"
+  local: {
+    directory: string
+    worktree: string
+    vcs?: "git"
+    sandboxes: Array<string>
+  } | null
   name?: string
   icon?: {
     url?: string
@@ -1849,14 +1912,13 @@ export type Scope = {
     initialized?: number
     archived?: number
   }
-  sandboxes: Array<string>
 }
 
 export type ScopeNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   name?: string
-  directory: string
+  directory: string | null
   latestActivityAt: number
   sessionCount: number
   icon?: {
@@ -2717,14 +2779,34 @@ export type ObservabilityConfig = {
        */
       maxSqliteBytes?: number
       /**
-       * Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.
+       * Byte budget for authoritative storage (default: 40GB). Budgeted pruning only runs while the database exceeds it, and the operative retention window is derived from it and the measured ingress rate, so this value decides how much evidence can actually be retained.
        */
       retentionBytes?: number
       /**
-       * Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.
+       * Retain authoritative evidence for this long (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). This is a promise the byte budget may shorten, never lengthen: when retentionBytes holds less than this window at the measured ingress rate, pruning uses the shorter budget-derived window and reports it, and a budget that cannot hold even one day raises an unreachable-budget issue without pruning.
        */
       retentionMs?: number
       walCheckpointIntervalMs?: number
+      /**
+       * Budget for one ordinary statement against authoritative storage (default: 30000 ms). Exceeding it retries rather than terminating: the worker's liveness probe reports occupancy separately, so one slow statement cannot restart the runtime.
+       */
+      requestDeadlineMs?: number
+      /**
+       * Budget for one authoritative-storage liveness probe (default: 30000 ms). An unanswered probe marks the worker busy rather than dead, so this value decides how quickly degradation is noticed, not whether the runtime survives.
+       */
+      probeTimeoutMs?: number
+      /**
+       * Unanswered liveness probes in a row before the worker is reported as busy (default: 3). Only sustained silence past hardCeilingMs is terminal, so this value governs when the condition becomes visible.
+       */
+      probeAttempts?: number
+      /**
+       * Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 3600000 ms). Must exceed the longest legitimate statement, because three maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, the physical integrity check is one engine call, and VACUUM rewrites every page. Measured on production-shaped fixtures the check alone took 17-33 s at 920,000 records and 140-280 s at 2,760,000 records, and it runs while a migration activates, so the projection to a much larger store is a range rather than a point. Raising this only delays declaring a real wedge, during which storage already fails new work fast and the runtime keeps serving, so it is the safe direction to err; lower it only if a shorter recovery time matters more than the risk of interrupting a migration.
+       */
+      hardCeilingMs?: number
+      /**
+       * Budget for reclaim, the only maintenance operation that can be split: it frees a bounded page count per call, so a fixed budget is enforceable (default: 30000 ms). CREATE INDEX, PRAGMA integrity_check and VACUUM cannot be chunked or cancelled, so they are bounded by hardCeilingMs instead and raising this value does not extend them. This value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume, and requestDeadlineMs and probeTimeoutMs are clamped the same way, because the invariant only holds when every limit that can occupy the worker's loop leaves that margin.
+       */
+      chunkBudgetMs?: number
     }
     thresholds?: {
       [key: string]: number
@@ -2752,408 +2834,311 @@ export type CategoryConfig = {
 }
 
 /**
- * Default plugin runtime resource and request limits
+ * Per-source compatibility toggles for discovering Skills from other agent tools
  */
-export type PluginRuntimeLimitsConfig = {
+export type SkillsCompatibilityConfig = {
   /**
-   * Maximum milliseconds for plugin runtime startup
+   * Load Agent Skills from .agents/skills directories (default: true)
    */
-  startupTimeoutMs?: number
+  agents?: boolean
   /**
-   * Maximum milliseconds for a plugin tool invocation
+   * Load Claude Code Skills from .claude/skills directories (default: true)
    */
-  toolInvocationTimeoutMs?: number
+  claude?: boolean
   /**
-   * Maximum milliseconds for one plugin Host Service request
+   * Load Codex Skills from .codex/skills directories (default: true)
    */
-  hostServiceRequestTimeoutMs?: number
+  codex?: boolean
   /**
-   * Default maximum milliseconds for plugin delegated task runs
+   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
    */
-  taskRunTimeoutMs?: number
+  openclaw?: boolean
+}
+
+export type SkillsConfig = {
+  compatibility?: SkillsCompatibilityConfig
+}
+
+export type WorktreeConfig = {
   /**
-   * Graceful shutdown window before force kill
+   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
    */
-  shutdownGraceMs?: number
+  maxManaged?: number
   /**
-   * Heartbeat interval in milliseconds
+   * Hours between managed-worktree janitor sweeps
    */
-  heartbeatIntervalMs?: number
+  sweepIntervalHours?: number
   /**
-   * External plugin runtime RSS limit in megabytes
+   * Run the managed-worktree janitor at all (default: true)
    */
-  maxMemoryMb?: number
-  /**
-   * External plugin runtime RSS sampling interval in milliseconds
-   */
-  memorySampleIntervalMs?: number
-  /**
-   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
-   */
-  agentCallMaxRuntimeMs?: number
-  /**
-   * Maximum milliseconds for one plugin hook handler invocation
-   */
-  hookTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
-   */
-  contributionInvokeTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for plugin shell.run commands
-   */
-  shellRunTimeoutMs?: number
-  /**
-   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
-   */
-  taskRunWaitTimeoutMs?: number
+  janitor?: boolean
 }
 
 /**
- * Plugin runtime isolation policy configuration
+ * Retry policy for connecting to this server
  */
-export type PluginRuntimePolicyConfig = {
-  limits?: PluginRuntimeLimitsConfig
+export type McpRetryConfig = {
+  /**
+   * Maximum connection attempts before giving up
+   */
+  maxAttempts?: number
+  /**
+   * Initial backoff delay in ms between retries
+   */
+  backoffMs?: number
+  /**
+   * Multiplier applied to backoff on each retry
+   */
+  backoffMultiplier?: number
+  /**
+   * Cooldown period in ms before a retry cycle resets
+   */
+  cooldownMs?: number
 }
 
 /**
- * Public plugin marketplace registry configuration
+ * Filter which tools are exposed from this server
  */
-export type PluginMarketplaceConfig = {
+export type McpToolFilterConfig = {
   /**
-   * Enable the public GitHub-backed plugin marketplace
+   * Tool names to include (allowlist)
    */
-  enabled?: boolean
+  include?: Array<string>
   /**
-   * URL of the official plugin registry.json index
+   * Tool names to exclude (blocklist)
    */
-  registryUrl?: string
-  /**
-   * Include the local development registry in marketplace search and detail routes
-   */
-  includeLocalRegistry?: boolean
-  /**
-   * Remote marketplace cache TTL in milliseconds
-   */
-  cacheTtlMs?: number
-  /**
-   * Use stale marketplace cache for browsing when the remote registry cannot be reached
-   */
-  offlineCache?: boolean
-  /**
-   * Timeout in milliseconds for registry and entry metadata requests
-   */
-  requestTimeoutMs?: number
-  /**
-   * Timeout in milliseconds for plugin artifact and signature downloads
-   */
-  artifactDownloadTimeoutMs?: number
-  /**
-   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
-   */
-  cliRequestTimeoutMs?: number
+  exclude?: Array<string>
 }
 
-export type ChannelFeishuAccountConfig = {
+/**
+ * Tool execution behavior config
+ */
+export type McpToolsConfig = {
+  /**
+   * Tool approval mode
+   */
+  approval?: "auto" | "always" | "per_session"
+  /**
+   * Maximum tool output size in bytes
+   */
+  maxOutputBytes?: number
+}
+
+/**
+ * Tool list caching behavior
+ */
+export type McpToolCacheConfig = {
+  /**
+   * Tool list caching mode
+   */
+  mode?: "disabled" | "session" | "persistent"
+  /**
+   * Time-to-live for cached tool list in ms
+   */
+  ttlMs?: number
+}
+
+export type McpLocalConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  /**
+   * Working directory for local MCP servers
+   */
+  cwd?: string
+  /**
+   * Environment variables to set when running the MCP server
+   */
+  environment?: {
+    [key: string]: string
+  }
+  /**
+   * Whether tools require a session workspace; defaults to true
+   */
+  requiresWorkspace?: boolean
+  /**
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
+   */
+  timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
   enabled?: boolean
+}
+
+export type McpOAuthConfig = {
   /**
-   * Feishu app ID
+   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
    */
-  appId: string
+  clientId?: string
   /**
-   * Feishu app secret
+   * OAuth client secret (if required by the authorization server)
    */
-  appSecret: string
+  clientSecret?: string
   /**
-   * Feishu domain (feishu for China, lark for international)
+   * OAuth scopes to request during authorization
    */
-  domain?: "feishu" | "lark"
+  scope?: string
+}
+
+export type McpRemoteConfig = {
   /**
-   * Allow direct messages
+   * Type of MCP server connection
    */
-  allowDM?: boolean
+  type: "remote"
   /**
-   * Allow group messages
+   * URL of the remote MCP server
    */
-  allowGroup?: boolean
+  url: string
   /**
-   * Require @mention in group chats
+   * Headers to send with the request
    */
-  requireMention?: boolean
+  headers?: {
+    [key: string]: string
+  }
   /**
-   * Bot open_id used to verify real @mentions in group chats
+   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
    */
-  botOpenId?: string
+  oauth?: McpOAuthConfig | false
   /**
-   * Project directory whose Scope owns sessions for this Feishu account
+   * Whether tools require a session workspace; defaults to true
    */
-  projectDir?: string
+  requiresWorkspace?: boolean
   /**
-   * Enable streaming card updates
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
-  streaming?: boolean
+  timeout?: number
   /**
-   * Format for ordinary outbound text messages (markdown renders through a CardKit card)
+   * MCP startup mode
    */
-  responseFormat?: "text" | "markdown"
+  startup?: "eager" | "lazy" | "manual"
   /**
-   * Minimum interval between streaming card updates in ms
+   * If true, this MCP server is required for the configured workflow
    */
-  streamingThrottleMs?: number
+  required?: boolean
   /**
-   * Session scoping strategy for group chats
+   * Timeout in ms for initial connection handshake
    */
-  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender" | "group_thread"
+  connectTimeout?: number
   /**
-   * Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)
+   * Timeout in ms for listing tools
    */
-  inboundDebounceMs?: number
+  listTimeout?: number
   /**
-   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+}
+
+/**
+ * Default settings applied to all MCP servers that don't override them
+ */
+export type McpDefaultsConfig = {
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+}
+
+export type ExternalAgentConfig = {
+  /**
+   * Disable this external agent
+   */
+  disabled?: boolean
+  /**
+   * Override path to the external agent binary
+   */
+  path?: string
+  /**
+   * Default model for this external agent
    */
   model?: string
   /**
-   * Model variant to use with this account model (e.g. low, high, max)
+   * Whether to auto-discover this agent on startup (default: true)
    */
-  variant?: string
-  /**
-   * Resolve sender display names via Feishu contact API
-   */
-  resolveSenderNames?: boolean
-  /**
-   * Reply in thread when message is part of a topic
-   */
-  replyInThread?: boolean
-}
-
-export type ChannelFeishuConfig = {
-  type: "feishu"
-  accounts: {
-    [key: string]: ChannelFeishuAccountConfig
-  }
-  /**
-   * Default domain for all accounts
-   */
-  domain?: "feishu" | "lark"
-  /**
-   * Default streaming setting for all accounts
-   */
-  streaming?: boolean
-  /**
-   * Default outbound text format for all accounts
-   */
-  responseFormat?: "text" | "markdown"
-}
-
-export type ChannelClarusAccountConfig = {
-  enabled?: boolean
-  /**
-   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
-   */
-  apiUrl?: string
-  /**
-   * Primary Synergy agent for project and assignment Sessions
-   */
-  agent?: string
-}
-
-export type ChannelClarusConfig = {
-  type: "clarus"
-  accounts: {
-    [key: string]: ChannelClarusAccountConfig
-  }
-}
-
-export type ChannelGithubAccountConfig = {
-  enabled?: boolean
-  /**
-   * GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later
-   */
-  repositories?: Array<string>
-  /**
-   * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
-   */
-  workspaceDir: string
-  /**
-   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
-   */
-  workspaceTtlHours?: number
-  /**
-   * Interval between GitHub API polls in milliseconds (default 5 minutes)
-   */
-  pollingIntervalMs?: number
-  /**
-   * Automatically review newly opened and updated pull requests
-   */
-  autoReview?: boolean
-  /**
-   * Respond to @mentions of the bot handle and questions in issues and pull requests
-   */
-  autoRespond?: boolean
-  /**
-   * Agent used for GitHub channel sessions (defaults to github-channel-agent)
-   */
-  agent?: string
-  /**
-   * GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)
-   */
-  mention?: string
-  /**
-   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
-   */
-  model?: string
-  /**
-   * Model variant to use with this account model (e.g. low, high, max)
-   */
-  variant?: string
-}
-
-export type ChannelGithubConfig = {
-  type: "github"
-  accounts: {
-    [key: string]: ChannelGithubAccountConfig
-  }
-}
-
-/**
- * Holos platform configuration
- */
-export type HolosConfig = {
-  /**
-   * Enable the Holos runtime connection
-   */
-  enabled?: boolean
-  /**
-   * Holos API base URL
-   */
-  apiUrl?: string
-  /**
-   * Holos WebSocket base URL
-   */
-  wsUrl?: string
-  /**
-   * Holos portal URL for browser-facing pages (bind/start)
-   */
-  portalUrl?: string
-}
-
-/**
- * Sender identity for outgoing emails
- */
-export type EmailFromConfig = {
-  /**
-   * Sender email address
-   */
-  address?: string
-  /**
-   * Sender display name
-   */
-  name?: string
-}
-
-/**
- * SMTP transport settings for outgoing emails
- */
-export type EmailSmtpConfig = {
-  /**
-   * SMTP server hostname
-   */
-  host?: string
-  /**
-   * SMTP server port
-   */
-  port?: number
-  /**
-   * Use TLS/SSL for the SMTP connection
-   */
-  secure?: boolean
-  /**
-   * SMTP username
-   */
-  username?: string
-  /**
-   * SMTP password or app token
-   */
-  password?: string
-}
-
-/**
- * IMAP settings for reading emails
- */
-export type EmailImapConfig = {
-  /**
-   * IMAP server hostname
-   */
-  host?: string
-  /**
-   * IMAP server port
-   */
-  port?: number
-  /**
-   * Use TLS/SSL for the IMAP connection
-   */
-  secure?: boolean
-  /**
-   * IMAP username
-   */
-  username?: string
-  /**
-   * IMAP password or app token
-   */
-  password?: string
-}
-
-/**
- * Outgoing email configuration
- */
-export type EmailConfig = {
-  /**
-   * Enable email features
-   */
-  enabled?: boolean
-  from?: EmailFromConfig
-  smtp?: EmailSmtpConfig
-  imap?: EmailImapConfig
-}
-
-/**
- * Git identity sync settings
- */
-export type GithubIdentitySyncConfig = {
-  /**
-   * Sync git user.name/user.email from the connected GitHub account
-   */
-  enabled?: boolean
-  /**
-   * Optional git user.name override (defaults to the GitHub account login). null clears the override
-   */
-  name?: string | null
-  /**
-   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
-   */
-  email?: string | null
-}
-
-/**
- * GitHub agenda trigger settings
- */
-export type GithubWatchConfig = {
-  /**
-   * Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true
-   */
-  enabled?: boolean
-  /**
-   * Default poll interval for GitHub agenda triggers in milliseconds (default 300000)
-   */
-  defaultIntervalMs?: number
-}
-
-/**
- * GitHub integration settings (git identity sync, agenda watch)
- */
-export type GithubConfig = {
-  identitySync?: GithubIdentitySyncConfig
-  watch?: GithubWatchConfig
+  auto_discover?: boolean
+  [key: string]: unknown | boolean | string | undefined
 }
 
 export type MemoryConfig = {
@@ -3494,304 +3479,409 @@ export type RerankConfig = {
   model?: string
 }
 
-/**
- * Retry policy for connecting to this server
- */
-export type McpRetryConfig = {
-  /**
-   * Maximum connection attempts before giving up
-   */
-  maxAttempts?: number
-  /**
-   * Initial backoff delay in ms between retries
-   */
-  backoffMs?: number
-  /**
-   * Multiplier applied to backoff on each retry
-   */
-  backoffMultiplier?: number
-  /**
-   * Cooldown period in ms before a retry cycle resets
-   */
-  cooldownMs?: number
-}
-
-/**
- * Filter which tools are exposed from this server
- */
-export type McpToolFilterConfig = {
-  /**
-   * Tool names to include (allowlist)
-   */
-  include?: Array<string>
-  /**
-   * Tool names to exclude (blocklist)
-   */
-  exclude?: Array<string>
-}
-
-/**
- * Tool execution behavior config
- */
-export type McpToolsConfig = {
-  /**
-   * Tool approval mode
-   */
-  approval?: "auto" | "always" | "per_session"
-  /**
-   * Maximum tool output size in bytes
-   */
-  maxOutputBytes?: number
-}
-
-/**
- * Tool list caching behavior
- */
-export type McpToolCacheConfig = {
-  /**
-   * Tool list caching mode
-   */
-  mode?: "disabled" | "session" | "persistent"
-  /**
-   * Time-to-live for cached tool list in ms
-   */
-  ttlMs?: number
-}
-
-export type McpLocalConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  /**
-   * Working directory for local MCP servers
-   */
-  cwd?: string
-  /**
-   * Environment variables to set when running the MCP server
-   */
-  environment?: {
-    [key: string]: string
-  }
-  /**
-   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
-   */
-  timeout?: number
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-  /**
-   * Enable or disable the MCP server on startup
-   */
+export type ChannelFeishuAccountConfig = {
   enabled?: boolean
-}
-
-export type McpOAuthConfig = {
   /**
-   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
+   * Feishu app ID
    */
-  clientId?: string
+  appId: string
   /**
-   * OAuth client secret (if required by the authorization server)
+   * Feishu app secret
    */
-  clientSecret?: string
+  appSecret: string
   /**
-   * OAuth scopes to request during authorization
+   * Feishu domain (feishu for China, lark for international)
    */
-  scope?: string
-}
-
-export type McpRemoteConfig = {
+  domain?: "feishu" | "lark"
   /**
-   * Type of MCP server connection
+   * Allow direct messages
    */
-  type: "remote"
+  allowDM?: boolean
   /**
-   * URL of the remote MCP server
+   * Allow group messages
    */
-  url: string
+  allowGroup?: boolean
   /**
-   * Headers to send with the request
+   * Require @mention in group chats
    */
-  headers?: {
-    [key: string]: string
-  }
+  requireMention?: boolean
   /**
-   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
+   * Bot open_id used to verify real @mentions in group chats
    */
-  oauth?: McpOAuthConfig | false
+  botOpenId?: string
   /**
-   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
+   * Project directory whose Scope owns sessions for this Feishu account
    */
-  timeout?: number
+  projectDir?: string
   /**
-   * MCP startup mode
+   * Enable streaming card updates
    */
-  startup?: "eager" | "lazy" | "manual"
+  streaming?: boolean
   /**
-   * If true, this MCP server is required for the configured workflow
+   * Format for ordinary outbound text messages (markdown renders through a CardKit card)
    */
-  required?: boolean
+  responseFormat?: "text" | "markdown"
   /**
-   * Timeout in ms for initial connection handshake
+   * Minimum interval between streaming card updates in ms
    */
-  connectTimeout?: number
+  streamingThrottleMs?: number
   /**
-   * Timeout in ms for listing tools
+   * Session scoping strategy for group chats
    */
-  listTimeout?: number
+  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender" | "group_thread"
   /**
-   * Timeout in ms for tool call execution
+   * Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)
    */
-  callTimeout?: number
-  retry?: McpRetryConfig
+  inboundDebounceMs?: number
   /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-}
-
-/**
- * Default settings applied to all MCP servers that don't override them
- */
-export type McpDefaultsConfig = {
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-}
-
-export type ExternalAgentConfig = {
-  /**
-   * Disable this external agent
-   */
-  disabled?: boolean
-  /**
-   * Override path to the external agent binary
-   */
-  path?: string
-  /**
-   * Default model for this external agent
+   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
    */
   model?: string
   /**
-   * Whether to auto-discover this agent on startup (default: true)
+   * Model variant to use with this account model (e.g. low, high, max)
    */
-  auto_discover?: boolean
-  [key: string]: unknown | boolean | string | undefined
+  variant?: string
+  /**
+   * Resolve sender display names via Feishu contact API
+   */
+  resolveSenderNames?: boolean
+  /**
+   * Reply in thread when message is part of a topic
+   */
+  replyInThread?: boolean
+}
+
+export type ChannelFeishuConfig = {
+  type: "feishu"
+  accounts: {
+    [key: string]: ChannelFeishuAccountConfig
+  }
+  /**
+   * Default domain for all accounts
+   */
+  domain?: "feishu" | "lark"
+  /**
+   * Default streaming setting for all accounts
+   */
+  streaming?: boolean
+  /**
+   * Default outbound text format for all accounts
+   */
+  responseFormat?: "text" | "markdown"
+}
+
+export type ChannelClarusAccountConfig = {
+  enabled?: boolean
+  /**
+   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
+   */
+  apiUrl?: string
+  /**
+   * Primary Synergy agent for project and assignment Sessions
+   */
+  agent?: string
+}
+
+export type ChannelClarusConfig = {
+  type: "clarus"
+  accounts: {
+    [key: string]: ChannelClarusAccountConfig
+  }
+}
+
+export type ChannelGithubAccountConfig = {
+  enabled?: boolean
+  /**
+   * GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later
+   */
+  repositories?: Array<string>
+  /**
+   * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
+   */
+  workspaceDir: string
+  /**
+   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
+   */
+  workspaceTtlHours?: number
+  /**
+   * Interval between GitHub API polls in milliseconds (default 5 minutes)
+   */
+  pollingIntervalMs?: number
+  /**
+   * Automatically review newly opened and updated pull requests
+   */
+  autoReview?: boolean
+  /**
+   * Respond to @mentions of the bot handle and questions in issues and pull requests
+   */
+  autoRespond?: boolean
+  /**
+   * Agent used for GitHub channel sessions (defaults to github-channel-agent)
+   */
+  agent?: string
+  /**
+   * GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)
+   */
+  mention?: string
+  /**
+   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
+   */
+  model?: string
+  /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
+}
+
+export type ChannelGithubConfig = {
+  type: "github"
+  accounts: {
+    [key: string]: ChannelGithubAccountConfig
+  }
 }
 
 /**
- * Per-source compatibility toggles for discovering Skills from other agent tools
+ * Holos platform configuration
  */
-export type SkillsCompatibilityConfig = {
+export type HolosConfig = {
   /**
-   * Load Agent Skills from .agents/skills directories (default: true)
+   * Enable the Holos runtime connection
    */
-  agents?: boolean
+  enabled?: boolean
   /**
-   * Load Claude Code Skills from .claude/skills directories (default: true)
+   * Holos API base URL
    */
-  claude?: boolean
+  apiUrl?: string
   /**
-   * Load Codex Skills from .codex/skills directories (default: true)
+   * Holos WebSocket base URL
    */
-  codex?: boolean
+  wsUrl?: string
   /**
-   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
+   * Holos portal URL for browser-facing pages (bind/start)
    */
-  openclaw?: boolean
+  portalUrl?: string
 }
 
-export type SkillsConfig = {
-  compatibility?: SkillsCompatibilityConfig
+/**
+ * Sender identity for outgoing emails
+ */
+export type EmailFromConfig = {
+  /**
+   * Sender email address
+   */
+  address?: string
+  /**
+   * Sender display name
+   */
+  name?: string
 }
 
-export type WorktreeConfig = {
+/**
+ * SMTP transport settings for outgoing emails
+ */
+export type EmailSmtpConfig = {
   /**
-   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
+   * SMTP server hostname
    */
-  maxManaged?: number
+  host?: string
   /**
-   * Hours between managed-worktree janitor sweeps
+   * SMTP server port
    */
-  sweepIntervalHours?: number
+  port?: number
   /**
-   * Run the managed-worktree janitor at all (default: true)
+   * Use TLS/SSL for the SMTP connection
    */
-  janitor?: boolean
+  secure?: boolean
+  /**
+   * SMTP username
+   */
+  username?: string
+  /**
+   * SMTP password or app token
+   */
+  password?: string
+}
+
+/**
+ * IMAP settings for reading emails
+ */
+export type EmailImapConfig = {
+  /**
+   * IMAP server hostname
+   */
+  host?: string
+  /**
+   * IMAP server port
+   */
+  port?: number
+  /**
+   * Use TLS/SSL for the IMAP connection
+   */
+  secure?: boolean
+  /**
+   * IMAP username
+   */
+  username?: string
+  /**
+   * IMAP password or app token
+   */
+  password?: string
+}
+
+/**
+ * Outgoing email configuration
+ */
+export type EmailConfig = {
+  /**
+   * Enable email features
+   */
+  enabled?: boolean
+  from?: EmailFromConfig
+  smtp?: EmailSmtpConfig
+  imap?: EmailImapConfig
+}
+
+/**
+ * Git identity sync settings
+ */
+export type GithubIdentitySyncConfig = {
+  /**
+   * Sync git user.name/user.email from the connected GitHub account
+   */
+  enabled?: boolean
+  /**
+   * Optional git user.name override (defaults to the GitHub account login). null clears the override
+   */
+  name?: string | null
+  /**
+   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
+   */
+  email?: string | null
+}
+
+/**
+ * GitHub agenda trigger settings
+ */
+export type GithubWatchConfig = {
+  /**
+   * Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true
+   */
+  enabled?: boolean
+  /**
+   * Default poll interval for GitHub agenda triggers in milliseconds (default 300000)
+   */
+  defaultIntervalMs?: number
+}
+
+/**
+ * GitHub integration settings (git identity sync, agenda watch)
+ */
+export type GithubConfig = {
+  identitySync?: GithubIdentitySyncConfig
+  watch?: GithubWatchConfig
+}
+
+/**
+ * Default plugin runtime resource and request limits
+ */
+export type PluginRuntimeLimitsConfig = {
+  /**
+   * Maximum milliseconds for plugin runtime startup
+   */
+  startupTimeoutMs?: number
+  /**
+   * Maximum milliseconds for a plugin tool invocation
+   */
+  toolInvocationTimeoutMs?: number
+  /**
+   * Maximum milliseconds for one plugin Host Service request
+   */
+  hostServiceRequestTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin delegated task runs
+   */
+  taskRunTimeoutMs?: number
+  /**
+   * Graceful shutdown window before force kill
+   */
+  shutdownGraceMs?: number
+  /**
+   * Heartbeat interval in milliseconds
+   */
+  heartbeatIntervalMs?: number
+  /**
+   * External plugin runtime RSS limit in megabytes
+   */
+  maxMemoryMb?: number
+  /**
+   * External plugin runtime RSS sampling interval in milliseconds
+   */
+  memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
+}
+
+/**
+ * Plugin runtime isolation policy configuration
+ */
+export type PluginRuntimePolicyConfig = {
+  limits?: PluginRuntimeLimitsConfig
+}
+
+/**
+ * Public plugin marketplace registry configuration
+ */
+export type PluginMarketplaceConfig = {
+  /**
+   * Enable the public GitHub-backed plugin marketplace
+   */
+  enabled?: boolean
+  /**
+   * URL of the official plugin registry.json index
+   */
+  registryUrl?: string
+  /**
+   * Include the local development registry in marketplace search and detail routes
+   */
+  includeLocalRegistry?: boolean
+  /**
+   * Remote marketplace cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use stale marketplace cache for browsing when the remote registry cannot be reached
+   */
+  offlineCache?: boolean
+  /**
+   * Timeout in milliseconds for registry and entry metadata requests
+   */
+  requestTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for plugin artifact and signature downloads
+   */
+  artifactDownloadTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
+   */
+  cliRequestTimeoutMs?: number
 }
 
 /**
@@ -4683,67 +4773,8 @@ export type Config = {
   category?: {
     [key: string]: CategoryConfig
   }
-  plugin?: Array<string>
-  pluginRuntimePolicy?: PluginRuntimePolicyConfig
-  pluginMarketplace?: PluginMarketplaceConfig
-  /**
-   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
-   */
-  pluginConfig?: {
-    [key: string]: {
-      [key: string]: unknown
-    }
-  }
-  /**
-   * Channel configurations for messaging platform integrations
-   */
-  channel?: {
-    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
-  }
-  holos?: HolosConfig
-  email?: EmailConfig
-  github?: GithubConfig
-  enterprise?: {
-    /**
-     * Enterprise URL
-     */
-    url?: string
-  }
-  boss?: {
-    /**
-     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
-     */
-    enabled?: boolean
-    /**
-     * Optional colleague identity description injected into the runtime boss session
-     */
-    identityText?: string | null
-    /**
-     * Re-inject the versioned world-overview briefing every N days (default: disabled)
-     */
-    briefingIntervalDays?: number | null
-    /**
-     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
-     */
-    persona?:
-      | {
-          preset: "project_manager"
-        }
-      | {
-          preset: "ops_assistant"
-        }
-      | {
-          preset: "custom"
-          formality: number
-          conciseness: number
-          proactiveness: number
-          warmth: number
-        }
-      | null
-  }
-  library?: LibraryConfig
-  embedding?: EmbeddingConfig
-  rerank?: RerankConfig
+  skills?: SkillsConfig
+  worktree?: WorktreeConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -4815,8 +4846,35 @@ export type Config = {
      */
     lsp?: boolean
   }
-  skills?: SkillsConfig
-  worktree?: WorktreeConfig
+  library?: LibraryConfig
+  embedding?: EmbeddingConfig
+  rerank?: RerankConfig
+  /**
+   * Channel configurations for messaging platform integrations
+   */
+  channel?: {
+    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
+  }
+  holos?: HolosConfig
+  email?: EmailConfig
+  github?: GithubConfig
+  enterprise?: {
+    /**
+     * Enterprise URL
+     */
+    url?: string
+  }
+  plugin?: Array<string>
+  pluginRuntimePolicy?: PluginRuntimePolicyConfig
+  pluginMarketplace?: PluginMarketplaceConfig
+  /**
+   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
+   */
+  pluginConfig?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
   voice?: VoiceConfig
   /**
    * UI locale (system = follow OS, default: system)
@@ -4856,14 +4914,46 @@ export type Config = {
       [key: string]: number
     }
   }
+  boss?: {
+    /**
+     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
+     */
+    enabled?: boolean
+    /**
+     * Optional colleague identity description injected into the runtime boss session
+     */
+    identityText?: string | null
+    /**
+     * Re-inject the versioned world-overview briefing every N days (default: disabled)
+     */
+    briefingIntervalDays?: number | null
+    /**
+     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
+     */
+    persona?:
+      | {
+          preset: "project_manager"
+        }
+      | {
+          preset: "ops_assistant"
+        }
+      | {
+          preset: "custom"
+          formality: number
+          conciseness: number
+          proactiveness: number
+          warmth: number
+        }
+      | null
+  }
 }
 
 export type ScopeBootstrapPath = {
   home: string
   state: string
   config: string
-  worktree: string
-  directory: string
+  worktree: string | null
+  directory: string | null
 }
 
 export type Command = {
@@ -4881,24 +4971,36 @@ export type Command = {
   hints: Array<string>
 }
 
-export type SessionScope = {
-  id: string
-  type?: string
-  directory?: string
-  worktree?: string
-  vcs?: "git"
-  name?: string
-  icon?: {
-    url?: string
-    color?: string
-  }
-  time?: {
-    created: number
-    updated: number
-    initialized?: number
-  }
-  sandboxes?: Array<string>
-}
+export type SessionScope =
+  | {
+      type: "home"
+      id: "home"
+      local: null
+    }
+  | {
+      type: "project"
+      id: string
+      local: {
+        directory: string
+        worktree: string
+        vcs?: "git"
+        sandboxes: Array<string>
+      } | null
+      name?: string
+      icon?: {
+        url?: string
+        color?: string
+      }
+      pinned?: number
+      time: {
+        created: number
+        updated: number
+        initialized?: number
+        archived?: number
+      }
+    }
+
+export type SessionTags = Array<string>
 
 export type FileDiff = {
   file: string
@@ -4916,6 +5018,12 @@ export type SessionCompletionNotice = {
   unread: boolean
   unreadCount: number
   silent: boolean
+}
+
+export type SessionPaused = {
+  reason: SessionPausedReason
+  description?: string
+  since: number
 }
 
 export type SessionInteractionMode = "interactive" | "unattended"
@@ -5028,9 +5136,10 @@ export type SessionWorkingInfo =
       next: number
     }
   | {
-      status: "recovering"
-      reason?: SessionRecoveringReason
+      status: "paused"
+      reason: SessionPausedReason
       description?: string
+      since: number
     }
 
 export type SessionWorkspace = {
@@ -5126,6 +5235,7 @@ export type Session = {
     title?: string
   }
   category?: "project" | "home" | "channel" | "background" | "github"
+  tags?: SessionTags
   provenance?: "github"
   endpoint?: SessionEndpoint
   summary?: {
@@ -5165,7 +5275,7 @@ export type Session = {
    * Per-session agent override set by session control
    */
   agentOverride?: string
-  pendingReply?: boolean
+  paused?: SessionPaused
   interaction?: SessionInteraction
   lastExchange?: {
     user?: string
@@ -5175,7 +5285,7 @@ export type Session = {
   rollbackAck?: SessionRollbackAck
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
-  workspace?: SessionWorkspace
+  workspace: SessionWorkspace | null
   workflow?: SessionWorkflowInfo
   agenda?: {
     itemID: string
@@ -5184,7 +5294,7 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    phase?: "running" | "waiting" | "auditing"
+    phase?: "running" | "auditing"
   }
 }
 
@@ -5384,6 +5494,7 @@ export type ScopeBootstrapResponse = {
 
 export type Pty = {
   id: string
+  sessionID?: string
   title: string
   command: string
   args: Array<string>
@@ -5455,15 +5566,15 @@ export type ConfigDomainSummary = {
     | "permissions"
     | "runtime"
     | "storage"
-    | "plugins"
+    | "skills"
+    | "worktree"
+    | "mcp"
+    | "library"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "library"
-    | "mcp"
-    | "skills"
-    | "worktree"
+    | "plugins"
     | "voice"
   filename: string
   label: string
@@ -5513,15 +5624,15 @@ export type ConfigExportResult = {
     | "permissions"
     | "runtime"
     | "storage"
-    | "plugins"
+    | "skills"
+    | "worktree"
+    | "mcp"
+    | "library"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "library"
-    | "mcp"
-    | "skills"
-    | "worktree"
+    | "plugins"
     | "voice"
   >
   warnings: Array<string>
@@ -5573,15 +5684,15 @@ export type ConfigDomainImportDomainPlan = {
     | "permissions"
     | "runtime"
     | "storage"
-    | "plugins"
+    | "skills"
+    | "worktree"
+    | "mcp"
+    | "library"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "library"
-    | "mcp"
-    | "skills"
-    | "worktree"
+    | "plugins"
     | "voice"
   filename: string
   path: string
@@ -5628,15 +5739,15 @@ export type ConfigDomainImportPlanInput = {
     | "permissions"
     | "runtime"
     | "storage"
-    | "plugins"
+    | "skills"
+    | "worktree"
+    | "mcp"
+    | "library"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "library"
-    | "mcp"
-    | "skills"
-    | "worktree"
+    | "plugins"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5713,15 +5824,15 @@ export type ConfigImportRevisionConflictError = {
       | "permissions"
       | "runtime"
       | "storage"
-      | "plugins"
+      | "skills"
+      | "worktree"
+      | "mcp"
+      | "library"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "library"
-      | "mcp"
-      | "skills"
-      | "worktree"
+      | "plugins"
       | "voice"
     >
   }
@@ -5746,15 +5857,15 @@ export type ConfigDomainImportApplyInput = {
     | "permissions"
     | "runtime"
     | "storage"
-    | "plugins"
+    | "skills"
+    | "worktree"
+    | "mcp"
+    | "library"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "library"
-    | "mcp"
-    | "skills"
-    | "worktree"
+    | "plugins"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5877,8 +5988,8 @@ export type Path = {
   home: string
   state: string
   config: string
-  worktree: string
-  directory: string
+  worktree: string | null
+  directory: string | null
 }
 
 export type Worktree = {
@@ -6723,6 +6834,9 @@ export type DagNode = {
 
 export type SessionWorkspaceSelection =
   | {
+      mode: "none"
+    }
+  | {
       mode: "current"
     }
   | {
@@ -6746,6 +6860,35 @@ export type SessionForkPointMissingError = {
   }
 }
 
+export type SessionContinueResult = {
+  /**
+   * Whether the drive accepted the session; a paused or already-running session reports false
+   */
+  handled: boolean
+}
+
+export type SessionAbandonResult = {
+  /**
+   * An interrupted turn was terminalized
+   */
+  repaired: boolean
+  /**
+   * False after abandonment; the session is not left paused
+   */
+  paused: boolean
+  /**
+   * A workflow bound to the session was cancelled
+   */
+  abandoned: boolean
+}
+
+export type SessionAbandonError = {
+  name: "SessionAbandonError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionAbortResult = {
   /**
    * Runtime signal result; not_found/idle mean no running turn was stopped
@@ -6760,9 +6903,9 @@ export type SessionAbortResult = {
    */
   abandoned: boolean
   /**
-   * The session settled to idle
+   * The session was left paused, awaiting an explicit continue
    */
-  settled: boolean
+  paused: boolean
 }
 
 export type AttachmentSourceText = {
@@ -6930,6 +7073,10 @@ export type SessionInputResult =
   | {
       status: "queued"
       item: SessionInboxItem
+      /**
+       * Existing task run resumed by this input, when continuing a paused task
+       */
+      runID?: string
     }
 
 export type WorktreeUnavailableError = {
@@ -7139,8 +7286,8 @@ export type AssistantMessage = {
   mode: string
   agent: string
   path: {
-    cwd: string
-    root: string
+    cwd: string | null
+    root: string | null
   }
   summary?: boolean
   accounting?:
@@ -8636,7 +8783,7 @@ export type BlueprintLoopInfo = {
     reviewToolRecoveryAttempts?: number
   }
   scopeID: string
-  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  status: "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
@@ -9144,7 +9291,7 @@ export type HolosRetryResponse = {
 export type MailboxMessageList = Array<unknown>
 
 export type BrowserViewerTicketResponse = {
-  protocolVersion: 2
+  protocolVersion: 3
   ticket: string
   expiresAt: number
   iceServers: Array<{
@@ -9202,12 +9349,12 @@ export type BrowserApiError = {
 }
 
 export type BrowserViewerTicketRequest = {
-  protocolVersion: 2
+  protocolVersion: 3
   pageId: string
 }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 2
+  protocolVersion: 3
   annotation: {
     id: string
     pageURL: string
@@ -9223,7 +9370,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 2
+  protocolVersion: 3
   pageId: string
   x: number
   y: number
@@ -9234,14 +9381,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 2
+  protocolVersion: 3
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 2
+  protocolVersion: 3
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -9250,7 +9397,7 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 2
+  protocolVersion: 3
   ownerKey: string
   status: "empty" | "suspended" | "active" | "migrating" | "failed"
   page: {
@@ -9261,7 +9408,7 @@ export type BrowserApiSessionState = {
     lastActiveAt: number | null
   } | null
   presentation: {
-    protocolVersion: 2
+    protocolVersion: 3
     kind: "native" | "webrtc"
     capabilities: {
       native: boolean
@@ -9286,7 +9433,7 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 2
+  protocolVersion: 3
   result:
     | {
         type: "void"
@@ -9380,7 +9527,7 @@ export type BrowserControlResponse = {
 }
 
 export type BrowserControlRequest = {
-  protocolVersion: 2
+  protocolVersion: 3
   command:
     | {
         type: "navigate"
@@ -9995,71 +10142,6 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
-  }
-}
-
-export type EventBlueprintLoopCreated = {
-  type: "blueprint_loop.created"
-  properties: {
-    loop: BlueprintLoopInfo
-  }
-}
-
-export type EventBlueprintLoopUpdated = {
-  type: "blueprint_loop.updated"
-  properties: {
-    loop: BlueprintLoopInfo
-  }
-}
-
-export type EventBlueprintLoopCompleted = {
-  type: "blueprint_loop.completed"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopFailed = {
-  type: "blueprint_loop.failed"
-  properties: {
-    loopID: string
-    error: string
-  }
-}
-
-export type EventBlueprintLoopCancelled = {
-  type: "blueprint_loop.cancelled"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopAuditing = {
-  type: "blueprint_loop.auditing"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopRejected = {
-  type: "blueprint_loop.rejected"
-  properties: {
-    loopID: string
-    reason: string
-  }
-}
-
 export type EventScopeUpdated = {
   type: "scope.updated"
   properties: Scope
@@ -10081,48 +10163,24 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
-export type EventNoteCreated = {
-  type: "note.created"
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
   properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
+    health: ProviderAuthHealth
   }
 }
 
-export type EventNoteUpdated = {
-  type: "note.updated"
+export type EventInstallationUpdated = {
+  type: "installation.updated"
   properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
+    version: string
   }
 }
 
-export type EventNoteDeleted = {
-  type: "note.deleted"
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
   properties: {
-    id: string
-    scopeID: string
-  }
-}
-
-export type EventNoteArchived = {
-  type: "note.archived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventNoteUnarchived = {
-  type: "note.unarchived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
+    version: string
   }
 }
 
@@ -10158,21 +10216,6 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventProviderAuthUpdated = {
-  type: "provider.auth.updated"
-  properties: {
-    health: ProviderAuthHealth
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
-  }
-}
-
 export type EventPermissionAsked = {
   type: "permission.asked"
   properties: PermissionRequest
@@ -10184,6 +10227,23 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "session" | "always" | "reject"
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
+  }
+}
+
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
   }
 }
 
@@ -10268,28 +10328,6 @@ export type EventSessionInboxUpdated = {
   }
 }
 
-export type EventPluginUiUpdated = {
-  type: "plugin.ui.updated"
-  properties: {
-    scopeId: string
-  }
-}
-
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -10297,12 +10335,101 @@ export type EventSessionCompacted = {
   }
 }
 
-export type EventDagUpdated = {
-  type: "dag.updated"
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
+    resync?: boolean
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
   properties: {
     sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
+    todos: Array<Todo>
+  }
+}
+
+export type EventPtyCreated = {
+  type: "pty.created"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyUpdated = {
+  type: "pty.updated"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyExited = {
+  type: "pty.exited"
+  properties: {
+    id: string
+    exitCode: number
+  }
+}
+
+export type EventPtyDeleted = {
+  type: "pty.deleted"
+  properties: {
+    id: string
+  }
+}
+
+export type EventQuestionAsked = {
+  type: "question.asked"
+  properties: QuestionRequest
+}
+
+export type EventQuestionReplied = {
+  type: "question.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    answers: Array<QuestionAnswer>
+  }
+}
+
+export type EventQuestionRejected = {
+  type: "question.rejected"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
+export type EventQuestionTimedOut = {
+  type: "question.timed_out"
+  properties: {
+    sessionID: string
+    requestID: string
   }
 }
 
@@ -10324,6 +10451,168 @@ export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
     tasks: Array<CortexTask>
+  }
+}
+
+export type EventHolosContactAdded = {
+  type: "holos.contact.added"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosContactRemoved = {
+  type: "holos.contact.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventHolosContactUpdated = {
+  type: "holos.contact.updated"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosConnected = {
+  type: "holos.connected"
+  properties: {
+    peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
+export type EventHolosPresence = {
+  type: "holos.presence"
+  properties: {
+    peerId: string
+    status: "online" | "offline"
+  }
+}
+
+export type EventBlueprintLoopCreated = {
+  type: "blueprint_loop.created"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopUpdated = {
+  type: "blueprint_loop.updated"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopCompleted = {
+  type: "blueprint_loop.completed"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopFailed = {
+  type: "blueprint_loop.failed"
+  properties: {
+    loopID: string
+    error: string
+  }
+}
+
+export type EventBlueprintLoopCancelled = {
+  type: "blueprint_loop.cancelled"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopAuditing = {
+  type: "blueprint_loop.auditing"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopRejected = {
+  type: "blueprint_loop.rejected"
+  properties: {
+    loopID: string
+    reason: string
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
+export type EventNoteArchived = {
+  type: "note.archived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventNoteUnarchived = {
+  type: "note.unarchived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventPluginUiUpdated = {
+  type: "plugin.ui.updated"
+  properties: {
+    scopeId: string
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
   }
 }
 
@@ -10385,75 +10674,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "added" | "changed" | "deleted" | "renamed"
-    absolute?: string
-    oldPath?: string
-    oldAbsolute?: string
-    parent?: string
-    node?: unknown
-    resync?: boolean
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
-export type EventQuestionAsked = {
-  type: "question.asked"
-  properties: QuestionRequest
-}
-
-export type EventQuestionReplied = {
-  type: "question.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    answers: Array<QuestionAnswer>
-  }
-}
-
-export type EventQuestionRejected = {
-  type: "question.rejected"
-  properties: {
-    sessionID: string
-    requestID: string
-  }
-}
-
-export type EventQuestionTimedOut = {
-  type: "question.timed_out"
-  properties: {
-    sessionID: string
-    requestID: string
-  }
-}
-
 export type EventRuntimeReloaded = {
   type: "runtime.reloaded"
   properties: {
@@ -10512,50 +10732,6 @@ export type EventChannelDisconnected = {
   }
 }
 
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -10599,35 +10775,6 @@ export type EventVcsBranchUpdated = {
   }
 }
 
-export type EventPtyCreated = {
-  type: "pty.created"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyUpdated = {
-  type: "pty.updated"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyExited = {
-  type: "pty.exited"
-  properties: {
-    id: string
-    exitCode: number
-  }
-}
-
-export type EventPtyDeleted = {
-  type: "pty.deleted"
-  properties: {
-    id: string
-  }
-}
-
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -10643,31 +10790,20 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
-  | EventBlueprintLoopCreated
-  | EventBlueprintLoopUpdated
-  | EventBlueprintLoopCompleted
-  | EventBlueprintLoopFailed
-  | EventBlueprintLoopCancelled
-  | EventBlueprintLoopAuditing
-  | EventBlueprintLoopRejected
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
-  | EventNoteArchived
-  | EventNoteUnarchived
+  | EventProviderAuthUpdated
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventProviderAuthUpdated
-  | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventDagUpdated
+  | EventConfigUpdated
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
@@ -10678,13 +10814,42 @@ export type Event =
   | EventSessionTurnStart
   | EventSessionTurnEnd
   | EventSessionInboxUpdated
-  | EventPluginUiUpdated
-  | EventPluginEvent
   | EventSessionCompacted
-  | EventDagUpdated
+  | EventCommandExecuted
+  | EventFileWatcherUpdated
+  | EventFileEdited
+  | EventTodoUpdated
+  | EventPtyCreated
+  | EventPtyUpdated
+  | EventPtyExited
+  | EventPtyDeleted
+  | EventQuestionAsked
+  | EventQuestionReplied
+  | EventQuestionRejected
+  | EventQuestionTimedOut
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventHolosContactAdded
+  | EventHolosContactRemoved
+  | EventHolosContactUpdated
+  | EventHolosConnected
+  | EventHolosConnectionStatusChanged
+  | EventHolosPresence
+  | EventBlueprintLoopCreated
+  | EventBlueprintLoopUpdated
+  | EventBlueprintLoopCompleted
+  | EventBlueprintLoopFailed
+  | EventBlueprintLoopCancelled
+  | EventBlueprintLoopAuditing
+  | EventBlueprintLoopRejected
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
+  | EventNoteArchived
+  | EventNoteUnarchived
+  | EventPluginUiUpdated
+  | EventPluginEvent
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
@@ -10693,14 +10858,6 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventFileWatcherUpdated
-  | EventFileEdited
-  | EventTodoUpdated
-  | EventCommandExecuted
-  | EventQuestionAsked
-  | EventQuestionReplied
-  | EventQuestionRejected
-  | EventQuestionTimedOut
   | EventRuntimeReloaded
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
@@ -10708,22 +10865,12 @@ export type Event =
   | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
   | EventVcsBranchUpdated
-  | EventPtyCreated
-  | EventPtyUpdated
-  | EventPtyExited
-  | EventPtyDeleted
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -11573,6 +11720,57 @@ export type PerformanceEventsStreamResponses = {
   200: unknown
 }
 
+export type StorageMaintenanceStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/maintenance"
+}
+
+export type StorageMaintenanceStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageMaintenanceStatusError = StorageMaintenanceStatusErrors[keyof StorageMaintenanceStatusErrors]
+
+export type StorageMaintenanceStatusResponses = {
+  /**
+   * Current storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageMaintenanceStatusResponse =
+  StorageMaintenanceStatusResponses[keyof StorageMaintenanceStatusResponses]
+
+export type StorageReclaimControlData = {
+  body?: StorageReclaimControlInput
+  path?: never
+  query?: never
+  url: "/global/storage/reclaim/control"
+}
+
+export type StorageReclaimControlErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageReclaimControlError = StorageReclaimControlErrors[keyof StorageReclaimControlErrors]
+
+export type StorageReclaimControlResponses = {
+  /**
+   * Updated storage maintenance status
+   */
+  200: StorageMaintenanceStatus
+}
+
+export type StorageReclaimControlResponse = StorageReclaimControlResponses[keyof StorageReclaimControlResponses]
+
 export type StorageUpgradeStatusData = {
   body?: never
   path?: never
@@ -11626,6 +11824,114 @@ export type StorageUpgradeCatalogResponses = {
 }
 
 export type StorageUpgradeCatalogResponse = StorageUpgradeCatalogResponses[keyof StorageUpgradeCatalogResponses]
+
+export type StorageControlUpgradeData = {
+  body?: {
+    action: "pause" | "resume"
+  }
+  path?: never
+  query?: never
+  url: "/global/storage/upgrade/control"
+}
+
+export type StorageControlUpgradeErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageControlUpgradeError = StorageControlUpgradeErrors[keyof StorageControlUpgradeErrors]
+
+export type StorageControlUpgradeResponses = {
+  /**
+   * Updated preparation status
+   */
+  200: StorageUpgradeStatus
+}
+
+export type StorageControlUpgradeResponse = StorageControlUpgradeResponses[keyof StorageControlUpgradeResponses]
+
+export type StorageUpgradeSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}"
+}
+
+export type StorageUpgradeSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageUpgradeSessionError = StorageUpgradeSessionErrors[keyof StorageUpgradeSessionErrors]
+
+export type StorageUpgradeSessionResponses = {
+  /**
+   * Preparation status without starting work
+   */
+  200: StorageSessionPreparation
+}
+
+export type StorageUpgradeSessionResponse = StorageUpgradeSessionResponses[keyof StorageUpgradeSessionResponses]
+
+export type StoragePrepareSessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}/prepare"
+}
+
+export type StoragePrepareSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StoragePrepareSessionError = StoragePrepareSessionErrors[keyof StoragePrepareSessionErrors]
+
+export type StoragePrepareSessionResponses = {
+  /**
+   * Current preparation status
+   */
+  200: StorageSessionPreparation
+}
+
+export type StoragePrepareSessionResponse = StoragePrepareSessionResponses[keyof StoragePrepareSessionResponses]
+
+export type StorageRetrySessionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/storage/upgrade/sessions/{sessionID}/retry"
+}
+
+export type StorageRetrySessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageRetrySessionError = StorageRetrySessionErrors[keyof StorageRetrySessionErrors]
+
+export type StorageRetrySessionResponses = {
+  /**
+   * Current preparation status
+   */
+  200: StorageSessionPreparation
+}
+
+export type StorageRetrySessionResponse = StorageRetrySessionResponses[keyof StorageRetrySessionResponses]
 
 export type StorageSnapshotUsageData = {
   body?: never
@@ -12385,8 +12691,12 @@ export type GlobalSessionSearchResponses = {
       scope: {
         id: string
         type: "home" | "project"
-        directory: string
-        worktree: string
+        local: {
+          directory: string
+          worktree: string
+          vcs?: "git"
+          sandboxes: Array<string>
+        } | null
         name?: string
         icon?: {
           url?: string
@@ -12448,6 +12758,7 @@ export type GlobalNavRecentData = {
     includeArchived?: boolean
     category?: "project" | "home" | "channel" | "background" | "github"
     channelType?: string
+    tag?: SessionTagQuery
     search?: string
     limit?: number
     cursorLastActivityAt?: number
@@ -12615,7 +12926,34 @@ export type ScopeCurrentResponses = {
   /**
    * Current scope information
    */
-  200: Scope
+  200:
+    | {
+        type: "home"
+        id: "home"
+        local: null
+      }
+    | {
+        type: "project"
+        id: string
+        local: {
+          directory: string
+          worktree: string
+          vcs?: "git"
+          sandboxes: Array<string>
+        } | null
+        name?: string
+        icon?: {
+          url?: string
+          color?: string
+        }
+        pinned?: number
+        time: {
+          created: number
+          updated: number
+          initialized?: number
+          archived?: number
+        }
+      }
 }
 
 export type ScopeCurrentResponse = ScopeCurrentResponses[keyof ScopeCurrentResponses]
@@ -12801,6 +13139,7 @@ export type PtyListResponse = PtyListResponses[keyof PtyListResponses]
 
 export type PtyCreateData = {
   body?: {
+    sessionID?: string
     command?: string
     args?: Array<string>
     cwd?: string
@@ -13228,15 +13567,15 @@ export type ConfigDomainGetData = {
       | "permissions"
       | "runtime"
       | "storage"
-      | "plugins"
+      | "skills"
+      | "worktree"
+      | "mcp"
+      | "library"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "library"
-      | "mcp"
-      | "skills"
-      | "worktree"
+      | "plugins"
       | "voice"
   }
   query?: {
@@ -13280,15 +13619,15 @@ export type ConfigDomainUpdateData = {
       | "permissions"
       | "runtime"
       | "storage"
-      | "plugins"
+      | "skills"
+      | "worktree"
+      | "mcp"
+      | "library"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "library"
-      | "mcp"
-      | "skills"
-      | "worktree"
+      | "plugins"
       | "voice"
   }
   query?: {
@@ -13332,15 +13671,15 @@ export type ConfigDomainOpenData = {
       | "permissions"
       | "runtime"
       | "storage"
-      | "plugins"
+      | "skills"
+      | "worktree"
+      | "mcp"
+      | "library"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "library"
-      | "mcp"
-      | "skills"
-      | "worktree"
+      | "plugins"
       | "voice"
   }
   query?: {
@@ -13392,15 +13731,15 @@ export type ConfigExportData = {
       | "permissions"
       | "runtime"
       | "storage"
-      | "plugins"
+      | "skills"
+      | "worktree"
+      | "mcp"
+      | "library"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "library"
-      | "mcp"
-      | "skills"
-      | "worktree"
+      | "plugins"
       | "voice"
       | Array<
           | "general"
@@ -13411,15 +13750,15 @@ export type ConfigExportData = {
           | "permissions"
           | "runtime"
           | "storage"
-          | "plugins"
+          | "skills"
+          | "worktree"
+          | "mcp"
+          | "library"
           | "channels"
           | "holos"
           | "email"
           | "github"
-          | "library"
-          | "mcp"
-          | "skills"
-          | "worktree"
+          | "plugins"
           | "voice"
         >
     includeSecrets?: string
@@ -14327,6 +14666,7 @@ export type SessionIndexData = {
     directory?: string
     scopeID?: string
     category?: "project" | "home" | "channel" | "background" | "github"
+    tag?: SessionTagQuery
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number
@@ -14501,6 +14841,7 @@ export type SessionListData = {
      * Only include pinned sessions
      */
     pinned?: boolean
+    tag?: SessionTagQuery
     /**
      * Only include top-level sessions (exclude subsessions). Default: true
      */
@@ -14536,6 +14877,7 @@ export type SessionCreateData = {
   body?: {
     parentID?: string
     title?: string
+    tags?: SessionTags
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
@@ -14686,6 +15028,7 @@ export type SessionGetResponse = SessionGetResponses[keyof SessionGetResponses]
 export type SessionUpdateData = {
   body?: {
     title?: string
+    tags?: SessionTags
     pinned?: number
     controlProfile?: "guarded" | "autonomous" | "full_access"
     resolvePendingPermissions?: boolean
@@ -14964,6 +15307,92 @@ export type SessionForkResponses = {
 }
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
+
+export type SessionContinueData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/continue"
+}
+
+export type SessionContinueErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionContinueError = SessionContinueErrors[keyof SessionContinueErrors]
+
+export type SessionContinueResponses = {
+  /**
+   * Continue result
+   */
+  200: SessionContinueResult
+}
+
+export type SessionContinueResponse = SessionContinueResponses[keyof SessionContinueResponses]
+
+export type SessionAbandonData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/abandon"
+}
+
+export type SessionAbandonErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Abandonment failed; the session remains paused and can be retried
+   */
+  409: SessionAbandonError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionAbandonError2 = SessionAbandonErrors[keyof SessionAbandonErrors]
+
+export type SessionAbandonResponses = {
+  /**
+   * Abandon result
+   */
+  200: SessionAbandonResult
+}
+
+export type SessionAbandonResponse = SessionAbandonResponses[keyof SessionAbandonResponses]
 
 export type SessionAbortData = {
   body?: never
@@ -19636,88 +20065,6 @@ export type BlueprintLoopStartResponses = {
 
 export type BlueprintLoopStartResponse = BlueprintLoopStartResponses[keyof BlueprintLoopStartResponses]
 
-export type BlueprintLoopWaitData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/wait"
-}
-
-export type BlueprintLoopWaitErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
-
-export type BlueprintLoopWaitResponses = {
-  /**
-   * Waiting BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopWaitResponse = BlueprintLoopWaitResponses[keyof BlueprintLoopWaitResponses]
-
-export type BlueprintLoopResumeData = {
-  body?: never
-  path: {
-    /**
-     * BlueprintLoop ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/loop/{id}/resume"
-}
-
-export type BlueprintLoopResumeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
-
-export type BlueprintLoopResumeResponses = {
-  /**
-   * Resumed BlueprintLoop
-   */
-  200: BlueprintLoopInfo
-}
-
-export type BlueprintLoopResumeResponse = BlueprintLoopResumeResponses[keyof BlueprintLoopResumeResponses]
-
 export type BlueprintLoopActivityData = {
   body?: never
   path: {
@@ -19925,60 +20272,6 @@ export type LatticeRunEventsResponses = {
 }
 
 export type LatticeRunEventsResponse = LatticeRunEventsResponses[keyof LatticeRunEventsResponses]
-
-export type LatticeRunPauseData = {
-  body?: {
-    [key: string]: never
-  }
-  path: {
-    /**
-     * Lattice Run ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/lattice/run/{id}/pause"
-}
-
-export type LatticeRunPauseErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: {
-    name: string
-    data: unknown
-  }
-  /**
-   * Internal server error
-   */
-  500: LatticeInternalServerError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type LatticeRunPauseError = LatticeRunPauseErrors[keyof LatticeRunPauseErrors]
-
-export type LatticeRunPauseResponses = {
-  /**
-   * Paused Lattice Run
-   */
-  200: LatticeRunView
-}
-
-export type LatticeRunPauseResponse = LatticeRunPauseResponses[keyof LatticeRunPauseResponses]
 
 export type LatticeRunResumeData = {
   body?: {

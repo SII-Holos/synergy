@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 /**
  * S9c source inversion: the L1 session domain reaches the blueprint product
  * domain (loop store access, loop-status semantics, loop prompt context)
@@ -6,7 +7,7 @@
  * loops, every status inactive, no prompt context).
  */
 export namespace SessionBlueprintState {
-  export type LoopStatus = "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  export type LoopStatus = "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
 
   /** Structural mirror of a persisted loop stop request as carried through
    * recovery patches. */
@@ -46,41 +47,57 @@ export namespace SessionBlueprintState {
     list(scopeID: string): Promise<LoopInfo[]>
     updateStatus(scopeID: string, loopID: string, patch: LoopPatch): Promise<LoopInfo>
     /** Mirror of the blueprint domain's active-status semantics
-     * (armed/running/waiting/auditing). */
+     * (armed/running/auditing). */
     isActiveStatus(status: LoopStatus): boolean
     /** Render the <blueprint-loop-context> system block for a bound session. */
     buildLoopContext(input: { loop: LoopInfo; isAuditSession: boolean; agentName: string }): string
   }
 
-  let provider: Provider | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    provider: undefined as Provider | undefined,
+  }))
 
   export function register(value: Provider): void {
-    provider = value
+    const instanceState = runtimeState()
+
+    instanceState.provider = value
   }
 
   export function get(): Provider | undefined {
-    return provider
+    const instanceState = runtimeState()
+
+    return instanceState.provider
   }
 
   export async function getLoop(scopeID: string, loopID: string): Promise<LoopInfo | undefined> {
-    if (!provider) return undefined
-    return provider.get(scopeID, loopID).catch(() => undefined)
+    const instanceState = runtimeState()
+
+    if (!instanceState.provider) return undefined
+    return instanceState.provider.get(scopeID, loopID).catch(() => undefined)
   }
 
   export async function listLoops(scopeID: string): Promise<LoopInfo[]> {
-    if (!provider) return []
-    return provider.list(scopeID).catch(() => [])
+    const instanceState = runtimeState()
+
+    if (!instanceState.provider) return []
+    return instanceState.provider.list(scopeID).catch(() => [])
   }
 
   export function updateLoopStatus(scopeID: string, loopID: string, patch: LoopPatch): Promise<LoopInfo> | undefined {
-    return provider?.updateStatus(scopeID, loopID, patch)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.updateStatus(scopeID, loopID, patch)
   }
 
   export function isActiveStatus(status: LoopStatus): boolean {
-    return provider?.isActiveStatus(status) ?? false
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.isActiveStatus(status) ?? false
   }
 
   export function buildLoopContext(input: { loop: LoopInfo; isAuditSession: boolean; agentName: string }): string {
-    return provider?.buildLoopContext(input) ?? ""
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.buildLoopContext(input) ?? ""
   }
 }

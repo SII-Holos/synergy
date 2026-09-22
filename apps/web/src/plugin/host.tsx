@@ -895,7 +895,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
         plugin.contributions.some(hasTrustedUIComponent) &&
         !isCompatibleUIVersion(plugin.uiArtifact?.apiVersion ?? "4.0", CURRENT_UI_API_VERSION)
       const reason = incompatible
-        ? `Plugin ${plugin.pluginId} requires UI API ${plugin.uiArtifact?.apiVersion ?? "4.0"} but host is ${CURRENT_UI_API_VERSION}. Rebuild the plugin for UI API 5.`
+        ? `Plugin ${plugin.pluginId} requires UI API ${plugin.uiArtifact?.apiVersion ?? "4.0"} but host is ${CURRENT_UI_API_VERSION}. Rebuild the plugin for UI API ${CURRENT_UI_API_VERSION}.`
         : undefined
       setStatus((current) =>
         new Map(current).set(plugin.pluginId, {

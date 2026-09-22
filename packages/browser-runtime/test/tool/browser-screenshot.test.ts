@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserScreenshotTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-screenshot"
 import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/browser-shared"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
@@ -9,25 +12,29 @@ const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
 const originalWithActivity = BrowserToolHelper.withActivity
 
-beforeEach(() => {
-  BrowserToolHelper.resolvePage = async () =>
-    ({ id: "page-test", url: "https://example.com/", title: "Example" }) as never
-  BrowserToolHelper.execute = async () =>
-    ({
-      type: "screenshot",
-      pageId: "page-test",
-      dataUrl: PNG_DATA_URL,
-      width: 1,
-      height: 1,
-    }) as never
-  BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, fn) => fn()
-})
+beforeEach(() =>
+  runtime.run(() => {
+    BrowserToolHelper.resolvePage = async () =>
+      ({ id: "page-test", url: "https://example.com/", title: "Example" }) as never
+    BrowserToolHelper.execute = async () =>
+      ({
+        type: "screenshot",
+        pageId: "page-test",
+        dataUrl: PNG_DATA_URL,
+        width: 1,
+        height: 1,
+      }) as never
+    BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, fn) => fn()
+  }),
+)
 
-afterEach(() => {
-  BrowserToolHelper.resolvePage = originalResolvePage
-  BrowserToolHelper.execute = originalExecute
-  BrowserToolHelper.withActivity = originalWithActivity
-})
+afterEach(() =>
+  runtime.run(() => {
+    BrowserToolHelper.resolvePage = originalResolvePage
+    BrowserToolHelper.execute = originalExecute
+    BrowserToolHelper.withActivity = originalWithActivity
+  }),
+)
 
 function context(supportsImageInput: boolean, lookAtAvailable = true, supportedImageMediaTypes?: string[]) {
   return {
@@ -48,55 +55,61 @@ function context(supportsImageInput: boolean, lookAtAvailable = true, supportedI
 }
 
 describe("tool.browser_screenshot", () => {
-  test("gives image-capable models the screenshot in model context", async () => {
-    const tool = await BrowserScreenshotTool.init()
-    const result = await tool.execute({}, context(true))
+  test("gives image-capable models the screenshot in model context", () =>
+    runtime.run(async () => {
+      const tool = await BrowserScreenshotTool.init()
+      const result = await tool.execute({}, context(true))
 
-    expect(result.output).toContain("current model context")
-    expect(result.attachments).toHaveLength(1)
-    expect(result.attachments?.[0]).toMatchObject({
-      mime: "image/png",
-      url: PNG_DATA_URL,
-      model: { mode: "provider-file" },
-    })
-  })
+      expect(result.output).toContain("current model context")
+      expect(result.attachments).toHaveLength(1)
+      expect(result.attachments?.[0]).toMatchObject({
+        mime: "image/png",
+        url: PNG_DATA_URL,
+        model: { mode: "provider-file" },
+      })
+    }))
 
-  test("does not send PNG screenshots to models that only accept other image formats", async () => {
-    const tool = await BrowserScreenshotTool.init()
-    const result = await tool.execute({}, context(true, true, ["image/jpeg"]))
+  test("does not send PNG screenshots to models that only accept other image formats", () =>
+    runtime.run(async () => {
+      const tool = await BrowserScreenshotTool.init()
+      const result = await tool.execute({}, context(true, true, ["image/jpeg"]))
 
-    const attachment = result.attachments?.[0]
-    expect(attachment?.url).toStartWith("asset://")
-    expect(attachment?.model).toMatchObject({ mode: "summary" })
-    expect(result.output).toContain("look_at")
-    expect(result.metadata.modelDelivery).toBe("look_at")
-  })
+      const attachment = result.attachments?.[0]
+      expect(attachment?.url).toStartWith("asset://")
+      expect(attachment?.model).toMatchObject({ mode: "summary" })
+      expect(result.output).toContain("look_at")
+      expect(result.metadata.modelDelivery).toBe("look_at")
+    }))
 
-  test("gives text-only models a real local path and mentions look_at when available", async () => {
-    const tool = await BrowserScreenshotTool.init()
-    const result = await tool.execute({}, context(false, true))
+  test("gives text-only models a real local path and mentions look_at when available", () =>
+    runtime.run(async () => {
+      const tool = await BrowserScreenshotTool.init()
+      const result = await tool.execute({}, context(false, true))
 
-    const attachment = result.attachments?.[0]
-    expect(attachment?.localPath).toBeTruthy()
-    expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
-    expect(attachment?.url).toStartWith("asset://")
-    expect(attachment?.model).toMatchObject({ mode: "summary" })
-    expect(result.output).toContain("look_at")
-    expect(result.output).toContain(attachment!.localPath!)
-  })
+      const attachment = result.attachments?.[0]
+      expect(attachment?.localPath).toBeTruthy()
+      expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
+      expect(attachment?.url).toStartWith("asset://")
+      expect(attachment?.model).toMatchObject({ mode: "summary" })
+      expect(result.output).toContain("look_at")
+      expect(result.output).toContain(attachment!.localPath!)
+    }))
 
-  test("text-only model with lookAtAvailable:false returns a local asset path but does not mention look_at", async () => {
-    const tool = await BrowserScreenshotTool.init()
-    const result = await tool.execute({}, context(false, false))
+  test("text-only model with lookAtAvailable:false returns a local asset path but does not mention look_at", () =>
+    runtime.run(async () => {
+      const tool = await BrowserScreenshotTool.init()
+      const result = await tool.execute({}, context(false, false))
 
-    const attachment = result.attachments?.[0]
-    expect(attachment?.localPath).toBeTruthy()
-    expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
-    expect(attachment?.url).toStartWith("asset://")
-    expect(attachment?.model).toMatchObject({ mode: "summary" })
-    // Must produce a real path but must not claim look_at is available.
-    expect(result.output).not.toContain("look_at")
-    expect(result.output).toContain(attachment!.localPath!)
-    expect(result.metadata.modelDelivery).toBe("local_only")
-  })
+      const attachment = result.attachments?.[0]
+      expect(attachment?.localPath).toBeTruthy()
+      expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
+      expect(attachment?.url).toStartWith("asset://")
+      expect(attachment?.model).toMatchObject({ mode: "summary" })
+      // Must produce a real path but must not claim look_at is available.
+      expect(result.output).not.toContain("look_at")
+      expect(result.output).toContain(attachment!.localPath!)
+      expect(result.metadata.modelDelivery).toBe("local_only")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

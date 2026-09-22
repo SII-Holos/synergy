@@ -187,7 +187,7 @@ export const ObservabilityConfig = z
               .positive()
               .optional()
               .describe(
-                "Maximum authoritative storage bytes before budgeted pruning may remove evidence older than the retention window (default: 40GB). A backstop above the window's steady state, not a target.",
+                "Byte budget for authoritative storage (default: 40GB). Budgeted pruning only runs while the database exceeds it, and the operative retention window is derived from it and the measured ingress rate, so this value decides how much evidence can actually be retained.",
               ),
             retentionMs: z
               .number()
@@ -195,9 +195,49 @@ export const ObservabilityConfig = z
               .min(0)
               .optional()
               .describe(
-                "Retain authoritative evidence for this long before budgeted pruning may remove it (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). Pruning only runs while the database exceeds retentionBytes.",
+                "Retain authoritative evidence for this long (default: 7 days, bounds 1 hour to 90 days; set 0 to disable). This is a promise the byte budget may shorten, never lengthen: when retentionBytes holds less than this window at the measured ingress rate, pruning uses the shorter budget-derived window and reports it, and a budget that cannot hold even one day raises an unreachable-budget issue without pruning.",
               ),
             walCheckpointIntervalMs: z.number().int().positive().optional(),
+            requestDeadlineMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Budget for one ordinary statement against authoritative storage (default: 30000 ms). Exceeding it retries rather than terminating: the worker's liveness probe reports occupancy separately, so one slow statement cannot restart the runtime.",
+              ),
+            probeTimeoutMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Budget for one authoritative-storage liveness probe (default: 30000 ms). An unanswered probe marks the worker busy rather than dead, so this value decides how quickly degradation is noticed, not whether the runtime survives.",
+              ),
+            probeAttempts: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Unanswered liveness probes in a row before the worker is reported as busy (default: 3). Only sustained silence past hardCeilingMs is terminal, so this value governs when the condition becomes visible.",
+              ),
+            hardCeilingMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Sustained worker unresponsiveness after which authoritative storage is terminally wedged and the runtime escalates through its managed restart (default: 3600000 ms). Must exceed the longest legitimate statement, because three maintenance statements cannot be chunked or cancelled: SQLite has no partial index build, the physical integrity check is one engine call, and VACUUM rewrites every page. Measured on production-shaped fixtures the check alone took 17-33 s at 920,000 records and 140-280 s at 2,760,000 records, and it runs while a migration activates, so the projection to a much larger store is a range rather than a point. Raising this only delays declaring a real wedge, during which storage already fails new work fast and the runtime keeps serving, so it is the safe direction to err; lower it only if a shorter recovery time matters more than the risk of interrupting a migration.",
+              ),
+            chunkBudgetMs: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe(
+                "Budget for reclaim, the only maintenance operation that can be split: it frees a bounded page count per call, so a fixed budget is enforceable (default: 30000 ms). CREATE INDEX, PRAGMA integrity_check and VACUUM cannot be chunked or cancelled, so they are bounded by hardCeilingMs instead and raising this value does not extend them. This value is clamped below hardCeilingMs with a fixed margin that raising it cannot consume, and requestDeadlineMs and probeTimeoutMs are clamped the same way, because the invariant only holds when every limit that can occupy the worker's loop leaves that margin.",
+              ),
           })
           .strict()
           .optional(),
@@ -502,7 +542,7 @@ export const Provider = ModelsDev.Provider.partial()
               .int()
               .positive()
               .describe("Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout."),
-            z.literal(false).describe("Disable timeout for this provider entirely."),
+            z.literal(false).describe("Disable idle timeout for this provider."),
           ])
           .optional()
           .describe("Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout."),
@@ -537,7 +577,7 @@ export const Provider = ModelsDev.Provider.partial()
   })
 export type Provider = z.infer<typeof Provider>
 
-const CoreInfo = z
+export const CoreInfo = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
     logLevel: Log.Level.optional().describe("Log level"),

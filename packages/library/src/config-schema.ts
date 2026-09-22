@@ -359,49 +359,51 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const contribution: ConfigExtensions.Contribution = {
+  shape: ConfigShape,
+  normalize(raw) {
+    const result = raw as ConfigValues
+    if (result.library) {
+      if (result.library.memory === undefined) result.library.memory = { enabled: true }
+      if (result.library.memory && !result.library.memory.retrieval) {
+        result.library.memory.retrieval = { simThreshold: 0.7, topK: 3 }
+      }
+      if (result.library.memory && !result.library.memory.dedup) {
+        result.library.memory.dedup = { threshold: 0.75 }
+      }
+      if (result.library.experience === undefined) {
+        result.library.experience = { encode: true, retrieve: true, learning: { ...LEARNING_DEFAULTS } }
+      }
+      if (result.library.autonomy === undefined) result.library.autonomy = true
+    }
+  },
+  redact(raw, helpers) {
+    const result = raw as ConfigValues
+    const REDACTED_SENTINEL = helpers.sentinel
+    const redactSecretShapedRecord = helpers.redact
+    const mergeSecretShapedRecord = helpers.restore
+
+    if (result.embedding?.apiKey) result.embedding.apiKey = REDACTED_SENTINEL
+    if (result.rerank?.apiKey) result.rerank.apiKey = REDACTED_SENTINEL
+  },
+  restore(raw, previous, helpers) {
+    const result = raw as ConfigValues
+    const stored = previous as ConfigValues
+    const REDACTED_SENTINEL = helpers.sentinel
+    const redactSecretShapedRecord = helpers.redact
+    const mergeSecretShapedRecord = helpers.restore
+
+    if (result.embedding?.apiKey === REDACTED_SENTINEL && stored.embedding?.apiKey) {
+      result.embedding.apiKey = stored.embedding.apiKey
+    }
+    if (result.rerank?.apiKey === REDACTED_SENTINEL && stored.rerank?.apiKey) {
+      result.rerank.apiKey = stored.rerank.apiKey
+    }
+  },
+}
+
 export function registerConfig() {
-  ConfigExtensions.register("library", {
-    shape: ConfigShape,
-    normalize(raw) {
-      const result = raw as ConfigValues
-      if (result.library) {
-        if (result.library.memory === undefined) result.library.memory = { enabled: true }
-        if (result.library.memory && !result.library.memory.retrieval) {
-          result.library.memory.retrieval = { simThreshold: 0.7, topK: 3 }
-        }
-        if (result.library.memory && !result.library.memory.dedup) {
-          result.library.memory.dedup = { threshold: 0.75 }
-        }
-        if (result.library.experience === undefined) {
-          result.library.experience = { encode: true, retrieve: true, learning: { ...LEARNING_DEFAULTS } }
-        }
-        if (result.library.autonomy === undefined) result.library.autonomy = true
-      }
-    },
-    redact(raw, helpers) {
-      const result = raw as ConfigValues
-      const REDACTED_SENTINEL = helpers.sentinel
-      const redactSecretShapedRecord = helpers.redact
-      const mergeSecretShapedRecord = helpers.restore
-
-      if (result.embedding?.apiKey) result.embedding.apiKey = REDACTED_SENTINEL
-      if (result.rerank?.apiKey) result.rerank.apiKey = REDACTED_SENTINEL
-    },
-    restore(raw, previous, helpers) {
-      const result = raw as ConfigValues
-      const stored = previous as ConfigValues
-      const REDACTED_SENTINEL = helpers.sentinel
-      const redactSecretShapedRecord = helpers.redact
-      const mergeSecretShapedRecord = helpers.restore
-
-      if (result.embedding?.apiKey === REDACTED_SENTINEL && stored.embedding?.apiKey) {
-        result.embedding.apiKey = stored.embedding.apiKey
-      }
-      if (result.rerank?.apiKey === REDACTED_SENTINEL && stored.rerank?.apiKey) {
-        result.rerank.apiKey = stored.rerank.apiKey
-      }
-    },
-  })
+  ConfigExtensions.register("library", contribution)
   for (const domain of [
     {
       id: "general",
@@ -426,7 +428,6 @@ export function registerConfig() {
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
-registerConfig()
 
 export async function readConfig(): Promise<ConfigValues> {
   const { Config } = await import("@ericsanchezok/synergy-harness/config/config")

@@ -4,6 +4,9 @@ import { Session } from "../../src/session"
 import { createUserMessage } from "../../src/session/input"
 import { SessionInbox } from "../../src/session/inbox"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const POISONED_URL = "data:text/plain;base64,!!!"
 
@@ -19,124 +22,130 @@ async function seedRoot(sessionID: string) {
 }
 
 describe("session inbox poisoned task parking", () => {
-  test("a task that cannot materialize is parked as failed without blocking the queue", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const root = await seedRoot(session.id)
-        await SessionInbox.enqueueUser({
-          sessionID: session.id,
-          parts: [
-            { type: "text", text: "poisoned task" },
-            { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
-          ],
-        })
-        await SessionInbox.enqueueUser({
-          sessionID: session.id,
-          parts: [{ type: "text", text: "real task" }],
-        })
+  test("a task that cannot materialize is parked as failed without blocking the queue", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await seedRoot(session.id)
+          await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [
+              { type: "text", text: "poisoned task" },
+              { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
+            ],
+          })
+          await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [{ type: "text", text: "real task" }],
+          })
 
-        const poisonedID = (await SessionInbox.peekTask(session.id))!.id
-        const first = await SessionInbox.materializeNextTask(session.id)
-        expect(first.status).toBe("failed")
+          const poisonedID = (await SessionInbox.peekTask(session.id))!.id
+          const first = await SessionInbox.materializeNextTask(session.id)
+          expect(first.status).toBe("failed")
 
-        const stored = await SessionInbox.getStored(session.id, poisonedID)
-        expect(stored.status).toBe("failed")
-        expect(stored.failReason).toBeString()
-        const listed = (await SessionInbox.list(session.id)).find((item) => item.id === poisonedID)
-        expect(listed?.status).toBe("failed")
+          const stored = await SessionInbox.getStored(session.id, poisonedID)
+          expect(stored.status).toBe("failed")
+          expect(stored.failReason).toBeString()
+          const listed = (await SessionInbox.list(session.id)).find((item) => item.id === poisonedID)
+          expect(listed?.status).toBe("failed")
 
-        expect(await SessionInbox.hasRunnableItem(session.id)).toBe(true)
-        expect((await SessionInbox.peekTask(session.id))!.id).not.toBe(poisonedID)
+          expect(await SessionInbox.hasRunnableItem(session.id)).toBe(true)
+          expect((await SessionInbox.peekTask(session.id))!.id).not.toBe(poisonedID)
 
-        const second = await SessionInbox.materializeNextTask(session.id)
-        expect(second.status).toBe("materialized")
+          const second = await SessionInbox.materializeNextTask(session.id)
+          expect(second.status).toBe("materialized")
 
-        const third = await SessionInbox.materializeNextTask(session.id)
-        expect(third.status).toBe("empty")
+          const third = await SessionInbox.materializeNextTask(session.id)
+          expect(third.status).toBe("empty")
 
-        expect(root.info.id).toBeString()
-      },
-    })
-  })
+          expect(root.info.id).toBeString()
+        },
+      })
+    }))
 
-  test("a session whose only task failed is not runnable", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await seedRoot(session.id)
-        await SessionInbox.enqueueUser({
-          sessionID: session.id,
-          parts: [
-            { type: "text", text: "poisoned task" },
-            { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
-          ],
-        })
-        const result = await SessionInbox.materializeNextTask(session.id)
-        expect(result.status).toBe("failed")
+  test("a session whose only task failed is not runnable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await seedRoot(session.id)
+          await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [
+              { type: "text", text: "poisoned task" },
+              { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
+            ],
+          })
+          const result = await SessionInbox.materializeNextTask(session.id)
+          expect(result.status).toBe("failed")
 
-        expect(await SessionInbox.hasRunnableItem(session.id)).toBe(false)
-        expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
-      },
-    })
-  })
+          expect(await SessionInbox.hasRunnableItem(session.id)).toBe(false)
+          expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
+        },
+      })
+    }))
 
-  test("guide rejects a parked failure so bulk send cannot drop the payload", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await seedRoot(session.id)
-        await SessionInbox.enqueueUser({
-          sessionID: session.id,
-          parts: [
-            { type: "text", text: "poisoned task" },
-            { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
-          ],
-        })
-        const itemID = (await SessionInbox.peekTask(session.id))!.id
-        const result = await SessionInbox.materializeNextTask(session.id)
-        expect(result.status).toBe("failed")
+  test("guide rejects a parked failure so bulk send cannot drop the payload", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await seedRoot(session.id)
+          await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [
+              { type: "text", text: "poisoned task" },
+              { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
+            ],
+          })
+          const itemID = (await SessionInbox.peekTask(session.id))!.id
+          const result = await SessionInbox.materializeNextTask(session.id)
+          expect(result.status).toBe("failed")
 
-        await expect(SessionInbox.guide({ sessionID: session.id, itemID })).rejects.toMatchObject({
-          name: "SessionInboxItemFailedError",
-        })
-        // Parked failures stay mutable for retry and delete even without a
-        // canonical root in the conversation.
-        expect((await SessionInbox.getStored(session.id, itemID)).status).toBe("failed")
-      },
-    })
-  })
+          await expect(SessionInbox.guide({ sessionID: session.id, itemID })).rejects.toMatchObject({
+            name: "SessionInboxItemFailedError",
+          })
+          // Parked failures stay mutable for retry and delete even without a
+          // canonical root in the conversation.
+          expect((await SessionInbox.getStored(session.id, itemID)).status).toBe("failed")
+        },
+      })
+    }))
 
-  test("rearm clears the failed state so retry can re-drive the item", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await seedRoot(session.id)
-        await SessionInbox.enqueueUser({
-          sessionID: session.id,
-          parts: [
-            { type: "text", text: "poisoned task" },
-            { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
-          ],
-        })
-        const itemID = (await SessionInbox.peekTask(session.id))!.id
-        await SessionInbox.materializeNextTask(session.id)
-        expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
+  test("rearm clears the failed state so retry can re-drive the item", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await seedRoot(session.id)
+          await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [
+              { type: "text", text: "poisoned task" },
+              { type: "attachment", mime: "text/plain", filename: "broken.txt", url: POISONED_URL },
+            ],
+          })
+          const itemID = (await SessionInbox.peekTask(session.id))!.id
+          await SessionInbox.materializeNextTask(session.id)
+          expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
 
-        await SessionInbox.rearm({ sessionID: session.id, itemID })
-        const rearmed = await SessionInbox.peekTask(session.id)
-        expect(rearmed?.id).toBe(itemID)
-        expect(rearmed?.status).toBeUndefined()
-        expect(await SessionInbox.hasRunnableItem(session.id)).toBe(true)
-      },
-    })
-  })
+          await SessionInbox.rearm({ sessionID: session.id, itemID })
+          const rearmed = await SessionInbox.peekTask(session.id)
+          expect(rearmed?.id).toBe(itemID)
+          expect(rearmed?.status).toBeUndefined()
+          expect(await SessionInbox.hasRunnableItem(session.id)).toBe(true)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

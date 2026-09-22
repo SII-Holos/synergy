@@ -1,10 +1,13 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { Command } from "./command"
 
-const unsubscribers = new Map<string, () => void>()
+const runtimeState = RuntimeContext.state(() => ({
+  unsubscribers: new Map<string, () => void>(),
+}))
 
 /**
  * H5 command startup contribution: the scope-initialization watcher (mark a
@@ -14,6 +17,8 @@ const unsubscribers = new Map<string, () => void>()
  * ScopedState-based watcher did; dispose unsubscribes per scope.
  */
 export function registerCommandStartup() {
+  const instanceState = runtimeState()
+
   ScopeStartup.register({
     name: "command-watcher",
     phase: "surface",
@@ -24,11 +29,11 @@ export function registerCommandStartup() {
           await Scope.setInitialized(ScopeContext.current.scope.id)
         }
       })
-      unsubscribers.set(scope.id, unsubscribe)
+      instanceState.unsubscribers.set(scope.id, unsubscribe)
     },
     dispose(scopeID) {
-      unsubscribers.get(scopeID)?.()
-      unsubscribers.delete(scopeID)
+      instanceState.unsubscribers.get(scopeID)?.()
+      instanceState.unsubscribers.delete(scopeID)
     },
   })
 }

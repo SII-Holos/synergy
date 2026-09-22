@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { AgendaStore } from "./store"
 import { AgendaTypes } from "./types"
@@ -22,11 +23,13 @@ export namespace AgendaWatcher {
   // condition-based watches, add PollEntry/ToolEntry types and their execution
   // loops back here. See git history for the previous implementation.
 
-  const files = new Map<string, FileEntry[]>()
-  const debounceTimers = new Map<string, Timer>()
-  let handler: Handler | null = null
-  let globalBusHandler: ((event: { directory?: string; payload: unknown }) => void) | null = null
-  let started = false
+  const runtimeState = RuntimeContext.state(() => ({
+    files: new Map<string, FileEntry[]>(),
+    debounceTimers: new Map<string, Timer>(),
+    handler: null as Handler | null,
+    globalBusHandler: null as ((event: { directory?: string; payload: unknown }) => void) | null,
+    started: false,
+  }))
 
   function normalizeFileEvent(event: string): FileEntry["event"] | undefined {
     if (event === "add" || event === "added") return "add"
@@ -36,13 +39,17 @@ export namespace AgendaWatcher {
   }
 
   export function start(onFire: Handler, items: AgendaTypes.Item[]): void {
-    handler = onFire
+    const instanceState = runtimeState()
+
+    instanceState.handler = onFire
     for (const item of items) {
       register(item.id, item.origin.scope.id, item.triggers)
     }
 
-    globalBusHandler = (event) => {
-      if (!started) return
+    instanceState.globalBusHandler = (event) => {
+      const instanceState = runtimeState()
+
+      if (!instanceState.started) return
       const payload = event.payload as Record<string, unknown> | undefined
       if (!payload || payload.type !== "file.watcher.updated") return
       const properties = payload.properties as Record<string, unknown> | undefined
@@ -52,25 +59,27 @@ export namespace AgendaWatcher {
       if (!filePath || !fileEvent) return
       handleFileEvent(filePath, fileEvent)
     }
-    GlobalBus.on("event", globalBusHandler)
+    GlobalBus().on("event", instanceState.globalBusHandler)
 
-    started = true
+    instanceState.started = true
     log.info("started", { files: countFiles() })
   }
 
   export function stop(): void {
-    files.clear()
+    const instanceState = runtimeState()
 
-    for (const timer of debounceTimers.values()) clearTimeout(timer)
-    debounceTimers.clear()
+    instanceState.files.clear()
 
-    if (globalBusHandler) {
-      GlobalBus.off("event", globalBusHandler)
-      globalBusHandler = null
+    for (const timer of instanceState.debounceTimers.values()) clearTimeout(timer)
+    instanceState.debounceTimers.clear()
+
+    if (instanceState.globalBusHandler) {
+      GlobalBus().off("event", instanceState.globalBusHandler)
+      instanceState.globalBusHandler = null
     }
 
-    started = false
-    handler = null
+    instanceState.started = false
+    instanceState.handler = null
   }
 
   export function register(
@@ -79,6 +88,8 @@ export namespace AgendaWatcher {
     triggers: AgendaTypes.Trigger[],
     opts?: { autoDone?: boolean; maxChecks?: number },
   ): void {
+    const instanceState = runtimeState()
+
     unregister(itemID)
 
     const newFiles: FileEntry[] = []
@@ -103,16 +114,18 @@ export namespace AgendaWatcher {
       }
     }
 
-    if (newFiles.length > 0) files.set(itemID, newFiles)
+    if (newFiles.length > 0) instanceState.files.set(itemID, newFiles)
   }
 
   export function unregister(itemID: string): void {
-    files.delete(itemID)
+    const instanceState = runtimeState()
 
-    const timer = debounceTimers.get(itemID)
+    instanceState.files.delete(itemID)
+
+    const timer = instanceState.debounceTimers.get(itemID)
     if (timer) {
       clearTimeout(timer)
-      debounceTimers.delete(itemID)
+      instanceState.debounceTimers.delete(itemID)
     }
   }
 
@@ -121,13 +134,17 @@ export namespace AgendaWatcher {
   }
 
   function countFiles(): number {
+    const instanceState = runtimeState()
+
     let n = 0
-    for (const entries of files.values()) n += entries.length
+    for (const entries of instanceState.files.values()) n += entries.length
     return n
   }
 
   function handleFileEvent(filePath: string, fileEvent: string): void {
-    for (const entries of files.values()) {
+    const instanceState = runtimeState()
+
+    for (const entries of instanceState.files.values()) {
       for (const entry of entries) {
         if (!entry.glob.match(filePath)) continue
         if (entry.event && entry.event !== fileEvent) continue
@@ -137,20 +154,24 @@ export namespace AgendaWatcher {
   }
 
   function scheduleFileSignal(entry: FileEntry, filePath: string, fileEvent: string): void {
-    if (!handler) return
+    const instanceState = runtimeState()
 
-    const existing = debounceTimers.get(entry.itemID)
+    if (!instanceState.handler) return
+
+    const existing = instanceState.debounceTimers.get(entry.itemID)
     if (existing) clearTimeout(existing)
 
     const timer = setTimeout(() => {
-      debounceTimers.delete(entry.itemID)
+      const instanceState = runtimeState()
+
+      instanceState.debounceTimers.delete(entry.itemID)
       const signal: AgendaTypes.FiredSignal = {
         type: "watch",
         source: entry.itemID,
         payload: { file: filePath, event: fileEvent },
         timestamp: Date.now(),
       }
-      handler!(signal, entry.scopeID).catch((err) => {
+      instanceState.handler!(signal, entry.scopeID).catch((err) => {
         log.error("file handler failed", {
           itemID: entry.itemID,
           error: err instanceof Error ? err : new Error(String(err)),
@@ -158,6 +179,6 @@ export namespace AgendaWatcher {
       })
     }, entry.debounceMs)
 
-    debounceTimers.set(entry.itemID, timer)
+    instanceState.debounceTimers.set(entry.itemID, timer)
   }
 }

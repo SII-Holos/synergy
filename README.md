@@ -179,7 +179,7 @@ Default local preflight:
 bun run quality:quick
 ```
 
-For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. See the [package map](docs/reference/packages.md) for build and installation checks.
+For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. See [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md) for lifecycle and installation contracts.
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Start with `bun bench plan benchmark/configs/ab.yaml`.
 
@@ -260,4 +260,4 @@ Contributions, bug reports, and feature ideas are welcome. Read [CONTRIBUTING.md
 
 Synergy is open source under the [MIT License](LICENSE).
 
-Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Binary evidence uses checksummed packs. Existing Home data upgrades through resumable migration. Eligible upgrades admit new work while history migrates; preserve frozen originals together with an incomplete segmented backup. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).
+Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Binary evidence uses checksummed packs. Existing Home data upgrades through resumable migration. Optional whole-database optimization runs in an explicit maintenance window; committed data opens without waiting for space reclamation. Desktop offers retry, maintenance continuation and startup diagnostics when launch fails. Eligible upgrades admit new work while history prepares in the background. Open old conversations on demand, or pause background preparation from the status bar. Preserve frozen originals and protected snapshot paths until the independent recovery backup is complete. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).

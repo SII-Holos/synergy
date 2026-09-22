@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Config } from "../config/config"
 
 export namespace TimeoutConfig {
@@ -17,7 +18,7 @@ export namespace TimeoutConfig {
     providerWallMs: number | false
   }
 
-  const DEFAULTS: Resolved = {
+  const DEFAULTS = {
     invokeMs: 21_600_000,
     providerTtfbMs: 300_000,
     providerIdleMs: 120_000,
@@ -25,22 +26,19 @@ export namespace TimeoutConfig {
     toolDefaultMs: 7_200_000,
     toolOverrides: {},
     permissionAskMs: 3_600_000,
-  }
+  } satisfies Resolved
 
-  let cached: Resolved | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    cached: undefined as Resolved | undefined,
+  }))
 
   export async function resolve(): Promise<Resolved> {
-    if (cached) return cached
+    const instanceState = runtimeState()
+
+    if (instanceState.cached) return instanceState.cached
 
     const cfg = await Config.current()
-    const timeout = (cfg as any).timeout as
-      | {
-          invoke_sec?: number
-          provider?: { ttfb_sec?: number; idle_sec?: number | false; wall_sec?: number | false }
-          tool?: { default_sec?: number; overrides?: Record<string, number> }
-          permission?: { ask_sec?: number }
-        }
-      | undefined
+    const timeout = cfg.timeout
 
     const secToMs = (sec: number | undefined, fallback: number): number => (sec !== undefined ? sec * 1000 : fallback)
 
@@ -52,15 +50,9 @@ export namespace TimeoutConfig {
           ? providerIdleRaw * 1000
           : DEFAULTS.providerIdleMs
 
-    const providerWallRaw = timeout?.provider?.wall_sec
-    const providerWallMs =
-      providerWallRaw === false
-        ? (false as const)
-        : providerWallRaw !== undefined && providerWallRaw > 0
-          ? providerWallRaw * 1000
-          : DEFAULTS.providerWallMs
+    const providerWallMs = secToMs(timeout?.provider?.wall_sec, DEFAULTS.providerWallMs)
 
-    cached = {
+    instanceState.cached = {
       invokeMs: secToMs(timeout?.invoke_sec, DEFAULTS.invokeMs),
       providerTtfbMs: secToMs(timeout?.provider?.ttfb_sec, DEFAULTS.providerTtfbMs),
       providerIdleMs,
@@ -72,16 +64,18 @@ export namespace TimeoutConfig {
       permissionAskMs: secToMs(timeout?.permission?.ask_sec, DEFAULTS.permissionAskMs),
     }
 
-    return cached
+    return instanceState.cached
   }
 
   export function invalidate(): void {
-    cached = undefined
+    const instanceState = runtimeState()
+
+    instanceState.cached = undefined
   }
 
   /**
    * Resolve the provider request timeouts for one provider, layering
-   * `provider.<id>.timeout` over the legacy `provider.<id>.options.timeout`
+   * `provider.<id>.timeout` over the resolved legacy model/provider `options.timeout`
    * (milliseconds, idle only) over the global `timeout.provider` block.
    *
    * This is the only place per-provider timeouts are parsed: the control plane
@@ -91,9 +85,7 @@ export namespace TimeoutConfig {
   export async function forProvider(input: { providerID: string; legacyIdle?: unknown }): Promise<ProviderTimeouts> {
     const resolved = await resolve()
     const cfg = await Config.current()
-    const override = (cfg as any).provider?.[input.providerID]?.timeout as
-      | { ttfb_sec?: number; idle_sec?: number | false; wall_sec?: number | false }
-      | undefined
+    const override = cfg.provider?.[input.providerID]?.timeout
 
     const idleOverride =
       override?.idle_sec === false || override?.idle_sec === 0
@@ -109,12 +101,7 @@ export namespace TimeoutConfig {
           ? input.legacyIdle
           : undefined
 
-    const wallOverride =
-      override?.wall_sec === false
-        ? (false as const)
-        : override?.wall_sec !== undefined && override.wall_sec > 0
-          ? override.wall_sec * 1000
-          : undefined
+    const wallOverride = override?.wall_sec !== undefined ? override.wall_sec * 1000 : undefined
 
     return {
       providerTtfbMs: override?.ttfb_sec !== undefined ? override.ttfb_sec * 1000 : resolved.providerTtfbMs,

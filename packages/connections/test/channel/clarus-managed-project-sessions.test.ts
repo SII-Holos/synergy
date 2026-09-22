@@ -8,6 +8,9 @@ import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,115 +69,120 @@ async function setupManagedProjectWithTask(
 // Ordinary (non-managed) Projects retain project-only filtering.
 // ---------------------------------------------------------------------------
 describe("Managed Clarus Project session visibility", () => {
-  test("managed project scope includes channel-category task sessions when querying by project category", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { scope, sessionID } = await setupManagedProjectWithTask("vis-account", "vis-proj", "vis-task")
+  test("managed project scope includes channel-category task sessions when querying by project category", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { scope, sessionID } = await setupManagedProjectWithTask("vis-account", "vis-proj", "vis-task")
 
-        // The task session has an endpoint like:
-        //   { kind: "channel", channel: { type: "clarus", target: { kind: "task" } } }
-        // so deriveCategory returns "channel".
-        const session = await Session.get(sessionID)
-        const category = SessionNav.deriveCategory({
-          scopeType: "project",
-          endpointKind: session.endpoint?.kind,
-        })
-        expect(category).toBe("channel")
+          // The task session has an endpoint like:
+          //   { kind: "channel", channel: { type: "clarus", target: { kind: "task" } } }
+          // so deriveCategory returns "channel".
+          const session = await Session.get(sessionID)
+          const category = SessionNav.deriveCategory({
+            scopeType: "project",
+            endpointKind: session.endpoint?.kind,
+          })
+          expect(category).toBe("channel")
 
-        // RED: When category filter is "project", the task session is MISSING.
-        // The fix must make managed project scopes surface channel-category
-        // sessions. This test asserts the RED state — the entry is absent.
-        const queryResult = await SessionNav.queryScope(scope.id, {
-          category: "project",
-          parentOnly: true,
-        })
-        const projectEntries = queryResult.items.filter((e) => e.id === sessionID)
-        expect(projectEntries).toHaveLength(0)
-        // ^ After the fix, this should be toHaveLength(1):
-        //   the task session should appear in project-scope queries for
-        //   managed project scopes.
+          // RED: When category filter is "project", the task session is MISSING.
+          // The fix must make managed project scopes surface channel-category
+          // sessions. This test asserts the RED state — the entry is absent.
+          const queryResult = await SessionNav.queryScope(scope.id, {
+            category: "project",
+            parentOnly: true,
+          })
+          const projectEntries = queryResult.items.filter((e) => e.id === sessionID)
+          expect(projectEntries).toHaveLength(0)
+          // ^ After the fix, this should be toHaveLength(1):
+          //   the task session should appear in project-scope queries for
+          //   managed project scopes.
 
-        // Confirm the session IS visible when queried by channel category
-        const channelResult = await SessionNav.queryScope(scope.id, {
-          category: "channel",
-          parentOnly: true,
-        })
-        const channelEntries = channelResult.items.filter((e) => e.id === sessionID)
-        expect(channelEntries).toHaveLength(1)
-      },
-    })
-  })
+          // Confirm the session IS visible when queried by channel category
+          const channelResult = await SessionNav.queryScope(scope.id, {
+            category: "channel",
+            parentOnly: true,
+          })
+          const channelEntries = channelResult.items.filter((e) => e.id === sessionID)
+          expect(channelEntries).toHaveLength(1)
+        },
+      })
+    }))
 
-  test("ordinary project scope excludes channel-category sessions from project-category queries", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        // Create a session in a non-managed scope that happens to have a
-        // channel endpoint (simulating what a task session looks like).
-        const projectScope = await tmp.scope()
-        const channelEndpoint = SessionEndpoint.Channel.parse({
-          kind: "channel",
-          channel: {
-            type: "clarus",
-            accountId: "agent-ordinary",
-            target: { kind: "task", externalProjectId: "proj-ordinary", externalTaskId: "task-1" },
-          },
-        })
-        const session = await Session.create({
-          scope: projectScope,
-          endpoint: channelEndpoint,
-          controlProfile: "autonomous",
-          interaction: { mode: "unattended", source: "channel:clarus" } as any,
-          title: "Ordinary task",
-        })
-        const category = SessionNav.deriveCategory({
-          scopeType: "project",
-          endpointKind: session.endpoint?.kind,
-        })
-        expect(category).toBe("channel")
+  test("ordinary project scope excludes channel-category sessions from project-category queries", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          // Create a session in a non-managed scope that happens to have a
+          // channel endpoint (simulating what a task session looks like).
+          const projectScope = await tmp.scope()
+          const channelEndpoint = SessionEndpoint.Channel.parse({
+            kind: "channel",
+            channel: {
+              type: "clarus",
+              accountId: "agent-ordinary",
+              target: { kind: "task", externalProjectId: "proj-ordinary", externalTaskId: "task-1" },
+            },
+          })
+          const session = await Session.create({
+            scope: projectScope,
+            endpoint: channelEndpoint,
+            controlProfile: "autonomous",
+            interaction: { mode: "unattended", source: "channel:clarus" } as any,
+            title: "Ordinary task",
+          })
+          const category = SessionNav.deriveCategory({
+            scopeType: "project",
+            endpointKind: session.endpoint?.kind,
+          })
+          expect(category).toBe("channel")
 
-        // RED: Ordinary project scope should still exclude channel-category
-        // sessions when filtered by category: "project".
-        const result = await SessionNav.queryScope(projectScope.id, {
-          category: "project",
-          parentOnly: true,
-        })
-        const entries = result.items.filter((e) => e.id === session.id)
-        expect(entries).toHaveLength(0)
-        // ^ This is correct behavior — ordinary projects don't surface channel
-        //   sessions. The fix must preserve this: only managed Clarus project
-        //   scopes should include channel-category task sessions.
-      },
-    })
-  })
+          // RED: Ordinary project scope should still exclude channel-category
+          // sessions when filtered by category: "project".
+          const result = await SessionNav.queryScope(projectScope.id, {
+            category: "project",
+            parentOnly: true,
+          })
+          const entries = result.items.filter((e) => e.id === session.id)
+          expect(entries).toHaveLength(0)
+          // ^ This is correct behavior — ordinary projects don't surface channel
+          //   sessions. The fix must preserve this: only managed Clarus project
+          //   scopes should include channel-category task sessions.
+        },
+      })
+    }))
 
-  test("ordinary project without channel endpoint includes project-category sessions normally", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const projectScope = await tmp.scope()
-        const session = await Session.create({
-          scope: projectScope,
-          interaction: { mode: "unattended", source: "user" } as any,
-          title: "Normal project session",
-        })
-        const category = SessionNav.deriveCategory({
-          scopeType: "project",
-          endpointKind: session.endpoint?.kind,
-        })
-        expect(category).toBe("project")
+  test("ordinary project without channel endpoint includes project-category sessions normally", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const projectScope = await tmp.scope()
+          const session = await Session.create({
+            scope: projectScope,
+            interaction: { mode: "unattended", source: "user" } as any,
+            title: "Normal project session",
+          })
+          const category = SessionNav.deriveCategory({
+            scopeType: "project",
+            endpointKind: session.endpoint?.kind,
+          })
+          expect(category).toBe("project")
 
-        const result = await SessionNav.queryScope(projectScope.id, {
-          category: "project",
-          parentOnly: true,
-        })
-        const entries = result.items.filter((e) => e.id === session.id)
-        expect(entries).toHaveLength(1)
-      },
-    })
-  })
+          const result = await SessionNav.queryScope(projectScope.id, {
+            category: "project",
+            parentOnly: true,
+          })
+          const entries = result.items.filter((e) => e.id === session.id)
+          expect(entries).toHaveLength(1)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

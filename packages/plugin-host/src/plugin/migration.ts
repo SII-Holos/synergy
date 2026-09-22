@@ -178,6 +178,8 @@ const migrations: Migration[] = [
   },
   {
     id: "20260914-plugin-transactional-records",
+    scope: "global",
+    execution: "startup",
     description: "Separate plugin installation, approval, and audit records in authoritative storage",
     async up(progress) {
       await Storage.transaction(async (tx) => {
@@ -221,4 +223,6 @@ function pathToFileSpec(directory: string) {
   return pathToFileURL(directory).href
 }
 
-MigrationRegistry.register("plugin_catalog", migrations)
+export function registerPluginMigrations() {
+  MigrationRegistry.register("plugin_catalog", migrations)
+}

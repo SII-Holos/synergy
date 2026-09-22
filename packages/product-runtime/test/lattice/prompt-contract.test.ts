@@ -6,10 +6,12 @@ import BASE from "@ericsanchezok/synergy-workflows/lattice/prompt/base.txt"
 import MODE_AUTO from "@ericsanchezok/synergy-workflows/lattice/prompt/mode-auto.txt"
 import MODE_COLLABORATIVE from "@ericsanchezok/synergy-workflows/lattice/prompt/mode-collaborative.txt"
 // Product domains (including the lattice wrapper contribution) register via the L4 manifest
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import STATE_PLANNING from "@ericsanchezok/synergy-workflows/lattice/prompt/state-planning.txt"
 import STATE_CLARIFYING from "@ericsanchezok/synergy-workflows/lattice/prompt/state-clarifying.txt"
 import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/internal/session/workflow-user-wrapper"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /**
  * Lattice prompt contract (S5a golden). Locks the byte-level shape of the
@@ -101,126 +103,139 @@ const PLANNING_CONTEXT = [
 ].join("\n")
 
 describe("lattice system prompt golden", () => {
-  test("planning/auto composition is byte-exact (base + mode + state + context, blank-line joined)", () => {
-    expect(LatticePrompt.build(session, runFixture())).toBe(
-      [BASE.trim(), MODE_AUTO.trim(), STATE_PLANNING.trim(), PLANNING_CONTEXT].join("\n\n"),
-    )
-  })
+  test("planning/auto composition is byte-exact (base + mode + state + context, blank-line joined)", () =>
+    runtime.run(() => {
+      expect(LatticePrompt.build(session, runFixture())).toBe(
+        [BASE.trim(), MODE_AUTO.trim(), STATE_PLANNING.trim(), PLANNING_CONTEXT].join("\n\n"),
+      )
+    }))
 
-  test("collaborative mode swaps the mode block; goal falls back to the sentinel without requirements", () => {
-    const block = LatticePrompt.build(
-      { workflow: { kind: "lattice", runID: "ltr_alpha", mode: "collaborative" } } as unknown as SessionInfo,
-      runFixture({
-        mode: "collaborative",
-        state: "clarifying",
-        requirements: undefined,
-        currentStepID: undefined,
-        pathway: [],
-      }),
-    )
-    expect(block).toBe(
-      [
-        BASE.trim(),
-        MODE_COLLABORATIVE.trim(),
-        STATE_CLARIFYING.trim(),
+  test("collaborative mode swaps the mode block; goal falls back to the sentinel without requirements", () =>
+    runtime.run(() => {
+      const block = LatticePrompt.build(
+        { workflow: { kind: "lattice", runID: "ltr_alpha", mode: "collaborative" } } as unknown as SessionInfo,
+        runFixture({
+          mode: "collaborative",
+          state: "clarifying",
+          requirements: undefined,
+          currentStepID: undefined,
+          pathway: [],
+        }),
+      )
+      expect(block).toBe(
         [
-          "<lattice-context>",
-          "State: clarifying",
-          "Mode: collaborative",
-          "Canonical goal: derive from the user's request",
-          "Model calls: 3/10",
-          "Current Step: none selected.",
-          "Pathway: empty.",
-          "</lattice-context>",
-        ].join("\n"),
-      ].join("\n\n"),
-    )
-  })
+          BASE.trim(),
+          MODE_COLLABORATIVE.trim(),
+          STATE_CLARIFYING.trim(),
+          [
+            "<lattice-context>",
+            "State: clarifying",
+            "Mode: collaborative",
+            "Canonical goal: derive from the user's request",
+            "Model calls: 3/10",
+            "Current Step: none selected.",
+            "Pathway: empty.",
+            "</lattice-context>",
+          ].join("\n"),
+        ].join("\n\n"),
+      )
+    }))
 
-  test("unlimited budget renders the unlimited sentinel", () => {
-    const block = LatticePrompt.build(session, runFixture({ maxModelCalls: 0, modelCallCount: 7 }))
-    expect(block).toContain("Model calls: 7/unlimited")
-  })
+  test("unlimited budget renders the unlimited sentinel", () =>
+    runtime.run(() => {
+      const block = LatticePrompt.build(session, runFixture({ maxModelCalls: 0, modelCallCount: 7 }))
+      expect(block).toContain("Model calls: 7/unlimited")
+    }))
 
-  test("executing state produces no parent system block", () => {
-    expect(LatticePrompt.build(session, runFixture({ state: "executing" }))).toBe("")
-  })
+  test("executing state produces no parent system block", () =>
+    runtime.run(() => {
+      expect(LatticePrompt.build(session, runFixture({ state: "executing" }))).toBe("")
+    }))
 
-  test("goalSeed is used when requirements are absent", () => {
-    const block = LatticePrompt.build(session, runFixture({ requirements: undefined, goalSeed: "Seed goal text" }))
-    expect(block).toContain("Canonical goal: Seed goal text")
-  })
+  test("goalSeed is used when requirements are absent", () =>
+    runtime.run(() => {
+      const block = LatticePrompt.build(session, runFixture({ requirements: undefined, goalSeed: "Seed goal text" }))
+      expect(block).toContain("Canonical goal: Seed goal text")
+    }))
 })
 
 describe("lattice user-message wrapper golden", () => {
-  test("generic agent wrapper is byte-exact", () => {
-    expect(WorkflowUserWrapper.build("some-agent", "lattice", "decompose the migration")).toBe(
-      [
-        "<lattice-user-request>",
-        "You are in the Lattice workflow.",
-        "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-        "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-        "",
-        "User request:",
-        "decompose the migration",
-        "</lattice-user-request>",
-      ].join("\n"),
-    )
-  })
+  test("generic agent wrapper is byte-exact", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("some-agent", "lattice", "decompose the migration")).toBe(
+        [
+          "<lattice-user-request>",
+          "You are in the Lattice workflow.",
+          "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
+          "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
+          "",
+          "User request:",
+          "decompose the migration",
+          "</lattice-user-request>",
+        ].join("\n"),
+      )
+    }))
 
-  test("synergy wrapper is byte-exact", () => {
-    expect(WorkflowUserWrapper.build("synergy", "lattice", "decompose the migration")).toBe(
-      [
-        "<lattice-user-request>",
-        "You are synergy in the Lattice workflow.",
-        "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-        "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-        "",
-        "User request:",
-        "decompose the migration",
-        "</lattice-user-request>",
-      ].join("\n"),
-    )
-  })
+  test("synergy wrapper is byte-exact", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("synergy", "lattice", "decompose the migration")).toBe(
+        [
+          "<lattice-user-request>",
+          "You are synergy in the Lattice workflow.",
+          "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
+          "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
+          "",
+          "User request:",
+          "decompose the migration",
+          "</lattice-user-request>",
+        ].join("\n"),
+      )
+    }))
 
-  test("synergy-max wrapper is byte-exact", () => {
-    expect(WorkflowUserWrapper.build("synergy-max", "lattice", "decompose the migration")).toBe(
-      [
-        "<lattice-user-request>",
-        "You are synergy-max in the Lattice workflow.",
-        "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-        "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-        "",
-        "User request:",
-        "decompose the migration",
-        "</lattice-user-request>",
-      ].join("\n"),
-    )
-  })
+  test("synergy-max wrapper is byte-exact", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("synergy-max", "lattice", "decompose the migration")).toBe(
+        [
+          "<lattice-user-request>",
+          "You are synergy-max in the Lattice workflow.",
+          "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
+          "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
+          "",
+          "User request:",
+          "decompose the migration",
+          "</lattice-user-request>",
+        ].join("\n"),
+      )
+    }))
 
-  test("empty request normalizes to the sentinel", () => {
-    expect(WorkflowUserWrapper.build("synergy", "lattice", "   ")).toContain("(empty request)")
-  })
+  test("empty request normalizes to the sentinel", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("synergy", "lattice", "   ")).toContain("(empty request)")
+    }))
 })
 
 describe("lattice control-source suppression golden", () => {
   const latticeSession = { workflow: { kind: "lattice", runID: "r1", mode: "auto" } } as never
 
-  test("lattice_continuation suppresses workflow stamping", () => {
-    expect(
-      WorkflowUserWrapper.metadataForUserMessage({
-        session: latticeSession,
-        metadata: { source: "lattice_continuation" },
-        agentName: "synergy",
-      }),
-    ).toEqual({})
-  })
+  test("lattice_continuation suppresses workflow stamping", () =>
+    runtime.run(() => {
+      expect(
+        WorkflowUserWrapper.metadataForUserMessage({
+          session: latticeSession,
+          metadata: { source: "lattice_continuation" },
+          agentName: "synergy",
+        }),
+      ).toEqual({})
+    }))
 
-  test("unstamped user requests still get workflow metadata", () => {
-    expect(WorkflowUserWrapper.metadataForUserMessage({ session: latticeSession, agentName: "synergy" })).toEqual({
-      workflow: "lattice",
-      workflowAgent: "synergy",
-      workflowVersion: 1,
-    })
-  })
+  test("unstamped user requests still get workflow metadata", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.metadataForUserMessage({ session: latticeSession, agentName: "synergy" })).toEqual({
+        workflow: "lattice",
+        workflowAgent: "synergy",
+        workflowVersion: 1,
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

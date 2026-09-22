@@ -77,6 +77,9 @@ export namespace MacOSSbpl {
   (global-name "com.apple.quicklook.ThumbnailsAgent")
   (global-name "com.apple.revisiond")
   (global-name "com.apple.securityd")
+  ; Provenance: docs/decisions/implemented/bug-fix/2026-09-21-macos-keychain-service-access.md
+  ; Local adaptation: native CLI Keychain lookup needs SecurityServer in addition to securityd.
+  (global-name "com.apple.SecurityServer")
   (global-name "com.apple.system.notification_center")
   (global-name "com.apple.system.opendirectoryd.libinfo")
   (global-name "com.apple.opendirectoryd.membership")

@@ -1,4 +1,3 @@
-import { resolveTerminalCwd } from "./cwd"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMemo, createRoot, onCleanup } from "solid-js"
@@ -25,11 +24,9 @@ type TerminalCacheEntry = {
   dispose: VoidFunction
 }
 
-function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: string | undefined) {
-  const legacy = `${dir}/terminal${id ? "/" + id : ""}.v1`
-
+function createTerminalSession(sdk: ReturnType<typeof useSDK>, sessionID: string | undefined) {
   const [store, setStore, _, ready] = persisted(
-    Persist.scoped(dir, id, "terminal", [legacy]),
+    Persist.scoped(Persist.scopeKey(sdk.url, sdk.scopeID), sessionID, "terminal"),
     createStore<{
       active?: string
       all: LocalPTY[]
@@ -38,26 +35,15 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
     }),
   )
 
-  async function resolveCwd(): Promise<string | undefined> {
-    if (!id) return undefined
-    try {
-      const { data } = await sdk.client.session.get({ sessionID: id })
-      return resolveTerminalCwd(data)
-    } catch {
-      return undefined
-    }
-  }
-
   return {
     ready,
     all: createMemo(() => Object.values(store.all)),
     active: createMemo(() => store.active),
     async new() {
       try {
-        const cwd = await resolveCwd()
         const pty = await sdk.client.pty.create({
           title: `Terminal ${store.all.length + 1}`,
-          ...(cwd ? { cwd } : {}),
+          sessionID,
         })
         const id = pty.data?.id
         if (!id) return undefined
@@ -89,11 +75,10 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
       const index = store.all.findIndex((x) => x.id === id)
       const pty = store.all[index]
       if (!pty) return
-      const cwd = await resolveCwd()
       const clone = await sdk.client.pty
         .create({
           title: pty.title,
-          ...(cwd ? { cwd } : {}),
+          sessionID,
         })
         .catch((e) => {
           console.error("Failed to clone terminal", e)
@@ -173,7 +158,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
 
       const entry = createRoot((dispose) => ({
-        value: createTerminalSession(sdk, dir, id),
+        value: createTerminalSession(sdk, id),
         dispose,
       }))
 

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { AgendaClock } from "./clock"
 import { AgendaReactor } from "./reactor"
 import { AgendaStore } from "./store"
@@ -23,16 +24,20 @@ export { AgendaGithubTrigger } from "./github-trigger"
 const log = Log.create({ service: "agenda" })
 
 export namespace Agenda {
-  const inflight = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    inflight: new Set<string>(),
+  }))
 
   export async function start(): Promise<void> {
     const handler = async (signal: AgendaTypes.FiredSignal, scopeID: string) => {
+      const instanceState = runtimeState()
+
       const itemID = signal.source
-      if (inflight.has(itemID)) {
+      if (instanceState.inflight.has(itemID)) {
         log.info("skipped (already running)", { itemID, signalType: signal.type })
         return
       }
-      inflight.add(itemID)
+      instanceState.inflight.add(itemID)
       try {
         const result = await AgendaReactor.execute(signal, scopeID)
         if (result.deactivated) {
@@ -42,7 +47,7 @@ export namespace Agenda {
           await settleAfterFire(signal, scopeID)
         }
       } finally {
-        inflight.delete(itemID)
+        instanceState.inflight.delete(itemID)
       }
     }
     const items = await AgendaStore.loadActive()
@@ -61,12 +66,14 @@ export namespace Agenda {
   }
 
   export function stop(): void {
+    const instanceState = runtimeState()
+
     AgendaClock.stop()
     AgendaWatcher.stop()
     AgendaWebhook.stop()
     AgendaSessionTrigger.stop()
     AgendaGithubTrigger.stop()
-    inflight.clear()
+    instanceState.inflight.clear()
     log.info("agenda stopped")
   }
 
@@ -98,6 +105,8 @@ export namespace Agenda {
   }
 
   export async function trigger(itemID: string) {
+    const instanceState = runtimeState()
+
     const { item, scopeID } = await AgendaStore.find(itemID)
     if (item.status === "pending" || item.status === "paused") {
       await AgendaStore.update(scopeID, itemID, { status: "active" })
@@ -108,11 +117,11 @@ export namespace Agenda {
       source: itemID,
       timestamp: Date.now(),
     }
-    if (inflight.has(itemID)) {
+    if (instanceState.inflight.has(itemID)) {
       log.info("skipped (already running)", { itemID, signalType: signal.type })
       return { sessionID: undefined }
     }
-    inflight.add(itemID)
+    instanceState.inflight.add(itemID)
     AgendaReactor.execute(signal, scopeID)
       .then(async (result) => {
         if (result.deactivated) {
@@ -133,7 +142,9 @@ export namespace Agenda {
         log.error("manual trigger failed", { itemID, error: err instanceof Error ? err : new Error(String(err)) })
       })
       .finally(() => {
-        inflight.delete(itemID)
+        const instanceState = runtimeState()
+
+        instanceState.inflight.delete(itemID)
       })
     return { sessionID: undefined }
   }

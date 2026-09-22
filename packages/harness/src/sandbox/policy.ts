@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { normalizeSlashes } from "../util/path"
 import * as fs from "fs"
 import * as os from "os"
@@ -324,21 +325,9 @@ export const READ_DENY_PATHS = (homedir: string): string[] => [
   joinPathLike(homedir, ".synergy", "config", "skills"),
 ]
 
-/**
- * Home directories the read deny list is derived from. The OS user home
- * carries tool credentials; the Synergy runtime home (SYNERGY_HOME /
- * SYNERGY_TEST_HOME when set) carries the active provider, MCP, account,
- * and plugin credential stores and can point outside the user home, so
- * denies are derived from both. Mirrors Global.Path.home resolution
- * without importing the global module, which asserts test-home isolation
- * at import time.
- */
+/** Credential roots include both the OS user and the explicitly selected Runtime home. */
 export function readDenyHomeDirs(): string[] {
-  return uniqueRoots([
-    os.homedir(),
-    ...(process.env.SYNERGY_HOME ? [process.env.SYNERGY_HOME] : []),
-    ...(process.env.SYNERGY_TEST_HOME ? [process.env.SYNERGY_TEST_HOME] : []),
-  ])
+  return uniqueRoots([os.homedir(), RuntimeContext.current().host.home])
 }
 
 /**

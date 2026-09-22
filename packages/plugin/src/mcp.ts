@@ -104,6 +104,7 @@ export const McpLocalServerConfig = z
       .record(z.string(), z.string())
       .optional()
       .describe("Environment variables to set when running the MCP server"),
+    requiresWorkspace: z.boolean().optional().describe("Whether tools require a session workspace; defaults to true"),
     timeout: LegacyTimeout,
     ...McpLifecycleFields,
   })
@@ -120,6 +121,7 @@ export const McpRemoteServerConfig = z
       .union([McpOAuthConfig, z.literal(false)])
       .optional()
       .describe("OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection."),
+    requiresWorkspace: z.boolean().optional().describe("Whether tools require a session workspace; defaults to true"),
     timeout: LegacyTimeout,
     ...McpLifecycleFields,
   })

@@ -203,7 +203,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const workbench = useWorkbenchPanels()
     const directory = sync.data.path.directory
     const [scope, setScope, , scopeReady] = persisted(
-      Persist.workspace(directory, "file-explorer"),
+      Persist.workspace(Persist.scopeKey(sdk.url, sdk.scopeID), "file-explorer"),
       createStore({ expanded: [] as string[], showHidden: false }),
     )
     const [store, setStore] = createStore<{
@@ -229,6 +229,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const directoryWaiters: VoidFunction[] = []
 
     const normalize = (input: string) => {
+      if (!directory) return undefined
       const root = directory.replaceAll("\\", "/").replace(/\/$/, "")
       let value = stripQueryAndHash(input.trim())
       if (value.startsWith("file://")) value = value.slice("file://".length)
@@ -272,7 +273,10 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         viewCache.set(key, existing)
         return existing.value
       }
-      const entry = createRoot((dispose) => ({ value: createViewSession(directory, id), dispose }))
+      const entry = createRoot((dispose) => ({
+        value: createViewSession(Persist.scopeKey(sdk.url, sdk.scopeID), id),
+        dispose,
+      }))
       viewCache.set(key, entry)
       while (viewCache.size > MAX_FILE_VIEW_SESSIONS) {
         const first = viewCache.keys().next().value

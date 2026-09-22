@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 
 /**
@@ -26,13 +27,22 @@ export namespace AgentExternalSource {
     discover(): Promise<Map<string, AgentExternal.Info>>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("agent/external-source")
+    if (instanceState.source && value) throw new Error("agent/external-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
 import { Log } from "../util/log"
 import {
@@ -263,11 +264,10 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
-    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { TimeoutConfig }] = await Promise.all([
+    const [{ Config }, { withPreambleSection }, { SystemPrompt }] = await Promise.all([
       import("../config/config"),
       import("../agent/prompt/preamble"),
       import("./system"),
-      import("../util/timeout-config"),
     ])
     const trigger = SessionPluginHooks.trigger
     const l = log
@@ -325,10 +325,7 @@ export namespace LLM {
 
     const optionsTimer = l.time("options.assembly")
     const [provider, cfg] = await Promise.all([Provider.getProvider(input.model.providerID), Config.current()])
-    const providerTimeouts = await TimeoutConfig.forProvider({
-      providerID: input.model.providerID,
-      legacyIdle: provider?.options?.["timeout"],
-    })
+    const providerTimeouts = await Provider.requestTimeouts(input.model)
     l.debug("prompt layout", {
       ...promptLayoutMetadata({
         model: input.model,
@@ -401,7 +398,7 @@ export namespace LLM {
   export function stream(input: StreamInput): Promise<StreamOutput>
   export function stream(input: PreparedStreamInput): Promise<StreamOutput>
   export async function stream(input: StreamInput | PreparedStreamInput): Promise<StreamOutput> {
-    if (process.env.SYNERGY_AGENT_WORKER && !input.prepared) {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER && !input.prepared) {
       throw new Error("Agent worker requires a Control Plane-prepared provider request")
     }
     // Provider-payload safety net: the vault masks registered values in the
@@ -421,7 +418,7 @@ export namespace LLM {
     })
     const langTimer = l.time("provider.getLanguage")
     const prepared = input.prepared ?? (await prepare(input as StreamInput))
-    if (process.env.SYNERGY_AGENT_WORKER === "1") {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") {
       await Provider.configureWorkerProvider(input.model, prepared.provider)
     }
     const language = await Provider.getLanguage(input.model)

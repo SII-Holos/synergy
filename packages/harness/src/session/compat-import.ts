@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "node:fs/promises"
 import { createReadStream } from "node:fs"
 import path from "node:path"
@@ -5,6 +6,8 @@ import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { work } from "../util/queue"
+import { UpgradeWork } from "../storage/upgrade-work"
+import { SessionSegment } from "./segment-import"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { ArtifactPack } from "../storage/artifact-pack"
@@ -12,7 +15,7 @@ import type { ArtifactLocation } from "../storage/artifact-location"
 import type { PackedBackupEntry } from "../storage/packed-backup"
 import { SegmentedBackup } from "../storage/segmented-backup"
 import { StorageCompat } from "../storage/compat"
-import { StorageIntegrityError } from "../storage/errors"
+import { SessionPreparingError, StorageIntegrityError } from "../storage/errors"
 import { legacyBinaryKey, legacyFiles, legacyRecordKey, syncRetiredDirectories } from "../storage/legacy-source"
 import { validateLegacyRecord } from "../storage/legacy-record"
 import { Storage } from "../storage/storage"
@@ -23,10 +26,14 @@ import type { ScopeNavIndex } from "./nav"
 import type { Session } from "."
 
 const log = Log.create({ service: "session.compat-import" })
-const inFlight = new WeakMap<object, Map<string, Promise<StorageCompat.Locator>>>()
+const runtimeState = RuntimeContext.state(() => ({
+  inFlight: new WeakMap<object, Map<string, Promise<StorageCompat.Locator>>>(),
+}))
 const migrationKey = ["compat_import", "migration"]
 const backups = Storage.state(() => new Map<string, SegmentedBackup>())
 const foreground = Storage.state(() => ({ count: 0 }))
+const maintenance = Storage.state(() => ({ failed: false, failures: 0, retryAfter: 0 }))
+const preparations = Storage.state(() => new Map<string, Promise<void>>())
 
 async function segmentedBackup() {
   const [info] = await Storage.readMany<StorageCompat.Info>([StorageCompat.infoKey])
@@ -77,19 +84,23 @@ export namespace SessionCompat {
   export async function ensureImported(sessionID: string, background = false): Promise<StorageCompat.Locator> {
     const priority = foreground()
     if (!background) priority.count++
+    const releasePriority = background ? () => {} : UpgradeWork.priority(sessionID)
     try {
-      return await importSession(sessionID)
+      return await importSession(sessionID, background)
     } finally {
+      releasePriority()
       if (!background) priority.count--
     }
   }
 
   export async function drain() {
-    const flights = inFlight.get(Storage.current().store)
-    while (flights?.size) await Promise.allSettled([...flights.values()])
+    const flights = runtimeState().inFlight.get(Storage.current().store)
+    const jobs = preparations()
+    while (flights?.size || jobs.size) await Promise.allSettled([...(flights?.values() ?? []), ...jobs.values()])
   }
 
-  async function importSession(sessionID: string): Promise<StorageCompat.Locator> {
+  async function importSession(sessionID: string, background: boolean): Promise<StorageCompat.Locator> {
+    const instanceState = runtimeState()
     const store = Storage.current().store
     if (Storage.inTransaction()) {
       const [locator] = await Storage.readMany<StorageCompat.Locator>([StorageCompat.locatorKey(sessionID)])
@@ -97,13 +108,21 @@ export namespace SessionCompat {
       if (locator.status === "imported" || locator.status === "quarantined") return locator
       throw new StorageIntegrityError("Import the deferred Session before opening a business transaction")
     }
-    let flights = inFlight.get(store)
+    let flights = instanceState.inFlight.get(store)
     if (!flights) {
       flights = new Map()
-      inFlight.set(store, flights)
+      instanceState.inFlight.set(store, flights)
     }
     const pending = flights.get(sessionID)
-    if (pending) return pending
+    if (pending) {
+      try {
+        return await pending
+      } catch (error) {
+        if (background || !(error instanceof DOMException && error.name === "AbortError")) throw error
+        if (flights.get(sessionID) === pending) flights.delete(sessionID)
+        return importSession(sessionID, false)
+      }
+    }
     const run = (async () => {
       const locator = await StorageCompat.readLocator(store, sessionID)
       if (!locator) return { sessionID, scopeID: "", status: "imported" as const }
@@ -111,20 +130,124 @@ export namespace SessionCompat {
       if ((await Storage.readMany([migrationKey]))[0]) {
         throw new StorageIntegrityError("Deferred sessions await completion of the owning domain migrations")
       }
-      return importAggregate(locator)
+      const task = UpgradeWork.controller(background, sessionID)
+      const inherited = UpgradeWork.signal()
+      const signal = inherited ? AbortSignal.any([inherited, task.controller.signal]) : task.controller.signal
+      try {
+        return await UpgradeWork.run({ background, sessionID, signal }, () =>
+          UpgradeWork.ownerSlot(background, () => Storage.withMigrationRecords(() => importAggregate(locator))),
+        )
+      } finally {
+        task.dispose()
+      }
     })()
     flights.set(sessionID, run)
     try {
       return await run
     } finally {
-      flights.delete(sessionID)
+      if (flights.get(sessionID) === run) flights.delete(sessionID)
     }
   }
 
   export async function requireImported(sessionID: string) {
-    const locator = await ensureImported(sessionID)
+    const pending = ensureImported(sessionID)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const locator = await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new SessionPreparingError({
+                sessionID,
+                message: "Historical Session preparation is continuing; poll preparation status before opening it",
+              }),
+            ),
+          1500,
+        )
+      }),
+    ]).finally(() => clearTimeout(timer))
     if (locator.status !== "imported") throw new BlockedError(sessionID, locator.source ?? "quarantined data")
     return locator
+  }
+
+  export const control = UpgradeWork.control
+
+  export async function preparation(sessionID: string) {
+    const store = Storage.current().store
+    const pending = runtimeState().inFlight.get(store)?.get(sessionID)
+    const locator = await StorageCompat.readLocator(store, sessionID)
+    const state =
+      !locator || locator.status === "imported"
+        ? ("ready" as const)
+        : locator.status === "quarantined"
+          ? ("blocked" as const)
+          : pending || runtimeState().inFlight.get(store)?.has(sessionID)
+            ? ("preparing" as const)
+            : locator.error
+              ? ("failed" as const)
+              : ("pending" as const)
+    return {
+      sessionID,
+      state,
+      phase: locator?.phase,
+      files: locator?.files ?? 0,
+      bytes: locator?.bytes ?? 0,
+      error: state === "preparing" ? undefined : locator?.error,
+    }
+  }
+
+  export async function prepare(sessionID: string, retry = false) {
+    const store = Storage.current().store
+    const locator = await StorageCompat.readLocator(store, sessionID)
+    if (!locator || locator.status === "imported" || locator.status === "quarantined" || preparations().has(sessionID))
+      return preparation(sessionID)
+    if (locator?.error && !retry) return preparation(sessionID)
+    if (retry && locator && !runtimeState().inFlight.get(store)?.has(sessionID))
+      await StorageCompat.writeLocator(store, { ...locator, error: undefined, retryAfter: undefined })
+    const job = ensureImported(sessionID)
+      .then(() => {})
+      .catch(async (error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return
+        const current = await StorageCompat.readLocator(store, sessionID)
+        if (current && current.status !== "imported")
+          await StorageCompat.writeLocator(store, {
+            ...current,
+            error: {
+              category: error instanceof StorageIntegrityError ? "integrity" : "retryable",
+              message:
+                error instanceof StorageIntegrityError
+                  ? "Historical integrity verification failed; preserve the recovery set for repair"
+                  : "Preparation failed; resolve the storage problem and retry",
+            },
+          })
+        log.warn("foreground historical preparation failed", { sessionID, error })
+      })
+      .catch((error) => log.warn("failed to record historical preparation outcome", { error }))
+      .finally(() => preparations().delete(sessionID))
+    preparations().set(sessionID, job)
+    return preparation(sessionID)
+  }
+
+  const backupStatus = Storage.state(() => ({ checkedAt: -Infinity, value: { complete: true, sealed: 0, total: 0 } }))
+  export async function status() {
+    const counts = await stats()
+    const cached = backupStatus()
+    if ((!cached.value.complete || cached.checkedAt === -Infinity) && performance.now() - cached.checkedAt > 5000) {
+      const backup = await segmentedBackup()
+      if (backup) {
+        const value = await backup.completeness()
+        cached.value = { complete: value.independent, sealed: value.sealed, total: value.total }
+      }
+      cached.checkedAt = performance.now()
+    }
+    return {
+      ready: true as const,
+      ...counts,
+      historyReady: !counts.pending && !counts.partial && !counts.quarantined,
+      backup: { ...cached.value, attention: maintenance().failed },
+      ...(await UpgradeWork.status()),
+    }
   }
 
   export async function stats() {
@@ -180,12 +303,12 @@ export namespace SessionCompat {
     progress?.(0, pending.length)
     for (const locator of pending) {
       progress?.(++done, pending.length)
-      if (locator.staged || locator.retiring) {
-        await requireImported(locator.sessionID)
+      if (locator.retiring) {
+        await ensureImported(locator.sessionID)
         continue
       }
       const info = await pendingInfo(locator.scopeID, locator.sessionID)
-      if (!info || info.pendingReply || info.working || ["queued", "running"].includes(info.cortex?.status ?? ""))
+      if (!info || info.paused || info.working || ["queued", "running"].includes(info.cortex?.status ?? ""))
         await ensureImported(locator.sessionID)
     }
   }
@@ -199,19 +322,27 @@ export namespace SessionCompat {
       if (locator.status === "quarantined" || (locator.retryAfter ?? 0) > Date.now()) continue
       candidates.push(locator)
     }
-    await work(2, candidates.reverse(), async (locator) => {
+    await work(1, candidates.reverse(), async (locator) => {
       if (foreground().count || options.stopped?.() || (started > 0 && Date.now() >= (options.deadline ?? Infinity)))
         return
       started++
       try {
         if ((await ensureImported(locator.sessionID, true)).status === "imported") imported++
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return
         const latest = await StorageCompat.readLocator(Storage.current().store, locator.sessionID)
         if (latest && latest.status !== "imported") {
           const failures = (latest.failures ?? 0) + 1
           await StorageCompat.writeLocator(Storage.current().store, {
             ...latest,
             failures,
+            error: {
+              category: error instanceof StorageIntegrityError ? "integrity" : "retryable",
+              message:
+                error instanceof StorageIntegrityError
+                  ? "Historical integrity verification failed; inspect the preserved recovery set"
+                  : "Historical preparation failed; retry after resolving the storage problem",
+            },
             retryAfter: Date.now() + Math.min(60_000, 1000 * 2 ** Math.min(failures, 6)),
           })
         }
@@ -223,7 +354,10 @@ export namespace SessionCompat {
     return imported
   }
 
-  export function startBackgroundMigrator(options: { intervalMs?: number; budget?: number } = {}) {
+  export function startBackgroundMigrator(
+    options: { intervalMs?: number; budget?: number; busy?: () => boolean } = {},
+  ) {
+    UpgradeWork.activity(options.busy ?? (() => false))
     const handle = Storage.current()
     let stopped = false
     let running: Promise<void> | undefined
@@ -233,14 +367,52 @@ export namespace SessionCompat {
       timer = setTimeout(() => {
         running = Storage.provide(handle, async () => {
           let imported = 0
+          let finished = false
           try {
             if (!(await fs.stat(path.join(dataRoot(), "storage", "compat-pause")).catch(missing)))
               imported = await importBatch(options.budget ?? 8, { deadline: Date.now() + 50, stopped: () => stopped })
           } catch (error) {
             log.warn("background compat import tick failed", { error })
           }
-          const counts = await stats()
-          if (counts.pending + counts.partial) schedule(options.intervalMs ?? (imported ? 25 : 1000))
+          try {
+            if (
+              !(await UpgradeWork.status()).paused &&
+              !options.busy?.() &&
+              performance.now() >= maintenance().retryAfter
+            ) {
+              const task = UpgradeWork.controller(true)
+              try {
+                await UpgradeWork.run({ background: true, signal: task.controller.signal }, async () => {
+                  const cleaned = await SessionSegment.cleanup()
+                  const backup = await segmentedBackup()
+                  await backup?.sealSnapshots(1)
+                  maintenance().failed = false
+                  maintenance().failures = 0
+                  const counts = await stats()
+                  if (
+                    !counts.pending &&
+                    !counts.partial &&
+                    !counts.quarantined &&
+                    (!backup || (await backup.completeness()).independent)
+                  ) {
+                    const { SnapshotProtection } = await import("./snapshot-protection")
+                    if (backup) await SnapshotProtection.release(dataRoot(), backup.backupID)
+                    finished = !cleaned
+                  }
+                })
+              } finally {
+                task.dispose()
+              }
+            }
+          } catch (error) {
+            if (!(error instanceof DOMException && error.name === "AbortError")) {
+              const state = maintenance()
+              state.failed = true
+              state.retryAfter = performance.now() + Math.min(60_000, 1000 * 2 ** Math.min(++state.failures, 6))
+              log.warn("historical cleanup retained its recovery set", { error })
+            }
+          }
+          if (!finished) schedule(options.intervalMs ?? (imported ? 25 : 1000))
         }).catch((error) => log.warn("background compat import stopped", { error }))
       }, delay)
       timer.unref()
@@ -248,6 +420,7 @@ export namespace SessionCompat {
     schedule(options.intervalMs ?? 25)
     return async () => {
       stopped = true
+      Storage.provide(handle, () => UpgradeWork.stop())
       clearTimeout(timer)
       await running
     }
@@ -278,7 +451,11 @@ export namespace SessionCompat {
       .object({ endpoint: z.unknown().optional(), time: z.object({ archived: z.number().optional() }).passthrough() })
       .passthrough()
       .parse(value)
-    return Info.parse({ ...record, endpoint: Session.indexEndpoint(record.endpoint, record.time.archived) })
+    const { normalizeSessionWorkspaceInfo } = await import("./migration")
+    return Info.parse({
+      ...normalizeSessionWorkspaceInfo(record),
+      endpoint: Session.indexEndpoint(record.endpoint, record.time.archived),
+    })
   }
 
   export async function pendingInfo(scopeID: string, sessionID: string): Promise<Info | undefined> {
@@ -337,17 +514,19 @@ export namespace SessionCompat {
 
   async function importAggregate(locator: StorageCompat.Locator, stageOnly = false): Promise<StorageCompat.Locator> {
     const backup = await segmentedBackup()
-    let backedUp: Map<string, PackedBackupEntry> | undefined
-    if (backup) {
-      const sealed = await backup.sealSession({ scopeID: locator.scopeID, sessionID: locator.sessionID })
-      backedUp = new Map()
-      for await (const entry of sealed.entries()) backedUp.set(entry.relative, { ...entry, data: undefined })
-    }
+    if (backup)
+      return SessionSegment.importOwner(locator, backup, stageOnly, {
+        validate: projectInfo,
+        quarantine,
+        indexes: writeSessionIndexes,
+      })
+    const backedUp = undefined
     const lock = { directory: path.join(dataRoot(), "storage", ".locks"), key: "artifact-packs" }
     const staged = await withFileLock(lock, () => importAggregateLocked(locator, true, backup, backedUp))
     if (stageOnly || staged.status === "quarantined" || staged.status === "imported") return staged
-    const { migrateDeferredSession } = await import("../migration")
+    const { migrateDeferredSession, upgradeSessionRecords } = await import("../migration")
     await migrateDeferredSession(staged, "canonical")
+    await upgradeSessionRecords([staged])
     const { RolloutRecovery } = await import("./rollout/recovery")
     await RolloutRecovery.owner({ kind: "session", scopeID: staged.scopeID, sessionID: staged.sessionID })
     return withFileLock(lock, () => importAggregateLocked(staged, false, backup, backedUp))

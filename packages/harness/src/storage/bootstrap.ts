@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { createReadStream } from "node:fs"
@@ -17,27 +18,15 @@ import { SegmentedBackup } from "./segmented-backup"
 import { TransactionalStore } from "./transactional-store"
 import type { StoreOptions } from "./sql-contract"
 import { MigrationRegistry } from "../migration/registry"
+import { MigrationPlan } from "../migration/plan"
 
 async function canDefer(root: string) {
-  if (process.env.SYNERGY_STORAGE_COMPAT_DEFER !== undefined) return process.env.SYNERGY_STORAGE_COMPAT_DEFER === "1"
+  if (RuntimeContext.current().host.env.SYNERGY_STORAGE_COMPAT_DEFER !== undefined)
+    return RuntimeContext.current().host.env.SYNERGY_STORAGE_COMPAT_DEFER === "1"
   if (MigrationRegistry.list().size === 0) return false
-  const logs = new Map<string, Record<string, unknown>>()
-  for (const [owner, migrations] of MigrationRegistry.list()) {
-    for (const migration of migrations) {
-      if (
-        migration.scope === "global" ||
-        ((migration.scope === "session" || migration.scope === "derived") && migration.upSession)
-      )
-        continue
-      const domain = migration.domain ?? owner
-      let ledger = logs.get(domain)
-      if (!ledger) {
-        const value = await optionalJson(path.join(root, "data", "meta", "migration", `log-${domain}.json`))
-        ledger = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
-        logs.set(domain, ledger)
-      }
-      if (typeof ledger[migration.id] !== "number") return false
-    }
+  const logs = await MigrationPlan.legacyLogs(root)
+  for (const { domain, migration } of MigrationPlan.ordered(MigrationRegistry.list())) {
+    if (!MigrationPlan.separable(migration) && typeof logs.get(domain)?.[migration.id] !== "number") return false
   }
   return true
 }
@@ -52,7 +41,7 @@ const Manifest = z
     storeID: z.uuid().optional(),
     backupID: z.uuid(),
     compatBoundary: z.string().optional(),
-    backupFormat: z.literal(3).optional(),
+    backupFormat: z.union([z.literal(3), z.literal(4)]).optional(),
     phase: z.enum(["importing", "validating", "activating", "active"]),
   })
   .strict()
@@ -242,7 +231,7 @@ export namespace StorageBootstrap {
             // The deferral decision is fixed when the manifest is created so a
             // crash and resume cannot flip between retiring and keeping the
             // session tree mid-migration.
-            ...((await canDefer(root)) ? { compatBoundary: StorageCompat.boundary, backupFormat: 3 as const } : {}),
+            ...((await canDefer(root)) ? { compatBoundary: StorageCompat.boundary, backupFormat: 4 as const } : {}),
           }
       if (manifest.target !== target || manifest.backend !== storeOptions.backend)
         throw new StorageIntegrityError(
@@ -279,18 +268,24 @@ export namespace StorageBootstrap {
             directory,
             "backups",
             manifest.backupID,
-            ...(manifest.backupFormat === 3 ? ["global"] : []),
+            ...(manifest.backupFormat !== undefined ? ["global"] : []),
           ),
           store,
           progress: options.progress,
+          excludedRoots: manifest.backupFormat === 4 ? ["snapshot" as const] : undefined,
         }
         const importer =
           importState && importState.version !== 2
             ? new LegacyJsonImporter(importerOptions)
             : new PackedLegacyImporter({ ...importerOptions, deferSessions: manifest.compatBoundary !== undefined })
         if (manifest.phase === "importing") {
-          if (manifest.backupFormat === 3) {
-            const backup = new SegmentedBackup(path.join(root, "data"), manifest.backupID)
+          if (manifest.backupFormat !== undefined) {
+            const backup = new SegmentedBackup(
+              path.join(root, "data"),
+              manifest.backupID,
+              undefined,
+              manifest.backupFormat,
+            )
             await backup.freeze()
             await StorageCompat.seedLocators(store, backup.sourceRoot, manifest.backupID)
           } else if (manifest.compatBoundary) await StorageCompat.seedLocators(store, path.join(root, "data"))
@@ -320,7 +315,9 @@ export namespace StorageBootstrap {
         }
         if (manifest.compatBoundary) {
           const backup =
-            manifest.backupFormat === 3 ? new SegmentedBackup(path.join(root, "data"), manifest.backupID) : undefined
+            manifest.backupFormat !== undefined
+              ? new SegmentedBackup(path.join(root, "data"), manifest.backupID, undefined, manifest.backupFormat)
+              : undefined
           await StorageCompat.seedLocators(store, backup?.sourceRoot ?? path.join(root, "data"), backup?.backupID)
         }
         await StorageArtifactMigration.run({ dataRoot: path.join(root, "data"), store, progress: options.progress })

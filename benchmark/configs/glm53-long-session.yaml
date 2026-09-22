@@ -6,7 +6,6 @@ platform: linux/amd64
 seed: 20260914
 repeat: 1
 concurrency: auto
-timeout_seconds: 10800
 preparation_timeout_seconds: 7200
 task_repeats:
   terminal-bench-2.1/openssl-selfsigned-cert: 3

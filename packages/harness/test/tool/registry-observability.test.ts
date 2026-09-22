@@ -2,17 +2,26 @@ import { expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("successful tool initialization does not emit per-tool info records", async () => {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-tool-registry-telemetry-"))
-  const project = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-tool-registry-project-"))
-  const script = `
+test("successful tool initialization does not emit per-tool info records", () =>
+  runtime.run(async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-tool-registry-telemetry-"))
+    const project = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-tool-registry-project-"))
+    const script = `
     import { Log } from "./src/util/log.ts"
     import { ObservabilityStore } from "./src/observability/store.ts"
     import { Scope } from "./src/scope/index.ts"
     import { ScopeContext } from "./src/scope/context.ts"
     import { ToolRegistry } from "./src/tool/registry.ts"
 
+    const { RuntimeContext } = await import("./src/lifecycle/context.ts")
+    const { registerHarness } = await import("./src/lifecycle/register.ts")
+    const home = process.env.SYNERGY_TEST_HOME
+    await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
+    registerHarness()
     const { StorageMaintenance } = await import("./src/storage/maintenance.ts")
     await using storage = await StorageMaintenance.open()
     await Log.init({ print: false, dev: true, level: "INFO" })
@@ -27,36 +36,43 @@ test("successful tool initialization does not emit per-tool info records", async
     })
     ObservabilityStore.close()
     process.stdout.write(JSON.stringify({ toolCount, events: events.map((item) => JSON.parse(item.data_json)) }))
-  `
-  const env = { ...process.env }
-  delete env.SYNERGY_HOME
-  env.SYNERGY_TEST_HOME = home
-  env.SYNERGY_DISABLE_MODELS_FETCH = "true"
-  env.SYNERGY_DISABLE_DEFAULT_PLUGINS = "true"
-  env.SYNERGY_DISABLE_LSP_DOWNLOAD = "true"
-  env.SYNERGY_DISABLE_FILEWATCHER = "true"
-
-  try {
-    const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
-      cwd: path.resolve(import.meta.dir, "../.."),
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
+    await Log.close()
     })
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-    if (exitCode !== 0) throw new Error(stderr)
+  `
+    const env = { ...process.env }
+    delete env.SYNERGY_HOME
+    env.SYNERGY_TEST_HOME = home
+    env.SYNERGY_DISABLE_MODELS_FETCH = "true"
+    env.SYNERGY_DISABLE_DEFAULT_PLUGINS = "true"
+    env.SYNERGY_DISABLE_LSP_DOWNLOAD = "true"
+    env.SYNERGY_DISABLE_FILEWATCHER = "true"
 
-    const result = JSON.parse(stdout) as {
-      toolCount: number
-      events: Array<Record<string, unknown>>
+    try {
+      const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
+        cwd: path.resolve(import.meta.dir, "../.."),
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      if (exitCode !== 0) throw new Error(stderr)
+
+      const result = JSON.parse(stdout) as {
+        toolCount: number
+        events: Array<Record<string, unknown>>
+      }
+      expect(result.toolCount).toBeGreaterThan(0)
+      expect(result.events).toEqual([])
+    } finally {
+      await Promise.all([
+        fs.rm(home, { recursive: true, force: true }),
+        fs.rm(project, { recursive: true, force: true }),
+      ])
     }
-    expect(result.toolCount).toBeGreaterThan(0)
-    expect(result.events).toEqual([])
-  } finally {
-    await Promise.all([fs.rm(home, { recursive: true, force: true }), fs.rm(project, { recursive: true, force: true })])
-  }
-})
+  }))
+
+afterRuntimeTests(() => runtime.close())

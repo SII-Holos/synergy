@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import { withTimeout } from "../util/timeout"
 import path from "node:path"
@@ -114,7 +115,9 @@ export namespace SnapshotGit {
   const TRANSIENT_GIT_SPAWN_CODES = new Set(["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"])
 
   export function environment(overrides?: Record<string, string>) {
-    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")))
+    const env = Object.fromEntries(
+      Object.entries(RuntimeContext.current().host.env).filter(([key]) => !key.startsWith("GIT_")),
+    )
     return { ...env, GIT_TERMINAL_PROMPT: "0", GIT_NO_REPLACE_OBJECTS: "1", ...overrides }
   }
 

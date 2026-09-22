@@ -129,8 +129,7 @@ export function KanbanPanel() {
       const store = globalSync.peekScopeState(scopeKey)?.[0] as BoardPaneData | undefined
       return !!store?.messageWindow?.[sessionID]
     },
-    scopeRequest: (scopeKey) =>
-      (isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }) as Record<string, string>,
+    scopeRequest: (scopeKey) => ({ scopeID: scopeKey }) as Record<string, string>,
     scopeReconnectVersion: (scopeKey) => globalSync.scopeReconnectVersion(scopeKey),
     messagePage: (input, options) => {
       const client = createSynergyClient({ baseUrl: globalSDK.url, ...input.scopeRequest, throwOnError: true })
@@ -195,7 +194,7 @@ export function KanbanPanel() {
   const clientFor = (pane: BoardPane) =>
     createSynergyClient({
       baseUrl: globalSDK.url,
-      ...(isHomeScope(pane.scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: pane.scopeKey }),
+      scopeID: pane.scopeKey,
       throwOnError: true,
     })
 
@@ -308,7 +307,7 @@ export function KanbanPanel() {
     }
     const payload = event.dataTransfer?.getData(SESSION_DRAG_MIME)
     if (!payload) return
-    const session = parseSessionDragPayload(payload)
+    const session = parseSessionDragPayload(payload, globalSDK.url)
     if (!session) return
     // Drag payloads are attacker-controllable: only pin sessions the sidebar
     // actually shows. An unmatched key would persist as a permanent

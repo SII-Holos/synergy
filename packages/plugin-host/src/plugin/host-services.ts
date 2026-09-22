@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type {
   BlueprintLoopInfo,
   BlueprintStartInput,
@@ -258,19 +259,26 @@ export interface PluginBlueprintAdapter {
   }): Promise<BlueprintLoopInfo>
 }
 
-let blueprintAdapter: PluginBlueprintAdapter | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  blueprintAdapter: undefined as PluginBlueprintAdapter | undefined,
+  lightLoopAdapter: undefined as PluginLightLoopAdapter | undefined,
+}))
 
 export function registerPluginBlueprintAdapter(adapter: PluginBlueprintAdapter): void {
-  blueprintAdapter = adapter
+  const instanceState = runtimeState()
+
+  instanceState.blueprintAdapter = adapter
 }
 
 function blueprintAdapterOrThrow(): PluginBlueprintAdapter {
-  if (!blueprintAdapter) {
+  const instanceState = runtimeState()
+
+  if (!instanceState.blueprintAdapter) {
     throw new Error(
       "Blueprint host service invoked before the blueprint domain registered its adapter (load src/product-registration)",
     )
   }
-  return blueprintAdapter
+  return instanceState.blueprintAdapter
 }
 
 export type PluginLightLoopTerminal = {
@@ -315,19 +323,21 @@ export interface PluginLightLoopAdapter {
   getTerminal(session: Pick<SessionInfo, "id" | "scope">): Promise<PluginLightLoopTerminal | undefined>
 }
 
-let lightLoopAdapter: PluginLightLoopAdapter | undefined
-
 export function registerPluginLightLoopAdapter(adapter: PluginLightLoopAdapter): void {
-  lightLoopAdapter = adapter
+  const instanceState = runtimeState()
+
+  instanceState.lightLoopAdapter = adapter
 }
 
 function lightLoopAdapterOrThrow(): PluginLightLoopAdapter {
-  if (!lightLoopAdapter) {
+  const instanceState = runtimeState()
+
+  if (!instanceState.lightLoopAdapter) {
     throw new Error(
       "LightLoop host service invoked before the light-loop domain registered its adapter (load src/product-registration)",
     )
   }
-  return lightLoopAdapter
+  return instanceState.lightLoopAdapter
 }
 
 /**
@@ -704,7 +714,7 @@ export async function requestPluginPermission(
   })
   const workspaceInfo = ScopeContext.current.workspace
   const profile = await ControlProfileCompiler.resolve(profileId, {
-    workspace: context.directory ?? ScopeContext.current.directory,
+    workspace: session.workspace?.path ?? null,
     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
   })
   const metadata = request.metadata ?? {}

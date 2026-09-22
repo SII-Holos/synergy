@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import fs from "fs"
+import type { StorageMaintenanceStage } from "@ericsanchezok/synergy-util/runtime-startup"
 
 export namespace SqliteMaintenance {
   const DELETE_CHUNK = 500
@@ -71,11 +72,14 @@ export namespace SqliteMaintenance {
    * VACUUM to rewrite its pages, and VACUUM may only run outside a
    * transaction. A database already in incremental mode is left untouched.
    */
-  export function enableIncrementalVacuum(db: Database) {
+  export function enableIncrementalVacuum(db: Database, stage?: (stage: StorageMaintenanceStage) => void) {
     if (autoVacuumMode(db) === "incremental") return false
+    stage?.("checkpoint-before")
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     db.exec("PRAGMA auto_vacuum=INCREMENTAL")
+    stage?.("rewrite")
     db.exec("VACUUM")
+    stage?.("checkpoint-after")
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     return true
   }

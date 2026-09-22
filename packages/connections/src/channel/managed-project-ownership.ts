@@ -233,7 +233,7 @@ export namespace ManagedProjectOwnership {
         accountId: input.accountId,
         externalProjectId: input.externalProjectId,
         scopeID: scope.id,
-        directory: scope.directory,
+        directory: Scope.requireLocal(scope).directory,
         remoteState: input.remoteState,
         createdAt: now,
         lastSeenAt: now,
@@ -373,8 +373,10 @@ export namespace ManagedProjectOwnership {
     return valid
   }
 }
-Scope.registerArchiveGuard(async (scopeID) => {
-  const ownership = await ManagedProjectOwnership.findByScopeID(scopeID)
-  if (!ownership || (ownership.remoteState !== "active" && ownership.remoteState !== "paused")) return
-  throw new ManagedProjectArchiveError({ scopeID, remoteState: ownership.remoteState })
-})
+export function registerManagedProjectGuard() {
+  Scope.registerArchiveGuard(async (scopeID) => {
+    const ownership = await ManagedProjectOwnership.findByScopeID(scopeID)
+    if (!ownership || (ownership.remoteState !== "active" && ownership.remoteState !== "paused")) return
+    throw new ManagedProjectArchiveError({ scopeID, remoteState: ownership.remoteState })
+  })
+}

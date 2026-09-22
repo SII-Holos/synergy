@@ -9,7 +9,7 @@ export namespace BrowserOwner {
   export interface Info {
     mode: Mode
     scopeID: string
-    directory: string
+    directory: string | null
     sessionID?: string // REQUIRED when mode === "session"
   }
 
@@ -42,13 +42,18 @@ export namespace BrowserOwner {
     return {
       mode: "session",
       scopeID: ScopeContext.current.scope.id,
-      directory: ScopeContext.current.directory,
+      directory: ScopeContext.current.workspace?.path ?? null,
       sessionID: ctx.sessionID,
     }
   }
 
   /** Derive owner from WebSocket route parameters. */
-  export function fromRoute(input: { directory: string; scopeID: string; sessionID?: string; mode?: Mode }): Info {
+  export function fromRoute(input: {
+    directory: string | null
+    scopeID: string
+    sessionID?: string
+    mode?: Mode
+  }): Info {
     return {
       mode: input.mode ?? "session",
       scopeID: input.scopeID,

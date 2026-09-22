@@ -9,6 +9,7 @@ const RECENT_ICON_TONE_CLASS: Partial<Record<SessionVisualState["tone"], string>
   active: "text-icon-base",
   retry: "text-icon-critical-base",
   waiting: "text-icon-critical-base",
+  paused: "text-icon-warning-base",
   blueprint: "text-icon-info-base",
   "blueprint-running": "text-icon-success-base",
   "blueprint-waiting": "text-icon-warning-base",
@@ -55,6 +56,7 @@ export function MobileDrawerRecent(props: {
   loadMoreLabel: string
   untitledLabel: string
   draftLabel: string
+  hasDraft: (sessionID: string) => boolean
   entries: NavEntry[]
   currentSessionID?: string
   visualFor: (entry: NavEntry) => MobileDrawerRecentVisual
@@ -103,6 +105,7 @@ export function MobileDrawerRecent(props: {
                     </Show>
                   </span>
                   <SessionDraftBadge
+                    dirty={props.hasDraft(entry.id)}
                     sessionID={entry.id}
                     label={props.draftLabel}
                     class="shrink-0 translate-y-px text-10-medium text-text-error"

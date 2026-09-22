@@ -447,7 +447,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
               },
               { throwOnError: true },
             )
-            runID = data.status === "queued" ? data.item.messageID : data.messageID
+            runID = data.status === "queued" ? (data.runID ?? data.item.messageID) : data.messageID
           }
           output("run_started")
           submitted.resolve()
@@ -540,33 +540,35 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
         experiment,
         migrationOutput: "interactive",
       })
-      await withScopeContext(
-        directory,
-        async () => {
-          const sdk = createLocalClient()
+      await runtime.run(() =>
+        withScopeContext(
+          directory,
+          async () => {
+            const sdk = createLocalClient(runtime, { directory })
 
-          if (args.command) {
-            const exists = await Command.get(args.command)
-            if (!exists) {
-              throw new Error(`Command "${args.command}" not found`)
+            if (args.command) {
+              const exists = await Command.get(args.command)
+              if (!exists) {
+                throw new Error(`Command "${args.command}" not found`)
+              }
             }
-          }
 
-          const sessionID = await resolveSendSessionID({
-            sdk,
-            continueLast: args.continue,
-            sessionID: args.session,
-            title: args.title,
-            message,
-          })
+            const sessionID = await resolveSendSessionID({
+              sdk,
+              continueLast: args.continue,
+              sessionID: args.session,
+              title: args.title,
+              message,
+            })
 
-          if (!sessionID) {
-            throw new Error("Session not found")
-          }
+            if (!sessionID) {
+              throw new Error("Session not found")
+            }
 
-          await execute(sdk, sessionID)
-        },
-        args.scope,
+            await execute(sdk, sessionID)
+          },
+          args.scope,
+        ),
       )
     },
   })

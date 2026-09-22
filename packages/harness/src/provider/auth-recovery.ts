@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { retryAfterMs } from "@ericsanchezok/synergy-util/retry"
 import { ScopeContext } from "../scope/context"
 import { ProviderAuthRecoveryError } from "./auth-recovery-error"
@@ -148,7 +149,7 @@ export namespace ProviderAuthRecovery {
 
   function runtimeCredential(providerID: string, profileID?: string, environment?: string[]) {
     const profile = ProviderProfile.resolve(providerID, profileID)
-    const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+    const environmentValues = ScopeContext.tryScope() ? Env.all() : RuntimeContext.current().host.env
     const usesEnvironment = (environment ?? profile?.env ?? []).some((name) => !!environmentValues[name]?.trim())
     return {
       source: usesEnvironment ? "env" : profile?.origin === "plugin" ? "plugin" : "runtime",
@@ -485,8 +486,19 @@ export namespace ProviderAuthRecovery {
     if (handledFetches.has(fetchFn)) return fetchFn
     const wrapped: FetchLike = async (input, init) => {
       const template = new Request(input, init)
+      // Provenance: https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3 .
+      // Local adaptation: preserve materialized SDK bodies so recording retains known-length uploads.
+      const body = init?.body
+      const bufferedBody =
+        typeof body === "string"
+          ? body
+          : body instanceof ArrayBuffer
+            ? body.slice(0)
+            : ArrayBuffer.isView(body)
+              ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength).slice()
+              : undefined
       const selected = await Auth.select(providerID)
-      const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+      const environmentValues = ScopeContext.tryScope() ? Env.all() : RuntimeContext.current().host.env
       const environmentKey = options?.environment
         ?.map((name) => environmentValues[name]?.trim())
         .find((value): value is string => !!value)
@@ -509,7 +521,7 @@ export namespace ProviderAuthRecovery {
             if (headers.has("x-api-key")) headers.set("x-api-key", key)
             if (headers.has("api-key")) headers.set("api-key", key)
           }
-          return RolloutTransport.fetch(fetchFn, request, { ...init, body: undefined, headers })
+          return RolloutTransport.fetch(fetchFn, request, { ...init, body: bufferedBody ?? request.body, headers })
         },
       })
     }

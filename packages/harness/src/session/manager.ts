@@ -1,3 +1,5 @@
+import { SessionRecords } from "./records"
+import { RuntimeContext } from "../lifecycle/context"
 import { Bus } from "../bus"
 import { GlobalBus } from "../bus/global"
 import { Context } from "../util/context"
@@ -8,7 +10,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SessionCompat } from "./compat-import"
 import type { MessageV2 } from "./message-v2"
-import { BusyError } from "./error"
+import { BusyError, PausedTurnAbort } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -16,13 +18,20 @@ import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
-import { RolloutContinuationRecovery } from "./rollout/continuation-recovery"
+import { SessionLifecycle } from "./lifecycle"
 import { ObservabilityMetrics } from "../observability/metrics"
-import { SessionProjectHealth } from "./project-health"
+import { SessionWorkspaceRuntime } from "./workspace-runtime"
 
 const log = Log.create({ service: "session.manager" })
 
 export namespace SessionManager {
+  export async function waitForIdle(sessionID: string): Promise<void> {
+    const lease = getRuntime(sessionID)?.owner?.lease
+    await Promise.all([
+      runtimeState().sessionCompletions.get(sessionID),
+      lease ? runtimeState().leaseReleases.get(lease)?.promise : undefined,
+    ])
+  }
   export namespace SessionMail {
     export interface Model {
       providerID: string
@@ -76,8 +85,6 @@ export namespace SessionManager {
     controller: AbortController
     phase: LoopPhase
     rootID?: string
-    /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
-    recoverQueuedTasks?: boolean
     /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
      *  discards items queued before this timestamp at the loop boundary, preserving mail delivered
      *  after the cancelled acknowledgement, and release stops requesting follow-up work unless such
@@ -99,10 +106,22 @@ export namespace SessionManager {
     lastActiveAt: number
     isChild: boolean
   }
-  let nextOwnerGeneration = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    nextOwnerGeneration: 0,
+    leaseReleases: new WeakMap<LoopLease, ReturnType<typeof Promise.withResolvers<void>>>(),
+    sessionCompletions: new Map<string, Promise<void>>(),
+    runtimes: new Map<string, SessionRuntime>(),
+    running: new Set<Promise<void>>(),
+    accepting: true,
+    activeWakeChains: new Map<string, { requested: boolean }>(),
+    wakeTimers: new Set<ReturnType<typeof setTimeout>>(),
+  }))
   const owns = (runtime: SessionRuntime, lease: LoopLease) => runtime.owner?.lease === lease
   const occupied = (runtime: SessionRuntime | undefined) => runtime?.owner !== undefined
-  const nextGeneration = () => ++nextOwnerGeneration
+  const nextGeneration = () => {
+    const instanceState = runtimeState()
+    return ++instanceState.nextOwnerGeneration
+  }
   const cancelWaiters = (runtime: SessionRuntime) => {
     for (const callback of runtime.waiters) callback.onCancel()
     runtime.waiters = []
@@ -118,18 +137,23 @@ export namespace SessionManager {
     executionPhases: Partial<Record<ExecutionPhase, number>>
   }
 
-  const runtimes = new Map<string, SessionRuntime>()
-  const running = new Set<Promise<void>>()
-  let accepting = true
-
   export function closeAdmission() {
-    accepting = false
+    const instanceState = runtimeState()
+
+    instanceState.accepting = false
+    for (const timer of instanceState.wakeTimers) clearTimeout(timer)
+    instanceState.wakeTimers.clear()
+    instanceState.activeWakeChains.clear()
   }
   export function openAdmission() {
-    accepting = true
+    const instanceState = runtimeState()
+
+    instanceState.accepting = true
   }
   export async function drain() {
-    while (running.size) await Promise.all([...running])
+    const instanceState = runtimeState()
+
+    while (instanceState.running.size) await Promise.all([...instanceState.running])
   }
 
   // A session's scope is immutable for its lifetime, so the sessionID -> scopeID
@@ -196,21 +220,26 @@ export namespace SessionManager {
     })
   }
 
-  const sweepTimer = setInterval(() => {
-    const now = Date.now()
-    for (const [sessionID, runtime] of runtimes) {
-      if (occupied(runtime)) continue
-      const ttl = runtime.isChild ? CHILD_SESSION_IDLE_TTL_MS : USER_IDLE_TTL_MS
-      if (now - runtime.lastActiveAt < ttl) continue
-      runtimes.delete(sessionID)
-      log.info("swept idle runtime", { sessionID, isChild: runtime.isChild })
-      signalRuntimeRelease("idle_sweep", sessionID)
-    }
-  }, IDLE_SWEEP_INTERVAL_MS)
-  sweepTimer.unref()
+  export function startIdleSweep() {
+    const sweepTimer = setInterval(() => {
+      const instanceState = runtimeState()
+
+      const now = Date.now()
+      for (const [sessionID, runtime] of instanceState.runtimes) {
+        if (occupied(runtime)) continue
+        const ttl = runtime.isChild ? CHILD_SESSION_IDLE_TTL_MS : USER_IDLE_TTL_MS
+        if (now - runtime.lastActiveAt < ttl) continue
+        instanceState.runtimes.delete(sessionID)
+        log.info("swept idle runtime", { sessionID, isChild: runtime.isChild })
+        signalRuntimeRelease("idle_sweep", sessionID)
+      }
+    }, IDLE_SWEEP_INTERVAL_MS)
+    sweepTimer.unref()
+    return () => clearInterval(sweepTimer)
+  }
 
   async function readSessionInfo(scopeID: string, sessionID: Identifier.SessionID): Promise<Info | undefined> {
-    return Storage.read<Info>(StoragePath.sessionInfo(Identifier.asScopeID(scopeID), sessionID)).catch((error) => {
+    return SessionRecords.read(StoragePath.sessionInfo(Identifier.asScopeID(scopeID), sessionID)).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
@@ -261,7 +290,7 @@ export namespace SessionManager {
     })
     if (!indexed) return undefined
     rememberScopeID(sessionID, indexed.scopeID)
-    return Storage.read<Info>(
+    return SessionRecords.read(
       StoragePath.sessionInfo(Identifier.asScopeID(indexed.scopeID), Identifier.asSessionID(sessionID)),
     ).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -290,8 +319,8 @@ export namespace SessionManager {
     } catch (error) {
       if (!(error instanceof Context.NotFound)) throw error
       const scope = session.scope as Scope
-      GlobalBus.emit("event", {
-        directory: scope.type === "home" ? "home" : scope.directory,
+      GlobalBus().emit("event", {
+        scopeID: scope.id,
         payload: {
           type: SessionEvent.Updated.type,
           properties,
@@ -301,7 +330,7 @@ export namespace SessionManager {
   }
 
   export function registerRuntime(sessionID: string): SessionRuntime {
-    const existing = runtimes.get(sessionID)
+    const existing = runtimeState().runtimes.get(sessionID)
     if (existing) {
       existing.lastActiveAt = Date.now()
       return existing
@@ -314,13 +343,13 @@ export namespace SessionManager {
       lastActiveAt: Date.now(),
       isChild: false,
     }
-    runtimes.set(sessionID, runtime)
+    runtimeState().runtimes.set(sessionID, runtime)
     log.info("registered runtime", { sessionID })
     return runtime
   }
 
   export function registerChildRuntime(sessionID: string): SessionRuntime {
-    const existing = runtimes.get(sessionID)
+    const existing = runtimeState().runtimes.get(sessionID)
     if (existing) {
       existing.isChild = true
       existing.lastActiveAt = Date.now()
@@ -334,7 +363,7 @@ export namespace SessionManager {
       lastActiveAt: Date.now(),
       isChild: true,
     }
-    runtimes.set(sessionID, runtime)
+    runtimeState().runtimes.set(sessionID, runtime)
     log.info("registered child runtime", { sessionID })
     return runtime
   }
@@ -342,13 +371,15 @@ export namespace SessionManager {
   export function unregisterRuntime(sessionID: string): void {
     const runtime = getRuntime(sessionID)
     if (!runtime) return
-    runtimes.delete(sessionID)
+    runtimeState().runtimes.delete(sessionID)
     log.info("unregistered runtime", { sessionID })
     signalRuntimeRelease("unregister", sessionID)
   }
 
   export function getRuntime(sessionID: string): SessionRuntime | undefined {
-    return runtimes.get(sessionID)
+    const instanceState = runtimeState()
+
+    return instanceState.runtimes.get(sessionID)
   }
 
   export function runtimeStats(): RuntimeStats {
@@ -356,7 +387,7 @@ export namespace SessionManager {
     let childCount = 0
     let waiterCount = 0
     const executionPhases: Partial<Record<ExecutionPhase, number>> = {}
-    for (const runtime of runtimes.values()) {
+    for (const runtime of runtimeState().runtimes.values()) {
       if (occupied(runtime)) runningCount++
       if (runtime.isChild) childCount++
       waiterCount += runtime.waiters.length
@@ -365,11 +396,11 @@ export namespace SessionManager {
       }
     }
     return {
-      totalCount: runtimes.size,
+      totalCount: runtimeState().runtimes.size,
       runningCount,
-      idleCount: runtimes.size - runningCount,
+      idleCount: runtimeState().runtimes.size - runningCount,
       childCount,
-      userCount: runtimes.size - childCount,
+      userCount: runtimeState().runtimes.size - childCount,
       waiterCount,
       executionPhases,
     }
@@ -385,22 +416,19 @@ export namespace SessionManager {
     if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
     let completed = false
     const completion = Promise.withResolvers<void>()
-    running.add(completion.promise)
+    runtimeState().running.add(completion.promise)
+    runtimeState().sessionCompletions.set(sessionID, completion.promise)
 
     try {
       const session = await requireSession(sessionID)
       const scope = session.scope as Scope
-      const workspace = (session as Info).workspace ?? {
-        type: "main" as const,
-        path: scope.directory,
-        scopeID: scope.id,
-      }
+      const workspace = session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")
       const runWithScope = () =>
         ScopeRuntime.provide({
           scope,
           workspace,
-          ensure: scope.type === "project",
+          ensure: workspace !== null,
           fn: async () => {
             assertExecutionContext(session, "session manager run")
             const workspace = (session as Info).workspace
@@ -408,20 +436,20 @@ export namespace SessionManager {
               activate(lease)
               return fn(lease)
             }
-            await SessionProjectHealth.lockWorktree(workspace.path)
+            await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
             try {
               activate(lease)
               return await fn(lease)
             } finally {
-              await SessionProjectHealth.unlockWorktree(workspace.path)
+              await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
             }
           },
         })
       let result: T
-      if (workspace.type !== "git_worktree") {
+      if (workspace?.type !== "git_worktree") {
         result = await runWithScope()
       } else {
-        result = await SessionProjectHealth.withWorktree(workspace.path, session.id, runWithScope)
+        result = await SessionWorkspaceRuntime.get().withWorktree(workspace.path, session.id, runWithScope)
       }
       completed = true
       return result
@@ -429,12 +457,8 @@ export namespace SessionManager {
       try {
         if (options?.releaseLease !== false) {
           // Capture before finish(): release() aborts the controller and clears
-          // the owner. signal.aborted alone cannot distinguish a user abort from
-          // internal cancellation (Boss/Lattice/Cortex abort before removing
-          // inbox items), so only an abort that marked recoverQueuedTasks may
-          // drive pending-work recovery — release cannot race that cleanup.
+          // the owner, so the fenced path must be read from the live owner here.
           const owner = runtime?.owner && owns(runtime, lease) ? runtime.owner : undefined
-          const recoverQueuedTasks = owner?.recoverQueuedTasks === true
           const fenced = owner?.fenceQueuedWork === true
           const fenceQueuedBefore = owner?.fenceQueuedBefore
           const postFenceWork =
@@ -442,13 +466,13 @@ export namespace SessionManager {
               ? await SessionInbox.hasRunnableItem(sessionID, { createdAfter: fenceQueuedBefore }).catch(() => false)
               : false
           await finish(lease, {
-            requestNextWork:
-              (!fenced || postFenceWork) &&
-              (completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false),
+            requestNextWork: (!fenced || postFenceWork) && (completed || options?.requestNextWorkOnFailure !== false),
           })
         }
       } finally {
-        running.delete(completion.promise)
+        runtimeState().running.delete(completion.promise)
+        if (runtimeState().sessionCompletions.get(sessionID) === completion.promise)
+          runtimeState().sessionCompletions.delete(sessionID)
         completion.resolve()
       }
     }
@@ -456,31 +480,21 @@ export namespace SessionManager {
 
   export function assertExecutionContext(session: Info, phase: string): void {
     const expected = session.workspace
-    if (!expected || expected.type !== "git_worktree") return
-
-    const actualWorkspace = ScopeContext.tryWorkspace()
-    if (actualWorkspace?.path === expected.path) return
-
-    const actualPath = actualWorkspace?.path ?? ScopeContext.tryScope()?.directory
-    log.error("session execution workspace mismatch", {
-      sessionID: session.id,
-      phase,
-      expected: expected.path,
-      actual: actualPath,
-      actualType: actualWorkspace?.type ?? "scope",
-    })
+    const actual = ScopeContext.tryWorkspace()
+    const sameWorkspace =
+      expected === null
+        ? actual === null
+        : actual?.path === expected.path && actual.type === expected.type && actual.scopeID === expected.scopeID
+    if (sameWorkspace && ScopeContext.tryScope()?.id === session.scope.id) return
+    log.error("session execution workspace mismatch", { sessionID: session.id, phase, expected, actual })
     throw new Error(
-      [
-        `Session ${session.id} is bound to worktree ${expected.path},`,
-        `but ${phase} is running in ${actualPath ?? "no workspace context"}.`,
-        "Refusing to continue outside the session workspace.",
-      ].join(" "),
+      `Session ${session.id} workspace does not match ${phase}. Refusing to continue outside the session workspace.`,
     )
   }
 
   export function acquire(sessionID: string): LoopLease | undefined {
     StorageRecovery.assertRunnable(sessionID)
-    if (!accepting) throw new Error("Synergy runtime is shutting down")
+    if (!runtimeState().accepting) throw new Error("Synergy runtime is shutting down")
     const runtime = registerRuntime(sessionID)
     if (occupied(runtime)) return undefined
 
@@ -492,6 +506,7 @@ export namespace SessionManager {
       signal: controller.signal,
     }
     runtime.owner = { lease, controller, phase: "starting" }
+    runtimeState().leaseReleases.set(lease, Promise.withResolvers<void>())
     transitionExecutionPhase(runtime, "queued_agent")
     runtime.status = { type: "busy" }
     return lease
@@ -515,7 +530,18 @@ export namespace SessionManager {
 
   export function signalAbort(
     sessionID: string,
-    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
+    options?: {
+      fenceQueuedWork?: boolean
+      fenceQueuedBefore?: number
+      rootID?: string
+      /**
+       * Stop the turn so it can be resumed instead of ended. The intent rides on
+       * the abort itself, so a writer that terminalizes the interrupted turn
+       * reads it from the signal it is already reacting to rather than from a
+       * flag written by a concurrent repair.
+       */
+      pauseTurn?: boolean
+    },
   ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
@@ -526,14 +552,14 @@ export namespace SessionManager {
     // before removing its own inbox items; a later abort arriving while that
     // cleanup is in flight must not re-enable the release drive, or it would
     // materialize the very items being cancelled.
+    if (options?.fenceQueuedWork) {
+      owner.fenceQueuedWork = true
+      owner.fenceQueuedBefore ??= options.fenceQueuedBefore
+    }
     if (owner.phase === "stopping") return "already_stopping"
-
-    owner.recoverQueuedTasks = options?.recoverQueuedTasks === true || undefined
-    owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
-    owner.fenceQueuedBefore = options?.fenceQueuedBefore
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
-    owner.controller.abort()
+    owner.controller.abort(options?.pauseTurn ? new PausedTurnAbort() : undefined)
     cancelWaiters(runtime)
     return "signaled"
   }
@@ -557,9 +583,11 @@ export namespace SessionManager {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false
 
+    const pausedTurn = PausedTurnAbort.is(runtime.owner!.lease.signal.reason)
     runtime.owner!.controller.abort()
     cancelWaiters(runtime)
     runtime.owner = undefined
+    runtimeState().leaseReleases.get(lease)?.resolve()
     transitionExecutionPhase(runtime, undefined)
     runtime.status = { type: "idle" }
     emitStatus(runtime, runtime.status)
@@ -567,7 +595,7 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    if (accepting && options.requestNextWork !== false) {
+    if (runtimeState().accepting && !pausedTurn && options.requestNextWork !== false) {
       const { SessionDrive } = await import("./drive")
       await SessionDrive.request(lease.sessionID, "release")
     }
@@ -582,7 +610,7 @@ export namespace SessionManager {
   }
 
   export const WAKE_RETRY_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000]
-  const activeWakeChains = new Map<string, { requested: boolean }>()
+
   // A removed worktree fails before any inbox work starts, so no retry can
   // make progress and no queued work can be stranded behind it; the error
   // class lives above this package boundary, so it is recognized by name.
@@ -597,55 +625,84 @@ export namespace SessionManager {
   }
 
   function scheduleWakeAttempt(sessionID: string, reason: string, delayMs: number, failureCount: number): void {
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting) return
     const timer = setTimeout(() => {
-      const chain = activeWakeChains.get(sessionID)
+      instanceState.wakeTimers.delete(timer)
+      if (!instanceState.accepting) return
+      const chain = instanceState.activeWakeChains.get(sessionID)
       if (!chain) return
       chain.requested = false
-      void wake(sessionID)
+      const operation = wake(sessionID)
         .then(() => {
+          if (!instanceState.accepting) return
           if (chain.requested) scheduleWakeAttempt(sessionID, reason, 0, 0)
-          else activeWakeChains.delete(sessionID)
+          else instanceState.activeWakeChains.delete(sessionID)
         })
         .catch((error) => {
+          if (!instanceState.accepting) return
           if (isPermanentWakeFailure(error)) {
-            activeWakeChains.delete(sessionID)
+            instanceState.activeWakeChains.delete(sessionID)
             log.error("async session wake failed permanently", { sessionID, reason, error, permanent: true })
             return
           }
           const delay = WAKE_RETRY_DELAYS_MS[failureCount]
           if (delay === undefined) {
-            activeWakeChains.delete(sessionID)
+            instanceState.activeWakeChains.delete(sessionID)
             log.error("async session wake failed", { sessionID, reason, error, retriesExhausted: true })
             return
           }
           log.warn("async session wake failed; retrying", { sessionID, reason, error, nextDelayMs: delay })
           scheduleWakeAttempt(sessionID, reason, delay, failureCount + 1)
         })
+        .finally(() => instanceState.running.delete(operation))
+      instanceState.running.add(operation)
     }, delayMs)
+    instanceState.wakeTimers.add(timer)
     timer.unref()
   }
 
-  export async function wake(sessionID: string): Promise<void> {
+  /**
+   * Drive a session, synchronously.
+   *
+   * Two gates sit in front of the loop, and neither is bypassable:
+   *
+   * - A paused interactive session is never driven. This is defence in depth
+   *   behind `SessionDrive.arbitrate`; a wake that skipped it would restart the
+   *   very work the user stopped.
+   * - Discovery normally decides whether there is anything to do. `force` skips
+   *   only that check, for an explicit user continue whose resume point the
+   *   discovery heuristics cannot see.
+   */
+  export async function wake(sessionID: string, options: { force?: boolean } = {}): Promise<void> {
+    if (!runtimeState().accepting) return
     if (isRunning(sessionID)) return
-    if (!(await SessionInbox.hasRunnableItem(sessionID)) && !(await RolloutContinuationRecovery.pending(sessionID)))
-      return
+    const session = await getSession(sessionID).catch(() => undefined)
+    if (await SessionLifecycle.blocksDrive(session)) return
+    if (!options.force && !(await SessionInbox.hasRunnableItem(sessionID))) return
     const { SessionInvoke } = await import("./invoke")
-    // Repair is best-effort: loop() surfaces its own terminal errors to the
-    // retry chain, so a failed repair must not keep queued work undriven.
-    await SessionInvoke.repairAfterAbort(sessionID).catch((error) => {
-      log.warn("session repair before wake failed", { sessionID, error })
-    })
+    // A queued item behind an interrupted turn needs that turn settled before
+    // the loop can consume it, but settlement must not latch a pause: this wake
+    // exists precisely because there is more work to do.
+    if (!options.force) {
+      await SessionInvoke.settleInterruptedTurn(sessionID).catch((error) => {
+        log.warn("session repair before wake failed", { sessionID, error })
+      })
+    }
     await SessionInvoke.loop(sessionID)
-    await RolloutContinuationRecovery.pending(sessionID)
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {
-    const chain = activeWakeChains.get(sessionID)
+    const instanceState = runtimeState()
+    if (!instanceState.accepting) return
+
+    const chain = instanceState.activeWakeChains.get(sessionID)
     if (chain) {
       chain.requested = true
       return
     }
-    activeWakeChains.set(sessionID, { requested: false })
+    instanceState.activeWakeChains.set(sessionID, { requested: false })
     scheduleWakeAttempt(sessionID, reason, 0, 0)
   }
 
@@ -701,7 +758,9 @@ export namespace SessionManager {
   }
 
   export function listRunningRuntimes(): SessionRuntime[] {
-    return Array.from(runtimes.values()).filter(occupied)
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.runtimes.values()).filter(occupied)
   }
 
   /**
@@ -711,7 +770,9 @@ export namespace SessionManager {
    * survive until the runtime is swept.
    */
   export function liveSessionIDs(): string[] {
-    return [...runtimes.keys()]
+    const instanceState = runtimeState()
+
+    return [...instanceState.runtimes.keys()]
   }
 
   /**
@@ -725,7 +786,7 @@ export namespace SessionManager {
    */
   export function activeRuntimeCount(): number {
     let count = 0
-    for (const runtime of runtimes.values()) {
+    for (const runtime of runtimeState().runtimes.values()) {
       if (runtime.status.type !== "idle") count++
     }
     return count
@@ -733,7 +794,7 @@ export namespace SessionManager {
 
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {
     const result: Record<string, StatusInfo> = {}
-    for (const runtime of runtimes.values()) {
+    for (const runtime of runtimeState().runtimes.values()) {
       if (runtime.status.type === "idle") continue
       if (scopeID) {
         const session = await getSession(runtime.sessionID)
@@ -835,17 +896,6 @@ export namespace SessionManager {
     await wake(session.id)
   }
 
-  // --- Pending Reply ---
-
-  export async function listPendingReply(scopeID?: string): Promise<string[]> {
-    const sessionIDs: string[] = []
-    for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
-      if (!info?.time || info.time.archived || info.pendingReply !== true) continue
-      sessionIDs.push(info.id)
-    }
-    return sessionIDs
-  }
-
   export async function listInterruptedCortexDelegations(scopeID?: string): Promise<string[]> {
     const sessionIDs: string[] = []
     for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
@@ -893,8 +943,8 @@ export namespace SessionManager {
       void requireSession(sessionID)
         .then((session) => {
           const scope = session.scope as Scope
-          GlobalBus.emit("event", {
-            directory: scope.directory,
+          GlobalBus().emit("event", {
+            scopeID: scope.id,
             payload: {
               type,
               properties,

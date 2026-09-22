@@ -8,16 +8,21 @@ import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
 import { createDefaultTitle, ensureTitle, isDefaultTitle } from "../../src/session/title"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const originalAgentGet = Agent.get
 const originalProviderGetModel = Provider.getModel
 const originalAgentCallText = AgentCall.text
 
-afterEach(() => {
-  ;(Agent.get as any) = originalAgentGet
-  ;(Provider.getModel as any) = originalProviderGetModel
-  ;(AgentCall.text as any) = originalAgentCallText
-})
+afterEach(() =>
+  runtime.run(() => {
+    ;(Agent.get as any) = originalAgentGet
+    ;(Provider.getModel as any) = originalProviderGetModel
+    ;(AgentCall.text as any) = originalAgentCallText
+  }),
+)
 
 function installMocks() {
   ;(Agent.get as any) = mock(async () => ({ name: "title", prompt: "prompt" }))
@@ -72,226 +77,237 @@ async function runEnsureTitle(sessionID: string) {
 }
 
 describe("ensureTitle", () => {
-  test("calls AgentCall.text with the first real user and updates the session title", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, user } = await createSessionWithUser(createDefaultTitle())
-        let captured: AgentCall.TextInput | undefined
-        ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
-          captured = input
-          return {
-            text: "My generated title",
-            model: { providerID: "test", id: "test" },
-            usage: { inputTokens: 10, outputTokens: 5 },
-          }
-        })
-
-        await runEnsureTitle(session.id)
-
-        expect(captured?.agent).toBe("title")
-        expect(captured?.retries).toBe(3)
-        expect(captured?.timeoutMs).toBe(120_000)
-        expect(captured?.maxOutputChars).toBe(200)
-        expect(captured?.sessionId).toBe(session.id)
-        expect(captured?.user?.id).toBe(user.id)
-        expect(captured?.fallbackModel).toMatchObject({ providerID: "test", id: "test" })
-
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe("My generated title")
-      },
-    })
-  })
-
-  test("strips think blocks, trims lines, and truncates long titles", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await createSessionWithUser(createDefaultTitle())
-        const longTitle = "A".repeat(150)
-        ;(AgentCall.text as any) = mock(async () => ({
-          text: `<think>hidden reasoning</think>\n\n  ${longTitle}  `,
-          model: { providerID: "test", id: "test" },
-        }))
-
-        await runEnsureTitle(session.id)
-
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe("A".repeat(97) + "...")
-      },
-    })
-  })
-
-  test("drops the title when the model output exceeds the bound", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await createSessionWithUser(createDefaultTitle())
-        ;(AgentCall.text as any) = mock(async () => {
-          throw new AgentCall.Error("output_too_large", "title output exceeded 200 characters")
-        })
-
-        await runEnsureTitle(session.id)
-
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe(session.title)
-      },
-    })
-  })
-
-  test("does not call the model for non-default titles", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await createSessionWithUser("Already titled")
-        let called = false
-        ;(AgentCall.text as any) = mock(async () => {
-          called = true
-          return { text: "ignored", model: { providerID: "test", id: "test" } }
-        })
-
-        await runEnsureTitle(session.id)
-
-        expect(called).toBe(false)
-      },
-    })
-  })
-  test("does not clobber a title renamed while the detached call was in flight", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await createSessionWithUser(createDefaultTitle())
-        ;(AgentCall.text as any) = mock(async () => {
-          await Session.update(session.id, (draft) => {
-            draft.title = "User renamed during flight"
+  test("calls AgentCall.text with the first real user and updates the session title", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, user } = await createSessionWithUser(createDefaultTitle())
+          let captured: AgentCall.TextInput | undefined
+          ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
+            captured = input
+            return {
+              text: "My generated title",
+              model: { providerID: "test", id: "test" },
+              usage: { inputTokens: 10, outputTokens: 5 },
+            }
           })
-          return { text: "Late generated title", model: { providerID: "test", id: "test" } }
-        })
 
-        await runEnsureTitle(session.id)
+          await runEnsureTitle(session.id)
 
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe("User renamed during flight")
-      },
-    })
-  })
+          expect(captured?.agent).toBe("title")
+          expect(captured?.retries).toBe(3)
+          expect(captured?.timeoutMs).toBe(120_000)
+          expect(captured?.maxOutputChars).toBe(200)
+          expect(captured?.sessionId).toBe(session.id)
+          expect(captured?.user?.id).toBe(user.id)
+          expect(captured?.fallbackModel).toMatchObject({ providerID: "test", id: "test" })
 
-  test("titles from the first real user message when the session has multiple real users", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, user } = await createSessionWithUser(createDefaultTitle())
-        const second = (await Session.updateMessage({
-          id: Identifier.ascending("message"),
-          sessionID: session.id,
-          role: "user",
-          time: { created: Date.now() },
-          agent: "synergy",
-          model: { providerID: "test", modelID: "test" },
-        })) as MessageV2.User
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: second.id,
-          sessionID: session.id,
-          type: "text",
-          text: "Second user message",
-        })
-        let captured: AgentCall.TextInput | undefined
-        ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
-          captured = input
-          return { text: "Late generated title", model: { providerID: "test", id: "test" } }
-        })
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe("My generated title")
+        },
+      })
+    }))
 
-        await runEnsureTitle(session.id)
+  test("strips think blocks, trims lines, and truncates long titles", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser(createDefaultTitle())
+          const longTitle = "A".repeat(150)
+          ;(AgentCall.text as any) = mock(async () => ({
+            text: `<think>hidden reasoning</think>\n\n  ${longTitle}  `,
+            model: { providerID: "test", id: "test" },
+          }))
 
-        expect(captured?.user?.id).toBe(user.id)
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe("Late generated title")
-        expect(JSON.stringify(captured?.messages)).toContain("Hello")
-        expect(JSON.stringify(captured?.messages)).not.toContain("Second user message")
-      },
-    })
-  })
+          await runEnsureTitle(session.id)
 
-  test("recovers the title on a later turn after a failed attempt", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await createSessionWithUser(createDefaultTitle())
-        let fail = true
-        ;(AgentCall.text as any) = mock(async () => {
-          if (fail) throw new AgentCall.Error("timeout", "title agent timed out")
-          return { text: "Recovered title", model: { providerID: "test", id: "test" } }
-        })
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe("A".repeat(97) + "...")
+        },
+      })
+    }))
 
-        await runEnsureTitle(session.id)
-        expect((await Session.get(session.id))?.title).toBe(session.title)
+  test("drops the title when the model output exceeds the bound", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser(createDefaultTitle())
+          ;(AgentCall.text as any) = mock(async () => {
+            throw new AgentCall.Error("output_too_large", "title output exceeded 200 characters")
+          })
 
-        // A second user message arrives; the next loop re-collects ensure-title
-        // and the session is no longer permanently disqualified.
-        const second = (await Session.updateMessage({
-          id: Identifier.ascending("message"),
-          sessionID: session.id,
-          role: "user",
-          time: { created: Date.now() },
-          agent: "synergy",
-          model: { providerID: "test", modelID: "test" },
-        })) as MessageV2.User
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: second.id,
-          sessionID: session.id,
-          type: "text",
-          text: "Second user message",
-        })
-        fail = false
-        await runEnsureTitle(session.id)
+          await runEnsureTitle(session.id)
 
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe("Recovered title")
-      },
-    })
-  })
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe(session.title)
+        },
+      })
+    }))
 
-  test("keeps the default title without throwing when the call fails", async () => {
-    installMocks()
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session } = await createSessionWithUser(createDefaultTitle())
-        ;(AgentCall.text as any) = mock(async () => {
-          throw new AgentCall.Error("timeout", "title agent timed out")
-        })
+  test("does not call the model for non-default titles", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser("Already titled")
+          let called = false
+          ;(AgentCall.text as any) = mock(async () => {
+            called = true
+            return { text: "ignored", model: { providerID: "test", id: "test" } }
+          })
 
-        await expect(runEnsureTitle(session.id)).resolves.toBeUndefined()
+          await runEnsureTitle(session.id)
 
-        const updated = await Session.get(session.id)
-        expect(updated?.title).toBe(session.title)
-      },
-    })
-  })
+          expect(called).toBe(false)
+        },
+      })
+    }))
+  test("does not clobber a title renamed while the detached call was in flight", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser(createDefaultTitle())
+          ;(AgentCall.text as any) = mock(async () => {
+            await Session.update(session.id, (draft) => {
+              draft.title = "User renamed during flight"
+            })
+            return { text: "Late generated title", model: { providerID: "test", id: "test" } }
+          })
+
+          await runEnsureTitle(session.id)
+
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe("User renamed during flight")
+        },
+      })
+    }))
+
+  test("titles from the first real user message when the session has multiple real users", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, user } = await createSessionWithUser(createDefaultTitle())
+          const second = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+          })) as MessageV2.User
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: second.id,
+            sessionID: session.id,
+            type: "text",
+            text: "Second user message",
+          })
+          let captured: AgentCall.TextInput | undefined
+          ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
+            captured = input
+            return { text: "Late generated title", model: { providerID: "test", id: "test" } }
+          })
+
+          await runEnsureTitle(session.id)
+
+          expect(captured?.user?.id).toBe(user.id)
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe("Late generated title")
+          expect(JSON.stringify(captured?.messages)).toContain("Hello")
+          expect(JSON.stringify(captured?.messages)).not.toContain("Second user message")
+        },
+      })
+    }))
+
+  test("recovers the title on a later turn after a failed attempt", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser(createDefaultTitle())
+          let fail = true
+          ;(AgentCall.text as any) = mock(async () => {
+            if (fail) throw new AgentCall.Error("timeout", "title agent timed out")
+            return { text: "Recovered title", model: { providerID: "test", id: "test" } }
+          })
+
+          await runEnsureTitle(session.id)
+          expect((await Session.get(session.id))?.title).toBe(session.title)
+
+          // A second user message arrives; the next loop re-collects ensure-title
+          // and the session is no longer permanently disqualified.
+          const second = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+          })) as MessageV2.User
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: second.id,
+            sessionID: session.id,
+            type: "text",
+            text: "Second user message",
+          })
+          fail = false
+          await runEnsureTitle(session.id)
+
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe("Recovered title")
+        },
+      })
+    }))
+
+  test("keeps the default title without throwing when the call fails", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser(createDefaultTitle())
+          ;(AgentCall.text as any) = mock(async () => {
+            throw new AgentCall.Error("timeout", "title agent timed out")
+          })
+
+          await expect(runEnsureTitle(session.id)).resolves.toBeUndefined()
+
+          const updated = await Session.get(session.id)
+          expect(updated?.title).toBe(session.title)
+        },
+      })
+    }))
 })
 
 describe("title helpers", () => {
-  test("isDefaultTitle round-trips createDefaultTitle", () => {
-    expect(isDefaultTitle(createDefaultTitle())).toBe(true)
-    expect(isDefaultTitle(createDefaultTitle(true))).toBe(true)
-    expect(isDefaultTitle("My custom title")).toBe(false)
-    expect(isDefaultTitle("")).toBe(false)
-  })
+  test("isDefaultTitle round-trips createDefaultTitle", () =>
+    runtime.run(() => {
+      expect(isDefaultTitle(createDefaultTitle())).toBe(true)
+      expect(isDefaultTitle(createDefaultTitle(true))).toBe(true)
+      expect(isDefaultTitle("My custom title")).toBe(false)
+      expect(isDefaultTitle("")).toBe(false)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -1,90 +1,104 @@
 import { expect, test } from "bun:test"
 import { Experiment } from "../../src/config/experiment"
 import { Config } from "../../src/config/config"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("concurrent task policies remain immutable while security and process resources stay live", async () => {
-  const base: Config.Info = {
-    compaction: { auto: true },
-    permission: { bash: "allow" },
-    execution: { agentWorkers: 2 },
-    cortex: { primaryOnlyTools: ["a", "b"] },
-  }
-  const file = Experiment.File.parse({
-    version: 1,
-    label: "no prune",
-    overrides: { compaction: { prune: false }, cortex: { primaryOnlyTools: [] } },
-  })
-  const first = Experiment.capture(base, file)
-  const second = Experiment.capture(base)
-  const reloaded: Config.Info = {
-    ...base,
-    compaction: { auto: false, prune: true },
-    permission: { bash: "deny" },
-    execution: { agentWorkers: 4 },
-  }
-  await Promise.all(
-    [first, second].map((snapshot) =>
-      Experiment.provide(snapshot, async () => {
-        await Bun.sleep(1)
-        const current = Experiment.apply(reloaded)
-        expect(current.compaction?.auto).toBe(true)
-        expect(current.permission).toEqual({ bash: "deny" })
-        expect(current.execution?.agentWorkers).toBe(4)
-        expect(current.cortex?.primaryOnlyTools).toEqual(snapshot === first ? [] : ["a", "b"])
-        expect(() => {
-          Experiment.current()!.effective.compaction!.auto = false
-        }).toThrow()
-      }),
-    ),
-  )
-  expect(Experiment.current()).toBeUndefined()
-})
+test("concurrent task policies remain immutable while security and process resources stay live", () =>
+  runtime.run(async () => {
+    const base: Config.Info = {
+      compaction: { auto: true },
+      permission: { bash: "allow" },
+      execution: { agentWorkers: 2 },
+      cortex: { primaryOnlyTools: ["a", "b"] },
+    }
+    const file = Experiment.File.parse({
+      version: 1,
+      label: "no prune",
+      overrides: { compaction: { prune: false }, cortex: { primaryOnlyTools: [] } },
+    })
+    const first = Experiment.capture(base, file)
+    const second = Experiment.capture(base)
+    const reloaded: Config.Info = {
+      ...base,
+      compaction: { auto: false, prune: true },
+      permission: { bash: "deny" },
+      execution: { agentWorkers: 4 },
+    }
+    await Promise.all(
+      [first, second].map((snapshot) =>
+        Experiment.provide(snapshot, async () => {
+          await Bun.sleep(1)
+          const current = Experiment.apply(reloaded)
+          expect(current.compaction?.auto).toBe(true)
+          expect(current.permission).toEqual({ bash: "deny" })
+          expect(current.execution?.agentWorkers).toBe(4)
+          expect(current.cortex?.primaryOnlyTools).toEqual(snapshot === first ? [] : ["a", "b"])
+          expect(() => {
+            Experiment.current()!.effective.compaction!.auto = false
+          }).toThrow()
+        }),
+      ),
+    )
+    expect(Experiment.current()).toBeUndefined()
+  }))
 
-test("task settings cannot pretend to configure shared workers or permission grants", () => {
-  for (const overrides of [{ execution: { agentWorkers: 5 } }, { permission: { bash: "allow" } }, { unexpected: true }])
-    expect(Experiment.File.safeParse({ version: 1, label: "invalid", overrides }).success).toBe(false)
-  expect(Experiment.File.safeParse({ version: 2, label: "unsupported" }).success).toBe(false)
-})
+test("task settings cannot pretend to configure shared workers or permission grants", () =>
+  runtime.run(() => {
+    for (const overrides of [
+      { execution: { agentWorkers: 5 } },
+      { permission: { bash: "allow" } },
+      { unexpected: true },
+    ])
+      expect(Experiment.File.safeParse({ version: 1, label: "invalid", overrides }).success).toBe(false)
+    expect(Experiment.File.safeParse({ version: 2, label: "unsupported" }).success).toBe(false)
+  }))
 
-test("explicit model overrides win and fingerprints are stable across capture time and key order", () => {
-  const file = Experiment.File.parse({ version: 1, label: "one", overrides: { model: "test/experiment" } })
-  const snapshot = Experiment.capture({ model: "test/default" }, file, { model: "test/command" })
-  expect(snapshot.effective.model).toBe("test/command")
-  expect(snapshot.sources.model).toBe("explicit_command")
-  expect(Experiment.capture({ model: "test/default" }, file, { model: "test/command" }).fingerprint).toBe(
-    snapshot.fingerprint,
-  )
-  expect(Experiment.fingerprint({ a: 1, b: 2 })).toBe(Experiment.fingerprint({ b: 2, a: 1 }))
-})
+test("explicit model overrides win and fingerprints are stable across capture time and key order", () =>
+  runtime.run(() => {
+    const file = Experiment.File.parse({ version: 1, label: "one", overrides: { model: "test/experiment" } })
+    const snapshot = Experiment.capture({ model: "test/default" }, file, { model: "test/command" })
+    expect(snapshot.effective.model).toBe("test/command")
+    expect(snapshot.sources.model).toBe("explicit_command")
+    expect(Experiment.capture({ model: "test/default" }, file, { model: "test/command" }).fingerprint).toBe(
+      snapshot.fingerprint,
+    )
+    expect(Experiment.fingerprint({ a: 1, b: 2 })).toBe(Experiment.fingerprint({ b: 2, a: 1 }))
+  }))
 
-test("attach checks process worker settings", () => {
-  try {
-    Experiment.configureRuntime({ execution: { agentWorkers: 3 } })
-    expect(() => Experiment.assertRuntime({ execution: { agentWorkers: 3 } })).not.toThrow()
-    expect(() => Experiment.assertRuntime({ execution: { agentWorkers: 5 } })).toThrow("differ")
-  } finally {
-    Experiment.configureRuntime()
-  }
-})
+test("attach checks process worker settings", () =>
+  runtime.run(() => {
+    try {
+      Experiment.configureRuntime({ execution: { agentWorkers: 3 } })
+      expect(() => Experiment.assertRuntime({ execution: { agentWorkers: 3 } })).not.toThrow()
+      expect(() => Experiment.assertRuntime({ execution: { agentWorkers: 5 } })).toThrow("differ")
+    } finally {
+      Experiment.configureRuntime()
+    }
+  }))
 
-test("reuses one parsed configuration while its inputs are unchanged and re-parses a changed input", () => {
-  const live: Config.Info = { model: "test/base", compaction: { auto: true } }
-  const snapshot = Experiment.capture(live)
-  const otherSnapshot = Experiment.capture({ ...live, model: "test/other" })
+test("reuses one parsed configuration while its inputs are unchanged and re-parses a changed input", () =>
+  runtime.run(() => {
+    const live: Config.Info = { model: "test/base", compaction: { auto: true } }
+    const snapshot = Experiment.capture(live)
+    const otherSnapshot = Experiment.capture({ ...live, model: "test/other" })
 
-  Experiment.provide(snapshot, () => {
-    const first = Experiment.apply(live)
-    const second = Experiment.apply(live)
-    expect(second).toBe(first)
+    Experiment.provide(snapshot, () => {
+      const first = Experiment.apply(live)
+      const second = Experiment.apply(live)
+      expect(second).toBe(first)
 
-    const changed: Config.Info = { ...live, permission: { bash: "deny" } }
-    const reparsed = Experiment.apply(changed)
-    expect(reparsed).not.toBe(first)
-    expect(reparsed.permission).toEqual({ bash: "deny" })
-  })
+      const changed: Config.Info = { ...live, permission: { bash: "deny" } }
+      const reparsed = Experiment.apply(changed)
+      expect(reparsed).not.toBe(first)
+      expect(reparsed.permission).toEqual({ bash: "deny" })
+    })
 
-  Experiment.provide(otherSnapshot, () => {
-    const applied = Experiment.apply(live)
-    expect(applied.model).toBe("test/other")
-  })
-})
+    Experiment.provide(otherSnapshot, () => {
+      const applied = Experiment.apply(live)
+      expect(applied.model).toBe("test/other")
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

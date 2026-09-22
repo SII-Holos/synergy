@@ -1,3 +1,4 @@
+import { normalizeSessionWorkspaceInfo } from "./migration"
 import { SessionStaging } from "./staging"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
@@ -51,7 +52,7 @@ export namespace SessionImport {
     const sourceScopes = collectSourceScopes(report)
     if (sourceScopes.size === 0) return warnings
 
-    const targetDir = targetScope.directory
+    const targetDir = targetScope.local?.directory
     for (const [scopeID, source] of sourceScopes) {
       if (source.directory && source.directory !== targetDir) {
         warnings.push(
@@ -62,14 +63,14 @@ export namespace SessionImport {
     return warnings
   }
 
-  function collectSourceScopes(report: SessionExport.Report): Map<string, { type: string; directory: string }> {
-    const scopes = new Map<string, { type: string; directory: string }>()
+  function collectSourceScopes(report: SessionExport.Report): Map<string, { type: string; directory: string | null }> {
+    const scopes = new Map<string, { type: string; directory: string | null }>()
     for (const session of report.sessions) {
       const scope = session.info.scope as Scope | undefined
       if (!scope) continue
       const id = scope.id ?? "unknown"
       if (scopes.has(id)) continue
-      scopes.set(id, { type: scope.type, directory: scope.directory ?? "" })
+      scopes.set(id, { type: scope.type, directory: scope.local?.directory ?? null })
     }
     return scopes
   }
@@ -105,6 +106,19 @@ export namespace SessionImport {
       raw = JSON.parse(new TextDecoder().decode(body))
     } catch (error) {
       throw new Error(`Invalid session import JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const value = raw as Record<string, unknown>
+      const normalizeEntry = (entry: unknown) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry
+        const record = entry as Record<string, unknown>
+        if (!record.info || typeof record.info !== "object" || Array.isArray(record.info)) return entry
+        return { ...record, info: normalizeSessionWorkspaceInfo(record.info as Record<string, unknown>) }
+      }
+      raw = Array.isArray(value.sessions)
+        ? { ...value, sessions: value.sessions.map(normalizeEntry) }
+        : normalizeEntry(value)
     }
 
     const report = SessionExport.PersistedReport.safeParse(raw)
@@ -205,7 +219,6 @@ export namespace SessionImport {
             scopeID: scope.id,
             sourceSessionID: data.info.id,
             targetSessionID: sessionID,
-            workspace: info.workspace?.path ?? ScopeContext.current.directory,
             hashes: data.messages.flatMap((message) => message.parts.flatMap(SnapshotRecords.partRoots)),
             allowMissing: true,
           })
@@ -341,11 +354,7 @@ export namespace SessionImport {
     idMap: Map<string, string>
   }): Session.Info {
     const scopeType = input.scope.type === "home" ? "home" : "project"
-    const workspace = {
-      type: "main",
-      path: input.scope.directory,
-      scopeID: input.scope.id,
-    }
+    const workspace = input.info.workspace?.scopeID === input.scope.id ? input.info.workspace : null
     const cortex = input.info.cortex
       ? {
           ...input.info.cortex,
@@ -371,7 +380,6 @@ export namespace SessionImport {
       forkedFrom,
       category: SessionNav.deriveCategory({ scopeType, parentID: input.parentID, cortex }),
       endpoint: undefined,
-      pendingReply: undefined,
       cortex,
       workspace,
       time,

@@ -9,147 +9,157 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("merge keeps the target session aggregate and retains skipped source evidence", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const scope = await tmp.scope()
-  const id = Identifier.descending("session")
-  const addedID = Identifier.descending("session")
-  const sourceRoot = path.join(tmp.path, "source")
-  const targetRoot = path.join(tmp.path, "target")
-  for (const [root, title] of [
-    [sourceRoot, "source"],
-    [targetRoot, "target"],
-  ]) {
-    const prepared = await StorageBootstrap.prepare({ root })
+test("merge keeps the target session aggregate and retains skipped source evidence", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const id = Identifier.descending("session")
+    const addedID = Identifier.descending("session")
+    const sourceRoot = path.join(tmp.path, "source")
+    const targetRoot = path.join(tmp.path, "target")
+    for (const [root, title] of [
+      [sourceRoot, "source"],
+      [targetRoot, "target"],
+    ]) {
+      const prepared = await StorageBootstrap.prepare({ root })
+      try {
+        await Storage.provide({ store: prepared.store, artifactDirectory: path.join(root, "data") }, () =>
+          ScopeContext.provide({
+            scope,
+            fn: async () => {
+              await Storage.write(["projects", scope.id], scope)
+              await Session.create({ id, title })
+              await Storage.writeBinary(["sessions", scope.id, id, "rollout", "blobs", "packed"], Buffer.from(title))
+              await Storage.write(["sessions", scope.id, id, "owner-extension"], { title })
+              if (root === sourceRoot) {
+                await Session.create({ id: addedID, title: "new session" })
+                await Storage.writeBinary(
+                  ["sessions", scope.id, addedID, "rollout", "blobs", "new-content"],
+                  Buffer.from("new evidence"),
+                )
+                await Storage.write(["sessions", scope.id, id, "source-only"], { preserve: true })
+                await Bun.write(path.join(root, "data", "sessions", scope.id, id, "private.bin"), "source evidence")
+              }
+            },
+          }),
+        )
+        await prepared.activate()
+      } finally {
+        await prepared.store.close()
+      }
+    }
+    await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+    const result = await DataTransfer.merge(sourceRoot, targetRoot)
+    expect(result.skippedSessions).toBe(1)
+    const target = await StorageBootstrap.inspect(targetRoot)
+    if (!target) throw new Error("missing target")
     try {
-      await Storage.provide({ store: prepared.store, artifactDirectory: path.join(root, "data") }, () =>
-        ScopeContext.provide({
-          scope,
-          fn: async () => {
-            await Storage.write(["projects", scope.id], scope)
-            await Session.create({ id, title })
-            await Storage.writeBinary(["sessions", scope.id, id, "rollout", "blobs", "packed"], Buffer.from(title))
-            await Storage.write(["sessions", scope.id, id, "owner-extension"], { title })
-            if (root === sourceRoot) {
-              await Session.create({ id: addedID, title: "new session" })
-              await Storage.writeBinary(
-                ["sessions", scope.id, addedID, "rollout", "blobs", "new-content"],
-                Buffer.from("new evidence"),
-              )
-              await Storage.write(["sessions", scope.id, id, "source-only"], { preserve: true })
-              await Bun.write(path.join(root, "data", "sessions", scope.id, id, "private.bin"), "source evidence")
-            }
-          },
-        }),
+      expect(await target.store.read<{ title: string }>(["sessions", scope.id, id, "owner-extension"])).toEqual({
+        title: "target",
+      })
+      expect((await target.store.readMany([["sessions", scope.id, id, "source-only"]]))[0]).toBeUndefined()
+      expect(await Bun.file(path.join(targetRoot, "data", "sessions", scope.id, id, "private.bin")).exists()).toBe(
+        false,
       )
-      await prepared.activate()
+      expect(await target.store.read(["session_index", addedID])).toMatchObject({ scopeID: scope.id })
+      await Storage.provide(target, async () => {
+        expect(
+          Buffer.from(await Storage.readBinary(["sessions", scope.id, id, "rollout", "blobs", "packed"])).toString(),
+        ).toBe("target")
+        expect(
+          Buffer.from(
+            await Storage.readBinary(["sessions", scope.id, addedID, "rollout", "blobs", "new-content"]),
+          ).toString(),
+        ).toBe("new evidence")
+      })
+      const [transfer] = await target.store.query<{ backup: string }>({ kind: "storage_transfer" })
+      expect(
+        await Bun.file(
+          path.join(targetRoot, transfer.value.backup, "data", "sessions", scope.id, id, "private.bin"),
+        ).text(),
+      ).toBe("source evidence")
+      expect((await target.store.verify()).issues).toEqual([])
     } finally {
-      await prepared.store.close()
+      await target.store.close()
     }
-  }
-  await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
-  const result = await DataTransfer.merge(sourceRoot, targetRoot)
-  expect(result.skippedSessions).toBe(1)
-  const target = await StorageBootstrap.inspect(targetRoot)
-  if (!target) throw new Error("missing target")
-  try {
-    expect(await target.store.read<{ title: string }>(["sessions", scope.id, id, "owner-extension"])).toEqual({
-      title: "target",
-    })
-    expect((await target.store.readMany([["sessions", scope.id, id, "source-only"]]))[0]).toBeUndefined()
-    expect(await Bun.file(path.join(targetRoot, "data", "sessions", scope.id, id, "private.bin")).exists()).toBe(false)
-    expect(await target.store.read(["session_index", addedID])).toMatchObject({ scopeID: scope.id })
-    await Storage.provide(target, async () => {
-      expect(
-        Buffer.from(await Storage.readBinary(["sessions", scope.id, id, "rollout", "blobs", "packed"])).toString(),
-      ).toBe("target")
-      expect(
-        Buffer.from(
-          await Storage.readBinary(["sessions", scope.id, addedID, "rollout", "blobs", "new-content"]),
-        ).toString(),
-      ).toBe("new evidence")
-    })
-    const [transfer] = await target.store.query<{ backup: string }>({ kind: "storage_transfer" })
-    expect(
-      await Bun.file(
-        path.join(targetRoot, transfer.value.backup, "data", "sessions", scope.id, id, "private.bin"),
-      ).text(),
-    ).toBe("source evidence")
-    expect((await target.store.verify()).issues).toEqual([])
-  } finally {
-    await target.store.close()
-  }
-})
+  }))
 
-test("merge refuses authority records from another home; trusted relocation keeps them", async () => {
-  await using tmp = await tmpdir()
-  const sourceRoot = path.join(tmp.path, "source")
-  const targetRoot = path.join(tmp.path, "target")
-  const trustedRoot = path.join(tmp.path, "trusted")
-  const source = await StorageBootstrap.prepare({ root: sourceRoot })
-  try {
-    await source.store.write(["plugin-approvals", "records", "plugin-x"], { grant: "broad" })
-    await source.store.write(["notes", "scope", "note"], { text: "payload" })
-    await source.store.write(["compat_catalog", "scope", "0000000000000001", "session"], { status: "pending" })
-    await source.activate()
-  } finally {
-    await source.store.close()
-  }
-  for (const root of [targetRoot, trustedRoot]) {
-    const prepared = await StorageBootstrap.prepare({ root })
+test("merge refuses authority records from another home; trusted relocation keeps them", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const sourceRoot = path.join(tmp.path, "source")
+    const targetRoot = path.join(tmp.path, "target")
+    const trustedRoot = path.join(tmp.path, "trusted")
+    const source = await StorageBootstrap.prepare({ root: sourceRoot })
     try {
-      await prepared.activate()
+      await source.store.write(["plugin-approvals", "records", "plugin-x"], { grant: "broad" })
+      await source.store.write(["notes", "scope", "note"], { text: "payload" })
+      await source.store.write(["compat_catalog", "scope", "0000000000000001", "session"], { status: "pending" })
+      await source.activate()
     } finally {
-      await prepared.store.close()
+      await source.store.close()
     }
-  }
-  await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot, trustedRoot])
-  await DataTransfer.merge(sourceRoot, targetRoot)
-  const target = await StorageBootstrap.inspect(targetRoot)
-  if (!target) throw new Error("missing target")
-  try {
-    expect((await target.store.readMany([["plugin-approvals", "records", "plugin-x"]]))[0]).toBeUndefined()
-    expect(await target.store.read<{ text: string }>(["notes", "scope", "note"])).toEqual({ text: "payload" })
-    expect(await target.store.list(["compat_catalog"])).toEqual([])
-  } finally {
-    await target.store.close()
-  }
-  await DataTransfer.merge(sourceRoot, trustedRoot, { trusted: true })
-  const trusted = await StorageBootstrap.inspect(trustedRoot)
-  if (!trusted) throw new Error("missing trusted target")
-  try {
-    expect(await trusted.store.read<{ grant: string }>(["plugin-approvals", "records", "plugin-x"])).toEqual({
-      grant: "broad",
-    })
-    expect(await trusted.store.list(["compat_catalog"])).toEqual([])
-  } finally {
-    await trusted.store.close()
-  }
-})
+    for (const root of [targetRoot, trustedRoot]) {
+      const prepared = await StorageBootstrap.prepare({ root })
+      try {
+        await prepared.activate()
+      } finally {
+        await prepared.store.close()
+      }
+    }
+    await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot, trustedRoot])
+    await DataTransfer.merge(sourceRoot, targetRoot)
+    const target = await StorageBootstrap.inspect(targetRoot)
+    if (!target) throw new Error("missing target")
+    try {
+      expect((await target.store.readMany([["plugin-approvals", "records", "plugin-x"]]))[0]).toBeUndefined()
+      expect(await target.store.read<{ text: string }>(["notes", "scope", "note"])).toEqual({ text: "payload" })
+      expect(await target.store.list(["compat_catalog"])).toEqual([])
+    } finally {
+      await target.store.close()
+    }
+    await DataTransfer.merge(sourceRoot, trustedRoot, { trusted: true })
+    const trusted = await StorageBootstrap.inspect(trustedRoot)
+    if (!trusted) throw new Error("missing trusted target")
+    try {
+      expect(await trusted.store.read<{ grant: string }>(["plugin-approvals", "records", "plugin-x"])).toEqual({
+        grant: "broad",
+      })
+      expect(await trusted.store.list(["compat_catalog"])).toEqual([])
+    } finally {
+      await trusted.store.close()
+    }
+  }))
 
-test("portable pack restores authority without copying the source database identity", async () => {
-  await using tmp = await tmpdir()
-  const sourceRoot = path.join(tmp.path, "source")
-  const restoredRoot = path.join(tmp.path, "restored")
-  const source = await StorageBootstrap.prepare({ root: sourceRoot })
-  await source.store.write(["future-owner", "record"], { nested: { unknown: 42 } })
-  await source.activate()
-  await source.store.close()
-  await DataTransfer.pack(sourceRoot, path.join(restoredRoot, "data"))
-  expect(await Bun.file(path.join(restoredRoot, "data", "storage", "manifest.json")).exists()).toBe(false)
-  const restored = await StorageBootstrap.prepare({ root: restoredRoot })
-  try {
-    expect(await restored.store.read<{ nested: { unknown: number } }>(["future-owner", "record"])).toEqual({
-      nested: { unknown: 42 },
-    })
-    expect(restored.manifest.storeID).not.toBe(source.manifest.storeID)
-    await restored.activate()
-    await fs.rm(sourceRoot, { recursive: true })
-    expect(await restored.store.read<{ nested: { unknown: number } }>(["future-owner", "record"])).toEqual({
-      nested: { unknown: 42 },
-    })
-  } finally {
-    await restored.store.close()
-  }
-})
+test("portable pack restores authority without copying the source database identity", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const sourceRoot = path.join(tmp.path, "source")
+    const restoredRoot = path.join(tmp.path, "restored")
+    const source = await StorageBootstrap.prepare({ root: sourceRoot })
+    await source.store.write(["future-owner", "record"], { nested: { unknown: 42 } })
+    await source.activate()
+    await source.store.close()
+    await DataTransfer.pack(sourceRoot, path.join(restoredRoot, "data"))
+    expect(await Bun.file(path.join(restoredRoot, "data", "storage", "manifest.json")).exists()).toBe(false)
+    const restored = await StorageBootstrap.prepare({ root: restoredRoot })
+    try {
+      expect(await restored.store.read<{ nested: { unknown: number } }>(["future-owner", "record"])).toEqual({
+        nested: { unknown: 42 },
+      })
+      expect(restored.manifest.storeID).not.toBe(source.manifest.storeID)
+      await restored.activate()
+      await fs.rm(sourceRoot, { recursive: true })
+      expect(await restored.store.read<{ nested: { unknown: number } }>(["future-owner", "record"])).toEqual({
+        nested: { unknown: 42 },
+      })
+    } finally {
+      await restored.store.close()
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

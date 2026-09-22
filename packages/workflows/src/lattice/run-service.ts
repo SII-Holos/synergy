@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
 import { isActiveLoopStatus } from "../blueprint/loop-store"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -33,17 +34,25 @@ export namespace LatticeRunService {
 
   type DirectReason = "enable" | "resume" | "action" | "note_change"
 
-  let reconcileDirectFn: ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    reconcileDirectFn: undefined as
+      | ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>)
+      | undefined,
+  }))
 
   /** LatticeController owns reconciliation; it registers its forwarder at module
    * load so this service never imports the controller back. */
   export function setReconcileDirect(fn: (scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) {
-    reconcileDirectFn = fn
+    const instanceState = runtimeState()
+
+    instanceState.reconcileDirectFn = fn
   }
 
   async function reconcileDirect(scopeID: string, sessionID: string, reason: DirectReason): Promise<void> {
-    if (!reconcileDirectFn) throw new Error("Lattice reconcileDirect forwarder is not registered")
-    await reconcileDirectFn(scopeID, sessionID, reason)
+    const instanceState = runtimeState()
+
+    if (!instanceState.reconcileDirectFn) throw new Error("Lattice reconcileDirect forwarder is not registered")
+    await instanceState.reconcileDirectFn(scopeID, sessionID, reason)
   }
 
   async function currentScopeSession(sessionID: string): Promise<Session.Info> {
@@ -369,20 +378,18 @@ export namespace LatticeRunService {
     await LatticeModelCalls.flush(scopeID, run.sessionID)
     let paused = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.pause(draft, reason))
 
-    await SessionAbort.abort(run.sessionID)
+    // A workflow exiting is a cancellation the domain performs on its own work,
+    // so it must not leave the session holding a pause the user never asked for.
+    await SessionAbort.abort(run.sessionID, { internalCancel: true })
     await removeRunInbox(paused)
-    const { recordedLoopIDs } = await cancelRunLoops(
-      scopeID,
-      paused,
-      reason === "user_exit" ? "Lattice workflow exited" : "Lattice Run paused by user",
-    )
+    const { recordedLoopIDs } = await cancelRunLoops(scopeID, paused, "Lattice workflow exited")
 
     for (const cancelledLoopID of recordedLoopIDs) {
       paused = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => {
         const converged = LatticeMachine.onLoopTerminal(draft, {
           loopID: cancelledLoopID,
           status: "cancelled",
-          error: reason === "user_exit" ? "Lattice workflow exited" : "Lattice Run paused by user",
+          error: "Lattice workflow exited",
         })
         return LatticeMachine.pause(converged, reason)
       })
@@ -391,17 +398,6 @@ export namespace LatticeRunService {
 
     await appendLifecycleEvent(scopeID, paused, "run_paused", reason)
     return paused
-  }
-
-  export async function pause(runID: string): Promise<LatticeTypes.Run> {
-    const scopeID = ScopeContext.current.scope.id
-    const snapshot = await LatticeStore.getByRunID(scopeID, runID)
-    if (!snapshot) throw new LatticeError.NotFound({ runID })
-    using _ = await LatticeLock.write(scopeID, snapshot.sessionID)
-    const run = await LatticeStore.getByRunID(scopeID, runID)
-    if (!run) throw new LatticeError.NotFound({ runID })
-    await assertCurrentRun(scopeID, run)
-    return pauseRunUnderLock(scopeID, run, "user_paused")
   }
 
   function isPristineRun(run: LatticeTypes.Run): boolean {
@@ -420,7 +416,9 @@ export namespace LatticeRunService {
     await LatticeModelCalls.flush(scopeID, run.sessionID)
     let cancelled = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.cancel(draft))
     const currentAfterPersistence = await LatticeStore.getOrUndefined(scopeID, run.sessionID)
-    if (currentAfterPersistence?.id === run.id) await SessionAbort.abort(run.sessionID)
+    // Cancelling the run is this domain withdrawing its own work, so the
+    // session must not end up holding a pause the user never asked for.
+    if (currentAfterPersistence?.id === run.id) await SessionAbort.abort(run.sessionID, { internalCancel: true })
     await removeRunInbox(cancelled)
     await cancelRunLoops(scopeID, cancelled, "Lattice Run cancelled")
     cancelled = await completeCreateCleanupEffect(scopeID, cancelled)
@@ -654,7 +652,8 @@ export namespace LatticeRunService {
       if (run.status === "cancelled") {
         if (isCurrent) {
           LatticeModelCalls.clear(run.sessionID)
-          await SessionAbort.abort(run.sessionID)
+          // Lattice owns this cancellation, so it must not latch a user pause.
+          await SessionAbort.abort(run.sessionID, { internalCancel: true })
         }
         await removeRunInbox(run)
         await cancelRunLoops(scopeID, run, "Lattice Run cancelled")

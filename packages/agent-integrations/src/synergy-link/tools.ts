@@ -1,14 +1,19 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { ConnectTool } from "./tools/connect"
 
 /**
  * Synergy Link domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerSynergyLinkTools(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("synergy-link", () => [ConnectTool])
 }

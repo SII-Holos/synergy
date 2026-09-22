@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
@@ -206,7 +207,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
             const args = matchingInvocation?.args
 
             const processEnv = {
-              ...process.env,
+              ...RuntimeContext.current().host.env,
               TERM: "dumb",
             }
             const windowsProcessJob = WindowsProcessJob.prepare({ command: sh, args, env: processEnv })

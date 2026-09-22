@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Flag } from "../flag/flag"
 import { parseModelID } from "./model-id"
 import { ProviderPricing } from "./pricing"
@@ -23,6 +24,7 @@ import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import { normalizeImageMediaTypes } from "./image-capability"
 import { ProviderStream } from "./stream"
+import type { TimeoutConfig } from "../util/timeout-config"
 import { ProviderModelUnavailableError } from "./model-unavailable-error"
 import { ProviderSdkSource } from "./sdk-source"
 import { ProviderPluginAuth } from "./plugin-auth-source"
@@ -178,10 +180,9 @@ export namespace Provider {
     proxyUrl: string | undefined,
     noProxy: boolean,
   ) {
-    const request = input instanceof Request ? input : new Request(input, init)
-    if (noProxy) return directFetch(request, undefined)
-    if (proxyUrl) return fetchFn(request, { proxy: proxyUrl } as RequestInit)
-    return fetchFn(request)
+    if (noProxy) return directFetch(new Request(input, init), undefined)
+    if (proxyUrl) return fetchFn(input, { ...init, proxy: proxyUrl } as RequestInit)
+    return fetchFn(input, init)
   }
 
   /**
@@ -202,16 +203,15 @@ export namespace Provider {
     }
     labels: { provider: string; model: string }
   }) {
-    return async (requestInput: any, init?: BunFetchRequestInit): Promise<Response> => {
+    return async (requestInput: RequestInfo | URL, init?: BunFetchRequestInit): Promise<Response> => {
       const fetchFn = spec.fetchFn
-      const opts = init ?? {}
+      const opts = { ...init }
       const timeoutMs = spec.timeouts.providerIdleMs
 
       let ttfbController: AbortController | null = null
       let ttfbTimer: ReturnType<typeof setTimeout> | null = null
       let idleController: AbortController | null = null
-      // A watchdog must never report a fire for a response that already
-      // settled: `AbortSignal.timeout` cannot be cancelled.
+      let wallTimer: ReturnType<typeof setTimeout> | undefined
       let watchdogSettled = false
       const recordWatchdog = (kind: "ttfb" | "idle" | "wall") => {
         if (watchdogSettled) return
@@ -253,33 +253,41 @@ export namespace Provider {
 
       // Wall-clock timeout: bounds a stream that keeps emitting keep-alive
       // traffic without ever producing content.
-      const wallClockSignal =
-        spec.timeouts.providerWallMs !== false && spec.timeouts.providerWallMs > 0
-          ? AbortSignal.timeout(spec.timeouts.providerWallMs)
-          : null
-      wallClockSignal?.addEventListener("abort", () => recordWatchdog("wall"), { once: true })
+      const wallController = new AbortController()
+      if (spec.timeouts.providerWallMs !== false && spec.timeouts.providerWallMs > 0) {
+        const wallMs = spec.timeouts.providerWallMs
+        wallTimer = setTimeout(() => {
+          recordWatchdog("wall")
+          wallController.abort(new DOMException(`Wall timeout: request exceeded ${wallMs}ms`, "TimeoutError"))
+        }, wallMs).unref()
+      }
 
       // Combine signals before fetch
       const signals: AbortSignal[] = []
-      if (opts.signal) signals.push(opts.signal)
+      const callerSignal =
+        opts.signal === undefined ? (requestInput instanceof Request ? requestInput.signal : undefined) : opts.signal
+      if (callerSignal) signals.push(callerSignal)
       if (ttfbController) signals.push(ttfbController.signal)
       if (idleController) signals.push(idleController.signal)
-      if (wallClockSignal) signals.push(wallClockSignal)
+      if (wallTimer) signals.push(wallController.signal)
       opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
 
       // Clean up all timers when outer signal aborts (e.g. user cancel)
       const cleanupTimers = () => {
         watchdogSettled = true
         clearTtfbTimer()
+        clearTimeout(wallTimer)
+        opts.signal?.removeEventListener("abort", cleanupTimers)
       }
       opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
+      if (opts.signal?.aborted) cleanupTimers()
 
       // Disable HTTP keep-alive to avoid reusing connections that may have
       // been silently dropped by NAT / load balancers during idle periods.
-      const headers = new Headers(opts.headers ?? {})
+      const headers = new Headers(opts.headers ?? (requestInput instanceof Request ? requestInput.headers : undefined))
       headers.set("Connection", "close")
 
-      const logUrl = typeof requestInput === "string" ? requestInput : requestInput.url
+      const logUrl = requestInput instanceof Request ? requestInput.url : requestInput.toString()
       const safeUrl = (() => {
         try {
           const u = new URL(logUrl)
@@ -355,10 +363,7 @@ export namespace Provider {
               })
             },
             onIdleTimeout: () => recordWatchdog("idle"),
-            onSettled: () => {
-              watchdogSettled = true
-              clearTtfbTimer()
-            },
+            onSettled: cleanupTimers,
           },
         })
 
@@ -369,8 +374,7 @@ export namespace Provider {
         })
       }
 
-      watchdogSettled = true
-      clearTtfbTimer()
+      cleanupTimers()
       return response
     }
   }
@@ -659,24 +663,15 @@ export namespace Provider {
     }
   }
 
-  const workerState = {
-    models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
-    providers: {} as Record<string, Info>,
-    // Unfiltered, redacted config snapshot for client visibility only; runtime code must use providers.
-    configuredForClient: {} as Record<string, Info>,
-    sdk: new Map<number, { instance: SDK; createdAt: number }>(),
-    modelLoaders: {} as Record<string, CustomModelLoader>,
-    runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
-    timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
-  }
-
   function credentialFingerprint(key: string | undefined): string | undefined {
     if (key === undefined) return undefined
     return new Bun.CryptoHasher("sha256").update(key).digest("hex")
   }
 
   export async function configureWorkerProvider(model: Model, plan: WorkerPlan): Promise<void> {
-    if (process.env.SYNERGY_AGENT_WORKER !== "1") {
+    const instanceState = runtimeState()
+
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER !== "1") {
       throw new Error("Worker provider plans can only be installed inside an Agent worker")
     }
     const { registerBuiltinProviderProfiles } = await import("./builtin")
@@ -706,15 +701,15 @@ export namespace Provider {
         ? mergeDeep(mergeDeep(plan.baseOptions, dynamicOptions), plan.explicitOptions)
         : mergeDeep(dynamicOptions, plan.options)
     if (profile) {
-      workerState.runtimeProfileStates[model.providerID] = {
+      instanceState.workerState.runtimeProfileStates[model.providerID] = {
         profile,
         baseOptions: plan.baseOptions ?? {},
         explicitOptions: plan.explicitOptions ?? plan.options,
       }
     } else {
-      delete workerState.runtimeProfileStates[model.providerID]
+      delete instanceState.workerState.runtimeProfileStates[model.providerID]
     }
-    workerState.providers[model.providerID] = {
+    instanceState.workerState.providers[model.providerID] = {
       id: model.providerID,
       profileID: plan.profileID,
       name: model.providerID,
@@ -724,9 +719,9 @@ export namespace Provider {
       options,
       models: { [model.id]: model },
     }
-    workerState.timeouts[model.providerID] = plan.timeouts
+    instanceState.workerState.timeouts[model.providerID] = plan.timeouts
     if (profile?.getModel || profile?.modelFactory) {
-      workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
+      instanceState.workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
         if (profile.getModel) return profile.getModel({ sdk, modelID, options: providerOptions })
         return ProviderProfile.defaultModelFactory(profile.modelFactory, {
           sdk,
@@ -735,14 +730,28 @@ export namespace Provider {
         })
       }
     } else {
-      delete workerState.modelLoaders[model.providerID]
+      delete instanceState.workerState.modelLoaders[model.providerID]
     }
   }
 
-  let lastSettledProviders: Record<string, Info> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    lastSettledProviders: undefined as Record<string, Info> | undefined,
+    workerState: {
+      models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+      providers: {} as Record<string, Info>,
+      // Unfiltered, redacted config snapshot for client visibility only; runtime code must use providers.
+      configuredForClient: {} as Record<string, Info>,
+      sdk: new Map<number, { instance: SDK; createdAt: number }>(),
+      modelLoaders: {} as Record<string, CustomModelLoader>,
+      runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
+      timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
+    },
+  }))
 
   const state = ScopedState.create(async () => {
-    if (process.env.SYNERGY_AGENT_WORKER === "1") return workerState
+    const instanceState = runtimeState()
+
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") return instanceState.workerState
     using _ = log.time("state")
     const [{ Config }, { ProviderCatalog }] = await Promise.all([import("../config/config"), import("./catalog")])
     const config = await Config.current()
@@ -1140,12 +1149,16 @@ export namespace Provider {
    * settled state when a state build exceeds its bounded wait window.
    */
   export function listSettled(): Record<string, Info> {
-    return lastSettledProviders ?? {}
+    const instanceState = runtimeState()
+
+    return instanceState.lastSettledProviders ?? {}
   }
 
   export async function list() {
+    const instanceState = runtimeState()
+
     return state().then((state) => {
-      lastSettledProviders = state.providers
+      instanceState.lastSettledProviders = state.providers
       return state.providers
     })
   }
@@ -1265,7 +1278,27 @@ export namespace Provider {
     return sdk.languageModel(model.api.id) as LanguageModelV2
   }
 
-  export async function getSDK(model: Model, resolvedOptions?: Record<string, any>) {
+  export async function requestTimeouts(
+    model: Model,
+    resolvedOptions?: Record<string, unknown>,
+  ): Promise<TimeoutConfig.ProviderTimeouts> {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") {
+      const timeouts = runtimeState().workerState.timeouts[model.providerID]
+      return { providerTtfbMs: timeouts.ttfbMs, providerIdleMs: timeouts.idleMs, providerWallMs: timeouts.wallMs }
+    }
+    const s = await state()
+    const options =
+      resolvedOptions ??
+      (await resolveModelOptions(model, s.providers[model.providerID], s.runtimeProfileStates[model.providerID]))
+    const { TimeoutConfig } = await import("../util/timeout-config")
+    return TimeoutConfig.forProvider({ providerID: model.providerID, legacyIdle: options["timeout"] })
+  }
+
+  export async function getSDK(
+    model: Model,
+    resolvedOptions?: Record<string, any>,
+    resolvedTimeouts?: TimeoutConfig.ProviderTimeouts,
+  ) {
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
@@ -1288,9 +1321,12 @@ export namespace Provider {
           ...model.headers,
         }
 
+      const timeoutCfg = resolvedTimeouts ?? (await requestTimeouts(model, options))
       const key = Bun.hash.xxHash32(
         JSON.stringify({
           providerID: model.providerID,
+          modelID: model.id,
+          timeouts: timeoutCfg,
           npm: model.api.npm,
           options,
         }),
@@ -1312,19 +1348,6 @@ export namespace Provider {
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
       delete options["noProxy"]
-      const timeoutCfg =
-        process.env.SYNERGY_AGENT_WORKER === "1"
-          ? {
-              providerTtfbMs: workerState.timeouts[model.providerID].ttfbMs,
-              providerIdleMs: workerState.timeouts[model.providerID].idleMs,
-              providerWallMs: workerState.timeouts[model.providerID].wallMs,
-            }
-          : await import("../util/timeout-config").then(({ TimeoutConfig }) =>
-              TimeoutConfig.forProvider({
-                providerID: model.providerID,
-                legacyIdle: options["timeout"],
-              }),
-            )
       // `options.timeout` is the Synergy-only idle shorthand (milliseconds); it
       // was folded into timeoutCfg above and must not reach the SDK factory.
       delete options["timeout"]
@@ -1377,11 +1400,13 @@ export namespace Provider {
     const s = await state()
     const provider = s.providers[model.providerID]
     const options = await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID])
+    const timeouts = await requestTimeouts(model, options)
     const key = Bun.hash
       .xxHash32(
         JSON.stringify({
           providerID: model.providerID,
           modelID: model.id,
+          timeouts,
           npm: model.api.npm,
           options,
           credential: credentialFingerprint(provider.key),
@@ -1396,7 +1421,7 @@ export namespace Provider {
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const sdk = await getSDK(model, options)
+    const sdk = await getSDK(model, options, timeouts)
 
     try {
       const language = s.modelLoaders[model.providerID]

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
+import { PLUGIN_UI_API_VERSION, compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
 import { readPluginUIAsset } from "../../src/plugin/ui-assets"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
@@ -12,7 +12,7 @@ test("serves only declared assets of the requested generation and rejects change
     {
       generation: "current",
       ui: {
-        apiVersion: "5.0",
+        apiVersion: PLUGIN_UI_API_VERSION,
         entry: "ui/index.js",
         sha256: new Bun.CryptoHasher("sha256").update(source).digest("hex"),
         resources: [],

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Migration } from "./types"
 
 export interface TrackingCompatibility {
@@ -6,7 +7,10 @@ export interface TrackingCompatibility {
   rename?(id: string): string
 }
 
-const domains = new Map<string, { source: Migration[]; migrations: Migration[]; tracking?: TrackingCompatibility }>()
+const runtimeState = RuntimeContext.state(() => ({
+  domains: new Map<string, { source: Migration[]; migrations: Migration[]; tracking?: TrackingCompatibility }>(),
+  locked: false,
+}))
 
 function snapshot(migrations: Migration[]): Migration[] {
   return migrations.map((migration) => ({
@@ -14,7 +18,6 @@ function snapshot(migrations: Migration[]): Migration[] {
     ...(migration.dependsOn ? { dependsOn: [...migration.dependsOn] } : {}),
   }))
 }
-let locked = false
 
 export class MigrationRegistrationLockedError extends Error {
   constructor(readonly domain: string) {
@@ -25,9 +28,13 @@ export class MigrationRegistrationLockedError extends Error {
 
 export namespace MigrationRegistry {
   export function register(domain: string, migrations: Migration[], tracking?: TrackingCompatibility): void {
-    if (domains.get(domain)?.source === migrations) return
-    if (locked) throw new MigrationRegistrationLockedError(domain)
-    domains.set(domain, {
+    const instanceState = runtimeState()
+
+    const existing = instanceState.domains.get(domain)
+    if (existing?.source === migrations) return
+    if (existing) throw new Error(`Migration domain ${domain} is already registered`)
+    if (instanceState.locked) throw new MigrationRegistrationLockedError(domain)
+    instanceState.domains.set(domain, {
       source: migrations,
       migrations: snapshot(migrations),
       tracking: tracking ? { ...tracking, aliases: { ...tracking.aliases } } : undefined,
@@ -35,21 +42,29 @@ export namespace MigrationRegistry {
   }
 
   export function lock(): void {
-    locked = true
+    const instanceState = runtimeState()
+
+    instanceState.locked = true
   }
 
   export function unregister(domain: string): void {
-    if (locked) throw new MigrationRegistrationLockedError(domain)
-    domains.delete(domain)
+    const instanceState = runtimeState()
+
+    if (instanceState.locked) throw new MigrationRegistrationLockedError(domain)
+    instanceState.domains.delete(domain)
   }
 
   export function legacyTracking(): Array<TrackingCompatibility & { targetDomain: string }> {
-    return [...domains].flatMap(([targetDomain, entry]) =>
+    const instanceState = runtimeState()
+
+    return [...instanceState.domains].flatMap(([targetDomain, entry]) =>
       entry.tracking ? [{ ...entry.tracking, aliases: { ...entry.tracking.aliases }, targetDomain }] : [],
     )
   }
 
   export function list(): Map<string, Migration[]> {
-    return new Map([...domains].map(([domain, entry]) => [domain, snapshot(entry.migrations)]))
+    const instanceState = runtimeState()
+
+    return new Map([...instanceState.domains].map(([domain, entry]) => [domain, snapshot(entry.migrations)]))
   }
 }

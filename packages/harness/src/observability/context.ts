@@ -1,11 +1,12 @@
-import { AsyncLocalStorage } from "node:async_hooks"
+import { Context } from "../util/context"
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilitySchema } from "./schema"
 
 export namespace ObservabilityContext {
-  const storage = new AsyncLocalStorage<ObservabilitySchema.Context>()
+  const storage = Context.create<ObservabilitySchema.Context>("observability")
 
   export function current(): ObservabilitySchema.Context {
-    return storage.getStore() ?? {}
+    return storage.tryUse() ?? {}
   }
 
   export function merge(input: ObservabilitySchema.Context = {}): ObservabilitySchema.Context {
@@ -22,16 +23,18 @@ export namespace ObservabilityContext {
   }
 
   export function withContext<T>(context: ObservabilitySchema.Context, fn: () => T): T {
-    return storage.run(merge(context), fn)
+    return storage.provide(merge(context), fn)
   }
 
   export async function withContextAsync<T>(context: ObservabilitySchema.Context, fn: () => Promise<T>): Promise<T> {
-    return storage.run(merge(context), fn)
+    return storage.provide(merge(context), fn)
   }
 
-  export function bind<T extends (...args: any[]) => any>(fn: T): T {
+  export function bind<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
     const context = current()
-    return ((...args: Parameters<T>) => storage.run(context, () => fn(...args))) as T
+    const owner = RuntimeContext.tryCurrent()
+    const bound = (...args: A) => storage.provide(context, () => fn(...args))
+    return owner ? owner.bind(bound) : bound
   }
 
   export function child(input: ObservabilitySchema.Context = {}): ObservabilitySchema.Context {

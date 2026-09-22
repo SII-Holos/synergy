@@ -17,8 +17,8 @@ const BootstrapPath = z
     home: z.string(),
     state: z.string(),
     config: z.string(),
-    worktree: z.string(),
-    directory: z.string(),
+    worktree: z.string().nullable(),
+    directory: z.string().nullable(),
   })
   .meta({ ref: "ScopeBootstrapPath" })
 
@@ -133,8 +133,8 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
             home: Global.Path.home,
             state: Global.Path.state,
             config: Global.Path.config,
-            worktree: ScopeContext.current.worktree,
-            directory: ScopeContext.current.directory,
+            worktree: scope.local?.worktree ?? null,
+            directory: ScopeContext.current.workspace?.path ?? null,
           }),
         ),
         optional("command", Command.list()),
@@ -145,7 +145,7 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
           Cortex.then((manager) => manager.listVisible()),
         ),
         ...Object.entries(contributions).flatMap(([name, contribution]) =>
-          contribution.projectOnly && scope.type !== "project" ? [] : [optional(name, contribution.load())],
+          contribution.projectOnly && !scope.local ? [] : [optional(name, contribution.load())],
         ),
       ]
 

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { authLockDirectory, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { Global } from "../global"
 import fs from "fs/promises"
@@ -7,14 +8,21 @@ import { ProviderAuthHealth } from "./auth-health"
 import { readFileWithRetry } from "../util/io-retry"
 
 export namespace Auth {
-  const removalRevisions = new Map<string, number>()
+  const runtimeState = RuntimeContext.state(() => ({
+    removalRevisions: new Map<string, number>(),
+    locks: new Map<string, Promise<unknown>>(),
+  }))
 
   function recordRemoval(providerID: string) {
-    removalRevisions.set(providerID, (removalRevisions.get(providerID) ?? 0) + 1)
+    const instanceState = runtimeState()
+
+    instanceState.removalRevisions.set(providerID, (instanceState.removalRevisions.get(providerID) ?? 0) + 1)
   }
 
   export function removalRevision(providerID: string) {
-    return removalRevisions.get(providerID) ?? 0
+    const instanceState = runtimeState()
+
+    return instanceState.removalRevisions.get(providerID) ?? 0
   }
 
   export const Oauth = z
@@ -138,8 +146,6 @@ export namespace Auth {
       )
       .optional(),
   })
-
-  const locks = new Map<string, Promise<unknown>>()
 
   function filepath() {
     return Global.Path.authProvider
@@ -508,13 +514,15 @@ export namespace Auth {
   }
 
   export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const previous = locks.get(key) ?? Promise.resolve()
+    const instanceState = runtimeState()
+
+    const previous = instanceState.locks.get(key) ?? Promise.resolve()
     let release!: () => void
     const current = new Promise<void>((resolve) => {
       release = resolve
     })
     const next = previous.catch(() => {}).then(() => current)
-    locks.set(key, next)
+    instanceState.locks.set(key, next)
     await previous.catch(() => {})
     try {
       return await withFileLock(
@@ -527,7 +535,7 @@ export namespace Auth {
       )
     } finally {
       release()
-      if (locks.get(key) === next) locks.delete(key)
+      if (instanceState.locks.get(key) === next) instanceState.locks.delete(key)
     }
   }
 

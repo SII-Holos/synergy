@@ -2,12 +2,17 @@ import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 type WorkerReport = {
   sessionID?: string
+  unattendedSessionID?: string
   scopeID?: string
   itemID?: string
   messageID?: string
+  unattendedItemID?: string
   queued?: boolean
   itemCount?: number
   itemDeliveryKey?: string | null
@@ -15,14 +20,12 @@ type WorkerReport = {
   rootMessages?: number
   queuedItems?: number
   queuedDeliveryKeys?: Array<string | null>
-  materializedMessageID?: string | null
-  materializedText?: string | null
-  materializedInboxDeliveryKey?: string | null
-  materializedChannelReplyTo?: string | null
-  materializedReplyTo?: string | null
-  assistantMessages?: number
-  assistantErrorMessages?: number
-  materializedOnce?: boolean
+  queuedMetadata?: Record<string, unknown> | null
+  latchReason?: string | null
+  unattendedLatchReason?: string | null
+  interactiveDriveBlocked?: boolean
+  unattendedDriveBlocked?: boolean
+  unattendedQueuedItems?: number
 }
 
 const WORKER_TIMEOUT_MS = 30_000
@@ -73,52 +76,67 @@ async function runWorker(
 
 describe("fresh-process restart-while-queued recovery", () => {
   test(
-    "process B startup recovery materializes the durable queued task once with metadata",
-    async () => {
-      const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-restart-queued-home-"))
-      const workdir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-restart-queued-work-"))
-      const fixture = path.join(import.meta.dir, "fixtures", "restart-while-queued-worker.ts")
-      const packageRoot = path.resolve(import.meta.dir, "../..")
-      const outputA = path.join(workdir, "enqueue.json")
-      const outputB = path.join(workdir, "recover.json")
-      try {
-        // Process A: a real session plus a durable queued channel task with a
-        // deterministic delivery key; enqueue twice to prove dedup; exit
-        // without draining the inbox.
-        const a = await runWorker(fixture, home, workdir, outputA, "enqueue", packageRoot)
-        expect(a.report.queued).toBe(true)
-        expect(a.report.itemCount).toBe(1)
-        expect(a.report.itemDeliveryKey).toBe("feishu:thread:restart-while-queued:once")
-        expect(a.report.itemMetadata).toMatchObject({
-          source: "channel",
-          channelPush: true,
-          channelReply: true,
-          channelReplyToMessageId: "om_original_feishu_message",
-        })
-        expect(a.report.rootMessages).toBe(0)
-        expect(a.report.sessionID).toBeTruthy()
+    "process B records the pause and keeps the durable queued task instead of driving it",
+    () =>
+      runtime.run(async () => {
+        const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-restart-queued-home-"))
+        const workdir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-restart-queued-work-"))
+        const fixture = path.join(import.meta.dir, "fixtures", "restart-while-queued-worker.ts")
+        const packageRoot = path.resolve(import.meta.dir, "../..")
+        const outputA = path.join(workdir, "enqueue.json")
+        const outputB = path.join(workdir, "recover.json")
+        try {
+          // Process A: a real interactive session plus an unattended one, each
+          // with a durable queued channel task carrying a deterministic delivery
+          // key; enqueue twice to prove dedup; exit without draining the inbox.
+          const a = await runWorker(fixture, home, workdir, outputA, "enqueue", packageRoot)
+          expect(a.report.queued).toBe(true)
+          expect(a.report.itemCount).toBe(1)
+          expect(a.report.itemDeliveryKey).toBe("feishu:thread:restart-while-queued:once")
+          expect(a.report.itemMetadata).toMatchObject({
+            source: "channel",
+            channelPush: true,
+            channelReply: true,
+            channelReplyToMessageId: "om_original_feishu_message",
+          })
+          expect(a.report.rootMessages).toBe(0)
+          expect(a.report.sessionID).toBeTruthy()
+          expect(a.report.unattendedSessionID).toBeTruthy()
 
-        // Process B: a fresh process over the same SYNERGY_HOME whose only
-        // recovery action is the startup recovery seam. No new delivery.
-        const b = await runWorker(fixture, home, workdir, outputB, "recover", packageRoot)
-        expect(b.report.sessionID).toBe(a.report.sessionID)
+          // Process B: a fresh process over the same SYNERGY_HOME whose only
+          // recovery action is the real startup seam. No new delivery, no drive.
+          const b = await runWorker(fixture, home, workdir, outputB, "recover", packageRoot)
+          expect(b.report.sessionID).toBe(a.report.sessionID)
 
-        // Target state: the queued task was discovered at startup, drained to a
-        // durable materialized root exactly once, and carries its delivery and
-        // channel correlation metadata forward.
-        expect(b.report.queuedItems).toBe(0)
-        expect(b.report.rootMessages).toBe(1)
-        expect(b.report.materializedMessageID).toBeTruthy()
-        expect(b.report.materializedText).toContain("process B must recover this queued channel task")
-        expect(b.report.materializedInboxDeliveryKey).toBe("feishu:thread:restart-while-queued:once")
-        expect(b.report.materializedChannelReplyTo).toBe("om_original_feishu_message")
-        expect(b.report.materializedReplyTo).toBe("oc_thread_original_123")
-        expect(b.report.assistantErrorMessages).toBe(0)
-      } finally {
-        await fs.rm(home, { recursive: true, force: true }).catch(() => {})
-        await fs.rm(workdir, { recursive: true, force: true }).catch(() => {})
-      }
-    },
+          // The queued work survives the restart with its identity and channel
+          // correlation intact. Nothing materialized it, because startup no
+          // longer resumes work on the user's behalf.
+          expect(b.report.queuedItems).toBe(1)
+          expect(b.report.queuedDeliveryKeys).toEqual(["feishu:thread:restart-while-queued:once"])
+          expect(b.report.queuedMetadata).toMatchObject({
+            channelReplyToMessageId: "om_original_feishu_message",
+            replyTo: "oc_thread_original_123",
+          })
+          expect(b.report.rootMessages).toBe(0)
+
+          // The interactive session is stopped and says why, so the user has a
+          // visible, actionable state rather than work silently resumed.
+          expect(b.report.latchReason).toBe("interrupted")
+          expect(b.report.interactiveDriveBlocked).toBe(true)
+
+          // The unattended session is the control: identical queued state, no
+          // latch, and automatic driving still allowed. This is what keeps the
+          // pause from leaking into machine sessions that reconcile themselves.
+          expect(b.report.unattendedLatchReason).toBeNull()
+          expect(b.report.unattendedDriveBlocked).toBe(false)
+          expect(b.report.unattendedQueuedItems).toBe(1)
+        } finally {
+          await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+          await fs.rm(workdir, { recursive: true, force: true }).catch(() => {})
+        }
+      }),
     { timeout: 90_000 },
   )
 })
+
+afterRuntimeTests(() => runtime.close())

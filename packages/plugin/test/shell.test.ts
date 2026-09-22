@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test"
-import { capability, compilePluginManifest, definePlugin, PluginManifest, shell } from "../src"
+import {
+  PLUGIN_UI_6_BASE_SYNERGY_RANGE,
+  PLUGIN_UI_API_VERSION,
+  capability,
+  compilePluginManifest,
+  definePlugin,
+  PluginManifest,
+  shell,
+} from "../src"
 
 test("compiles a Shell and its page renderers with explicit capability ownership", () => {
   const definition = definePlugin({
@@ -20,7 +28,7 @@ test("compiles a Shell and its page renderers with explicit capability ownership
     compilePluginManifest(definition, {
       generation: "generation",
       ui: {
-        apiVersion: "5.0",
+        apiVersion: PLUGIN_UI_API_VERSION,
         entry: "ui/index.js",
         sha256: "a".repeat(64),
         resources: [],
@@ -47,12 +55,12 @@ test("compiles a Shell and its page renderers with explicit capability ownership
   ).toThrow("ui.shell")
 })
 
-test("UI API 5 artifacts declare the first supporting host release", () => {
+test("UI API 6 artifacts declare the first supporting host release", () => {
   const definition = definePlugin({ id: "new-ui", version: "1.0.0", description: "UI minimum", contributions: [] })
   const manifest = compilePluginManifest(definition, {
     generation: "generation",
-    ui: { apiVersion: "5.0", entry: "ui/index.js", sha256: "a".repeat(64), exports: {} },
+    ui: { apiVersion: PLUGIN_UI_API_VERSION, entry: "ui/index.js", sha256: "a".repeat(64), exports: {} },
   })
-  expect(manifest.compatibility.synergy).toBe(">=3.0.23")
+  expect(manifest.compatibility.synergy).toBe(PLUGIN_UI_6_BASE_SYNERGY_RANGE)
   expect(compilePluginManifest(definition, { generation: "generation" }).compatibility.synergy).toBe(">=3.0.11")
 })

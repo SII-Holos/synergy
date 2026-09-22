@@ -18,7 +18,7 @@
   "artifacts": {
     "generation": "content-derived-generation",
     "runtime": { "entry": "runtime/index.js", "sha256": "..." },
-    "ui": { "apiVersion": "5.0", "entry": "ui/index.js", "sha256": "...", "resources": [] },
+    "ui": { "apiVersion": "6.0", "entry": "ui/index.js", "sha256": "...", "resources": [] },
   },
 }
 ```
@@ -27,7 +27,7 @@ Identity, compatibility, and descriptive fields come from `definePlugin()`. `com
 
 `apiVersion: "4.0"` identifies the entire stable API4 family. The npm authoring packages follow the Synergy product release version, so their package major does not select the Plugin API family. Synergy reads `apiVersion` and `compatibility` before strict V4 decoding and before executable import. Early pre-GA API4 artifacts that omitted `compatibility` receive the API4 base range at the decoder boundary.
 
-UI artifacts declare their independent API version and explicit resource path/hash graph. Plugin Kit raises the generated minimum host version for UI API 5; a backend-only plugin retains the API4 baseline. A missing UI version identifies UI4 metadata, which can still be inspected but cannot execute in the UI5 host. See [UI contributions](ui-contributions.md).
+UI artifacts declare their independent API version and explicit resource path/hash graph. Plugin Kit writes the version from `PLUGIN_UI_API_VERSION` and raises the generated minimum host version for UI API 6; a backend-only plugin retains the API4 baseline. A missing UI version identifies UI4 metadata, and a `"5.0"` version identifies UI5; both can still be inspected but cannot execute in the UI6 host. See [UI contributions](ui-contributions.md).
 
 ## Contribution Kinds
 
@@ -61,6 +61,8 @@ UI artifacts declare their independent API version and explicit resource path/ha
 | `lifecycle.install`     | yes        | post-commit fresh-install handler identity                                   |
 | `lifecycle.upgrade`     | yes        | handler identity                                                             |
 | `lifecycle.uninstall`   | yes        | handler identity                                                             |
+
+Tool contributions may declare `requiresWorkspace: false` for operations that use only network or managed data. Omission defaults to requiring a workspace. MCP server declarations carry the same optional field and apply it to their tools. The host enforces this during discovery and execution, independently of capability approval; `full_access` cannot create a missing workspace.
 
 Contribution IDs are unique within a contribution kind. This permits a command operation and its declarative UI action to share one meaningful local ID while their kind-qualified identities remain distinct. Every `requires` entry must name a top-level capability. Executable declarations require a runtime artifact. A trusted component requires a UI artifact.
 

@@ -337,10 +337,22 @@ async function stageProductAssets(runtimeDir: string) {
 }
 
 export async function generateSchema(directory: string, profile: RuntimeArtifactProfile) {
-  if (profile === "full") await import("../../../packages/product-runtime/src/configuration")
-  else await import("../../../packages/runtime-local/src/config-schema")
+  const { RuntimeContext } = await import("../../../packages/harness/src/lifecycle/context")
+  const { createLocalHost } = await import("../../../packages/runtime-local/src/host")
   const { Config } = await import("../../../packages/harness/src/config/config")
-  const schema = z.toJSONSchema(Config.schema(), { unrepresentable: "any" })
+  const register =
+    profile === "full"
+      ? (await import("../../../packages/product-runtime/src/configuration")).registerProductConfiguration
+      : (await import("../../../packages/runtime-local/src/config-schema")).registerConfig
+  const context = RuntimeContext.create(createLocalHost())
+  const schema = context.run(() => {
+    try {
+      register()
+      return z.toJSONSchema(Config.schema(), { unrepresentable: "any" })
+    } finally {
+      context.dispose()
+    }
+  })
   if (schema.properties) {
     delete schema.properties.keybinds
     delete schema.properties.experimental

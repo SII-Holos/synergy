@@ -72,397 +72,398 @@ function parseRange(input: string | undefined) {
   }
 }
 
-export const WorkspaceFilesRoute = new Hono()
-  .get(
-    "/children",
-    describeRoute({
-      summary: "List workspace file children",
-      description: "List direct children for a workspace directory with lazy-loading friendly pagination.",
-      operationId: "workspace.files.children",
-      responses: {
-        200: {
-          description: "Workspace file children",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.ChildrenResponse),
+export const WorkspaceFilesRoute = () =>
+  new Hono()
+    .get(
+      "/children",
+      describeRoute({
+        summary: "List workspace file children",
+        description: "List direct children for a workspace directory with lazy-loading friendly pagination.",
+        operationId: "workspace.files.children",
+        responses: {
+          200: {
+            description: "Workspace file children",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.ChildrenResponse),
+              },
             },
           },
+          ...errors(404),
+          ...AccessDeniedResponse,
         },
-        ...errors(404),
-        ...AccessDeniedResponse,
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        path: z.string().optional(),
-        limit: z.coerce.number().int().min(1).max(1000).optional(),
-        cursor: z.string().optional(),
-        showHidden: BoolString,
-        showIgnored: BoolString,
       }),
-    ),
-    async (c) => {
-      const query = c.req.valid("query")
-      return respondGuarded(c, () =>
-        WorkspaceFileService.children({
-          path: query.path,
-          limit: query.limit,
-          cursor: query.cursor,
-          showHidden: bool(query.showHidden),
-          showIgnored: bool(query.showIgnored),
+      validator(
+        "query",
+        z.object({
+          path: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(1000).optional(),
+          cursor: z.string().optional(),
+          showHidden: BoolString,
+          showIgnored: BoolString,
         }),
-      )
-    },
-  )
-  .get(
-    "/read",
-    describeRoute({
-      summary: "Read workspace file",
-      description: "Read a workspace file as text, image preview, or binary metadata.",
-      operationId: "workspace.files.read",
-      responses: {
-        200: {
-          description: "Workspace file read result",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.ReadResult),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        return respondGuarded(c, () =>
+          WorkspaceFileService.children({
+            path: query.path,
+            limit: query.limit,
+            cursor: query.cursor,
+            showHidden: bool(query.showHidden),
+            showIgnored: bool(query.showIgnored),
+          }),
+        )
+      },
+    )
+    .get(
+      "/read",
+      describeRoute({
+        summary: "Read workspace file",
+        description: "Read a workspace file as text, image preview, or binary metadata.",
+        operationId: "workspace.files.read",
+        responses: {
+          200: {
+            description: "Workspace file read result",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.ReadResult),
+              },
             },
           },
+          ...errors(404),
+          ...AccessDeniedResponse,
         },
-        ...errors(404),
-        ...AccessDeniedResponse,
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        path: z.string(),
-        range: z.string().optional(),
-        offset: z.coerce.number().int().min(0).optional(),
-        limit: z.coerce.number().int().min(1).max(5000).optional(),
-        preview: BoolString,
-        mode: z.enum(["range", "document"]).default("range"),
       }),
-    ),
-    async (c) => {
-      const query = c.req.valid("query")
-      const range = parseRange(query.range)
-      return respondGuarded(c, () =>
-        WorkspaceFileService.read({
-          path: query.path,
-          offset: query.offset ?? range.offset,
-          limit: query.limit ?? range.limit,
-          preview: bool(query.preview),
-          mode: query.mode,
+      validator(
+        "query",
+        z.object({
+          path: z.string(),
+          range: z.string().optional(),
+          offset: z.coerce.number().int().min(0).optional(),
+          limit: z.coerce.number().int().min(1).max(5000).optional(),
+          preview: BoolString,
+          mode: z.enum(["range", "document"]).default("range"),
         }),
-      )
-    },
-  )
-  .get(
-    "/stat",
-    describeRoute({
-      summary: "Stat workspace file",
-      description: "Return metadata for a workspace file or directory.",
-      operationId: "workspace.files.stat",
-      responses: {
-        200: {
-          description: "Workspace file node",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.Node),
-            },
-          },
-        },
-        ...errors(404),
-        ...AccessDeniedResponse,
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        path: z.string(),
-      }),
-    ),
-    async (c) => {
-      return respondGuarded(c, () => WorkspaceFileService.node(c.req.valid("query").path))
-    },
-  )
-  .get(
-    "/search",
-    describeRoute({
-      summary: "Search workspace files",
-      description: "Search workspace files, content, or active LSP symbols.",
-      operationId: "workspace.files.search",
-      responses: {
-        200: {
-          description: "Workspace search response",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.SearchResponse),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        query: z.string(),
-        kind: z.enum(["files", "content", "symbol"]).default("files"),
-        limit: z.coerce.number().int().min(1).max(200).optional(),
-        cursor: z.string().optional(),
-        include: z.string().optional(),
-        exclude: z.string().optional(),
-      }),
-    ),
-    async (c) => {
-      return c.json(await WorkspaceFileSearch.search({ ...c.req.valid("query"), signal: c.req.raw.signal }))
-    },
-  )
-  .get(
-    "/status",
-    describeRoute({
-      summary: "Get workspace file status",
-      description: "Return git-backed file status for the current workspace.",
-      operationId: "workspace.files.status",
-      responses: {
-        200: {
-          description: "Workspace file status",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.StatusSummary),
-            },
-          },
-        },
-      },
-    }),
-    async (c) => {
-      return c.json(await WorkspaceFileStatus.summary())
-    },
-  )
-  .get(
-    "/content",
-    describeRoute({
-      summary: "Read workspace file bytes",
-      description:
-        "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, " +
-        "and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative " +
-        "resources, use GET /workspace/files/raw/{scope}/{path} instead.",
-      operationId: "workspace.files.content",
-      responses: {
-        200: {
-          description: "PDF file bytes",
-        },
-        400: {
-          description: "Bad request",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.ContentPreviewError),
-            },
-          },
-        },
-        ...AccessDeniedResponse,
-        ...errors(404),
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        path: z.string(),
-      }),
-    ),
-    async (c) => {
-      const query = c.req.valid("query")
-      try {
-        const result = await WorkspaceFileService.content({ path: query.path })
-        c.header("Content-Type", "application/pdf")
-        c.header("Cache-Control", "no-store")
-        return c.body(result.stream)
-      } catch (err) {
-        if (err instanceof WorkspaceFileService.AccessDeniedError) {
-          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
-        }
-        if (
-          err instanceof WorkspaceFileService.UnsupportedPreviewError ||
-          err instanceof WorkspaceFileService.TooLargeError
-        ) {
-          return c.json({ name: err.name, data: { message: err.message } }, 400)
-        }
-        throw err
-      }
-    },
-  )
-  .get(
-    "/raw/:token/:path{.+}",
-    describeRoute({
-      summary: "Serve a raw workspace file for a new browser tab",
-      description:
-        "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
-        "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
-        "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
-        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin. A download query " +
-        "(?download or ?download=1, negated by ?download=false) returns the bytes as a Content-Disposition " +
-        "attachment without the document sandbox, so any file the route serves can also be saved to disk.",
-      operationId: "workspace.files.raw",
-      hide: true,
-      responses: {
-        200: { description: "Raw file bytes" },
-        400: {
-          description: "Bad request",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.ContentPreviewError),
-            },
-          },
-        },
-        ...AccessDeniedResponse,
-        ...errors(404),
-      },
-    }),
-    async (c) => {
-      const wildcard = c.req.path.match(/^\/workspace\/files\/raw\/[^/]+\/(.+)$/)?.[1]
-      if (wildcard === undefined) {
-        return c.json(
-          {
-            name: "WorkspaceFileAccessDeniedError",
-            data: { message: "Access denied: path traversal is not allowed" },
-          },
-          403,
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        const range = parseRange(query.range)
+        return respondGuarded(c, () =>
+          WorkspaceFileService.read({
+            path: query.path,
+            offset: query.offset ?? range.offset,
+            limit: query.limit ?? range.limit,
+            preview: bool(query.preview),
+            mode: query.mode,
+          }),
         )
-      }
-      let rel: string
-      try {
-        rel = decodeURIComponent(wildcard)
-      } catch {
-        rel = wildcard
-      }
-      if (isUnsafeRawPath(rel)) {
-        return c.json(
-          {
-            name: "WorkspaceFileAccessDeniedError",
-            data: { message: "Access denied: path traversal is not allowed" },
+      },
+    )
+    .get(
+      "/stat",
+      describeRoute({
+        summary: "Stat workspace file",
+        description: "Return metadata for a workspace file or directory.",
+        operationId: "workspace.files.stat",
+        responses: {
+          200: {
+            description: "Workspace file node",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.Node),
+              },
+            },
           },
-          403,
-        )
-      }
-      try {
-        const result = await WorkspaceFileService.serveFile({ path: rel })
-        const ext = path.extname(rel).toLowerCase()
-        const download = c.req.query("download")
-        if (download !== undefined && download !== "false") {
-          // Attachment responses hand raw bytes to the browser's download
-          // path, never to a renderer: the document sandbox CSP is irrelevant
-          // and the filename only reaches the header, RFC 5987-encoded with
-          // reserved characters percent-escaped so any name survives.
-          c.header("Content-Disposition", contentDispositionAttachment(path.basename(rel)))
-          c.header("Content-Type", result.mime || "application/octet-stream")
+          ...errors(404),
+          ...AccessDeniedResponse,
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          path: z.string(),
+        }),
+      ),
+      async (c) => {
+        return respondGuarded(c, () => WorkspaceFileService.node(c.req.valid("query").path))
+      },
+    )
+    .get(
+      "/search",
+      describeRoute({
+        summary: "Search workspace files",
+        description: "Search workspace files, content, or active LSP symbols.",
+        operationId: "workspace.files.search",
+        responses: {
+          200: {
+            description: "Workspace search response",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.SearchResponse),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          query: z.string(),
+          kind: z.enum(["files", "content", "symbol"]).default("files"),
+          limit: z.coerce.number().int().min(1).max(200).optional(),
+          cursor: z.string().optional(),
+          include: z.string().optional(),
+          exclude: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        return c.json(await WorkspaceFileSearch.search({ ...c.req.valid("query"), signal: c.req.raw.signal }))
+      },
+    )
+    .get(
+      "/status",
+      describeRoute({
+        summary: "Get workspace file status",
+        description: "Return git-backed file status for the current workspace.",
+        operationId: "workspace.files.status",
+        responses: {
+          200: {
+            description: "Workspace file status",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.StatusSummary),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await WorkspaceFileStatus.summary())
+      },
+    )
+    .get(
+      "/content",
+      describeRoute({
+        summary: "Read workspace file bytes",
+        description:
+          "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, " +
+          "and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative " +
+          "resources, use GET /workspace/files/raw/{scope}/{path} instead.",
+        operationId: "workspace.files.content",
+        responses: {
+          200: {
+            description: "PDF file bytes",
+          },
+          400: {
+            description: "Bad request",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.ContentPreviewError),
+              },
+            },
+          },
+          ...AccessDeniedResponse,
+          ...errors(404),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          path: z.string(),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        try {
+          const result = await WorkspaceFileService.content({ path: query.path })
+          c.header("Content-Type", "application/pdf")
           c.header("Cache-Control", "no-store")
           return c.body(result.stream)
+        } catch (err) {
+          if (err instanceof WorkspaceFileService.AccessDeniedError) {
+            return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+          }
+          if (
+            err instanceof WorkspaceFileService.UnsupportedPreviewError ||
+            err instanceof WorkspaceFileService.TooLargeError
+          ) {
+            return c.json({ name: err.name, data: { message: err.message } }, 400)
+          }
+          throw err
         }
-        // Document types that can execute scripts when opened as a top-level
-        // page: HTML, SVG, and XML (XSLT processing instructions). They are
-        // untrusted — sandbox them into an opaque origin so scripts can run
-        // but cannot reach the app localStorage, the unauthenticated HTTP
-        // control plane, the event WebSocket, or the Desktop preload bridge.
-        // Mirrors packages/server/src/server/asset.ts. Static sub-resources
-        // (images, CSS, JS, fonts) keep their real MIME type and no sandbox,
-        // since a sub-resource's CSP header does not apply to the parent page.
-        const scriptableDocument =
-          ext === ".html" || ext === ".htm" || ext === ".svg" || ext === ".xml" || ext === ".xhtml"
-        if (scriptableDocument) {
-          c.header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
-        }
-        c.header(
-          "Content-Type",
-          ext === ".html" || ext === ".htm" ? "text/html; charset=utf-8" : result.mime || "application/octet-stream",
-        )
-        c.header("Cache-Control", "no-store")
-        // The Files workbench embeds raw documents in its preview iframe. The
-        // global CSP middleware otherwise sets X-Frame-Options: DENY, which
-        // blocks same-origin framing too; allow it here. The CSP sandbox above
-        // still confines script-capable documents to an opaque origin.
-        c.header("X-Frame-Options", "SAMEORIGIN")
-        return c.body(result.stream)
-      } catch (err) {
-        if (err instanceof WorkspaceFileService.AccessDeniedError) {
-          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
-        }
-        if (err instanceof WorkspaceFileService.TooLargeError) {
-          return c.json({ name: err.name, data: { message: err.message } }, 400)
-        }
-        throw err
-      }
-    },
-  )
-  .post(
-    "/write",
-    describeRoute({
-      summary: "Write workspace file",
-      description: "Write content to an existing workspace file with optional optimistic concurrency control.",
-      operationId: "workspace.files.write",
-      responses: {
-        200: {
-          description: "Workspace file write result",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.WriteFileResult),
-            },
-          },
-        },
-        400: {
-          description: "Bad request",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.WriteFileError),
-            },
-          },
-        },
-        403: {
-          description: "Forbidden",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.WriteFileError),
-            },
-          },
-        },
-        404: {
-          description: "Not found",
-          content: {
-            "application/json": {
-              schema: resolver(Storage.NotFoundError.Schema),
-            },
-          },
-        },
-        409: {
-          description: "Conflict",
-          content: {
-            "application/json": {
-              schema: resolver(WorkspaceFile.WriteFileError),
-            },
-          },
-        },
       },
-    }),
-    validator("json", WorkspaceFile.WriteFileInput),
-    async (c) => {
-      const body = c.req.valid("json")
-      try {
-        return c.json(await WorkspaceFileService.write(body))
-      } catch (err: any) {
-        if (err instanceof WorkspaceFileService.AccessDeniedError) {
-          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+    )
+    .get(
+      "/raw/:token/:path{.+}",
+      describeRoute({
+        summary: "Serve a raw workspace file for a new browser tab",
+        description:
+          "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
+          "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
+          "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
+          "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin. A download query " +
+          "(?download or ?download=1, negated by ?download=false) returns the bytes as a Content-Disposition " +
+          "attachment without the document sandbox, so any file the route serves can also be saved to disk.",
+        operationId: "workspace.files.raw",
+        hide: true,
+        responses: {
+          200: { description: "Raw file bytes" },
+          400: {
+            description: "Bad request",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.ContentPreviewError),
+              },
+            },
+          },
+          ...AccessDeniedResponse,
+          ...errors(404),
+        },
+      }),
+      async (c) => {
+        const wildcard = c.req.path.match(/^\/workspace\/files\/raw\/[^/]+\/(.+)$/)?.[1]
+        if (wildcard === undefined) {
+          return c.json(
+            {
+              name: "WorkspaceFileAccessDeniedError",
+              data: { message: "Access denied: path traversal is not allowed" },
+            },
+            403,
+          )
         }
-        if (err instanceof WorkspaceFileService.WriteConflictError) {
-          return c.json({ name: "WorkspaceFileWriteConflictError", data: { message: err.message } }, 409)
+        let rel: string
+        try {
+          rel = decodeURIComponent(wildcard)
+        } catch {
+          rel = wildcard
         }
-        if (err instanceof WorkspaceFileService.NotFoundError) {
-          return c.json({ name: "NotFoundError", data: { message: err.message } }, 404)
+        if (isUnsafeRawPath(rel)) {
+          return c.json(
+            {
+              name: "WorkspaceFileAccessDeniedError",
+              data: { message: "Access denied: path traversal is not allowed" },
+            },
+            403,
+          )
         }
-        if (err instanceof WorkspaceFileService.TooLargeError) {
-          return c.json({ name: "WorkspaceFileTooLargeError", data: { message: err.message } }, 400)
+        try {
+          const result = await WorkspaceFileService.serveFile({ path: rel })
+          const ext = path.extname(rel).toLowerCase()
+          const download = c.req.query("download")
+          if (download !== undefined && download !== "false") {
+            // Attachment responses hand raw bytes to the browser's download
+            // path, never to a renderer: the document sandbox CSP is irrelevant
+            // and the filename only reaches the header, RFC 5987-encoded with
+            // reserved characters percent-escaped so any name survives.
+            c.header("Content-Disposition", contentDispositionAttachment(path.basename(rel)))
+            c.header("Content-Type", result.mime || "application/octet-stream")
+            c.header("Cache-Control", "no-store")
+            return c.body(result.stream)
+          }
+          // Document types that can execute scripts when opened as a top-level
+          // page: HTML, SVG, and XML (XSLT processing instructions). They are
+          // untrusted — sandbox them into an opaque origin so scripts can run
+          // but cannot reach the app localStorage, the unauthenticated HTTP
+          // control plane, the event WebSocket, or the Desktop preload bridge.
+          // Mirrors packages/server/src/server/asset.ts. Static sub-resources
+          // (images, CSS, JS, fonts) keep their real MIME type and no sandbox,
+          // since a sub-resource's CSP header does not apply to the parent page.
+          const scriptableDocument =
+            ext === ".html" || ext === ".htm" || ext === ".svg" || ext === ".xml" || ext === ".xhtml"
+          if (scriptableDocument) {
+            c.header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
+          }
+          c.header(
+            "Content-Type",
+            ext === ".html" || ext === ".htm" ? "text/html; charset=utf-8" : result.mime || "application/octet-stream",
+          )
+          c.header("Cache-Control", "no-store")
+          // The Files workbench embeds raw documents in its preview iframe. The
+          // global CSP middleware otherwise sets X-Frame-Options: DENY, which
+          // blocks same-origin framing too; allow it here. The CSP sandbox above
+          // still confines script-capable documents to an opaque origin.
+          c.header("X-Frame-Options", "SAMEORIGIN")
+          return c.body(result.stream)
+        } catch (err) {
+          if (err instanceof WorkspaceFileService.AccessDeniedError) {
+            return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+          }
+          if (err instanceof WorkspaceFileService.TooLargeError) {
+            return c.json({ name: err.name, data: { message: err.message } }, 400)
+          }
+          throw err
         }
-        throw err
-      }
-    },
-  )
+      },
+    )
+    .post(
+      "/write",
+      describeRoute({
+        summary: "Write workspace file",
+        description: "Write content to an existing workspace file with optional optimistic concurrency control.",
+        operationId: "workspace.files.write",
+        responses: {
+          200: {
+            description: "Workspace file write result",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.WriteFileResult),
+              },
+            },
+          },
+          400: {
+            description: "Bad request",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.WriteFileError),
+              },
+            },
+          },
+          403: {
+            description: "Forbidden",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.WriteFileError),
+              },
+            },
+          },
+          404: {
+            description: "Not found",
+            content: {
+              "application/json": {
+                schema: resolver(Storage.NotFoundError.Schema),
+              },
+            },
+          },
+          409: {
+            description: "Conflict",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceFile.WriteFileError),
+              },
+            },
+          },
+        },
+      }),
+      validator("json", WorkspaceFile.WriteFileInput),
+      async (c) => {
+        const body = c.req.valid("json")
+        try {
+          return c.json(await WorkspaceFileService.write(body))
+        } catch (err: any) {
+          if (err instanceof WorkspaceFileService.AccessDeniedError) {
+            return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+          }
+          if (err instanceof WorkspaceFileService.WriteConflictError) {
+            return c.json({ name: "WorkspaceFileWriteConflictError", data: { message: err.message } }, 409)
+          }
+          if (err instanceof WorkspaceFileService.NotFoundError) {
+            return c.json({ name: "NotFoundError", data: { message: err.message } }, 404)
+          }
+          if (err instanceof WorkspaceFileService.TooLargeError) {
+            return c.json({ name: "WorkspaceFileTooLargeError", data: { message: err.message } }, 400)
+          }
+          throw err
+        }
+      },
+    )

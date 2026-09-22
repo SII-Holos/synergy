@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
 import { applyEdits, modify, parse as parseJsonc } from "jsonc-parser"
@@ -252,7 +253,7 @@ async function migrateAutoClassifierToSmartAllow(filepath: string): Promise<bool
 }
 
 async function migrateSiiAuthToPlugin(): Promise<boolean> {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = RuntimeContext.current().host.env.HOME || RuntimeContext.current().host.env.USERPROFILE || "~"
   const oldInspirePath = path.join(home, ".synergy", "data", "auth", "inspire.json")
   const oldHarborPath = path.join(home, ".synergy", "data", "auth", "harbor.json")
   const pluginAuthPath = path.join(home, ".synergy", "data", "plugin", "inspire", "auth.json")
@@ -291,7 +292,7 @@ async function migrateSiiAuthToPlugin(): Promise<boolean> {
 }
 
 async function migrateSiiCacheToPlugin(): Promise<boolean> {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = RuntimeContext.current().host.env.HOME || RuntimeContext.current().host.env.USERPROFILE || "~"
   const oldTokenPath = path.join(home, ".synergy", "cache", "inspire-token.json")
   const oldResourcesPath = path.join(home, ".synergy", "cache", "inspire-resources.json")
   const pluginCacheDir = path.join(home, ".synergy", "cache", "plugin", "inspire")
@@ -1297,4 +1298,6 @@ export const migrations: Migration[] = [
     },
   },
 ]
-MigrationRegistry.register("config", migrations)
+export function registerConfigMigrations() {
+  MigrationRegistry.register("config", migrations)
+}

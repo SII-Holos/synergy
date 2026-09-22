@@ -1,9 +1,11 @@
+import { SessionCompat } from "@ericsanchezok/synergy-harness/persistence"
 import { cmd } from "../cmd"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { parseStorageConfiguration } from "@ericsanchezok/synergy-harness/storage/config"
+import { currentMaintenance } from "../../maintenance-progress"
 
 export const DataStorageCommand = cmd({
   command: "storage",
@@ -36,13 +38,79 @@ export const DataStorageCommand = cmd({
                 phase: handle.manifest.phase,
                 storeID: handle.manifest.storeID,
                 artifactStoreID: handle.manifest.artifactStoreID,
+                upgrade: await SessionCompat.status(),
                 recoveryRecords: recovery.length,
                 pendingEvents: await handle.store.pendingEventCount(),
+                maintenance: await StorageMaintenance.status(),
               },
               null,
               2,
             ),
           )
+        },
+      )
+      .command(
+        "reclaim",
+        "finish pending SQLite space reclamation in an exclusive maintenance window",
+        (yargs) =>
+          yargs.option("json", {
+            describe: "print only the final status as JSON",
+            type: "boolean",
+            default: false,
+          }),
+        async (args) => {
+          const context = currentMaintenance()
+          const controller = new AbortController()
+          const cancel = () => controller.abort(new Error("Storage reclamation was cancelled"))
+          if (!context) {
+            process.once("SIGINT", cancel)
+            process.once("SIGTERM", cancel)
+          }
+          try {
+            await using handle = await StorageMaintenance.open({ migrate: false })
+            const status = await StorageMaintenance.reclaim({
+              signal: context?.signal ?? controller.signal,
+              progress: (current, total, phase) => {
+                if (args.json) return
+                const suffix = total > 0 ? `${current}/${total}` : `${current}`
+                process.stdout.write(`\rReclaiming storage (phase ${phase}): ${suffix}`)
+              },
+            })
+            if (!args.json) process.stdout.write("\n")
+            console.log(JSON.stringify(status, null, 2))
+            if (status.reclaim.pending && !status.reclaim.paused) process.exitCode = 1
+          } finally {
+            process.removeListener("SIGINT", cancel)
+            process.removeListener("SIGTERM", cancel)
+          }
+        },
+      )
+      .command(
+        "history [action] [session]",
+        "inspect or pause background history preparation, or prepare one Session offline",
+        (yargs) =>
+          yargs
+            .positional("action", {
+              type: "string",
+              choices: ["status", "pause", "resume", "prepare", "retry"],
+              default: "status",
+            })
+            .positional("session", { type: "string", describe: "Session ID required by prepare or retry" }),
+        async (args) => {
+          const action = args.action ?? "status"
+          if (action === "prepare" || action === "retry") {
+            if (!args.session) throw new Error("A Session ID is required")
+            await using handle = await StorageMaintenance.open()
+            await SessionCompat.prepare(args.session, action === "retry")
+            await SessionCompat.drain()
+            const result = await SessionCompat.preparation(args.session)
+            console.log(JSON.stringify(result, null, 2))
+            if (result.state !== "ready") process.exitCode = 1
+            return
+          }
+          await using handle = await StorageMaintenance.open({ readonly: true })
+          if (action === "pause" || action === "resume") await SessionCompat.control(action)
+          console.log(JSON.stringify(await SessionCompat.status(), null, 2))
         },
       )
       .command(

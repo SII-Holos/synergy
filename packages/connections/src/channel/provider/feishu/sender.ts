@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import type { FeishuApiContext } from "./api-context"
 
@@ -144,5 +145,5 @@ export class ChatNameCache {
   }
 }
 
-export const senderNameCache = new SenderNameCache()
-export const chatNameCache = new ChatNameCache()
+export const senderNameCache = RuntimeContext.state(() => new SenderNameCache())
+export const chatNameCache = RuntimeContext.state(() => new ChatNameCache())

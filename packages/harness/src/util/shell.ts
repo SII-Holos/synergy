@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Flag } from "../flag/flag"
 import { lazy } from "./lazy"
 import { accessSync, constants } from "fs"
@@ -187,7 +188,7 @@ export namespace Shell {
   }
 
   function resolve({ allowBlacklisted = true }: { allowBlacklisted?: boolean } = {}) {
-    const shell = process.env.SHELL
+    const shell = RuntimeContext.current().host.env.SHELL
     if (!shell || !isValid(shell)) return fallback()
     if (!allowBlacklisted && BLACKLIST.has(basename(shell).toLowerCase())) return fallback()
     return shell
@@ -203,7 +204,7 @@ export namespace Shell {
         const bash = path.join(path.dirname(git), "..", "bin", "bash.exe")
         if (Bun.file(bash).size) return bash
       }
-      return process.env.COMSPEC || "cmd.exe"
+      return RuntimeContext.current().host.env.COMSPEC || "cmd.exe"
     }
     if (process.platform === "darwin") {
       const candidates = ["/bin/zsh", "/bin/bash", "/bin/sh"]
@@ -220,7 +221,11 @@ export namespace Shell {
     return "/bin/sh"
   }
 
-  export const preferred = lazy(() => resolve())
+  const choices = RuntimeContext.state(() => ({
+    preferred: lazy(() => resolve()),
+    acceptable: lazy(() => resolve({ allowBlacklisted: false })),
+  }))
 
-  export const acceptable = lazy(() => resolve({ allowBlacklisted: false }))
+  export const preferred = Object.assign(() => choices().preferred(), { reset: () => choices().preferred.reset() })
+  export const acceptable = Object.assign(() => choices().acceptable(), { reset: () => choices().acceptable.reset() })
 }

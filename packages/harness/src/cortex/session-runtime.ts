@@ -44,7 +44,7 @@ export function registerCortexSessionRuntime() {
       if (task) await Cortex.cancelAll(task.sessionID)
       await Cortex.drain(taskID)
     },
-    drain: () => Cortex.drain(),
+    stop: () => Cortex.stop(),
     cancelAllForParent: async (parentSessionID) => {
       await Cortex.cancelAll(parentSessionID)
     },

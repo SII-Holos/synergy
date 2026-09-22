@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Info as SessionInfo } from "./types"
 
 /**
@@ -67,31 +68,47 @@ export namespace WorkflowPromptRegistry {
     workflowConflict?(error: unknown): { reason: string } | undefined
   }
 
-  const contributions = new Map<string, Contribution>()
+  const runtimeState = RuntimeContext.state(() => ({
+    contributions: new Map<string, Contribution>(),
+  }))
 
   export function register(contribution: Contribution): void {
-    contributions.set(contribution.kind, contribution)
+    const instanceState = runtimeState()
+
+    const existing = instanceState.contributions.get(contribution.kind)
+    if (existing === contribution) return
+    RuntimeContext.assertCompositionOpen("workflow prompt")
+    if (existing) throw new Error(`Workflow prompt ${contribution.kind} is already registered`)
+    instanceState.contributions.set(contribution.kind, contribution)
   }
 
   export function get(kind: string): Contribution | undefined {
-    return contributions.get(kind)
+    const instanceState = runtimeState()
+
+    return instanceState.contributions.get(kind)
   }
 
   export function kinds(): string[] {
-    return [...contributions.keys()].sort()
+    const instanceState = runtimeState()
+
+    return [...instanceState.contributions.keys()].sort()
   }
 
   /** All control sources across registered contributions (legacy
    * CONTROL_SOURCES union, extended per-domain). */
   export function controlSources(): Set<string> {
+    const instanceState = runtimeState()
+
     const sources = new Set<string>()
-    for (const contribution of contributions.values()) {
+    for (const contribution of instanceState.contributions.values()) {
       for (const source of contribution.controlSources ?? []) sources.add(source)
     }
     return sources
   }
 
   export function reset(): void {
-    contributions.clear()
+    const instanceState = runtimeState()
+
+    instanceState.contributions.clear()
   }
 }

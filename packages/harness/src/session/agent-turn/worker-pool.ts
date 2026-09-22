@@ -1,6 +1,8 @@
 import { ScopeContext } from "../../scope/context"
 import { Log } from "../../util/log"
 import { ObservabilityMetrics } from "../../observability/metrics"
+import { ObservabilityContext } from "../../observability/context"
+import { RolloutContext } from "../rollout/context"
 import { exponentialBackoffDelayMs, largestExponentialBackoffStepMs } from "../../util/exponential-backoff"
 import type { LLM } from "../llm"
 import type { ToolCatalog } from "../tool-catalog"
@@ -94,6 +96,7 @@ const RELEASED_REQUEST_TTL_MS = 30_000
 const RELEASED_REQUEST_RING_CAPACITY = 2
 
 interface PoolTask {
+  recordMetrics(rows: AgentTurnProtocol.MetricRow[], worker: PoolWorker): void
   archive?: RolloutTransportSchema.Sink
   archiveSequence: number
   archiving: boolean
@@ -375,7 +378,25 @@ export class AgentWorkerPool {
       const onAbort = () => this.cancel(requestId, signal.reason)
       const released = Promise.withResolvers<void>()
       signal.addEventListener("abort", onAbort, { once: true })
+      const context = ObservabilityContext.current()
+      const callID = RolloutContext.current()?.callID ?? context.callID
+      const scopeID = envelope.scope.id
+      const sessionID = input.sessionID
+      const messageID = input.user.id
       task = {
+        recordMetrics: ObservabilityContext.bind((rows, worker) => {
+          for (const row of rows)
+            ObservabilityMetrics.record({
+              ...row,
+              scopeID,
+              sessionID,
+              messageID,
+              traceId: context.traceId ?? row.traceId,
+              callID: callID ?? row.callID,
+              processId: worker.id,
+              pid: worker.pid,
+            })
+        }),
         archive,
         archiveSequence: 0,
         archiving: false,
@@ -639,13 +660,6 @@ export class AgentWorkerPool {
       return
     }
     if (message.type === "pong") return
-    // Worker-recorded rows are not tied to an owned turn: a worker may forward
-    // while idle, so this must be handled before the request-ownership branch.
-    if (message.type === "metrics") {
-      for (const row of message.rows) ObservabilityMetrics.record(row)
-      return
-    }
-
     const task = worker.task
     if (!task || "requestId" in message === false || message.requestId !== task.requestId) {
       const lateRequestId =
@@ -658,6 +672,10 @@ export class AgentWorkerPool {
         messageType: message.type,
         ...(lateRequestId !== undefined ? { requestId: lateRequestId } : {}),
       })
+      return
+    }
+    if (message.type === "metrics") {
+      task.recordMetrics(message.rows, worker)
       return
     }
     if (message.type === "run-ready") {

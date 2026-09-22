@@ -18,6 +18,7 @@ import {
   type SelectDirectoryDialogBridgeResponse,
 } from "./directory-picker.js"
 import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
+import type { DesktopServerStatus } from "./server-manager.js"
 import type { DesktopBadgeState } from "./ipc-contract.js"
 import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
 
@@ -61,10 +62,19 @@ const browserNative = {
 
 const server = {
   status() {
-    return ipcRenderer.invoke("desktop.server.status")
+    return ipcRenderer.invoke("desktop.server.status") as Promise<DesktopServerStatus | null>
   },
   restart() {
-    return ipcRenderer.invoke("desktop.server.restart")
+    return ipcRenderer.invoke("desktop.server.restart") as Promise<DesktopServerStatus | null>
+  },
+  maintenance() {
+    return ipcRenderer.invoke("desktop.server.maintenance") as Promise<DesktopServerStatus | null>
+  },
+  cancelMaintenance() {
+    return ipcRenderer.invoke("desktop.server.cancelMaintenance") as Promise<DesktopServerStatus | null>
+  },
+  diagnostics() {
+    return ipcRenderer.invoke("desktop.server.diagnostics") as Promise<string>
   },
 }
 

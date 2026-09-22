@@ -3,7 +3,6 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 export namespace LSPPid {
   const log = Log.create({ service: "lsp.pid" })
-  const pidFile = Global.Path.lspPids
 
   export async function track(pid: number) {
     const pids = await read()
@@ -38,7 +37,7 @@ export namespace LSPPid {
 
   async function read(): Promise<Set<number>> {
     try {
-      const text = await Bun.file(pidFile).text()
+      const text = await Bun.file(Global.Path.lspPids).text()
       const arr = JSON.parse(text)
       if (Array.isArray(arr)) return new Set(arr.filter((x): x is number => typeof x === "number"))
     } catch {}
@@ -46,6 +45,6 @@ export namespace LSPPid {
   }
 
   async function write(pids: Set<number>) {
-    await Bun.write(pidFile, JSON.stringify([...pids]))
+    await Bun.write(Global.Path.lspPids, JSON.stringify([...pids]))
   }
 }

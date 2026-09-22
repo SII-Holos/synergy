@@ -43,7 +43,7 @@ const STATUSES: Array<{ label: string; status: SessionStatus | undefined }> = [
   { label: "idle", status: { type: "idle" } },
   { label: "busy", status: { type: "busy" } },
   { label: "retry", status: { type: "retry", attempt: 1, message: "rate limited", next: 1_000 } },
-  { label: "recovering", status: { type: "recovering" } },
+  { label: "paused", status: { type: "paused", reason: "interrupted", since: 1 } },
   { label: "missing", status: undefined },
 ]
 
@@ -71,7 +71,7 @@ describe("cross-surface session state consistency", () => {
           return
         }
 
-        if (expected === "working" || expected === "recovering") {
+        if (expected === "working") {
           // The sidebar carries work through a working tone (or the audit tone
           // for a pulsing audit), the board through "working", and the status
           // bar through a live pulse.

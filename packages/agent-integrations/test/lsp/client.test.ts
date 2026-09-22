@@ -6,6 +6,9 @@ import { LSPServer } from "../../src/lsp/server"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // Minimal fake LSP server that speaks JSON-RPC over stdio
 function spawnFakeServer() {
@@ -19,79 +22,86 @@ function spawnFakeServer() {
 }
 
 describe("LSPClient interop", () => {
-  beforeEach(async () => {
-    await Log.init({ print: true })
-  })
+  beforeEach(() =>
+    runtime.run(async () => {
+      await Log.init({ print: true })
+    }),
+  )
 
-  test("handles workspace/workspaceFolders request", async () => {
-    const handle = spawnFakeServer() as any
+  test("handles workspace/workspaceFolders request", () =>
+    runtime.run(async () => {
+      const handle = spawnFakeServer() as any
 
-    const client = await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
-      fn: () =>
-        LSPClient.create({
-          serverID: "fake",
-          server: handle as unknown as LSPServer.Handle,
-          root: process.cwd(),
-        }),
-    })
+      const client = await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(process.cwd())).scope,
+        fn: () =>
+          LSPClient.create({
+            serverID: "fake",
+            server: handle as unknown as LSPServer.Handle,
+            root: process.cwd(),
+          }),
+      })
 
-    await client.connection.sendNotification("test/trigger", {
-      method: "workspace/workspaceFolders",
-    })
+      await client.connection.sendNotification("test/trigger", {
+        method: "workspace/workspaceFolders",
+      })
 
-    await new Promise((r) => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 500))
 
-    expect(client.connection).toBeDefined()
+      expect(client.connection).toBeDefined()
 
-    await client.shutdown()
-  })
+      await client.shutdown()
+    }))
 
-  test("handles client/registerCapability request", async () => {
-    const handle = spawnFakeServer() as any
+  test("handles client/registerCapability request", () =>
+    runtime.run(async () => {
+      const handle = spawnFakeServer() as any
 
-    const client = await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
-      fn: () =>
-        LSPClient.create({
-          serverID: "fake",
-          server: handle as unknown as LSPServer.Handle,
-          root: process.cwd(),
-        }),
-    })
+      const client = await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(process.cwd())).scope,
+        fn: () =>
+          LSPClient.create({
+            serverID: "fake",
+            server: handle as unknown as LSPServer.Handle,
+            root: process.cwd(),
+          }),
+      })
 
-    await client.connection.sendNotification("test/trigger", {
-      method: "client/registerCapability",
-    })
+      await client.connection.sendNotification("test/trigger", {
+        method: "client/registerCapability",
+      })
 
-    await new Promise((r) => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 500))
 
-    expect(client.connection).toBeDefined()
+      expect(client.connection).toBeDefined()
 
-    await client.shutdown()
-  })
+      await client.shutdown()
+    }))
 
-  test("handles client/unregisterCapability request", async () => {
-    const handle = spawnFakeServer() as any
+  test("handles client/unregisterCapability request", () =>
+    runtime.run(async () => {
+      const handle = spawnFakeServer() as any
 
-    const client = await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
-      fn: () =>
-        LSPClient.create({
-          serverID: "fake",
-          server: handle as unknown as LSPServer.Handle,
-          root: process.cwd(),
-        }),
-    })
+      const client = await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(process.cwd())).scope,
+        fn: () =>
+          LSPClient.create({
+            serverID: "fake",
+            server: handle as unknown as LSPServer.Handle,
+            root: process.cwd(),
+          }),
+      })
 
-    await client.connection.sendNotification("test/trigger", {
-      method: "client/unregisterCapability",
-    })
+      await client.connection.sendNotification("test/trigger", {
+        method: "client/unregisterCapability",
+      })
 
-    await new Promise((r) => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 500))
 
-    expect(client.connection).toBeDefined()
+      expect(client.connection).toBeDefined()
 
-    await client.shutdown()
-  })
+      await client.shutdown()
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

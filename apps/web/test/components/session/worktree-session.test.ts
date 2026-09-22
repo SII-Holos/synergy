@@ -127,11 +127,10 @@ describe("workspace change disabled state", () => {
     expect(isSessionRunningForWorkspaceChange({ pending: true, status: { type: "idle" } })).toBe(true)
   })
 
-  test("disables for busy, retry, and recovering runtime statuses", () => {
+  test("disables for busy and retry runtime statuses", () => {
     for (const status of [
       { type: "busy" },
       { type: "retry", attempt: 1, message: "rate limited", next: 100 },
-      { type: "recovering" },
     ] as const) {
       expect(isSessionRunningForWorkspaceChange({ status })).toBe(true)
     }

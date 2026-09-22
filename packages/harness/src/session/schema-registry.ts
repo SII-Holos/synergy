@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 import { ConfigExtensions } from "../config/extensions"
 import type { SessionExtensionShape } from "./types"
@@ -14,67 +15,73 @@ export namespace SessionSchemaRegistry {
     navIdentity?(input: Record<string, unknown>): Record<string, unknown> | undefined
     normalizeImport?(input: Record<string, unknown>, mode: "transcript" | "archive"): void
   }
-  const owners = new Map<string, Contribution>()
-  let generation = 0
+  const state = RuntimeContext.state(() => ({
+    owners: new Map<string, Contribution>(),
+    generation: 0,
+    schemas: new WeakMap<object, { generation: number; schema: z.ZodObject }>(),
+  }))
 
   export function register(id: string, contribution: Contribution): void {
-    if (owners.get(id) === contribution) return
+    const existing = state().owners.get(id)
+    if (existing === contribution) return
+    if (existing) throw new Error(`Session domain ${id} is already registered`)
     ConfigExtensions.assertRegistrationOpen(id)
-    for (const [otherID, other] of owners) {
+    for (const [otherID, other] of state().owners) {
       if (otherID === id) continue
       for (const key of Object.keys(contribution.shape)) {
         if (key in other.shape) throw new Error(`Session field ${key} is already owned by ${otherID}`)
       }
     }
-    owners.set(id, contribution)
-    generation++
+    state().owners.set(id, contribution)
+    state().generation++
   }
 
   export function compose<S extends z.ZodRawShape>(
     base: z.ZodObject<S>,
   ): z.ZodObject<Omit<S, keyof SessionExtensionShape> & SessionExtensionShape> {
-    let seen = -1
-    let current: z.ZodObject = base
     return ConfigExtensions.dynamicSchema(() => {
-      if (seen === generation) return current
+      const instance = state()
+      const cached = instance.schemas.get(base)
+      if (cached?.generation === instance.generation) return cached.schema
       const shape = { ...base.shape }
-      for (const owner of owners.values()) {
+      for (const owner of state().owners.values()) {
         for (const key of Object.keys(owner.shape)) {
           if (key in base.shape && key !== "workflow")
             throw new Error(`Session field ${key} is already owned by the harness`)
         }
         Object.assign(shape, owner.shape)
       }
-      current = z.object(shape)
-      seen = generation
-      return current
+      const schema = z.object(shape)
+      instance.schemas.set(base, { generation: instance.generation, schema })
+      return schema
     }) as z.ZodObject<Omit<S, keyof SessionExtensionShape> & SessionExtensionShape>
   }
 
   export function isBackground(input: object | undefined): boolean {
     if (!input) return false
-    return [...owners.values()].some((owner) => owner.isBackground?.(input as Record<string, unknown>))
+    return [...state().owners.values()].some((owner) => owner.isBackground?.(input as Record<string, unknown>))
   }
 
   export function navIdentity(input: object): Record<string, unknown> {
     const result: Record<string, unknown> = {}
-    for (const owner of owners.values()) Object.assign(result, owner.navIdentity?.(input as Record<string, unknown>))
+    for (const owner of state().owners.values())
+      Object.assign(result, owner.navIdentity?.(input as Record<string, unknown>))
     return result
   }
 
   export async function created(input: object): Promise<void> {
-    for (const owner of owners.values()) await owner.created?.(input as Record<string, unknown>)
+    for (const owner of state().owners.values()) await owner.created?.(input as Record<string, unknown>)
   }
 
   export function normalizeImport(input: object, mode: "transcript" | "archive"): void {
-    for (const owner of owners.values()) owner.normalizeImport?.(input as Record<string, unknown>, mode)
+    for (const owner of state().owners.values()) owner.normalizeImport?.(input as Record<string, unknown>, mode)
   }
 
   export function creationFields(input: object | undefined): Record<string, unknown> {
     if (!input) return {}
     const raw = input as Record<string, unknown>
     return Object.fromEntries(
-      [...owners.values()].flatMap((owner) =>
+      [...state().owners.values()].flatMap((owner) =>
         Object.keys(owner.shape)
           .filter((key) => key in raw)
           .map((key) => [key, raw[key]]),

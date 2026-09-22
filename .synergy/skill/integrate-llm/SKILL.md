@@ -74,7 +74,15 @@ When a provider requires a per-request header derived from the conversation (for
 
 ## Streaming Bounds
 
+Own upload cancellation inside the recording stream so a native fetch reader lock cannot prevent settlement. Drain admitted request reads and writes before ending the attempt, including network failure and early HTTP responses; test with a cloned Request and the real recorder. Do not wait for an upstream cancellation acknowledgement shared with an unowned live sibling, or let upload cleanup failures replace the transport outcome. Request-side cleanup must not recursively wait on its own attempt finalizer.
+
+When changing fetch wrappers, exercise the complete provider → proxy → authentication retry → recording path against a local HTTP receiver. Verify request bytes and wire framing after a rejected credential, preservation of native fetch options, and `Request` initializer overrides. Preserve already-materialized SDK bodies without eagerly buffering unknown-length streams; hold a producer behind a transport-entry barrier to verify that streaming uploads can start before their source closes.
+
 Production product inference enters `AgentTurn`: the Control Plane resolves final prompt and parameter plugin hooks plus serializable provider options into a request plan, request snapshots are schema-validated and capped, and the plan is sent as acknowledged chunks; event frames are bounded and acknowledged after consumption. The worker protocol owns its event projection: do not expose raw AI SDK stream objects as IPC types, and strip provider request bodies, response diagnostics, warnings, or other fields the Control Plane does not consume before checking the frame bound. Agent workers reconstruct built-in provider runtime functions without provider-plugin discovery. Keep executable callbacks, plugin runtimes and Host Services, session writers, permission promises, and other Control Plane handles out of the worker input. Model-facing tools are `ToolCatalog.Definition[]` only.
+
+Resolve timeout policy from the same final model options used by the SDK, and freeze it before worker transfer. Include effective policy in both SDK and language-model cache identities; test same-model policy changes and A/B/A model reuse. Preserve explicit disable values through configuration validation and plan serialization.
+
+For worker telemetry, verify rows in the host's real observability store through a real subprocess. Capture task identity at admission, including the rollout call independently of ambient observability context, and reject stale request IDs before recording. Scope forwarders to a Runtime and turn, flush before terminal frames, and test concurrent Runtime disposal. Exercise actual timer callbacks: observing a mocked recorder cannot prove that native callback execution preserves asynchronous context. Request-owned timers and reader locks must settle on completion, failure and cancellation.
 
 Keep optional prompt diagnostics and Context Usage attribution out of the Agent worker request and provider-start critical path. Start the provider turn first, execute any non-trivial estimation in a separately isolated worker with fixed input, concurrency, and wall-time bounds, and fail open by omitting the enrichment. Do not move synchronous tokenization onto the Control Plane event loop or await optional enrichment before provider streaming or loop completion.
 
@@ -117,3 +125,7 @@ Capture provider service-tier metadata when available; unresolved nonstandard pr
 Public task cancellation must return after durable cancellation without waiting on held processors. Use explicit Cortex drainage for rollout finalization and runtime shutdown, and test both boundaries with controlled pending calls instead of timing sleeps.
 
 Historical derived retries must not append to a terminal source rollout. Use explicit operation ownership with source identity in metadata, while preserving the caller signal; reserve causal Session ownership for work still owned by the matching root. Test this under an ambient terminal rollout so accidental context inheritance fails.
+
+SDK usage fallback must not assign a call aggregate to each unmeasured transport retry. Test a failed attempt followed by a successful attempt with call usage, and preserve provider-specific cache inclusion and unknown cache-write counts when only SDK evidence remains.
+
+Verify SDK output inclusion against the locked adapter: Google and Vertex expose candidate output separately from thinking, unlike OpenAI. Test reported aggregates, separate components and missing components before labeling fallback totals complete.

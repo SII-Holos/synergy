@@ -138,6 +138,9 @@ export namespace SessionInbox {
       z.object({
         status: z.literal("queued"),
         item: Item,
+        runID: Identifier.schema("message")
+          .optional()
+          .meta({ description: "Existing task run resumed by this input, when continuing a paused task" }),
       }),
     ])
     .meta({ ref: "SessionInputResult" })
@@ -616,13 +619,14 @@ export namespace SessionInbox {
     return deliverUniqueWithPreparedMessage(input, writeItem)
   }
 
-  export async function enqueueUser(input: InvokeInput): Promise<Item> {
+  export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
+    await Session.assertWorkspaceAvailable(input.sessionID)
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
-    const mode: ItemMode = input.noReply === true ? "steer" : "task"
+    const mode: ItemMode = options?.mode ?? (input.noReply === true ? "steer" : "task")
     let taskSession: Info | undefined
     if (mode === "task") {
       taskSession = await readSession(input.sessionID)
@@ -865,7 +869,10 @@ export namespace SessionInbox {
     return items.find((item) => item.mode === "task" && item.status !== "failed")
   }
 
-  export async function fenceQueuedWork(sessionID: string, onFence: (createdBefore: number) => void): Promise<number> {
+  export async function fenceQueuedWork(
+    sessionID: string,
+    onFence: (createdBefore: number, items: StoredItem[]) => void,
+  ): Promise<number> {
     return Storage.transaction(async () => {
       let removed: number
       {
@@ -874,7 +881,12 @@ export namespace SessionInbox {
         const createdBefore =
           SessionManager.fenceQueuedBefore(sessionID) ??
           Math.max(Date.now(), ...items.map((item) => item.time.created)) + 1
-        Storage.afterCommit(() => onFence(createdBefore))
+        Storage.afterCommit(() =>
+          onFence(
+            createdBefore,
+            items.filter((item) => item.time.created < createdBefore),
+          ),
+        )
         removed = await removeByModesUnlocked(sessionID, ["task", "steer", "context"], createdBefore)
       }
       if (removed > 0) await publish(sessionID)
@@ -1037,7 +1049,7 @@ export namespace SessionInbox {
       finish: "stop",
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+      path: { cwd: ScopeContext.current.workspace?.path ?? null, root: ScopeContext.current.workspace?.path ?? null },
       modelID: assistantModel.modelID,
       providerID: assistantModel.providerID,
       visible: payload.visible,

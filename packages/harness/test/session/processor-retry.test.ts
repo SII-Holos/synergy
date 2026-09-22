@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { Provider } from "../../src/provider/provider"
 import { afterEach, expect, mock, spyOn, test } from "bun:test"
 import { z } from "zod"
@@ -16,11 +19,13 @@ import { ToolScheduler } from "../../src/session/tool-scheduler"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { tmpdir } from "../support/fixture"
 
-afterEach(async () => {
-  mock.restore()
-  await ToolScheduler.stop()
-  ToolScheduler.configure()
-})
+afterEach(
+  runtime.bind(async () => {
+    mock.restore()
+    await ToolScheduler.stop()
+    ToolScheduler.configure()
+  }),
+)
 
 function testModel(): Provider.Model {
   return {
@@ -252,214 +257,272 @@ async function run(
   })
 }
 
-test("a failed provider stream cannot execute its proposed tool, and recovery executes once", async () => {
-  const result = await run("stream")
-  expect(result.calls).toBe(2)
-  expect(result.effects).toBe(1)
-  expect(result.disposed).toBe(2)
-  expect(
-    result.message.parts
-      .filter((part) => part.type === "tool")
-      .map((part) => part.state.status)
-      .sort(),
-  ).toEqual(["completed"])
-})
+test(
+  "a failed provider stream cannot execute its proposed tool, and recovery executes once",
+  runtime.bind(async () => {
+    const result = await run("stream")
+    expect(result.calls).toBe(2)
+    expect(result.effects).toBe(1)
+    expect(result.disposed).toBe(2)
+    expect(
+      result.message.parts
+        .filter((part) => part.type === "tool")
+        .map((part) => part.state.status)
+        .sort(),
+    ).toEqual(["completed"])
+  }),
+)
 
-test("a failure after tool dispatch never replays the model or side effect", async () => {
-  const result = await run("dispatch")
-  expect(result.calls).toBe(1)
-  expect(result.effects).toBe(1)
-  expect(result.message.info).toMatchObject({ finish: "error" })
-})
+test(
+  "a failure after tool dispatch never replays the model or side effect",
+  runtime.bind(async () => {
+    const result = await run("dispatch")
+    expect(result.calls).toBe(1)
+    expect(result.effects).toBe(1)
+    expect(result.message.info).toMatchObject({ finish: "error" })
+  }),
+)
 
-test("provider retries stop at the attempt budget and persist a terminal failure", async () => {
-  const result = await run("exhausted")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-  expect(result.effects).toBe(0)
-  expect(result.disposed).toBe(result.calls)
-  expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
-})
+test(
+  "provider retries stop at the attempt budget and persist a terminal failure",
+  runtime.bind(async () => {
+    const result = await run("exhausted")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(result.effects).toBe(0)
+    expect(result.disposed).toBe(result.calls)
+    expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
+  }),
+)
 
-test("retry removes incomplete content from persisted history and the next model context", async () => {
-  const result = await run("stream")
-  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual(["valid answer"])
-  expect(result.message.parts.filter((part) => part.type === "reasoning").map((part) => part.text)).toEqual([
-    "valid reasoning",
-  ])
-  expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
-})
+test(
+  "retry removes incomplete content from persisted history and the next model context",
+  runtime.bind(async () => {
+    const result = await run("stream")
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "valid answer",
+    ])
+    expect(result.message.parts.filter((part) => part.type === "reasoning").map((part) => part.text)).toEqual([
+      "valid reasoning",
+    ])
+    expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
+  }),
+)
 
-test("provider call IDs reused on retry execute the recovered input once", async () => {
-  const result = await run("reused")
-  expect(result.calls).toBe(2)
-  expect(result.effects).toBe(1)
-  const tools = result.message.parts.filter((part) => part.type === "tool")
-  expect(tools).toHaveLength(1)
-  expect(tools[0]?.state).toMatchObject({ status: "completed", input: { attempt: 2 } })
-})
+test(
+  "provider call IDs reused on retry execute the recovered input once",
+  runtime.bind(async () => {
+    const result = await run("reused")
+    expect(result.calls).toBe(2)
+    expect(result.effects).toBe(1)
+    const tools = result.message.parts.filter((part) => part.type === "tool")
+    expect(tools).toHaveLength(1)
+    expect(tools[0]?.state).toMatchObject({ status: "completed", input: { attempt: 2 } })
+  }),
+)
 
-test("withdrawn retry output remains in the authoritative call records", async () => {
-  const result = await run("stream")
-  expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
-  expect(result.artifacts[0]).toContain("discard this partial answer")
-  expect(result.artifacts[1]).toContain("valid answer")
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.accounting).toMatchObject({
-    kind: "rollout",
-    callIDs: result.recordedCalls.map((call) => call.id),
-  })
-})
+test(
+  "withdrawn retry output remains in the authoritative call records",
+  runtime.bind(async () => {
+    const result = await run("stream")
+    expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
+    expect(result.artifacts[0]).toContain("discard this partial answer")
+    expect(result.artifacts[1]).toContain("valid answer")
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.accounting).toMatchObject({
+      kind: "rollout",
+      callIDs: result.recordedCalls.map((call) => call.id),
+    })
+  }),
+)
 
-test("cancelling before retry keeps the final partial output and starts no new attempt", async () => {
-  const result = await run("cancel")
-  expect(result.calls).toBe(1)
-  expect(result.effects).toBe(0)
-  expect(result.message.info).toMatchObject({ finish: "error", error: { name: "MessageAbortedError" } })
-  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
-    "discard this partial answer",
-  ])
-})
+test(
+  "cancelling before retry keeps the final partial output and starts no new attempt",
+  runtime.bind(async () => {
+    const result = await run("cancel")
+    expect(result.calls).toBe(1)
+    expect(result.effects).toBe(0)
+    expect(result.message.info).toMatchObject({ finish: "error", error: { name: "MessageAbortedError" } })
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "discard this partial answer",
+    ])
+  }),
+)
 
 // The reported incident: a Cortex run failed on Bun's unmapped BoringSSL fallback string
 // (unknown certificate verification error) and was treated as terminal after one attempt.
-test("an unmapped certificate verification failure retries within a bounded budget and persists evidence", async () => {
-  const result = await run("tls")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
-  expect(result.calls).toBe(3)
-  expect(result.effects).toBe(0)
-  expect(result.message.info).toMatchObject({
-    finish: "error",
-    error: {
-      name: "APIError",
-      data: {
-        isRetryable: true,
-        metadata: {
-          networkKind: "indeterminate",
-          category: "tls-verification",
-          endpointHost: "example.invalid",
-        },
-      },
-    },
-  })
-})
-
-test("keeps the full budget for a classified transport failure", async () => {
-  const result = await run("exhausted")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-  expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
-})
-
-// Provider-level baseURL is the standard proxy configuration (postmortem 0017):
-// the persisted endpoint host must come from the merged connection identity,
-// not the model catalog URL.
-test("derives endpointHost from provider-level baseURL when the provider is proxied", async () => {
-  const getProvider = spyOn(Provider, "getProvider").mockResolvedValue({
-    options: { baseURL: "https://gateway.example.test" },
-  } as never)
-  try {
+test(
+  "an unmapped certificate verification failure retries within a bounded budget and persists evidence",
+  runtime.bind(async () => {
     const result = await run("tls")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+    expect(result.calls).toBe(7)
+    expect(result.effects).toBe(0)
     expect(result.message.info).toMatchObject({
       finish: "error",
       error: {
+        name: "APIError",
         data: {
+          isRetryable: true,
           metadata: {
-            endpointHost: "gateway.example.test",
+            networkKind: "indeterminate",
+            category: "tls-verification",
+            endpointHost: "example.invalid",
           },
         },
       },
     })
-  } finally {
-    getProvider.mockRestore()
-  }
-})
+  }),
+)
+
+test(
+  "keeps the full budget for a classified transport failure",
+  runtime.bind(async () => {
+    const result = await run("exhausted")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+  }),
+)
+
+// Provider-level baseURL is the standard proxy configuration (postmortem 0017):
+// the persisted endpoint host must come from the merged connection identity,
+// not the model catalog URL.
+test(
+  "derives endpointHost from provider-level baseURL when the provider is proxied",
+  runtime.bind(async () => {
+    const getProvider = spyOn(Provider, "getProvider").mockResolvedValue({
+      options: { baseURL: "https://gateway.example.test" },
+    } as never)
+    try {
+      const result = await run("tls")
+      expect(result.message.info).toMatchObject({
+        finish: "error",
+        error: {
+          data: {
+            metadata: {
+              endpointHost: "gateway.example.test",
+            },
+          },
+        },
+      })
+    } finally {
+      getProvider.mockRestore()
+    }
+  }),
+)
 
 // The reported incident: a provider completed a turn with `finishReason: "stop"`
 // but streamed no text and called no tool, so the turn succeeded invisibly.
-test("a response that completes with no text and no tool calls retries as empty_response", async () => {
-  const result = await run("empty")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-  expect(result.message.info).toMatchObject({
-    finish: "error",
-    error: {
+test(
+  "a response that completes with no text and no tool calls retries as empty_response",
+  runtime.bind(async () => {
+    const result = await run("empty")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(result.message.info).toMatchObject({
+      finish: "error",
+      error: {
+        name: "APIError",
+        data: { isRetryable: true, metadata: { code: "empty_response" } },
+      },
+    })
+  }),
+)
+
+test(
+  "an exhausted empty response persists only the terminal error",
+  runtime.bind(async () => {
+    const result = await run("empty")
+    expect(result.message.parts.filter((part) => part.type === "text")).toHaveLength(0)
+    expect(result.message.parts.filter((part) => part.type === "tool")).toHaveLength(0)
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.finish).toBe("error")
+    expect(result.message.info.error?.name).toBe("APIError")
+  }),
+)
+
+test(
+  "a pure tool step is not treated as an empty response",
+  runtime.bind(async () => {
+    const result = await run("tools")
+    expect(result.calls).toBe(1)
+    expect(result.effects).toBe(1)
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.finish).toBe("tool-calls")
+    expect(result.message.info.error).toBeUndefined()
+  }),
+)
+
+test(
+  "an empty response retries and keeps the recovered answer",
+  runtime.bind(async () => {
+    const result = await run("empty-then-text")
+    expect(result.calls).toBe(2)
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "recovered answer",
+    ])
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.finish).toBe("stop")
+    expect(result.message.info.error).toBeUndefined()
+  }),
+)
+
+test(
+  "a tool call reported with finishReason stop is not treated as an empty response",
+  runtime.bind(async () => {
+    const result = await run("tools-stop")
+    expect(result.calls).toBe(1)
+    expect(result.effects).toBe(1)
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.finish).toBe("stop")
+    expect(result.message.info.error).toBeUndefined()
+  }),
+)
+
+test(
+  "a step that produces only reasoning is treated as an empty response",
+  runtime.bind(async () => {
+    const result = await run("reasoning-only")
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.error).toMatchObject({
       name: "APIError",
       data: { isRetryable: true, metadata: { code: "empty_response" } },
-    },
-  })
-})
+    })
+  }),
+)
 
-test("an exhausted empty response persists only the terminal error", async () => {
-  const result = await run("empty")
-  expect(result.message.parts.filter((part) => part.type === "text")).toHaveLength(0)
-  expect(result.message.parts.filter((part) => part.type === "tool")).toHaveLength(0)
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.finish).toBe("error")
-  expect(result.message.info.error?.name).toBe("APIError")
-})
+test(
+  "a length-limited step is not treated as an empty response",
+  runtime.bind(async () => {
+    const result = await run("length")
+    expect(result.calls).toBe(1)
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.finish).toBe("length")
+    expect(result.message.info.error).toBeUndefined()
+  }),
+)
 
-test("a pure tool step is not treated as an empty response", async () => {
-  const result = await run("tools")
-  expect(result.calls).toBe(1)
-  expect(result.effects).toBe(1)
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.finish).toBe("tool-calls")
-  expect(result.message.info.error).toBeUndefined()
-})
+test(
+  "records the cached-input token metric alongside the other step tokens",
+  runtime.bind(async () => {
+    using metrics = spyOn(ObservabilityMetrics, "record")
+    const result = await run("tools")
+    expect(result.calls).toBe(1)
 
-test("an empty response retries and keeps the recovered answer", async () => {
-  const result = await run("empty-then-text")
-  expect(result.calls).toBe(2)
-  expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
-    "recovered answer",
-  ])
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.finish).toBe("stop")
-  expect(result.message.info.error).toBeUndefined()
-})
+    const rows = (
+      metrics as unknown as {
+        mock: { calls: Array<Array<{ name?: string; value?: number; unit?: string }>> }
+      }
+    ).mock.calls.map((call) => call[0])
 
-test("a tool call reported with finishReason stop is not treated as an empty response", async () => {
-  const result = await run("tools-stop")
-  expect(result.calls).toBe(1)
-  expect(result.effects).toBe(1)
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.finish).toBe("stop")
-  expect(result.message.info.error).toBeUndefined()
-})
+    const cached = rows.filter((row) => row.name === "llm.tokens.cached_input")
+    expect(cached).toHaveLength(1)
+    expect(cached[0].unit).toBe("tokens")
+    expect(typeof cached[0].value).toBe("number")
+    // Recorded at the same finish-step boundary as the input and output counters,
+    // so a cold prefill is distinguishable from a genuine stall.
+    expect(rows.filter((row) => row.name === "llm.tokens.input")).toHaveLength(1)
+    expect(rows.filter((row) => row.name === "llm.tokens.output")).toHaveLength(1)
+  }),
+)
 
-test("a step that produces only reasoning is treated as an empty response", async () => {
-  const result = await run("reasoning-only")
-  expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.error).toMatchObject({
-    name: "APIError",
-    data: { isRetryable: true, metadata: { code: "empty_response" } },
-  })
-})
-
-test("a length-limited step is not treated as an empty response", async () => {
-  const result = await run("length")
-  expect(result.calls).toBe(1)
-  if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
-  expect(result.message.info.finish).toBe("length")
-  expect(result.message.info.error).toBeUndefined()
-})
-
-test("records the cached-input token metric alongside the other step tokens", async () => {
-  using metrics = spyOn(ObservabilityMetrics, "record")
-  const result = await run("tools")
-  expect(result.calls).toBe(1)
-
-  const rows = (
-    metrics as unknown as {
-      mock: { calls: Array<Array<{ name?: string; value?: number; unit?: string }>> }
-    }
-  ).mock.calls.map((call) => call[0])
-
-  const cached = rows.filter((row) => row.name === "llm.tokens.cached_input")
-  expect(cached).toHaveLength(1)
-  expect(cached[0].unit).toBe("tokens")
-  expect(typeof cached[0].value).toBe("number")
-  // Recorded at the same finish-step boundary as the input and output counters,
-  // so a cold prefill is distinguishable from a genuine stall.
-  expect(rows.filter((row) => row.name === "llm.tokens.input")).toHaveLength(1)
-  expect(rows.filter((row) => row.name === "llm.tokens.output")).toHaveLength(1)
-})
+afterRuntimeTests(() => runtime.close())

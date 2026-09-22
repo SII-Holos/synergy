@@ -20,7 +20,7 @@ interface ScopeListEntry {
   id: string
   type: "home" | "project"
   name?: string
-  directory: string
+  directory: string | null
   sessionCount: number
   latestActivityAt: number
   icon?: { url?: string; color?: string }
@@ -30,7 +30,12 @@ interface ScopeListEntry {
 function matchesQuery(entry: ScopeListEntry, query: string): boolean {
   const needle = query.trim().toLowerCase()
   if (!needle) return true
-  const haystacks = [entry.id, entry.name ?? "", entry.directory, path.basename(entry.directory)]
+  const haystacks = [
+    entry.id,
+    entry.name ?? "",
+    entry.directory ?? "",
+    entry.directory ? path.basename(entry.directory) : "",
+  ]
   return haystacks.some((value) => value.toLowerCase().includes(needle))
 }
 

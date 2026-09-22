@@ -27,6 +27,8 @@ Worktree use and removal share one in-process lifecycle gate. Session execution 
 
 The Settings worktree browser queries only Git project Scopes and keeps successful project results when another repository is unavailable. List enrichment is concurrency-bounded. Dirty state is reported for live Git worktrees; managed worktrees also report checkout file bytes, excluding shared Git metadata. Main and external worktrees remain visible but read-only in this surface.
 
+Automatic worktree reclamation and missing-registration reconciliation preserve each bound session's canonical `time.updated` and navigation `lastActivityAt` while publishing the changed workspace. Rebuilding the derived navigation index therefore retains the same activity order. Maintenance metadata updates do not move historical sessions ahead of recent conversation activity. Explicit workspace operations and new conversation activity retain their normal recency behavior.
+
 ## Web Workspace File Service
 
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
@@ -125,6 +127,8 @@ File snapshots share one Git object store and reference namespace per Scope unde
 Capture holds a shared Scope lease and an exclusive session index lock, writes objects, and retains `refs/synergy/snapshots/<session>/<tree>` before returning the tree hash. All historical roots remain retained. Fork and JSON import establish destination ownership before publishing copied messages; JSON import reports unavailable file objects as warnings. Archive, compaction of messages, and transcript rollback do not release roots.
 
 Permanent deletion writes a durable deletion job and tombstones the owner before removing canonical session data. Both ordinary removal and recovery removal finish the same cleanup; startup resumes pending jobs. Physical collection occurs only through explicit offline maintenance, under an exclusive Scope lease. Full-home copies also hold a home-wide lease that excludes creation of new snapshot Scopes during the copy. A failed integrity check or unfinished maintenance job blocks collection. Process start identities use a consistent UTC encoding; lease age alone never displaces a live process.
+
+Snapshot lease admission shares one timeout budget across the Home and Scope metadata gates and honors cancellation while waiting. Exhausted admission reports snapshot busy; corrupt metadata and storage failures remain errors. Lease disposal uses an independent, uncancelled file-lock wait so an expired admission deadline does not prevent removing ownership. See [lease lock budgets](../decisions/implemented/bug-fix/2026-09-22-snapshot-lease-lock-budgets.md).
 
 The central `20260907-snapshot-shared-store` migration inventories owners without scanning objects. Explicit maintenance imports missing objects through a streaming SQLite inventory, preserves unknown objects, verifies roots, switches the owner, and then removes the legacy copy. Full-data archives materialize alternates and merge Git objects and references separately from JSON files. See [storage layout](../reference/storage-and-paths.md), [maintenance commands](../reference/cli-guide.md), and [the storage decision](../decisions/implemented/architecture/2026-09-07-shared-file-snapshot-storage.md).
 

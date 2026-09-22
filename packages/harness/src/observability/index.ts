@@ -26,18 +26,19 @@ export namespace Observability {
   export type Event = ObservabilitySchema.Event
   export type Query = ObservabilitySchema.Query
 
-  const TRACE_DIR = path.join(Global.Path.state, "observability", "traces")
-
   export function traceId(prefix = "trc") {
     return ObservabilitySpans.traceId(prefix)
   }
 
   export function dir() {
-    return TRACE_DIR
+    return path.join(Global.Path.state, "observability", "traces")
   }
 
   export function fileForDate(date = new Date()) {
-    return path.join(TRACE_DIR, `${date.toISOString().slice(0, 10)}.jsonl`)
+    return path.join(
+      path.join(Global.Path.state, "observability", "traces"),
+      `${date.toISOString().slice(0, 10)}.jsonl`,
+    )
   }
 
   export async function emit(
@@ -70,11 +71,11 @@ export namespace Observability {
   }
 
   export async function listFiles() {
-    const entries = await fs.readdir(TRACE_DIR).catch((): string[] => [])
+    const entries = await fs.readdir(path.join(Global.Path.state, "observability", "traces")).catch((): string[] => [])
     return entries
       .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
       .sort()
-      .map((name) => path.join(TRACE_DIR, name))
+      .map((name) => path.join(path.join(Global.Path.state, "observability", "traces"), name))
   }
 
   export const sanitizeRecord = ObservabilityRedaction.record

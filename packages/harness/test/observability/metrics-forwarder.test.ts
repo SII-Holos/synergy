@@ -1,61 +1,85 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { ObservabilityStore } from "../../src/observability/store"
+import { testRuntime } from "../support/runtime"
 
-describe("ObservabilityMetrics forwarder", () => {
-  afterEach(() => {
-    ObservabilityMetrics.setForwarder(undefined)
-    ObservabilityConfig.refresh()
-  })
+const runtime = await testRuntime()
+const row = { name: "llm.fetch.headers", value: 42, unit: "ms" as const, module: "llm" as const }
 
-  test("hands the row to the installed forwarder instead of the local store", () => {
-    ObservabilityConfig.refresh()
+test(
+  "forwards inside the asynchronous owner even when worker storage is disabled",
+  runtime.bind(async () => {
+    ObservabilityConfig.refresh({ observability: { enabled: false } })
     using inserted = spyOn(ObservabilityStore, "insertMetric")
-    const forwarded: Array<{ name: string; value: number; unit: string; labels?: Record<string, unknown> }> = []
-    ObservabilityMetrics.setForwarder((input) => forwarded.push(input))
+    const forwarded: unknown[] = []
+    try {
+      await ObservabilityMetrics.withForwarder(
+        (input) => forwarded.push(input),
+        async () => {
+          await Promise.resolve()
+          ObservabilityMetrics.record(row)
+        },
+      )
+      expect(forwarded).toEqual([row])
+      expect(inserted).not.toHaveBeenCalled()
+    } finally {
+      ObservabilityConfig.refresh()
+    }
+  }),
+)
 
-    ObservabilityMetrics.record({
-      name: "llm.fetch.headers",
-      value: 42,
-      unit: "ms",
-      module: "llm",
-      labels: { provider: "provider", model: "model" },
-    })
-
-    expect(forwarded).toEqual([
-      expect.objectContaining({
-        name: "llm.fetch.headers",
-        value: 42,
-        unit: "ms",
-        module: "llm",
-        labels: { provider: "provider", model: "model" },
-      }),
+test(
+  "concurrent forwarders retain their own rows and restore local recording",
+  runtime.bind(async () => {
+    const first: unknown[] = []
+    const second: unknown[] = []
+    const ready = Promise.withResolvers<void>()
+    using inserted = spyOn(ObservabilityStore, "insertMetric")
+    await Promise.all([
+      ObservabilityMetrics.withForwarder(
+        (input) => first.push(input),
+        async () => {
+          await ready.promise
+          ObservabilityMetrics.record({ ...row, value: 1 })
+        },
+      ),
+      ObservabilityMetrics.withForwarder(
+        (input) => second.push(input),
+        async () => {
+          ObservabilityMetrics.record({ ...row, value: 2 })
+          ready.resolve()
+        },
+      ),
     ])
+    expect(first).toEqual([{ ...row, value: 1 }])
+    expect(second).toEqual([{ ...row, value: 2 }])
     expect(inserted).not.toHaveBeenCalled()
-  })
-
-  test("keeps the local recording path when no forwarder is installed", () => {
-    ObservabilityConfig.refresh()
-    using inserted = spyOn(ObservabilityStore, "insertMetric")
-
-    ObservabilityMetrics.record({ name: "snapshot.track.duration", value: 7, unit: "ms", module: "session" })
-
+    ObservabilityMetrics.record(row)
     expect(inserted).toHaveBeenCalledTimes(1)
-    const recorded = inserted.mock.calls.map((call) => call[0])
-    expect(recorded[0]).toMatchObject({ name: "snapshot.track.duration", value: 7, unit: "ms" })
-  })
+  }),
+)
 
-  test("restores the local path after the forwarder is removed", () => {
-    ObservabilityConfig.refresh()
-    using inserted = spyOn(ObservabilityStore, "insertMetric")
-    ObservabilityMetrics.setForwarder(() => {})
-
-    ObservabilityMetrics.record({ name: "llm.fetch.first_byte", value: 1, unit: "ms", module: "llm" })
-    expect(inserted).not.toHaveBeenCalled()
-
-    ObservabilityMetrics.setForwarder(undefined)
-    ObservabilityMetrics.record({ name: "llm.fetch.first_byte", value: 1, unit: "ms", module: "llm" })
-    expect(inserted).toHaveBeenCalledTimes(1)
-  })
+test("a forwarder cannot cross Runtime ownership or survive a closed owner", async () => {
+  await using first = await testRuntime()
+  await using second = await testRuntime()
+  const forwarded: unknown[] = []
+  using inserted = spyOn(ObservabilityStore, "insertMetric")
+  await first.run(() =>
+    ObservabilityMetrics.withForwarder(
+      (input) => forwarded.push(input),
+      async () => {
+        second.run(() => ObservabilityMetrics.record({ ...row, value: 2 }))
+        expect(inserted).toHaveBeenCalledTimes(1)
+        ObservabilityMetrics.record(row)
+        await second.close()
+        ObservabilityMetrics.record({ ...row, value: 3 })
+        await first.close()
+        ObservabilityMetrics.record({ ...row, value: 4 })
+      },
+    ),
+  )
+  expect(forwarded).toEqual([row, { ...row, value: 3 }])
 })
+
+afterAll(() => runtime.close())

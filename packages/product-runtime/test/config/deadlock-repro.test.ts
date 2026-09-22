@@ -7,6 +7,9 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // Regression coverage for the PR #1059 deadlock: lock-holding update paths
 // (domainUpdate / domainMutateWithChange / domainUpdateWithChange) previously
@@ -43,102 +46,110 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 describe("config lock safety with broken domain files", () => {
-  beforeEach(async () => {
-    // The per-process global config directory is shared with other config
-    // test files (e.g. degraded.test.ts), which leave quarantined
-    // `110-email.jsonc.invalid-*` files behind. Clean the email domain files
-    // so every test starts from a deterministic state.
-    const dir = domainDir()
-    try {
-      const entries = await fs.readdir(dir)
-      for (const entry of entries) {
-        if (entry === "110-email.jsonc" || entry.startsWith("110-email.jsonc.invalid-")) {
-          await fs.rm(path.join(dir, entry), { force: true })
+  beforeEach(() =>
+    runtime.run(async () => {
+      // The per-process global config directory is shared with other config
+      // test files (e.g. degraded.test.ts), which leave quarantined
+      // `110-email.jsonc.invalid-*` files behind. Clean the email domain files
+      // so every test starts from a deterministic state.
+      const dir = domainDir()
+      try {
+        const entries = await fs.readdir(dir)
+        for (const entry of entries) {
+          if (entry === "110-email.jsonc" || entry.startsWith("110-email.jsonc.invalid-")) {
+            await fs.rm(path.join(dir, entry), { force: true })
+          }
         }
+      } catch {
+        // directory does not exist yet — nothing to clean
       }
-    } catch {
-      // directory does not exist yet — nothing to clean
-    }
-  })
-  test("domainUpdate does not deadlock and the transaction overwrites the broken file", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await writeBrokenEmailFragment("{ broken")
-        const result = await withTimeout(
-          Config.domainUpdate("email", { email: { enabled: true } } as Config.Info),
-          "domainUpdate",
-        )
-        expect(result).toBeDefined()
+    }),
+  )
+  test("domainUpdate does not deadlock and the transaction overwrites the broken file", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeBrokenEmailFragment("{ broken")
+          const result = await withTimeout(
+            Config.domainUpdate("email", { email: { enabled: true } } as Config.Info),
+            "domainUpdate",
+          )
+          expect(result).toBeDefined()
 
-        // The write transaction replaces the broken file instead of
-        // quarantining it; the domain becomes readable again.
-        const files = await listDomainFiles()
-        expect(files).toContain("110-email.jsonc")
-        expect(files.some((name) => name.startsWith("110-email.jsonc.invalid-"))).toBe(false)
-        const text = await Bun.file(path.join(domainDir(), "110-email.jsonc")).text()
-        expect(text).toContain('"email"')
-      },
-    })
-  })
+          // The write transaction replaces the broken file instead of
+          // quarantining it; the domain becomes readable again.
+          const files = await listDomainFiles()
+          expect(files).toContain("110-email.jsonc")
+          expect(files.some((name) => name.startsWith("110-email.jsonc.invalid-"))).toBe(false)
+          const text = await Bun.file(path.join(domainDir(), "110-email.jsonc")).text()
+          expect(text).toContain('"email"')
+        },
+      })
+    }))
 
-  test("domainMutateWithChange does not deadlock and the transaction overwrites the broken file", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await writeBrokenEmailFragment("{ broken")
-        const result = await withTimeout(
-          Config.domainMutateWithChange("email", (current) => ({ email: { ...current.email, enabled: true } })),
-          "domainMutateWithChange",
-        )
-        expect(result).toBeDefined()
+  test("domainMutateWithChange does not deadlock and the transaction overwrites the broken file", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeBrokenEmailFragment("{ broken")
+          const result = await withTimeout(
+            Config.domainMutateWithChange("email", (current) => ({ email: { ...current.email, enabled: true } })),
+            "domainMutateWithChange",
+          )
+          expect(result).toBeDefined()
 
-        const files = await listDomainFiles()
-        expect(files).toContain("110-email.jsonc")
-        expect(files.some((name) => name.startsWith("110-email.jsonc.invalid-"))).toBe(false)
-        const text = await Bun.file(path.join(domainDir(), "110-email.jsonc")).text()
-        expect(text).toContain('"email"')
-      },
-    })
-  })
+          const files = await listDomainFiles()
+          expect(files).toContain("110-email.jsonc")
+          expect(files.some((name) => name.startsWith("110-email.jsonc.invalid-"))).toBe(false)
+          const text = await Bun.file(path.join(domainDir(), "110-email.jsonc")).text()
+          expect(text).toContain('"email"')
+        },
+      })
+    }))
 
-  test("domainUpdateWithChange does not deadlock and the transaction overwrites the broken file", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await writeBrokenEmailFragment("{ broken")
-        const result = await withTimeout(
-          Config.domainUpdateWithChange("email", { email: { enabled: true } } as Config.Info),
-          "domainUpdateWithChange",
-        )
-        expect(result).toBeDefined()
+  test("domainUpdateWithChange does not deadlock and the transaction overwrites the broken file", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeBrokenEmailFragment("{ broken")
+          const result = await withTimeout(
+            Config.domainUpdateWithChange("email", { email: { enabled: true } } as Config.Info),
+            "domainUpdateWithChange",
+          )
+          expect(result).toBeDefined()
 
-        const files = await listDomainFiles()
-        expect(files).toContain("110-email.jsonc")
-        expect(files.some((name) => name.startsWith("110-email.jsonc.invalid-"))).toBe(false)
-      },
-    })
-  })
+          const files = await listDomainFiles()
+          expect(files).toContain("110-email.jsonc")
+          expect(files.some((name) => name.startsWith("110-email.jsonc.invalid-"))).toBe(false)
+        },
+      })
+    }))
 
-  test("reload without a held write lock still quarantines the broken file", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await writeBrokenEmailFragment("{ broken")
-        await Config.reload("global")
+  test("reload without a held write lock still quarantines the broken file", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeBrokenEmailFragment("{ broken")
+          await Config.reload("global")
 
-        const config = await Config.current()
-        expect(config.email).toBeUndefined()
+          const config = await Config.current()
+          expect(config.email).toBeUndefined()
 
-        const files = await listDomainFiles()
-        const quarantined = files.filter((name) => name.startsWith("110-email.jsonc.invalid-"))
-        expect(quarantined).toHaveLength(1)
-        expect(files).not.toContain("110-email.jsonc")
-      },
-    })
-  })
+          const files = await listDomainFiles()
+          const quarantined = files.filter((name) => name.startsWith("110-email.jsonc.invalid-"))
+          expect(quarantined).toHaveLength(1)
+          expect(files).not.toContain("110-email.jsonc")
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -21,7 +21,7 @@ interface GlobalSearchModalProps {
 }
 
 function scopeLabel(itemScope: SessionItem["scope"]) {
-  return getScopeLabel({ worktree: itemScope.directory, name: itemScope.name }, itemScope.directory)
+  return getScopeLabel(itemScope)
 }
 
 export function GlobalSearchModal(props: GlobalSearchModalProps) {
@@ -92,7 +92,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
   onCleanup(() => clearTimeout(debounceTimer))
 
   const handleSelect = (item: SessionItem) => {
-    const dir = item.scope.type === "home" ? "home" : item.scope.directory
+    const dir = item.scope.type === "home" ? "home" : item.scope.id
     navigate(`/${base64Encode(dir)}/session/${item.id}`)
     props.onClose()
   }

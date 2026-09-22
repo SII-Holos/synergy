@@ -331,7 +331,7 @@ export namespace ObservabilitySchema {
         finished: z.array(z.record(z.string(), z.unknown())),
       }),
       sessions: z.object({
-        pendingReply: z.array(z.object({ sessionID: z.string(), path: z.string(), updated: z.number().optional() })),
+        paused: z.array(z.object({ sessionID: z.string(), path: z.string(), updated: z.number().optional() })),
       }),
     })
     .meta({ ref: "DiagnosticsSummary" })

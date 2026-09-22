@@ -3,6 +3,11 @@ import { z } from "zod"
 
 export const NotFoundError = NamedError.create("NotFoundError", z.object({ message: z.string() }))
 
+export const SessionPreparingError = NamedError.create(
+  "SessionPreparingError",
+  z.object({ sessionID: z.string(), message: z.string() }),
+)
+
 export class StorageConflictError extends Error {
   override readonly name = "StorageConflictError"
 }

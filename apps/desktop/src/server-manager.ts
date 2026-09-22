@@ -10,10 +10,24 @@ import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
 import { loadServerPort, saveServerPort } from "./server-port-state.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
+import { ManagedServerOutput } from "./server-output.js"
 import { DesktopServerStartup } from "./server-startup.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
+import { parseDesktopActivity } from "./power-save.js"
 
 export type DesktopServerState = "stopped" | "starting" | "running" | "failed" | "external"
+
+export type DesktopMaintenanceState = "idle" | "running" | "completed" | "failed"
+
+export interface DesktopMaintenanceStatus {
+  state: DesktopMaintenanceState
+  progress: Extract<
+    import("@ericsanchezok/synergy-util/runtime-startup").RuntimeStartupProgress,
+    { phase: "migration" }
+  > | null
+  error: string | null
+  detail?: string
+}
 
 export interface DesktopServerStatus {
   mode: DesktopServerMode
@@ -24,6 +38,7 @@ export interface DesktopServerStatus {
   lastError: string | null
   logFile: string | null
   shellEnvironment: DesktopShellEnvironmentDiagnostics | null
+  maintenance: DesktopMaintenanceStatus
 }
 
 export interface DesktopServerManagerOptions {
@@ -35,6 +50,7 @@ export interface DesktopServerManagerOptions {
   externalUrl?: string
   shellEnvironment?: DesktopShellEnvironment
   onStartupStatus?: (status: DesktopStartupStatus) => void
+  onMaintenanceStatus?: (status: DesktopMaintenanceStatus) => void
 }
 
 type ManagedServerLaunch = { ok: true } | { ok: false; portConflict: boolean; detail: string; error: unknown }
@@ -49,18 +65,24 @@ const HEALTH_POLL_INTERVAL_MS = 250
 const WINDOWS_TASKKILL_TIMEOUT_MS = 2_000
 const MANAGED_SERVER_PORT_SCAN_LENGTH = 4
 const DEFAULT_MANAGED_SERVER_PORT = 4096
-const MANAGED_SERVER_STDERR_LIMIT = 8_192
 const MANAGED_SERVER_STDERR_DRAIN_MS = 1_000
 const SYNERGY_DESKTOP_SERVER_PORT_ENV = "SYNERGY_DESKTOP_SERVER_PORT"
 
 export class DesktopServerManager {
   private child: ChildProcess | null = null
+  private generation = 0
   private state: DesktopServerState
   private port: number | null = null
   private url: string | null = null
   private lastError: string | null = null
   private logFile: string | null = null
   private startPromise: Promise<string> | null = null
+  private maintenancePromise: Promise<string> | null = null
+  private maintenanceChild: ChildProcess | null = null
+  private maintenanceController: AbortController | null = null
+  private diagnosticsPromise: Promise<string> | null = null
+  private diagnosticsChild: ChildProcess | null = null
+  private maintenance: DesktopMaintenanceStatus = { state: "idle", progress: null, error: null }
   private shellEnvironment: DesktopShellEnvironmentDiagnostics | null = null
   private readonly shellEnvironmentPromise: Promise<DesktopShellEnvironmentDiagnostics | null>
 
@@ -88,6 +110,7 @@ export class DesktopServerManager {
       lastError: this.lastError,
       logFile: this.logFile,
       shellEnvironment: this.shellEnvironment,
+      maintenance: this.maintenance,
     }
   }
 
@@ -96,6 +119,7 @@ export class DesktopServerManager {
       if (!this.url) throw new Error("SYNERGY_DESKTOP_APP_URL is required when using external desktop server mode")
       return this.url
     }
+    if (this.maintenancePromise) throw new Error("Storage maintenance is running; cancel it before restarting")
     if (this.child && this.state === "failed") {
       throw new Error(this.lastError ?? "Synergy server process is still running after termination failed")
     }
@@ -110,7 +134,71 @@ export class DesktopServerManager {
     }
   }
 
+  async runMaintenance(): Promise<string> {
+    if (this.options.mode === "external")
+      throw new Error("Storage maintenance must run on the machine hosting the Synergy server")
+    if (this.maintenancePromise) return this.maintenancePromise
+    if (this.startPromise) throw new Error("Server startup is still in progress")
+    const controller = new AbortController()
+    this.maintenanceController = controller
+    this.maintenancePromise = this.runMaintenanceManaged(controller.signal)
+    try {
+      return await this.maintenancePromise
+    } finally {
+      this.maintenancePromise = null
+      this.maintenanceController = null
+    }
+  }
+
+  async cancelMaintenance(): Promise<void> {
+    this.maintenanceController?.abort(new Error("Storage maintenance was cancelled; the committed data is preserved"))
+    if (this.maintenanceChild && !(await terminateServerProcess(this.maintenanceChild)))
+      throw new Error("Storage maintenance is still stopping; wait before retrying")
+    await this.maintenancePromise?.catch(() => {})
+  }
+
+  async createDiagnostics(): Promise<string> {
+    this.diagnosticsPromise ??= this.createDiagnosticsManaged().finally(() => {
+      this.diagnosticsPromise = null
+    })
+    return this.diagnosticsPromise
+  }
+
+  private async createDiagnosticsManaged(): Promise<string> {
+    if (this.options.mode === "external")
+      throw new Error("Diagnostics must be created on the machine hosting the Synergy server")
+    const directory = path.join(this.options.logDir, "diagnostics")
+    await fsp.mkdir(directory, { recursive: true })
+    const output = path.join(directory, `synergy-startup-${Date.now()}.tar.gz`)
+    const command = await this.resolveProductCommand(["diagnostics", "--startup", "--output", output])
+    const child = spawn(command.command, command.args, {
+      cwd: command.cwd,
+      env: {
+        ...buildManagedServerEnv(process.env, await this.shellEnvironmentPromise, {
+          channel: this.options.channel,
+          parentPid: process.pid,
+          cwd: process.env.SYNERGY_CWD ?? os.homedir(),
+        }),
+        SYNERGY_DESKTOP_STARTUP_LOG: this.logFile ?? undefined,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    })
+    this.diagnosticsChild = child
+    try {
+      await waitForCommand(child, new DesktopServerStartup())
+      await fsp.access(output)
+      return output
+    } catch (error) {
+      await terminateServerProcess(child)
+      throw error
+    } finally {
+      if (this.diagnosticsChild === child) this.diagnosticsChild = null
+    }
+  }
+
   async restart(): Promise<string> {
+    if (this.maintenancePromise) throw new Error("Storage maintenance is running; cancel it before restarting")
     if (this.options.mode === "external") {
       throw new Error("Cannot restart an externally managed Synergy server")
     }
@@ -122,6 +210,16 @@ export class DesktopServerManager {
   }
 
   async stop(): Promise<void> {
+    this.generation++
+    await this.cancelMaintenance()
+    if (this.diagnosticsChild) await terminateServerProcess(this.diagnosticsChild)
+    await this.diagnosticsPromise?.catch(() => {})
+    await this.stopServer()
+    await this.startPromise?.catch(() => {})
+    await this.stopServer()
+  }
+
+  private async stopServer(): Promise<void> {
     if (!this.child) {
       if (this.state !== "failed") {
         this.state = this.options.mode === "external" ? "external" : "stopped"
@@ -142,6 +240,7 @@ export class DesktopServerManager {
   }
 
   private async startManaged(): Promise<string> {
+    const generation = this.generation
     this.state = "starting"
     this.lastError = null
     await fsp.mkdir(this.options.logDir, { recursive: true })
@@ -155,28 +254,33 @@ export class DesktopServerManager {
 
     for (const port of candidates) {
       if (!(await isPortAvailable(port))) continue
-      const launch = await this.launchManagedServer(port, logFile, shellEnvironment)
-      if (launch.ok) return await this.acceptManagedServer(port, true)
+      const launch = await this.launchManagedServer(port, logFile, shellEnvironment, generation)
+      if (launch.ok) return await this.acceptManagedServer(port, true, generation)
       if (!launch.portConflict) this.rejectManagedServer(launch)
     }
 
     // A random port keeps Desktop usable when every deterministic candidate is taken, but it is
     // never persisted so the next launch retries the stable chain first.
     const fallbackPort = await findAvailablePort()
-    const fallback = await this.launchManagedServer(fallbackPort, logFile, shellEnvironment)
-    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, false)
+    const fallback = await this.launchManagedServer(fallbackPort, logFile, shellEnvironment, generation)
+    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, false, generation)
     this.rejectManagedServer(fallback)
   }
 
-  private async acceptManagedServer(port: number, persist: boolean): Promise<string> {
+  private async acceptManagedServer(port: number, persist: boolean, generation: number): Promise<string> {
     if (persist) {
       await saveServerPort(this.options.userDataPath, this.options.channel, port).catch(() => undefined)
     }
+    this.assertGeneration(generation)
     this.state = "running"
     this.lastError = null
     this.port = port
     this.url = `http://127.0.0.1:${port}`
     return this.url
+  }
+
+  private assertGeneration(generation: number) {
+    if (generation !== this.generation) throw new Error("Server startup was cancelled")
   }
 
   private rejectManagedServer(launch: ManagedServerLaunchFailure): never {
@@ -189,9 +293,11 @@ export class DesktopServerManager {
     port: number,
     logFile: string,
     shellEnvironment: DesktopShellEnvironmentDiagnostics | null,
+    generation: number,
   ): Promise<ManagedServerLaunch> {
     const url = `http://127.0.0.1:${port}`
     const command = await this.resolveServerCommand(port)
+    this.assertGeneration(generation)
     const logStream = fs.createWriteStream(logFile, { flags: "a" })
     logStream.write(`\n[${new Date().toISOString()}] starting ${command.command} ${command.args.join(" ")}\n`)
 
@@ -207,12 +313,9 @@ export class DesktopServerManager {
     })
     this.child = child
     const startup = new DesktopServerStartup({ onStatus: this.options.onStartupStatus })
-    const onOutput = (chunk: Buffer) => startup.receive(chunk.toString("utf8"))
-    let stderr = ""
-    const onStderr = (chunk: Buffer) => {
-      if (stderr.length >= MANAGED_SERVER_STDERR_LIMIT) return
-      stderr += chunk.toString("utf8").slice(0, MANAGED_SERVER_STDERR_LIMIT - stderr.length)
-    }
+    const output = new ManagedServerOutput((text) => startup.receive(text))
+    const onOutput = (chunk: Buffer) => output.receive("stdout", chunk)
+    const onStderr = (chunk: Buffer) => output.receive("stderr", chunk)
     child.stdout?.on("data", onOutput)
     child.stderr?.on("data", onStderr)
     child.stdout?.pipe(logStream, { end: false })
@@ -230,14 +333,13 @@ export class DesktopServerManager {
       return { ok: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      const logTail = await readLogTail(logFile)
-      const detail = logTail ? `${message}\n\nServer log tail:\n${logTail}` : message
-      // `waitForHealth` can reject on the child's exit event before piped stderr is delivered.
-      if (child.exitCode !== null || child.signalCode !== null) {
-        await waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS)
-      }
-      const portConflict = isPortBindFailure(stderr)
-      await this.stop()
+      await this.stopServer()
+      await Promise.all([
+        waitForStreamEnd(child.stdout, MANAGED_SERVER_STDERR_DRAIN_MS),
+        waitForStreamEnd(child.stderr, MANAGED_SERVER_STDERR_DRAIN_MS),
+      ])
+      const portConflict = output.portConflict
+      const detail = output.details ? `${message}\n\nCurrent launch output:\n${output.details}` : message
       return { ok: false, portConflict, detail, error }
     } finally {
       child.stdout?.off("data", onOutput)
@@ -245,25 +347,93 @@ export class DesktopServerManager {
     }
   }
 
-  private async resolveServerCommand(port: number): Promise<{ command: string; args: string[]; cwd: string }> {
+  private resolveProductCommand(args: string[]): Promise<{ command: string; args: string[]; cwd: string }> {
     const packaged = packagedServerBinary(this.options.resourcesPath)
     if (packaged && fs.existsSync(packaged)) {
-      return {
-        command: packaged,
-        args: managedServerArgs(port),
-        cwd: path.dirname(packaged),
-      }
+      return Promise.resolve({ command: packaged, args, cwd: path.dirname(packaged) })
     }
-
     const sourceRoot = sourceProductRoot()
-    if (!sourceRoot) {
-      throw new Error("Packaged Synergy runtime was not found and source fallback is unavailable")
-    }
-    return {
+    if (!sourceRoot) throw new Error("Packaged Synergy runtime was not found and source fallback is unavailable")
+    return Promise.resolve({
       command: process.env.BUN_BIN ?? "bun",
-      args: ["run", "--conditions=browser", "./src/index.ts", ...managedServerArgs(port)],
+      args: ["run", "--conditions=browser", "./src/index.ts", ...args],
       cwd: sourceRoot,
+    })
+  }
+
+  private resolveServerCommand(port: number) {
+    return this.resolveProductCommand(managedServerArgs(port))
+  }
+
+  private async runMaintenanceManaged(signal: AbortSignal): Promise<string> {
+    if (this.state === "running" && this.url) {
+      const response = await fetchWithTimeout(`${this.url}/global/activity`, 5000, signal)
+      if (!response.ok || parseDesktopActivity(await response.json()).active)
+        throw new Error("Synergy is working; wait for active tasks to finish before maintenance")
     }
+    signal.throwIfAborted()
+    this.setMaintenance({ state: "running", progress: null, error: null })
+    try {
+      await this.stopServer()
+      if (this.child) throw new Error(this.lastError ?? "The server has not stopped")
+      const command = await this.resolveProductCommand(["migration", "run", "storage", "--maintenance"])
+      const shellEnvironment = await this.shellEnvironmentPromise
+      await fsp.mkdir(this.options.logDir, { recursive: true })
+      signal.throwIfAborted()
+      const child = spawn(command.command, command.args, {
+        cwd: command.cwd,
+        env: {
+          ...buildManagedServerEnv(process.env, shellEnvironment, {
+            channel: this.options.channel,
+            parentPid: process.pid,
+            cwd: process.env.SYNERGY_CWD ?? os.homedir(),
+          }),
+          SYNERGY_DESKTOP_MAINTENANCE_PROGRESS: "1",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      })
+      this.maintenanceChild = child
+      this.logFile = path.join(this.options.logDir, "server.log")
+      const logStream = fs.createWriteStream(this.logFile, { flags: "a" })
+      child.stdout?.pipe(logStream, { end: false })
+      child.stderr?.pipe(logStream, { end: false })
+      attachManagedServerExitHandlers(child, logStream, () => {})
+      const startup = new DesktopServerStartup({
+        onProgress: (progress) => {
+          if (progress.phase === "migration") this.setMaintenance({ ...this.maintenance, progress })
+        },
+        onStatus: (status) => this.setMaintenance({ ...this.maintenance, detail: status.detail }),
+      })
+      try {
+        await waitForCommand(child, startup)
+      } catch (error) {
+        await terminateServerProcess(child)
+        throw error
+      } finally {
+        if (this.maintenanceChild === child) this.maintenanceChild = null
+      }
+      signal.throwIfAborted()
+      this.setMaintenance({ state: "completed", progress: this.maintenance.progress, error: null })
+      const url = await this.startManaged()
+      signal.throwIfAborted()
+      return url
+    } catch (error) {
+      const message = signal.aborted
+        ? String(signal.reason?.message ?? signal.reason)
+        : error instanceof Error
+          ? error.message
+          : String(error)
+      this.setMaintenance({ state: "failed", progress: this.maintenance.progress, error: message })
+      this.lastError = message
+      this.state = "failed"
+      throw new Error(message, { cause: error })
+    }
+  }
+
+  private setMaintenance(status: DesktopMaintenanceStatus) {
+    this.maintenance = status
+    this.options.onMaintenanceStatus?.(status)
   }
 }
 
@@ -395,12 +565,9 @@ function isAssignablePort(port: number | undefined): port is number {
   return port !== undefined && Number.isInteger(port) && port >= 1024 && port <= 65_535
 }
 
-function isPortBindFailure(stderr: string): boolean {
-  return stderr.includes("Failed to start server on port")
-}
-
 function waitForStreamEnd(stream: NodeJS.ReadableStream | null, timeoutMs: number): Promise<void> {
-  if (!stream) return Promise.resolve()
+  if (!stream || ("readableEnded" in stream && stream.readableEnded) || ("destroyed" in stream && stream.destroyed))
+    return Promise.resolve()
   return new Promise((resolve) => {
     let settled = false
     const finish = () => {
@@ -427,8 +594,8 @@ export async function waitForHealth(
   pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
   startup?: DesktopServerStartup,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  const remaining = () => startup?.remainingMs() ?? deadline - Date.now()
+  const deadline = performance.now() + timeoutMs
+  const remaining = () => startup?.remainingMs() ?? deadline - performance.now()
   let lastError: unknown
   const childFailure = watchChildFailure(child)
   try {
@@ -443,8 +610,8 @@ export async function waitForHealth(
           () => lastError,
           () => requestController.abort(),
         )
-        if (response.ok) return
-        lastError = new Error(`health responded ${response.status}`)
+        if (response.ok && remaining() > 0) return
+        lastError = response.ok ? undefined : new Error(`health responded ${response.status}`)
       } catch (error) {
         if (error instanceof ChildProcessHealthError) throw error
         lastError = error
@@ -722,6 +889,36 @@ function waitForDeadline<T>(promise: Promise<T>, deadline: number): Promise<T | 
   })
 }
 
+async function waitForCommand(child: ChildProcess, startup: DesktopServerStartup): Promise<void> {
+  const output = new ManagedServerOutput((text) => startup.receive(text))
+  const stdout = (chunk: Buffer) => output.receive("stdout", chunk)
+  const stderr = (chunk: Buffer) => output.receive("stderr", chunk)
+  child.stdout?.on("data", stdout)
+  child.stderr?.on("data", stderr)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearInterval(timer)
+        child.off("error", failed)
+        child.off("close", closed)
+        if (error) reject(new Error(`${error.message}\n${output.details}`, { cause: error }))
+        else resolve()
+      }
+      const failed = (error: Error) => finish(error)
+      const closed = (code: number | null, signal: NodeJS.Signals | null) =>
+        finish(code === 0 ? undefined : new Error(`Synergy command exited (code=${code} signal=${signal})`))
+      const timer = setInterval(() => {
+        if (startup.remainingMs() <= 0) finish(startup.timeoutError())
+      }, 250)
+      child.once("error", failed)
+      child.once("close", closed)
+    })
+  } finally {
+    child.stdout?.off("data", stdout)
+    child.stderr?.off("data", stderr)
+  }
+}
+
 function packagedServerBinary(resourcesPath: string): string | null {
   const binaryName = process.platform === "win32" ? "synergy.exe" : "synergy"
   return path.join(resourcesPath, "synergy", "bin", binaryName)
@@ -730,21 +927,4 @@ function packagedServerBinary(resourcesPath: string): string | null {
 export function sourceProductRoot(directory = dirname): string | null {
   const candidate = path.resolve(directory, "../../../packages/product-runtime")
   return fs.existsSync(path.join(candidate, "src/index.ts")) ? candidate : null
-}
-
-async function readLogTail(logFile: string | null): Promise<string | null> {
-  if (!logFile) return null
-  try {
-    const stat = await fsp.stat(logFile)
-    if (stat.size === 0) return "(empty)"
-    const fd = await fsp.open(logFile, "r")
-    const maxBytes = 8192
-    const start = Math.max(0, stat.size - maxBytes)
-    const buf = Buffer.alloc(maxBytes)
-    const { bytesRead } = await fd.read(buf, 0, maxBytes, start)
-    await fd.close()
-    return buf.subarray(0, bytesRead).toString("utf-8")
-  } catch {
-    return null
-  }
 }

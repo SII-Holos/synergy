@@ -94,6 +94,26 @@ describe("desktop server manager", () => {
     }
   })
 
+  test("a healthy response cannot overwrite a concurrent maintenance failure", async () => {
+    const child = new ChildProcessFixture() as unknown as ChildProcess
+    const startup = new DesktopServerStartup()
+    startup.receive(
+      'SYNERGY_STARTUP_V1 {"phase":"maintenance","id":1,"state":"started","operation":"vacuum","timeoutMs":690000}\n',
+    )
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => {
+      startup.receive('SYNERGY_STARTUP_V1 {"phase":"maintenance","id":1,"state":"failed","elapsedMs":1}\n')
+      return new Response("healthy")
+    }) as typeof fetch
+    try {
+      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 30000, 1, startup)).rejects.toThrow(
+        /^Synergy database maintenance vacuum failed after 1ms$/,
+      )
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("fails immediately on a child error and cleans up both child listeners", async () => {
     const child = new ChildProcessFixture() as unknown as ChildProcess
     const originalFetch = globalThis.fetch

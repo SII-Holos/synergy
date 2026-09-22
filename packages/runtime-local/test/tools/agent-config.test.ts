@@ -5,15 +5,22 @@ import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 let original: Awaited<ReturnType<typeof Config.domainGet>>
-beforeEach(async () => {
-  original = await Config.domainGet("agents")
-})
-afterEach(async () => {
-  await Config.domainUpdate("agents", original, { mode: "replace-domain" })
-  await Agent.reload()
-})
+beforeEach(() =>
+  runtime.run(async () => {
+    original = await Config.domainGet("agents")
+  }),
+)
+afterEach(() =>
+  runtime.run(async () => {
+    await Config.domainUpdate("agents", original, { mode: "replace-domain" })
+    await Agent.reload()
+  }),
+)
 
 const ctx = {
   sessionID: "ses_agent_config_tool",
@@ -26,35 +33,145 @@ const ctx = {
 }
 
 describe("tool.agent_config", () => {
-  test("create writes a markdown agent and the agent resolves", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const tool = await AgentConfigTool.init()
-        const result = await tool.execute(
-          {
-            input: {
-              action: "create",
-              name: "doc-writer",
-              description: "Writes documentation from code.",
-              mode: "subagent",
-              prompt: "You write documentation.",
+  test("create writes a markdown agent and the agent resolves", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await AgentConfigTool.init()
+          const result = await tool.execute(
+            {
+              input: {
+                action: "create",
+                name: "doc-writer",
+                description: "Writes documentation from code.",
+                mode: "subagent",
+                prompt: "You write documentation.",
+              },
             },
-          },
-          ctx,
-        )
+            ctx,
+          )
 
-        expect(result.title).toContain("doc-writer")
-        expect(result.metadata.action).toBe("create")
-        expect(result.metadata.source).toBe("markdown")
-        const agent = await Agent.get("doc-writer")
-        expect(agent?.description).toBe("Writes documentation from code.")
-      },
-    })
-  })
+          expect(result.title).toContain("doc-writer")
+          expect(result.metadata.action).toBe("create")
+          expect(result.metadata.source).toBe("markdown")
+          const agent = await Agent.get("doc-writer")
+          expect(agent?.description).toBe("Writes documentation from code.")
+        },
+      })
+    }))
 
-  test("update changes a field and preserves the rest", async () => {
+  test("update changes a field and preserves the rest", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await AgentConfigTool.init()
+          await tool.execute(
+            {
+              input: {
+                action: "create",
+                name: "reviewer",
+                description: "before",
+                prompt: "Review code.",
+                mode: "subagent",
+              },
+            },
+            ctx,
+          )
+          const result = await tool.execute(
+            { input: { action: "update", name: "reviewer", description: "after" } },
+            ctx,
+          )
+
+          expect(result.metadata.action).toBe("update")
+          const agent = await Agent.get("reviewer")
+          expect(agent?.description).toBe("after")
+          expect(agent?.prompt).toBe("Review code.")
+        },
+      })
+    }))
+
+  test("create with an unresolved visibleTo reference is rejected with the offending name", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await AgentConfigTool.init()
+          await expect(
+            tool.execute(
+              {
+                input: {
+                  action: "create",
+                  name: "hidden-helper",
+                  prompt: "helper",
+                  visibleTo: ["typo-caller"],
+                },
+              },
+              ctx,
+            ),
+          ).rejects.toThrow(/visibleTo.*typo-caller/)
+        },
+      })
+    }))
+
+  test("set_default rejects a subagent-only target", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await AgentConfigTool.init()
+          await expect(tool.execute({ input: { action: "set_default", name: "developer" } }, ctx)).rejects.toThrow(
+            /primary/,
+          )
+        },
+      })
+    }))
+
+  test("remove with disable strategy writes disable and the agent disappears", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await AgentConfigTool.init()
+          const result = await tool.execute({ input: { action: "remove", name: "explore" } }, ctx)
+
+          expect(result.metadata.strategy).toBe("disable")
+          expect(await Agent.get("explore")).toBeUndefined()
+        },
+      })
+    }))
+
+  test("list returns built-in agents", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await AgentConfigTool.init()
+          const result = await tool.execute({ input: { action: "list" } }, ctx)
+
+          expect(result.metadata.count).toBeGreaterThan(0)
+          expect(result.output).toContain("synergy")
+        },
+      })
+    }))
+
+  test("parameters schema keeps an object root wrapping the action union", () =>
+    runtime.run(async () => {
+      const tool = await AgentConfigTool.init()
+      expect(tool.parameters.safeParse({ input: { action: "list" } }).success).toBe(true)
+      expect(tool.parameters.safeParse({ action: "list" }).success).toBe(false)
+    }))
+})
+
+test("describe includes the bounded prompt and permissions in model-visible output", () =>
+  runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -64,119 +181,22 @@ describe("tool.agent_config", () => {
           {
             input: {
               action: "create",
-              name: "reviewer",
-              description: "before",
-              prompt: "Review code.",
-              mode: "subagent",
+              name: "inspectable",
+              prompt: "Inspect this prompt.",
+              permission: { edit: "deny" },
             },
           },
           ctx,
         )
-        const result = await tool.execute({ input: { action: "update", name: "reviewer", description: "after" } }, ctx)
-
-        expect(result.metadata.action).toBe("update")
-        const agent = await Agent.get("reviewer")
-        expect(agent?.description).toBe("after")
-        expect(agent?.prompt).toBe("Review code.")
+        const result = await tool.execute({ input: { action: "describe", name: "inspectable" } }, ctx)
+        expect(result.output).toContain("Inspect this prompt.")
+        expect(result.output).toContain('"permissionRules"')
+        expect(result.output).toContain('"deny"')
+        const disabled = await tool.execute({ input: { action: "update", name: "inspectable", disable: true } }, ctx)
+        expect(disabled.output).toContain("disabled")
+        expect(await Agent.get("inspectable")).toBeUndefined()
       },
     })
-  })
+  }))
 
-  test("create with an unresolved visibleTo reference is rejected with the offending name", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const tool = await AgentConfigTool.init()
-        await expect(
-          tool.execute(
-            {
-              input: {
-                action: "create",
-                name: "hidden-helper",
-                prompt: "helper",
-                visibleTo: ["typo-caller"],
-              },
-            },
-            ctx,
-          ),
-        ).rejects.toThrow(/visibleTo.*typo-caller/)
-      },
-    })
-  })
-
-  test("set_default rejects a subagent-only target", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const tool = await AgentConfigTool.init()
-        await expect(tool.execute({ input: { action: "set_default", name: "developer" } }, ctx)).rejects.toThrow(
-          /primary/,
-        )
-      },
-    })
-  })
-
-  test("remove with disable strategy writes disable and the agent disappears", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const tool = await AgentConfigTool.init()
-        const result = await tool.execute({ input: { action: "remove", name: "explore" } }, ctx)
-
-        expect(result.metadata.strategy).toBe("disable")
-        expect(await Agent.get("explore")).toBeUndefined()
-      },
-    })
-  })
-
-  test("list returns built-in agents", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const tool = await AgentConfigTool.init()
-        const result = await tool.execute({ input: { action: "list" } }, ctx)
-
-        expect(result.metadata.count).toBeGreaterThan(0)
-        expect(result.output).toContain("synergy")
-      },
-    })
-  })
-
-  test("parameters schema keeps an object root wrapping the action union", async () => {
-    const tool = await AgentConfigTool.init()
-    expect(tool.parameters.safeParse({ input: { action: "list" } }).success).toBe(true)
-    expect(tool.parameters.safeParse({ action: "list" }).success).toBe(false)
-  })
-})
-
-test("describe includes the bounded prompt and permissions in model-visible output", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const tool = await AgentConfigTool.init()
-      await tool.execute(
-        {
-          input: {
-            action: "create",
-            name: "inspectable",
-            prompt: "Inspect this prompt.",
-            permission: { edit: "deny" },
-          },
-        },
-        ctx,
-      )
-      const result = await tool.execute({ input: { action: "describe", name: "inspectable" } }, ctx)
-      expect(result.output).toContain("Inspect this prompt.")
-      expect(result.output).toContain('"permissionRules"')
-      expect(result.output).toContain('"deny"')
-      const disabled = await tool.execute({ input: { action: "update", name: "inspectable", disable: true } }, ctx)
-      expect(disabled.output).toContain("disabled")
-      expect(await Agent.get("inspectable")).toBeUndefined()
-    },
-  })
-})
+afterRuntimeTests(() => runtime.close())

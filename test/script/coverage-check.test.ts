@@ -277,6 +277,13 @@ describe("coverage failure signal extraction", () => {
     expect(signals.some((line) => line.includes("broken two"))).toBe(true)
   })
 
+  test("identifies the owning suite when an unnamed lifecycle hook fails", () => {
+    const signals = extractFailureSignals(
+      "test/runtime/instance.test.ts:\n(pass) runtime opens [1ms]\n(fail) (unnamed) [30002ms]",
+    )
+    expect(signals).toContain("test/runtime/instance.test.ts: (fail) (unnamed) [30002ms]")
+  })
+
   test("caps the failing test list and reports the remainder", () => {
     const lines = Array.from({ length: 40 }, (_, index) => `(fail) suite > case ${index} [1ms]`)
     const signals = extractFailureSignals(lines.join("\n"), 5)

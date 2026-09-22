@@ -1,3 +1,5 @@
+import { useGlobalSDK } from "@/context/global-sdk"
+import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
@@ -132,6 +134,7 @@ import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 import { createBottomRecoveryTrigger } from "@/context/session-bottom-recovery"
+import { isWorkingStatus, resolveSessionStatus } from "@/utils/session-status"
 
 const handoff = {
   prompt: "",
@@ -140,12 +143,15 @@ const handoff = {
 }
 
 export default function Page() {
+  const sdk = useGlobalSDK()
   return (
     <TerminalProvider>
       <ResourceOpenProvider>
-        <PromptProvider>
+        <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
           <BuiltinWorkbenchPanelsProvider>
-            <SessionPageContent />
+            <SessionPreparation>
+              <SessionPageContent />
+            </SessionPreparation>
           </BuiltinWorkbenchPanelsProvider>
         </PromptProvider>
       </ResourceOpenProvider>
@@ -302,7 +308,7 @@ function SessionPageContent() {
     const run = async () => {
       try {
         if (request.operation === "leave") {
-          await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
+          await sdk.client.worktree.leave({ scopeID: request.directory, sessionID: request.sessionID })
           refreshWorkspaceTransition({
             request,
             success: createWorkspaceTransitionSuccessProgress({ operation: "leave" }),
@@ -315,7 +321,7 @@ function SessionPageContent() {
         }
 
         const result = await sdk.client.worktree.create({
-          directory: request.directory,
+          scopeID: request.directory,
           worktreeCreateInput: {
             sessionID: request.sessionID,
             bind: true,
@@ -325,7 +331,7 @@ function SessionPageContent() {
         const setupFailure = worktreeSetupFailureMessage(result.data)
         if (setupFailure) {
           await sdk.client.worktree
-            .leave({ directory: request.directory, sessionID: request.sessionID })
+            .leave({ scopeID: request.directory, sessionID: request.sessionID })
             .catch(() => undefined)
           await sync.session
             .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
@@ -461,7 +467,7 @@ function SessionPageContent() {
           if (!sessionID || !cutMessageID) return
           const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
           // Abort if running, then allow the runtime to release its loop lease before rollback asserts idle.
-          if (status().type !== "idle") {
+          if (isWorkingStatus(status())) {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
@@ -842,19 +848,19 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
+  const scopeRoot = createMemo(() => sync.scope?.local?.worktree ?? sync.data.path.directory)
   const newSessionWorkspacePreference = createMemo<NewSessionWorkspacePreference>(() =>
-    sync.scope?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
+    sync.scope?.local?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
   )
   const newSessionWorkspaceSelection = createMemo(() =>
     defaultNewSessionWorkspaceSelection({
       selected: store.newSessionWorkspaceSelection,
-      currentDirectory: sync.data.path.directory,
-      canonicalDirectory: scopeRoot(),
+      currentDirectory: sync.data.path.directory ?? undefined,
+      canonicalDirectory: scopeRoot() ?? undefined,
       preference: newSessionWorkspacePreference(),
     }),
   )
-  const scopeName = createMemo(() => getFilename(scopeRoot()))
+  const scopeName = createMemo(() => getFilename(scopeRoot() ?? ""))
   const branch = createMemo(() => sync.data.vcs?.branch)
   const lastModified = createMemo(() => {
     const scope = sync.scope
@@ -913,7 +919,6 @@ function SessionPageContent() {
     scrollToMessage(msgs[targetIndex], "auto")
   }
 
-  const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let scroller: HTMLDivElement | undefined
 
@@ -932,6 +937,8 @@ function SessionPageContent() {
           connected: sdk.connected(),
           ready: sync.ready,
           reconnectVersion: sync.reconnectVersion,
+          historyID: rollback()?.id,
+          canUnrollback: rollbackActive(),
         }),
       (current, prev) => {
         const [id] = current
@@ -943,7 +950,13 @@ function SessionPageContent() {
         // Protect the viewed session's buckets from LRU eviction.
         sync.markActiveSession(id)
         if (!id || !shouldRunSessionSync(current, prev)) return
-        void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
+        const historyChanged = prevId === id && (prev?.[4] !== current[4] || prev?.[5] !== current[5])
+        void sync.session
+          .sync(id, {
+            refreshVolatile: true,
+            ...(historyChanged ? { trigger: { type: "history-transition" as const } } : {}),
+          })
+          .catch(() => undefined)
       },
     ),
   )
@@ -962,23 +975,12 @@ function SessionPageContent() {
   )
 
   const currentSession = createMemo(() => dataView().sessionFor(params.id ?? ""))
-  const status = createMemo<SessionStatus>(() => {
-    const runtimeStatus = dataView().statusFor(params.id ?? "")
-    if (runtimeStatus && runtimeStatus.type !== "idle") return runtimeStatus
-    const working = currentSession()?.working
-    if (working?.status === "busy") return { type: "busy", description: working.description }
-    if (working?.status === "retry") {
-      return {
-        type: "retry",
-        attempt: working.attempt,
-        message: working.message,
-        next: working.next,
-      }
-    }
-    if (working?.status === "recovering")
-      return { type: "recovering", reason: working.reason, description: working.description }
-    return runtimeStatus ?? idle
-  })
+  const status = createMemo<SessionStatus>(() =>
+    resolveSessionStatus({
+      runtimeStatus: dataView().statusFor(params.id ?? ""),
+      working: currentSession()?.working,
+    }),
+  )
 
   const sessionHasMessages = createMemo(() => (messageSnapshot()?.length ?? 0) > 0)
 
@@ -1011,7 +1013,7 @@ function SessionPageContent() {
     const id = params.id
     if (!session || !id) return
     const routeScope = sdk.scopeKey
-    const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
+    const sessionScope = session.scope.id
     if (!sessionScope) return
     if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
     navigate(`/${base64Encode(sessionScope)}/session/${id}`, sessionRouteReplaceOptions(location.state))
@@ -1075,7 +1077,7 @@ function SessionPageContent() {
     userMessages,
     setActiveMessage,
     navigateMessageByOffset,
-    isWorking: () => status().type !== "idle",
+    isWorking: () => isWorkingStatus(status()),
     onRewind: openRewindConfirm,
   })
 
@@ -1105,7 +1107,7 @@ function SessionPageContent() {
     }
   }
 
-  const isWorking = createMemo(() => status().type !== "idle")
+  const isWorking = createMemo(() => isWorkingStatus(status()))
   const [scrolledUp, setScrolledUp] = createSignal(false)
 
   const autoScroll = createAutoScroll({
@@ -1532,13 +1534,13 @@ function SessionPageContent() {
               return newSessionWorkspaceSelection()
             },
             get newSessionCanonicalDirectory() {
-              return scopeRoot()
+              return scopeRoot() ?? undefined
             },
             get newSessionCurrentDirectory() {
-              return sync.data.path.directory
+              return sync.data.path.directory ?? undefined
             },
             get newSessionCanCreateWorktree() {
-              return !isHomeScope(sdk.scopeKey)
+              return sync.scope?.local?.vcs === "git"
             },
             onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),
             onNewSessionWorkspaceSelectionReset: () => setStore("newSessionWorkspaceSelection", undefined),

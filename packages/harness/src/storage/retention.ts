@@ -1,8 +1,10 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "./storage"
 import { Log } from "../util/log"
 import { SqliteMaintenance } from "./sqlite-maintenance"
 import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityMetrics } from "../observability/metrics"
+import type { TransactionalStore } from "./transactional-store"
 
 const log = Log.create({ service: "storage.retention" })
 
@@ -11,13 +13,23 @@ const log = Log.create({ service: "storage.retention" })
  *
  * Pruning is off unless a window is configured, and the byte budget is a
  * backstop rather than a target: nothing is enumerated, scanned or deleted
- * while the store is inside it. A pass removes whole evidence trees
- * oldest-first and stops once the physical database is back inside its budget.
- * Two protections are absolute: a session or operation whose newest record is
- * inside the window is never touched, and a live session is never touched even
- * when its evidence is older than the window. Rollout evidence carries
- * rewind/restore/replay semantics, so a pruned tree is gone for good; both
- * protections are therefore evaluated before any delete runs.
+ * while the store is inside it. The operative window is derived from that budget
+ * and the measured ingress rate, because a fixed window beside a byte budget can
+ * promise more evidence than the budget holds: at the measured ingress of a busy
+ * host a 7-day window needs about 63 GB, so a 40 GiB budget was unreachable,
+ * every sweep found nothing it was allowed to remove, and the store kept
+ * growing. `retentionMs` is therefore a promise ceiling, and the window is the
+ * shorter of it and `retentionBytes / ingress`, never below one day. Only a
+ * budget that cannot hold even that shortest window refuses to delete; it
+ * reports the condition instead of repeating a pass that cannot converge.
+ *
+ * A pass removes whole evidence trees oldest-first and stops once the physical
+ * database is back inside its budget. Two protections are absolute: a session
+ * or operation whose newest record is inside the window is never touched, and a
+ * live session is never touched even when its evidence is older than the
+ * window. Rollout evidence carries rewind/restore/replay semantics, so a pruned
+ * tree is gone for good; both protections are therefore evaluated before any
+ * delete runs.
  */
 export namespace StorageRetention {
   export interface Owner {
@@ -38,8 +50,18 @@ export namespace StorageRetention {
     releasedPages: number
     footprintBytes: number
     capped: boolean
-    /** The budget cannot be reached by removing evidence the window permits
-     *  removing, so another pass would delete nothing and change nothing. */
+    /** The window the byte budget and the measured ingress rate allow: never
+     *  longer than the configured window, never shorter than the floor, and the
+     *  configured window until a rate has been measured. */
+    effectiveWindowMs: number
+    /** The configured window promises more evidence than the byte budget holds,
+     *  so the operative window is shorter than the configured one. */
+    windowReduced: boolean
+    /** The smoothed ingress rate this pass derived its window from, absent until
+     *  two over-budget passes have bracketed an interval. */
+    ingressBytesPerMs?: number
+    /** The byte budget cannot hold even the shortest permitted window, so no
+     *  pass this policy allows can reach it. */
     infeasible: boolean
   }
 
@@ -52,13 +74,76 @@ export namespace StorageRetention {
   // a permanently running deletion loop.
   const BACKOFF_BASE_MS = 15 * 60_000
   const BACKOFF_MAX_STEPS = 4
-  let timer: ReturnType<typeof setInterval> | undefined
-  let running: Promise<Report> | undefined
-  let consecutiveCapped = 0
-  let cooldownUntil = 0
+
+  // The shortest window a byte budget may shrink retention to: evidence an
+  // operator still expects to rewind must not disappear because ingress
+  // temporarily outran capacity. A budget that cannot hold even this much is
+  // reported as unreachable instead of being pursued with shorter windows.
+  export const WINDOW_FLOOR_MS = 24 * 60 * 60 * 1000
+  // One interval can carry a migration, a bulk import or a vacuum, none of which
+  // is steady-state ingress, so each measurement is halved against the estimate
+  // it updates rather than becoming it.
+  const INGRESS_SMOOTHING = 0.5
+  // The `storage_meta` family the store keeps its own bookkeeping in (identity,
+  // artifact migration, notification reconciliation), so a restart resumes from
+  // the measured rate instead of re-learning it.
+  export const INGRESS_KEY = ["storage_meta", "retention-ingress"]
+  // The worker never sets `page_size`, so a page a pass released is SQLite's
+  // documented 4096 bytes. Reading the real value would put a statement on the
+  // sweep whose whole point is to decide its work from signals it already has.
+  const SQLITE_PAGE_BYTES = 4096
+
+  interface IngressSample {
+    version: 1
+    /** Physical footprint at the start of the pass that recorded it. */
+    footprintBytes: number
+    /** Pages that pass returned after that footprint was taken, so the next
+     *  interval adds them back rather than reading its own reclaim as a fall. */
+    releasedPages: number
+    sampledAt: number
+    ingressBytesPerMs?: number
+  }
+  const runtimeState = RuntimeContext.state(() => ({
+    timer: undefined as ReturnType<typeof setInterval> | undefined,
+    running: undefined as Promise<Report> | undefined,
+    consecutiveCapped: 0,
+    cooldownUntil: 0,
+  }))
 
   export function isEnabled(retentionMs: number | undefined): retentionMs is number {
     return typeof retentionMs === "number" && Number.isFinite(retentionMs) && retentionMs > 0
+  }
+
+  /**
+   * The window a byte budget supports at a measured ingress rate, and whether
+   * that budget can be reached at all.
+   *
+   * The floor bounds how short a budget may make retention, and a budget whose
+   * steady state at that floor still exceeds it is unreachable by any pass this
+   * policy permits. That is decided before any enumeration, so an unreachable
+   * budget costs one measurement instead of a scan it cannot act on.
+   */
+  export function deriveWindow(input: {
+    retentionMs: number
+    maxBytes: number
+    ingressBytesPerMs: number | undefined
+  }): { windowMs: number; floorMs: number; infeasible: boolean } {
+    // The floor never exceeds the configured window: an operator who retains for
+    // six hours has already asked for less than a day, and extending that would
+    // retain evidence they chose to drop.
+    const floorMs = Math.min(WINDOW_FLOOR_MS, input.retentionMs)
+    const ingress = input.ingressBytesPerMs
+    // Without a budget, or without a rate anybody has measured, there is nothing
+    // to derive from, so the configured window stands and no pass refuses work
+    // on the strength of a rate nobody measured.
+    if (input.maxBytes <= 0 || ingress === undefined || !(ingress > 0))
+      return { windowMs: input.retentionMs, floorMs, infeasible: false }
+    const targetMs = input.maxBytes / ingress
+    return {
+      windowMs: Math.min(input.retentionMs, Math.max(floorMs, targetMs)),
+      floorMs,
+      infeasible: targetMs < floorMs,
+    }
   }
 
   /**
@@ -70,17 +155,19 @@ export namespace StorageRetention {
     current(): { retentionMs: number; maxBytes: number }
     liveSessionIDs(): string[]
   }) {
+    const instanceState = runtimeState()
+
     stop()
-    timer = setInterval(() => {
-      if (running) return
-      if (Date.now() < cooldownUntil) return
+    instanceState.timer = setInterval(() => {
+      if (instanceState.running) return
+      if (Date.now() < instanceState.cooldownUntil) return
       const config = input.current()
       if (!isEnabled(config.retentionMs)) return
-      running = run({ ...config, liveSessionIDs: input.liveSessionIDs() })
+      instanceState.running = run({ ...config, liveSessionIDs: input.liveSessionIDs() })
         .then((report) => {
-          consecutiveCapped = report.capped ? consecutiveCapped + 1 : 0
-          cooldownUntil = report.capped
-            ? Date.now() + BACKOFF_BASE_MS * 2 ** Math.min(consecutiveCapped - 1, BACKOFF_MAX_STEPS)
+          instanceState.consecutiveCapped = report.capped ? instanceState.consecutiveCapped + 1 : 0
+          instanceState.cooldownUntil = report.capped
+            ? Date.now() + BACKOFF_BASE_MS * 2 ** Math.min(instanceState.consecutiveCapped - 1, BACKOFF_MAX_STEPS)
             : 0
           return report
         })
@@ -102,17 +189,19 @@ export namespace StorageRetention {
           return undefined as unknown as Report
         })
         .finally(() => {
-          running = undefined
+          instanceState.running = undefined
         }) as Promise<Report>
     }, SWEEP_INTERVAL_MS)
-    timer.unref()
+    instanceState.timer.unref()
   }
 
   export function stop() {
-    if (timer) clearInterval(timer)
-    timer = undefined
-    consecutiveCapped = 0
-    cooldownUntil = 0
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) clearInterval(instanceState.timer)
+    instanceState.timer = undefined
+    instanceState.consecutiveCapped = 0
+    instanceState.cooldownUntil = 0
   }
 
   export function protectedOwners(input: {
@@ -173,6 +262,8 @@ export namespace StorageRetention {
     const handle = Storage.current()
     const filename = handle.store.sqliteFilename
     const footprint = () => (filename ? SqliteMaintenance.physicalFootprint(filename) : 0)
+    const sampledAt = input.now ?? Date.now()
+    const startFootprintBytes = footprint()
     const empty: Report = {
       considered: 0,
       protectedByWindow: 0,
@@ -180,8 +271,11 @@ export namespace StorageRetention {
       pruned: [],
       deletedRecords: 0,
       releasedPages: 0,
-      footprintBytes: footprint(),
+      footprintBytes: startFootprintBytes,
       capped: false,
+      effectiveWindowMs: input.retentionMs ?? 0,
+      windowReduced: false,
+      ingressBytesPerMs: undefined,
       infeasible: false,
     }
     if (!isEnabled(input.retentionMs)) return empty
@@ -190,10 +284,87 @@ export namespace StorageRetention {
     const overBudget = () => !filename || footprint() > input.maxBytes
     if (!overBudget()) return empty
 
+    const previous = filename ? await readIngressSample(handle.store) : undefined
+    const effective = deriveWindow({
+      retentionMs: input.retentionMs,
+      maxBytes: input.maxBytes,
+      ingressBytesPerMs: previous?.ingressBytesPerMs,
+    })
+    const reduced = effective.windowMs < input.retentionMs
+    // The window a pass applies comes from the estimate the previous pass
+    // recorded, because it decides what may be deleted before this pass has
+    // finished measuring. The report carries both: the window this pass applied,
+    // and the estimate this pass now records.
+    let settled: IngressSample | undefined
+    const settle = async (releasedPages: number) => {
+      if (!filename) return
+      settled = advanceIngress(previous, { footprintBytes: startFootprintBytes, releasedPages, sampledAt })
+      await handle.store.write(INGRESS_KEY, settled)
+    }
+    const estimate = () => settled?.ingressBytesPerMs ?? previous?.ingressBytesPerMs
+    if (effective.infeasible) {
+      // The budget holds less evidence than the shortest window this policy
+      // permits, so removing the oldest evidence it permits could not reach it.
+      // The pass re-measures the rate that decided the condition and stops:
+      // enumerating and deleting would cost the same and buy no capacity.
+      await settle(0)
+      const report: Report = {
+        ...empty,
+        effectiveWindowMs: effective.windowMs,
+        windowReduced: reduced,
+        ingressBytesPerMs: estimate(),
+        infeasible: true,
+        capped: true,
+      }
+      ObservabilityIssues.raise({
+        code: "STORAGE_RETENTION_BUDGET_INFEASIBLE",
+        severity: "warning",
+        module: "storage",
+        title: "Retention budget cannot be reached",
+        message:
+          "Authoritative storage is over its byte budget and that budget holds less evidence than the shortest permitted retention window, so no pass this policy allows can reach it.",
+        recommendation:
+          "Raise storage.retentionBytes above one day of the measured ingress rate, or reduce what the store ingests.",
+        evidence: {
+          footprintBytes: report.footprintBytes,
+          maxBytes: input.maxBytes,
+          ingressBytesPerMs: estimate(),
+          floorMs: effective.floorMs,
+          effectiveWindowMs: effective.windowMs,
+        },
+      })
+      recordPass(report, input.maxBytes)
+      return report
+    }
+    if (reduced) {
+      // Retaining less than the configured window is a real degradation rather
+      // than a defect to repair, so it is reported where an operator already
+      // looks for storage problems. Raising on every pass is what the issue
+      // store is built for: one open issue per fingerprint accumulates
+      // occurrences instead of adding a row, so a steady state stays one entry.
+      ObservabilityIssues.raise({
+        code: "STORAGE_RETENTION_WINDOW_REDUCED",
+        severity: "warning",
+        module: "storage",
+        title: "Retention window shortened to fit the byte budget",
+        message:
+          "Measured ingress fills the authoritative byte budget faster than the configured retention window promises, so pruning retains the budget-derived window rather than the configured one.",
+        recommendation:
+          "Raise storage.retentionBytes, or set storage.retentionMs to the window the budget actually holds so the configured promise and the retained evidence agree.",
+        evidence: {
+          retentionMs: input.retentionMs,
+          effectiveWindowMs: effective.windowMs,
+          ingressBytesPerMs: estimate(),
+          maxBytes: input.maxBytes,
+          footprintBytes: startFootprintBytes,
+        },
+      })
+    }
+
     const all = await owners()
     const { candidates, protectedByWindow, protectedLive } = protectedOwners({
       owners: all,
-      retentionMs: input.retentionMs,
+      retentionMs: effective.windowMs,
       liveSessionIDs: input.liveSessionIDs,
       now: input.now,
     })
@@ -202,37 +373,15 @@ export namespace StorageRetention {
       considered: all.length,
       protectedByWindow,
       protectedLive,
-      footprintBytes: footprint(),
+      effectiveWindowMs: effective.windowMs,
+      windowReduced: reduced,
+      ingressBytesPerMs: previous?.ingressBytesPerMs,
     }
-    if (!candidates.length) {
-      // Over budget with nothing the window permits removing. Deleting more
-      // cannot reach this budget, so the condition is a configuration problem
-      // and repeating the pass would only repeat the cost.
-      report.infeasible = true
-      report.capped = true
-      ObservabilityIssues.raise({
-        code: "STORAGE_RETENTION_BUDGET_INFEASIBLE",
-        severity: "warning",
-        module: "storage",
-        title: "Retention budget cannot be reached",
-        message:
-          "Authoritative storage is over its byte budget and holds no evidence old enough to prune; raise retentionBytes or shorten the retention window.",
-        recommendation:
-          "Raise storage.retentionBytes above the retention window's steady-state size, or lower storage.retentionMs.",
-        evidence: {
-          footprintBytes: report.footprintBytes,
-          maxBytes: input.maxBytes,
-          considered: all.length,
-          protectedByWindow,
-          protectedLive,
-        },
-      })
-      // The budget ratio is the series that shows how far past a reachable
-      // target the store is, so an infeasible pass reports it too.
-      recordPass(report, input.maxBytes)
-      return report
-    }
-
+    // A pass that ends still over budget leaves the store's own growth in place,
+    // and the next sample raises the estimate that shortens the window until the
+    // evidence protecting this budget is outside it. That is what the
+    // scheduler's capped backoff bounds, so this pass neither loops here nor
+    // reports a condition the next sweep resolves.
     const deadline = performance.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS)
     for (const owner of candidates) {
       if (!overBudget() || performance.now() > deadline) break
@@ -252,8 +401,60 @@ export namespace StorageRetention {
     }
     report.footprintBytes = footprint()
     report.capped = report.footprintBytes > input.maxBytes
+    await settle(report.releasedPages)
+    report.ingressBytesPerMs = estimate()
     recordPass(report, input.maxBytes)
     return report
+  }
+
+  /**
+   * Reads the durable ingress estimate. A sample that is absent, from another
+   * format version, or not finite is treated as no measurement rather than
+   * derived from: the window it would set governs which evidence may be removed
+   * permanently.
+   */
+  async function readIngressSample(store: TransactionalStore): Promise<IngressSample | undefined> {
+    const [stored] = await store.readMany<IngressSample>([INGRESS_KEY])
+    if (!stored || stored.version !== 1) return undefined
+    if (!Number.isFinite(stored.footprintBytes) || !Number.isFinite(stored.sampledAt)) return undefined
+    if (stored.ingressBytesPerMs !== undefined && !Number.isFinite(stored.ingressBytesPerMs)) return undefined
+    return stored
+  }
+
+  /**
+   * Advances the durable ingress estimate by one pass.
+   *
+   * Both halves of the measurement are signals a pass already has: the store's
+   * physical footprint, a `statSync` of the database and its sidecars rather
+   * than a scan, and the pages the previous pass released. Those pages are added
+   * back because the sample that recorded them was taken before the reclaim they
+   * came from: without that, a pass that returned bytes would read as a fall in
+   * ingress and lengthen the window it just paid to shorten.
+   */
+  function advanceIngress(
+    previous: IngressSample | undefined,
+    current: { footprintBytes: number; releasedPages: number; sampledAt: number },
+  ): IngressSample {
+    const next: IngressSample = {
+      version: 1,
+      footprintBytes: current.footprintBytes,
+      releasedPages: current.releasedPages,
+      sampledAt: current.sampledAt,
+      ingressBytesPerMs: previous?.ingressBytesPerMs,
+    }
+    if (!previous) return next
+    const elapsedMs = current.sampledAt - previous.sampledAt
+    if (elapsedMs <= 0) return next
+    const measured =
+      (current.footprintBytes - previous.footprintBytes + previous.releasedPages * SQLITE_PAGE_BYTES) / elapsedMs
+    if (!Number.isFinite(measured)) return next
+    const smoothed =
+      previous.ingressBytesPerMs === undefined
+        ? measured
+        : INGRESS_SMOOTHING * measured + (1 - INGRESS_SMOOTHING) * previous.ingressBytesPerMs
+    // A store that shrank reports no ingress, which leaves the configured window
+    // in force instead of deriving one from a negative rate.
+    return { ...next, ingressBytesPerMs: Math.max(0, smoothed) }
   }
 
   function recordPass(report: Report, maxBytes: number) {
@@ -284,6 +485,9 @@ export namespace StorageRetention {
         maxBytes,
         pruned: report.pruned.length,
         deletedRecords: report.deletedRecords,
+        effectiveWindowMs: report.effectiveWindowMs,
+        windowReduced: report.windowReduced,
+        ingressBytesPerMs: report.ingressBytesPerMs,
       })
   }
 }

@@ -14,6 +14,8 @@ OpenCode variants can explicitly set `bun_jit`; omission preserves the native de
 
 The [long-session research preset](../../../../benchmark/configs/glm53-long-session.yaml) gives the selected tasks three hours of agent execution and explicitly selects interpreted OpenCode. Preparation, startup, export and native verification retain separate budgets. This is a new experimental condition, not a change to the native task files or existing runs. [Preset launch contracts](../../../../benchmark/test/test_experiment_presets.py) verify that both native and extended deadlines reach every harness and its outer execution budget while verifier deadlines remain native. A short connectivity probe does not establish long-session runtime stability.
 
+The later [research deadline policy](2026-09-21-benchmark-research-deadline-policy.md) centralizes the three-hour default for new configurations and requires an explicit native-deadline opt-in. It supersedes implicit native timing for omitted deadlines while preserving this matrix's frozen-condition and verifier contracts.
+
 Provenance: [Native runtime stall investigation](../../../postmortem/0013-short-native-probes-missed-opencode-rosetta-stalls.md).
 
 Local adaptation: the research preset selects the existing interpreted variant explicitly; neither host detection nor a failed attempt can silently change the runtime or the scoring population.

@@ -13,7 +13,7 @@ export const CycleError = NamedError.create("MigrationCycleError", z.object({ cy
  * Detects cycles in dependsOn and throws CycleError.
  */
 export function orderMigrations(migrations: Migration[]): Migration[] {
-  if (migrations.length <= 1) return [...migrations]
+  if (migrations.length === 0) return []
 
   const byId = new Map<string, Migration>()
   for (const m of migrations) {

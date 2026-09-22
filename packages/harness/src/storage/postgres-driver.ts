@@ -145,6 +145,24 @@ export class PostgresDriver implements SqlDriver {
     }
   }
 
+  /**
+   * Declares that this driver never raises the terminal-unavailability signal.
+   *
+   * The signal exists for SQLite's single worker: one event loop serves every
+   * statement, so an occupied loop is a store that can never answer again and
+   * only a Runtime restart can clear. PostgreSQL has no such owner. The pool
+   * holds one connection per checkout, a broken connection fails the caller that
+   * drew it and is replaced, and lost advisory ownership is reported to the
+   * request that observed it, which reopens through explicit recovery. Because
+   * no condition here terminalises the Handle, the listener is deliberately
+   * never invoked. It is declared rather than omitted so the contract stays
+   * explicit: `Storage.onUnavailable` can no longer degrade into a silent no-op
+   * because a backend forgot to provide the method.
+   */
+  onUnavailable(_listener: (error: Error) => void): () => void {
+    return () => {}
+  }
+
   close(): Promise<void> {
     this.closing ??= (async () => {
       this.closed = true
