@@ -35834,7 +35834,7 @@
                     "maximum": 9007199254740991
                   },
                   {
-                    "description": "Disable timeout for this provider entirely.",
+                    "description": "Disable idle timeout for this provider.",
                     "type": "boolean",
                     "const": false
                   }
@@ -35842,6 +35842,35 @@
               }
             },
             "additionalProperties": {}
+          },
+          "timeout": {
+            "description": "Provider-specific request timeouts in seconds, overriding timeout.provider.<key> for this provider only",
+            "type": "object",
+            "properties": {
+              "ttfb_sec": {
+                "description": "Max seconds from request start to the first response body byte for this provider",
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "idle_sec": {
+                "description": "Idle timeout in seconds for this provider (0/false = disable)",
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "boolean",
+                    "const": false
+                  }
+                ]
+              },
+              "wall_sec": {
+                "description": "Hard wall-clock timeout per HTTP request in seconds for this provider (0 = disable)",
+                "type": "number",
+                "minimum": 0
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -38872,12 +38901,12 @@
                 "type": "object",
                 "properties": {
                   "ttfb_sec": {
-                    "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h",
+                    "description": "Max seconds from request start until the response body begins to flow. A gateway that does not flush response headers early reports headers and the first body byte together, so this budget also covers prompt prefill and has to exceed the slowest legitimate prefill rather than only the network round trip. Measured prefill grows with context size (roughly 3s at 65k tokens, 12s at 260k, 28s at 520k). Raise per provider (provider.<id>.timeout.ttfb_sec) when a provider needs more. Default: 300",
                     "type": "number",
                     "exclusiveMinimum": 0
                   },
                   "idle_sec": {
-                    "description": "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+                    "description": "Idle timeout in seconds (0/false = disable, default: 120). Resets on each data chunk.",
                     "anyOf": [
                       {
                         "type": "number",
@@ -38890,7 +38919,7 @@
                     ]
                   },
                   "wall_sec": {
-                    "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
+                    "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 1800). Bounds a stream that keeps sending keep-alive traffic without ever producing content, which would otherwise defeat the idle timeout indefinitely",
                     "type": "number",
                     "minimum": 0
                   }

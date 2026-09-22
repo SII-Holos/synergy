@@ -24,9 +24,11 @@ import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import { normalizeImageMediaTypes } from "./image-capability"
 import { ProviderStream } from "./stream"
+import type { TimeoutConfig } from "../util/timeout-config"
 import { ProviderModelUnavailableError } from "./model-unavailable-error"
 import { ProviderSdkSource } from "./sdk-source"
 import { ProviderPluginAuth } from "./plugin-auth-source"
+import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -181,6 +183,200 @@ export namespace Provider {
     if (noProxy) return directFetch(new Request(input, init), undefined)
     if (proxyUrl) return fetchFn(input, { ...init, proxy: proxyUrl } as RequestInit)
     return fetchFn(input, init)
+  }
+
+  /**
+   * Build the request-scoped fetch used for provider HTTP calls. The TTFB, idle,
+   * and wall watchdogs, the abort identity they produce, and the metrics that
+   * observe their phase boundaries all live here, so every place that arms or
+   * clears one stays in this function. `timeouts` is already resolved for this
+   * provider by the caller.
+   */
+  export function createTimeoutFetch(spec: {
+    fetchFn: ProviderProfile.FetchLike
+    proxyUrl?: string
+    noProxy: boolean
+    timeouts: {
+      providerTtfbMs: number
+      providerIdleMs: number | false
+      providerWallMs: number | false
+    }
+    labels: { provider: string; model: string }
+  }) {
+    return async (requestInput: RequestInfo | URL, init?: BunFetchRequestInit): Promise<Response> => {
+      const fetchFn = spec.fetchFn
+      const opts = { ...init }
+      const timeoutMs = spec.timeouts.providerIdleMs
+
+      let ttfbController: AbortController | null = null
+      let ttfbTimer: ReturnType<typeof setTimeout> | null = null
+      let idleController: AbortController | null = null
+      let wallTimer: ReturnType<typeof setTimeout> | undefined
+      let watchdogSettled = false
+      const recordWatchdog = (kind: "ttfb" | "idle" | "wall") => {
+        if (watchdogSettled) return
+        watchdogSettled = true
+        ObservabilityMetrics.record({
+          name: "llm.watchdog.fired",
+          value: 1,
+          unit: "count",
+          module: "llm",
+          labels: { ...spec.labels, kind },
+        })
+      }
+      const clearTtfbTimer = () => {
+        if (!ttfbTimer) return
+        clearTimeout(ttfbTimer)
+        ttfbTimer = null
+      }
+
+      // TTFB timeout — covers time from fetch start to the first body byte.
+      // It is cleared by that first byte, not by the response headers: a
+      // gateway can answer with headers promptly and then hold the body open.
+      if (spec.timeouts.providerTtfbMs > 0) {
+        ttfbController = new AbortController()
+        ttfbTimer = setTimeout(() => {
+          recordWatchdog("ttfb")
+          ttfbController!.abort(
+            new DOMException(
+              "TTFB timeout: no response received within " + spec.timeouts.providerTtfbMs + "ms",
+              "TimeoutError",
+            ),
+          )
+        }, spec.timeouts.providerTtfbMs).unref()
+      }
+
+      // Idle AbortController (timer starts on first chunk, not on fetch)
+      if (timeoutMs !== false) {
+        idleController = new AbortController()
+      }
+
+      // Wall-clock timeout: bounds a stream that keeps emitting keep-alive
+      // traffic without ever producing content.
+      const wallController = new AbortController()
+      if (spec.timeouts.providerWallMs !== false && spec.timeouts.providerWallMs > 0) {
+        const wallMs = spec.timeouts.providerWallMs
+        wallTimer = setTimeout(() => {
+          recordWatchdog("wall")
+          wallController.abort(new DOMException(`Wall timeout: request exceeded ${wallMs}ms`, "TimeoutError"))
+        }, wallMs).unref()
+      }
+
+      // Combine signals before fetch
+      const signals: AbortSignal[] = []
+      const callerSignal =
+        opts.signal === undefined ? (requestInput instanceof Request ? requestInput.signal : undefined) : opts.signal
+      if (callerSignal) signals.push(callerSignal)
+      if (ttfbController) signals.push(ttfbController.signal)
+      if (idleController) signals.push(idleController.signal)
+      if (wallTimer) signals.push(wallController.signal)
+      opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
+
+      // Clean up all timers when outer signal aborts (e.g. user cancel)
+      const cleanupTimers = () => {
+        watchdogSettled = true
+        clearTtfbTimer()
+        clearTimeout(wallTimer)
+        opts.signal?.removeEventListener("abort", cleanupTimers)
+      }
+      opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
+      if (opts.signal?.aborted) cleanupTimers()
+
+      // Disable HTTP keep-alive to avoid reusing connections that may have
+      // been silently dropped by NAT / load balancers during idle periods.
+      const headers = new Headers(opts.headers ?? (requestInput instanceof Request ? requestInput.headers : undefined))
+      headers.set("Connection", "close")
+
+      const logUrl = requestInput instanceof Request ? requestInput.url : requestInput.toString()
+      const safeUrl = (() => {
+        try {
+          const u = new URL(logUrl)
+          return u.origin + u.pathname
+        } catch {
+          return logUrl
+        }
+      })()
+      const fetchStartedAt = Date.now()
+      const fetchTimer = log.time("fetch.request", { url: safeUrl })
+      let response: Response
+      try {
+        response = await fetchWithProxyOptions(
+          fetchFn,
+          requestInput,
+          {
+            ...opts,
+            headers,
+            // Provenance: https://github.com/oven-sh/bun/issues/16682 .
+            // Local adaptation: Bun types reject `timeout: false`; passing it disables the built-in
+            // request timeout so the TTFB/idle timers below own stream aborting.
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          },
+          spec.proxyUrl,
+          spec.noProxy,
+        )
+      } catch (error) {
+        cleanupTimers()
+        fetchTimer.stop({ status: "exception" })
+        log.error("fetch.request.failed", { url: safeUrl, error })
+        throw error
+      }
+      fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
+      ObservabilityMetrics.record({
+        name: "llm.fetch.headers",
+        value: Date.now() - fetchStartedAt,
+        unit: "ms",
+        module: "llm",
+        labels: spec.labels,
+      })
+      if (!response.ok) {
+        log.warn("fetch.request.non-ok", {
+          url: safeUrl,
+          status: response.status,
+          statusText: response.statusText,
+        })
+      }
+
+      const responseBody =
+        response.body && ProviderStream.isSSE(response.headers)
+          ? ProviderStream.enforceSSEEventParserBound(response.body)
+          : response.body
+
+      // Every response body is wrapped, not only SSE ones: the first body byte
+      // is what clears the TTFB watchdog, so a non-SSE body must clear it too
+      // or the watchdog would abort a response that already delivered data.
+      if (responseBody) {
+        const bodyController = idleController ?? new AbortController()
+        const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
+          controller: bodyController,
+          signal: opts.signal ?? bodyController.signal,
+          timeoutMs,
+          observer: {
+            onFirstByte: () => {
+              clearTtfbTimer()
+              ObservabilityMetrics.record({
+                name: "llm.fetch.first_byte",
+                value: Date.now() - fetchStartedAt,
+                unit: "ms",
+                module: "llm",
+                labels: spec.labels,
+              })
+            },
+            onIdleTimeout: () => recordWatchdog("idle"),
+            onSettled: cleanupTimers,
+          },
+        })
+
+        return new Response(wrappedStream, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        })
+      }
+
+      cleanupTimers()
+      return response
+    }
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -920,12 +1116,12 @@ export namespace Provider {
 
   async function resolveModelOptions(
     model: Model,
-    provider: Info,
+    provider: Info | undefined,
     runtimeProfile: RuntimeProfileState | undefined,
   ): Promise<Record<string, any>> {
     const inlineModelKey =
       typeof model.options?.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
-    if (!inlineModelKey || !runtimeProfile) return { ...provider.options, ...(model.options ?? {}) }
+    if (!inlineModelKey || !runtimeProfile) return { ...provider?.options, ...(model.options ?? {}) }
 
     const profileInput = {
       providerID: model.providerID,
@@ -1082,9 +1278,27 @@ export namespace Provider {
     return sdk.languageModel(model.api.id) as LanguageModelV2
   }
 
-  export async function getSDK(model: Model, resolvedOptions?: Record<string, any>) {
-    const instanceState = runtimeState()
+  export async function requestTimeouts(
+    model: Model,
+    resolvedOptions?: Record<string, unknown>,
+  ): Promise<TimeoutConfig.ProviderTimeouts> {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") {
+      const timeouts = runtimeState().workerState.timeouts[model.providerID]
+      return { providerTtfbMs: timeouts.ttfbMs, providerIdleMs: timeouts.idleMs, providerWallMs: timeouts.wallMs }
+    }
+    const s = await state()
+    const options =
+      resolvedOptions ??
+      (await resolveModelOptions(model, s.providers[model.providerID], s.runtimeProfileStates[model.providerID]))
+    const { TimeoutConfig } = await import("../util/timeout-config")
+    return TimeoutConfig.forProvider({ providerID: model.providerID, legacyIdle: options["timeout"] })
+  }
 
+  export async function getSDK(
+    model: Model,
+    resolvedOptions?: Record<string, any>,
+    resolvedTimeouts?: TimeoutConfig.ProviderTimeouts,
+  ) {
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
@@ -1107,9 +1321,12 @@ export namespace Provider {
           ...model.headers,
         }
 
+      const timeoutCfg = resolvedTimeouts ?? (await requestTimeouts(model, options))
       const key = Bun.hash.xxHash32(
         JSON.stringify({
           providerID: model.providerID,
+          modelID: model.id,
+          timeouts: timeoutCfg,
           npm: model.api.npm,
           options,
         }),
@@ -1131,156 +1348,17 @@ export namespace Provider {
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
       delete options["noProxy"]
-      const timeoutCfg =
-        RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1"
-          ? {
-              providerTtfbMs: instanceState.workerState.timeouts[model.providerID].ttfbMs,
-              providerIdleMs: instanceState.workerState.timeouts[model.providerID].idleMs,
-              providerWallMs: instanceState.workerState.timeouts[model.providerID].wallMs,
-            }
-          : await import("../util/timeout-config").then(({ TimeoutConfig }) => TimeoutConfig.resolve())
-      const DEFAULT_TIMEOUT_MS = 900_000
+      // `options.timeout` is the Synergy-only idle shorthand (milliseconds); it
+      // was folded into timeoutCfg above and must not reach the SDK factory.
+      delete options["timeout"]
 
-      options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-        const fetchFn = authFetch
-        const opts = init ?? {}
-
-        const proxyUrlForRequest = proxyUrl
-        const noProxyForRequest = noProxy
-
-        // Provider-level options take precedence; otherwise use the configured
-        // idle timeout (timeout.provider.idle_sec). `false` disables it.
-        const configuredIdle = options["timeout"] !== undefined ? options["timeout"] : timeoutCfg.providerIdleMs
-        const timeoutMs =
-          configuredIdle === false ? false : ((configuredIdle as number | undefined) ?? DEFAULT_TIMEOUT_MS)
-
-        let ttfbController: AbortController | null = null
-        let ttfbTimer: ReturnType<typeof setTimeout> | null = null
-        let idleController: AbortController | null = null
-
-        // TTFB timeout — covers time from fetch start to first byte (accommodates reasoning models)
-        if (timeoutCfg.providerTtfbMs > 0) {
-          ttfbController = new AbortController()
-          ttfbTimer = setTimeout(() => {
-            ttfbController!.abort(
-              new DOMException(
-                "TTFB timeout: no response received within " + timeoutCfg.providerTtfbMs + "ms",
-                "TimeoutError",
-              ),
-            )
-          }, timeoutCfg.providerTtfbMs).unref()
-        }
-
-        // Idle AbortController (timer starts on first chunk, not on fetch)
-        if (timeoutMs !== false) {
-          idleController = new AbortController()
-        }
-
-        // Wall-clock timeout (optional — disabled by default)
-        const wallClockSignal =
-          timeoutCfg.providerWallMs !== false && timeoutCfg.providerWallMs > 0
-            ? AbortSignal.timeout(timeoutCfg.providerWallMs)
-            : null
-
-        // Combine signals before fetch
-        const signals: AbortSignal[] = []
-        const callerSignal =
-          opts.signal === undefined ? (input instanceof Request ? input.signal : undefined) : opts.signal
-        if (callerSignal) signals.push(callerSignal)
-        if (ttfbController) signals.push(ttfbController.signal)
-        if (idleController) signals.push(idleController.signal)
-        if (wallClockSignal) signals.push(wallClockSignal)
-        opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
-
-        // Clean up all timers when outer signal aborts (e.g. user cancel)
-        const cleanupTimers = () => {
-          if (ttfbTimer) clearTimeout(ttfbTimer)
-        }
-        opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
-
-        // Disable HTTP keep-alive to avoid reusing connections that may have
-        // been silently dropped by NAT / load balancers during idle periods.
-        const headers = new Headers(opts.headers ?? (input instanceof Request ? input.headers : undefined))
-        headers.set("Connection", "close")
-
-        const logUrl = typeof input === "string" ? input : input.url
-        const safeUrl = (() => {
-          try {
-            const u = new URL(logUrl)
-            return u.origin + u.pathname
-          } catch {
-            return logUrl
-          }
-        })()
-        const fetchTimer = log.time("fetch.request", { url: safeUrl })
-        let response: Response
-        try {
-          response = await fetchWithProxyOptions(
-            fetchFn,
-            input,
-            {
-              ...opts,
-              headers,
-              // Provenance: https://github.com/oven-sh/bun/issues/16682 .
-              // Local adaptation: Bun types reject `timeout: false`; passing it disables the built-in
-              // request timeout so the TTFB/idle timers below own stream aborting.
-              // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-              timeout: false,
-            },
-            proxyUrlForRequest,
-            noProxyForRequest,
-          )
-        } catch (error) {
-          cleanupTimers()
-          fetchTimer.stop({ status: "exception" })
-          log.error("fetch.request.failed", { url: safeUrl, error })
-          throw error
-        }
-        // First byte arrived — stop the TTFB timer so it cannot abort a
-        // healthy long-lived stream later on.
-        if (ttfbTimer) {
-          clearTimeout(ttfbTimer)
-          ttfbTimer = null
-        }
-        fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
-        if (!response.ok) {
-          log.warn("fetch.request.non-ok", {
-            url: safeUrl,
-            status: response.status,
-            statusText: response.statusText,
-          })
-        }
-
-        const responseBody =
-          response.body && ProviderStream.isSSE(response.headers)
-            ? ProviderStream.enforceSSEEventParserBound(response.body)
-            : response.body
-
-        // For streaming responses, wrap the body to reset idle timer on each chunk
-        if (idleController && responseBody) {
-          const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
-            controller: idleController,
-            signal: opts.signal ?? idleController.signal,
-            timeoutMs: timeoutMs as number,
-          })
-
-          return new Response(wrappedStream, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          })
-        }
-
-        if (responseBody !== response.body) {
-          return new Response(responseBody, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          })
-        }
-
-        return response
-      }
+      options["fetch"] = createTimeoutFetch({
+        fetchFn: authFetch,
+        proxyUrl,
+        noProxy,
+        timeouts: timeoutCfg,
+        labels: { provider: model.providerID, model: model.id },
+      })
 
       // Special case: google-vertex-anthropic uses a subpath import
       const bundledKey =
@@ -1322,11 +1400,13 @@ export namespace Provider {
     const s = await state()
     const provider = s.providers[model.providerID]
     const options = await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID])
+    const timeouts = await requestTimeouts(model, options)
     const key = Bun.hash
       .xxHash32(
         JSON.stringify({
           providerID: model.providerID,
           modelID: model.id,
+          timeouts,
           npm: model.api.npm,
           options,
           credential: credentialFingerprint(provider.key),
@@ -1341,7 +1421,7 @@ export namespace Provider {
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const sdk = await getSDK(model, options)
+    const sdk = await getSDK(model, options, timeouts)
 
     try {
       const language = s.modelLoaders[model.providerID]

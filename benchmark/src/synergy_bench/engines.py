@@ -44,11 +44,15 @@ def _prepare_external(
     # rc.3's web bundle requires an unpublished document-preview release.
     # Keep this exception scoped to the verified rc.1 harness until its next upgrade.
     package_overrides = {"@deepseek-ai/dsh-web-app": version} if kind == "deepseek" and version == "0.1.5-rc.1" else {}
+    # Provenance: https://docs.npmjs.com/cli/v11/using-npm/config/#before
+    # Bind prerelease ranges to the validated native version's dependency publication window.
+    dependency_before = package.get("dependency_before") if version == package["version"] else None
     identity = {
         "kind": kind,
         "package": package["name"],
         "version": version,
         "overrides": package_overrides,
+        "dependency_before": dependency_before,
         "platform": platform,
         "recipe": digest(Path(__file__).read_text()),
         "runtime": digest({name: (BENCHMARK / "runtime" / name).read_text() for name in NATIVE_RUNTIME}),
@@ -109,6 +113,7 @@ def _prepare_external(
                         "--ignore-scripts",
                         "--no-audit",
                         "--no-fund",
+                        *([f"--before={dependency_before}"] if dependency_before else []),
                     ],
                     log,
                     timeout=timeout,

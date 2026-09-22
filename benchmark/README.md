@@ -71,6 +71,8 @@ bun bench clean /absolute/path/to/run
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。
 
+默认 DeepSeek Harness 的预发布版本同时固定依赖解析的发布时间范围，避免顶层版本不变却解析到后续不完整的依赖发布。这个条件写入原生产物身份与 receipt；选择其他显式版本时不继承默认版本的时间范围。修改范围需要重新准备并验证原生矩阵，已冻结实验保持原产物。依据见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
+
 OpenCode 的 `bun_jit: false` 映射为原生进程的 `BUN_JSC_useJIT=0`；它是运行时执行条件，可能改变延迟和资源消耗。需要比较时声明独立名称，例如 `opencode-native` 和 `opencode-jitless`。该值随配置和每次尝试的有效环境冻结，不改变模型、提示词、工具或压缩策略，也不根据宿主或失败结果自动切换。其他 harness 使用此选项会报错。运行时适配的取舍见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
 
 人工取消的执行保留首次评分、原生 reward 和全部消耗，并通过 `pairing_exclusions: [cancelled_execution]` 公开排除配对差值。按预先声明期限自然超时的尝试仍属于原实验条件；不能把人工提前结束伪装成相同期限的超时，也不能以取消为由挑选后续更高分的尝试。
@@ -168,6 +170,8 @@ token 来自服务商 usage，缓存属于 input、reasoning 属于 output；已
 调度读取 Docker CPU/内存配额，预留至少 2 核及 max(2 GiB, 15%) 内存；不满足静态资源需求时提前报错。宿主内存压力或磁盘余量不足会延迟新任务，不杀正在运行的任务。agent 与独立 verifier 的原生资源声明共同决定准入。8 GB 任务等待时允许有限次数的轻任务补位，随后为队首释放容量；无人运行而宿主持续受压时有界报错。每项准入另计 0.2 核与 128 MiB 的代理和记录服务余量，容器自身的原生资源限制不变。源码和安装包构建预留 2 核、4 GiB，与执行共享预算；构建默认最多两项，跨进程使用可自动释放的锁。实际峰值另行采样，构建资源预留属于准入估计。
 
 暖任务镜像按原题内容、原生声明、安装步骤和平台复用。冻结镜像缺失或 ID 改变会报错；预热与执行使用相同镜像条件。正常清理只删除本次容器、网络和卷，避免 Pier 的 `--rmi all` 删除共享镜像。缓存发布校验内容、按键合并构建并原子发布。活动构建/运行与回收互斥，冻结 run 持有产物引用；只回收明确属于 benchmark 的无引用对象，不自动认领共享镜像。
+
+任务与推理代理镜像的身份包含解析后的缓存根目录摘要。同一缓存的不同路径别名共享镜像，独立缓存使用不同标签及归属记录。迁移缓存目录后应冻结新实验；旧实验继续使用原位置及记录的 evaluator。此隔离不改变任务或代理镜像的构建步骤，理由见[镜像缓存归属决策](../docs/decisions/implemented/testing/2026-09-21-benchmark-cache-image-namespaces.md)。
 
 维护边界：`config.py` 与 `harnesses.py` 拥有矩阵和原生映射；`gateway.py` / `bridge.py` / `usage.py` 拥有协议及计量；`trial.py` / `environment.py` 拥有固定 Pier 生命周期扩展；`cache.py` / `resources.py` / `monitor.py` 拥有准备和资源；`evidence.py` / `results.py` / `report.py` 拥有结果和统计。上游来源与修改边界保留在 [Pier NOTICE](third_party/pier/NOTICE)。
 

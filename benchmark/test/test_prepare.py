@@ -27,7 +27,13 @@ def test_native_preparation_pins_the_verified_deepseek_web_bundle(tmp_path, monk
     monkeypatch.setattr(engines, "command", lambda *args, **kwargs: "node@sha256:fixture")
 
     def install(args, log, **kwargs):
-        assert args[-5:] == ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]
+        assert args[args.index("install") : args.index("install") + 5] == [
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+        ]
         stage = Path(args[args.index("-v") + 1].removesuffix(":/work"))
         manifest = read_json(stage / "package.json")
         assert manifest.get("overrides", {}) == overrides

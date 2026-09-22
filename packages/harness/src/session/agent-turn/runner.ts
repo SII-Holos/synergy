@@ -19,6 +19,9 @@ import type { AgentTurnWorkerInput } from "./worker-pool"
 import { clearReplayPlan } from "../../provider/codex-compaction"
 
 import { RolloutTransport } from "../rollout/transport"
+import { ObservabilityMetrics } from "../../observability/metrics"
+import { createTurnMetrics } from "./metrics"
+
 export function startAgentWorker() {
   type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
 
@@ -274,7 +277,9 @@ export function startAgentWorker() {
       unackedFrames: [],
     }
     active = turn
-    const terminal = await executeTurn(turn, envelope!)
+    const metrics = createTurnMetrics(requestId, send)
+    const terminal = await ObservabilityMetrics.withForwarder(metrics.record, () => executeTurn(turn, envelope!))
+    metrics.close()
     envelope = undefined
     active = undefined
     send(terminal)
