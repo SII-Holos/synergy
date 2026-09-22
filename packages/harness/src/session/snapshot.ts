@@ -8,6 +8,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotStore } from "./snapshot-store"
 import { Storage } from "../storage/storage"
+import { WorkspaceBinding } from "../workspace/binding"
 import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace Snapshot {
@@ -59,18 +60,15 @@ export namespace Snapshot {
 
   async function gitSpawn(...args: Parameters<typeof SnapshotGit.run>) {
     const context = SnapshotStore.current()
-    args[2] = { ...args[2], GIT_INDEX_FILE: context.index }
+    args[2] = { ...args[2], GIT_INDEX_FILE: context.index, GIT_LITERAL_PATHSPECS: "1" }
     return SnapshotGit.run(...args)
   }
 
   export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
     if (signal?.aborted) return
-    if (
-      !ScopeContext.current.workspace ||
-      ScopeContext.current.scope.type !== "project" ||
-      ScopeContext.current.scope.local?.vcs !== "git"
-    )
-      return
+    const source = workspace()
+    if (!source) return
+    await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
     if ((await Config.current()).snapshot === false) return
     try {
       return await SnapshotStore.withSession(sessionID, () => trackImpl(sessionID, signal), signal)
@@ -78,6 +76,12 @@ export namespace Snapshot {
       if (signal?.aborted) return undefined
       throw error
     }
+  }
+
+  export function workspace(): SnapshotSchema.Workspace | undefined {
+    const source = ScopeContext.current.workspace
+    if (!source?.id || !source.generation) return
+    return { id: source.id, generation: source.generation, root: source.path }
   }
 
   async function trackImpl(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
@@ -103,6 +107,8 @@ export namespace Snapshot {
       log.warn("track write-tree failed", { sessionID, exitCode: writeResult.exitCode, duration: Date.now() - started })
       return undefined
     }
+    const source = workspace()!
+    await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
     const hash = writeResult.text.trim()
     if (!(await SnapshotStore.retainCurrent(hash, signal))) return undefined
     log.info("tracking", { hash, cwd: ScopeContext.current.directory, git, duration: Date.now() - started })
@@ -157,6 +163,7 @@ export namespace Snapshot {
         return diffSummaryImpl(from, to, sessionID, signal)
       },
       signal,
+      { historical: true },
     ).catch((error) => {
       if (signal?.aborted) return []
       throw error
@@ -179,6 +186,7 @@ export namespace Snapshot {
 
   export const Patch = z.object({
     hash: z.string(),
+    workspace: SnapshotSchema.Workspace.optional(),
     files: z.string().array(),
   })
   export type Patch = z.infer<typeof Patch>
@@ -208,6 +216,8 @@ export namespace Snapshot {
         "diff",
         "--no-ext-diff",
         "--name-only",
+        "--cached",
+        "-z",
         hash,
         "--",
         ".",
@@ -239,12 +249,8 @@ export namespace Snapshot {
     })
     return {
       hash,
-      files: filesText
-        .trim()
-        .split("\n")
-        .map((x) => x.trim())
-        .filter(Boolean)
-        .map((x) => absoluteWorktreePath(x)),
+      workspace: workspace(),
+      files: filesText.split("\0").filter(Boolean).map(absoluteWorktreePath),
     }
   }
 
@@ -370,6 +376,7 @@ export namespace Snapshot {
         ScopeContext.current.directory,
         "diff",
         "--no-ext-diff",
+        "--cached",
         hash,
         "--",
         ".",
@@ -411,19 +418,18 @@ export namespace Snapshot {
         "core.quotepath=false",
         "--git-dir",
         git,
-        "--work-tree",
-        ScopeContext.current.directory,
         "diff",
         "--no-ext-diff",
         "--no-renames",
         "--numstat",
         "-p",
+        "-z",
         from,
         to,
         "--",
         ".",
       ],
-      ScopeContext.current.directory,
+      path.dirname(git),
       undefined,
       signal,
     )
@@ -560,8 +566,7 @@ export namespace Snapshot {
     }
     const files = new Set<string>()
     for (const raw of [...modified.text.split("\0"), ...untracked.text.split("\0")]) {
-      const rel = raw.trim()
-      if (rel) files.add(rel.replaceAll("\\", "/"))
+      if (raw) files.add(raw)
     }
     return [...files]
   }
@@ -590,7 +595,7 @@ export namespace Snapshot {
   }
 
   function excludePath(rel: string): boolean {
-    const normalized = rel.replaceAll("\\", "/")
+    const normalized = process.platform === "win32" ? rel.replaceAll("\\", "/") : rel
     const segments = normalized.split("/")
     if (segments.some((segment) => EXCLUDED_DIRS.has(segment))) return true
     return EXCLUDED_EXTENSIONS.has(path.extname(normalized).toLowerCase())
@@ -611,27 +616,32 @@ export namespace Snapshot {
   }
 
   function absoluteWorktreePath(rel: string): string {
-    return `${ScopeContext.current.directory}/${rel.replaceAll("\\", "/")}`
+    return path.join(ScopeContext.current.directory, rel)
   }
 
   function parseNumstatPatch(text: string): {
     stats: Array<{ additions: string; deletions: string; file: string }>
     patches: string[]
   } {
-    const marker = "\n\ndiff --git "
-    const markerIndex = text.indexOf(marker)
-    const numstatText = markerIndex === -1 ? text : text.slice(0, markerIndex)
-    const patchText = markerIndex === -1 ? "" : text.slice(markerIndex + 2)
+    // Provenance: https://git-scm.com/docs/git-diff (-z and --numstat).
+    // NUL-delimited statistics preserve literal names; patch headers are display text.
+    const boundary = text.indexOf("\0\0")
+    const stats = boundary < 0 ? text : text.slice(0, boundary)
     return {
-      stats: numstatText
-        .split("\n")
-        .map((line) => line.trim())
+      stats: stats
+        .split("\0")
         .filter(Boolean)
-        .map((line) => {
-          const [additions, deletions, file] = line.split("\t")
-          return { additions, deletions, file }
+        .map((record) => {
+          const first = record.indexOf("\t")
+          const second = record.indexOf("\t", first + 1)
+          if (first < 0 || second < 0) throw new SnapshotStore.StorageError("Invalid snapshot diff statistics")
+          return {
+            additions: record.slice(0, first),
+            deletions: record.slice(first + 1, second),
+            file: record.slice(second + 1),
+          }
         }),
-      patches: splitPatches(patchText),
+      patches: splitPatches(boundary < 0 ? "" : text.slice(boundary + 2)),
     }
   }
 
@@ -654,21 +664,24 @@ export namespace Snapshot {
   ): Promise<Map<string, number>> {
     const result = new Map<string, number>()
     if (objects.length === 0) return result
-    const input = objects.map((object) => objectSizeKey(object.tree, object.file)).join("\n") + "\n"
-    const batch = await gitSpawn(
-      ["git", "--git-dir", git, "cat-file", "--batch-check=%(objectsize)"],
-      ScopeContext.current.directory,
-      undefined,
-      signal,
-      input,
-    )
-    if (batch.exitCode !== 0) return result
-    const lines = batch.text.split("\n")
-    for (let index = 0; index < objects.length; index++) {
-      const line = lines[index]?.trim() ?? ""
-      if (!/^\d+$/.test(line)) continue
-      const parsed = Number.parseInt(line, 10)
-      if (Number.isFinite(parsed)) result.set(objectSizeKey(objects[index].tree, objects[index].file), parsed)
+    const requested = new Set(objects.map((object) => objectSizeKey(object.tree, object.file)))
+    // Provenance: https://git-scm.com/docs/git-ls-tree (-l -z).
+    // Tree entries carry sizes without interpolating filenames into a line protocol.
+    for (const tree of new Set(objects.map((object) => object.tree))) {
+      const listing = await gitSpawn(
+        ["git", "--git-dir", git, "ls-tree", "-r", "-l", "-z", tree],
+        path.dirname(git),
+        undefined,
+        signal,
+      )
+      if (listing.exitCode !== 0) throw new SnapshotStore.StorageError("Snapshot tree metadata is unavailable")
+      for (const entry of listing.text.split("\0")) {
+        if (!entry) continue
+        const separator = entry.indexOf("\t")
+        const size = entry.slice(0, separator).trim().split(/\s+/)[3]
+        const key = objectSizeKey(tree, entry.slice(separator + 1))
+        if (requested.has(key) && /^\d+$/.test(size)) result.set(key, Number(size))
+      }
     }
     return result
   }

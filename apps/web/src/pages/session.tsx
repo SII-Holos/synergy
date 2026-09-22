@@ -1989,6 +1989,7 @@ function SessionPageContent() {
                   const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])
                   return (
                     <SessionReviewTab
+                      workspace={() => file.workspace}
                       diffs={() => diffsArr}
                       view={view}
                       diffStyle="unified"

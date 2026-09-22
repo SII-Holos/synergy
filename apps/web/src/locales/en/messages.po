@@ -12142,6 +12142,10 @@ msgid "session-review.expand-all"
 msgstr "Expand all"
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.historical-binding"
+msgstr "This change belongs to a different or unavailable Workspace binding."
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr "Split"
 
@@ -12152,6 +12156,10 @@ msgstr "Session changes"
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.unified"
 msgstr "Unified"
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.view-file"
+msgstr "Open file"
 
 #. js-lingui-explicit-id
 msgid "session-status.analyzing-files"

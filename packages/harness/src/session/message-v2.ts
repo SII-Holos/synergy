@@ -103,6 +103,7 @@ export namespace MessageV2 {
   export const SnapshotPart = PartBase.extend({
     type: z.literal("snapshot"),
     snapshot: z.string(),
+    workspace: SnapshotSchema.Workspace.optional(),
   }).meta({
     ref: "SnapshotPart",
   })
@@ -111,6 +112,7 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    workspace: SnapshotSchema.Workspace.optional(),
     files: z.string().array(),
   }).meta({
     ref: "PatchPart",
@@ -273,6 +275,7 @@ export namespace MessageV2 {
   export const StepStartPart = PartBase.extend({
     type: z.literal("step-start"),
     snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
   }).meta({
     ref: "StepStartPart",
   })
@@ -283,6 +286,7 @@ export namespace MessageV2 {
     accounting: RolloutSchema.MessageAccounting.optional(),
     reason: z.string(),
     snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
     cost: z.number(),
     tokens: z.object({
       input: z.number(),

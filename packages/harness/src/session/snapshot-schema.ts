@@ -1,10 +1,20 @@
-import z from "zod"
+import { z } from "zod"
 import { SessionBounds } from "./bounds"
 
 export namespace SnapshotSchema {
+  export const Workspace = z
+    .object({
+      id: z.string().min(1),
+      generation: z.number().int().positive(),
+      root: z.string().min(1),
+    })
+    .meta({ ref: "SnapshotWorkspace" })
+  export type Workspace = z.infer<typeof Workspace>
+
   export const FileDiff = z
     .object({
       file: z.string(),
+      workspace: Workspace.optional(),
       additions: z.number(),
       deletions: z.number(),
       binary: z.boolean().optional(),
@@ -22,6 +32,7 @@ export namespace SnapshotSchema {
 
   export function fromContents(input: {
     file: string
+    workspace?: Workspace
     before: string
     after: string
     additions: number
@@ -33,6 +44,7 @@ export namespace SnapshotSchema {
     const preview = SessionBounds.diffPreview(input.preview ?? simplePreview(input.before, input.after))
     return {
       file: input.file,
+      ...(input.workspace ? { workspace: input.workspace } : {}),
       additions: input.additions,
       deletions: input.deletions,
       ...preview,
@@ -43,6 +55,7 @@ export namespace SnapshotSchema {
 
   export function fromPatch(input: {
     file: string
+    workspace?: Workspace
     additions: number
     deletions: number
     binary?: boolean
@@ -52,6 +65,7 @@ export namespace SnapshotSchema {
   }): FileDiff {
     return {
       file: input.file,
+      ...(input.workspace ? { workspace: input.workspace } : {}),
       additions: input.additions,
       deletions: input.deletions,
       ...(input.binary ? { binary: true } : {}),
@@ -67,6 +81,8 @@ export namespace SnapshotSchema {
     const record = value as Record<string, unknown>
     const file = typeof record.file === "string" ? record.file : undefined
     if (!file) return undefined
+    const workspace = Workspace.safeParse(record.workspace)
+    const attribution = workspace.success ? { workspace: workspace.data } : {}
     const additions = typeof record.additions === "number" ? record.additions : 0
     const deletions = typeof record.deletions === "number" ? record.deletions : 0
     const before = typeof record.before === "string" ? record.before : undefined
@@ -74,6 +90,7 @@ export namespace SnapshotSchema {
     if (before !== undefined || after !== undefined) {
       return fromContents({
         file,
+        ...attribution,
         before: before ?? "",
         after: after ?? "",
         additions,
@@ -82,6 +99,7 @@ export namespace SnapshotSchema {
     }
     return {
       file,
+      ...attribution,
       additions,
       deletions,
       ...(record.binary === true ? { binary: true } : {}),

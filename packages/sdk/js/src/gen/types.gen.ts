@@ -5061,8 +5061,15 @@ export type SessionScope =
 
 export type SessionTags = Array<string>
 
+export type SnapshotWorkspace = {
+  id: string
+  generation: number
+  root: string
+}
+
 export type FileDiff = {
   file: string
+  workspace?: SnapshotWorkspace
   additions: number
   deletions: number
   binary?: boolean
@@ -7593,6 +7600,7 @@ export type StepStartPart = {
   messageID: string
   type: "step-start"
   snapshot?: string
+  workspace?: SnapshotWorkspace
 }
 
 export type StepFinishPart = {
@@ -7620,6 +7628,7 @@ export type StepFinishPart = {
       }
   reason: string
   snapshot?: string
+  workspace?: SnapshotWorkspace
   cost: number
   tokens: {
     input: number
@@ -7638,6 +7647,7 @@ export type SnapshotPart = {
   messageID: string
   type: "snapshot"
   snapshot: string
+  workspace?: SnapshotWorkspace
 }
 
 export type PatchPart = {
@@ -7646,6 +7656,7 @@ export type PatchPart = {
   messageID: string
   type: "patch"
   hash: string
+  workspace?: SnapshotWorkspace
   files: Array<string>
 }
 
@@ -10265,6 +10276,34 @@ export type EventWorkspaceUpdated = {
   properties: WorkspaceInfo
 }
 
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+    directory?: string
+  }
+}
+
+export type EventScopeRuntimeDisposed = {
+  type: "scope.runtime.disposed"
+  properties: {
+    scopeID: string
+    directory?: string
+  }
+}
+
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -10276,20 +10315,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -10322,6 +10347,29 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
   }
 }
 
@@ -10423,43 +10471,6 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
-  }
-}
-
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
-    directory?: string
-  }
-}
-
-export type EventScopeRuntimeDisposed = {
-  type: "scope.runtime.disposed"
-  properties: {
-    scopeID: string
-    directory?: string
-  }
-}
-
-export type EventProviderAuthUpdated = {
-  type: "provider.auth.updated"
-  properties: {
-    health: ProviderAuthHealth
-  }
-}
-
-export type EventDagUpdated = {
-  type: "dag.updated"
-  properties: {
-    sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
   }
 }
 
@@ -10926,14 +10937,19 @@ export type EventGlobalDisposed = {
 
 export type Event =
   | EventWorkspaceUpdated
+  | EventScopeUpdated
+  | EventScopeRemoved
+  | EventScopeRuntimeDisposed
+  | EventProviderAuthUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventPermissionAsked
-  | EventPermissionReplied
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventPermissionAsked
+  | EventPermissionReplied
+  | EventDagUpdated
   | EventConfigUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
@@ -10947,11 +10963,6 @@ export type Event =
   | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventSessionCompacted
-  | EventScopeUpdated
-  | EventScopeRemoved
-  | EventScopeRuntimeDisposed
-  | EventProviderAuthUpdated
-  | EventDagUpdated
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventFileEdited

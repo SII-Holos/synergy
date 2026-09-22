@@ -12142,6 +12142,10 @@ msgid "session-review.expand-all"
 msgstr ""
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.historical-binding"
+msgstr ""
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr ""
 
@@ -12151,6 +12155,10 @@ msgstr ""
 
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.unified"
+msgstr ""
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.view-file"
 msgstr ""
 
 #. js-lingui-explicit-id

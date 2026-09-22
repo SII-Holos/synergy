@@ -35,6 +35,8 @@ test("Home and explicit none retain a null workspace through creation and child 
         expect(parent.workspace).toEqual({
           id: parent.workspaceID!,
           generation: 1,
+          bindingState: "bound",
+          lifecycle: "active",
           type: "main",
           path: await fs.realpath(directory),
           scopeID: scope.id,

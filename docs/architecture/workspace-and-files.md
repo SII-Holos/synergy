@@ -162,7 +162,9 @@ The exact stages vary by tool, but no write path should create a second unclassi
 
 ## Snapshots, Rollback, and Restore
 
-File snapshots share one Git object store and reference namespace per Scope under Synergy data. Each session and workspace identity has an independent, rebuildable index. `SnapshotStore` is the sole resolver for registered legacy repositories and the shared store; snapshot readers validate session ownership before using a tree hash. The user's Git repository is not an object-store dependency.
+File snapshots share one Git object store and reference namespace per Scope under Synergy data. Each session, Workspace identity and binding generation has an independent, rebuildable index. Bound non-Git directories participate in text snapshots without creating a user Git repository. `SnapshotStore` is the sole resolver for registered legacy repositories and the shared store; snapshot readers validate session ownership before using a tree hash. The user's Git repository is not an object-store dependency.
+
+Snapshot parts and derived file differences retain the source Workspace ID, binding generation and root. Summary cursors group each binding separately; old cursors rebuild from historical parts without inventing binding authority for unattributed records. Historical object comparisons use the Scope store even when no local Workspace exists. Literal filenames use NUL-delimited Git metadata, preserving whitespace, backslashes and newlines.
 
 Capture holds a shared Scope lease and an exclusive session index lock, writes objects, and retains `refs/synergy/snapshots/<session>/<tree>` before returning the tree hash. All historical roots remain retained. Fork and JSON import establish destination ownership before publishing copied messages; JSON import reports unavailable file objects as warnings. Archive, compaction of messages, and transcript rollback do not release roots.
 

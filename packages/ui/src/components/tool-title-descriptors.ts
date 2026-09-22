@@ -284,6 +284,11 @@ export const SPECIAL_USER_LABEL_DESC: Record<string, MessageDescriptor> = {
 
 // ── Session review chrome ───────────────────────────────────────────
 export const SESSION_REVIEW_DESC = {
+  viewFile: d("session-review.view-file", "Open file"),
+  historicalBinding: d(
+    "session-review.historical-binding",
+    "This change belongs to a different or unavailable Workspace binding.",
+  ),
   title: d("session-review.title", "Session changes"),
   unified: d("session-review.unified", "Unified"),
   split: d("session-review.split", "Split"),

@@ -41448,11 +41448,33 @@
           "type": "string"
         }
       },
+      "SnapshotWorkspace": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "root": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["id", "generation", "root"]
+      },
       "FileDiff": {
         "type": "object",
         "properties": {
           "file": {
             "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           },
           "additions": {
             "type": "number"
@@ -48961,6 +48983,9 @@
           },
           "snapshot": {
             "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           }
         },
         "required": ["id", "sessionID", "messageID", "type"]
@@ -49060,6 +49085,9 @@
           "snapshot": {
             "type": "string"
           },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
+          },
           "cost": {
             "type": "number"
           },
@@ -49111,6 +49139,9 @@
           },
           "snapshot": {
             "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "snapshot"]
@@ -49133,6 +49164,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           },
           "files": {
             "type": "array",
@@ -57150,6 +57184,82 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.scope.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.runtime.disposed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.runtime.disposed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.provider.auth.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "provider.auth.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "health": {
+                "$ref": "#/components/schemas/ProviderAuthHealth"
+              }
+            },
+            "required": ["health"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -57184,45 +57294,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.asked": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.asked"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/PermissionRequest"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.replied": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.replied"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              },
-              "reply": {
-                "type": "string",
-                "enum": ["once", "session", "always", "reject"]
-              }
-            },
-            "required": ["sessionID", "requestID", "reply"]
           }
         },
         "required": ["type", "properties"]
@@ -57311,6 +57382,76 @@
               }
             },
             "required": ["sessionID", "messageID", "partID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.asked": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.asked"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/PermissionRequest"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string",
+                "enum": ["once", "session", "always", "reject"]
+              }
+            },
+            "required": ["sessionID", "requestID", "reply"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.dag.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dag.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DagNode"
+                }
+              },
+              "ready": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["sessionID", "nodes", "ready"]
           }
         },
         "required": ["type", "properties"]
@@ -57598,113 +57739,6 @@
               }
             },
             "required": ["sessionID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.updated"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/Scope"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.runtime.disposed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.runtime.disposed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.provider.auth.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "provider.auth.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "health": {
-                "$ref": "#/components/schemas/ProviderAuthHealth"
-              }
-            },
-            "required": ["health"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.dag.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "dag.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "nodes": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DagNode"
-                }
-              },
-              "ready": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["sessionID", "nodes", "ready"]
           }
         },
         "required": ["type", "properties"]
@@ -59030,16 +59064,22 @@
             "$ref": "#/components/schemas/Event.workspace.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.scope.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.provider.auth.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
             "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.asked"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.replied"
           },
           {
             "$ref": "#/components/schemas/Event.message.updated"
@@ -59052,6 +59092,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.message.part.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.asked"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.replied"
+          },
+          {
+            "$ref": "#/components/schemas/Event.dag.updated"
           },
           {
             "$ref": "#/components/schemas/Event.config.updated"
@@ -59091,21 +59140,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.provider.auth.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.dag.updated"
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"

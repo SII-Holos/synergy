@@ -12142,6 +12142,10 @@ msgid "session-review.expand-all"
 msgstr "全部展开"
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.historical-binding"
+msgstr "此变更属于其他工作区绑定，或原绑定已不可用。"
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr "拆分"
 
@@ -12152,6 +12156,10 @@ msgstr "会话更改"
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.unified"
 msgstr "统一"
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.view-file"
+msgstr "打开文件"
 
 #. js-lingui-explicit-id
 msgid "session-status.analyzing-files"

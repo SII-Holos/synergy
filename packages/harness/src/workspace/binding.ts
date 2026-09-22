@@ -6,7 +6,6 @@ import { Storage } from "../storage/storage"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
-import { WorkspaceRuntime } from "./runtime"
 import { WorkspaceAccess } from "./access"
 import { WorkspaceLocation } from "./location"
 import type { Workspace } from "../session/workspace-schema"
@@ -119,6 +118,7 @@ export namespace WorkspaceBinding {
         const current = await WorkspaceCatalog.get(id, input.scopeID)
         if (current.revision !== input.expectedRevision)
           throw new WorkspaceCatalog.BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
+        const { WorkspaceRuntime } = await import("./runtime")
         await WorkspaceRuntime.disposeWorkspace(id)
         return publishChange(input.scopeID, () => WorkspaceCatalog.rebind(id, { ...input, hostID, ...target }))
       },

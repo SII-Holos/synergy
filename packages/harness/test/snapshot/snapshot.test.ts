@@ -771,9 +771,9 @@ describe.serial("snapshot", () => {
 
             expect(commands.some((command) => command.includes("rm -r --cached") && command.endsWith(" ."))).toBe(false)
             expect(
-              commands.filter((command) => command.includes(" diff ") && command.includes(" --numstat -p ")),
+              commands.filter((command) => command.includes(" diff ") && command.includes(" --numstat -p -z ")),
             ).toHaveLength(1)
-            expect(commands.filter((command) => command.includes(" cat-file --batch-check="))).toHaveLength(1)
+            expect(commands.filter((command) => command.includes(" ls-tree -r -l -z "))).toHaveLength(2)
             expect(commands.some((command) => command.includes(" cat-file -s "))).toBe(false)
           },
         })

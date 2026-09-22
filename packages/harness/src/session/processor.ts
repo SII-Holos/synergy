@@ -1498,6 +1498,7 @@ export namespace SessionProcessor {
                         messageID: input.assistantMessage.id,
                         sessionID: input.sessionID,
                         snapshot,
+                        workspace: snapshot ? Snapshot.workspace() : undefined,
                         type: "step-start",
                       })
                       break
@@ -1573,6 +1574,7 @@ export namespace SessionProcessor {
                         id: Identifier.ascending("part"),
                         reason: value.finishReason,
                         snapshot: await Snapshot.track(input.sessionID, input.abort),
+                        workspace: Snapshot.workspace(),
                         messageID: input.assistantMessage.id,
                         sessionID: input.assistantMessage.sessionID,
                         type: "step-finish",
@@ -1596,6 +1598,7 @@ export namespace SessionProcessor {
                             sessionID: input.sessionID,
                             type: "patch",
                             hash: patch.hash,
+                            workspace: patch.workspace,
                             files: patch.files,
                           })
                         }
@@ -1915,6 +1918,7 @@ export namespace SessionProcessor {
                     sessionID: input.sessionID,
                     type: "patch",
                     hash: patch.hash,
+                    workspace: patch.workspace,
                     files: patch.files,
                   })
                 }

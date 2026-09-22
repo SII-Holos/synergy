@@ -8,6 +8,7 @@ import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
+import type { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotProtection } from "./snapshot-protection"
@@ -95,11 +96,20 @@ export namespace SnapshotStore {
     }
   }
 
-  export async function resolve(scopeID: string, sessionID: string, workspace: string): Promise<Operation> {
+  export async function resolve(
+    scopeID: string,
+    sessionID: string,
+    workspace: string,
+    source?: SnapshotSchema.Workspace,
+  ): Promise<Operation> {
     const owned = await resolveRepository(scopeID, sessionID)
     const { backend, repository: repo } = owned
     const real = await fs.realpath(workspace).catch(() => path.resolve(workspace))
-    const identity = process.platform === "win32" ? real.toLowerCase() : real
+    const identity = source
+      ? JSON.stringify([source.id, source.generation])
+      : process.platform === "win32"
+        ? real.toLowerCase()
+        : real
     const temporary = path.join(cache(scopeID, sessionID), createHash("sha256").update(identity).digest("hex"))
     return {
       scopeID,
@@ -116,7 +126,12 @@ export namespace SnapshotStore {
     return context.use()
   }
 
-  export async function withSession<T>(sessionID: string, fn: () => Promise<T>, signal?: AbortSignal) {
+  export async function withSession<T>(
+    sessionID: string,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+    options?: { historical?: boolean },
+  ) {
     const scopeID = ScopeContext.current.scope.id
     component(sessionID)
     if (
@@ -136,7 +151,17 @@ export namespace SnapshotStore {
           { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}` },
           async () => {
             signal?.throwIfAborted()
-            const operation = await resolve(scopeID, sessionID, ScopeContext.current.directory)
+            const workspace = options?.historical ? undefined : ScopeContext.current.workspace
+            const source =
+              workspace?.id && workspace.generation
+                ? { id: workspace.id, generation: workspace.generation, root: workspace.path }
+                : undefined
+            const operation = await resolve(
+              scopeID,
+              sessionID,
+              options?.historical ? path.dirname(repository(scopeID)) : ScopeContext.current.directory,
+              source,
+            )
             await fs.mkdir(operation.temporary, { recursive: true })
             return context.provide(operation, fn)
           },
