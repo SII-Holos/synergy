@@ -60,4 +60,58 @@ test("configured LSP owner starts a real protocol process, reuses it for queries
     })
   }))
 
+test("starting another Workspace preserves active LSP processes and independent diagnostics", () =>
+  runtime.run(async () => {
+    const { Session } = await import("@ericsanchezok/synergy-harness/session")
+    const { ProcessInspection } = await import("@ericsanchezok/synergy-harness/process/inspection")
+    const disabled = Object.fromEntries(Object.values(LSPServer).map((server) => [server.id, { disabled: true }]))
+    await using first = await tmpdir({
+      config: {
+        lsp: {
+          ...disabled,
+          fixture: {
+            command: [
+              process.execPath,
+              "-e",
+              "await Bun.write('server.pid',String(process.pid));await import(process.argv[1])",
+              path.join(import.meta.dir, "fixtures/owner-server.cjs"),
+            ],
+            extensions: [".fixture"],
+          },
+        },
+      },
+    })
+    await using second = await tmpdir()
+    const scope = await first.scope()
+    const sessions = await ScopeContext.provide({
+      scope,
+      fn: async () => [
+        await Session.create({}),
+        await Session.create({ workspace: { type: "directory", scopeID: scope.id, path: second.path } }),
+      ],
+    })
+    try {
+      for (const session of sessions)
+        await ScopeContext.provide({
+          scope,
+          workspace: session.workspace,
+          fn: async () => {
+            const file = path.join(session.workspace!.path, "source.fixture")
+            await Bun.write(file, "let symbol = 1")
+            await LSP.touchFile(file, true)
+            expect(Object.keys(await LSP.diagnostics())).toEqual([file])
+          },
+        })
+      const pids = await Promise.all(
+        [first, second].map(async (directory) =>
+          Number(await Bun.file(path.join(directory.path, "server.pid")).text()),
+        ),
+      )
+      expect(pids[0]).not.toBe(pids[1])
+      for (const pid of pids) expect(ProcessInspection.alive(pid)).toBe(true)
+    } finally {
+      await LSP.reload()
+    }
+  }))
+
 afterRuntimeTests(() => runtime.close())

@@ -8,3 +8,5 @@ MCP, LSP, formatting, ACP, external agent adapters and the Link client. Optional
 - Tests live under test/ and use isolated homes through the testing support package.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
+
+LSP and formatter resources follow Workspace binding generations. Process recovery requires a matching host and process identity plus an absent owner; a stored PID alone never permits termination. Run `bun test test/lsp test/format` for file-resource ownership changes.

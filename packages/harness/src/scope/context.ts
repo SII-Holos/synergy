@@ -1,6 +1,8 @@
 import { Context } from "../util/context"
 import { Filesystem } from "../util/filesystem"
 import { Scope } from "."
+import { WorkspaceBinding } from "../workspace/binding"
+import { RuntimeContext } from "../lifecycle/context"
 
 const scopeContext = Context.create<Scope>("scope")
 const workspaceContext = Context.create<import("../session/types").Workspace | null>("scope.workspace")
@@ -11,7 +13,9 @@ export namespace ScopeContext {
     fn: () => R | Promise<R>
     workspace?: import("../session/types").Workspace | null
   }): Promise<Awaited<R>> {
-    const workspace = input.workspace === undefined ? ScopeContext.defaultWorkspace(input.scope) : input.workspace
+    let workspace = input.workspace === undefined ? ScopeContext.defaultWorkspace(input.scope) : input.workspace
+    if (workspace && !workspace.id && RuntimeContext.tryCurrent()?.storage)
+      workspace = await WorkspaceBinding.migrate(workspace, input.scope.id)
     return (await scopeContext.provide(input.scope, () => workspaceContext.provide(workspace, input.fn))) as Awaited<R>
   }
 

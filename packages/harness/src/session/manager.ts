@@ -493,7 +493,11 @@ export namespace SessionManager {
     const sameWorkspace =
       expected === null
         ? actual === null
-        : actual?.path === expected.path && actual.type === expected.type && actual.scopeID === expected.scopeID
+        : actual?.id === expected.id &&
+          actual?.generation === expected.generation &&
+          actual?.path === expected.path &&
+          actual.type === expected.type &&
+          actual.scopeID === expected.scopeID
     if (sameWorkspace && ScopeContext.tryScope()?.id === session.scope.id) return
     log.error("session execution workspace mismatch", { sessionID: session.id, phase, expected, actual })
     throw new Error(

@@ -5152,10 +5152,12 @@ export type SessionWorkingInfo =
     }
 
 export type SessionWorkspace = {
+  id?: string
+  generation?: number
   type: string
   path: string
   scopeID: string
-  [key: string]: unknown | string
+  [key: string]: unknown | string | number | string | undefined
 }
 
 export type WorkflowExtension = {
@@ -5295,6 +5297,8 @@ export type Session = {
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
   workspace: SessionWorkspace | null
+  workspaceID?: string | null
+  workspaceError?: string
   workflow?: SessionWorkflowInfo
   agenda?: {
     itemID: string
@@ -10385,6 +10389,8 @@ export type EventCommandExecuted = {
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
+    workspaceID: string
+    workspaceGeneration: number
     file: string
     event: "added" | "changed" | "deleted" | "renamed"
     absolute?: string
@@ -10399,6 +10405,8 @@ export type EventFileWatcherUpdated = {
 export type EventFileEdited = {
   type: "file.edited"
   properties: {
+    workspaceID: string
+    workspaceGeneration: number
     file: string
   }
 }
@@ -10780,7 +10788,8 @@ export type EventLspClientDiagnostics = {
 export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
-    [key: string]: unknown
+    workspaceID: string
+    workspaceGeneration: number
   }
 }
 
@@ -10808,6 +10817,8 @@ export type EventSynergyLinkTargetRemoved = {
 export type EventVcsBranchUpdated = {
   type: "vcs.branch.updated"
   properties: {
+    workspaceID: string
+    workspaceGeneration: number
     branch?: string
   }
 }

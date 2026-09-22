@@ -1,17 +1,17 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { LSPClient } from "./client"
 import path from "path"
 import { pathToFileURL } from "url"
 import { LSPServer } from "./server"
-import z from "zod"
+import { z } from "zod"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { spawn } from "child_process"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { LSPPid } from "./pid"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { LSPSchema } from "./schema"
@@ -20,7 +20,7 @@ export namespace LSP {
   const log = Log.create({ service: "lsp" })
 
   export const Event = {
-    Updated: BusEvent.define("lsp.updated", z.object({})),
+    Updated: BusEvent.define("lsp.updated", z.object(WorkspaceEvents.Fields)),
   }
 
   export const Range = LSPSchema.Range
@@ -62,6 +62,12 @@ export namespace LSP {
     lastUsedAt: new WeakMap<LSPClient.Info, number>(),
   }))
   const worktreeClients = RuntimeContext.state(() => new WeakSet<LSPClient.Info>())
+  const processLeases = RuntimeContext.state(() => new WeakMap<LSPClient.Info, () => Promise<void>>())
+
+  async function releaseProcess(client: LSPClient.Info) {
+    await processLeases().get(client)?.()
+    processLeases().delete(client)
+  }
   const LSP_IDLE_MS = 30 * 60 * 1000
   const LSP_WORKTREE_IDLE_MS = 5 * 60 * 1000
   const LSP_SWEEP_MS = 5 * 60 * 1000
@@ -82,7 +88,7 @@ export namespace LSP {
     return worktreeClients().has(client) ? LSP_WORKTREE_IDLE_MS : LSP_IDLE_MS
   }
 
-  const state = ScopedState.create(
+  const state = WorkspaceState.create(
     async () => {
       const clients: LSPClient.Info[] = []
       const servers: Record<string, LSPServer.Info> = {}
@@ -183,9 +189,8 @@ export namespace LSP {
       if (state.sweeper) clearInterval(state.sweeper)
       await Promise.all(
         state.clients.map(async (client) => {
-          const pid = client.pid
           await client.shutdown()
-          if (pid) await LSPPid.untrack(pid)
+          await releaseProcess(client)
         }),
       )
     },
@@ -275,10 +280,11 @@ export namespace LSP {
       if (ScopeContext.current.workspace?.type === "git_worktree") worktreeClients().add(client)
       touchClient(client)
       if (handle.process.pid) {
-        LSPPid.track(handle.process.pid)
+        processLeases().set(client, await LSPPid.track(handle.process.pid))
       }
 
       handle.process.once("exit", (code, signal) => {
+        void releaseProcess(client).catch((error) => log.warn("LSP process record cleanup failed", { error }))
         log.info("LSP server process exited", { serverID: server.id, root, code, signal })
         const idx = s.clients.indexOf(client)
         if (idx !== -1) {
@@ -333,7 +339,7 @@ export namespace LSP {
       if (!client) continue
 
       result.push(client)
-      Bus.publish(Event.Updated, {})
+      WorkspaceEvents.publish(Event.Updated, {})
     }
 
     for (const client of result) touchClient(client)
@@ -363,11 +369,10 @@ export namespace LSP {
   async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: "idle" | "capacity") {
     const idx = clients.indexOf(client)
     if (idx !== -1) clients.splice(idx, 1)
-    const pid = client.pid
     log.info("reaping LSP client", { serverID: client.serverID, root: client.root, reason })
     await client
       .shutdown()
-      .then(() => (pid ? LSPPid.untrack(pid) : undefined))
+      .then(() => releaseProcess(client))
       .catch((error) => log.warn("failed to shut down LSP client", { error, reason }))
   }
 

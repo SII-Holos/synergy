@@ -16,3 +16,5 @@ Keep lifecycle implementation in harness and local capability registration here.
 - Linux watcher preparation and release assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.
 
 Workspace removal and automatic reclamation share the lifecycle gate. Preserve active users, on-disk lock ownership, and unverified local commits. Validate workspace changes with `bun test test/workspace` plus the Product Runtime worktree suites.
+
+Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.

@@ -2,8 +2,9 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { $ } from "bun"
 import { createHash } from "crypto"
 import fs from "fs/promises"
+import { realpathSync } from "node:fs"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -277,7 +278,7 @@ export namespace Worktree {
   function useState(directory: string) {
     const instanceState = runtimeState()
 
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     const existing = instanceState.activeUses.get(resolved)
     if (existing) return { resolved, state: existing }
     const state: UseState = { removing: false, active: new Map() }
@@ -418,7 +419,18 @@ export namespace Worktree {
     if (scope.type !== "project" || scope.local?.vcs !== "git") {
       throw new NotGitError({ message: "Current scope is not a Git repository; git worktree is unavailable." })
     }
-    return { scope, repoRoot: ScopeContext.current.worktree }
+    return { scope, repoRoot: canonicalDirectory(ScopeContext.current.worktree) }
+  }
+
+  function canonicalDirectory(directory: string): string {
+    const absolute = path.resolve(directory)
+    try {
+      return realpathSync(absolute)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      const parent = path.dirname(absolute)
+      return parent === absolute ? absolute : path.join(canonicalDirectory(parent), path.basename(absolute))
+    }
   }
 
   function worktreesRoot(repoRoot = ensureGitScope().repoRoot) {
@@ -466,8 +478,8 @@ export namespace Worktree {
   }
 
   function normalizeRegistryPath(info: RegistryInfo, repoRoot: string): RegistryInfo {
-    const resolved = path.resolve(info.path)
-    if (isPathContained(repoRoot, resolved)) return info
+    const resolved = canonicalDirectory(info.path)
+    if (isPathContained(repoRoot, resolved)) return { ...info, path: resolved }
     return { ...info, path: path.join(worktreesRoot(repoRoot), path.basename(resolved)) }
   }
 
@@ -480,7 +492,7 @@ export namespace Worktree {
       const parsed = await readJson(path.join(root, entry), RegistryInfo).catch(() => undefined)
       if (!parsed) continue
       const normalized = normalizeRegistryPath(parsed, repoRoot)
-      result.set(path.resolve(normalized.path), normalized)
+      result.set(canonicalDirectory(normalized.path), normalized)
     }
     return result
   }
@@ -546,8 +558,8 @@ export namespace Worktree {
     repoRoot: string,
     scopeID: string,
   ): Info {
-    const resolved = path.resolve(entry.path)
-    const isMain = resolved === path.resolve(repoRoot)
+    const resolved = canonicalDirectory(entry.path)
+    const isMain = resolved === canonicalDirectory(repoRoot)
     const id = registry?.id ?? hashID(resolved)
     const name = registry?.name ?? (isMain ? "main" : path.basename(resolved))
     return Info.parse({
@@ -626,7 +638,7 @@ export namespace Worktree {
     const [gitEntries, registry] = await Promise.all([gitList(repoRoot), readRegistry(repoRoot)])
     const seen = new Set<string>()
     const result = gitEntries.map((entry) => {
-      const resolved = path.resolve(entry.path)
+      const resolved = canonicalDirectory(entry.path)
       seen.add(resolved)
       return fromGitEntry(entry, registry.get(resolved), repoRoot, scope.id)
     })
@@ -879,8 +891,8 @@ export namespace Worktree {
     }
     await updateBinding(info, sessionID, "add")
     try {
-      await Session.updateWorkspace(sessionID, workspace)
-      ScopeContext.refreshWorkspace(workspace as import("@ericsanchezok/synergy-harness/session/types").Workspace)
+      const session = await Session.updateWorkspace(sessionID, workspace)
+      ScopeContext.refreshWorkspace(session.workspace)
     } catch (error) {
       await updateBinding(info, sessionID, "remove").catch(() => undefined)
       throw error
@@ -907,7 +919,7 @@ export namespace Worktree {
     const mainPath = originalCheckout ?? Scope.requireLocal(scope).worktree
     const mainWorkspace = { type: "main" as const, path: mainPath, scopeID: scope.id }
     const result = await Session.updateWorkspace(sessionID, mainWorkspace, options)
-    ScopeContext.refreshWorkspace(mainWorkspace as import("@ericsanchezok/synergy-harness/session/types").Workspace)
+    ScopeContext.refreshWorkspace(result.workspace)
     return result
   }
 
@@ -1131,14 +1143,14 @@ export namespace Worktree {
   async function readLockReason(directory: string, repoRoot: string): Promise<string | undefined> {
     const text = await $`git worktree list --porcelain`.quiet().nothrow().cwd(repoRoot).text()
     if (!text) return undefined
-    const resolved = path.resolve(directory)
-    return parsePorcelain(text).find((item) => path.resolve(item.path) === resolved)?.locked
+    const resolved = canonicalDirectory(directory)
+    return parsePorcelain(text).find((item) => canonicalDirectory(item.path) === resolved)?.locked
   }
 
   export async function lock(directory: string, sessionID?: string): Promise<LockResult> {
     const instanceState = runtimeState()
 
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     let state = instanceState.activeLocks.get(resolved)
     if (!state) {
       state = { count: 0, synergyAcquired: false, markerOwner: false }
@@ -1172,7 +1184,7 @@ export namespace Worktree {
   export async function unlock(directory: string) {
     const instanceState = runtimeState()
 
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     const state = instanceState.activeLocks.get(resolved)
     if (!state) return
     if (state.count > 1) {
@@ -1199,7 +1211,7 @@ export namespace Worktree {
   export async function releaseLockForRemoval(directory: string): Promise<boolean> {
     const instanceState = runtimeState()
 
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     const { repoRoot } = ensureGitScope()
     const existingReason = await readLockReason(resolved, repoRoot)
     if (existingReason === undefined) return true

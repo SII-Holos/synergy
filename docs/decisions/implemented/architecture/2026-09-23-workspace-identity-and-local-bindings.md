@@ -22,9 +22,15 @@ Deriving Workspace IDs from absolute paths would change identity on a move and c
 
 ## Consequences
 
+Working-file resources are keyed by Runtime, Workspace ID and binding generation. The startup registry declares Scope or Workspace ownership, and Scope steps cannot depend on Workspace steps. Configuration subscriptions keep their Scope owner. Native file notifications, formatter subscriptions and VCS notifications carry and filter Workspace identity, while the Scope bus retains its event sequence.
+
+LSP process recovery verifies host, owner process identity and child process identity before signaling an orphan. Concurrent registrations use one locked, atomic process ledger; per-client release tokens prevent an earlier client from removing another record. PID-only historical files cannot establish authority to signal a process. Starting another Workspace must leave active language servers alive.
+
 Local bindings and their indexes are persisted separately from Session history. Consumers must resolve an explicit Workspace and retain its generation for execution. A directory that is missing or has been replaced cannot be made usable merely by finding another directory at the stored pathname.
 
 ## Verification
+
+Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.
 
 Catalog tests exercise concurrent registration, host separation, generation rejection, cross-Scope lookup, and stale conditional updates against real SQLite. Filesystem tests verify persistent namespace convergence and directory replacement with real temporary directories.
 

@@ -96,7 +96,7 @@ test("formatter discovery combines executable availability with actual project o
 
 test("file edits invoke configured formatter processes and isolate failures from other formatters", () =>
   runtime.run(async () => {
-    const { Bus } = await import("@ericsanchezok/synergy-harness/bus")
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
     const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
     await using tmp = await tmpdir({
       config: {
@@ -119,11 +119,11 @@ test("file edits invoke configured formatter processes and isolate failures from
         Format.init()
         const filepath = path.join(tmp.path, "input.fixture")
         await Bun.write(filepath, "original")
-        await Bus.publish(File.Event.Edited, { file: filepath })
+        await WorkspaceEvents.publish(File.Event.Edited, { file: filepath })
         expect(await Bun.file(filepath).text()).toBe("formatted by fixture")
         const unmatched = path.join(tmp.path, "input.unmatched")
         await Bun.write(unmatched, "untouched")
-        await Bus.publish(File.Event.Edited, { file: unmatched })
+        await WorkspaceEvents.publish(File.Event.Edited, { file: unmatched })
         expect(await Bun.file(unmatched).text()).toBe("untouched")
         expect((await Format.status()).some((formatter) => formatter.name === "disabled")).toBe(false)
       },
@@ -133,7 +133,7 @@ test("file edits invoke configured formatter processes and isolate failures from
 
 test("global formatter opt-out leaves file edits untouched", () =>
   runtime.run(async () => {
-    const { Bus } = await import("@ericsanchezok/synergy-harness/bus")
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
     const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
     await using tmp = await tmpdir({ config: { formatter: false } })
     await ScopeContext.provide({
@@ -144,11 +144,59 @@ test("global formatter opt-out leaves file edits untouched", () =>
         Format.init()
         const filepath = path.join(tmp.path, "disabled.py")
         await Bun.write(filepath, "unchanged")
-        await Bus.publish(File.Event.Edited, { file: filepath })
+        await WorkspaceEvents.publish(File.Event.Edited, { file: filepath })
         expect(await Bun.file(filepath).text()).toBe("unchanged")
       },
     })
     await Format.reload()
+  }))
+
+test("formatting runs once in the owning Workspace when one Scope has multiple directories", () =>
+  runtime.run(async () => {
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
+    const { Session } = await import("@ericsanchezok/synergy-harness/session")
+    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    await using first = await tmpdir({
+      config: {
+        formatter: {
+          fixture: {
+            command: [
+              process.execPath,
+              "-e",
+              "const p=process.argv[1];await Bun.write(p,(await Bun.file(p).text())+'|'+process.cwd())",
+              "$FILE",
+            ],
+            extensions: [".fixture"],
+          },
+        },
+      },
+    })
+    await using second = await tmpdir()
+    const scope = await first.scope()
+    const sessions = await ScopeContext.provide({
+      scope,
+      fn: async () => [
+        await Session.create({}),
+        await Session.create({ workspace: { type: "directory", scopeID: scope.id, path: second.path } }),
+      ],
+    })
+    for (const session of sessions)
+      await ScopeContext.provide({
+        scope,
+        workspace: session.workspace,
+        fn() {
+          Format.init()
+          Format.init()
+        },
+      })
+    const file = path.join(second.path, "once.fixture")
+    await Bun.write(file, "original")
+    await ScopeContext.provide({
+      scope,
+      workspace: sessions[1]!.workspace,
+      fn: () => WorkspaceEvents.publish(File.Event.Edited, { file }),
+    })
+    expect(await Bun.file(file).text()).toBe("original|" + second.path)
   }))
 
 afterRuntimeTests(() => runtime.close())

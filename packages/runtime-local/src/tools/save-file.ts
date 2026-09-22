@@ -1,9 +1,9 @@
-import z from "zod"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./save-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { trimDiff } from "./edit"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { detectConflicts } from "../conflict/detect"
@@ -78,7 +78,7 @@ export const SaveFileTool = Tool.define(
 
           await ensureParentDir(filePath)
           await Bun.write(filePath, content)
-          await Bus.publish(File.Event.Edited, { file: filePath })
+          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath })
           const finalContent = await Bun.file(filePath).text()
           const finalConflict = detectConflicts(finalContent)
           FileTime.read(ctx.sessionID, filePath)

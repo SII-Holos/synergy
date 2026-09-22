@@ -1,11 +1,11 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { $ } from "bun"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { FileWatcher } from "@ericsanchezok/synergy-runtime-local/file/watcher"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import { VcsBranchWatcher } from "./vcs-branch-watcher"
@@ -17,6 +17,7 @@ export namespace Vcs {
     BranchUpdated: BusEvent.define(
       "vcs.branch.updated",
       z.object({
+        ...WorkspaceEvents.Fields,
         branch: z.string().optional(),
       }),
     ),
@@ -41,9 +42,13 @@ export namespace Vcs {
       .catch(() => undefined)
   }
 
-  const state = ScopedState.create(
+  const state = WorkspaceState.create(
     async () => {
-      if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.local?.vcs !== "git") {
+      const repository = await $`git rev-parse --is-inside-work-tree`
+        .cwd(ScopeContext.current.directory)
+        .quiet()
+        .nothrow()
+      if (repository.exitCode !== 0 || repository.stdout.toString().trim() !== "true") {
         return { branch: async () => undefined, unsubscribe: undefined, watcher: undefined }
       }
       const watcher = VcsBranchWatcher.create({
@@ -51,13 +56,13 @@ export namespace Vcs {
         resolve: currentBranch,
         onChange: (branch, previous) => {
           log.info("branch changed", { from: previous, to: branch })
-          Bus.publish(Event.BranchUpdated, { branch })
+          WorkspaceEvents.publish(Event.BranchUpdated, { branch })
         },
       })
       const current = await watcher.start()
       log.info("initialized", { branch: current })
 
-      const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, (event) => {
+      const unsubscribe = WorkspaceEvents.subscribe(FileWatcher.Event.Updated, (event) => {
         watcher.notify(event.properties.file)
       })
 

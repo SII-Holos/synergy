@@ -1,15 +1,15 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 // the approaches in this edit tool are sourced from
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-23-25.ts
 // https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/utils/editCorrector.ts
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
 
-import z from "zod"
+import { z } from "zod"
 import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "../file/index"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SnapshotSchema } from "@ericsanchezok/synergy-harness/session/snapshot-schema"
@@ -67,7 +67,7 @@ export const EditTool = Tool.define(
             })
             beforeDiagnostics = await captureWriteDiagnosticsBefore()
             await Bun.write(filePath, params.newString)
-            await Bus.publish(File.Event.Edited, {
+            await WorkspaceEvents.publish(File.Event.Edited, {
               file: filePath,
             })
             FileTime.read(ctx.sessionID, filePath)
@@ -96,7 +96,7 @@ export const EditTool = Tool.define(
           beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
           await file.write(contentNew)
-          await Bus.publish(File.Event.Edited, {
+          await WorkspaceEvents.publish(File.Event.Edited, {
             file: filePath,
           })
           contentNew = await file.text()

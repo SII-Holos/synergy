@@ -1,15 +1,15 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "@ericsanchezok/synergy-runtime-local/file"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 
 import * as Formatter from "./formatter"
 import { readConfig } from "../config-schema"
 import { mergeDeep } from "remeda"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 
 export namespace Format {
   const log = Log.create({ service: "format" })
@@ -25,7 +25,7 @@ export namespace Format {
     })
   export type Status = z.infer<typeof Status>
 
-  const state = ScopedState.create(async () => {
+  const state = WorkspaceState.create(async () => {
     const enabled: Record<string, boolean> = {}
     const cfg = await readConfig()
 
@@ -108,45 +108,46 @@ export namespace Format {
     return result
   }
 
-  export function init() {
-    log.info("init")
-    const fmtState = ScopedState.create(
-      () => {
-        const unsub = Bus.subscribe(File.Event.Edited, async (payload) => {
-          const file = payload.properties.file
-          log.info("formatting", { file })
-          const ext = path.extname(file)
+  const subscription = WorkspaceState.create(
+    () => {
+      const unsub = WorkspaceEvents.subscribe(File.Event.Edited, async (payload) => {
+        const file = payload.properties.file
+        log.info("formatting", { file })
+        const ext = path.extname(file)
 
-          for (const item of await getFormatter(ext)) {
-            log.info("running", { command: item.command })
-            try {
-              const proc = Bun.spawn({
-                cmd: item.command.map((x) => x.replace("$FILE", file)),
-                cwd: ScopeContext.current.directory,
-                env: { ...RuntimeContext.current().host.env, ...item.environment },
-                stdout: "ignore",
-                stderr: "ignore",
-              })
-              const exit = await proc.exited
-              if (exit !== 0)
-                log.error("failed", {
-                  command: item.command,
-                  ...item.environment,
-                })
-            } catch (error) {
-              log.error("failed to format file", {
-                error,
+        for (const item of await getFormatter(ext)) {
+          log.info("running", { command: item.command })
+          try {
+            const proc = Bun.spawn({
+              cmd: item.command.map((x) => x.replace("$FILE", file)),
+              cwd: ScopeContext.current.directory,
+              env: { ...RuntimeContext.current().host.env, ...item.environment },
+              stdout: "ignore",
+              stderr: "ignore",
+            })
+            const exit = await proc.exited
+            if (exit !== 0)
+              log.error("failed", {
                 command: item.command,
                 ...item.environment,
-                file,
               })
-            }
+          } catch (error) {
+            log.error("failed to format file", {
+              error,
+              command: item.command,
+              ...item.environment,
+              file,
+            })
           }
-        })
-        return { unsub }
-      },
-      async (s) => s.unsub(),
-    )
-    void fmtState()
+        }
+      })
+      return { unsub }
+    },
+    async (s) => s.unsub(),
+  )
+
+  export function init() {
+    log.info("init")
+    subscription()
   }
 }

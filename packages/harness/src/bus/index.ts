@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
-import z from "zod"
+import { z } from "zod"
 import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
@@ -72,10 +72,16 @@ export namespace Bus {
 
     if (Storage.inTransaction()) {
       const scope = ScopeContext.current.scope
+      const workspace = ScopeContext.tryWorkspace()
       const value = structuredClone(properties)
       return Storage.enqueue(
-        { id: crypto.randomUUID(), scopeID: scope.id, type: def.type, payload: { scope, properties: value } },
-        () => ScopeContext.provide({ scope, fn: () => publish(def, value) }),
+        {
+          id: crypto.randomUUID(),
+          scopeID: scope.id,
+          type: def.type,
+          payload: { scope, workspace, properties: value },
+        },
+        () => ScopeContext.provide({ scope, workspace, fn: () => publish(def, value) }),
       )
     }
     const payload: {

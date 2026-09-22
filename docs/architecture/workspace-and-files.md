@@ -1,6 +1,6 @@
 # Workspace and File Operations
 
-Runtime Local owns native filesystem subscriptions in `packages/runtime-local/src/file/watcher.ts` and registers them with Scope startup. Harness owns generic Scope, storage and file contracts; importing Harness alone does not start a native watcher.
+Runtime Local owns native filesystem subscriptions in `packages/runtime-local/src/file/watcher.ts` and declares each subscription's Scope or Workspace owner in startup. Harness owns generic Scope, storage and file contracts; importing Harness alone does not start a native watcher.
 
 Synergy keeps project ownership (`Scope`) separate from the directory in which a session executes (`workspace`). The normal workspace is the selected project directory; a session can instead bind to a Synergy-managed worktree without changing its owning Scope, config, Notes, or session index.
 
@@ -10,16 +10,16 @@ Owner-local migrations upgrade old embedded Session directories before navigatio
 
 ## Scope Runtime Services
 
-A project `ScopeRuntime` starts project-sensitive services lazily and disposes them as a unit:
+A project `ScopeRuntime` starts Scope configuration, commands, recovery and plugin services lazily. `WorkspaceRuntime` starts file services once per Workspace binding generation:
 
 - file watching and ignore rules
 - formatter discovery and format-on-write events
 - LSP clients, diagnostics, hover, symbols, and code actions
 - VCS state and Git operations
-- configured commands and project instructions
-- plugin/MCP state that resolves in project context
 
-These services use the session's active directory while events remain routed to the owning Scope. A worktree is therefore another execution directory for the same project context, not a second project.
+File services use `WorkspaceState`, so Sessions sharing a Workspace share file resources while sibling directories retain independent caches and processes. Rebinding rejects stale callers and replaces resources from the previous generation. Scope disposal drains all its Workspace resources before releasing Scope state.
+
+File, LSP and VCS notifications retain Scope event ordering and include Workspace ID and binding generation. Workspace subscribers filter both fields. Configuration subscriptions watch the owning Scope's configuration directory; editing a worktree's ordinary files does not relocate that configuration owner.
 
 ## Worktree Ownership
 
@@ -89,7 +89,7 @@ On Linux, an inotify capacity error (`ENOSPC`, "No space left on device") stops 
 
 A Linux scan that stalls rather than failing (typically a network-filesystem subtree such as NFS/autofs) is not cancelled: later Linux subscriptions queue behind it, one stall warning is logged after 60 seconds, and a settle notice follows when the scan ends. If the kernel watch budget was exhausted by sibling processes rather than this process — the budget is per-user — it can recover once they exit, but re-arming live watching still requires a watcher reload or restart.
 
-Workspace events enter one per-Scope drain that deduplicates paths, processes one batch at a time, bounds pending paths, and updates the file index without resolving Git status. Git-status reads share one in-flight build and perform at most one follow-up build when invalidated during that work. VCS branch refreshes run only for the dedicated Git `HEAD` event, not for ordinary file changes. If the watcher queue overflows, the backend invalidates its caches and emits one `file.watcher.updated` event with `resync: true`; the File context refreshes the root, expanded directories, and active document. `SYNERGY_DISABLE_FILEWATCHER=1` remains a diagnostic escape hatch. Refocus, refresh, and directory expansion still validate state, so correctness does not depend on lossless per-file delivery.
+Workspace events enter one per-Workspace drain that deduplicates paths, processes one batch at a time, bounds pending paths, and updates the file index without resolving Git status. Git-status reads share one in-flight build and perform at most one follow-up build when invalidated during that work. VCS branch refreshes run only for the dedicated Git `HEAD` event, not for ordinary file changes. If the watcher queue overflows, the backend invalidates its caches and emits one `file.watcher.updated` event with `resync: true`; the File context refreshes the root, expanded directories, and active document. `SYNERGY_DISABLE_FILEWATCHER=1` remains a diagnostic escape hatch. Refocus, refresh, and directory expansion still validate state, so correctness does not depend on lossless per-file delivery.
 
 ## Classic and Anchored Coding Tools
 

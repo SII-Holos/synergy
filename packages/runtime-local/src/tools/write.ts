@@ -1,9 +1,9 @@
-import z from "zod"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { z } from "zod"
 import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -48,7 +48,7 @@ export const WriteTool = Tool.define(
       const beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
       await Bun.write(filepath, params.content)
-      await Bus.publish(File.Event.Edited, {
+      await WorkspaceEvents.publish(File.Event.Edited, {
         file: filepath,
       })
       const finalContent = await Bun.file(filepath).text()

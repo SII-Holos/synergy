@@ -1,5 +1,5 @@
 import { ScopeContext } from "../scope/context"
-import { ScopedState } from "../scope/scoped-state"
+import { WorkspaceState } from "../workspace/state"
 import { formatLocalDateTime } from "../util/time-format"
 import { Log } from "../util/log"
 
@@ -9,7 +9,7 @@ export namespace FileTime {
   // All tools that overwrite existing files should run their
   // assert/read/write/update sequence inside withLock(filepath, ...)
   // so concurrent writes to the same file are serialized.
-  export const state = ScopedState.create(() => {
+  export const state = WorkspaceState.create(() => {
     const read: {
       [sessionID: string]: {
         [path: string]: Date | undefined

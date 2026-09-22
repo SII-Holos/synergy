@@ -1,10 +1,10 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { chmod, lstat, realpath, rename, unlink } from "node:fs/promises"
-import z from "zod"
+import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./resolve-conflicts.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { trimDiff } from "./edit"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { detectConflicts } from "../conflict/detect"
@@ -157,7 +157,7 @@ export const ResolveConflictsTool = Tool.define(
 
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
           await atomicReplace(filePath, candidate, currentStats.mode)
-          await Bus.publish(File.Event.Edited, { file: filePath })
+          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath })
 
           const finalContent = await readUtf8TextPreservingBom(Bun.file(filePath))
           const finalConflict = detectConflicts(finalContent)

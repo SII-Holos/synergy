@@ -1,9 +1,9 @@
-import z from "zod"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./revise-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { trimDiff } from "./edit"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { detectConflicts } from "../conflict/detect"
@@ -251,7 +251,7 @@ export const ReviseFileTool = Tool.define(
               result = await patcher.commit(p)
 
               // Fire format-on-write before recording final hash
-              await Bus.publish(File.Event.Edited, { file: p.canonicalPath })
+              await WorkspaceEvents.publish(File.Event.Edited, { file: p.canonicalPath })
 
               // Re-read to pick up format-on-write changes (the formatter may have
               // rewritten the file asynchronously). Re-record the snapshot with
