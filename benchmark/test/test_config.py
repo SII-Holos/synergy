@@ -45,6 +45,32 @@ def config():
     }
 
 
+def test_strict_admission_is_explicit_serial_and_synergy_only():
+    value = {
+        "version": 2,
+        "suite": "suite.json",
+        "harnesses": {"one": {"kind": "synergy", "source": {"path": "."}}},
+        "models": {
+            "one": {
+                "model": "fixture",
+                "protocol": "chat-completions",
+                "base_url": "http://provider.invalid/v1",
+                "api_key_env": "KEY",
+                "context_window": 1000,
+                "max_output_tokens": 100,
+            }
+        },
+        "concurrency": 1,
+        "admission_policy": "strict-synergy-v1",
+    }
+    parsed = ExperimentConfig.model_validate(value)
+    assert ExperimentConfig.model_validate(parsed.model_dump()).admission_policy == "strict-synergy-v1"
+    assert ExperimentConfig.model_validate(config()).admission_policy == "continue"
+    for override in [{"concurrency": 2}, {"concurrency": "auto"}, {"admission_policy": True}]:
+        with pytest.raises(ValidationError):
+            ExperimentConfig.model_validate({**value, **override})
+
+
 def test_new_yaml_inherits_research_deadline_and_freezes_it(tmp_path):
     import yaml
 

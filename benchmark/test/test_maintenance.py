@@ -1,6 +1,48 @@
 from synergy_bench.maintenance import prepare_items, probe_observed
 
 
+async def test_strict_doctor_stops_dispatch_and_cannot_retry_paid_failure(tmp_path, monkeypatch):
+    import pytest
+
+    from synergy_bench import admission, maintenance, runner
+    from synergy_bench.storage import read_json
+
+    plan = {
+        "host": {"capacity": {"cpus": 1, "memory_bytes": 200}},
+        "concurrency": 1,
+        "config": {"admission_policy": "strict-synergy-v1"},
+        "schedule": [{"task": name, "variant": "native"} for name in ["first", "second", "third"]],
+        "tasks": {name: {"resources": {"cpus": 1, "memory_bytes": 100}} for name in ["first", "second", "third"]},
+    }
+    called = []
+
+    async def execute(root, plan, item, attempt, **kwargs):
+        called.append(item["task"])
+        if item["task"] == "second":
+            raise RuntimeError("retained infrastructure failure")
+        return {"infrastructure_error": None}
+
+    def admit(attempt, result, **kwargs):
+        assert (attempt / "probe.json").exists() and (attempt / "evidence.json").exists()
+        if result["infrastructure_error"]:
+            raise ValueError("Admission stopped")
+
+    monkeypatch.setattr(runner, "execute_trial", execute)
+    monkeypatch.setattr(runner, "verify_terminal", lambda *args: None)
+    monkeypatch.setattr(admission, "admit_attempt", admit)
+    monkeypatch.setattr(
+        maintenance,
+        "probe_result",
+        lambda *args: {"status": "failed" if args[-1]["infrastructure_error"] else "completed"},
+    )
+    for _ in range(2):
+        with pytest.raises(ValueError, match="Admission stopped"):
+            await maintenance.doctor_plan(tmp_path, plan)
+    assert called == ["first", "second"]
+    assert len(read_json(tmp_path / "doctor.json")["records"]) == 2
+    assert not (tmp_path / "probes/0001/attempt-002").exists()
+
+
 def test_tool_roundtrip_cannot_admit_invalid_evidence_or_infrastructure_failure(tmp_path):
     from synergy_bench.maintenance import probe_result
     from synergy_bench.storage import atomic_json

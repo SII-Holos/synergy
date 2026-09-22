@@ -343,6 +343,9 @@ async def execute_plan(
     plan: dict[str, Any],
     execute: Callable[[dict[str, Any], Path], Awaitable[dict[str, Any]]],
 ) -> None:
+    from .admission import admit_attempt, strict_admission
+
+    strict = strict_admission(plan)
     state_file = root / "state.json"
     state = read_json(state_file) if state_file.exists() else {"trials": {}}
     concurrency = plan["concurrency"]
@@ -375,9 +378,13 @@ async def execute_plan(
                         and startup_retryable(prior_result.parent, read_json(prior_result))
                     )
                     if previous.get("status") == "completed" and not startup_retry:
+                        if strict:
+                            admit_attempt(prior_result.parent, read_json(prior_result))
                         break
                     if startup_retry:
                         verify_terminal(prior_result.parent, read_json(prior_result))
+                    elif strict and previous:
+                        raise ValueError("Admission stopped: interrupted attempt requires retained terminal evidence")
                     startup_attempt = (
                         previous.get("startup_attempt", 1) + 1 if startup_retry else previous.get("startup_attempt", 1)
                     )
@@ -444,6 +451,8 @@ async def execute_plan(
                         atomic_json(state_file, state)
                         progress(f"run: trial {trial_id} {current['status']}")
                     if startup_attempt >= 3 or not startup_retryable(attempt, result):
+                        if strict:
+                            await background(admit_attempt, attempt, result)
                         break
 
     if concurrency == 1:

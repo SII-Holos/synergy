@@ -156,6 +156,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "execution_policy": {key: config[key] for key in policy_fields}
             if all(key in config for key in policy_fields)
             else None,
+            "admission_policy": config.get("admission_policy"),
         }
         required = [
             "task_digest",

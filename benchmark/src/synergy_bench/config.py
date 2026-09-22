@@ -222,11 +222,18 @@ class ExperimentConfig(StrictModel):
     preflight_timeout_seconds: int = Field(default=120, ge=1, le=3600, strict=True)
     timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | Literal["native"] = 10_800
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
+    admission_policy: Literal["continue", "strict-synergy-v1"] = "continue"
 
     @model_validator(mode="after")
     def validate_names(self) -> ExperimentConfig:
         if self.concurrency != "auto" and not 1 <= self.concurrency <= 64:
             raise ValueError("Concurrency must be auto or an integer from 1 to 64")
+        if self.admission_policy == "strict-synergy-v1" and (
+            self.version != 2
+            or self.concurrency != 1
+            or any(harness.kind != "synergy" for harness in self.harnesses.values())
+        ):
+            raise ValueError("Strict Synergy admission requires a version 2 serial Synergy matrix")
         for name in self.variants.keys() | self.harnesses.keys() | self.models.keys():
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
                 raise ValueError("Names must contain only letters, digits, underscores or hyphens")

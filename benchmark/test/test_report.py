@@ -233,7 +233,8 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
 
 
 @pytest.mark.parametrize(
-    "change", [None, "concurrency", "docker", "capacity", "deadline", "idle", "policy", "seed", "missing", "legacy"]
+    "change",
+    [None, "concurrency", "docker", "capacity", "deadline", "idle", "policy", "admission", "seed", "missing", "legacy"],
 )
 def test_pairing_requires_matching_declared_execution_conditions(tmp_path, change):
     from synergy_bench.storage import read_json
@@ -271,6 +272,8 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["config"].pop("request_idle_timeout_seconds")
             elif change == "policy":
                 plan["config"]["resources"]["reserve_cpus"] = 1
+            elif change == "admission":
+                plan["config"]["admission_policy"] = "strict-synergy-v1"
             elif change == "seed":
                 plan["config"]["seed"] += 1
             elif change == "missing":

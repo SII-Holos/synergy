@@ -6,6 +6,39 @@ from synergy_bench.runner import execute_plan
 from synergy_bench.storage import atomic_json, read_json
 
 
+async def test_strict_admission_halts_before_next_dispatch_and_stays_halted_on_resume(tmp_path, monkeypatch):
+    from synergy_bench import admission
+
+    plan = {
+        "schedule": [{"pair": "p", "variant": side} for side in ["A", "B", "C"]],
+        "concurrency": 1,
+        "config": {"admission_policy": "strict-synergy-v1"},
+    }
+    observed = []
+
+    def admit(attempt, result, **kwargs):
+        assert (attempt / "evidence.json").exists()
+        if result.get("infrastructure_error"):
+            raise ValueError("Admission stopped")
+
+    monkeypatch.setattr(admission, "admit_attempt", admit)
+
+    async def execute(item, attempt):
+        observed.append(item["variant"])
+        if item["variant"] == "B":
+            raise RuntimeError("cleanup failed")
+        return {"execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 0}}}
+
+    for _ in range(2):
+        with pytest.raises(ValueError, match="Admission stopped"):
+            await execute_plan(tmp_path, plan, execute)
+    assert observed == ["A", "B"]
+    state = read_json(tmp_path / "state.json")
+    assert set(state["trials"]) == {"0000", "0001"}
+    assert all(row["status"] == "completed" for row in state["trials"].values())
+    assert not (tmp_path / "trials/0001/attempt-002").exists()
+
+
 @pytest.mark.parametrize("completed", [0, 2])
 async def test_serial_execution_follows_frozen_schedule_including_resume(tmp_path, completed):
     import asyncio

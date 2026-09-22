@@ -17,6 +17,8 @@ bun bench resume /absolute/path/to/run
 
 `run config.yaml` 串联上述流程。`prewarm` 准备 agent 与独立 verifier 镜像，不调用模型或执行 oracle。`doctor` 在一次性任务环境中经过实际网络策略、原生 harness、流式记录和工具结果；调用消耗计入报告，预检产物不进入正式任务。预检失败阻止正式运行。
 
+显式设置 `admission_policy: strict-synergy-v1` 可在串行 Synergy v2 矩阵中逐次审查：原生 reward 为 0 或原题期限耗尽且判题完整时继续；基础设施、判题、归档或逐请求计量失效时，在持久化原始结果后停止后续正式任务和 doctor 派发。恢复首先复查已保留的失败，不能隐式重跑。只有已证明零模型请求、完整归档和成功清理的启动超时保留最多三次自动尝试。默认 `continue` 保持普通矩阵的失败收集行为；策略随实验冻结并参与配对条件，取舍见[逐次准入](../docs/decisions/implemented/architecture/2026-09-22-benchmark-serial-admission.md)。
+
 ```bash
 bun bench inspect /absolute/path/to/run --trial 0
 bun bench report /absolute/path/to/run --output /absolute/path/to/report

@@ -171,6 +171,7 @@ async def prewarm_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
 
 
 async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
+    from .admission import admit_attempt, strict_admission
     from .runner import (
         execute_trial,
         progress,
@@ -182,6 +183,7 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
         verify_terminal,
     )
 
+    strict = strict_admission(plan)
     pool = ResourcePool(
         Capacity(**plan["host"]["capacity"]),
         plan["concurrency"],
@@ -219,9 +221,19 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
                 atomic_json(retained / "probe.json", row)
                 seal_attempt(retained, result)
                 atomic_json(evidence_file, result)
+            if strict:
+                result = read_json(evidence_file)
+                row_file = retained / "probe.json"
+                if int(retained.name.removeprefix("attempt-")) >= 3 or not startup_retryable(retained, result):
+                    if row_file.exists():
+                        records.append(read_json(row_file))
+                    await asyncio.to_thread(admit_attempt, retained, result, preflight=True)
+                    if not row_file.exists() or read_json(row_file).get("status") != "completed":
+                        raise ValueError("Admission stopped: retained connectivity check failed")
         prior = sorted(directory.glob("attempt-*/probe.json"))
         if prior and read_json(prior[-1]).get("status") == "completed":
-            records.append(read_json(prior[-1]))
+            if not strict:
+                records.append(read_json(prior[-1]))
             return
         first = len(list(directory.glob("attempt-*"))) + 1
         for retry in range(3):
@@ -269,14 +281,27 @@ async def doctor_plan(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
                 atomic_json(attempt / "probe.json", row)
                 seal_attempt(attempt, result)
                 atomic_json(attempt / "evidence.json", result)
-            if row["status"] == "completed" or retry == 2 or not startup_retryable(attempt, result):
+            if (
+                row["status"] == "completed"
+                or retry == 2
+                or (strict and number >= 3)
+                or not startup_retryable(attempt, result)
+            ):
                 records.append(row)
+                if strict:
+                    await asyncio.to_thread(admit_attempt, attempt, result, preflight=True)
+                    if row["status"] != "completed":
+                        raise ValueError("Admission stopped: connectivity check failed")
                 return
 
     try:
-        async with asyncio.TaskGroup() as group:
+        if strict:
             for index, item in enumerate(selected.values()):
-                group.create_task(probe(index, item))
+                await probe(index, item)
+        else:
+            async with asyncio.TaskGroup() as group:
+                for index, item in enumerate(selected.values()):
+                    group.create_task(probe(index, item))
     finally:
         report = {
             "version": 1,
