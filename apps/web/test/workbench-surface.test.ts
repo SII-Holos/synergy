@@ -195,7 +195,7 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurface).toContain("resolveWorkbenchEscapeAction")
     expect(workbenchSurfaceCss).toContain('.workbench-surface-add-menu [data-slot="popover-body"]')
     expect(builtinWorkbenchPanels).not.toContain("DialogSelectFile")
-    expect(builtinWorkbenchPanels).toContain('return { title: i18n._(P.openFile), source: "explorer" }')
+    expect(builtinWorkbenchPanels).toContain('source: "explorer"')
     expect(builtinWorkbenchPanels).toContain("controller.activeLocale()")
     expect(builtinWorkbenchPanels).toContain("label: i18n._(P.files)")
     expect(builtinWorkbenchPanels).toContain("createContextWorkbenchPanel(i18n._(P.context))")

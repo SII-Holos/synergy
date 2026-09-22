@@ -49,6 +49,10 @@ Automatic worktree reclamation and missing-registration reconciliation preserve 
 
 File API queries require `workspaceID` and `workspaceGeneration` alongside Scope resolution. A missing selection is a validation error, another Scope's ID is not found, and an unavailable or stale binding is a conflict. Raw document and download URLs retain the Scope, Workspace ID, and generation in their path prefix so relative assets cannot retarget after rebinding.
 
+The Session status bar and new-session composer open the same Workspace selector. Existing directories can be registered without moving the Scope; direct sharing and explicit rebinding use conditional updates. Editing either form retains its original revision across incoming catalog events. An unbound historical Workspace remains visible but cannot be selected for local execution until rebound. Busy or conflicting operations keep the dialog open with the server's structured error.
+
+Scope bootstrap includes the Workspace catalog. The frontend merges catalog events and snapshots using the Scope epoch and sequence, then projects current Session bindings without changing conversation activity. Delayed Session responses cannot replace a newer known binding with an old generation. Already-open file tabs retain their captured binding instead of following the Session to another directory.
+
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
 
 Directory results can hide ignored and dot-prefixed entries, are sorted with directories first, and use bounded cursor pages. Reads distinguish:

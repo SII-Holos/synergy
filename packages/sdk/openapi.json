@@ -40725,6 +40725,90 @@
         },
         "required": ["home", "state", "config", "worktree", "directory", "workspace"]
       },
+      "WorkspaceInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "binding": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": ["bound", "unbound"]
+              },
+              "hostID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "physicalID": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["state", "hostID", "path", "generation"]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "sharedWritableWorkspaceIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["active", "deleting", "deleted"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "scopeID",
+          "type",
+          "revision",
+          "binding",
+          "metadata",
+          "sharedWritableWorkspaceIDs",
+          "lifecycle",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": {}
+      },
       "Command": {
         "type": "object",
         "properties": {
@@ -42382,6 +42466,12 @@
           },
           "path": {
             "$ref": "#/components/schemas/Path"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceInfo"
+            }
           },
           "command": {
             "type": "array",
@@ -50741,90 +50831,6 @@
           }
         },
         "required": ["path", "content", "expectedVersion"]
-      },
-      "WorkspaceInfo": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "scopeID": {
-            "type": "string",
-            "minLength": 1
-          },
-          "type": {
-            "type": "string",
-            "minLength": 1
-          },
-          "revision": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "binding": {
-            "type": "object",
-            "properties": {
-              "state": {
-                "type": "string",
-                "enum": ["bound", "unbound"]
-              },
-              "hostID": {
-                "type": "string",
-                "minLength": 1
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1
-              },
-              "physicalID": {
-                "type": "string"
-              },
-              "generation": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              }
-            },
-            "required": ["state", "hostID", "path", "generation"]
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "sharedWritableWorkspaceIDs": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "lifecycle": {
-            "type": "string",
-            "enum": ["active", "deleting", "deleted"]
-          },
-          "createdAt": {
-            "type": "number"
-          },
-          "updatedAt": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "scopeID",
-          "type",
-          "revision",
-          "binding",
-          "metadata",
-          "sharedWritableWorkspaceIDs",
-          "lifecycle",
-          "createdAt",
-          "updatedAt"
-        ],
-        "additionalProperties": {}
       },
       "EmbeddingStatus": {
         "anyOf": [

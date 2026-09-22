@@ -16,7 +16,8 @@ export namespace WorkspaceBinding {
     if (!path.isAbsolute(directory)) throw new Error("Workspace location must be absolute")
     const source = WorkspaceLocation.source()
     const location = await source.identify(directory)
-    return WorkspaceCatalog.register({ scopeID, type: "directory", hostID: await source.hostID(), ...location })
+    const hostID = await source.hostID()
+    return publishChange(scopeID, () => WorkspaceCatalog.register({ scopeID, type: "directory", hostID, ...location }))
   }
 
   export async function importHistory(

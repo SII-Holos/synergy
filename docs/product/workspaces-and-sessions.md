@@ -27,11 +27,13 @@ The global runtime serves every Scope. Project services start lazily when the Sc
 
 A project Scope can declare multiple project folders — the main worktree plus additional folders such as sibling checkouts or related sub-projects. Opening a directory inside a Git repository records it under the same project; the project editor can also add or remove folders explicitly.
 
-Every declared project folder is trusted automatically by the active control profile, the execution sandbox, and the file tools: reading, writing, and building inside any project folder needs no per-path approval, matching the main worktree. In an isolated worktree session the original main checkout stays outside this trust boundary and requires explicit authorization, while other declared project folders remain trusted.
+The selected Workspace defines the default writable directory. Declaring another project folder does not grant write access: additional writable Workspaces must be shared explicitly. Ordinary non-sensitive files outside that boundary remain readable under the active execution policy.
 
 ## Workspace Binding
 
-A session belongs to a Scope and can also carry a workspace binding. The normal workspace is the Scope directory. A code task can instead enter an existing worktree or create a dedicated worktree while retaining the original Scope identity.
+A session belongs to a Scope and references a stable Workspace identity, or has no local files. The default Workspace is the Scope directory. The composer and Session status bar can select another existing directory; a code task can also enter or create a managed worktree while retaining its Scope identity.
+
+Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
 
 This distinction lets configuration and project ownership remain stable while execution files move to an isolated checkout. Worktree sessions can inspect ordinary files from the original checkout, but writes and command execution outside the active worktree remain protected unless explicitly authorized.
 

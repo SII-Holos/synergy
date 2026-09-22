@@ -1,3 +1,6 @@
+import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
+import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
@@ -200,17 +203,21 @@ function HolosIconButton() {
 
 // ─── Workspace icon button ────────────────────────────────────────
 
-function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string }) {
+function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName?: string; sessionID?: string }) {
+  const dialog = useDialog()
   const { i18n } = useLocale()
   const icon = () => getSemanticIcon(props.isWorktree ? "workspace.worktree" : "workspace.main")
-  const tooltip = () =>
-    props.isWorktree
-      ? i18n._({ ...copy.worktreeLabel, values: { name: props.workspaceName } })
-      : i18n._(copy.mainCheckout)
+  const tooltip = () => props.workspaceName || i18n._(workspaceCopy.none)
 
   return (
     <Tooltip placement="top" value={tooltip()}>
-      <button type="button" classList={iconButtonClass(props.isWorktree ? "success" : "base")}>
+      <button
+        type="button"
+        aria-label={i18n._(workspaceCopy.title)}
+        disabled={!props.sessionID}
+        onClick={() => dialog.show(() => <DialogWorkspace sessionID={props.sessionID} />)}
+        classList={iconButtonClass(props.isWorktree ? "success" : "base")}
+      >
         <Icon name={icon()} size="small" />
       </button>
     </Tooltip>
@@ -571,7 +578,7 @@ export function StatusBar() {
   })
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
   const isWorktree = () => workspaceType() === "git_worktree"
-  const workspaceName = createMemo(() => workspaceField(session(), "name") || (isWorktree() ? "worktree" : "main"))
+  const workspaceName = createMemo(() => workspaceField(session(), "name") || workspaceField(session(), "path"))
   const branch = createMemo(() => {
     if (isWorktree()) return workspaceField(session(), "branch")
     return workspaceField(session(), "branch") || sync.data.vcs?.branch
@@ -639,7 +646,13 @@ export function StatusBar() {
       </Show>
 
       <PanelSection title={i18n._(copy.workspace)}>
-        <PanelRow>{isWorktree() ? i18n._(copy.gitWorktree) : i18n._(copy.mainCheckout)}</PanelRow>
+        <PanelRow>
+          {!session()?.workspace
+            ? i18n._(workspaceCopy.none)
+            : isWorktree()
+              ? i18n._(copy.gitWorktree)
+              : i18n._(workspaceCopy.directory)}
+        </PanelRow>
         <PanelRow>{scopeLabel()}</PanelRow>
         <Show when={isWorktree()}>
           <PanelRow>{workspaceName()}</PanelRow>
@@ -713,7 +726,7 @@ export function StatusBar() {
         <HolosIconButton />
 
         <Show when={params.dir}>
-          <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} />
+          <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} sessionID={params.id} />
           <Show keyed when={branch()}>
             {(currentBranch) => <BranchIconButton branch={currentBranch} />}
           </Show>

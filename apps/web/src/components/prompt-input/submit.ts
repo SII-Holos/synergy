@@ -460,6 +460,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         session = await client.session
           .create({
             controlProfile: input.selectedControlProfile(),
+            workspace: worktreeWorkspaceSelection ? undefined : workspaceSelection,
           })
           .then((x) => x.data ?? undefined)
           .catch((err) => {

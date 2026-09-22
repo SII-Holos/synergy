@@ -4975,6 +4975,46 @@ export type Path = {
   workspace: SessionWorkspace | null
 }
 
+export type WorkspaceInfo = {
+  id: string
+  scopeID: string
+  type: string
+  revision: number
+  binding: {
+    state: "bound" | "unbound"
+    hostID: string
+    path: string
+    physicalID?: string
+    generation: number
+  }
+  metadata: {
+    [key: string]: unknown
+  }
+  sharedWritableWorkspaceIDs: Array<string>
+  lifecycle: "active" | "deleting" | "deleted"
+  createdAt: number
+  updatedAt: number
+  [key: string]:
+    | unknown
+    | string
+    | number
+    | {
+        state: "bound" | "unbound"
+        hostID: string
+        path: string
+        physicalID?: string
+        generation: number
+      }
+    | {
+        [key: string]: unknown
+      }
+    | Array<string>
+    | "active"
+    | "deleting"
+    | "deleted"
+    | number
+}
+
 export type Command = {
   name: string
   description?: string
@@ -5489,6 +5529,7 @@ export type ScopeBootstrapResponse = {
   agent: Array<Agent>
   config: Config
   path?: Path
+  workspaces?: Array<WorkspaceInfo>
   command?: Array<Command>
   sessionStatus?: {
     [key: string]: SessionStatus
@@ -8310,46 +8351,6 @@ export type WorkspaceFileWriteFileInput = {
   createParents?: boolean
   conflictPolicy?: "fail" | "overwrite"
   expectedVersion: string | null
-}
-
-export type WorkspaceInfo = {
-  id: string
-  scopeID: string
-  type: string
-  revision: number
-  binding: {
-    state: "bound" | "unbound"
-    hostID: string
-    path: string
-    physicalID?: string
-    generation: number
-  }
-  metadata: {
-    [key: string]: unknown
-  }
-  sharedWritableWorkspaceIDs: Array<string>
-  lifecycle: "active" | "deleting" | "deleted"
-  createdAt: number
-  updatedAt: number
-  [key: string]:
-    | unknown
-    | string
-    | number
-    | {
-        state: "bound" | "unbound"
-        hostID: string
-        path: string
-        physicalID?: string
-        generation: number
-      }
-    | {
-        [key: string]: unknown
-      }
-    | Array<string>
-    | "active"
-    | "deleting"
-    | "deleted"
-    | number
 }
 
 export type EmbeddingStatus =

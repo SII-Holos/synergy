@@ -21295,3 +21295,95 @@ msgstr "Changes in {title} have not been saved."
 #. js-lingui-explicit-id
 msgid "workbench.discard.title"
 msgstr "Discard unsaved changes?"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.applyBinding"
+msgstr "Rebind Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.busy"
+msgstr "Switching requires an idle session. Active file operations may also prevent rebinding or changing sharing."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.choose"
+msgstr "Use Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.description"
+msgstr "Choose where this session works. Its project, settings and conversation stay the same."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.directory"
+msgstr "Local directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.empty"
+msgstr "No matching Workspaces. Add an existing directory to get started."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.failed"
+msgstr "The Workspace could not be updated. Reload to review its current state."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.loading"
+msgstr "Loading Workspaces…"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.none"
+msgstr "No local files"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.pick"
+msgstr "Browse"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebind"
+msgstr "Change local binding"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindDescription"
+msgstr "All sessions using this Workspace will use the new directory. Existing files stay in place."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindPath"
+msgstr "New local directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.register"
+msgstr "Add directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.reload"
+msgstr "Reload"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.saveSharing"
+msgstr "Save sharing"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.search"
+msgstr "Find a Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharing"
+msgstr "Additional writable Workspaces"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingDescription"
+msgstr "Sessions in this Workspace may also write to the selected directories. Sharing applies directly and is not inherited."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingEmpty"
+msgstr "Add another directory to share write access."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.title"
+msgstr "Choose Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.unavailable"
+msgstr "Unavailable — choose a local directory to rebind"

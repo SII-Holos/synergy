@@ -21295,3 +21295,95 @@ msgstr ""
 #. js-lingui-explicit-id
 msgid "workbench.discard.title"
 msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.applyBinding"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.directory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.none"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.pick"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.register"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.reload"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.saveSharing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingEmpty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.unavailable"
+msgstr ""

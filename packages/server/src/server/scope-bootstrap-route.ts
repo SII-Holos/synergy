@@ -2,6 +2,7 @@ import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { ScopePath } from "./scope-path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -35,6 +36,7 @@ export const ScopeBootstrapResponse = z
     agent: Agent.Info.array(),
     config: Config.Info,
     path: ScopePath.Schema.optional(),
+    workspaces: WorkspaceCatalog.Info.array().optional(),
     command: Command.Info.array().optional(),
     sessionStatus: z.record(z.string(), Session.StatusInfo).optional(),
     sessions: BootstrapSessions.optional(),
@@ -121,6 +123,10 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
         optional("command", Command.list()),
         optional("sessionStatus", SessionManager.listStatuses(scope.id)),
         optional("sessions", sessionPageRequest),
+        optional(
+          "workspaces",
+          sessionPageRequest.then(() => WorkspaceCatalog.list(scope.id)),
+        ),
         optional(
           "cortex",
           Cortex.then((manager) => manager.listVisible()),

@@ -239,6 +239,8 @@ export namespace WorkspaceCatalog {
       type: info.type,
       path: info.binding.path,
       generation: info.binding.generation,
+      bindingState: info.binding.state,
+      lifecycle: info.lifecycle,
     }
   }
 }

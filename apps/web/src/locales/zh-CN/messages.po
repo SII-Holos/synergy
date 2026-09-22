@@ -21295,3 +21295,95 @@ msgstr "{title} 中的更改尚未保存。"
 #. js-lingui-explicit-id
 msgid "workbench.discard.title"
 msgstr "放弃未保存的更改？"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.applyBinding"
+msgstr "重新绑定 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.busy"
+msgstr "会话空闲时才能切换 Workspace。正在进行的文件操作也可能阻止重新绑定或修改共享权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.choose"
+msgstr "使用此 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.description"
+msgstr "选择此会话的工作目录。项目、设置和对话保持不变。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.directory"
+msgstr "本地目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.empty"
+msgstr "没有匹配的 Workspace。添加一个已有目录即可开始。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.failed"
+msgstr "无法更新 Workspace。请重新加载以查看当前状态。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.loading"
+msgstr "正在加载 Workspace…"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.none"
+msgstr "不使用本地文件"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.pick"
+msgstr "浏览"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebind"
+msgstr "更改本地绑定"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindDescription"
+msgstr "使用此 Workspace 的所有会话都将改用新目录。已有文件保留在原位置。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindPath"
+msgstr "新的本地目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.register"
+msgstr "添加目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.reload"
+msgstr "重新加载"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.saveSharing"
+msgstr "保存共享权限"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.search"
+msgstr "查找 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharing"
+msgstr "允许额外写入的 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingDescription"
+msgstr "此 Workspace 中的会话也可以写入所选目录。共享权限直接生效，不会继承其他 Workspace 的共享权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingEmpty"
+msgstr "添加另一个目录后即可共享写入权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.title"
+msgstr "选择 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.unavailable"
+msgstr "不可用，请选择本地目录重新绑定"

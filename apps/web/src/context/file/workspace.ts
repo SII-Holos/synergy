@@ -13,7 +13,9 @@ export function fileWorkspace(value: unknown): FileWorkspace | undefined {
     ws.generation < 1 ||
     typeof ws.scopeID !== "string" ||
     typeof ws.path !== "string" ||
-    typeof ws.type !== "string"
+    typeof ws.type !== "string" ||
+    (ws.bindingState !== undefined && ws.bindingState !== "bound") ||
+    (ws.lifecycle !== undefined && ws.lifecycle !== "active")
   )
     return
   return ws as FileWorkspace

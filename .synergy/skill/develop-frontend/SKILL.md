@@ -156,3 +156,5 @@ When a mutation replaces a collection (such as session tags), serialize pending 
 When changing file consumers, capture Workspace ID and binding generation before asynchronous work. Exercise the same relative filename in two Workspaces, switch while one read is pending, deliver stale-generation watcher events, and reopen a tab after a binding change. Preview URLs and editor models must retain the same owner as the file request.
 
 For editable file consumers, capture the complete-read content version when editing starts. Keep that baseline independent from watcher refresh, and preserve drafts through model remounts. Test a remote write during editing and new local input during a pending save; only the submitted revision may become clean.
+
+Workspace selection changes require catalog snapshot/event race coverage: deliver rebinding before an older bootstrap or Session response, retain the new Session generation without changing activity, and keep pinned file tabs on their captured generation. Conditional sharing/rebinding forms retain the revision observed when editing starts; incoming events must not silently authorize overwriting concurrent changes.

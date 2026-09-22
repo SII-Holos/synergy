@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   fileWorkspaceKey,
+  fileWorkspace,
   workspaceFileOwner,
   workspaceFilePath,
   workspaceFileResource,
@@ -8,6 +9,12 @@ import {
 
 const workspace = { id: "wsp_first", generation: 1, scopeID: "scope", type: "directory", path: "/one" }
 describe("Workspace file identity", () => {
+  test("unbound and retired catalog projections cannot open local files", () => {
+    expect(fileWorkspace({ ...workspace, bindingState: "unbound" })).toBeUndefined()
+    expect(fileWorkspace({ ...workspace, lifecycle: "retired" })).toBeUndefined()
+    expect(fileWorkspace({ ...workspace, bindingState: "bound", lifecycle: "active" })).toMatchObject(workspace)
+    expect(fileWorkspace(workspace)).toEqual(workspace)
+  })
   test("same relative filename in another Workspace, binding, or server has a different identity", () => {
     const keys = [
       fileWorkspaceKey("server", "scope", workspace),

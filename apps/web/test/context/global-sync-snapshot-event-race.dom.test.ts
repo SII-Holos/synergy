@@ -10,7 +10,9 @@ type SnapshotVersion = { epoch: string; seq: number }
 type ScopeState = [
   {
     status: string
-    session: Array<{ id: string }>
+    session: Array<{ id: string; workspace?: { path: string; generation: number }; time?: { updated?: number } }>
+    workspaces: Array<{ id: string; revision: number }>
+    path: { workspace?: { path: string; generation: number } }
     sessionTotal: number
     cortex: Array<{ id: string; sessionID?: string }>
   },
@@ -209,6 +211,69 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.sessionStatus["fixture-session"]).toEqual({ type: "busy" })
       expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
       expect(shared.state[0].session.some((session) => session.id === "from-snapshot")).toBe(true)
+      const workspaceScope = api.retainScopeState("workspace-scope")
+      const oldBinding = {
+        id: "wsp_fixture",
+        scopeID: "scope-workspace",
+        type: "directory",
+        generation: 1,
+        path: "/old",
+      }
+      const oldCatalog = {
+        id: oldBinding.id,
+        scopeID: oldBinding.scopeID,
+        type: "directory",
+        revision: 1,
+        binding: { state: "bound", hostID: "host", path: "/old", generation: 1 },
+        metadata: {},
+        sharedWritableWorkspaceIDs: [],
+        lifecycle: "active",
+        createdAt: 1,
+        updatedAt: 1,
+      }
+      const originalSession = {
+        id: "workspace-session",
+        scope: { id: oldBinding.scopeID },
+        workspaceID: oldBinding.id,
+        workspace: oldBinding,
+        time: { updated: 10 },
+      }
+      h.emit("workspace-scope", 1, "session.updated", { info: originalSession })
+      const pinnedTab = { ...workspaceScope.state[0].session[0]!.workspace! }
+      h.emit("workspace-scope", 2, "workspace.updated", {
+        ...oldCatalog,
+        revision: 2,
+        binding: { ...oldCatalog.binding, generation: 2, path: "/moved" },
+      })
+      h.complete(
+        "workspace-scope",
+        {
+          scopeID: oldBinding.scopeID,
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          path: { workspace: oldBinding },
+          workspaces: [oldCatalog],
+          sessions: { data: [originalSession], total: 1 },
+        },
+        { epoch: "test-epoch", seq: 1 },
+      )
+      await h.waitComplete(workspaceScope.state)
+      expect(workspaceScope.state[0].session[0]!.workspace).toMatchObject({ generation: 2, path: "/moved" })
+      expect(workspaceScope.state[0].path.workspace).toMatchObject({ generation: 2, path: "/moved" })
+      expect(workspaceScope.state[0].session[0]!.time?.updated).toBe(10)
+      expect(pinnedTab).toMatchObject({ generation: 1, path: "/old" })
+      h.emit("workspace-scope", 3, "session.updated", { info: originalSession })
+      expect(workspaceScope.state[0].session[0]!.workspace).toMatchObject({ generation: 2, path: "/moved" })
+      h.emit("workspace-scope", 4, "workspace.updated", {
+        ...oldCatalog,
+        scopeID: "another-scope",
+        revision: 99,
+        binding: { ...oldCatalog.binding, generation: 99, path: "/foreign" },
+      })
+      expect(workspaceScope.state[0].session[0]!.workspace?.path).toBe("/moved")
+      workspaceScope.release()
+
       // Reviewer scenario: the response stamp sits between an old stale
       // write and a newer unrelated event. Scope-wide "snapshot is behind"
       // merging keeps every local entry; only keys written after the stamp
