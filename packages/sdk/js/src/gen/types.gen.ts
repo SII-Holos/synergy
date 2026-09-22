@@ -10217,32 +10217,9 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
-    directory?: string
-  }
-}
-
-export type EventScopeRuntimeDisposed = {
-  type: "scope.runtime.disposed"
-  properties: {
-    scopeID: string
-    directory?: string
-  }
-}
-
-export type EventProviderAuthUpdated = {
-  type: "provider.auth.updated"
-  properties: {
-    health: ProviderAuthHealth
-  }
+export type EventWorkspaceUpdated = {
+  type: "workspace.updated"
+  properties: WorkspaceInfo
 }
 
 export type EventInstallationUpdated = {
@@ -10256,6 +10233,20 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -10288,29 +10279,6 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
-  }
-}
-
-export type EventDagUpdated = {
-  type: "dag.updated"
-  properties: {
-    sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
   }
 }
 
@@ -10412,6 +10380,43 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+    directory?: string
+  }
+}
+
+export type EventScopeRuntimeDisposed = {
+  type: "scope.runtime.disposed"
+  properties: {
+    scopeID: string
+    directory?: string
+  }
+}
+
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
   }
 }
 
@@ -10877,19 +10882,15 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
-  | EventScopeUpdated
-  | EventScopeRemoved
-  | EventScopeRuntimeDisposed
-  | EventProviderAuthUpdated
+  | EventWorkspaceUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventPermissionAsked
-  | EventPermissionReplied
-  | EventDagUpdated
   | EventConfigUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
@@ -10903,6 +10904,11 @@ export type Event =
   | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventSessionCompacted
+  | EventScopeUpdated
+  | EventScopeRemoved
+  | EventScopeRuntimeDisposed
+  | EventProviderAuthUpdated
+  | EventDagUpdated
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventFileEdited
@@ -15362,6 +15368,51 @@ export type SessionDagResponses = {
 
 export type SessionDagResponse = SessionDagResponses[keyof SessionDagResponses]
 
+export type SessionSelectWorkspaceData = {
+  body?: SessionWorkspaceSelection
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/workspace"
+}
+
+export type SessionSelectWorkspaceErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionSelectWorkspaceError = SessionSelectWorkspaceErrors[keyof SessionSelectWorkspaceErrors]
+
+export type SessionSelectWorkspaceResponses = {
+  /**
+   * Updated Session
+   */
+  200: Session
+}
+
+export type SessionSelectWorkspaceResponse = SessionSelectWorkspaceResponses[keyof SessionSelectWorkspaceResponses]
+
 export type SessionInitData = {
   body?: {
     modelID: string
@@ -18398,6 +18449,102 @@ export type WorkspaceRegisterResponses = {
 }
 
 export type WorkspaceRegisterResponse = WorkspaceRegisterResponses[keyof WorkspaceRegisterResponses]
+
+export type WorkspaceSetSharingData = {
+  body?: {
+    expectedRevision: number
+    workspaceIDs: Array<string>
+  }
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/sharing"
+}
+
+export type WorkspaceSetSharingErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceSetSharingError = WorkspaceSetSharingErrors[keyof WorkspaceSetSharingErrors]
+
+export type WorkspaceSetSharingResponses = {
+  /**
+   * Updated Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceSetSharingResponse = WorkspaceSetSharingResponses[keyof WorkspaceSetSharingResponses]
+
+export type WorkspaceRebindData = {
+  body?: {
+    expectedRevision: number
+    path: string
+  }
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/rebind"
+}
+
+export type WorkspaceRebindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceRebindError = WorkspaceRebindErrors[keyof WorkspaceRebindErrors]
+
+export type WorkspaceRebindResponses = {
+  /**
+   * Rebound Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceRebindResponse = WorkspaceRebindResponses[keyof WorkspaceRebindResponses]
 
 export type LibraryEmbeddingStatusData = {
   body?: never

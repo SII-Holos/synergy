@@ -638,17 +638,13 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   const profileId = await Session.resolveEffectiveControlProfile({ sessionID: session?.id })
   const directory = ScopeContext.current.directory
   const workspace = ScopeContext.current.workspace
-  const trustedRoots = Scope.Root.executionRoots(
-    ScopeContext.current.scope,
-    workspace,
-    SkillSourceProfile.allRootPaths(directory),
-  )
+  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspace)
   const gate = await EnforcementGate.create({
     activeWorkspace: directory,
     workspaceType: workspace?.type === "git_worktree" ? "worktree" : "main",
     originalCheckout: (workspace as { originalCheckout?: string } | undefined)?.originalCheckout,
     profileId,
-    readRoots: [Global.Path.root, ...trustedRoots],
+    readRoots: [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(directory)],
     trustedRoots,
     synergyRoot: Global.Path.root,
     sessionKey: input.invocation.sessionId,

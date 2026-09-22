@@ -37,6 +37,7 @@ export namespace WorkspaceAccess {
     workspace?: Workspace | null
     roots?: string[] | null
     lease?: Lease
+    uses: Map<string, Lease>
     serial: Promise<void>
     closed: boolean
     signal: AbortSignal
@@ -87,6 +88,7 @@ export namespace WorkspaceAccess {
         : [],
       workspace: input.workspace,
       closed: false,
+      uses: new Map(),
       serial: Promise.resolve(),
       signal: input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal,
     }
@@ -110,11 +112,13 @@ export namespace WorkspaceAccess {
       value.closed = true
       controller.abort(new DOMException("Workspace task ended", "AbortError"))
       await value.serial.catch(() => {})
-      try {
-        await value.lease?.release()
-      } finally {
-        await use?.release()
-      }
+      const released = await Promise.allSettled([
+        value.lease?.release(),
+        use?.release(),
+        ...[...value.uses.values()].map((lease) => lease.release()),
+      ])
+      const errors = released.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+      if (errors.length) throw new AggregateError(errors, "Workspace claims could not be released")
     }
   }
 
@@ -201,6 +205,32 @@ export namespace WorkspaceAccess {
         throw error
       }
     }, signal)
+  }
+
+  export async function use(workspaces: Workspace[]) {
+    const task = current()
+    if (!task || !state().host) return
+    await ExecutionCapacity.wait(() =>
+      serial(task, async () => {
+        for (const workspace of workspaces) {
+          const key = JSON.stringify([workspace.id, workspace.generation])
+          if (!task.uses.has(key))
+            task.uses.set(
+              key,
+              await host().acquire({
+                id: randomUUID(),
+                owner: task.owner,
+                ancestors: task.ancestors,
+                kind: "use",
+                roots: [workspace.path],
+                signal: task.signal,
+              }),
+            )
+          if (workspace.id) await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
+        }
+      }),
+    )
+    await validate(task)
   }
 
   export function signal() {

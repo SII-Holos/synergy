@@ -76,6 +76,15 @@ export namespace WorkspaceRuntime {
     }
   }
 
+  export async function disposeWorkspace(workspaceID: string) {
+    const results = await Promise.allSettled(
+      [...state().started].filter(([, entry]) => entry.workspaceID === workspaceID).map(([key]) => dispose(key)),
+    )
+    results.push(...(await Promise.allSettled([WorkspaceState.disposeWorkspace(workspaceID)])))
+    const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (errors.length) throw new AggregateError(errors, "Workspace shutdown failed")
+  }
+
   export async function disposeScope(scopeID: string): Promise<void> {
     const current = state()
     const existing = current.disposing.get(scopeID)

@@ -663,6 +663,8 @@ import type {
   SessionRunResponses,
   SessionRunResultErrors,
   SessionRunResultResponses,
+  SessionSelectWorkspaceErrors,
+  SessionSelectWorkspaceResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -768,8 +770,12 @@ import type {
   WorkspaceFileWriteFileInput,
   WorkspaceListErrors,
   WorkspaceListResponses,
+  WorkspaceRebindErrors,
+  WorkspaceRebindResponses,
   WorkspaceRegisterErrors,
   WorkspaceRegisterResponses,
+  WorkspaceSetSharingErrors,
+  WorkspaceSetSharingResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -2584,6 +2590,47 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/dag",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Select the Workspace for an idle session
+   */
+  public selectWorkspace<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionWorkspaceSelection?: SessionWorkspaceSelection
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionWorkspaceSelection", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionSelectWorkspaceResponses,
+      SessionSelectWorkspaceErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/workspace",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -9431,6 +9478,86 @@ export class Workspace extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<WorkspaceRegisterResponses, WorkspaceRegisterErrors, ThrowOnError>({
       url: "/workspace",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Set explicitly shared writable Workspaces
+   */
+  public setSharing<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+      workspaceIDs?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "workspaceIDs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceSetSharingResponses, WorkspaceSetSharingErrors, ThrowOnError>(
+      {
+        url: "/workspace/{workspaceID}/sharing",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Rebind a Workspace to an existing local directory
+   */
+  public rebind<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceRebindResponses, WorkspaceRebindErrors, ThrowOnError>({
+      url: "/workspace/{workspaceID}/rebind",
       ...options,
       ...params,
       headers: {

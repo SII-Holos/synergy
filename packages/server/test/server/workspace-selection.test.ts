@@ -131,3 +131,60 @@ test("registering and selecting a directory Workspace keeps its owning Scope", (
       },
     })
   }))
+
+test("Workspace sharing, rebinding and Session selection are conditional Scope-owned API operations", () =>
+  runtime.run(async () => {
+    await using a = await tmpdir()
+    await using b = await tmpdir()
+    await using c = await tmpdir()
+    const scope = await a.scope()
+    const first = await WorkspaceBinding.register(scope.id, a.path)
+    const second = await WorkspaceBinding.register(scope.id, b.path)
+    const app = Server.App()
+    const mutate = (endpoint: string, body: unknown) =>
+      app.request(`${endpoint}?scopeID=${scope.id}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    const shared = await mutate(`/workspace/${first.id}/sharing`, {
+      expectedRevision: first.revision,
+      workspaceIDs: [second.id],
+    })
+    expect(shared.status).toBe(200)
+    expect(await shared.json()).toMatchObject({
+      sharedWritableWorkspaceIDs: [second.id],
+      binding: { generation: first.binding.generation },
+    })
+    expect(
+      (await mutate(`/workspace/${first.id}/sharing`, { expectedRevision: first.revision, workspaceIDs: [] })).status,
+    ).toBe(409)
+    const rebound = await mutate(`/workspace/${second.id}/rebind`, { expectedRevision: second.revision, path: c.path })
+    expect(rebound.status).toBe(200)
+    const record = WorkspaceCatalog.Info.parse(await rebound.json())
+    expect(record.binding.path).toBe(c.path)
+    const session = await ScopeContext.provide({ scope, fn: () => Session.create() })
+    const selected = await mutate(`/session/${session.id}/workspace`, {
+      mode: "workspace",
+      workspaceID: second.id,
+      workspaceGeneration: record.binding.generation,
+    })
+    expect(selected.status).toBe(200)
+    expect(await selected.json()).toMatchObject({
+      workspaceID: second.id,
+      scope: { id: scope.id },
+      workspace: { path: c.path },
+    })
+    expect(
+      (
+        await mutate(`/session/${session.id}/workspace`, {
+          mode: "workspace",
+          workspaceID: second.id,
+          workspaceGeneration: second.binding.generation,
+        })
+      ).status,
+    ).toBe(409)
+    const cleared = await mutate(`/session/${session.id}/workspace`, { mode: "none" })
+    expect(cleared.status).toBe(200)
+    expect(await cleared.json()).toMatchObject({ workspace: null, workspaceID: null })
+  }))

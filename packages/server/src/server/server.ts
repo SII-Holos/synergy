@@ -532,6 +532,7 @@ export namespace Server {
             status = 409
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
           else if (
+            err instanceof WorkspaceCatalog.Invalid ||
             err instanceof Scope.RequiredError ||
             err instanceof Scope.WorkspaceRequiredError ||
             err instanceof ConfigImport.ProjectScopeRequiredError ||

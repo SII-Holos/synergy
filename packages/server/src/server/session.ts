@@ -562,6 +562,20 @@ export const SessionRoute = () =>
       },
     )
     .post(
+      "/:sessionID/workspace",
+      describeRoute({
+        summary: "Select the Workspace for an idle session",
+        operationId: "session.selectWorkspace",
+        responses: {
+          200: { description: "Updated Session", content: { "application/json": { schema: resolver(Session.Info) } } },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      validator("json", Session.WorkspaceSelection),
+      async (c) => c.json(await Session.applyWorkspaceSelection(c.req.valid("param").sessionID, c.req.valid("json"))),
+    )
+    .post(
       "/:sessionID/init",
       describeRoute({
         summary: "Initialize session",

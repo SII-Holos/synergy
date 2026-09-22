@@ -23,6 +23,14 @@ export namespace WorkspaceState {
     records().delete(key)
   }
 
+  export async function disposeWorkspace(workspaceID: string) {
+    const results = await Promise.allSettled(
+      [...records().keys()].filter((key) => JSON.parse(key)[1] === workspaceID).map(dispose),
+    )
+    const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (errors.length) throw new AggregateError(errors, "Workspace resources could not be released")
+  }
+
   export async function disposeScope(scopeID: string) {
     const results = await Promise.allSettled(
       [...records()].filter(([, owner]) => owner === scopeID).map(([key]) => dispose(key)),

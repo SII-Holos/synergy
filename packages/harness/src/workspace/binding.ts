@@ -2,6 +2,12 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceCatalog } from "./catalog"
+import { Storage } from "../storage/storage"
+import { Scope } from "../scope"
+import { ScopeContext } from "../scope/context"
+import { Bus } from "../bus"
+import { WorkspaceRuntime } from "./runtime"
+import { WorkspaceAccess } from "./access"
 import { WorkspaceLocation } from "./location"
 import type { Workspace } from "../session/workspace-schema"
 
@@ -57,6 +63,80 @@ export namespace WorkspaceBinding {
     const { path: _path, scopeID: _scope, type, id: _id, generation: _generation, ...metadata } = workspace
     const info = await WorkspaceCatalog.register({ scopeID, type, hostID, ...location, metadata })
     return WorkspaceCatalog.projection(info)
+  }
+
+  export async function writableRoots(workspace: Workspace): Promise<string[]> {
+    if (!workspace.id) return [workspace.path]
+    const own = await validate(workspace.id, workspace.scopeID, workspace.generation)
+    const record = await WorkspaceCatalog.get(workspace.id, workspace.scopeID)
+    const shared = await Promise.all(record.sharedWritableWorkspaceIDs.map((id) => validate(id, workspace.scopeID)))
+    await WorkspaceAccess.use(shared)
+    return [...new Set([own.path, ...shared.map((target) => target.path)])]
+  }
+
+  export async function setSharing(
+    id: string,
+    input: { scopeID: string; expectedRevision: number; workspaceIDs: string[] },
+    signal?: AbortSignal,
+  ): Promise<WorkspaceCatalog.Info> {
+    const own = await validate(id, input.scopeID)
+    return WorkspaceAccess.exclusive(
+      [own.path],
+      async () => {
+        await validate(id, input.scopeID, own.generation)
+        await Promise.all(input.workspaceIDs.map((target) => validate(target, input.scopeID)))
+        return publishChange(input.scopeID, () => WorkspaceCatalog.setSharing(id, input))
+      },
+      signal,
+    )
+  }
+
+  export async function rebind(
+    id: string,
+    input: { scopeID: string; expectedRevision: number; path: string },
+    signal?: AbortSignal,
+  ): Promise<WorkspaceCatalog.Info> {
+    if (!path.isAbsolute(input.path))
+      throw new WorkspaceCatalog.Invalid({ message: "Workspace location must be absolute", workspaceID: id })
+    const previous = await WorkspaceCatalog.get(id, input.scopeID)
+    const source = WorkspaceLocation.source()
+    const hostID = await source.hostID()
+    const target = await source.identify(input.path)
+    const roots = [
+      target.path,
+      ...(previous.binding.state === "bound" && previous.binding.hostID === hostID ? [previous.binding.path] : []),
+    ]
+    return WorkspaceAccess.exclusive(
+      roots,
+      async () => {
+        const currentTarget = await source.identify(input.path)
+        if (currentTarget.path !== target.path || currentTarget.physicalID !== target.physicalID)
+          throw new WorkspaceCatalog.BindingChanged({
+            message: "Workspace destination changed during rebinding",
+            workspaceID: id,
+          })
+        const current = await WorkspaceCatalog.get(id, input.scopeID)
+        if (current.revision !== input.expectedRevision)
+          throw new WorkspaceCatalog.BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
+        await WorkspaceRuntime.disposeWorkspace(id)
+        return publishChange(input.scopeID, () => WorkspaceCatalog.rebind(id, { ...input, hostID, ...target }))
+      },
+      signal,
+    )
+  }
+
+  async function publishChange(scopeID: string, fn: () => Promise<WorkspaceCatalog.Info>) {
+    const scope = await Scope.resolve({ scopeID })
+    return ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: () =>
+        Storage.transaction(async () => {
+          const record = await fn()
+          await Bus.publish(WorkspaceCatalog.Event.Updated, record)
+          return record
+        }),
+    })
   }
 
   export async function validate(workspaceID: string, scopeID: string, generation?: number): Promise<Workspace> {

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { BusEvent } from "../bus/bus-event"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import type { StoreTransaction } from "../storage/transactional-store"
@@ -29,6 +30,11 @@ export namespace WorkspaceCatalog {
     .passthrough()
     .meta({ ref: "WorkspaceInfo" })
   export type Info = z.infer<typeof Info>
+  export const Event = { Updated: BusEvent.define("workspace.updated", Info) }
+  export const Invalid = NamedError.create(
+    "WorkspaceInvalid",
+    z.object({ message: z.string(), workspaceID: z.string() }),
+  )
   export const BindingChanged = NamedError.create(
     "WorkspaceBindingChanged",
     z.object({ message: z.string(), workspaceID: z.string() }),
@@ -183,6 +189,44 @@ export namespace WorkspaceCatalog {
       if (previous.binding.state === "bound") for (const key of locations(previous)) await Storage.remove(key)
       await Storage.write(recordKey(id), next)
       for (const key of keys) await Storage.write(key, id)
+      return next
+    })
+  }
+
+  export async function setSharing(
+    id: string,
+    input: { scopeID: string; expectedRevision: number; workspaceIDs: string[] },
+  ): Promise<Info> {
+    return Storage.transaction(async () => {
+      const previous = await get(id, input.scopeID)
+      if (previous.revision !== input.expectedRevision)
+        throw new BindingChanged({ message: "Workspace changed before sharing", workspaceID: id })
+      if (previous.lifecycle !== "active" || previous.binding.state !== "bound")
+        throw new Unavailable({ message: "Workspace has no active local binding", workspaceID: id })
+      const workspaceIDs = [...new Set(input.workspaceIDs)]
+      if (workspaceIDs.length > 64)
+        throw new Invalid({ message: "At most 64 shared Workspaces are allowed", workspaceID: id })
+      if (workspaceIDs.includes(id))
+        throw new Invalid({ message: "A Workspace cannot share with itself", workspaceID: id })
+      for (const targetID of workspaceIDs) {
+        const target = await get(targetID, input.scopeID)
+        if (
+          target.lifecycle !== "active" ||
+          target.binding.state !== "bound" ||
+          target.binding.hostID !== previous.binding.hostID
+        )
+          throw new Unavailable({
+            message: "Shared Workspace has no active binding on this host",
+            workspaceID: targetID,
+          })
+      }
+      const next = Info.parse({
+        ...previous,
+        sharedWritableWorkspaceIDs: workspaceIDs,
+        revision: previous.revision + 1,
+        updatedAt: Date.now(),
+      })
+      await Storage.write(recordKey(id), next)
       return next
     })
   }

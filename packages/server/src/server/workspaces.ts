@@ -42,3 +42,60 @@ export const WorkspacesRoute = () =>
       ),
       async (c) => c.json(await WorkspaceBinding.register(ScopeContext.current.scope.id, c.req.valid("json").path)),
     )
+    .post(
+      "/:workspaceID/sharing",
+      describeRoute({
+        summary: "Set explicitly shared writable Workspaces",
+        operationId: "workspace.setSharing",
+        responses: {
+          200: {
+            description: "Updated Workspace",
+            content: { "application/json": { schema: resolver(WorkspaceCatalog.Info) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ workspaceID: z.string().min(1) })),
+      validator(
+        "json",
+        z.object({ expectedRevision: z.number().int().positive(), workspaceIDs: z.array(z.string().min(1)).max(64) }),
+      ),
+      async (c) =>
+        c.json(
+          await WorkspaceBinding.setSharing(
+            c.req.valid("param").workspaceID,
+            { scopeID: ScopeContext.current.scope.id, ...c.req.valid("json") },
+            c.req.raw.signal,
+          ),
+        ),
+    )
+    .post(
+      "/:workspaceID/rebind",
+      describeRoute({
+        summary: "Rebind a Workspace to an existing local directory",
+        operationId: "workspace.rebind",
+        responses: {
+          200: {
+            description: "Rebound Workspace",
+            content: { "application/json": { schema: resolver(WorkspaceCatalog.Info) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ workspaceID: z.string().min(1) })),
+      validator(
+        "json",
+        z.object({
+          expectedRevision: z.number().int().positive(),
+          path: z.string().min(1).refine(path.isAbsolute, "An absolute directory is required"),
+        }),
+      ),
+      async (c) =>
+        c.json(
+          await WorkspaceBinding.rebind(
+            c.req.valid("param").workspaceID,
+            { scopeID: ScopeContext.current.scope.id, ...c.req.valid("json") },
+            c.req.raw.signal,
+          ),
+        ),
+    )
