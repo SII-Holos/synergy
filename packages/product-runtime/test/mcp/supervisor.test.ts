@@ -752,6 +752,158 @@ describe.serial("McpSupervisor", () => {
         },
       })
     }))
+  test("lazy servers stay failed without a retry cycle", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const handle = McpSupervisor().add("lazy-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "lazy",
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+
+          await McpSupervisor().connect("lazy-remote", handle.identity)
+          expect((await MCP.status())["lazy-remote"]).toMatchObject({ status: "failed" })
+          const requestsAfterFailure = fixture.requests()
+
+          await Bun.sleep(500)
+
+          expect((await MCP.status())["lazy-remote"]).toMatchObject({ status: "failed" })
+          expect(fixture.requests()).toBe(requestsAfterFailure)
+        },
+      })
+    }))
+
+  test("an explicit reconnect of a failed server publishes mcp.failed again", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const failures: string[] = []
+          const unsubscribe = Bus.subscribe(MCP.FailedEvent, (event) => failures.push(event.properties.error))
+          const handle = McpSupervisor().add("refailed-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "manual",
+            retry: { maxAttempts: 1 },
+          })
+
+          await McpSupervisor().connect("refailed-remote", handle.identity)
+          expect(failures).toHaveLength(1)
+
+          await McpSupervisor().connect("refailed-remote", handle.identity)
+          unsubscribe()
+
+          expect(failures).toHaveLength(2)
+          expect((await MCP.status())["refailed-remote"]).toMatchObject({ status: "failed" })
+        },
+      })
+    }))
+
+  test("a failed transition publishes mcp.tools.changed once and cooldown retries stay silent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const toolsChanged: string[] = []
+          const unsubscribe = Bus.subscribe(MCP.ToolsChanged, (event) => toolsChanged.push(event.properties.server))
+          const handle = McpSupervisor().add("tools-changed-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "eager",
+            requiresWorkspace: false,
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+
+          await handle.startPromise
+          expect((await MCP.status())["tools-changed-remote"]).toMatchObject({ status: "failed" })
+
+          await Bun.sleep(500)
+          unsubscribe()
+
+          expect(toolsChanged).toEqual(["tools-changed-remote"])
+        },
+      })
+    }))
+
+  test("cooldownMs of zero begins the next cycle immediately", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const handle = McpSupervisor().add("immediate-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "eager",
+            requiresWorkspace: false,
+            retry: { maxAttempts: 1, cooldownMs: 0 },
+          })
+
+          await handle.startPromise
+          const requestsAfterFirstFailure = fixture.requests()
+
+          const deadline = Date.now() + 1_000
+          while (fixture.requests() === requestsAfterFirstFailure && Date.now() < deadline) await Bun.sleep(10)
+
+          // The default cooldown is 60s, so a second attempt inside 1s proves zero starts the next cycle immediately.
+          expect(fixture.requests()).toBeGreaterThan(requestsAfterFirstFailure)
+        },
+      })
+    }))
+
+  test("remove and reset leave no further connection attempts", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = await startRemoteMcpFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const removed = McpSupervisor().add("removed-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "eager",
+            requiresWorkspace: false,
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+          const reset = McpSupervisor().add("reset-remote", {
+            type: "remote",
+            url: fixture.url,
+            startup: "eager",
+            requiresWorkspace: false,
+            retry: { maxAttempts: 1, cooldownMs: 150 },
+          })
+
+          await Promise.all([removed.startPromise, reset.startPromise])
+          expect((await MCP.status())["removed-remote"]).toMatchObject({ status: "failed" })
+          expect((await MCP.status())["reset-remote"]).toMatchObject({ status: "failed" })
+
+          await McpSupervisor().remove("removed-remote")
+          expect(McpSupervisor().get("removed-remote")).toBeUndefined()
+          await McpSupervisor().reset()
+          const requestsAfterReset = fixture.requests()
+
+          await Bun.sleep(500)
+
+          expect(McpSupervisor().get("reset-remote")).toBeUndefined()
+          expect(fixture.requests()).toBe(requestsAfterReset)
+        },
+      })
+    }))
 })
 
 afterRuntimeTests(() => runtime.close())

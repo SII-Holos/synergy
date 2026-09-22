@@ -470,6 +470,7 @@ class McpSupervisorImpl {
       throw new Error(`MCP server not found: ${name}`)
     }
     this.clearFailedRetry(handle)
+    handle.failureNotified = false
     handle.retryCount = 0
     await this.connectPipeline(handle)
     return handle
@@ -511,7 +512,10 @@ class McpSupervisorImpl {
   async reset(): Promise<void> {
     log.info("resetting all MCP handles")
     const handles = [...this.handles.values()]
-    for (const handle of handles) this.clearFailedRetry(handle)
+    for (const handle of handles) {
+      this.clearFailedRetry(handle)
+      handle.failureNotified = false
+    }
     this.handles.clear()
     this._started = false
     this.activeStarts = 0
@@ -748,6 +752,7 @@ class McpSupervisorImpl {
     handle.generation++
     handle.state = HS.Stopping
     this.pendingStarts = this.pendingStarts.filter((pending) => pending !== handle)
+    handle.failureNotified = false
     this.clearFailedRetry(handle)
   }
 
@@ -1120,6 +1125,7 @@ class McpSupervisorImpl {
       })
       if (!handle.failureNotified) {
         handle.failureNotified = true
+        Bus.publish(ToolsChanged, { server: handle.name })
         Bus.publish(Failed, { server: handle.name, error })
       }
       if (this.startupAllowsAutoRetry(handle)) this.scheduleFailedRetry(handle)
