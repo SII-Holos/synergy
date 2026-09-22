@@ -1,45 +1,55 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
-import { Config } from "../../src/config/config"
-import { TimeoutConfig } from "../../src/util/timeout-config"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
+import { Config } from "../../src/config/config"
+import { TimeoutConfig } from "../../src/util/timeout-config"
 
-const originalConfigCurrent = Config.current
+let current: ReturnType<typeof spyOn<typeof Config, "current">> | undefined
 
-afterEach(() =>
-  runtime.run(() => {
-    ;(Config.current as any) = originalConfigCurrent
+function installConfig(config: unknown) {
+  current?.mockRestore()
+  current = spyOn(Config, "current").mockResolvedValue(Config.Info.parse(config))
+  TimeoutConfig.invalidate()
+}
+
+afterEach(
+  runtime.bind(() => {
+    current?.mockRestore()
+    current = undefined
     TimeoutConfig.invalidate()
   }),
 )
 
 describe("TimeoutConfig", () => {
-  test("uses long-run friendly defaults", () =>
-    runtime.run(async () => {
-      ;(Config.current as any) = mock(async () => ({}))
+  test(
+    "uses long-run friendly step, tool, and permission defaults with bounded provider watchdogs",
+    runtime.bind(async () => {
+      installConfig({})
 
       await expect(TimeoutConfig.resolve()).resolves.toMatchObject({
         invokeMs: 21_600_000,
-        providerTtfbMs: 3_600_000,
-        providerIdleMs: 900_000,
-        providerWallMs: 0,
+        providerTtfbMs: 300_000,
+        providerIdleMs: 120_000,
+        providerWallMs: 1_800_000,
         toolDefaultMs: 7_200_000,
         toolOverrides: {},
         permissionAskMs: 3_600_000,
       })
-    }))
+    }),
+  )
 
-  test("resolves explicit timeout overrides", () =>
-    runtime.run(async () => {
-      ;(Config.current as any) = mock(async () => ({
+  test(
+    "resolves explicit timeout overrides",
+    runtime.bind(async () => {
+      installConfig({
         timeout: {
           invoke_sec: 60,
           provider: { ttfb_sec: 30, idle_sec: 12, wall_sec: 90 },
           tool: { default_sec: 45, overrides: { bash: 120 } },
           permission: { ask_sec: 75 },
         },
-      }))
+      })
 
       await expect(TimeoutConfig.resolve()).resolves.toMatchObject({
         invokeMs: 60_000,
@@ -50,17 +60,126 @@ describe("TimeoutConfig", () => {
         toolOverrides: { bash: 120_000 },
         permissionAskMs: 75_000,
       })
-    }))
+    }),
+  )
 
-  test("disables provider idle timeout with 0 or false", () =>
-    runtime.run(async () => {
-      ;(Config.current as any) = mock(async () => ({ timeout: { provider: { idle_sec: 0 } } }))
+  test(
+    "disables provider idle timeout with 0 or false",
+    runtime.bind(async () => {
+      installConfig({ timeout: { provider: { idle_sec: 0 } } })
       expect((await TimeoutConfig.resolve()).providerIdleMs).toBe(false)
 
-      TimeoutConfig.invalidate()
-      ;(Config.current as any) = mock(async () => ({ timeout: { provider: { idle_sec: false } } }))
+      installConfig({ timeout: { provider: { idle_sec: false } } })
       expect((await TimeoutConfig.resolve()).providerIdleMs).toBe(false)
-    }))
+    }),
+  )
+
+  test(
+    "disables the documented wall timeout with zero",
+    runtime.bind(async () => {
+      installConfig({ timeout: { provider: { wall_sec: 0 } } })
+      expect((await TimeoutConfig.resolve()).providerWallMs).toBe(0)
+    }),
+  )
+})
+
+describe("TimeoutConfig.forProvider", () => {
+  test(
+    "inherits the global provider timeouts when the provider configures nothing",
+    runtime.bind(async () => {
+      installConfig({})
+
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue" })).resolves.toEqual({
+        providerTtfbMs: 300_000,
+        providerIdleMs: 120_000,
+        providerWallMs: 1_800_000,
+      })
+    }),
+  )
+
+  test(
+    "applies provider-level seconds over the global block",
+    runtime.bind(async () => {
+      installConfig({
+        timeout: { provider: { ttfb_sec: 30, idle_sec: 60, wall_sec: 120 } },
+        provider: { "o1-pro": { timeout: { ttfb_sec: 900, idle_sec: 600, wall_sec: 3600 } } },
+      })
+
+      await expect(TimeoutConfig.forProvider({ providerID: "o1-pro" })).resolves.toEqual({
+        providerTtfbMs: 900_000,
+        providerIdleMs: 600_000,
+        providerWallMs: 3_600_000,
+      })
+      // A provider without its own block still inherits the global values.
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue" })).resolves.toEqual({
+        providerTtfbMs: 30_000,
+        providerIdleMs: 60_000,
+        providerWallMs: 120_000,
+      })
+    }),
+  )
+
+  test(
+    "keeps the legacy options.timeout idle shorthand working beneath provider.timeout",
+    runtime.bind(async () => {
+      installConfig({ provider: { boyue: { options: { timeout: 450_000 } } } })
+
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue", legacyIdle: 450_000 })).resolves.toMatchObject({
+        providerIdleMs: 450_000,
+        providerTtfbMs: 300_000,
+      })
+    }),
+  )
+
+  test(
+    "provider.timeout.idle_sec beats the legacy options.timeout shorthand",
+    runtime.bind(async () => {
+      installConfig({ provider: { boyue: { timeout: { idle_sec: 30 } } } })
+
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue", legacyIdle: 450_000 })).resolves.toMatchObject({
+        providerIdleMs: 30_000,
+      })
+    }),
+  )
+
+  test(
+    "treats false and 0 as disabling idle for both override layers",
+    runtime.bind(async () => {
+      installConfig({})
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue", legacyIdle: false })).resolves.toMatchObject({
+        providerIdleMs: false,
+      })
+
+      installConfig({ provider: { boyue: { timeout: { idle_sec: false } } } })
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue" })).resolves.toMatchObject({ providerIdleMs: false })
+
+      installConfig({ provider: { boyue: { timeout: { idle_sec: 0 } } } })
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue" })).resolves.toMatchObject({ providerIdleMs: false })
+    }),
+  )
+
+  test(
+    "ignores unrelated legacy options values",
+    runtime.bind(async () => {
+      installConfig({})
+
+      await expect(TimeoutConfig.forProvider({ providerID: "boyue", legacyIdle: "450000" })).resolves.toMatchObject({
+        providerIdleMs: 120_000,
+      })
+    }),
+  )
+
+  test(
+    "resolves identical values on repeated calls for the worker and control plane paths",
+    runtime.bind(async () => {
+      installConfig({ provider: { boyue: { timeout: { ttfb_sec: 45, idle_sec: 90, wall_sec: 300 } } } })
+
+      const controlPlane = await TimeoutConfig.forProvider({ providerID: "boyue" })
+      const worker = await TimeoutConfig.forProvider({ providerID: "boyue" })
+
+      expect(worker).toEqual(controlPlane)
+    }),
+  )
 })
 
 afterRuntimeTests(() => runtime.close())

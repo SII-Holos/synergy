@@ -1,3 +1,4 @@
+import { Context } from "../util/context"
 import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityClock } from "./clock"
 import { ObservabilityConfig } from "./config"
@@ -18,6 +19,12 @@ export namespace ObservabilityMetrics {
     aggregates: new Map<string, AggregatedMetric>(),
     aggregateTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   }))
+
+  const forwarding = Context.create<(input: MetricInput) => void>("metric-forwarder")
+
+  export function withForwarder<T>(forward: (input: MetricInput) => void, run: () => T): T {
+    return forwarding.provide(forward, run)
+  }
 
   type MetricInput = Parameters<typeof record>[0]
   type ResolvedMetricInput = Omit<MetricInput, "sampleRate"> & {
@@ -56,6 +63,11 @@ export namespace ObservabilityMetrics {
     sampleRate?: number
   }) {
     if (!RuntimeContext.tryCurrent() || runtimeState().stopped) return
+    const forwarder = forwarding.tryUse()
+    if (forwarder) {
+      forwarder(input)
+      return
+    }
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
     const sampleRate = input.sampleRate ?? config.samplingRate

@@ -1872,4 +1872,46 @@ describe("AgentWorkerPool", () => {
     expect(calls.some((call) => call[0]?.name === "agent.worker.ready_latency" && call[0]?.unit === "ms")).toBe(true)
     await pool.stop()
   })
+
+  test("drops late metrics instead of attributing them to the next turn", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, minIdle: 1, idleBaselineRecycle: false }, fake.spawn)
+    using recorded = spyOn(ObservabilityMetrics, "record")
+    const worker = fake.workers[0]
+    worker.ready()
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const first = startTurn(worker)
+    worker.receive({ type: "started", requestId: first.requestId })
+    const stream = await firstPromise
+    worker.receive({
+      type: "complete",
+      requestId: first.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
+    })
+    releaseTurn(worker, first.requestId)
+    await stream.dispose()
+
+    const secondPromise = inScope(() => pool.run({ ...input(new AbortController().signal), sessionID: "ses_second" }))
+    const second = startTurn(worker)
+    worker.receive({ type: "started", requestId: second.requestId })
+    const next = await secondPromise
+    const row = { name: "llm.fetch.headers", value: 42, unit: "ms" as const, module: "llm" as const, labels: {} }
+    worker.receive({ type: "metrics", requestId: first.requestId, rows: [row] })
+    worker.receive({ type: "metrics", requestId: second.requestId, rows: [row] })
+    expect(recorded.mock.calls.map(([value]) => value).filter((value) => value.name === row.name)).toEqual([
+      expect.objectContaining({ sessionID: "ses_second", messageID: "msg_user", value: 42 }),
+    ])
+    worker.receive({
+      type: "complete",
+      requestId: second.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
+    })
+    releaseTurn(worker, second.requestId, 2)
+    await next.dispose()
+    await pool.stop()
+  })
 })

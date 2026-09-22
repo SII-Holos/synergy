@@ -264,11 +264,10 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
-    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { TimeoutConfig }] = await Promise.all([
+    const [{ Config }, { withPreambleSection }, { SystemPrompt }] = await Promise.all([
       import("../config/config"),
       import("../agent/prompt/preamble"),
       import("./system"),
-      import("../util/timeout-config"),
     ])
     const trigger = SessionPluginHooks.trigger
     const l = log
@@ -325,11 +324,8 @@ export namespace LLM {
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
-    const [provider, cfg, timeout] = await Promise.all([
-      Provider.getProvider(input.model.providerID),
-      Config.current(),
-      TimeoutConfig.resolve(),
-    ])
+    const [provider, cfg] = await Promise.all([Provider.getProvider(input.model.providerID), Config.current()])
+    const providerTimeouts = await Provider.requestTimeouts(input.model)
     l.debug("prompt layout", {
       ...promptLayoutMetadata({
         model: input.model,
@@ -390,9 +386,9 @@ export namespace LLM {
       system,
       baseSystemLength,
       provider: await Provider.workerPlan(provider, {
-        ttfbMs: timeout.providerTtfbMs,
-        idleMs: timeout.providerIdleMs,
-        wallMs: timeout.providerWallMs,
+        ttfbMs: providerTimeouts.providerTtfbMs,
+        idleMs: providerTimeouts.providerIdleMs,
+        wallMs: providerTimeouts.providerWallMs,
       }),
       params,
       telemetryEnabled: cfg.observability?.modelSpans,

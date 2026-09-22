@@ -62,6 +62,7 @@ export namespace MessageV2 {
   }
 
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
+  export const EmptyResponseError = NamedError.create("MessageEmptyResponseError", z.object({ message: z.string() }))
   export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
   export const AuthError = NamedError.create(
     "ProviderAuthError",
@@ -1742,6 +1743,15 @@ export namespace MessageV2 {
         ).toObject()
       case MessageV2.OutputLengthError.isInstance(e):
         return e
+      case MessageV2.EmptyResponseError.isInstance(e):
+        return new MessageV2.APIError(
+          {
+            message: e.data.message,
+            isRetryable: true,
+            metadata: { code: "empty_response" },
+          },
+          { cause: e },
+        ).toObject()
       case ProviderModelUnavailableError.isInstance(e):
         return e
       case ProviderModelVariantUnavailableError.isInstance(e):

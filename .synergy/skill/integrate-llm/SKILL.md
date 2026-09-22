@@ -80,6 +80,12 @@ When changing fetch wrappers, exercise the complete provider → proxy → authe
 
 Production product inference enters `AgentTurn`: the Control Plane resolves final prompt and parameter plugin hooks plus serializable provider options into a request plan, request snapshots are schema-validated and capped, and the plan is sent as acknowledged chunks; event frames are bounded and acknowledged after consumption. The worker protocol owns its event projection: do not expose raw AI SDK stream objects as IPC types, and strip provider request bodies, response diagnostics, warnings, or other fields the Control Plane does not consume before checking the frame bound. Agent workers reconstruct built-in provider runtime functions without provider-plugin discovery. Keep executable callbacks, plugin runtimes and Host Services, session writers, permission promises, and other Control Plane handles out of the worker input. Model-facing tools are `ToolCatalog.Definition[]` only.
 
+Resolve timeout policy from the same final model options used by the SDK, and freeze it before worker transfer. Include effective policy in both SDK and language-model cache identities; test same-model policy changes and A/B/A model reuse. Preserve explicit disable values through configuration validation and plan serialization.
+
+Keep preparation valid for a supplied model before its provider is configured. Changes to `LLM.prepare()` also run `test/session/llm-variant.test.ts` so provider setup cannot mask root-variant validation or leak root options into small calls.
+
+For worker telemetry, verify rows in the host's real observability store through a real subprocess. Capture task identity at admission, including the rollout call independently of ambient observability context, and reject stale request IDs before recording. Scope forwarders to a Runtime and turn, flush before terminal frames, and test concurrent Runtime disposal. Exercise actual timer callbacks: observing a mocked recorder cannot prove that native callback execution preserves asynchronous context. Request-owned timers and reader locks must settle on completion, failure and cancellation.
+
 Keep optional prompt diagnostics and Context Usage attribution out of the Agent worker request and provider-start critical path. Start the provider turn first, execute any non-trivial estimation in a separately isolated worker with fixed input, concurrency, and wall-time bounds, and fail open by omitting the enrichment. Do not move synchronous tokenization onto the Control Plane event loop or await optional enrichment before provider streaming or loop completion.
 
 When changing Agent worker capacity, a higher ceiling must admit queued demand immediately without eagerly filling unused capacity. Shrink by releasing idle workers first and retiring excess active workers only after their owned turns terminate. A capacity change must never abort an active turn merely to reach the new target. Test higher-ceiling demand plus idle and fully active shrink paths.
@@ -111,6 +117,7 @@ Never relax TLS verification to work around an endpoint failure — no `rejectUn
 3. Update [LLM loop and compaction](../../../docs/architecture/llm-loop.md) when the shared call pipeline or path-selection contract changes.
 4. Update `add-agent` when a new internal-agent registration pattern or model-role rule emerges.
 5. Assert that `small: true` calls ignore both available and unavailable source-root variants: neither variant options nor `ProviderModelVariantUnavailableError` may reach the target-model call.
+6. Provider configuration changes, including descriptions, regenerate both shipped config schemas with `generateSchema()` from `script/release/shared/build-runtime.ts` for the core and full profiles. Run `bun test --config /dev/null test/script/release/runtime-schema.test.ts`; SDK/OpenAPI generation alone does not refresh those artifacts.
 
 ## Handoff
 

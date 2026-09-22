@@ -48,6 +48,7 @@ class CachedDockerEnvironment(DockerEnvironment):
             self.agent_install_spec.model_dump(mode="json") if self.agent_install_spec else None,
             benchmark_platform,
         )
+        self._benchmark_identity["cache_namespace"] = digest(str(self._benchmark_cache.resolve()))
         self._env_vars.main_image_name = "synergy-bench-task:" + digest(self._benchmark_identity)
         self._benchmark_proxy: dict[str, Any] | None = None
         if self._benchmark_run:
@@ -84,6 +85,7 @@ class CachedDockerEnvironment(DockerEnvironment):
             "kind": "inference-proxy",
             "context": tree_digest(directory),
             "platform": self._benchmark_identity["platform"],
+            "cache_namespace": self._benchmark_identity["cache_namespace"],
         }
         self._benchmark_proxy = identity
         if self._benchmark_run:

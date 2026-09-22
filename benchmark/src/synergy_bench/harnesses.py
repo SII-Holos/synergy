@@ -19,7 +19,12 @@ PACKAGES = {
     "codex": {"name": "@openai/codex", "version": "0.154.0", "binary": "node_modules/.bin/codex"},
     "opencode": {"name": "opencode-ai", "version": "1.15.13", "binary": "node_modules/.bin/opencode"},
     "pi": {"name": "@earendil-works/pi-coding-agent", "version": "0.85.1", "binary": "node_modules/.bin/pi"},
-    "deepseek": {"name": "@deepseek-ai/dsh", "version": "0.1.5-rc.1", "binary": "node_modules/.bin/dsh"},
+    "deepseek": {
+        "name": "@deepseek-ai/dsh",
+        "version": "0.1.5-rc.1",
+        "binary": "node_modules/.bin/dsh",
+        "dependency_before": "2026-09-22T05:00:00Z",
+    },
 }
 
 
