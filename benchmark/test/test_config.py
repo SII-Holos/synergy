@@ -71,7 +71,7 @@ def test_strict_admission_is_explicit_serial_and_synergy_only():
             ExperimentConfig.model_validate({**value, **override})
 
 
-def test_new_yaml_inherits_research_deadline_and_freezes_it(tmp_path):
+def test_new_yaml_has_no_task_deadline_override(tmp_path):
     import yaml
 
     from synergy_bench.config import load_config
@@ -79,22 +79,17 @@ def test_new_yaml_inherits_research_deadline_and_freezes_it(tmp_path):
     path = tmp_path / "new-experiment.yaml"
     path.write_text(yaml.safe_dump(config()))
     parsed = load_config(path)
-    assert parsed.timeout_seconds == 10800
-    assert parsed.model_dump()["timeout_seconds"] == 10800
-    assert ExperimentConfig.model_validate(parsed.model_dump()).timeout_seconds == 10800
+    assert "timeout_seconds" not in parsed.model_dump()
+    assert "verifier_timeout_seconds" not in parsed.model_dump()
+    assert ExperimentConfig.model_validate(parsed.model_dump()) == parsed
     assert parsed.request_idle_timeout_seconds is None
 
 
-@pytest.mark.parametrize("deadline", ["native", 60, 21600])
-def test_explicit_deadline_survives_freezing(deadline):
-    parsed = ExperimentConfig.model_validate({**config(), "timeout_seconds": deadline})
-    assert ExperimentConfig.model_validate(parsed.model_dump()).timeout_seconds == deadline
-
-
-@pytest.mark.parametrize("deadline", [None, 0, -1, True, "10800", "naitve"])
-def test_ambiguous_or_invalid_deadlines_are_rejected(deadline):
-    with pytest.raises(ValidationError):
-        ExperimentConfig.model_validate({**config(), "timeout_seconds": deadline})
+@pytest.mark.parametrize("field", ["timeout_seconds", "verifier_timeout_seconds", "task_timeout_seconds"])
+@pytest.mark.parametrize("deadline", ["native", 60, 10800, 21600, None, 0, -1, True, "10800"])
+def test_task_deadline_overrides_are_rejected(field, deadline):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        ExperimentConfig.model_validate({**config(), field: deadline})
 
 
 @pytest.mark.parametrize("deadline", [None, 900])
@@ -111,12 +106,10 @@ def test_preflight_deadline_default_survives_freezing():
 
 @pytest.mark.parametrize("deadline", [1, 600, 3600])
 def test_explicit_preflight_deadline_is_independent_of_task_deadline(deadline):
-    parsed = ExperimentConfig.model_validate(
-        {**config(), "timeout_seconds": "native", "preflight_timeout_seconds": deadline}
-    )
+    parsed = ExperimentConfig.model_validate({**config(), "preflight_timeout_seconds": deadline})
     frozen = ExperimentConfig.model_validate(parsed.model_dump())
     assert frozen.preflight_timeout_seconds == deadline
-    assert frozen.timeout_seconds == "native"
+    assert "timeout_seconds" not in frozen.model_dump()
 
 
 @pytest.mark.parametrize("deadline", [None, 0, -1, True, "600", 600.0, 3601])

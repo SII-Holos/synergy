@@ -73,7 +73,7 @@ def main() -> None:
         if name in {"inspect", "debug"}:
             action.add_argument("--trial", required=name == "debug")
     oracle = sub.add_parser(
-        "oracle", help="Audit every locked task with its isolated native reference solution and verifier"
+        "oracle", help="Audit isolated reference solutions and verifiers with the fixed three-hour execution budget"
     )
     oracle.add_argument("suite", type=Path)
     oracle.add_argument("--output", type=Path, required=True)

@@ -6,7 +6,6 @@ platform: linux/amd64
 seed: 20260921
 repeat: 1
 concurrency: 1
-timeout_seconds: native
 preflight_timeout_seconds: 600
 selection:
   tasks:

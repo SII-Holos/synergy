@@ -9,11 +9,11 @@ from typing import Any
 
 from pier.models.task.task import Task
 from pier.models.task.verifier_mode import resolve_effective_verifier_env_config
-from pier.models.trial.config import AgentConfig, EnvironmentConfig, TaskConfig, TrialConfig
+from pier.models.trial.config import AgentConfig, EnvironmentConfig, TaskConfig, TrialConfig, VerifierConfig
 
 from .cache import cache_activity, enforce_budget, reference_run
 from .catalog import Suite, materialize, tree_digest
-from .config import Resources
+from .config import TASK_TIMEOUT_SECONDS, Resources
 from .evaluator import freeze_evaluator
 from .evidence import grading_evidence
 from .monitor import ResourceMonitor
@@ -37,8 +37,11 @@ def oracle_configuration(root: Path, task: dict[str, Any], attempt: Path, *, cac
         trials_dir=attempt,
         task=TaskConfig(path=Path(task["local_path"])),
         agent=AgentConfig(
-            name="oracle", kwargs={"settings": {"cleanup_seconds": 60, "preparation_timeout_seconds": 1800}}
+            name="oracle",
+            override_timeout_sec=TASK_TIMEOUT_SECONDS,
+            kwargs={"settings": {"cleanup_seconds": 60, "preparation_timeout_seconds": 1800}},
         ),
+        verifier=VerifierConfig(override_timeout_sec=TASK_TIMEOUT_SECONDS),
         environment=EnvironmentConfig.model_validate(
             {
                 "import_path": "synergy_bench.environment:CachedDockerEnvironment",
@@ -128,6 +131,7 @@ def prepare_oracle(suite_path: Path, output: Path, cache: Path, *, concurrency: 
     plan: dict[str, Any] = {
         "version": 3,
         "kind": "native_oracle_audit",
+        "task_timeout_seconds": TASK_TIMEOUT_SECONDS,
         "tasks": tasks,
         "host": host,
         "concurrency": concurrency,

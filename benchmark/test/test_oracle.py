@@ -1,18 +1,78 @@
 from synergy_bench.oracle import oracle_configuration, oracle_result
 
 
-def test_oracle_has_native_deadlines_and_no_harness_or_inference_mount(tmp_path):
+def test_oracle_uses_three_hours_for_both_stages_without_harness_or_inference(tmp_path):
     task = {"local_path": str(tmp_path / "task"), "agent_seconds": 51}
     config = oracle_configuration(
         tmp_path, task, tmp_path / "attempt-001", cache=tmp_path / "cache", platform="linux/amd64"
     )
     assert config.agent.name == "oracle"
-    assert config.agent.override_timeout_sec is None
+    assert config.agent.override_timeout_sec == 10800
     assert config.agent.import_path is None
     assert config.agent.model_name is None
-    assert config.verifier.override_timeout_sec is None
+    assert config.verifier.override_timeout_sec == 10800
     assert all(mount["target"].startswith("/logs/") for mount in config.environment.mounts)
     assert config.environment.kwargs["inference_port"] is None
+
+
+async def test_fixed_budget_reaches_pier_execution_timers(tmp_path):
+    import shutil
+
+    from synergy_bench.prepare import BENCHMARK
+    from synergy_bench.trial import BenchmarkTrial
+
+    task = tmp_path / "task"
+    shutil.copytree(BENCHMARK / "test/fixtures/task", task)
+    config = oracle_configuration(
+        tmp_path, {"local_path": str(task)}, tmp_path / "attempt-001", cache=tmp_path / "cache", platform="linux/amd64"
+    )
+    trial = await BenchmarkTrial.create(config)
+    try:
+        assert trial._execution.agent_timeout_sec == 10800
+        assert trial._verifier_timeout_sec == 10800
+    finally:
+        trial._close_logger_handler()
+
+
+async def test_native_oracle_and_verifier_outlive_upstream_short_deadlines(tmp_path):
+    import os
+    import shutil
+    import uuid
+
+    import pytest
+
+    from synergy_bench.prepare import BENCHMARK
+    from synergy_bench.storage import read_json
+    from synergy_bench.trial import BenchmarkTrial
+
+    if os.environ.get("SYNERGY_BENCH_DOCKER") != "1":
+        pytest.skip("Explicit Docker deadline propagation integration")
+    task = tmp_path / "task"
+    shutil.copytree(BENCHMARK / "test/fixtures/task", task)
+    definition = (task / "task.toml").read_text()
+    (task / "task.toml").write_text(
+        definition.replace("timeout_sec = 90", "timeout_sec = 0.01").replace("timeout_sec = 30", "timeout_sec = 0.01")
+    )
+    (task / "solution").mkdir(exist_ok=True)
+    (task / "solution/solve.sh").write_text("#!/bin/sh\nsleep 0.1\nprintf verified > /app/marker\n")
+    verifier = task / "tests/test.sh"
+    verifier.write_text(verifier.read_text().replace("#!/bin/sh", "#!/bin/sh\nsleep 0.1"))
+    root = BENCHMARK.parent / ".artifacts/benchmark/oracle-fixed-deadline" / ("run-" + uuid.uuid4().hex[:8])
+    attempt = root / "oracles/0000/attempt-001"
+    config = oracle_configuration(
+        root,
+        {"local_path": str(task)},
+        attempt,
+        cache=BENCHMARK.parent / ".artifacts/benchmark/cache",
+        platform="linux/amd64",
+    )
+    trial = await BenchmarkTrial.create(config)
+    result = await trial.run()
+    assert result.exception_info is None
+    assert result.verifier_result.rewards == {"reward": 1.0}
+    stages = read_json(attempt / "stages.json")
+    assert stages["agent"][0]["status"] == "completed"
+    assert stages["verifier"][0]["status"] == "completed"
 
 
 def test_oracle_reward_does_not_claim_functional_tests_started(tmp_path):
@@ -120,6 +180,7 @@ async def test_native_oracle_timeout_still_runs_verifier(tmp_path):
         cache=BENCHMARK.parent / ".artifacts/benchmark/cache",
         platform="linux/amd64",
     )
+    config.agent.override_timeout_sec = 0.1
     trial = await BenchmarkTrial.create(config)
     result = await trial.run()
     assert result.exception_info.exception_type == "AgentTimeoutError"

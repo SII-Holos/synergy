@@ -31,8 +31,7 @@ def test_boyue_comparison_uses_release_baseline_and_native_output_limit(tmp_path
 
 
 @pytest.mark.parametrize("protocol", ["synergy-session-v1", "synergy-rollout-v1"])
-@pytest.mark.parametrize("task_deadline", ["native", 900])
-def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trials(tmp_path, protocol, task_deadline):
+def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trials(tmp_path, protocol):
     from synergy_bench.config import ExperimentConfig, Variant
 
     variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
@@ -44,7 +43,7 @@ def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trial
     config = ExperimentConfig(version=1, suite="fixture.json", variants={"native": variant})
     task = {"local_path": str(tmp_path / "task"), "agent_seconds": 90}
     plan = {
-        "config": {**config.model_dump(), "timeout_seconds": task_deadline, "preflight_timeout_seconds": 600},
+        "config": {**config.model_dump(), "preflight_timeout_seconds": 600},
         "cache": str(tmp_path / "cache"),
         "variants": {
             "native": {
@@ -65,13 +64,13 @@ def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trial
             attempt,
             probe_instruction="Run the connectivity marker" if probe else None,
         )
-        expected = 600 if probe else 90 if task_deadline == "native" else task_deadline
+        expected = 600 if probe else 10800
         assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == expected
         assert trial.agent.override_timeout_sec == (
             expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
         )
         assert trial.verifier.disable is probe
-        assert trial.verifier.override_timeout_sec is None
+        assert trial.verifier.override_timeout_sec == 10800
         assert task["agent_seconds"] == 90
 
 
@@ -94,12 +93,14 @@ def test_comparison_presets_keep_the_five_harness_sampling_population(filename):
     "path", sorted((Path(__file__).parents[1] / "configs").glob("*.yaml")), ids=lambda path: path.name
 )
 @pytest.mark.parametrize("native_seconds", [900, 10800])
-def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tmp_path, path, native_seconds):
+def test_all_presets_use_three_hours_for_both_execution_stages(tmp_path, path, native_seconds):
     config = load_config(path)
     tasks = read_json(path.parent / config.suite)["tasks"]
     schedule = resolve_plan(config, tasks)
     assert schedule
-    expected = native_seconds if config.timeout_seconds == "native" else config.timeout_seconds
+    expected = 10800
+    assert "timeout_seconds" not in config.model_dump()
+    assert "verifier_timeout_seconds" not in config.model_dump()
     root = tmp_path / "run-12345678"
     for name, variant in config.variants.items():
         atomic_json(root / "inputs" / name / "config.json", {})
@@ -131,7 +132,7 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
             trial.agent.override_timeout_sec
             == expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
         )
-        assert trial.verifier.override_timeout_sec is None
+        assert trial.verifier.override_timeout_sec == 10800
         assert not trial.verifier.disable
         assert task["agent_seconds"] == native_seconds
         if variant.harness == "opencode":
@@ -157,6 +158,16 @@ def test_thinking_presets_declare_their_reasoning_tier(path):
             f"{path.name}:{key} enables thinking without declaring reasoning_effort; "
             "the reasoning tier would come from the provider default instead of the experiment"
         )
+
+
+def test_frozen_plan_records_the_single_execution_budget():
+    from synergy_bench.runner import inspect_config
+
+    _, _, plan = inspect_config(Path(__file__).parents[1] / "configs/coding-observations-boyue.yaml")
+    assert plan["task_timeout_seconds"] == 10800
+    assert "timeout_seconds" not in plan["config"]
+    assert "verifier_timeout_seconds" not in plan["config"]
+    assert all("agent_seconds" not in task and "verifier_seconds" not in task for task in plan["suite"]["tasks"])
 
 
 @pytest.mark.parametrize("enabled", [None, False, True])

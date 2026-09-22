@@ -81,3 +81,37 @@ def test_native_home_archive_stays_private_while_validation_metadata_is_collecte
     assert json.loads((retained / "archive.json").read_text()) == metadata
     assert not (retained / "rollout.tar.gz").exists()
     assert (agent / "rollout.tar.gz").is_file()
+
+
+def test_preparation_collection_retains_build_logs_without_walking_private_stages(tmp_path):
+    root, output = tmp_path / "source", tmp_path / "output"
+    preparing = root / "cache/preparing"
+    preparing.mkdir(parents=True)
+    name = "a" * 64 + ".log"
+    (preparing / name).write_text("npm installation failed\n")
+    (preparing / "auth.json").write_text("private")
+    (preparing / "unknown.log").write_text("private")
+    stage = preparing / "engine-unpublished"
+    stage.mkdir()
+    (stage / name).write_text("private stage")
+    outside = tmp_path / "secret.log"
+    outside.write_text("private target")
+    (preparing / ("b" * 64 + ".log")).symlink_to(outside)
+    result = collect(root, output, ["preparation"])
+    assert result == {"copied": 1, "errors": []}
+    assert (output / "cache/preparing" / name).read_text() == "npm installation failed\n"
+    assert len(list(output.rglob("*.log"))) == 1
+
+
+@pytest.mark.parametrize("linked", ["cache", "cache/preparing"])
+def test_preparation_collection_does_not_follow_linked_parent_directories(tmp_path, linked):
+    root, output = tmp_path / "source", tmp_path / "output"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / ("a" * 64 + ".log")).write_text("private")
+    (outside / "preparing").mkdir()
+    (outside / "preparing" / ("b" * 64 + ".log")).write_text("private")
+    link = root / linked
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+    assert collect(root, output, ["preparation"]) == {"copied": 0, "errors": []}

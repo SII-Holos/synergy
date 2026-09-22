@@ -22,7 +22,7 @@ from pier.models.trial.config import AgentConfig, EnvironmentConfig, TaskConfig,
 from .background import background
 from .cache import cache_activity, enforce_budget, reference_run, release_run
 from .catalog import Suite, materialize, tree_digest
-from .config import ExperimentConfig, ModelProfile, load_config, resolve_plan
+from .config import TASK_TIMEOUT_SECONDS, ExperimentConfig, ModelProfile, load_config, resolve_plan
 from .engines import prepare_external
 from .evidence import collect_evidence
 from .gateway import Gateway, read_ledger
@@ -51,6 +51,7 @@ def inspect_config(path: Path) -> tuple[ExperimentConfig, Suite, dict[str, Any]]
     plan = {
         "version": 3,
         "result_version": RESULT_VERSION,
+        "task_timeout_seconds": TASK_TIMEOUT_SECONDS,
         "config": config.model_dump(),
         "suite": suite.model_dump(),
         "schedule": resolve_plan(config, [task.model_dump() for task in suite.tasks]),
@@ -566,14 +567,7 @@ def trial_configuration(
     shutil.copytree(root / "inputs" / item["variant"], inputs)
     cleanup = plan["config"]["cleanup_seconds"]
     export_timeout = plan["config"]["export_timeout_seconds"]
-    configured_timeout = plan["config"]["timeout_seconds"]
-    timeout = (
-        plan["config"]["preflight_timeout_seconds"]
-        if probe_instruction
-        else task["agent_seconds"]
-        if configured_timeout == "native"
-        else configured_timeout
-    )
+    timeout = plan["config"]["preflight_timeout_seconds"] if probe_instruction else TASK_TIMEOUT_SECONDS
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
         "harness": variant.get("harness", "synergy"),
@@ -649,7 +643,7 @@ def trial_configuration(
                 }
             },
         ),
-        verifier=VerifierConfig(disable=bool(probe_instruction)),
+        verifier=VerifierConfig(disable=bool(probe_instruction), override_timeout_sec=TASK_TIMEOUT_SECONDS),
         environment=EnvironmentConfig.model_validate(
             {
                 "import_path": "synergy_bench.environment:CachedDockerEnvironment",

@@ -71,8 +71,6 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
                     "path": "tasks/fixture",
                     "digest": tree_digest(dataset / "tasks/fixture"),
                     "tags": [],
-                    "agent_seconds": 90,
-                    "verifier_seconds": 30,
                 }
             ]
             + [
@@ -82,8 +80,6 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
                     "path": "tasks/separate",
                     "digest": tree_digest(separate),
                     "tags": [],
-                    "agent_seconds": 90,
-                    "verifier_seconds": 30,
                 }
             ],
         },
@@ -125,7 +121,6 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     config = {
         "version": 1,
         "suite": "suite.json",
-        "timeout_seconds": "native",
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/integration"),
@@ -184,7 +179,7 @@ def primary_attempts(root: Path):
 
 
 @pytest.mark.parametrize("mode", ["long", "disconnect", "timeout", "cancel", "docker-stop"])
-def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: str) -> None:
+def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: str, monkeypatch) -> None:
     from synergy_bench.prepare import command
 
     original, path = prepared_fixture
@@ -195,8 +190,8 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
     variant["model"] = "fixture/" + ("hang" if mode in {"timeout", "cancel", "docker-stop"} else mode)
     config["variants"] = {mode: variant}
     config["selection"] = {"tasks": ["fixture/marker"]}
-    if mode == "timeout":
-        config["timeout_seconds"] = 15
+    if mode in {"timeout", "disconnect"}:
+        monkeypatch.setattr("synergy_bench.runner.TASK_TIMEOUT_SECONDS", 15 if mode == "timeout" else 90)
     fault = path.with_name(f"{mode}.yaml")
     fault.write_text(yaml.safe_dump(config))
     root = initialize(fault)

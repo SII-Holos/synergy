@@ -421,7 +421,7 @@ jobs:
           SYNERGY_BENCH_DOCKER: "1"
       - name: Collect benchmark test evidence
         if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration --output "$RUNNER_TEMP/benchmark-evidence"
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
       - name: Preserve benchmark test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -486,7 +486,7 @@ jobs:
           SYNERGY_BENCH_TEST_HARNESSES: ${{ matrix.harness }}
       - name: Collect matrix evidence
         if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
       - name: Preserve matrix evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

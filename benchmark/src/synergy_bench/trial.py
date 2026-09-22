@@ -30,7 +30,7 @@ class VerifierPreparationError(RuntimeError):
 class BenchmarkTrial(Trial):
     """Pier 0.3.1 lifecycle correction; see third_party/pier/NOTICE for provenance.
 
-    Keep Pier's verifier setup and execution deadline, but commit its reward before
+    Keep verifier setup separate from its execution budget, and commit its reward before
     container cleanup. A timed-out verifier is a result, never an automatic retry.
     """
 

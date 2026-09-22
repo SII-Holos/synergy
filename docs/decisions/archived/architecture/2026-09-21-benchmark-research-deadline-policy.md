@@ -1,6 +1,7 @@
 # Decision Record: Central benchmark research deadlines
 
 Status: implemented
+Archived: 2026-09-22
 
 ## Problem
 
@@ -20,7 +21,7 @@ doctor 的 `preflight_timeout_seconds` 独立配置为 1–3600 的严格整数�
 
 确定性 Docker 故障注入夹具显式采用 `native`，保留原有九十秒任务期限及十五秒超时注入覆盖。断连场景允许由任务截止完成证据保留，不能继承三小时研究默认值而延长 CI 等待；终态、用量与清理断言保持不变。
 
-此策略替代[矩阵决策](2026-09-14-benchmark-native-harness-matrix.md)中遗漏解题期限时隐式采用原题期限的行为。已有实验的配置和 evaluator 不变，新代码必须新建实验。
+此策略替代[矩阵决策](../../implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)中遗漏解题期限时隐式采用原题期限的行为。已有实验的配置和 evaluator 不变，新代码必须新建实验。
 
 ## Alternatives considered
 

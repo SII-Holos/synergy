@@ -421,7 +421,6 @@ async def run_native_matrix(
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 1 if long_session else 4,
-        "timeout_seconds": 900 if long_session else "native",
         "preflight_timeout_seconds": 600 if long_session else 120,
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
@@ -587,8 +586,6 @@ def create_matrix_suite(tmp_path, *, workload: bool = False, task_home: bool = F
                     "path": "tasks/marker",
                     "digest": tree_digest(task),
                     "tags": [],
-                    "agent_seconds": 90,
-                    "verifier_seconds": 30,
                 }
             ],
         },

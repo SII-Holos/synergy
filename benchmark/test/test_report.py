@@ -8,6 +8,7 @@ def fixture(root, rows):
     plan = {
         "version": 3,
         "result_version": 3,
+        "task_timeout_seconds": 10800,
         "config": {"seed": 13, "platform": "linux/amd64"},
         "schedule": [{"harness": "a", "model": "m", "variant": "a__m", "task": "task", "repeat": 0}],
         "tasks": {"task": {"digest": "unchanged"}},
@@ -204,9 +205,7 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
             host={"docker": {"cpus": 8, "memory_bytes": 16000}, "capacity": {"cpus": 6, "memory_bytes": 12000}},
             evaluator={"python": "same"},
         )
-        plan["tasks"]["task"].update(
-            agent_seconds=900, verifier_seconds=300, resources={"cpus": 1, "memory_bytes": 1000}
-        )
+        plan["tasks"]["task"].update(resources={"cpus": 1, "memory_bytes": 1000})
         plan["config"].update(
             startup_timeout_seconds=120,
             request_idle_timeout_seconds=None,
@@ -234,7 +233,21 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
 
 @pytest.mark.parametrize(
     "change",
-    [None, "concurrency", "docker", "capacity", "deadline", "idle", "policy", "admission", "seed", "missing", "legacy"],
+    [
+        None,
+        "concurrency",
+        "docker",
+        "capacity",
+        "deadline",
+        "task_deadline",
+        "missing_deadline",
+        "idle",
+        "policy",
+        "admission",
+        "seed",
+        "missing",
+        "legacy",
+    ],
 )
 def test_pairing_requires_matching_declared_execution_conditions(tmp_path, change):
     from synergy_bench.storage import read_json
@@ -248,9 +261,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
             host={"docker": {"cpus": 8, "memory_bytes": 16000}, "capacity": {"cpus": 6, "memory_bytes": 12000}},
             evaluator={"python": "same"},
         )
-        plan["tasks"]["task"].update(
-            agent_seconds=900, verifier_seconds=300, resources={"cpus": 1, "memory_bytes": 1000}
-        )
+        plan["tasks"]["task"].update(resources={"cpus": 1, "memory_bytes": 1000})
         plan["config"].update(
             startup_timeout_seconds=120,
             request_idle_timeout_seconds=None,
@@ -266,6 +277,10 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["host"][change]["memory_bytes"] += 1000
             elif change == "deadline":
                 plan["config"]["startup_timeout_seconds"] = 60
+            elif change == "task_deadline":
+                plan["task_timeout_seconds"] = 900
+            elif change == "missing_deadline":
+                plan.pop("task_timeout_seconds")
             elif change == "idle":
                 plan["config"]["request_idle_timeout_seconds"] = 180
             elif change == "legacy":
@@ -282,7 +297,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
     left, right = [report_data(tmp_path / name)["scored"] for name in ["left", "right"]]
     compared = paired_compare(left, right, samples=10)
     assert compared["pairs"] == (1 if change is None else 0)
-    if change in {"missing", "legacy"}:
+    if change in {"missing", "legacy", "missing_deadline"}:
         assert len(compared["unpairable_right"]) == 1
     elif change:
         assert len(compared["missing_left"]) == len(compared["missing_right"]) == 1

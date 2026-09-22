@@ -17,7 +17,7 @@ bun bench resume /absolute/path/to/run
 
 `run config.yaml` 串联上述流程。`prewarm` 准备 agent 与独立 verifier 镜像，不调用模型或执行 oracle。`doctor` 在一次性任务环境中经过实际网络策略、原生 harness、流式记录和工具结果；调用消耗计入报告，预检产物不进入正式任务。预检失败阻止正式运行。
 
-显式设置 `admission_policy: strict-synergy-v1` 可在串行 Synergy v2 矩阵中逐次审查：原生 reward 为 0 或原题期限耗尽且判题完整时继续；基础设施、判题、归档或逐请求计量失效时，在持久化原始结果后停止后续正式任务和 doctor 派发。恢复首先复查已保留的失败，不能隐式重跑。只有已证明零模型请求、完整归档和成功清理的启动超时保留最多三次自动尝试。默认 `continue` 保持普通矩阵的失败收集行为；策略随实验冻结并参与配对条件，取舍见[逐次准入](../docs/decisions/implemented/architecture/2026-09-22-benchmark-serial-admission.md)。
+显式设置 `admission_policy: strict-synergy-v1` 可在串行 Synergy v2 矩阵中逐次审查：原生 reward 为 0 或解题期限耗尽且判题完整时继续；基础设施、判题、归档或逐请求计量失效时，在持久化原始结果后停止后续正式任务和 doctor 派发。恢复首先复查已保留的失败，不能隐式重跑。只有已证明零模型请求、完整归档和成功清理的启动超时保留最多三次自动尝试。默认 `continue` 保持普通矩阵的失败收集行为；策略随实验冻结并参与配对条件，取舍见[逐次准入](../docs/decisions/implemented/architecture/2026-09-22-benchmark-serial-admission.md)。
 
 ```bash
 bun bench inspect /absolute/path/to/run --trial 0
@@ -39,32 +39,29 @@ bun bench clean /absolute/path/to/run
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。
 
-| 字段                                         | 含义                                                                                       |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment                |
-| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT                  |
-| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                       |
-| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                                 |
-| `suite`                                      | 锁定的原题清单、上游 revision、内容摘要及原生期限                                          |
-| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                       |
-| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                                 |
-| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                           |
-| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                              |
-| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                               |
-| `timeout_seconds`                            | agent 解题期限，省略统一使用 10800 秒；正整数覆盖，显式 `native` 保留原题期限；不接受 null |
-| `request_idle_timeout_seconds`               | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件              |
-| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                       |
-| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                                     |
-| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；原题 agent 时限从首次派发开始           |
-| `preflight_timeout_seconds`                  | doctor 工具往返期限，默认 120 秒；1–3600 的严格整数，独立于正式题目期限并随配置冻结        |
+| 字段                                         | 含义                                                                                |
+| -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment         |
+| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT           |
+| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                |
+| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                          |
+| `suite`                                      | 锁定的题目清单、上游 revision 和内容摘要                                            |
+| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                |
+| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                          |
+| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                    |
+| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                       |
+| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                        |
+| `request_idle_timeout_seconds`               | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件       |
+| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                |
+| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                              |
+| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；正式解题时钟从首次派发开始       |
+| `preflight_timeout_seconds`                  | doctor 工具往返期限，默认 120 秒；1–3600 的严格整数，独立于正式题目期限并随配置冻结 |
 
-[GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道原题，以及证书和多语言任务各三次重复，共 50 个评分单元。它显式设置 `timeout_seconds: native` 以保留原题解题期限。平台实现不绑定该模型或智谱端点。
+正式解题、oracle 参考解执行和判题分别统一使用 10800 秒上限，由配置模块中的唯一常量定义。题目清单不接受逐题期限，实验配置不接受 `timeout_seconds` 或 verifier 期限覆盖；旧字段会报错，必须删除后才能准备新的实验。冻结 `plan.json` 的 `task_timeout_seconds` 记录同一预算，每次启动的 `inputs/options.json` 与 Pier 解题、判题参数均由它的唯一实现来源产生。所有预设和新增 YAML 走同一执行逻辑，[传播测试](test/test_experiment_presets.py)自动发现预设，真实 Docker 回归验证短时限任务仍可完成解题和判题。原始任务文件、旧计划及失败记录保持完整；它们不为新执行提供时限。历史实验的缺失预算保持未知，不补造三小时条件。
 
-[GLM 长会话研究示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，继承统一的 10800 秒解题期限，并使用 `opencode-jitless` 规避已复现的 Bun JIT / Rosetta 停滞路径。准备、排队、导出和独立判题均不占该解题期限；模型在任务中安装依赖属于解题时间。该配置改变 agent 期限及 OpenCode 运行条件，必须创建新实验，不能与原题期限的结果直接配对，也不能替换旧评分。它保留原生 verifier 期限，并非上游运行时缺陷已修复的保证。
+[GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道题，以及证书和多语言任务各三次重复，共 50 个评分单元。[GLM 长会话示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，并显式选择 `opencode-jitless`；两者与其他预设使用相同的三小时执行预算。平台实现不绑定该模型或智谱端点。
 
-新 YAML 应省略解题期限以继承统一研究默认值；只有复现原题或明确改变实验条件时才覆盖。默认值在配置解析时写入冻结的 `plan.json`，每次启动的 `inputs/options.json` 保留最终秒数。所有预设自动纳入[期限传播测试](test/test_experiment_presets.py)，不维护文件名白名单。历史实验仍由冻结的 evaluator 执行；修改默认值不能改写或继续旧实验。v1 配置通过显式迁移命令保留原有期限语义，将遗漏或 null 转换为 `native`。
-
-外层执行时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。网关默认不设读空闲期限，断连仍会报错，连接建立仍有 30 秒期限，整题时钟仍可取消执行；显式的读空闲限制属于独立实验条件。harness 自身的超时不由网关改写。`doctor` 使用独立的 `preflight_timeout_seconds`，默认 120 秒；Boyue 预设明确选择 600 秒以容纳已观察到的慢首响应。修改预检期限须新建实验，正式解题及原生 verifier 期限不受该字段影响。取舍见[研究期限策略](../docs/decisions/implemented/architecture/2026-09-21-benchmark-research-deadline-policy.md)。
+正式解题时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。准备、排队、导出和判题不占模型解题预算，模型在任务中安装依赖属于解题时间。网关默认不设读空闲期限，断连仍会报错，连接建立保留 30 秒期限。`doctor` 使用独立的 `preflight_timeout_seconds`，默认 120 秒；Boyue 预设采用 600 秒以容纳已观察到的慢首响应。预检、准备及清理期限不是正式题目预算，不得截断它。取舍见[统一三小时策略](../docs/decisions/implemented/architecture/2026-09-22-benchmark-fixed-three-hour-budget.md)。
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
@@ -96,7 +93,7 @@ bindings 文件需要完整 `models`，以及旧 `provider/model` 到新模型�
 
 Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree/0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea)、[Terminal-Bench 锁定源码](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b)、[Pier 0.3.1](https://pypi.org/project/datacurve-pier/0.3.1/)。上游内容下载到 ignored cache，完整 checkout 保留许可证。
 
-原始 instruction、镜像语义、资源、期限、网络、collect hook 和 verifier 不被改写。DeepSWE 使用独立 verifier，原生 hook 收集基于 HEAD 的 patch；要求提交的任务不会由评测器代为提交。模型破坏环境后不在判题前偷偷修复。`oracle` 使用 Pier 原生 OracleAgent 在独立环境逐题验证参考解和 verifier，失败题保留在清单中。`oracle-resume --recorded-evaluator` 核对已完成证据或保留中断结果，不自动重新判题。
+原始 instruction、镜像语义、资源、网络、collect hook 和 verifier 断言不被改写；执行期限统一由三小时策略拥有。DeepSWE 使用独立 verifier，原生 hook 收集基于 HEAD 的 patch；要求提交的任务不会由评测器代为提交。模型破坏环境后不在判题前偷偷修复。`oracle` 使用 Pier 原生 OracleAgent 在独立环境逐题验证参考解和 verifier，失败题保留在清单中。`oracle-resume --recorded-evaluator` 核对已完成证据或保留中断结果，不自动重新判题。
 
 模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。预检不能预置解题依赖、答案或 oracle 产物。
 
@@ -192,9 +189,9 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。依赖任务到期收尾的故障注入夹具显式选择 `timeout_seconds: native` 或独立短期限，不继承研究默认值。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
+普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。故障注入在测试进程中缩短时钟或修改一次性 TrialConfig，不向生产配置暴露短期限入口。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式任务的三小时上限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
-Synergy 长会话控制的覆盖范围、确定性 provider 请求体容量与 CI 编排期限见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的原题期限。
+Synergy 长会话控制的覆盖范围、确定性 provider 请求体容量与 CI 编排期限见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的三小时期限。
 
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 
@@ -227,7 +224,7 @@ OOM 通过本地 Unix Docker Engine API 在执行期间持续订阅并落盘，�
 
 运行时 Home 是私有恢复输入，可能包含密钥库；`evidence.json` 的文件清单不遍历 `agent/home`，也不跟随目录符号链接。可共享的 Synergy 执行证据使用已验证的 `rollout.zip`，恢复过程仍可读取保留的私有 Home。
 
-CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence.py` 收集诊断，只复制明确列出的证据文件，跳过 native home、wire、输入目录与符号链接；单个不可读文件不会丢弃其他诊断，收集错误单独保留。
+CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence.py` 收集诊断，只复制明确列出的证据文件，跳过 native home、wire、输入目录与符号链接；单个不可读文件不会丢弃其他诊断，收集错误单独保留。显式 `preparation` 分组保留缓存准备目录直属的配方摘要日志，使 trial 创建之前的依赖或镜像失败仍可诊断；不递归进入未发布的构建目录，也不跟随缓存父目录的符号链接。
 
 轨迹分析的输出目录必须与输入证据树互不包含，不能选输入目录、其子目录或祖先目录。缺失响应或未识别的非 SSE 响应标记为 `stream_framing: unknown`，正文与工具流指标保持未知；`stream_invalid_lines` 单独计数解析失败，原始响应字节仍来自 wire 记录。
 
