@@ -76,6 +76,8 @@ This is an invariant for event handlers and refetches:
 - use `produce()` only for insertion, removal, a narrow leaf mutation, or coordinated bucket deletion;
 - do not replace a whole object merely because one event carries a complete serialized value.
 
+Reconciliation applies only to the same entity identity. A single-entity projection such as `latestContextMessage` may share its object with the message window. When its message ID changes, replace the projection pointer through `produce()`; reconciling at that object root mutates the previous transcript entity, including its ID. Same-ID updates continue to reconcile in place.
+
 Preserving unchanged identities keeps memos and components that read unrelated leaves from invalidating on every timestamp, status, or streaming update.
 
 Streaming delta application is even narrower: it appends only to the `text` leaf of the matching text/reasoning part.

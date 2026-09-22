@@ -40,10 +40,15 @@ def _prepare_external(
 ) -> Path:
     package = PACKAGES[kind]
     version = version or package["version"]
+    # Provenance: https://docs.npmjs.com/cli/v11/configuring-npm/package-json#overrides
+    # rc.3's web bundle requires an unpublished document-preview release.
+    # Keep this exception scoped to the verified rc.1 harness until its next upgrade.
+    package_overrides = {"@deepseek-ai/dsh-web-app": version} if kind == "deepseek" and version == "0.1.5-rc.1" else {}
     identity = {
         "kind": kind,
         "package": package["name"],
         "version": version,
+        "overrides": package_overrides,
         "platform": platform,
         "recipe": digest(Path(__file__).read_text()),
         "runtime": digest({name: (BENCHMARK / "runtime" / name).read_text() for name in NATIVE_RUNTIME}),
@@ -83,6 +88,7 @@ def _prepare_external(
                             package["name"]: version,
                             **({"@opencode-ai/plugin": version} if kind == "opencode" else {}),
                         },
+                        "overrides": package_overrides,
                     },
                 )
                 retry_command(

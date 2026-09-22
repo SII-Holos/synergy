@@ -575,6 +575,16 @@ function createGlobalSync() {
       setStore("latestContextMessage", sessionID, null)
       return
     }
+    if (store.latestContextMessage[sessionID]?.id !== message.id) {
+      // The projection can share a transcript entity. Root reconcile mutates
+      // that entity even when its id changes; replace the pointer instead.
+      setStore(
+        produce((draft) => {
+          draft.latestContextMessage[sessionID] = message
+        }),
+      )
+      return
+    }
     setStore("latestContextMessage", sessionID, reconcile(message))
   }
 

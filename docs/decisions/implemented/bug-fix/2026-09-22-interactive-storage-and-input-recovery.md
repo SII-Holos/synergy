@@ -14,7 +14,11 @@ SQLite reader and writer connections live in independent processes with separate
 
 Input recovery projects existing Inbox, Message and Rollout records. Stable client message IDs deduplicate admission, materialization and cancellation. New task admission advances past historical or terminal roots before resolving execution configuration. Explicit retry rearms the saved item and clears the pause that prevents it from running. The frontend observes authoritative progress and canonical messages; duration and transport loss do not fabricate failure.
 
+Context-usage projection updates preserve entity identity: same-message enrichment reconciles in place, while advancing to another message replaces the projection pointer. Root reconciliation cannot cross IDs because the projection may share its object with the visible transcript. Managed Desktop acceptance verifies that every previous reply remains visible while submitting subsequent turns, before any reload can repair the projection.
+
 Desktop reserves admission before stopping its managed server for maintenance. The reservation rejects active or already-admitted work and expires if the client disappears. The CLI still acquires exclusive storage ownership before changing data.
+
+The shared test planner runs the file-owned agent and worktree runtime fixtures in separate processes after two shared CI coverage runs timed out during their teardown. The paired Linux invocation passes all 75 cases, but the exact CI-only blocked resource remains unproven. This contains test-process lifetime interference while retaining every assertion, the existing timeouts and unioned coverage; final CI validates the isolation independently of local performance acceptance.
 
 ## Alternatives considered
 

@@ -123,6 +123,10 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/plugin-host/test/plugin/tool-invocation.test.ts",
   "packages/product-runtime/test/cli/data.test.ts",
   "packages/product-runtime/test/cli/services.test.ts",
+  // These file-owned runtimes repeatedly time out during shared CI coverage
+  // teardown; the Linux paired fixture passes in a separate process.
+  "packages/product-runtime/test/agent/agent.test.ts",
+  "packages/product-runtime/test/project/worktree.test.ts",
   "packages/connections/test/channel/clarus-invite-accept.test.ts",
   "packages/connections/test/channel/feishu-provider.test.ts",
   "packages/connections/test/channel/host.test.ts",

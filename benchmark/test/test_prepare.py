@@ -1,9 +1,44 @@
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
 
 from synergy_bench.prepare import recipe_links
 from synergy_bench.storage import atomic_json
+
+
+@pytest.mark.parametrize(
+    ("kind", "version", "overrides"),
+    [
+        ("deepseek", None, {"@deepseek-ai/dsh-web-app": "0.1.5-rc.1"}),
+        ("deepseek", "0.1.5-rc.1", {"@deepseek-ai/dsh-web-app": "0.1.5-rc.1"}),
+        ("deepseek", "0.1.6", {}),
+        ("codex", None, {}),
+    ],
+)
+def test_native_preparation_pins_the_verified_deepseek_web_bundle(tmp_path, monkeypatch, kind, version, overrides):
+    from synergy_bench import engines, resources
+    from synergy_bench.storage import read_json
+
+    class BeforeInstall(Exception):
+        pass
+
+    monkeypatch.setattr(resources, "build_reservation", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(engines, "command", lambda *args, **kwargs: "node@sha256:fixture")
+
+    def install(args, log, **kwargs):
+        assert args[-5:] == ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]
+        stage = Path(args[args.index("-v") + 1].removesuffix(":/work"))
+        manifest = read_json(stage / "package.json")
+        assert manifest.get("overrides", {}) == overrides
+        assert manifest["dependencies"][engines.PACKAGES[kind]["name"]] == (
+            version or engines.PACKAGES[kind]["version"]
+        )
+        raise BeforeInstall()
+
+    monkeypatch.setattr(engines, "retry_command", install)
+    with pytest.raises(BeforeInstall):
+        engines.prepare_external(kind, version, tmp_path, "linux/amd64")
 
 
 def test_recipe_resolves_public_names_without_a_benchmark_workspace(tmp_path: Path) -> None:

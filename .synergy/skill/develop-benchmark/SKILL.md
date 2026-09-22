@@ -37,6 +37,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
    Recovery and ownership-handoff containers must inherit the frozen experiment platform even when they reuse an exact image digest. Verify running and stopped container handoff on a host with a different native architecture; Docker's default platform can otherwise select unavailable image content before cleanup runs.
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
+   A pinned entry package can still resolve drifting transitive ranges during cold preparation. Reproduce registry installation failures separately from model execution; scope any necessary override to the verified release, include it in the manifest and artifact identity, and rerun the native matrix. Never silence the failure or apply an exception to unverified versions.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.
 
 ## Verify and publish
