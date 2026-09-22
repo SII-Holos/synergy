@@ -2420,6 +2420,23 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260922-session-nav-workspace-binding",
+    scope: "derived",
+    dependsOn: ["20260921-session-workspace-binding"],
+    description: "Rebuild session navigation after applying on-access workspace binding upgrades",
+    async upSession(owner) {
+      const { SessionRecords } = await import("./records")
+      const { SessionCompat } = await import("./compat-import")
+      await SessionRecords.read(
+        StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
+      )
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

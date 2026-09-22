@@ -9,6 +9,7 @@ import { Log } from "../util/log"
 import { Info as SessionInfo, normalizeSessionTag } from "./types"
 import { SessionManagedProjects } from "./managed-projects"
 import { SessionCompat } from "./compat-import"
+import { SessionRecords } from "./records"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
@@ -246,11 +247,14 @@ export namespace SessionNav {
     const entries: SessionNavEntry[] = []
     if (sessionIDs.length > 0) {
       const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
-      const storedSessions = await Storage.readMany<unknown>(keys)
+      const storedSessions = await SessionRecords.readMany(keys)
       for (const storedSession of storedSessions) {
         const parsed = SessionInfo.safeParse(storedSession)
         if (!parsed.success) {
-          log.warn("skipping malformed session info", { scopeID })
+          log.warn("skipping malformed session info", {
+            scopeID,
+            issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), code: issue.code })),
+          })
           continue
         }
         const session = parsed.data
