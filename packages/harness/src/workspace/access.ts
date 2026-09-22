@@ -218,6 +218,30 @@ export namespace WorkspaceAccess {
     }, signal)
   }
 
+  export async function pin(signal?: AbortSignal): Promise<Lease> {
+    const workspace = ScopeContext.current.workspace
+    if (!workspace?.id) throw new Error("A resolved Workspace is required for file resources")
+    const active = current()
+    const lease = await ExecutionCapacity.wait(() =>
+      host().acquire({
+        id: randomUUID(),
+        owner: active?.owner ?? JSON.stringify([RuntimeContext.current().host.root, randomUUID()]),
+        ancestors: active?.ancestors ?? [],
+        kind: "use",
+        roots: [workspace.path],
+        signal,
+      }),
+    )
+    try {
+      signal?.throwIfAborted()
+      await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
+      return lease
+    } catch (error) {
+      await lease.release()
+      throw error
+    }
+  }
+
   export async function use(workspaces: Workspace[]) {
     const task = current()
     if (!task || !state().host) return

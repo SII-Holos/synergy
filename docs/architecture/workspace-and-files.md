@@ -65,6 +65,8 @@ Directory results can hide ignored and dot-prefixed entries, are sorted with dir
 
 PDF preview is a separate bounded byte stream: `GET /workspace/files/content` (operationId `workspace.files.content`) serves the raw bytes of a workspace PDF with `Content-Type: application/pdf` and `Cache-Control: no-store`. It accepts `.pdf` by extension or `application/pdf` MIME, rejects non-PDF files with `WorkspaceFileUnsupportedPreviewError` (400) and files over 50 MiB with `WorkspaceFileTooLargeError` (400), and reuses the same 403/404 error shapes as the other routes. PDF bytes never enter the JSON `read` union, so a PDF still reads back as `kind: "binary"` metadata.
 
+Raw downloads and previews retain an open file descriptor and a Workspace use claim beyond the HTTP handler. Atomic replacement of the pathname does not retarget an existing stream. Reads are bounded by the captured file size and consumer demand; EOF, cancellation, request abort and Workspace disposal close the descriptor and release the claim. A file truncated while streaming fails rather than returning a silently incomplete body.
+
 Search has three independent modes:
 
 - files — a cached workspace index plus fuzzy path matching

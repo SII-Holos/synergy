@@ -1,4 +1,5 @@
 import { FileMutation } from "../file/mutation"
+import { WorkspaceFileStream } from "./stream"
 import { fileURLToPath } from "url"
 import fs from "fs/promises"
 import path from "path"
@@ -56,12 +57,7 @@ export namespace WorkspaceFileService {
     }
   }
 
-  export class TooLargeError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = "WorkspaceFileTooLargeError"
-    }
-  }
+  export const TooLargeError = WorkspaceFileStream.TooLargeError
 
   export function resolve(input = "") {
     if (isControlPath(input)) throw new AccessDeniedError("Path contains control characters")
@@ -240,6 +236,7 @@ export namespace WorkspaceFileService {
 
   export async function content(input: {
     path: string
+    signal?: AbortSignal
   }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream }> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
@@ -255,15 +252,22 @@ export namespace WorkspaceFileService {
     if (info.size > PREVIEW_MAX_BYTES) {
       throw new TooLargeError(`File too large to preview (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
     }
+    const opened = await WorkspaceFileStream.open({
+      path: absolute,
+      limit: PREVIEW_MAX_BYTES,
+      signal: input.signal,
+      validate: assertRealpathInside,
+    })
     return {
       absolute,
-      node: info,
-      stream: file.stream(),
+      node: { ...info, size: opened.stat.size, mtime: opened.stat.mtimeMs, ctime: opened.stat.ctimeMs },
+      stream: opened.stream,
     }
   }
 
   export async function serveFile(input: {
     path: string
+    signal?: AbortSignal
   }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream; mime: string }> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
@@ -275,10 +279,16 @@ export namespace WorkspaceFileService {
       throw new TooLargeError(`File too large to serve (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
     }
     const file = Bun.file(absolute)
+    const opened = await WorkspaceFileStream.open({
+      path: absolute,
+      limit: PREVIEW_MAX_BYTES,
+      signal: input.signal,
+      validate: assertRealpathInside,
+    })
     return {
       absolute,
-      node: info,
-      stream: file.stream(),
+      node: { ...info, size: opened.stat.size, mtime: opened.stat.mtimeMs, ctime: opened.stat.ctimeMs },
+      stream: opened.stream,
       mime: file.type,
     }
   }

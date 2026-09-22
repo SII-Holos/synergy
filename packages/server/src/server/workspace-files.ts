@@ -284,11 +284,14 @@ export const WorkspaceFilesRoute = () =>
       async (c) => {
         const query = c.req.valid("query")
         try {
-          const result = await WorkspaceFileService.content({ path: query.path })
+          const result = await WorkspaceFileService.content({ path: query.path, signal: c.req.raw.signal })
           c.header("Content-Type", "application/pdf")
           c.header("Cache-Control", "no-store")
           return c.body(result.stream)
         } catch (err) {
+          if (err instanceof WorkspaceFileService.WriteConflictError) {
+            return c.json({ name: err.name, data: { message: err.message } }, 409)
+          }
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
           }
@@ -356,7 +359,7 @@ export const WorkspaceFilesRoute = () =>
           )
         }
         try {
-          const result = await WorkspaceFileService.serveFile({ path: rel })
+          const result = await WorkspaceFileService.serveFile({ path: rel, signal: c.req.raw.signal })
           const ext = path.extname(rel).toLowerCase()
           const download = c.req.query("download")
           if (download !== undefined && download !== "false") {
@@ -394,6 +397,9 @@ export const WorkspaceFilesRoute = () =>
           c.header("X-Frame-Options", "SAMEORIGIN")
           return c.body(result.stream)
         } catch (err) {
+          if (err instanceof WorkspaceFileService.WriteConflictError) {
+            return c.json({ name: err.name, data: { message: err.message } }, 409)
+          }
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
           }
