@@ -7,6 +7,7 @@ export interface RuntimeHost {
   readonly home: string
   readonly root: string
   readonly env: Readonly<Record<string, string | undefined>>
+  readonly workspaceLocation?: import("../workspace/location").WorkspaceLocationSource
 }
 
 export namespace RuntimeContext {
