@@ -20,6 +20,8 @@ Desktop reserves admission before stopping its managed server for maintenance. T
 
 The shared test planner runs the file-owned agent and worktree runtime fixtures in separate processes after two shared CI coverage runs timed out during their teardown. The paired Linux invocation passes all 75 cases, but the exact CI-only blocked resource remains unproven. This contains test-process lifetime interference while retaining every assertion, the existing timeouts and unioned coverage; final CI validates the isolation independently of local performance acceptance.
 
+The inert-import check compares directory contents independently of filesystem enumeration order. Coverage failure summaries preserve bounded multiline assertion differences across blank separators, so a truncated full log still identifies the actual mismatch.
+
 ## Alternatives considered
 
 - Longer global deadlines leave foreground calls trapped behind whole-store work and make failure recovery slower.

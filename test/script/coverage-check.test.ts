@@ -284,6 +284,31 @@ describe("coverage failure signal extraction", () => {
     expect(signals).toContain("test/runtime/instance.test.ts: (fail) (unnamed) [30002ms]")
   })
 
+  test("preserves assertion differences across blank lines without including the next suite", () => {
+    const signals = extractFailureSignals(
+      [
+        "test/runtime/imports.test.ts:",
+        "error: expect(received).toEqual(expected)",
+        "",
+        "  {",
+        '-   "code": 0,',
+        '+   "code": 1,',
+        "  }",
+        "",
+        "      at test/runtime/imports.test.ts:42:28",
+        "",
+        "test/runtime/next.test.ts:",
+        "next suite output",
+        "(pass) next suite [1ms]",
+      ].join("\n"),
+    )
+    expect(signals).toHaveLength(1)
+    expect(signals[0]).toContain('-   "code": 0,')
+    expect(signals[0]).toContain('+   "code": 1,')
+    expect(signals[0]).toContain("at test/runtime/imports.test.ts:42:28")
+    expect(signals[0]).not.toContain("next suite")
+  })
+
   test("caps the failing test list and reports the remainder", () => {
     const lines = Array.from({ length: 40 }, (_, index) => `(fail) suite > case ${index} [1ms]`)
     const signals = extractFailureSignals(lines.join("\n"), 5)

@@ -5,7 +5,7 @@ import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime
 
 test("public compositions and CLI setup import without opening a Runtime or starting background work", async () => {
   await using fixture = await runtimeHome()
-  const before = await fs.readdir(fixture.host.home, { recursive: true })
+  const before = (await fs.readdir(fixture.host.home, { recursive: true })).toSorted()
   const root = path.resolve(import.meta.dir, "../../../..")
   const entries = [
     "packages/harness/src/index.ts",
@@ -43,7 +43,7 @@ test("public compositions and CLI setup import without opening a Runtime or star
     ])
     expect({ code, stderr }).toEqual({ code: 0, stderr: "" })
     expect(stdout.trim()).toBe("imports are inert")
-    expect(await fs.readdir(fixture.host.home, { recursive: true })).toEqual(before)
+    expect((await fs.readdir(fixture.host.home, { recursive: true })).toSorted()).toEqual(before)
   } finally {
     clearTimeout(timeout)
     if (child.exitCode === null) child.kill()
