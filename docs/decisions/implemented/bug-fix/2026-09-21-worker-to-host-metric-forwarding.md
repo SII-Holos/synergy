@@ -31,3 +31,5 @@ The host validates request ownership before recording metrics. It captures the o
 The [provider watchdog metrics](2026-09-21-provider-stream-watchdog-and-stage-metrics.md) are queryable with their actual task identity. Real subprocess tests verify database rows across sessions, models, timeouts, cancellation and worker reuse. Runtime tests verify forwarding isolation and disposal, while protocol tests cover batching and stale frames.
 
 Metrics remain best-effort. An oversized frame or saturated queue loses telemetry instead of blocking inference, and the drop count is local rather than a durable delivery guarantee. Host and worker must come from a compatible build. Metric names and labels must fit the explicit row schema.
+
+Direct queue tests complement real IPC tests: they verify bounded bursts, label normalization, invalid-row and send-failure accounting, and close-before-successor isolation in the instrumented test process. Child-process execution alone does not add this helper to the parent's coverage report.
