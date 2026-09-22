@@ -131,6 +131,45 @@ test("a use lease prevents deletion but permits reads and ordinary writers", asy
   await exclusive.release()
 })
 
+test("read-only processes pin their bindings while allowing bounded and host-wide writers", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  try {
+    const processLease = await coordinator.acquire({
+      ...request([]),
+      kind: "process",
+      useRoots: [tmp.path],
+      processID: child.pid,
+    })
+    const bounded = await coordinator.acquire({ ...request([tmp.path]), timeoutMs: 100 })
+    await bounded.release()
+    const host = await coordinator.acquire({ ...request(null), timeoutMs: 100 })
+    await host.release()
+    await expect(
+      coordinator.acquire({
+        ...request([tmp.path]),
+        kind: "exclusive",
+        timeoutMs: 50,
+      }),
+    ).rejects.toThrow("busy")
+    await processLease.release()
+    expect((await coordinator.inspect()).length).toBe(1)
+    child.kill()
+    await child.exited
+    const exclusive = await coordinator.acquire({ ...request([tmp.path]), kind: "exclusive" })
+    await exclusive.release()
+  } finally {
+    if (child.exitCode === null) {
+      child.kill()
+      await child.exited
+    }
+  }
+})
+
 test("a waiting task cannot block operations needed by the current owner to finish", async () => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })

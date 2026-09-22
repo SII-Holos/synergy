@@ -15,6 +15,7 @@ export namespace WorkspaceAccess {
     ancestors: string[]
     kind: "use" | "task" | "operation" | "process" | "exclusive"
     roots: string[] | null
+    useRoots?: string[]
     parentClaim?: string
     processID?: number
     signal?: AbortSignal
@@ -38,6 +39,7 @@ export namespace WorkspaceAccess {
     roots?: string[] | null
     lease?: Lease
     uses: Map<string, Lease>
+    useRoots: Set<string>
     serial: Promise<void>
     closed: boolean
     signal: AbortSignal
@@ -89,6 +91,7 @@ export namespace WorkspaceAccess {
       workspace: input.workspace,
       closed: false,
       uses: new Map(),
+      useRoots: new Set(input.workspace ? [input.workspace.path] : []),
       serial: Promise.resolve(),
       signal: input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal,
     }
@@ -130,14 +133,20 @@ export namespace WorkspaceAccess {
     )
     return pending
   }
-  async function reserve(task: Task, roots: string[] | null, signal?: AbortSignal) {
+  async function reserve(task: Task, roots: string[] | null, signal?: AbortSignal, includeWorkspace = true) {
     return serial(task, async () => {
       await validate(task)
       const combined = signal ? AbortSignal.any([task.signal, signal]) : task.signal
       task.roots =
         roots === null || task.roots === null
           ? null
-          : [...new Set([...(task.roots ?? []), ...(task.workspace ? [task.workspace.path] : []), ...roots])]
+          : [
+              ...new Set([
+                ...(task.roots ?? []),
+                ...(includeWorkspace && task.workspace ? [task.workspace.path] : []),
+                ...roots,
+              ]),
+            ]
       task.lease = await host().acquire({
         id: task.id,
         owner: task.owner,
@@ -186,14 +195,16 @@ export namespace WorkspaceAccess {
       let lease: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          await reserve(task, roots, signal)
+          const writes = roots === null || roots.length > 0
+          if (writes) await reserve(task, roots, signal, false)
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
             ancestors: task.ancestors,
             kind: "process",
-            parentClaim: task.id,
-            roots: roots === null ? null : [...new Set([...(task.workspace ? [task.workspace.path] : []), ...roots])],
+            parentClaim: writes ? task.id : undefined,
+            roots,
+            useRoots: [...task.useRoots],
             signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
           })
         })
@@ -213,6 +224,7 @@ export namespace WorkspaceAccess {
     await ExecutionCapacity.wait(() =>
       serial(task, async () => {
         for (const workspace of workspaces) {
+          task.useRoots.add(workspace.path)
           const key = JSON.stringify([workspace.id, workspace.generation])
           if (!task.uses.has(key))
             task.uses.set(

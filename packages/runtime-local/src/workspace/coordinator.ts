@@ -18,6 +18,7 @@ const Claim = z.object({
   kind: z.enum(["use", "task", "operation", "process", "exclusive"]),
   parentClaim: z.string().optional(),
   roots: z.array(Root).nullable(),
+  useRoots: z.array(Root).default([]),
   pid: z.number().int().positive(),
   startIdentity: z.string().optional(),
   processBound: z.boolean().default(false),
@@ -33,6 +34,7 @@ export interface WorkspaceClaimInput {
   ancestors: string[]
   kind: Claim["kind"]
   roots: string[] | null
+  useRoots?: string[]
   parentClaim?: string
   processID?: number
   signal?: AbortSignal
@@ -46,6 +48,7 @@ function contains(parent: string, child: string) {
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
 }
 function overlaps(a: Claim["roots"], b: Claim["roots"]) {
+  if (a?.length === 0 || b?.length === 0) return false
   if (a === null || b === null) return true
   return a.some((left) =>
     b.some(
@@ -67,6 +70,8 @@ function covers(a: Claim["roots"], b: Claim["roots"]) {
 }
 function conflicts(request: Claim, held: Claim) {
   if (request.id === held.id) return false
+  if (request.kind === "exclusive" && overlaps(request.roots, held.useRoots)) return true
+  if (held.kind === "exclusive" && overlaps(held.roots, request.useRoots)) return true
   if ((request.kind === "use" && held.kind !== "exclusive") || (held.kind === "use" && request.kind !== "exclusive"))
     return false
   if (request.parentClaim === held.id && request.owner === held.owner) return false
@@ -148,16 +153,17 @@ export class WorkspaceCoordinator {
   async acquire(input: WorkspaceClaimInput) {
     input.signal?.throwIfAborted()
     if (input.roots?.some((root) => !path.isAbsolute(root))) throw new Error("Workspace claim roots must be absolute")
+    if (input.useRoots?.some((root) => !path.isAbsolute(root))) throw new Error("Workspace use roots must be absolute")
     if (input.processID !== undefined && (!Number.isInteger(input.processID) || input.processID <= 0))
       throw new Error("Invalid Workspace process ID")
     if (input.timeoutMs !== undefined && (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 0))
       throw new Error("Invalid Workspace admission timeout")
     const deadline = Date.now() + (input.timeoutMs ?? 120_000)
-    const roots =
-      input.roots === null
+    const canonicalRoots = async (values: string[] | null) =>
+      values === null
         ? null
         : await Promise.all(
-            [...new Set(input.roots)].map(async (root) => {
+            [...new Set(values)].map(async (root) => {
               let canonical = await FileMutation.canonical(root)
               if (process.platform === "win32") canonical = canonical.toLowerCase()
               const stat = await fs.stat(canonical, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
@@ -166,6 +172,8 @@ export class WorkspaceCoordinator {
               return { path: canonical, physicalID: stat ? `${stat.dev}:${stat.ino}:${stat.birthtimeNs}` : undefined }
             }),
           )
+    const roots = await canonicalRoots(input.roots)
+    const useRoots = (await canonicalRoots(input.useRoots ?? []))!
     const pid = input.processID ?? process.pid
     const request: Claim = {
       id: input.id,
@@ -175,6 +183,7 @@ export class WorkspaceCoordinator {
       kind: input.kind,
       parentClaim: input.parentClaim,
       roots,
+      useRoots,
       pid,
       startIdentity: await processStartIdentity(pid),
       processBound: input.processID !== undefined,
