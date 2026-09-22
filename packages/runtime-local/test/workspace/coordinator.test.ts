@@ -194,3 +194,22 @@ test("a waiting task cannot block operations needed by the current owner to fini
     await (await waiting).release()
   }
 })
+
+test("renaming an occupied directory cannot hide its physical descendants from other writers", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const original = path.join(tmp.path, "original")
+  const moved = path.join(tmp.path, "moved")
+  await fs.mkdir(path.join(original, "nested"), { recursive: true })
+  const held = await coordinator.acquire(request([original]))
+  try {
+    await fs.rename(original, moved)
+    await expect(coordinator.acquire({ ...request([path.join(moved, "nested")]), timeoutMs: 60 })).rejects.toThrow(
+      "busy",
+    )
+  } finally {
+    await held.release()
+  }
+  const next = await coordinator.acquire(request([path.join(moved, "nested")]))
+  await next.release()
+})

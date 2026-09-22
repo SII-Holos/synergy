@@ -10,7 +10,11 @@ import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
 import { FileMutation } from "../file/mutation"
 import { DarwinCoalition } from "../process/darwin-coalition"
 
-const Root = z.object({ path: z.string(), physicalID: z.string().optional() })
+const Root = z.object({
+  path: z.string(),
+  physicalID: z.string().optional(),
+  ancestorPhysicalIDs: z.array(z.string()).default([]),
+})
 const Claim = z.object({
   id: z.string(),
   token: z.string(),
@@ -51,6 +55,12 @@ function contains(parent: string, child: string) {
   const relative = path.relative(parent, child)
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
 }
+function physicallyContains(parent: z.infer<typeof Root>, child: z.infer<typeof Root>) {
+  return (
+    !!parent.physicalID &&
+    (parent.physicalID === child.physicalID || child.ancestorPhysicalIDs.includes(parent.physicalID))
+  )
+}
 function overlaps(a: Claim["roots"], b: Claim["roots"]) {
   if (a?.length === 0 || b?.length === 0) return false
   if (a === null || b === null) return true
@@ -59,7 +69,8 @@ function overlaps(a: Claim["roots"], b: Claim["roots"]) {
       (right) =>
         contains(left.path, right.path) ||
         contains(right.path, left.path) ||
-        (!!left.physicalID && left.physicalID === right.physicalID),
+        physicallyContains(left, right) ||
+        physicallyContains(right, left),
     ),
   )
 }
@@ -67,9 +78,7 @@ function covers(a: Claim["roots"], b: Claim["roots"]) {
   if (a === null) return true
   return (
     b !== null &&
-    b.every((right) =>
-      a.some((left) => contains(left.path, right.path) || (!!left.physicalID && left.physicalID === right.physicalID)),
-    )
+    b.every((right) => a.some((left) => contains(left.path, right.path) || physicallyContains(left, right)))
   )
 }
 function conflicts(request: Claim, held: Claim) {
@@ -170,6 +179,21 @@ export class WorkspaceCoordinator {
     if (input.timeoutMs !== undefined && (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 0))
       throw new Error("Invalid Workspace admission timeout")
     const deadline = Date.now() + (input.timeoutMs ?? 120_000)
+    const identities = new Map<string, Promise<string | undefined>>()
+    const identify = (filename: string) => {
+      let result = identities.get(filename)
+      if (!result) {
+        result = fs.stat(filename, { bigint: true }).then(
+          (stat) => `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error
+            return undefined
+          },
+        )
+        identities.set(filename, result)
+      }
+      return result
+    }
     const canonicalRoots = async (values: string[] | null) =>
       values === null
         ? null
@@ -177,10 +201,18 @@ export class WorkspaceCoordinator {
             [...new Set(values)].map(async (root) => {
               let canonical = await FileMutation.canonical(root)
               if (process.platform === "win32") canonical = canonical.toLowerCase()
-              const stat = await fs.stat(canonical, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
-                if (error.code !== "ENOENT") throw error
-              })
-              return { path: canonical, physicalID: stat ? `${stat.dev}:${stat.ino}:${stat.birthtimeNs}` : undefined }
+              const parents: string[] = []
+              for (let parent = path.dirname(canonical); parent !== canonical; parent = path.dirname(parent)) {
+                parents.push(parent)
+                if (path.dirname(parent) === parent) break
+              }
+              const [physicalID, ancestorPhysicalIDs] = await Promise.all([
+                identify(canonical),
+                Promise.all(parents.map(identify)).then((items) =>
+                  items.filter((item): item is string => item !== undefined),
+                ),
+              ])
+              return { path: canonical, physicalID, ancestorPhysicalIDs }
             }),
           )
     const roots = await canonicalRoots(input.roots)
