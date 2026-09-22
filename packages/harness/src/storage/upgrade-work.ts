@@ -4,6 +4,7 @@ import { Context } from "../util/context"
 import { Storage } from "./storage"
 import { AtomicFile } from "./atomic-file"
 import { StorageBusyError } from "./errors"
+import { withStorageQueueOptions } from "./queue"
 
 interface Work {
   background: boolean
@@ -56,7 +57,10 @@ export namespace UpgradeWork {
   export function run<T>(work: Work, body: () => Promise<T>) {
     return context.provide(work, async () => {
       try {
-        return await body()
+        return await withStorageQueueOptions(
+          { priority: work.background ? "background" : "foreground", signal: work.signal },
+          body,
+        )
       } catch (error) {
         work.signal?.throwIfAborted()
         throw error

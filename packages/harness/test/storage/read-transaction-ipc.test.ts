@@ -18,7 +18,8 @@ interface RecordedMetric {
 }
 
 interface DriverInternals {
-  worker: { send(message: unknown): void }
+  writer: { worker: { send(message: unknown): void } }
+  reader: { worker: { send(message: unknown): void } }
   readerQueue: StorageQueue
 }
 
@@ -49,20 +50,19 @@ function internals(store: TransactionalStore) {
 
 /** Records every statement the store sends to the SQLite worker. */
 function captureStatements(store: TransactionalStore) {
-  const worker = internals(store).worker
-  const deliver = worker.send.bind(worker)
   const statements: string[] = []
-  worker.send = (message: unknown) => {
-    const request = message as { action: string; statement?: string }
-    if (request.action === "query" && request.statement) statements.push(request.statement)
-    return deliver(message)
-  }
-  return {
-    statements,
-    restore: () => {
+  const restores = [internals(store).writer.worker, internals(store).reader.worker].map((worker) => {
+    const deliver = worker.send.bind(worker)
+    worker.send = (message: unknown) => {
+      const request = message as { action: string; statement?: string }
+      if (request.action === "query" && request.statement) statements.push(request.statement)
+      return deliver(message)
+    }
+    return () => {
       worker.send = deliver
-    },
-  }
+    }
+  })
+  return { statements, restore: () => restores.forEach((restore) => restore()) }
 }
 
 describe("read-only transaction round trips", () => {

@@ -74,9 +74,9 @@ describe("terminal unavailability is a declared driver contract", () => {
       )
       expect(typeof stop).toBe("function")
 
-      const worker = opened as unknown as { worker: Bun.Subprocess }
-      worker.worker.kill()
-      await worker.worker.exited
+      const worker = opened as unknown as { writer: { worker: Bun.Subprocess } }
+      worker.writer.worker.kill()
+      await worker.writer.worker.exited
       // The exit callback lands after `exited` resolves.
       await Bun.sleep(50)
 

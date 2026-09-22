@@ -50,6 +50,7 @@ export namespace StorageBudgets {
   export interface Timings {
     /** Budget for one ordinary statement. */
     requestDeadlineMs: number
+    ordinaryCeilingMs: number
     /** Budget for one liveness probe. */
     probeTimeoutMs: number
     /** Unanswered probes in a row before the worker is called occupied. */
@@ -101,7 +102,12 @@ export namespace StorageBudgets {
       // budget: the invariant only protects the worker if it holds for *every*
       // allowed single-statement limit, so a configuration that would let one
       // ordinary statement outlive the ceiling must not take effect either.
-      requestDeadlineMs: Math.min(Math.max(1, storage.requestDeadlineMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
+      requestDeadlineMs: Math.min(
+        Math.max(1, storage.requestDeadlineMs),
+        30_000,
+        Math.floor(hardCeilingMs / CEILING_MARGIN),
+      ),
+      ordinaryCeilingMs: Math.min(60_000, hardCeilingMs),
       probeTimeoutMs: Math.min(Math.max(1, storage.probeTimeoutMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
       probeAttempts: Math.max(1, storage.probeAttempts),
       hardCeilingMs,

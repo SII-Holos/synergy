@@ -76,6 +76,8 @@ This is an invariant for event handlers and refetches:
 - use `produce()` only for insertion, removal, a narrow leaf mutation, or coordinated bucket deletion;
 - do not replace a whole object merely because one event carries a complete serialized value.
 
+Reconciliation applies only to the same entity identity. A single-entity projection such as `latestContextMessage` may share its object with the message window. When its message ID changes, replace the projection pointer through `produce()`; reconciling at that object root mutates the previous transcript entity, including its ID. Same-ID updates continue to reconcile in place.
+
 Preserving unchanged identities keeps memos and components that read unrelated leaves from invalidating on every timestamp, status, or streaming update.
 
 Streaming delta application is even narrower: it appends only to the `text` leaf of the matching text/reasoning part.
@@ -458,7 +460,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 
 Tool review tabs persist session/message/part identity and a selected path. The mounted panel loads that message through the Scope-aware generated SDK and aborts obsolete requests. It does not persist tool payloads in layout state or create a session-wide eager fetch. File links use the existing workspace-file loading and eviction owner. String interning has bounded admission maps as well as a bounded retained-value map; promotion removes the admission reference. Rendering and cache capacities follow the [bounded tool rendering decision](../decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 
-Library navigation and search controls remain outside content Suspense boundaries. Usage reads return the last computed snapshot without refreshing history; an explicit sync streams incremental refresh progress, and concurrent refreshes share a job. A new-session handoff keeps observing canonical message arrival after its deadline, so an error state can converge when materialization eventually finishes. Adjacent sessions are not automatically prefetched during route transitions; explicit hover prefetch remains available.
+Library navigation and search controls remain outside content Suspense boundaries. Usage reads return the last computed snapshot without refreshing history; an explicit sync streams incremental refresh progress, and concurrent refreshes share a job. A new-session handoff polls `session.inputStatus` serially and consumes coalescible `session.input.progress` events while waiting for its canonical message. Elapsed time changes explanatory copy, never success or failure. Network loss remains reconnecting; authoritative parked or paused input exposes retry, and cancellation exposes dismissal. Switching sessions or retry attempts aborts the old observer and ignores late responses. Adjacent sessions are not automatically prefetched during route transitions; explicit hover prefetch remains available.
 
 ## Historical upgrade status
 

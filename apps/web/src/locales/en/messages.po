@@ -13957,6 +13957,16 @@ msgstr "Retry"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.cancelled"
+msgstr "This message was cancelled. You can dismiss this notice."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.delayed"
+msgstr "Your message is saved. Preparation is taking longer than usual; processing will continue automatically."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.initializing"
 msgstr "Your first message is saved. Initializing the conversation."
 
@@ -13967,8 +13977,23 @@ msgstr "Your first message is queued for processing."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.reconnecting"
+msgstr "Your message was saved. Reconnecting to check its progress."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.retrying"
+msgstr "Your message is saved. Retrying preparation automatically."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.stalled"
 msgstr "Your first message is still saved, but initialization did not finish. Retry to resume processing."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.storage"
+msgstr "Your message is saved and waiting for storage to become available."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -19286,6 +19311,18 @@ msgstr "Inspect file snapshot storage usage per project scope."
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
 msgstr "Storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.action"
+msgstr "Remove expired evidence"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.description"
+msgstr "Remove execution evidence outside your retention window during maintenance. Conversation messages are preserved. Removed evidence cannot be restored."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.title"
+msgstr "Large expired execution records"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.reclaim.control.failed"

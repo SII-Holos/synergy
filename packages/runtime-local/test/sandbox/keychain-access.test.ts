@@ -3,6 +3,10 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { MacBackend } from "../../src/sandbox/macos"
+import { testRuntime } from "../support/runtime"
+
+const runtime = await testRuntime()
+afterAll(() => runtime.close())
 
 describe.skipIf(process.platform !== "darwin")("macOS native Keychain access", () => {
   let root: string
@@ -52,14 +56,16 @@ int main(void) {
         expect(Bun.spawnSync(["/bin/cat", secret]).stdout.toString()).toBe("synthetic credential")
 
         const run = (command: string, args: string[] = []) => {
-          const wrapper = MacBackend.prepare({
-            command,
-            args,
-            workspace,
-            sandboxMode,
-            networkMode,
-            dataDenyRoots: [secret],
-          })
+          const wrapper = runtime.run(() =>
+            MacBackend.prepare({
+              command,
+              args,
+              workspace,
+              sandboxMode,
+              networkMode,
+              dataDenyRoots: [secret],
+            }),
+          )
           try {
             expect(wrapper.sandboxed).toBe(true)
             return Bun.spawnSync([wrapper.command, ...wrapper.args], { stdout: "pipe", stderr: "pipe" })

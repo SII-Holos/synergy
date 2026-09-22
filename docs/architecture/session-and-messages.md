@@ -97,6 +97,12 @@ This single-writer rule supports:
 
 The durable session can outlive its in-memory runtime. Runtime state is reconstructed from persisted messages, the `paused` latch, workflow records, BlueprintLoop state, and recovery metadata after restart. A restart never resumes work: every session that ended abnormally is recorded as paused and waits for an explicit Continue or Abandon.
 
+## Durable input recovery
+
+A client-supplied message ID identifies one input. Concurrent retries share a deterministic Inbox item, and materialization receipts and terminal runs prevent reinsertion after completion or cancellation. Explicit Inbox retry clears its failure and the session pause under the session control lock; task retry does not reopen an unrelated old root. A newly queued task advances past historical roots without execution evidence and terminal roots before resolving configuration, so an unavailable historical model cannot own the new task.
+
+`GET /session/{sessionID}/input/{messageID}/status` projects the durable Inbox item, canonical message and Rollout run in one storage snapshot. States are `accepted`, `preparing`, `queued_storage`, `materializing`, `running`, `retrying`, `completed`, `cancelled` and `failed`. Scheduling and queue detail is bounded Runtime-local telemetry published through the coalescible `session.input.progress` event; it is not another durable message state machine. Exhausted scheduling retries park the saved task. A paused saved input requires explicit retry and reports `SessionPaused`; time spent waiting alone never declares failure. A begun run stays running through detached settlement until its durable terminal state is recorded.
+
 ## Task Roots
 
 A session processes a serial sequence of tasks. One root user message `R` owns each task.

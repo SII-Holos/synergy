@@ -1,5 +1,6 @@
 import { SessionRecords } from "./records"
 import { RuntimeContext } from "../lifecycle/context"
+import { SessionInputProgress } from "./input-progress"
 import { Bus } from "../bus"
 import { GlobalBus } from "../bus/global"
 import { Context } from "../util/context"
@@ -149,6 +150,10 @@ export namespace SessionManager {
     const instanceState = runtimeState()
 
     instanceState.accepting = true
+  }
+  export function hasPendingWake(): boolean {
+    const state = runtimeState()
+    return state.activeWakeChains.size > 0 || state.running.size > 0
   }
   export async function drain() {
     const instanceState = runtimeState()
@@ -636,12 +641,16 @@ export namespace SessionManager {
       chain.requested = false
       const operation = wake(sessionID)
         .then(() => {
+          SessionInputProgress.clearFailure(sessionID)
           if (!instanceState.accepting) return
           if (chain.requested) scheduleWakeAttempt(sessionID, reason, 0, 0)
           else instanceState.activeWakeChains.delete(sessionID)
         })
-        .catch((error) => {
+        .catch(async (error) => {
           if (!instanceState.accepting) return
+          const terminal = isPermanentWakeFailure(error) || WAKE_RETRY_DELAYS_MS[failureCount] === undefined
+          SessionInputProgress.schedulingFailure(sessionID, error, terminal)
+          if (terminal) await SessionInbox.failScheduledTask(sessionID).catch(() => {})
           if (isPermanentWakeFailure(error)) {
             instanceState.activeWakeChains.delete(sessionID)
             log.error("async session wake failed permanently", { sessionID, reason, error, permanent: true })
@@ -694,6 +703,7 @@ export namespace SessionManager {
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {
+    SessionInputProgress.clearFailure(sessionID)
     const instanceState = runtimeState()
     if (!instanceState.accepting) return
 

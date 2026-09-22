@@ -333,8 +333,15 @@ export function extractFailureSignals(detail: string, maxFails = 30): string[] {
       const block = [lines[index]!]
       for (let next = index + 1; next < lines.length && block.length < 15; next++) {
         const nextTrimmed = lines[next]!.trim()
-        if (nextTrimmed === "") break
-        if (nextTrimmed.startsWith("(pass) ") || nextTrimmed.startsWith("(fail) ")) break
+        if (nextTrimmed === "") continue
+        if (
+          nextTrimmed.startsWith("(pass) ") ||
+          nextTrimmed.startsWith("(fail) ") ||
+          nextTrimmed.startsWith("error: ") ||
+          nextTrimmed.startsWith("##[") ||
+          /\.(?:test|spec)\.tsx?:$/.test(nextTrimmed)
+        )
+          break
         block.push(lines[next]!)
       }
       signals.push(block.join("\n"))

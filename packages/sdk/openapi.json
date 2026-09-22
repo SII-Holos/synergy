@@ -29,9 +29,21 @@
                     "modelReady": {
                       "description": "Whether at least one AI provider with a usable model is configured",
                       "type": "boolean"
+                    },
+                    "storage": {
+                      "type": "object",
+                      "properties": {
+                        "readerReady": {
+                          "type": "boolean"
+                        },
+                        "writerReady": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["readerReady", "writerReady"]
                     }
                   },
-                  "required": ["healthy", "version", "modelReady"]
+                  "required": ["healthy", "version", "modelReady", "storage"]
                 }
               }
             }
@@ -3250,6 +3262,122 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/maintenance/prepare": {
+      "post": {
+        "operationId": "global.maintenancePrepare",
+        "summary": "Reserve an idle runtime for offline maintenance",
+        "description": "Atomically refuse active or pending work and close new mutations and session execution for 30 seconds. The desktop stops its owned server within this lease before opening storage exclusively.",
+        "responses": {
+          "200": {
+            "description": "Admission lease",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceAdmissionLease"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Runtime has active work or another lease",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.maintenancePrepare({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/maintenance/release": {
+      "post": {
+        "operationId": "global.maintenanceRelease",
+        "summary": "Release maintenance admission",
+        "responses": {
+          "200": {
+            "description": "Admission reopened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Lease does not match",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": ["token"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.maintenanceRelease({\n  ...\n})"
           }
         ]
       }
@@ -9337,6 +9465,93 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/input/{messageID}/status": {
+      "get": {
+        "operationId": "session.inputStatus",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "messageID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get durable input progress",
+        "description": "Project input admission, materialization and execution state from the session's durable records.",
+        "responses": {
+          "200": {
+            "description": "Input progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInputProgress"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inputStatus({\n  ...\n})"
           }
         ]
       }
@@ -31701,9 +31916,23 @@
               }
             },
             "required": ["pending", "running", "paused", "releasedPages"]
+          },
+          "prune": {
+            "type": "object",
+            "properties": {
+              "owners": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "updatedAt": {
+                "type": "number"
+              }
+            },
+            "required": ["owners", "updatedAt"]
           }
         },
-        "required": ["format", "reclaim"]
+        "required": ["format", "reclaim", "prune"]
       },
       "StorageReclaimControlInput": {
         "type": "object",
@@ -33341,6 +33570,18 @@
           }
         },
         "required": ["active", "sessions", "backgroundJobs"]
+      },
+      "MaintenanceAdmissionLease": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "number"
+          }
+        },
+        "required": ["token", "expiresAt"]
       },
       "SessionPausedReason": {
         "type": "string",
@@ -45941,6 +46182,56 @@
         },
         "required": ["id", "sessionID", "mode", "summary", "source", "time", "orderKey", "messageID"]
       },
+      "SessionInputProgress": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "preparing",
+              "queued_storage",
+              "materializing",
+              "running",
+              "retrying",
+              "completed",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "durable": {
+            "type": "boolean"
+          },
+          "canonical": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "itemID": {
+            "type": "string"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["sessionID", "messageID", "state", "durable", "canonical", "updatedAt"]
+      },
       "SessionInputResult": {
         "anyOf": [
           {
@@ -55709,6 +56000,19 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.input.progress": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.input.progress"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/SessionInputProgress"
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.updated": {
         "type": "object",
         "properties": {
@@ -57278,6 +57582,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.input.progress"
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"

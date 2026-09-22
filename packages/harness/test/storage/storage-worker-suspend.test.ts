@@ -4,7 +4,7 @@ const runtime = await testRuntime()
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { SqliteDriver } from "../../src/storage/sqlite-driver"
+import { SqliteWorkerClient } from "../../src/storage/sqlite-worker-client"
 import { StorageBusyError, StorageUnavailableError } from "../../src/storage/errors"
 import { StorageBudgets } from "../../src/storage/budgets"
 import type { SqliteRequest } from "../../src/storage/sql-contract"
@@ -24,7 +24,7 @@ const SLOW_QUERY =
   "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 1000000) SELECT 1 AS value FROM (SELECT count(*) FROM c)"
 
 const roots: string[] = []
-const drivers: SqliteDriver[] = []
+const drivers: SqliteWorkerClient[] = []
 const interceptions: Array<() => void> = []
 
 afterEach(() =>
@@ -38,19 +38,24 @@ afterEach(() =>
 async function openDriver() {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "storage-suspend-"))
   roots.push(root)
-  const driver = await SqliteDriver.open(path.join(root, "agent.sqlite"))
+  const driver = new SqliteWorkerClient("writer")
+  await driver.request({ action: "open", filename: path.join(root, "agent.sqlite") })
   drivers.push(driver)
   return driver
 }
 
-function internals(driver: SqliteDriver) {
+async function query(driver: SqliteWorkerClient, statement: string) {
+  return (await driver.request({ action: "query", statement })).rows
+}
+
+function internals(driver: SqliteWorkerClient) {
   return driver as unknown as { closed: boolean; queuedBytes: number; worker: Bun.Subprocess }
 }
 
 // Intercepts the driver's outgoing requests. Every test must end with real
 // delivery restored, because teardown sends a closing request of its own.
 function interceptSend(
-  driver: SqliteDriver,
+  driver: SqliteWorkerClient,
   handler: (message: SqliteRequest, deliver: (override?: SqliteRequest) => void) => void,
 ) {
   const worker = internals(driver).worker as unknown as { send(message: SqliteRequest): void }
@@ -128,16 +133,16 @@ describe("SQLite worker deadline across host suspension", () => {
         ),
       )
 
-      expect(await driver.query(OWED_QUERY)).toEqual([{ value: 1n }])
+      expect(await query(driver, OWED_QUERY)).toEqual([{ value: 1n }])
       expect(deadlines.armed.length).toBeGreaterThan(0)
       expect(internals(driver).closed).toBe(false)
       expect(internals(driver).worker.killed).toBe(false)
-      expect(await driver.query("SELECT 2 AS value")).toEqual([{ value: 2n }])
+      expect(await query(driver, "SELECT 2 AS value")).toEqual([{ value: 2n }])
     }))
 
   test("a worker that never answers any request escalates once and rejects new work", () =>
     runtime.run(async () => {
-      using _deadlines = capWallClockDeadlines()
+      using _deadlines = capWallClockDeadlines(1_000)
       using clock = suspendMonotonicClock()
       const driver = await openDriver()
       let probes = 0
@@ -145,14 +150,15 @@ describe("SQLite worker deadline across host suspension", () => {
         if (message.action === "ping") probes++
         // Swallow every request, probes included, and let the monotonic clock run
         // past each budget so the terminal path is reached deterministically.
-        clock.clock.current += 60_000
+        clock.clock.current += message.action === "ping" ? 5_000 : 30_000
       })
       const unavailable: Error[] = []
       driver.onUnavailable((error) => unavailable.push(error))
 
-      const first = await failure(driver.query(OWED_QUERY))
+      const first = await failure(query(driver, OWED_QUERY))
       expect(first).toBeInstanceOf(StorageUnavailableError)
       expect(unavailable).toHaveLength(1)
+      expect(clock.clock.current).toBeLessThanOrEqual(61_000)
       // The worker is probed until its silence outlasts the ceiling rather than
       // being declared dead after a fixed number of unanswered probes, so the
       // count is bounded by the ceiling-to-probe-timeout ratio instead of a
@@ -163,14 +169,14 @@ describe("SQLite worker deadline across host suspension", () => {
       await internals(driver).worker.exited
       expect(internals(driver).worker.killed).toBe(true)
 
-      const second = await failure(driver.query("SELECT 2 AS value"))
+      const second = await failure(query(driver, "SELECT 2 AS value"))
       expect(second).toBe(first)
       expect(unavailable).toHaveLength(1)
     }))
 
   test("a worker that answers the liveness probe survives while the request keeps its deadline", () =>
     runtime.run(async () => {
-      using _deadlines = capWallClockDeadlines()
+      using _deadlines = capWallClockDeadlines(1_000)
       using clock = suspendMonotonicClock()
       const driver = await openDriver()
       let probes = 0
@@ -183,7 +189,7 @@ describe("SQLite worker deadline across host suspension", () => {
         clock.clock.current += 30_000
       })
 
-      expect(await failure(driver.query(OWED_QUERY))).toBeInstanceOf(StorageBusyError)
+      expect(await failure(query(driver, OWED_QUERY))).toBeInstanceOf(StorageBusyError)
       expect(probes).toBe(1)
       expect(internals(driver).closed).toBe(false)
       expect(internals(driver).worker.killed).toBe(false)
@@ -191,14 +197,14 @@ describe("SQLite worker deadline across host suspension", () => {
       const worker = internals(driver).worker
       expect(worker.killed).toBe(false)
       for (const restore of interceptions.splice(0)) restore()
-      expect(await driver.query("SELECT 2 AS value")).toEqual([{ value: 2n }])
+      expect(await query(driver, "SELECT 2 AS value")).toEqual([{ value: 2n }])
     }))
 
-  test("an ordinary query, transaction and close still work end to end", () =>
+  test("ordinary worker queries and close still work end to end", () =>
     runtime.run(async () => {
       const driver = await openDriver()
-      expect(await driver.query(OWED_QUERY)).toEqual([{ value: 1n }])
-      expect(await driver.transaction((tx) => tx.query("SELECT 2 AS value"))).toEqual([{ value: 2n }])
+      expect(await query(driver, OWED_QUERY)).toEqual([{ value: 1n }])
+      expect(await query(driver, "SELECT 2 AS value")).toEqual([{ value: 2n }])
       expect(internals(driver).closed).toBe(false)
       const worker = internals(driver).worker
       await driver.close()
@@ -207,7 +213,7 @@ describe("SQLite worker deadline across host suspension", () => {
 
   test("a probe timeout reaches the caller and the metric and issue path instead of being discarded", () =>
     runtime.run(async () => {
-      using _deadlines = capWallClockDeadlines()
+      using _deadlines = capWallClockDeadlines(1_000)
       using clock = suspendMonotonicClock()
       const driver = await openDriver()
       const recorded: RecordedMetric[] = []
@@ -223,7 +229,7 @@ describe("SQLite worker deadline across host suspension", () => {
       let probes = 0
       interceptSend(driver, (message, deliver) => {
         // The statement outlives its budget while the worker itself stays alive.
-        clock.clock.current += 60_000
+        clock.clock.current += message.action === "ping" ? 5_000 : 30_000
         if (message.action !== "ping") return
         probes++
         // The worker is silent for its first `probeAttempts` probes and answers the
@@ -235,7 +241,7 @@ describe("SQLite worker deadline across host suspension", () => {
 
       // The caller learns why its request failed rather than waiting on a silence
       // only the probe path knew about.
-      expect(await failure(driver.query(OWED_QUERY))).toBeInstanceOf(StorageBusyError)
+      expect(await failure(query(driver, OWED_QUERY))).toBeInstanceOf(StorageBusyError)
 
       // Every unanswered probe is counted under the published name, so the reason a
       // probe failed survives past the point the probe settles.
@@ -250,7 +256,7 @@ describe("SQLite worker deadline across host suspension", () => {
       expect(internals(driver).closed).toBe(false)
       expect(internals(driver).worker.killed).toBe(false)
       for (const restore of interceptions.splice(0)) restore()
-      expect(await driver.query("SELECT 2 AS value")).toEqual([{ value: 2n }])
+      expect(await query(driver, "SELECT 2 AS value")).toEqual([{ value: 2n }])
     }))
   test("a worker that never finishes teardown cannot hold shutdown open", () =>
     runtime.run(async () => {

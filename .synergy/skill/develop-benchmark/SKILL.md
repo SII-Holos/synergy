@@ -42,6 +42,7 @@ description: Change or validate the repository benchmark evaluator, native harne
    A top-level npm version pin can still admit newer prerelease dependencies. Bind any validated dependency publication cutoff to its exact native package version, include it in cache identity and receipts, and test warm offline reuse plus cutoff invalidation. Other explicit versions must not inherit that condition. Verify the actual native Docker matrix after changing dependency resolution; successful installation alone does not establish compatibility.
 
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
+   A pinned entry package can still resolve drifting transitive ranges during cold preparation. Reproduce registry installation failures separately from model execution; scope any necessary override to the verified release, include it in the manifest and artifact identity, and rerun the native matrix. Never silence the failure or apply an exception to unverified versions.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.
 
 ## Verify and publish

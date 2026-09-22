@@ -11,6 +11,7 @@ import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -55,6 +56,20 @@ describe("session input acceptance", () => {
             if (!item) throw new Error("Expected a durable inbox item")
             expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toEqual([item.id])
             expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
+            const progress = await Server.App().request(
+              `/session/${session.id}/input/${item.messageID}/status?directory=${encodeURIComponent(scope.local!.worktree)}`,
+            )
+            expect(progress.status).toBe(200)
+            expect(await progress.json()).toMatchObject({
+              state: "accepted",
+              durable: true,
+              canonical: false,
+              itemID: item.id,
+            })
+            const missing = await Server.App().request(
+              `/session/${session.id}/input/msg_missing/status?directory=${encodeURIComponent(scope.local!.worktree)}`,
+            )
+            expect(missing.status).toBe(404)
             finishRequest(true)
           },
         })
@@ -151,6 +166,7 @@ describe("session input acceptance", () => {
               sessionID,
               parts: [{ type: "text", text: "Resume this message" }],
             })
+            await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
 
             const response = await Server.App().request(
               `/session/${sessionID}/inbox/${item.id}/retry?directory=${encodeURIComponent(scope.local!.worktree)}`,
@@ -164,6 +180,7 @@ describe("session input acceptance", () => {
             })
             expect((await SessionInbox.list(sessionID)).map((entry) => entry.id)).toEqual([item.id])
             expect(requests).toEqual([{ sessionID, reason: "user-input-retry" }])
+            expect(await SessionLifecycle.snapshot(sessionID)).toBeUndefined()
           },
         })
       } finally {

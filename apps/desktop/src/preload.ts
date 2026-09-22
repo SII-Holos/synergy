@@ -67,8 +67,8 @@ const server = {
   restart() {
     return ipcRenderer.invoke("desktop.server.restart") as Promise<DesktopServerStatus | null>
   },
-  maintenance() {
-    return ipcRenderer.invoke("desktop.server.maintenance") as Promise<DesktopServerStatus | null>
+  maintenance(operation?: "format" | "prune") {
+    return ipcRenderer.invoke("desktop.server.maintenance", operation) as Promise<DesktopServerStatus | null>
   },
   cancelMaintenance() {
     return ipcRenderer.invoke("desktop.server.cancelMaintenance") as Promise<DesktopServerStatus | null>

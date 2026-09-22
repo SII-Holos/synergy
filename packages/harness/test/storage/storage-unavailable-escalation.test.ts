@@ -42,9 +42,9 @@ test("an unexpected worker exit fails the store terminally and notifies its host
   const unavailable: Error[] = []
   store.onUnavailable((error) => unavailable.push(error))
 
-  const killing = driver! as unknown as { worker: Bun.Subprocess }
-  killing.worker.kill()
-  await killing.worker.exited
+  const killing = driver! as unknown as { writer: { worker: Bun.Subprocess } }
+  killing.writer.worker.kill()
+  await killing.writer.worker.exited
   // The exit callback lands after `exited` resolves.
   await Bun.sleep(50)
 

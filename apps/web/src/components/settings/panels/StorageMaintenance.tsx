@@ -38,6 +38,13 @@ const reclaimPaused = { id: "settings.storage.reclaim.status.paused", message: "
 const reclaimDone = { id: "settings.storage.reclaim.status.done", message: "No space reclamation pending" }
 const pause = { id: "settings.storage.reclaim.pause", message: "Pause" }
 const unpause = { id: "settings.storage.reclaim.resume", message: "Resume" }
+const pruneTitle = { id: "settings.storage.prune.title", message: "Large expired execution records" }
+const pruneDescription = {
+  id: "settings.storage.prune.description",
+  message:
+    "Remove execution evidence outside your retention window during maintenance. Conversation messages are preserved. Removed evidence cannot be restored.",
+}
+const pruneAction = { id: "settings.storage.prune.action", message: "Remove expired evidence" }
 
 export function StorageMaintenance(props: {
   status?: StorageMaintenanceStatus
@@ -82,14 +89,16 @@ export function StorageMaintenance(props: {
     })
   })
 
-  async function run(next: "maintenance" | "return") {
+  async function run(next: "maintenance" | "return", operation?: "format" | "prune") {
     if (action() && next !== "return") return
     if (action() === "return") return
     setAction(next)
     setError(undefined)
     try {
       const result =
-        next === "maintenance" ? await props.bridge?.maintenance?.() : await props.bridge?.cancelMaintenance?.()
+        next === "maintenance"
+          ? await props.bridge?.maintenance?.(operation)
+          : await props.bridge?.cancelMaintenance?.()
       if (!disposed && result) setDesktop(result)
     } catch (error) {
       if (!disposed && action() === next) setError(requestErrorMessage(error))
@@ -164,6 +173,27 @@ export function StorageMaintenance(props: {
                     </Show>
                   }
                 />
+                <Show when={(status().prune?.owners ?? 0) > 0}>
+                  <SettingRow
+                    title={_(pruneTitle)}
+                    description={_(pruneDescription)}
+                    trailing={
+                      <Show when={managed()}>
+                        <Button
+                          size="small"
+                          disabled={Boolean(action())}
+                          onClick={() => void run("maintenance", "prune")}
+                        >
+                          {_(pruneAction)}
+                        </Button>
+                      </Show>
+                    }
+                  />
+                  <Show when={!managed()}>
+                    <p class="ds-section-hint">{_(external)}</p>
+                    <code class="break-words">synergy data storage prune</code>
+                  </Show>
+                </Show>
                 <Show when={status().reclaim.error}>{(message) => <p class="ds-section-hint">{message()}</p>}</Show>
               </>
             )}

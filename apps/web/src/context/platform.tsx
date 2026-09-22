@@ -123,7 +123,7 @@ export type DesktopServerStatus = {
 export type DesktopServerBridge = {
   status(): Promise<DesktopServerStatus | null>
   restart(): Promise<DesktopServerStatus | null>
-  maintenance?(): Promise<DesktopServerStatus | null>
+  maintenance?(operation?: "format" | "prune"): Promise<DesktopServerStatus | null>
   cancelMaintenance?(): Promise<DesktopServerStatus | null>
   diagnostics?(): Promise<string>
 }

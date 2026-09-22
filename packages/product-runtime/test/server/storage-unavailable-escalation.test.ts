@@ -119,7 +119,7 @@ test(
       }
       await mark(process.env.SYNERGY_ESCALATION_READY)
 
-      owner.run(() => Storage.current().store.driver.worker.kill())
+      owner.run(() => Storage.current().store.driver.writer.worker.kill())
 
       // Closing admission is the first act of the escalation, so a 503 here is
       // the escalation arriving. The marker is written only when it is actually

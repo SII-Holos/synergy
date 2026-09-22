@@ -8,6 +8,7 @@ const timeout = z.number().int().positive().max(2_147_483_647)
 export const StorageMaintenanceOperation = z.enum([
   "vacuum",
   "reclaim",
+  "prune",
   "integrity-check",
   "create-index",
   "drop-index",

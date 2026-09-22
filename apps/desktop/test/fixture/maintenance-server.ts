@@ -6,7 +6,7 @@ const root = process.env.MAINTENANCE_FIXTURE_ROOT!
 const mode = await Bun.file(`${root}/mode`).text()
 const command = process.argv[2]
 await fs.appendFile(`${root}/commands`, `${command}\n`)
-if (command === "migration") {
+if (command === "migration" || (command === "data" && process.argv[4] === "prune")) {
   await Bun.write(`${root}/maintenance-pid`, String(process.pid))
   process.stdout.write(runtimeStartupLine({ phase: "migration", step: 1, current: 256, total: 0 }))
   process.stdout.write("SYNERGY_STARTUP_V1 {invalid}\n")
@@ -39,12 +39,18 @@ const port = Number(process.argv[process.argv.indexOf("--port") + 1])
 const server = Bun.serve({
   port,
   hostname: "127.0.0.1",
-  fetch: (request) =>
-    Response.json(
+  fetch: (request) => {
+    if (new URL(request.url).pathname === "/global/maintenance/prepare")
+      return Response.json(
+        mode === "busy" ? { message: "working" } : { token: "fixture-lease", expiresAt: Date.now() + 30_000 },
+        { status: mode === "busy" ? 409 : 200 },
+      )
+    return Response.json(
       new URL(request.url).pathname === "/global/activity"
         ? { active: mode === "busy", sessions: mode === "busy" ? 1 : 0, backgroundJobs: 0 }
         : { healthy: true },
-    ),
+    )
+  },
 })
 process.on("SIGTERM", () => {
   server.stop(true)

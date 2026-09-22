@@ -117,3 +117,20 @@ test.skipIf(!supported)("shutdown during environment resolution cannot launch an
   await stopping
   expect(await Bun.file(path.join(runtime.root, "commands")).exists()).toBe(false)
 })
+
+test.skipIf(!supported)(
+  "expired-evidence maintenance uses the prune command and restarts its owned server",
+  async () => {
+    await using runtime = await fixture("success")
+    await runtime.manager.start()
+    const url = await runtime.manager.runMaintenance("prune")
+    expect((await fetch(`${url}/global/health`)).ok).toBe(true)
+    expect(runtime.manager.status().maintenance.state).toBe("completed")
+    expect((await Bun.file(path.join(runtime.root, "commands")).text()).trim().split("\n")).toEqual([
+      "server",
+      "data",
+      "server",
+    ])
+  },
+  30_000,
+)

@@ -44,6 +44,73 @@ async function evidenceSurvives(store: TransactionalStore, scopeID: string, sess
   }
 }
 
+test("online retention defers a large owner intact and still prunes an eligible small owner", () =>
+  runtime.run(async () => {
+    await using tmp = await fixture()
+    const { store } = tmp
+    await store.transaction((tx) =>
+      tx.writeMany([
+        { key: ["sessions", "scope", "ses_large", "info"], value: { id: "ses_large" } },
+        ...Array.from({ length: 2200 }, (_, index) => ({
+          key: ["sessions", "scope", "ses_large", "rollout", "chunks", String(index)],
+          value: { index },
+        })),
+      ]),
+    )
+    await writeEvidence(store, "scope", "ses_small")
+    const report = await Storage.provide({ store, artifactDirectory: path.dirname(tmp.filename) }, () =>
+      StorageRetention.run({ retentionMs: RETENTION, maxBytes: 0, liveSessionIDs: [], now: Date.now() + 30 * DAY }),
+    )
+    expect(report.deferred).toEqual([{ key: ["sessions", "scope", "ses_large", "rollout"], reason: "records" }])
+    expect(report.pruned.map((owner) => owner.key[2])).toEqual(["ses_small"])
+    expect(await store.list(["sessions", "scope", "ses_large", "rollout"])).toHaveLength(2200)
+    const maintenance = await Storage.provide({ store, artifactDirectory: path.dirname(tmp.filename) }, () =>
+      StorageRetention.run({
+        retentionMs: RETENTION,
+        maxBytes: 0,
+        liveSessionIDs: [],
+        now: Date.now() + 30 * DAY,
+        maintenance: true,
+      }),
+    )
+    expect(maintenance.pruned.map((owner) => owner.key[2])).toEqual(["ses_large"])
+    expect(await store.list(["sessions", "scope", "ses_large", "rollout"])).toHaveLength(0)
+    expect((await store.verify()).issues).toEqual([])
+  }))
+
+test("retention refreshes live owners after enumeration before starting deletion", () =>
+  runtime.run(async () => {
+    await using tmp = await fixture()
+    const { store } = tmp
+    await writeEvidence(store, "scope", "ses_became_live")
+    let reads = 0
+    const report = await Storage.provide({ store, artifactDirectory: path.dirname(tmp.filename) }, () =>
+      StorageRetention.run({
+        retentionMs: RETENTION,
+        maxBytes: 0,
+        liveSessionIDs: () => (++reads > 1 ? ["ses_became_live"] : []),
+        now: Date.now() + 30 * DAY,
+      }),
+    )
+    expect(report.pruned).toEqual([])
+    await evidenceSurvives(store, "scope", "ses_became_live")
+  }))
+
+test("offline maintenance clears an outdated deferral after its byte budget is raised", () =>
+  runtime.run(async () => {
+    await using tmp = await fixture()
+    await tmp.store.write(["storage_meta", "retention-deferred"], { owners: 3, updatedAt: 1 })
+    await Storage.provide({ store: tmp.store, artifactDirectory: path.dirname(tmp.filename) }, async () => {
+      await StorageRetention.run({
+        retentionMs: RETENTION,
+        maxBytes: 512 * 1024 * 1024,
+        liveSessionIDs: [],
+        maintenance: true,
+      })
+      expect(await StorageRetention.deferred()).toMatchObject({ owners: 0 })
+    })
+  }))
+
 test("evidence inside the retention window survives a retention pass", () =>
   runtime.run(async () => {
     await using tmp = await fixture()

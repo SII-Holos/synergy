@@ -28,7 +28,7 @@ type SynergyDesktop = {
   server: {
     status(): Promise<unknown>
     restart(): Promise<unknown>
-    maintenance(): Promise<unknown>
+    maintenance(operation?: "format" | "prune"): Promise<unknown>
     cancelMaintenance(): Promise<unknown>
     diagnostics(): Promise<unknown>
   }
@@ -93,9 +93,11 @@ describe("desktop preload bridge", () => {
     expect(await desktop.server.restart()).toEqual({ mode: "managed" })
 
     for (const action of ["maintenance", "cancelMaintenance", "diagnostics"] as const) {
-      expectInvoke(`desktop.server.${action}`, [], { ok: true })
+      expectInvoke(`desktop.server.${action}`, action === "maintenance" ? [undefined] : [], { ok: true })
       expect(await desktop.server[action]()).toEqual({ ok: true })
     }
+    expectInvoke("desktop.server.maintenance", ["prune"], { ok: true })
+    expect(await desktop.server.maintenance("prune")).toEqual({ ok: true })
 
     expectInvoke("desktop.shell.openExternal", ["https://example.com"], undefined)
     await desktop.shell.openExternal("https://example.com")

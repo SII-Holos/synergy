@@ -38,6 +38,8 @@ import { MDNS } from "./mdns"
 import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
+import { MaintenanceAdmissionRoute } from "./maintenance-admission"
 import { SessionRoute } from "./session"
 import { PtyRoute } from "./pty"
 import { createProviderRoute } from "./provider"
@@ -163,6 +165,8 @@ export namespace Server {
     _globalEventHeartbeatInterval: undefined as ReturnType<typeof setInterval> | undefined,
     _globalEventClients: undefined as ReturnType<typeof GlobalEventClients.createRegistry> | undefined,
     _shuttingDown: false,
+    mutations: 0,
+    maintenance: undefined as { token: string; expiresAt: number; timer: ReturnType<typeof setTimeout> } | undefined,
     requests: new Set<Promise<unknown>>(),
     contributions: undefined as Contributions | undefined,
     appInitialized: false,
@@ -174,12 +178,43 @@ export namespace Server {
     const instanceState = runtimeState()
 
     instanceState._shuttingDown = true
+    if (instanceState.maintenance) clearTimeout(instanceState.maintenance.timer)
+    instanceState.maintenance = undefined
   }
 
   export function resumeRequests(): void {
     const instanceState = runtimeState()
 
     instanceState._shuttingDown = false
+  }
+
+  function releaseMaintenance(token: string): boolean {
+    const state = runtimeState()
+    if (state.maintenance?.token !== token) return false
+    clearTimeout(state.maintenance.timer)
+    state.maintenance = undefined
+    if (!state._shuttingDown) SessionManager.openAdmission()
+    return true
+  }
+
+  function prepareMaintenance() {
+    const state = runtimeState()
+    if (
+      state.maintenance ||
+      state._shuttingDown ||
+      state.mutations > 1 ||
+      SessionManager.activeRuntimeCount() > 0 ||
+      SessionManager.hasPendingWake() ||
+      LoopJob.activeBackgroundCount() > 0
+    )
+      return
+    const token = crypto.randomUUID()
+    const expiresAt = Date.now() + 30_000
+    SessionManager.closeAdmission()
+    const timer = setTimeout(() => releaseMaintenance(token), 30_000)
+    timer.unref()
+    state.maintenance = { token, expiresAt, timer }
+    return { token, expiresAt }
   }
 
   function isLoopbackOrigin(input: string) {
@@ -445,12 +480,15 @@ export namespace Server {
     return instanceState.app
       .use("*", (c, next) =>
         owner.run(async () => {
+          const mutation = !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
+          if (mutation) instanceState.mutations++
           const task = next()
           instanceState.requests.add(task)
           try {
             await task
           } finally {
             instanceState.requests.delete(task)
+            if (mutation) instanceState.mutations--
           }
         }),
       )
@@ -531,6 +569,15 @@ export namespace Server {
       .use(async (c, next) => {
         if (instanceState._shuttingDown)
           return c.json({ name: "RuntimeShuttingDown", data: { message: "Synergy runtime is shutting down" } }, 503)
+        if (
+          instanceState.maintenance &&
+          !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
+          !["/global/maintenance/prepare", "/global/maintenance/release"].includes(c.req.path)
+        )
+          return c.json(
+            { name: "RuntimeMaintenance", data: { message: "Storage maintenance is preparing; retry shortly" } },
+            503,
+          )
         await next()
       })
       .use(async (c, next) => {
@@ -672,6 +719,7 @@ export namespace Server {
                       modelReady: z.boolean().meta({
                         description: "Whether at least one AI provider with a usable model is configured",
                       }),
+                      storage: z.object({ readerReady: z.boolean(), writerReady: z.boolean() }),
                     }),
                   ),
                 },
@@ -694,7 +742,10 @@ export namespace Server {
               })
             },
           })
-          return c.json({ healthy: true, version: Installation.VERSION, modelReady })
+          const storage = Storage.available()
+            ? Storage.current().store.readiness
+            : { readerReady: false, writerReady: false }
+          return c.json({ healthy: true, version: Installation.VERSION, modelReady, storage })
         },
       )
       .get(
@@ -917,6 +968,10 @@ export namespace Server {
       )
       .route("", contributionRoutes("global-services"))
       .route("/global/activity", GlobalActivityRoute())
+      .route(
+        "/global/maintenance",
+        MaintenanceAdmissionRoute({ prepare: prepareMaintenance, release: releaseMaintenance }),
+      )
       .route("/global/session", GlobalSessionRoute())
       .route("", contributionRoutes("global-navigation"))
       .get("/doc", async (c) => c.json(await openapi()))

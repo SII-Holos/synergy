@@ -33,6 +33,51 @@ function enqueueTask(sessionID: string) {
 }
 
 describe("session inbox enqueue admission", () => {
+  test("retrying a cancelled input never resurrects its queued work", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const input = {
+            sessionID: session.id,
+            messageID: "msg_cancelled_retry",
+            parts: [{ type: "text" as const, text: "send once" }],
+          }
+          const item = await SessionInbox.enqueueUser(input)
+          await RolloutLifecycle.cancel(session.id, item.messageID)
+          expect((await SessionInbox.enqueueUser(input)).id).toBe(item.id)
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+          expect((await RolloutLedger.getRun(RolloutLifecycle.owner(session), item.messageID)).status).toBe("cancelled")
+        },
+      })
+    }))
+
+  test("concurrent retries retain the supplied message identity and one inbox item", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const input = {
+            sessionID: session.id,
+            messageID: "msg_retry_identity",
+            model: { providerID: "test", modelID: "test" },
+            parts: [{ type: "text" as const, text: "send once" }],
+          }
+          const [first, retry] = await Promise.all([SessionInbox.enqueueUser(input), SessionInbox.enqueueUser(input)])
+          expect(first.messageID).toBe(input.messageID)
+          expect(retry.id).toBe(first.id)
+          expect(await SessionInbox.list(session.id)).toHaveLength(1)
+          await SessionInbox.materializeNextTask(session.id)
+          expect((await SessionInbox.enqueueUser(input)).id).toBe(first.id)
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+        },
+      })
+    }))
+
   test("enqueue opens a lightweight run shell that status polls observe", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

@@ -13,7 +13,6 @@ import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from
 import { ManagedServerOutput } from "./server-output.js"
 import { DesktopServerStartup } from "./server-startup.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
-import { parseDesktopActivity } from "./power-save.js"
 
 export type DesktopServerState = "stopped" | "starting" | "running" | "failed" | "external"
 
@@ -134,14 +133,14 @@ export class DesktopServerManager {
     }
   }
 
-  async runMaintenance(): Promise<string> {
+  async runMaintenance(operation: "format" | "prune" = "format"): Promise<string> {
     if (this.options.mode === "external")
       throw new Error("Storage maintenance must run on the machine hosting the Synergy server")
     if (this.maintenancePromise) return this.maintenancePromise
     if (this.startPromise) throw new Error("Server startup is still in progress")
     const controller = new AbortController()
     this.maintenanceController = controller
-    this.maintenancePromise = this.runMaintenanceManaged(controller.signal)
+    this.maintenancePromise = this.runMaintenanceManaged(controller.signal, operation)
     try {
       return await this.maintenancePromise
     } finally {
@@ -365,18 +364,26 @@ export class DesktopServerManager {
     return this.resolveProductCommand(managedServerArgs(port))
   }
 
-  private async runMaintenanceManaged(signal: AbortSignal): Promise<string> {
+  private async runMaintenanceManaged(signal: AbortSignal, operation: "format" | "prune"): Promise<string> {
+    let admission: { url: string; token: string } | undefined
     if (this.state === "running" && this.url) {
-      const response = await fetchWithTimeout(`${this.url}/global/activity`, 5000, signal)
-      if (!response.ok || parseDesktopActivity(await response.json()).active)
-        throw new Error("Synergy is working; wait for active tasks to finish before maintenance")
+      const response = await fetchWithTimeout(`${this.url}/global/maintenance/prepare`, 5000, signal, {
+        method: "POST",
+      })
+      if (!response.ok) throw new Error("Synergy is working; wait for active tasks to finish before maintenance")
+      const lease: unknown = await response.json()
+      if (!lease || typeof lease !== "object" || !("token" in lease) || typeof lease.token !== "string")
+        throw new Error("Synergy could not reserve a maintenance window")
+      admission = { url: this.url, token: lease.token }
     }
-    signal.throwIfAborted()
-    this.setMaintenance({ state: "running", progress: null, error: null })
     try {
+      signal.throwIfAborted()
+      this.setMaintenance({ state: "running", progress: null, error: null })
       await this.stopServer()
       if (this.child) throw new Error(this.lastError ?? "The server has not stopped")
-      const command = await this.resolveProductCommand(["migration", "run", "storage", "--maintenance"])
+      const command = await this.resolveProductCommand(
+        operation === "prune" ? ["data", "storage", "prune"] : ["migration", "run", "storage", "--maintenance"],
+      )
       const shellEnvironment = await this.shellEnvironmentPromise
       await fsp.mkdir(this.options.logDir, { recursive: true })
       signal.throwIfAborted()
@@ -428,6 +435,13 @@ export class DesktopServerManager {
       this.lastError = message
       this.state = "failed"
       throw new Error(message, { cause: error })
+    } finally {
+      if (admission)
+        await fetchWithTimeout(`${admission.url}/global/maintenance/release`, 5000, undefined, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: admission.token }),
+        }).catch(() => {})
     }
   }
 
@@ -642,8 +656,13 @@ export async function waitForHealth(
   }
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
-  if (!Number.isFinite(timeoutMs)) return fetch(url, signal ? { signal } : undefined)
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+  init?: RequestInit,
+): Promise<Response> {
+  if (!Number.isFinite(timeoutMs)) return fetch(url, { ...init, signal })
   if (timeoutMs <= 0) throw new Error("health request timed out")
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -659,7 +678,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number, signal?: AbortSi
     }, timeoutMs)
   })
   try {
-    return await Promise.race([fetch(url, { signal: controller.signal }), timeout])
+    return await Promise.race([fetch(url, { ...init, signal: controller.signal }), timeout])
   } finally {
     if (timer) clearTimeout(timer)
     signal?.removeEventListener("abort", abort)

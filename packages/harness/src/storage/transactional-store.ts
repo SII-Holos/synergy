@@ -12,7 +12,7 @@ import {
 import { ArtifactLocation } from "./artifact-location"
 import { RecordCodec, type BodyContainer, type RecordBody } from "./record-codec"
 import { measureStorageOperation } from "./measure"
-import { StorageQueue } from "./queue"
+import { StorageQueue, type StorageQueueOptions } from "./queue"
 import { observeStorageProgress } from "./progress"
 import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/runtime-startup"
 import { StoragePath } from "./path"
@@ -37,10 +37,16 @@ export interface StoredEvent {
   type: string
   payload: unknown
 }
-export interface TransactionOptions {
+export interface TransactionOptions extends StorageQueueOptions {
   operationID?: string
   requestHash?: string
 }
+export interface PruneLimits {
+  records: number
+  nodes: number
+  artifacts: number
+}
+export type PruneDeferral = "records" | "nodes" | "artifacts" | "active" | "recent"
 export interface RecordQuery {
   kind?: string
   scopeID?: string
@@ -626,7 +632,7 @@ export class StoreTransaction {
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
     // The tombstone stays; the node chain the removal emptied does not.
-    await this.cleanDanglingNodes(key)
+    await this.cleanDanglingNodes([key])
   }
 
   async removeMany(keys: string[][]): Promise<void> {
@@ -638,7 +644,7 @@ export class StoreTransaction {
         `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
         [Date.now(), this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
-      for (const key of batch) await this.cleanDanglingNodes(key)
+      await this.cleanDanglingNodes(batch)
     }
   }
 
@@ -691,55 +697,49 @@ export class StoreTransaction {
         "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND body IS NOT NULL",
         [Date.now(), this.namespace],
       )
-      await this.cleanDanglingNodes([])
+      await this.cleanDanglingNodes([[]])
       return
     }
     await this.connection.query(
       "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
       [this.namespace, keyParameter(this.keys, prefix), this.namespace, Date.now(), this.namespace],
     )
-    await this.cleanDanglingNodes(prefix)
+    await this.cleanDanglingNodes([prefix])
   }
 
-  /**
-   * Drops the node rows a tombstone-only removal left unreachable.
-   *
-   * `remove` and `removeTree` keep a record tombstone as the fence that stops a
-   * delayed writer reviving deleted data, so their record rows stay behind. A
-   * predicate that counts any record row -- which is what `pruneTree` uses, and
-   * is correct there because it deletes the rows outright -- would therefore
-   * never fire here. Eligibility is instead "no live record at this node's own
-   * key and no surviving child", so an interior node drops only once its subtree
-   * has drained and the rounds proceed leaf-to-parent.
-   *
-   * The candidate set is the removed prefix's subtree plus that prefix's own
-   * ancestors, both reached from the prefix rather than from the deleted rows: a
-   * digest cannot reconstruct a parent link, and anchoring on the prefix keeps
-   * every round independent of what an earlier round already removed. Each round
-   * is one bounded statement, so no single statement grows with the tree.
-   *
-   * The recursive table drives the walk -- `FROM subtree CROSS JOIN
-   * storage_nodes` -- rather than being the probe target of it. Driving from
-   * `storage_nodes` makes the planner re-scan the whole node table once per
-   * recursion step, which is quadratic in the subtree: measured on a
-   * rollout-shaped tree it cost 32 s for 32,000 nodes against 13 ms for this
-   * shape. A removal that empties a large artifact tree runs in teardown, so the
-   * difference is the difference between a close and a hang.
-   */
-  private async cleanDanglingNodes(prefix: string[]): Promise<void> {
-    const root = keyParameter(this.keys, prefix)
-    const ancestors: SqlValue[] = []
-    for (let depth = 1; depth < prefix.length; depth++) ancestors.push(keyParameter(this.keys, prefix.slice(0, depth)))
-    const ancestorSet = ancestors.length ? ` OR node.key_id IN (${ancestors.map(() => "?").join(",")})` : ""
+  // Provenance: docs/research/2026-09-22-interactive-storage-validation.md
+  // Local adaptation: indexed addressed-key joins bound interference from unrelated historical nodes.
+  // Every join is driven by addressed keys. A namespace-led OR/IN predicate
+  // makes even deletion of a missing key scan the whole historical node table.
+  private async cleanDanglingNodes(prefixes: string[][]): Promise<void> {
+    const roots = new Map(prefixes.map((key) => [keyID(key), keyParameter(this.keys, key)]))
+    if (!roots.size) return
+    const ancestors = new Map<string, SqlValue>()
+    for (const prefix of prefixes)
+      for (let depth = 1; depth < prefix.length; depth++) {
+        const key = prefix.slice(0, depth)
+        ancestors.set(keyID(key), keyParameter(this.keys, key))
+      }
+    const ancestorRows = ancestors.size
+      ? `, ancestors(key_id) AS (VALUES ${[...ancestors].map(() => "(?)").join(",")})`
+      : ""
     for (;;) {
       const dropped = await this.connection.query<SqlRow>(
-        `WITH RECURSIVE subtree(key_id) AS (
-           SELECT node.key_id FROM storage_nodes node WHERE node.namespace = ? AND (node.key_id = ? OR node.parent_id = ?)
+        `WITH RECURSIVE roots(key_id) AS (VALUES ${[...roots].map(() => "(?)").join(",")}),
+         subtree(key_id) AS (
+           SELECT node.key_id FROM roots CROSS JOIN storage_nodes node
+            WHERE node.namespace = ? AND node.key_id = roots.key_id
            UNION
-           SELECT node.key_id FROM subtree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = subtree.key_id
+           SELECT node.key_id FROM roots CROSS JOIN storage_nodes node
+            WHERE node.namespace = ? AND node.parent_id = roots.key_id
+           UNION
+           SELECT node.key_id FROM subtree CROSS JOIN storage_nodes node
+            WHERE node.namespace = ? AND node.parent_id = subtree.key_id
+         )${ancestorRows}, targets(key_id) AS (
+           SELECT key_id FROM subtree${ancestors.size ? " UNION SELECT key_id FROM ancestors" : ""}
          ), candidate(key_id) AS (
-           SELECT node.key_id FROM storage_nodes node
-            WHERE node.namespace = ? AND (node.key_id IN (SELECT key_id FROM subtree)${ancestorSet})
+           SELECT node.key_id FROM targets CROSS JOIN storage_nodes node
+            WHERE node.namespace = ? AND node.key_id = targets.key_id
               AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = node.key_id AND record.body IS NOT NULL)
               AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = node.key_id)
             LIMIT ?
@@ -747,25 +747,18 @@ export class StoreTransaction {
          DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM candidate)
          RETURNING key_id`,
         [
-          this.namespace,
-          root,
-          root,
+          ...roots.values(),
           this.namespace,
           this.namespace,
-          ...ancestors,
+          this.namespace,
+          ...ancestors.values(),
+          this.namespace,
           this.namespace,
           this.namespace,
           PRUNE_CHUNK,
           this.namespace,
         ],
       )
-      // Stop on an empty round rather than a short one: a saturated round can
-      // hold nothing but ineligible ancestors, and treating that as the end would
-      // strand the interior nodes the rounds below it were about to free. The
-      // round count is not capped: deletion is monotonic, so the candidate set
-      // can only shrink and an empty round proves the fixed point is reached,
-      // whereas stopping early would leave nodes no traversal can reach and turn
-      // them into the orphans `verify` reports.
       if (!dropped.length) break
     }
   }
@@ -778,47 +771,83 @@ export class StoreTransaction {
    * path reachable, and removed artifact references enqueue the same durable
    * collection intent ordinary deletion uses.
    */
-  async pruneTree(prefix: string[]): Promise<number> {
+  async pruneTree(prefix: string[], options: { maintenance?: boolean; signal?: AbortSignal } = {}): Promise<number> {
     this.check(true)
     await this.assertAdmitted([prefix], true)
     if (!prefix.length) throw new StorageIntegrityError("Cannot prune the storage root")
     const text = JSON.stringify(prefix)
     const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
-    const artifactCondition = "namespace = ? AND (key_text = ? OR key_text LIKE ? ESCAPE '!')"
+    let artifactCondition = "namespace = ? AND (key_text = ? OR key_text LIKE ? ESCAPE '!')"
     const artifactValues: SqlValue[] = [this.namespace, text, like]
+    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
+    if (prefix.length >= ownerLength) {
+      artifactCondition += " AND owner_key = ?"
+      artifactValues.push(JSON.stringify(prefix.slice(0, ownerLength)))
+    }
     await this.connection.query(
       `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${artifactCondition} ON CONFLICT(namespace, pack) DO NOTHING`,
       artifactValues,
+      options.maintenance ? { maintenance: "prune" } : undefined,
     )
-    await this.connection.query(`DELETE FROM storage_artifacts WHERE ${artifactCondition}`, artifactValues)
-    // Each statement stays inside the chunk budget: a single unbounded delete is
-    // what let one retention prune occupy the worker past the ceiling. The
-    // recursion reads the node tree, which stays intact until every record in
-    // the subtree is gone, so a bounded batch is still exact.
-    let removed = 0
-    for (;;) {
-      const batch = await this.connection.query<SqlRow>(
-        "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree LIMIT ?) RETURNING key_id",
-        [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace, PRUNE_CHUNK],
-      )
-      removed += batch.length
-      if (batch.length < PRUNE_CHUNK) break
-    }
-    for (let round = 0; round < 64; round++) {
-      const dropped = await this.connection.query<SqlRow>(
-        "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = storage_nodes.key_id) AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = storage_nodes.key_id) RETURNING key_id",
-        [
-          this.namespace,
-          keyParameter(this.keys, prefix),
-          this.namespace,
-          this.namespace,
-          this.namespace,
-          this.namespace,
-        ],
-      )
-      if (!dropped.length) break
-    }
+    await this.connection.query(
+      `DELETE FROM storage_artifacts WHERE ${artifactCondition}`,
+      artifactValues,
+      options.maintenance ? { maintenance: "prune" } : undefined,
+    )
+    const tree =
+      "WITH RECURSIVE tree(key_id) AS MATERIALIZED (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) "
+    const values = [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace]
+    const queryOptions = options.maintenance ? { maintenance: "prune" as const } : undefined
+    options.signal?.throwIfAborted()
+    const [count] = await this.connection.query(
+      tree +
+        "SELECT COUNT(*) AS count FROM tree CROSS JOIN storage_records record WHERE record.namespace = ? AND record.key_id = tree.key_id",
+      values,
+      queryOptions,
+    )
+    await this.connection.query(
+      tree + "DELETE FROM storage_records WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree)",
+      values,
+      queryOptions,
+    )
+    options.signal?.throwIfAborted()
+    await this.connection.query(
+      tree + "DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree)",
+      values,
+      queryOptions,
+    )
+    options.signal?.throwIfAborted()
+    await this.cleanDanglingNodes([prefix])
+    const removed = Number(count?.count ?? 0)
     return removed
+  }
+
+  async pruneDeferral(prefix: string[], limits: PruneLimits, cutoff: number): Promise<PruneDeferral | undefined> {
+    this.check()
+    const nodes = await this.connection.query<{ key_id: string | Uint8Array }>(
+      "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) SELECT key_id FROM tree LIMIT ?",
+      [this.namespace, keyParameter(this.keys, prefix), this.namespace, limits.nodes + 1],
+    )
+    if (nodes.length > limits.nodes) return "nodes"
+    let records = 0
+    for (let offset = 0; offset < nodes.length; offset += 128) {
+      const batch = nodes.slice(offset, offset + 128)
+      const [row] = await this.connection.query<{ count: number | bigint; newest: number | bigint | null }>(
+        `SELECT COUNT(*) AS count, MAX(updated) AS newest FROM storage_records WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")})`,
+        [this.namespace, ...batch.map((node) => node.key_id)],
+      )
+      if (row?.newest !== null && Number(row?.newest) >= cutoff) return "recent"
+      records += Number(row?.count ?? 0)
+      if (records > limits.records) return "records"
+    }
+    const text = JSON.stringify(prefix)
+    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
+    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
+    const artifacts = await this.connection.query(
+      "SELECT key_text FROM storage_artifacts WHERE namespace = ? AND owner_key = ? AND (key_text = ? OR key_text LIKE ? ESCAPE '!') LIMIT ?",
+      [this.namespace, JSON.stringify(prefix.slice(0, ownerLength)), text, like, limits.artifacts + 1],
+    )
+    if (artifacts.length > limits.artifacts) return "artifacts"
   }
 
   async query<T>(input: RecordQuery): Promise<StoredRecord<T>[]> {
@@ -1257,6 +1286,16 @@ export class TransactionalStore {
     return this.driver.onUnavailable(listener)
   }
 
+  get readiness() {
+    const available = !this.unavailable && !this.closing
+    if (!(this.driver instanceof SqliteDriver)) return { readerReady: available, writerReady: available }
+    const status = this.driver.status
+    return {
+      readerReady: available && status.reader === "healthy",
+      writerReady: available && status.writer === "healthy",
+    }
+  }
+
   async snapshot<T>(
     body: (snapshot: StoreTransaction) => Promise<T>,
     options: { singleStatement?: boolean } = {},
@@ -1351,7 +1390,7 @@ export class TransactionalStore {
           await Bun.sleep(10 * 2 ** attempt + Math.floor(Math.random() * 10))
         }
       }
-    })
+    }, options)
   }
 
   read<T = unknown>(key: string[]) {
@@ -1390,6 +1429,19 @@ export class TransactionalStore {
 
   pruneTree(prefix: string[]) {
     return this.transaction((tx) => tx.pruneTree(prefix))
+  }
+
+  pruneTreeWithinBudget(prefix: string[], input: { limits: PruneLimits; cutoff: number; active(): boolean }) {
+    return this.transaction(
+      async (tx) => {
+        if (input.active()) return { deferred: "active" as const, records: 0 }
+        const deferred = await tx.pruneDeferral(prefix, input.limits, input.cutoff)
+        if (deferred) return { deferred, records: 0 }
+        if (input.active()) return { deferred: "active" as const, records: 0 }
+        return { records: await tx.pruneTree(prefix), deferred: undefined }
+      },
+      { priority: "background" },
+    )
   }
 
   get sqliteFilename() {

@@ -10,6 +10,9 @@ import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
+import { SessionInputProgress } from "@ericsanchezok/synergy-harness/session/input-progress"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -34,6 +37,15 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
   let runID: string | undefined
   {
     using control = await Lock.write(`session-control:${input.sessionID}`)
+    if (input.messageID) {
+      const existing = await MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).catch(
+        (error) => {
+          if (error instanceof Storage.NotFoundError) return
+          throw error
+        },
+      )
+      if (existing) return { status: "started", messageID: input.messageID }
+    }
     const paused = await SessionLifecycle.snapshot(input.sessionID)
     if (paused) await SessionManager.waitForIdle(input.sessionID)
     const rootID = paused ? await SessionInbox.latestRootID(input.sessionID) : undefined
@@ -41,15 +53,35 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     runID = rootID
     await takeSessionBack(input.sessionID)
   }
-  void SessionDrive.request(input.sessionID, "user-input").catch((error) => {
+  scheduleInput(item, "user-input")
+  return { status: "queued", item, runID }
+}
+
+function scheduleInput(item: SessionInbox.Item, reason: string) {
+  void SessionDrive.request(item.sessionID, reason).catch((error) => {
+    SessionInputProgress.schedulingFailure(item.sessionID, error, false)
+    SessionManager.scheduleWake(item.sessionID, "durable-input-recovery")
     log.error("failed to schedule durable user input", {
-      sessionID: input.sessionID,
+      sessionID: item.sessionID,
       itemID: item.id,
       messageID: item.messageID,
       error,
     })
   })
-  return { status: "queued", item, runID }
+}
+
+export async function retryInput(input: { sessionID: string; itemID: string }): Promise<SessionInbox.Item> {
+  await Session.assertWorkspaceAvailable(input.sessionID)
+  let item: SessionInbox.Item
+  {
+    using control = await Lock.write(`session-control:${input.sessionID}`)
+    if (await SessionLifecycle.snapshot(input.sessionID)) await SessionManager.waitForIdle(input.sessionID)
+    item = await SessionInbox.rearm(input)
+    if (item.mode === "task") await SessionLifecycle.clear(input.sessionID)
+    else await takeSessionBack(input.sessionID)
+  }
+  scheduleInput(item, "user-input-retry")
+  return item
 }
 
 async function takeSessionBack(sessionID: string): Promise<void> {

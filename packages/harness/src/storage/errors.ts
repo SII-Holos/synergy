@@ -45,8 +45,11 @@ export class StorageBusyError extends Error {
 // restart the Runtime; retrying against this instance cannot succeed.
 export class StorageUnavailableError extends Error {
   override readonly name = "StorageUnavailableError"
-  constructor(message = "The authoritative store is unavailable and requires a Runtime restart") {
-    super(message)
+  constructor(
+    message = "The authoritative store is unavailable and requires a Runtime restart",
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
   }
 }
 

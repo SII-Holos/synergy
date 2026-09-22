@@ -44,8 +44,15 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type { FileDiff, Session, SessionInboxItem, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  FileDiff,
+  Session,
+  SessionInboxItem,
+  SessionStatus,
+  SessionInputProgress,
+} from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
+import { observeSessionInput } from "@/components/session/session-input-observer"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
@@ -98,7 +105,7 @@ import {
 import {
   decideSessionTransitionHandoff,
   recoverSessionTransitionHandoff,
-  scheduleSessionTransitionHandoffDeadline,
+  SESSION_TRANSITION_HANDOFF_TIMEOUT_MS,
   type SessionTransitionHandoff,
 } from "@/components/session/session-transition-handoff"
 import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
@@ -689,7 +696,12 @@ function SessionPageContent() {
           sessionTransition.completeHandoff(sessionID, handoff.messageID)
           return
         }
-        showStalledHandoff(sessionID, nextHandoff, requestErrorMessage(error))
+        setSessionTransition(
+          sessionID,
+          { ...accepted, description: S.transitionDescReconnecting },
+          undefined,
+          nextHandoff,
+        )
       }
     }
     void run()
@@ -714,40 +726,79 @@ function SessionPageContent() {
       success: successProgressForHandoff(recovered),
     })
   })
-  // One-shot stall detection anchored to the attempt identity. A retry
-  // rewrites acceptedAt, which changes the entry and re-schedules a fresh
-  // window; the deadline skips itself when the attempt is no longer loading.
-  createEffect(() => {
-    const sessionID = params.id
+  const handoffAttempt = createMemo(() => {
     const entry = visibleSessionTransitionEntry()
-    if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
-    const handoff = entry.handoff
-    const attempt = {
-      messageID: handoff.messageID,
-      acceptedAt: handoff.acceptedAt ?? Date.now(),
-    }
-    const cancel = scheduleSessionTransitionHandoffDeadline(
-      attempt,
-      (current) => {
-        const live = visibleSessionTransitionEntry()
-        return (
-          live?.progress.phase === "loading" &&
-          live.handoff?.messageID === current.messageID &&
-          // An unanchored attempt stays current by falling back to the
-          // scheduled identity; a retry writes a fresh acceptedAt, which
-          // changes identity and lets the old deadline expire silently.
-          (live.handoff.acceptedAt ?? current.acceptedAt) === current.acceptedAt
-        )
-      },
-      () => {
-        const live = visibleSessionTransitionEntry()
-        if (live?.handoff && live.progress.phase === "loading") {
-          showStalledHandoff(sessionID, live.handoff)
-        }
-      },
-    )
-    onCleanup(cancel)
+    return entry?.handoff && entry.progress.phase === "loading"
+      ? `${params.id}:${entry.handoff.messageID}:${entry.handoff.acceptedAt}`
+      : undefined
   })
+  createEffect(
+    on(handoffAttempt, (attempt) => {
+      if (!attempt) return
+      const sessionID = params.id!
+      const handoff = visibleSessionTransitionEntry()!.handoff!
+      const update = async (status: SessionInputProgress) => {
+        if (handoffAttempt() !== attempt) return
+        if (status.canonical) {
+          await sync.session.refresh(sessionID)
+          return
+        }
+        if (status.state === "failed") {
+          showStalledHandoff(sessionID, { ...handoff, itemID: status.itemID ?? handoff.itemID })
+          return
+        }
+        const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+        if (status.state === "cancelled") {
+          setSessionTransition(
+            sessionID,
+            { ...accepted, phase: "error", description: S.transitionDescCancelled },
+            { dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID) },
+            handoff,
+          )
+          return
+        }
+        const description =
+          status.state === "queued_storage"
+            ? S.transitionDescStorage
+            : status.state === "retrying"
+              ? S.transitionDescRetrying
+              : Date.now() - (handoff.acceptedAt ?? Date.now()) >= SESSION_TRANSITION_HANDOFF_TIMEOUT_MS
+                ? S.transitionDescDelayed
+                : S.transitionDescInitializing
+        setSessionTransition(sessionID, { ...accepted, description }, undefined, handoff)
+      }
+      const stop = observeSessionInput({
+        read: async (signal) =>
+          (
+            await sdk.client.session.inputStatus(
+              { sessionID, messageID: handoff.messageID },
+              { signal, throwOnError: true },
+            )
+          ).data,
+        update: async (status) => {
+          if (status) await update(status)
+        },
+        unavailable: () => {
+          if (handoffAttempt() !== attempt) return
+          const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+          setSessionTransition(
+            sessionID,
+            { ...accepted, description: S.transitionDescReconnecting },
+            undefined,
+            handoff,
+          )
+        },
+      })
+      const unsubscribe = sdk.event.on("session.input.progress", ({ properties }) => {
+        if (properties.sessionID === sessionID && properties.messageID === handoff.messageID)
+          void update(properties).catch(() => {})
+      })
+      onCleanup(() => {
+        stop()
+        unsubscribe()
+      })
+    }),
+  )
   // Event-driven handoff resolution: re-evaluates only when the message
   // window, inbox, or transition entry changes. A message arriving in the
   // window resolves the transition immediately — no polling required.
@@ -767,10 +818,6 @@ function SessionPageContent() {
     })
     if (decision === "ready") {
       sessionTransition.completeHandoff(sessionID, entry.handoff.messageID)
-      return
-    }
-    if (decision === "stalled") {
-      showStalledHandoff(sessionID, entry.handoff)
       return
     }
     if (decision !== "refresh") return
