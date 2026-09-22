@@ -40,10 +40,14 @@ def _prepare_external(
 ) -> Path:
     package = PACKAGES[kind]
     version = version or package["version"]
+    # Provenance: https://docs.npmjs.com/cli/v11/using-npm/config/#before
+    # Bind prerelease ranges to the validated native version's dependency publication window.
+    dependency_before = package.get("dependency_before") if version == package["version"] else None
     identity = {
         "kind": kind,
         "package": package["name"],
         "version": version,
+        "dependency_before": dependency_before,
         "platform": platform,
         "recipe": digest(Path(__file__).read_text()),
         "runtime": digest({name: (BENCHMARK / "runtime" / name).read_text() for name in NATIVE_RUNTIME}),
@@ -103,6 +107,7 @@ def _prepare_external(
                         "--ignore-scripts",
                         "--no-audit",
                         "--no-fund",
+                        *([f"--before={dependency_before}"] if dependency_before else []),
                     ],
                     log,
                     timeout=timeout,

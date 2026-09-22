@@ -6,9 +6,13 @@ Status: implemented
 
 An experiment that couples the model to Synergy configuration cannot measure whether improvements come from the harness or the model. Native CLI summary events also omit some auxiliary requests. Counting only a successful retry conceals the cost of unsuccessful attempts.
 
+A fixed top-level npm version can still resolve newer prerelease dependencies through caret ranges. DeepSeek Harness `0.1.5-rc.1` admitted the later `rc.3` dependency tree, which referenced an unpublished sidebar package version and failed cold preparation before inference. A package pin alone therefore cannot preserve the validated native installation condition.
+
 ## Decision
 
 [Configuration v2](../../../../benchmark/src/synergy_bench/config.py) declares native harness variants and model profiles separately. Matrix cells retain independent task and repeat identities. Five [native configurations](../../../../benchmark/src/synergy_bench/harnesses.py) preserve the upstream CLI loop, tools and prompts. Package versions, frozen source, runtime composition and generated configuration are experimental conditions.
+
+The default DeepSeek `0.1.5-rc.1` pin resolves dependencies available by `2026-09-22T05:00:00Z`, the publication window of the preceding successful native matrix. [npm's `before` option](https://docs.npmjs.com/cli/v11/using-npm/config/#before) applies this condition while generating the lockfile; `npm ci` then installs the resulting exact tree. The cutoff applies only to that verified package version, is included in preparation cache identity and the retained receipt, and cannot be inherited by a different explicitly selected version. Changing the cutoff invalidates the prepared bundle; a warm matching bundle remains offline. Existing frozen experiments retain their original evaluator, dependency lock and artifact.
 
 OpenCode variants can explicitly set `bun_jit`; omission preserves the native default, while false sets `BUN_JSC_useJIT=0` in the retained native process configuration. The [Bun option distinction](https://github.com/oven-sh/bun/issues/22901) informs this mapping; it does not establish the cause of every runtime stall. The strict boolean belongs to the harness axis, applies equally to each selected model, and is rejected for unverified harnesses. Actual CLI integration exercises both default and interpreted variants over both model protocols.
 
@@ -52,8 +56,12 @@ Instruction delivery follows Pier's declared log-mount capability: mounted logs 
 
 **Automatically disable JIT after a native stall or on an emulated host.** This would change execution conditions during an experiment and conceal the cost of the stalled attempt. Explicit named variants retain the original execution and make the new runtime choice reviewable.
 
+**Upgrade the native package or select dependencies again after a preparation failure.** Either action would silently change the declared experiment. A version-bound publication cutoff records the dependency condition before preparation instead of choosing a successful tree retrospectively.
+
 ## Consequences
 
 This adds explicit transport and installation maintenance for each pinned upstream release. Unsupported model features remain visible errors. A bridge cannot preserve features that the target protocol cannot represent; its identity and restrictions belong in experimental conditions. Native model failures remain valid benchmark outcomes when execution and recording are intact. Historical runs remain read-only under changed evaluator contracts.
+
+Dependency updates require a new validated installation condition and native Docker acceptance over both protocols. A publication cutoff does not restore removed registry artifacts; those failures remain preparation failures, while retained immutable bundles can still be reused.
 
 Interpreted OpenCode can have different CPU, memory and latency behavior. It is an experimental runtime option, not a general guarantee against native hangs. A diagnostic variant cannot replace a preselected scoring attempt or repair its missing native usage.

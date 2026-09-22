@@ -36,6 +36,11 @@ description: Change or validate the repository benchmark evaluator, native harne
    Deduplicate kernel OOM observations by container identity and nanosecond event time, independently of CLI/API serialization metadata. Validate resource parsers against a real container: Docker process inspection requires a PID column alongside RSS. Preserve unknown metrics when inspection fails, and distinguish sampled peaks from kernel maxima.
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
    Recovery and ownership-handoff containers must inherit the frozen experiment platform even when they reuse an exact image digest. Verify running and stopped container handoff on a host with a different native architecture; Docker's default platform can otherwise select unavailable image content before cleanup runs.
+
+   Exercise independent cache roots on the same Docker daemon. Task and inference-proxy image identities must isolate ownership by resolved cache root while preserving warm reuse through path aliases; do not fabricate receipts for another cache's images.
+
+   A top-level npm version pin can still admit newer prerelease dependencies. Bind any validated dependency publication cutoff to its exact native package version, include it in cache identity and receipts, and test warm offline reuse plus cutoff invalidation. Other explicit versions must not inherit that condition. Verify the actual native Docker matrix after changing dependency resolution; successful installation alone does not establish compatibility.
+
 3. Validate cold and warm preparation, simultaneous builders, interrupted publication and damaged cache entries. A warm run must not reinstall a fixed native package or contact a registry to re-check its version.
 4. Audit every selected task with its isolated native oracle. Retain failures and their evidence in the full task inventory. Use `oracle-report` to import retained scores without executing the oracle again.
 

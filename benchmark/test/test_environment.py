@@ -7,6 +7,42 @@ from synergy_bench.environment import CachedDockerEnvironment, environment_ident
 from synergy_bench.storage import atomic_json, digest
 
 
+def test_independent_caches_do_not_claim_each_others_task_or_proxy_images(tmp_path):
+    from pier.models.agent.network import NetworkAllowlist
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    context = tmp_path / "context"
+    context.mkdir()
+    (context / "Dockerfile").write_text("FROM scratch\n")
+
+    def images(cache, name):
+        env = CachedDockerEnvironment(
+            environment_dir=context,
+            environment_name="cache-fixture",
+            session_id=name,
+            trial_paths=TrialPaths(trial_dir=tmp_path / name),
+            task_env_config=EnvironmentConfig(network_mode="no-network", allow_internet=False),
+            network_allowlist=NetworkAllowlist(domains=["host.docker.internal"]),
+            benchmark_cache=str(cache),
+            benchmark_platform="linux/amd64",
+            inference_port=12345,
+        )
+        env._prepare_egress_proxy_compose()
+        from synergy_bench.storage import read_json
+
+        proxy = read_json(env._egress_proxy_compose_path)["services"]["pier-egress-proxy"]["image"]
+        return env._env_vars.main_image_name, proxy
+
+    first = images(tmp_path / "first-cache", "first")
+    assert first == images(tmp_path / "first-cache", "warm")
+    (tmp_path / "cache-alias").symlink_to(tmp_path / "first-cache")
+    assert first == images(tmp_path / "cache-alias", "alias")
+    second = images(tmp_path / "second-cache", "second")
+    assert first[0] != second[0]
+    assert first[1] != second[1]
+
+
 @pytest.mark.parametrize(
     "operation,command_deadline", [("exec", None), ("exec", 10800), ("exec", 1800), ("build", None)]
 )
