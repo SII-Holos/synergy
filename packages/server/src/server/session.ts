@@ -3,6 +3,7 @@ import {
   continueSession,
   createSession,
   submitInput,
+  retryInput,
   submitCommand,
 } from "@ericsanchezok/synergy-runtime-local/session-api"
 import { Hono } from "hono"
@@ -17,6 +18,7 @@ import { SessionInvoke, InvokeInput } from "@ericsanchezok/synergy-harness/sessi
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionInputStatus } from "@ericsanchezok/synergy-harness/session/input-status"
 import { shell as invokeShell, ShellInput } from "@ericsanchezok/synergy-runtime-local/session/shell"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -760,6 +762,23 @@ export const SessionRoute = () =>
         return c.json(await SessionInbox.list(sessionID))
       },
     )
+    .get(
+      "/:sessionID/input/:messageID/status",
+      describeRoute({
+        summary: "Get durable input progress",
+        description: "Project input admission, materialization and execution state from the session's durable records.",
+        operationId: "session.inputStatus",
+        responses: {
+          200: {
+            description: "Input progress",
+            content: { "application/json": { schema: resolver(SessionInputStatus.Info) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string(), messageID: z.string() })),
+      async (c) => c.json(await SessionInputStatus.get(c.req.valid("param"))),
+    )
     .post(
       "/:sessionID/input",
       describeRoute({
@@ -834,15 +853,7 @@ export const SessionRoute = () =>
         }),
       ),
       async (c) => {
-        const params = c.req.valid("param")
-        await Session.assertWorkspaceAvailable(params.sessionID)
-        // A parked failure must be cleared before the wake, or the loop would
-        // peek past the failed item and report nothing to do. A failed rearm
-        // write propagates: the endpoint must not report accepted retry work
-        // it did not perform.
-        const item = await SessionInbox.rearm(params)
-        await SessionDrive.request(params.sessionID, "user-input-retry")
-        return c.json(item)
+        return c.json(await retryInput(c.req.valid("param")))
       },
     )
     .post(

@@ -27,6 +27,8 @@
     "./session/dag": "./src/session/dag.ts",
     "./session/drive": "./src/session/drive.ts",
     "./session/inbox": "./src/session/inbox.ts",
+    "./session/input-progress": "./src/session/input-progress.ts",
+    "./session/input-status": "./src/session/input-status.ts",
     "./session/manager": "./src/session/manager.ts",
     "./bus/bus-event": "./src/bus/bus-event.ts",
     "./provider/github": "./src/provider/github.ts",

@@ -208,6 +208,10 @@ import type {
   GlobalGitInitResponses,
   GlobalHealthErrors,
   GlobalHealthResponses,
+  GlobalMaintenancePrepareErrors,
+  GlobalMaintenancePrepareResponses,
+  GlobalMaintenanceReleaseErrors,
+  GlobalMaintenanceReleaseResponses,
   GlobalNavAcknowledgeCompletionsErrors,
   GlobalNavAcknowledgeCompletionsResponses,
   GlobalNavPinnedErrors,
@@ -636,6 +640,8 @@ import type {
   SessionInitResponses,
   SessionInputErrors,
   SessionInputResponses,
+  SessionInputStatusErrors,
+  SessionInputStatusResponses,
   SessionListErrors,
   SessionListResponses,
   SessionMessageErrors,
@@ -2779,6 +2785,40 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get durable input progress
+   *
+   * Project input admission, materialization and execution state from the session's durable records.
+   */
+  public inputStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionInputStatusResponses, SessionInputStatusErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input/{messageID}/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Submit session input
    *
    * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.
@@ -3942,6 +3982,45 @@ export class Global extends HeyApiClient {
     return (options?.client ?? this.client).get<GlobalActivityResponses, GlobalActivityErrors, ThrowOnError>({
       url: "/global/activity",
       ...options,
+    })
+  }
+
+  /**
+   * Reserve an idle runtime for offline maintenance
+   *
+   * Atomically refuse active or pending work and close new mutations and session execution for 30 seconds. The desktop stops its owned server within this lease before opening storage exclusively.
+   */
+  public maintenancePrepare<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      GlobalMaintenancePrepareResponses,
+      GlobalMaintenancePrepareErrors,
+      ThrowOnError
+    >({ url: "/global/maintenance/prepare", ...options })
+  }
+
+  /**
+   * Release maintenance admission
+   */
+  public maintenanceRelease<ThrowOnError extends boolean = false>(
+    parameters?: {
+      token?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "token" }] }])
+    return (options?.client ?? this.client).post<
+      GlobalMaintenanceReleaseResponses,
+      GlobalMaintenanceReleaseErrors,
+      ThrowOnError
+    >({
+      url: "/global/maintenance/release",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

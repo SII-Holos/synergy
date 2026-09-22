@@ -76,7 +76,6 @@ export type SqliteRequest = {
   action: "open" | "query" | "close" | "ping" | "maintain"
   filename?: string
   readonly?: boolean
-  reader?: boolean
   statement?: string
   values?: SqlValue[]
   maintenance?: StorageMaintenanceOperation

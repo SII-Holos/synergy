@@ -451,6 +451,26 @@ export const S = {
     message: "Your first message is queued for processing.",
   },
   transitionTitleStalled: { id: "session.transition.title.stalled", message: "Conversation setup needs attention" },
+  transitionDescDelayed: {
+    id: "session.transition.desc.delayed",
+    message: "Your message is saved. Preparation is taking longer than usual; processing will continue automatically.",
+  },
+  transitionDescStorage: {
+    id: "session.transition.desc.storage",
+    message: "Your message is saved and waiting for storage to become available.",
+  },
+  transitionDescRetrying: {
+    id: "session.transition.desc.retrying",
+    message: "Your message is saved. Retrying preparation automatically.",
+  },
+  transitionDescReconnecting: {
+    id: "session.transition.desc.reconnecting",
+    message: "Your message was saved. Reconnecting to check its progress.",
+  },
+  transitionDescCancelled: {
+    id: "session.transition.desc.cancelled",
+    message: "This message was cancelled. You can dismiss this notice.",
+  },
   transitionDescStalled: {
     id: "session.transition.desc.stalled",
     message: "Your first message is still saved, but initialization did not finish. Retry to resume processing.",

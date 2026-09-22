@@ -80,6 +80,10 @@ For startup maintenance, pair real SQLite lifecycle tests (opening DDL, VACUUM/c
 
 ## Local Performance Experiments
 
+For startup-to-conversation acceptance, test fresh, historical and large homes through durable input admission, canonical publication and model completion on the same fixture. Include multi-turn recall, duplicate admission, retry after pause, terminal historical roots and repeated Runtime restarts. Record the fixture's node, record, owner and artifact distributions; a large unrelated namespace proves cleanup scaling but does not establish retention owner-enumeration capacity. Keep machine-dependent timing thresholds in local reports, with correctness and recovery invariants in CI.
+
+Budget live model calls at the provider boundary before forwarding them, counting auxiliary tasks and retries as well as user turns. Preserve interrupted attempts and explicitly record configuration variants. A soak report must identify the source revision and process restart boundaries; source edits do not reload an already-running parent's modules.
+
 Benchmark adapters must pass the environment's `agent_process_env` to the agent invocation so restricted-network tasks retain the evaluator's inference egress. Test both proxy-enabled and ordinary environments while keeping provider credentials in temporary private files. Validate streamed requests through the proxy and recording path: a direct provider probe, an internet-enabled task, or a successful proxy HEAD request does not establish that the actual model transport works.
 
 Test process signals through an actual child process after a deterministic provider readiness barrier. An in-process abort or timer preserves different async context from an operating-system signal; both paths must retain Scope ownership and terminal accounting.

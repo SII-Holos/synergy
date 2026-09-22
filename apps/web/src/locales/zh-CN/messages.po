@@ -13957,6 +13957,16 @@ msgstr "重试"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.cancelled"
+msgstr "这条消息已取消，你可以关闭此提示。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.delayed"
+msgstr "消息已保存。准备时间比平时更长，系统会继续处理。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.initializing"
 msgstr "你的第一条消息已保存，正在初始化会话。"
 
@@ -13967,8 +13977,23 @@ msgstr "你的第一条消息已排队等待处理。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.reconnecting"
+msgstr "消息此前已保存，正在重新连接以查询处理进度。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.retrying"
+msgstr "消息已保存，正在自动重试准备流程。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.stalled"
 msgstr "你的第一条消息仍已保存，但初始化未完成。请重试以恢复处理。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.storage"
+msgstr "消息已保存，正在等待存储可用。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -19286,6 +19311,18 @@ msgstr "按项目范围查看文件快照存储占用。"
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
 msgstr "存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.action"
+msgstr "移除过期证据"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.description"
+msgstr "在维护期间移除超过保留期限的执行证据。会话消息会保留，移除的证据无法恢复。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.title"
+msgstr "大量过期执行记录"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.reclaim.control.failed"

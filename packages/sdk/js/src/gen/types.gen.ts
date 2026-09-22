@@ -1141,6 +1141,10 @@ export type StorageMaintenanceStatus = {
     releasedPages: number
     error?: string
   }
+  prune: {
+    owners: number
+    updatedAt: number
+  }
 }
 
 export type StorageReclaimControlInput = {
@@ -1784,6 +1788,11 @@ export type GlobalActivity = {
   active: boolean
   sessions: number
   backgroundJobs: number
+}
+
+export type MaintenanceAdmissionLease = {
+  token: string
+  expiresAt: number
 }
 
 export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
@@ -7048,6 +7057,29 @@ export type SessionInboxItem = {
   messageID: string
 }
 
+export type SessionInputProgress = {
+  sessionID: string
+  messageID: string
+  state:
+    | "accepted"
+    | "preparing"
+    | "queued_storage"
+    | "materializing"
+    | "running"
+    | "retrying"
+    | "completed"
+    | "cancelled"
+    | "failed"
+  durable: boolean
+  canonical: boolean
+  updatedAt: number
+  itemID?: string
+  error?: {
+    code: string
+    message: string
+  }
+}
+
 export type SessionInputResult =
   | {
       status: "started"
@@ -10230,6 +10262,11 @@ export type EventConfigUpdated = {
   }
 }
 
+export type EventSessionInputProgress = {
+  type: "session.input.progress"
+  properties: SessionInputProgress
+}
+
 export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
@@ -10787,6 +10824,7 @@ export type Event =
   | EventPermissionReplied
   | EventDagUpdated
   | EventConfigUpdated
+  | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
@@ -10884,6 +10922,10 @@ export type GlobalHealthResponses = {
      * Whether at least one AI provider with a usable model is configured
      */
     modelReady: boolean
+    storage: {
+      readerReady: boolean
+      writerReady: boolean
+    }
   }
 }
 
@@ -12605,6 +12647,72 @@ export type GlobalActivityResponses = {
 }
 
 export type GlobalActivityResponse = GlobalActivityResponses[keyof GlobalActivityResponses]
+
+export type GlobalMaintenancePrepareData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/maintenance/prepare"
+}
+
+export type GlobalMaintenancePrepareErrors = {
+  /**
+   * Runtime has active work or another lease
+   */
+  409: {
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalMaintenancePrepareError = GlobalMaintenancePrepareErrors[keyof GlobalMaintenancePrepareErrors]
+
+export type GlobalMaintenancePrepareResponses = {
+  /**
+   * Admission lease
+   */
+  200: MaintenanceAdmissionLease
+}
+
+export type GlobalMaintenancePrepareResponse =
+  GlobalMaintenancePrepareResponses[keyof GlobalMaintenancePrepareResponses]
+
+export type GlobalMaintenanceReleaseData = {
+  body?: {
+    token: string
+  }
+  path?: never
+  query?: never
+  url: "/global/maintenance/release"
+}
+
+export type GlobalMaintenanceReleaseErrors = {
+  /**
+   * Lease does not match
+   */
+  409: {
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalMaintenanceReleaseError = GlobalMaintenanceReleaseErrors[keyof GlobalMaintenanceReleaseErrors]
+
+export type GlobalMaintenanceReleaseResponses = {
+  /**
+   * Admission reopened
+   */
+  200: boolean
+}
+
+export type GlobalMaintenanceReleaseResponse =
+  GlobalMaintenanceReleaseResponses[keyof GlobalMaintenanceReleaseResponses]
 
 export type GlobalSessionSearchData = {
   body?: never
@@ -15455,6 +15563,45 @@ export type SessionInboxResponses = {
 }
 
 export type SessionInboxResponse = SessionInboxResponses[keyof SessionInboxResponses]
+
+export type SessionInputStatusData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/input/{messageID}/status"
+}
+
+export type SessionInputStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionInputStatusError = SessionInputStatusErrors[keyof SessionInputStatusErrors]
+
+export type SessionInputStatusResponses = {
+  /**
+   * Input progress
+   */
+  200: SessionInputProgress
+}
+
+export type SessionInputStatusResponse = SessionInputStatusResponses[keyof SessionInputStatusResponses]
 
 export type SessionInputData = {
   body?: {

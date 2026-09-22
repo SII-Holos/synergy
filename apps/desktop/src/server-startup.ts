@@ -18,6 +18,7 @@ type Maintenance = {
 const maintenanceLabels: Record<StorageMaintenanceOperation, string> = {
   vacuum: "Rebuilding the database.",
   reclaim: "Reclaiming database space.",
+  prune: "Removing expired execution evidence.",
   "integrity-check": "Checking database integrity.",
   "create-index": "Building a database index.",
   "drop-index": "Removing a retired database index.",

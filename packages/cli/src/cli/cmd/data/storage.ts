@@ -50,6 +50,16 @@ export const DataStorageCommand = cmd({
         },
       )
       .command(
+        "prune",
+        "remove expired execution evidence, including large owners, in an exclusive maintenance window",
+        () => {},
+        async () => {
+          const context = currentMaintenance()
+          await using handle = await StorageMaintenance.open({ migrate: false })
+          console.log(JSON.stringify(await StorageMaintenance.prune(context?.signal), null, 2))
+        },
+      )
+      .command(
         "reclaim",
         "finish pending SQLite space reclamation in an exclusive maintenance window",
         (yargs) =>

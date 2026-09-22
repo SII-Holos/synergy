@@ -25,6 +25,7 @@ import type { SessionManager } from "./manager"
 import { SessionHistory } from "./history"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { SessionRootVariant } from "./root-variant"
+import { SessionInputProgress } from "./input-progress"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -621,8 +622,8 @@ export namespace SessionInbox {
 
   export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
     await Session.assertWorkspaceAvailable(input.sessionID)
-    const itemID = Identifier.ascending("inbox")
-    const messageID = Identifier.ascending("message")
+    const messageID = input.messageID ?? Identifier.ascending("message")
+    const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
@@ -662,11 +663,36 @@ export namespace SessionInbox {
       detail: summarized.detail,
       source: { type: "user", label: "You" },
       time: { created: Date.now() },
-      orderKey: itemID,
+      orderKey: Identifier.ascending("inbox"),
       messageID,
       input: queuedInput,
     }
-    const stored = await writeItem(item)
+    const admitted = await Storage.transaction(async () => {
+      const session = taskSession ?? (await readSession(input.sessionID))
+      const root = StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id))
+      const [existing, receipt] = await Storage.readMany<StoredItem | { messageID: string }>([
+        StoragePath.sessionInboxItem(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          itemID,
+        ),
+        [...root, "inbox-materialized", itemID],
+      ])
+      if (existing && "id" in existing) return { stored: normalizeStored(existing), created: false }
+      if (receipt) return { stored: item, created: false }
+      if (taskSession) {
+        const { RolloutLedger } = await import("./rollout/ledger")
+        const { RolloutLifecycle } = await import("./rollout/lifecycle")
+        const run = await RolloutLedger.getRun(RolloutLifecycle.owner(taskSession), messageID).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return
+          throw error
+        })
+        if (run && ["cancelled", "completed", "failed"].includes(run.status)) return { stored: item, created: false }
+      }
+      return { stored: await writeItem(item), created: true }
+    })
+    const stored = admitted.stored
+    if (!admitted.created) return publicItem(stored)
     if (taskSession) {
       // Open a lightweight run shell (no configuration or provenance) so
       // status polls and cancellation observe a durable record immediately;
@@ -924,7 +950,10 @@ export namespace SessionInbox {
     options?: { guiding?: boolean },
   ): Promise<MessageV2.WithParts | undefined> {
     try {
-      return await materializeStoredItem(item, rootID, options)
+      return await SessionInputProgress.run(
+        { sessionID: item.sessionID, messageID: item.messageID, itemID: item.id },
+        () => materializeStoredItem(item, rootID, options),
+      )
     } catch (error) {
       if (item.mode !== "task" && error instanceof Attachment.InvalidUrlError)
         await parkTaskFailure(item.sessionID, item, error.message)
@@ -1145,8 +1174,15 @@ export namespace SessionInbox {
     return true
   }
 
+  export async function failScheduledTask(sessionID: string): Promise<void> {
+    const task = await peekTask(sessionID)
+    if (task)
+      await parkTaskFailure(sessionID, task, "The saved message could not be scheduled. Retry to resume processing.")
+  }
+
   /** Clear a parked failure so the item becomes runnable again. */
   export async function rearm(input: { sessionID: string; itemID: string }): Promise<Item> {
+    SessionInputProgress.clearFailure(input.sessionID)
     const item = await getStored(input.sessionID, input.itemID)
     if (item.status !== "failed") return publicItem(item)
     // The failed materialization terminalized this task's rollout before the

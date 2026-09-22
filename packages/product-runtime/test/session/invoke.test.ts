@@ -1292,12 +1292,12 @@ describe("SessionInvoke inbox boundaries", () => {
       })
     }))
 
-  test("queued user input waits for after-turn and receives a materialization-time message id", () =>
+  test("queued user input waits for after-turn and preserves client identity in transcript order", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
 
       let activeSessionID = ""
-      let staleMessageID = ""
+      let clientMessageID = ""
       const processedUsers: string[] = []
       const promptPayloads: string[] = []
 
@@ -1308,7 +1308,7 @@ describe("SessionInvoke inbox boundaries", () => {
           if (callIndex !== 1) return
           await SessionInbox.enqueueUser({
             sessionID: activeSessionID,
-            messageID: staleMessageID,
+            messageID: clientMessageID,
             parts: [{ type: "text", text: "queued while running" }],
           })
         },
@@ -1335,7 +1335,7 @@ describe("SessionInvoke inbox boundaries", () => {
               type: "text",
               text: "initial prompt",
             })
-            staleMessageID = Identifier.ascending("message")
+            clientMessageID = Identifier.ascending("message")
 
             await SessionInvoke.loop.force(session.id)
 
@@ -1354,8 +1354,10 @@ describe("SessionInvoke inbox boundaries", () => {
             expect(queued).toBeDefined()
             expect(firstReply).toBeDefined()
             expect(processedUsers[1]).toBe(queued!.info.id)
-            expect(queued!.info.id).not.toBe(staleMessageID)
-            expect(queued!.info.id > firstReply!.info.id).toBe(true)
+            expect(queued!.info.id).toBe(clientMessageID)
+            expect(messages.findIndex((message) => message.info.id === queued!.info.id)).toBeGreaterThan(
+              messages.findIndex((message) => message.info.id === firstReply!.info.id),
+            )
             expect(queued!.info.agent).toBe("synergy")
             expect(queued!.info.model).toEqual({ providerID: "test-provider", modelID: "test-model" })
             expect(promptPayloads[0]).not.toContain("queued while running")
@@ -1579,12 +1581,12 @@ describe("SessionInvoke inbox boundaries", () => {
               type: "text",
               text: "initial prompt",
             })
-            const staleMessageID = Identifier.ascending("message")
+            const clientMessageID = Identifier.ascending("message")
             const queued = await SessionInbox.enqueueUser({
               sessionID: session.id,
               agent: "synergy",
               model: { providerID: "test-provider", modelID: "test-model" },
-              messageID: staleMessageID,
+              messageID: clientMessageID,
               parts: [{ type: "text", text: "steer sooner" }],
             })
             await SessionInbox.guide({ sessionID: session.id, itemID: queued.id })
@@ -1600,7 +1602,7 @@ describe("SessionInvoke inbox boundaries", () => {
             expect(processedUsers).toEqual([user.id])
             expect(promptPayloads[0]).toContain("steer sooner")
             expect(guided).toBeDefined()
-            expect(guided!.info.id).not.toBe(staleMessageID)
+            expect(guided!.info.id).toBe(clientMessageID)
             expect(guided!.info.isRoot).toBe(false)
             expect(guided!.info.rootID).toBe(user.id)
             expect(guided!.info.origin?.type).toBe("user")

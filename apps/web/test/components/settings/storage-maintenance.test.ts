@@ -32,11 +32,11 @@ beforeAll(async () => {
     const status = () => ({mode: 'managed', maintenance: {state: running ? 'running' : 'idle', progress: {step: 2, current: 512, total: 0}}})
     const bridge = mode === 'web' ? undefined : {
       status: async () => status(),
-      maintenance: async () => { window.calls.push('maintenance'); if (mode === 'failure') throw new Error('Wait for the active task'); running = true; await new Promise(resolve => finish = resolve); return status() },
+      maintenance: async (operation) => { window.calls.push(operation === 'prune' ? 'prune' : 'maintenance'); if (mode === 'failure') throw new Error('Wait for the active task'); running = true; await new Promise(resolve => finish = resolve); return status() },
       cancelMaintenance: async () => { window.calls.push('return'); running = false; finish?.(); return status() },
     }
     render(() => <I18nProvider i18n={i18n}><StorageMaintenance
-      status={{format: {maintenanceRequired: true, current: 2, target: 3}, reclaim: {pending: true, paused: paused(), running: false}}}
+      status={{format: {maintenanceRequired: true, current: 2, target: 3}, reclaim: {pending: true, paused: paused(), running: false}, prune: {owners: mode === 'prune' || mode === 'web' ? 2 : 0, updatedAt: 1}}}
       loading={false} bridge={bridge} controlBusy={false} onRefresh={() => {}}
       onControl={action => { window.calls.push(action); setPaused(action === 'pause') }}
     /></I18nProvider>, document.querySelector('#root'))
@@ -87,4 +87,14 @@ test("web mode explains host-side maintenance without exposing a local stop acti
   await page.getByText("synergy migration run storage --maintenance", { exact: true }).waitFor()
   expect(await page.getByRole("button", { name: "Optimize storage", exact: true }).count()).toBe(0)
   expect(await page.getByRole("button", { name: "Return to Synergy", exact: true }).count()).toBe(0)
+  await page.getByText("synergy data storage prune", { exact: true }).waitFor()
+})
+
+test("large expired evidence has an explicit maintenance action with its data consequences", async () => {
+  await page.goto(url + "?mode=prune")
+  await page.getByText("Removed evidence cannot be restored.", { exact: false }).waitFor()
+  await page.getByRole("button", { name: "Remove expired evidence", exact: true }).click()
+  await page.getByRole("button", { name: "Return to Synergy", exact: true }).click()
+  expect(await page.evaluate<string[]>("window.calls")).toEqual(["prune", "return"])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })

@@ -72,7 +72,7 @@ export async function runCli(options: CliOptions): Promise<void> {
           (argv.includes("migration") &&
             argv.includes("run") &&
             argv.some((arg) => arg === "--maintenance" || arg === "--maintenance=true")) ||
-          (argv.includes("data") && argv.includes("storage") && argv.includes("reclaim"))
+          (argv.includes("data") && argv.includes("storage") && (argv.includes("reclaim") || argv.includes("prune")))
         )
           await withCliMaintenance(() => run())
         else await run()

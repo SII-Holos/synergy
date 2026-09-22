@@ -110,6 +110,21 @@ test("status is read-only before initialization and resume creates a verifiable 
     expect(report()).toMatchObject({ backend: "sqlite", phase: "active", recoveryRecords: 0, pendingEvents: 0 })
   }))
 
+test("prune requires exclusive storage ownership and releases it on completion", () =>
+  runtime.run(async () => {
+    await invoke(["storage", "resume"])
+    const lock = await ServerProcessLock.acquire()
+    try {
+      await expect(invoke(["storage", "prune"])).rejects.toThrow()
+    } finally {
+      await lock.release()
+    }
+    await invoke(["storage", "prune"])
+    expect(report()).toMatchObject({ deletedRecords: 0, pruned: [], deferred: [] })
+    expect(Storage.available()).toBe(false)
+    expect(await ServerProcessLock.read()).toBeUndefined()
+  }))
+
 test("resume preserves an interrupted JSON import and migrate activates a verified target", () =>
   runtime.run(async () => {
     const legacy = path.join(Global.Path.data, "notes", "home", "retained.json")

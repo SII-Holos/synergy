@@ -560,7 +560,17 @@ export namespace SessionInvoke {
       const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
         (message) => message.info.role === "user" && message.info.isRoot === true,
       )
-      if (!root) {
+      const queued = root ? await SessionInbox.peekTask(sessionID) : undefined
+      const previousRun =
+        root && queued
+          ? await RolloutLedger.getRun(RolloutLifecycle.owner(session), root.info.id).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return
+              throw error
+            })
+          : undefined
+      // Historical roots without execution evidence and finished roots cannot
+      // own a newly accepted task's configuration or block its materialization.
+      if (!root || (queued && (!previousRun || ["completed", "failed", "cancelled"].includes(previousRun.status)))) {
         // A parked failure stays in the inbox and is skipped by the next peek,
         // so the loop keeps consuming runnable tasks until none remain.
         const result = await SessionInbox.materializeNextTask(sessionID)

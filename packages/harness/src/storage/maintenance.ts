@@ -16,6 +16,12 @@ import { StorageReclamation } from "./format-reclamation"
 import { observeStorageMaintenance } from "./maintenance-progress"
 import { UpgradeWork } from "./upgrade-work"
 import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
+import { z } from "zod"
+import { StorageRetention } from "./retention"
+import { ObservabilityConfig } from "../observability/config"
+import { Config } from "../config/config"
+
+const exclusive = new WeakSet<object>()
 
 export namespace StorageMaintenance {
   export function observe<T>(
@@ -28,10 +34,30 @@ export namespace StorageMaintenance {
       return observeStorageMaintenance(operation, reporter)
     })
   }
-  export const Status = StorageReclamation.Status
-  export const status = () => StorageReclamation.status(Storage.current().store)
-  export const controlReclaim = (action: "pause" | "resume") =>
-    StorageReclamation.control(Storage.current().store, action)
+  export const Status = StorageReclamation.Status.extend({
+    prune: z.object({ owners: z.number().int().nonnegative(), updatedAt: z.number() }),
+  }).meta({ ref: "StorageMaintenanceStatus" })
+  export const status = async () => ({
+    ...(await StorageReclamation.status(Storage.current().store)),
+    prune: await StorageRetention.deferred(),
+  })
+  export async function prune(signal?: AbortSignal) {
+    if (!exclusive.has(Storage.current().store))
+      throw new StorageIntegrityError("Pruning requires an exclusive maintenance window")
+    ObservabilityConfig.refresh(await Config.globalResolved())
+    const config = ObservabilityConfig.current().storage
+    return StorageRetention.run({
+      retentionMs: config.retentionMs,
+      maxBytes: config.retentionBytes,
+      liveSessionIDs: [],
+      maintenance: true,
+      signal,
+    })
+  }
+  export const controlReclaim = async (action: "pause" | "resume") => {
+    await StorageReclamation.control(Storage.current().store, action)
+    return status()
+  }
   export const reclaim = (
     options: { signal?: AbortSignal; progress?: (current: number, total: number, phase: number) => void } = {},
   ) => StorageReclamation.drain(Storage.current().store, options)
@@ -121,6 +147,7 @@ export namespace StorageMaintenance {
       await Global.initialize({ cache: false })
       if (options.recover) await StorageBootstrap.resumeTargetSwitch(Global.Path.root)
       prepared = await StorageBootstrap.prepare({ root: Global.Path.root, recover: options.recover })
+      exclusive.add(prepared.store)
       const handle = { store: prepared.store, artifactDirectory: Global.Path.data }
       runtime.storage = handle
       await SessionStaging.recover()

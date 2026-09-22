@@ -766,14 +766,14 @@ function registerIpcHandlers() {
     if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, recoveryURL))
       throw new Error("Desktop server IPC sender is not trusted")
   }
-  const reloadManagedServer = (action: "restart" | "maintenance") =>
+  const reloadManagedServer = (action: "restart" | "maintenance", operation?: "format" | "prune") =>
     serverActions.run(action, async () => {
       if (!serverManager) throw new Error("Desktop server manager is not initialized")
       const window = mainWindow
       const generation = serverDocumentGeneration
       try {
         const url = await (action === "maintenance"
-          ? serverManager.runMaintenance()
+          ? serverManager.runMaintenance(operation)
           : serverManager.status().mode === "external"
             ? serverManager.start()
             : serverManager.restart())
@@ -812,9 +812,11 @@ function registerIpcHandlers() {
     trustedServerSender(event)
     return reloadManagedServer("restart")
   })
-  ipcMain.handle("desktop.server.maintenance", (event) => {
+  ipcMain.handle("desktop.server.maintenance", (event, operation?: unknown) => {
     trustedServerSender(event)
-    return reloadManagedServer("maintenance")
+    if (operation !== undefined && operation !== "format" && operation !== "prune")
+      throw new Error("Unknown storage maintenance operation")
+    return reloadManagedServer("maintenance", operation)
   })
   ipcMain.handle("desktop.server.cancelMaintenance", async (event) => {
     trustedServerSender(event)

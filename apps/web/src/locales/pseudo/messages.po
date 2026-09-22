@@ -13957,6 +13957,16 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.cancelled"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.delayed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.initializing"
 msgstr ""
 
@@ -13967,7 +13977,22 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.reconnecting"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.retrying"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.stalled"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.storage"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -19285,6 +19310,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.storage.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.prune.title"
 msgstr ""
 
 #. js-lingui-explicit-id
