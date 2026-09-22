@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 
 export namespace WorkspaceFile {
   export const NodeType = z.enum(["file", "directory", "symlink", "unknown"])
@@ -10,6 +10,7 @@ export namespace WorkspaceFile {
   export const Node = z
     .object({
       path: z.string(),
+      entryVersion: z.string().optional(),
       name: z.string(),
       type: NodeType,
       size: z.number().int().nonnegative(),
@@ -244,11 +245,13 @@ export namespace WorkspaceFile {
     .meta({ ref: "WorkspaceFileCreateDirectoryInput" })
   export type CreateDirectoryInput = z.infer<typeof CreateDirectoryInput>
 
+  const EntryVersion = z.string().regex(/^entry:[a-f0-9]{64}$/)
+
   export const MoveInput = z
     .object({
       from: z.string(),
       to: z.string(),
-      conflictPolicy: WriteConflictPolicy.default("fail"),
+      expectedVersion: EntryVersion,
     })
     .meta({ ref: "WorkspaceFileMoveInput" })
   export type MoveInput = z.infer<typeof MoveInput>
@@ -257,7 +260,7 @@ export namespace WorkspaceFile {
     .object({
       from: z.string(),
       to: z.string(),
-      conflictPolicy: WriteConflictPolicy.default("fail"),
+      expectedVersion: EntryVersion,
     })
     .meta({ ref: "WorkspaceFileCopyInput" })
   export type CopyInput = z.infer<typeof CopyInput>
@@ -266,10 +269,21 @@ export namespace WorkspaceFile {
     .object({
       path: z.string(),
       recursive: z.boolean().default(false),
-      trash: z.boolean().default(true),
+      expectedVersion: EntryVersion,
     })
     .meta({ ref: "WorkspaceFileDeleteInput" })
   export type DeleteInput = z.infer<typeof DeleteInput>
+
+  export const EntryResult = z.object({ path: z.string(), node: Node }).meta({ ref: "WorkspaceFileEntryResult" })
+  export const DeleteResult = z
+    .object({ path: z.string(), removed: z.literal(true) })
+    .meta({ ref: "WorkspaceFileDeleteResult" })
+  export const EntryError = z
+    .object({
+      name: z.string(),
+      data: z.object({ message: z.string(), completed: z.array(z.string()).optional() }),
+    })
+    .meta({ ref: "WorkspaceFileEntryError" })
 
   export const StatusSummary = z
     .object({

@@ -10,7 +10,13 @@ import {
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import type { WorkspaceFileNode, WorkspaceFileReadResult } from "@ericsanchezok/synergy-sdk"
+import type {
+  WorkspaceFileNode,
+  WorkspaceFileReadResult,
+  WorkspaceFileMoveInput,
+  WorkspaceFileCopyInput,
+  WorkspaceFileDeleteInput,
+} from "@ericsanchezok/synergy-sdk"
 import { useParams } from "@solidjs/router"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useSDK } from "../sdk"
@@ -811,11 +817,29 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   }
 
   const renameCachedPath = (from: string, to: string) => {
+    const retained = new Set(
+      Object.keys(store.documents).filter((key) => {
+        const next = replacePrefix(key, from, to)
+        return next !== key && (store.documents[key]?.draft || store.documents[next]?.draft)
+      }),
+    )
+    for (const key of Object.keys(store.documents)) {
+      const next = replacePrefix(key, from, to)
+      if (next === key) continue
+      documentGeneration.set(key, (documentGeneration.get(key) ?? 0) + 1)
+      documentGeneration.set(next, (documentGeneration.get(next) ?? 0) + 1)
+    }
     setStore(
       produce((draft) => {
         for (const key of Object.keys(draft.documents)) {
           const next = replacePrefix(key, from, to)
           if (next === key) continue
+          if (retained.has(key)) {
+            draft.documents[key]!.deleted = true
+            draft.documents[key]!.stale = true
+            draft.documents[key]!.loading = false
+            continue
+          }
           draft.documents[next] = { ...draft.documents[key]!, path: next }
           delete draft.documents[key]
         }
@@ -856,7 +880,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       if (owner?.id !== workspace.id || owner.generation !== workspace.generation) continue
       const current = workspaceFilePath(tab.resourceId)
       const next = replacePrefix(current, from, to)
-      if (next === current) continue
+      if (next === current || retained.has(current)) continue
       workbench.updateTab(tab.id, {
         resourceId: workspaceFileResource(workspace, next),
         title: getFilename(next),
@@ -922,6 +946,15 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   })
 
   const handleFocus = () => refresh()
+  async function entryRequest<T>(request: () => Promise<{ data?: T }>): Promise<T> {
+    try {
+      const response = await request()
+      if (!response.data) throw new Error("The server returned an empty filesystem response")
+      return response.data
+    } finally {
+      if (!disposed) refresh()
+    }
+  }
   window.addEventListener("focus", handleFocus)
   onCleanup(() => {
     disposed = true
@@ -937,9 +970,54 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     workspace,
     resourceKey,
     reference,
+    entries: {
+      createFile: (path: string, signal?: AbortSignal) =>
+        entryRequest(() =>
+          sdk.client.workspace.files.write(
+            {
+              ...reference(),
+              workspaceFileWriteFileInput: {
+                path,
+                content: "",
+                encoding: "utf-8",
+                expectedVersion: null,
+                createParents: false,
+                conflictPolicy: "fail",
+              },
+            },
+            { signal },
+          ),
+        ),
+      createDirectory: (path: string, signal?: AbortSignal) =>
+        entryRequest(() =>
+          sdk.client.workspace.files.createDirectory(
+            {
+              ...reference(),
+              workspaceFileCreateDirectoryInput: { path, createParents: false },
+            },
+            { signal },
+          ),
+        ),
+      move: (input: WorkspaceFileMoveInput, signal?: AbortSignal) =>
+        entryRequest(() =>
+          sdk.client.workspace.files.move({ ...reference(), workspaceFileMoveInput: input }, { signal }),
+        ),
+      copy: (input: WorkspaceFileCopyInput, signal?: AbortSignal) =>
+        entryRequest(() =>
+          sdk.client.workspace.files.copy({ ...reference(), workspaceFileCopyInput: input }, { signal }),
+        ),
+      remove: (input: WorkspaceFileDeleteInput, signal?: AbortSignal) =>
+        entryRequest(() =>
+          sdk.client.workspace.files.remove({ ...reference(), workspaceFileDeleteInput: input }, { signal }),
+        ),
+    },
     hasDrafts: () => Object.values(store.documents).some((document) => !!document.draft),
     draft: {
       get: draftFor,
+      within: (path: string) =>
+        Object.entries(store.documents).some(
+          ([key, document]) => !!document.draft && (key === path || key.startsWith(path + "/")),
+        ),
       begin: beginDraft,
       discard: discardDraft,
       dirty: (input: string) => {

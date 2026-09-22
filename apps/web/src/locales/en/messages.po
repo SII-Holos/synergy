@@ -2620,74 +2620,134 @@ msgid "app.file.workspace.missing"
 msgstr "Reopen this file from its Workspace to continue."
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.apply"
+msgstr "Apply"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cancel"
+msgstr "Cancel"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copy"
+msgstr "Copy"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createDirectory"
+msgstr "New folder"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createFile"
+msgstr "New file"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.deleteWarning"
+msgstr "This permanently deletes the selected entry and its contents. This action cannot be undone."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.draftsKept"
+msgstr "Unsaved drafts stay open at their original paths."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.failed"
+msgstr "The file operation failed."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.move"
+msgstr "Move or rename"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.operation"
+msgstr "Operation"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.path"
+msgstr "Path within Workspace"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.refreshRequired"
+msgstr "Refresh the file list before changing this entry."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.remove"
+msgstr "Delete permanently"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.title"
+msgstr "File actions"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.working"
+msgstr "Working…"
+
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.closeTree"
 msgstr "Close file tree"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr "Collapse all folders"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
 msgstr "Refresh files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.showHidden"
 msgstr "Show hidden and ignored files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.error.retryLoadingFolder"
 msgstr "Retry loading folder"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.notice"
 msgstr "The active file is hidden by Explorer filters."
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.showIt"
 msgstr "Show it"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.label"
 msgstr "Files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loading"
 msgstr "Loading…"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loadingMore"
 msgstr "Loading more…"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.resize"
 msgstr "Resize file explorer"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.label"
 msgstr "Search files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.noMatchingFiles"
 msgstr "No matching files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.placeholder"
 msgstr "Search files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.results.label"
 msgstr "File search results"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.title"
 msgstr "Files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.label"
 msgstr "Workspace files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr "Symbolic link"
 

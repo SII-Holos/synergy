@@ -245,6 +245,8 @@ jobs:
           test/sandbox/write-footprint.test.ts
           test/process-shutdown.test.ts
           test/session/tool-resolver-bash-profile.test.ts
+          test/workspace-file
+          test/file/watcher-events.test.ts
 
   test-shards:
     name: Test Shards (${{ matrix.shard }})

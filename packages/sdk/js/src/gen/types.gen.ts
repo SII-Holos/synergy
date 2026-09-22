@@ -8187,6 +8187,7 @@ export type SkillArchiveLimitError = {
 
 export type WorkspaceFileNode = {
   path: string
+  entryVersion?: string
   name: string
   type: "file" | "directory" | "symlink" | "unknown"
   size: number
@@ -8351,6 +8352,47 @@ export type WorkspaceFileWriteFileInput = {
   createParents?: boolean
   conflictPolicy?: "fail" | "overwrite"
   expectedVersion: string | null
+}
+
+export type WorkspaceFileEntryResult = {
+  path: string
+  node: WorkspaceFileNode
+}
+
+export type WorkspaceFileEntryError = {
+  name: string
+  data: {
+    message: string
+    completed?: Array<string>
+  }
+}
+
+export type WorkspaceFileCreateDirectoryInput = {
+  path: string
+  createParents?: boolean
+}
+
+export type WorkspaceFileCopyInput = {
+  from: string
+  to: string
+  expectedVersion: string
+}
+
+export type WorkspaceFileMoveInput = {
+  from: string
+  to: string
+  expectedVersion: string
+}
+
+export type WorkspaceFileDeleteResult = {
+  path: string
+  removed: true
+}
+
+export type WorkspaceFileDeleteInput = {
+  path: string
+  recursive?: boolean
+  expectedVersion: string
 }
 
 export type EmbeddingStatus =
@@ -10442,7 +10484,7 @@ export type EventFileWatcherUpdated = {
     oldPath?: string
     oldAbsolute?: string
     parent?: string
-    node?: unknown
+    node?: WorkspaceFileNode
     resync?: boolean
   }
 }
@@ -18369,6 +18411,192 @@ export type WorkspaceFilesWriteResponses = {
 }
 
 export type WorkspaceFilesWriteResponse = WorkspaceFilesWriteResponses[keyof WorkspaceFilesWriteResponses]
+
+export type WorkspaceFilesCreateDirectoryData = {
+  body?: WorkspaceFileCreateDirectoryInput
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
+  }
+  url: "/workspace/files/directory"
+}
+
+export type WorkspaceFilesCreateDirectoryErrors = {
+  /**
+   * Invalid operation
+   */
+  400: WorkspaceFileEntryError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileEntryError
+  /**
+   * Filesystem entry not found
+   */
+  404: WorkspaceFileEntryError
+  /**
+   * Conflict or partially completed operation
+   */
+  409: WorkspaceFileEntryError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesCreateDirectoryError =
+  WorkspaceFilesCreateDirectoryErrors[keyof WorkspaceFilesCreateDirectoryErrors]
+
+export type WorkspaceFilesCreateDirectoryResponses = {
+  /**
+   * Filesystem operation completed
+   */
+  200: WorkspaceFileEntryResult
+}
+
+export type WorkspaceFilesCreateDirectoryResponse =
+  WorkspaceFilesCreateDirectoryResponses[keyof WorkspaceFilesCreateDirectoryResponses]
+
+export type WorkspaceFilesCopyData = {
+  body?: WorkspaceFileCopyInput
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
+  }
+  url: "/workspace/files/copy"
+}
+
+export type WorkspaceFilesCopyErrors = {
+  /**
+   * Invalid operation
+   */
+  400: WorkspaceFileEntryError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileEntryError
+  /**
+   * Filesystem entry not found
+   */
+  404: WorkspaceFileEntryError
+  /**
+   * Conflict or partially completed operation
+   */
+  409: WorkspaceFileEntryError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesCopyError = WorkspaceFilesCopyErrors[keyof WorkspaceFilesCopyErrors]
+
+export type WorkspaceFilesCopyResponses = {
+  /**
+   * Filesystem operation completed
+   */
+  200: WorkspaceFileEntryResult
+}
+
+export type WorkspaceFilesCopyResponse = WorkspaceFilesCopyResponses[keyof WorkspaceFilesCopyResponses]
+
+export type WorkspaceFilesMoveData = {
+  body?: WorkspaceFileMoveInput
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
+  }
+  url: "/workspace/files/move"
+}
+
+export type WorkspaceFilesMoveErrors = {
+  /**
+   * Invalid operation
+   */
+  400: WorkspaceFileEntryError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileEntryError
+  /**
+   * Filesystem entry not found
+   */
+  404: WorkspaceFileEntryError
+  /**
+   * Conflict or partially completed operation
+   */
+  409: WorkspaceFileEntryError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesMoveError = WorkspaceFilesMoveErrors[keyof WorkspaceFilesMoveErrors]
+
+export type WorkspaceFilesMoveResponses = {
+  /**
+   * Filesystem operation completed
+   */
+  200: WorkspaceFileEntryResult
+}
+
+export type WorkspaceFilesMoveResponse = WorkspaceFilesMoveResponses[keyof WorkspaceFilesMoveResponses]
+
+export type WorkspaceFilesRemoveData = {
+  body?: WorkspaceFileDeleteInput
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    workspaceID: string
+    workspaceGeneration: number
+  }
+  url: "/workspace/files/delete"
+}
+
+export type WorkspaceFilesRemoveErrors = {
+  /**
+   * Invalid operation
+   */
+  400: WorkspaceFileEntryError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileEntryError
+  /**
+   * Filesystem entry not found
+   */
+  404: WorkspaceFileEntryError
+  /**
+   * Conflict or partially completed operation
+   */
+  409: WorkspaceFileEntryError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesRemoveError = WorkspaceFilesRemoveErrors[keyof WorkspaceFilesRemoveErrors]
+
+export type WorkspaceFilesRemoveResponses = {
+  /**
+   * Filesystem operation completed
+   */
+  200: WorkspaceFileDeleteResult
+}
+
+export type WorkspaceFilesRemoveResponse = WorkspaceFilesRemoveResponses[keyof WorkspaceFilesRemoveResponses]
 
 export type WorkspaceListData = {
   body?: never

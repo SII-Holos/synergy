@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceFile } from "@ericsanchezok/synergy-runtime-local/workspace-file/types"
 import { WorkspaceFileSearch } from "@ericsanchezok/synergy-runtime-local/workspace-file/search"
@@ -30,6 +30,55 @@ async function respondGuarded(c: Context, fn: () => Promise<unknown>): Promise<R
       return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
     }
     throw err
+  }
+}
+
+async function respondEntry(c: Context, fn: () => Promise<unknown>) {
+  try {
+    return c.json(await fn())
+  } catch (error) {
+    if (error instanceof WorkspaceFileService.PartialMutationError)
+      return c.json(
+        {
+          name: error.name,
+          data: { message: error.message, completed: error.completed.map(WorkspaceFileService.relative) },
+        },
+        409,
+      )
+    if (error instanceof WorkspaceFileService.AccessDeniedError)
+      return c.json({ name: error.name, data: { message: error.message } }, 403)
+    if (error instanceof WorkspaceFileService.WriteConflictError)
+      return c.json({ name: error.name, data: { message: error.message } }, 409)
+    if (error instanceof WorkspaceFileService.EntryLimitError)
+      return c.json({ name: error.name, data: { message: error.message } }, 400)
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "ENOENT")
+      return c.json({ name: "NotFoundError", data: { message: "Filesystem entry not found" } }, 404)
+    if (code && ["EACCES", "EPERM", "EROFS"].includes(code))
+      return c.json(
+        { name: "WorkspaceFileAccessDeniedError", data: { message: "Access denied by the filesystem" } },
+        403,
+      )
+    if (code && ["EEXIST", "ENOTEMPTY", "EBUSY"].includes(code))
+      return c.json(
+        { name: "WorkspaceFileWriteConflictError", data: { message: "Filesystem entry exists or is in use" } },
+        409,
+      )
+    throw error
+  }
+}
+
+function entryResponses(schema: z.ZodType) {
+  const failure = { content: { "application/json": { schema: resolver(WorkspaceFile.EntryError) } } }
+  return {
+    200: {
+      description: "Filesystem operation completed",
+      content: { "application/json": { schema: resolver(schema) } },
+    },
+    400: { description: "Invalid operation", ...failure },
+    403: { description: "Forbidden", ...failure },
+    404: { description: "Filesystem entry not found", ...failure },
+    409: { description: "Conflict or partially completed operation", ...failure },
   }
 }
 
@@ -485,4 +534,48 @@ export const WorkspaceFilesRoute = () =>
           throw err
         }
       },
+    )
+    .post(
+      "/directory",
+      describeRoute({
+        summary: "Create a Workspace directory",
+        operationId: "workspace.files.createDirectory",
+        responses: entryResponses(WorkspaceFile.EntryResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.CreateDirectoryInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.createDirectory(c.req.valid("json"), c.req.raw.signal)),
+    )
+    .post(
+      "/copy",
+      describeRoute({
+        summary: "Copy a Workspace file or directory without replacing the destination",
+        operationId: "workspace.files.copy",
+        responses: entryResponses(WorkspaceFile.EntryResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.CopyInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.copy(c.req.valid("json"), c.req.raw.signal)),
+    )
+    .post(
+      "/move",
+      describeRoute({
+        summary: "Move a Workspace file or directory without replacing the destination",
+        operationId: "workspace.files.move",
+        responses: entryResponses(WorkspaceFile.EntryResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.MoveInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.move(c.req.valid("json"), c.req.raw.signal)),
+    )
+    .post(
+      "/delete",
+      describeRoute({
+        summary: "Permanently remove a Workspace file or directory",
+        operationId: "workspace.files.remove",
+        responses: entryResponses(WorkspaceFile.DeleteResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.DeleteInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.remove(c.req.valid("json"), c.req.raw.signal)),
     )

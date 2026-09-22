@@ -133,6 +133,7 @@ beforeAll(async () => {
       path.join(fixtureDirectory, "main.tsx"),
       `
         import { createComponent } from "solid-js"
+        import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -144,9 +145,7 @@ beforeAll(async () => {
             createComponent(I18nProvider, {
               i18n,
               children: () =>
-                createComponent(FileExplorer, {
-                  onClose: () => {},
-                }),
+                createComponent(DialogProvider, { get children() { return createComponent(FileExplorer, { onClose: () => {} }) } }),
             }),
           document.querySelector("#root"),
         )

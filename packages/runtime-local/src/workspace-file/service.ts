@@ -1,4 +1,9 @@
 import { FileMutation } from "../file/mutation"
+import { FileEntry } from "../file/entry"
+import { FileWatcherEvent } from "../file/watcher-event"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { WorkspaceFileIndexer } from "./indexer"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { WorkspaceFileStream } from "./stream"
 import { fileURLToPath } from "url"
 import fs from "fs/promises"
@@ -47,6 +52,8 @@ function hiddenPath(relativePath: string) {
 export namespace WorkspaceFileService {
   export const AccessDeniedError = FileMutation.AccessDeniedError
   export const WriteConflictError = FileMutation.ConflictError
+  export const PartialMutationError = FileEntry.PartialError
+  export const EntryLimitError = FileEntry.LimitError
   export class InvalidContentError extends Error {
     override name = "WorkspaceFileInvalidContentError"
   }
@@ -59,12 +66,12 @@ export namespace WorkspaceFileService {
 
   export const TooLargeError = WorkspaceFileStream.TooLargeError
 
-  export function resolve(input = "") {
+  export function resolve(input = "", options?: { followFinalSymlink?: boolean }) {
     if (isControlPath(input)) throw new AccessDeniedError("Path contains control characters")
     const cleaned = stripFileProtocol(input)
     const workspace = root()
     const absolute = path.resolve(workspace, cleaned || ".")
-    if (!isPathContained(workspace, absolute)) {
+    if (!isPathContained(workspace, absolute, options)) {
       throw new AccessDeniedError("Access denied: path escapes workspace")
     }
     return absolute
@@ -72,7 +79,8 @@ export namespace WorkspaceFileService {
 
   export function relative(input: string) {
     const absolute = path.isAbsolute(input) ? path.resolve(input) : resolve(input)
-    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
+    if (!isPathContained(root(), absolute, { followFinalSymlink: false }))
+      throw new AccessDeniedError("Access denied: path escapes workspace")
     return displayRelative(absolute)
   }
 
@@ -90,14 +98,21 @@ export namespace WorkspaceFileService {
     input: string,
     options?: { resolveGitStatus?: boolean; gitStatus?: WorkspaceFile.GitStatus },
   ): Promise<WorkspaceFile.Node> {
-    const absolute = path.isAbsolute(input) ? input : resolve(input)
-    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
-    await assertRealpathInside(absolute)
+    const absolute = path.isAbsolute(input) ? input : resolve(input, { followFinalSymlink: false })
+    if (!isPathContained(root(), absolute, { followFinalSymlink: false }))
+      throw new AccessDeniedError("Access denied: path escapes workspace")
+    await assertEntryInside(absolute)
 
     const relativePath = displayRelative(absolute)
-    const stat = await fs.lstat(absolute)
+    const entry = await FileEntry.inspect(absolute)
+    if (!entry) throw Object.assign(new NotFoundError("Filesystem entry not found"), { code: "ENOENT" })
+    const stat = entry.stat
     const symlink = stat.isSymbolicLink()
-    const targetStat = symlink ? await fs.stat(absolute).catch(() => undefined) : stat
+    const targetStat = symlink
+      ? await assertRealpathInside(absolute)
+          .then(() => fs.stat(absolute))
+          .catch(() => undefined)
+      : stat
     const type: WorkspaceFile.NodeType = targetStat?.isDirectory()
       ? "directory"
       : targetStat?.isFile()
@@ -113,18 +128,127 @@ export namespace WorkspaceFileService {
 
     return {
       path: relativePath,
+      entryVersion: entry.version,
       name: relativePath ? path.basename(relativePath) : path.basename(root()),
       type,
-      size: stat.size,
-      mtime: stat.mtimeMs,
-      ctime: stat.ctimeMs,
+      size: Number(stat.size),
+      mtime: Number(stat.mtimeNs) / 1e6,
+      ctime: Number(stat.ctimeNs) / 1e6,
       ignored: isIgnored(relativePath),
       hidden: hiddenPath(relativePath),
-      readonly: (stat.mode & 0o200) === 0,
+      readonly: (stat.mode & 0o200n) === 0n,
       symlink,
       binary,
       gitStatus,
     }
+  }
+
+  async function assertEntryInside(absolute: string) {
+    const [entry, realRoot] = await Promise.all([FileEntry.canonical(absolute), fs.realpath(root())])
+    if (!isPathContained(realRoot, entry, { followFinalSymlink: false }))
+      throw new AccessDeniedError("Access denied: entry parent escapes workspace")
+  }
+
+  async function validateEntry(absolute: string, operation: "read" | "write") {
+    await assertEntryInside(absolute)
+    const [entry, realRoot] = await Promise.all([FileEntry.canonical(absolute), fs.realpath(root())])
+    if (entry === realRoot && operation === "write")
+      throw new AccessDeniedError("Access denied: Workspace root cannot be modified")
+    assertWritableTarget(absolute)
+    const match = SensitivePathPolicy.classify(path.relative(realRoot, entry), {
+      mode: "write",
+      workspaceRoot: realRoot,
+    })
+    if (match.matched) throw new AccessDeniedError("Access denied: protected filesystem entry")
+  }
+
+  async function changedEntry(absolute: string, oldPath?: string) {
+    WorkspaceFileStatus.invalidate()
+    WorkspaceFileIndexer.invalidate()
+    const result = { path: displayRelative(absolute), node: await node(absolute, { resolveGitStatus: false }) }
+    try {
+      await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+        file: result.path,
+        event: oldPath ? "renamed" : "added",
+        oldPath: oldPath ? displayRelative(oldPath) : undefined,
+        parent: displayRelative(path.dirname(absolute)),
+        node: result.node,
+      })
+    } catch (cause) {
+      throw new PartialMutationError("Filesystem changed, but publishing the update failed", [absolute], { cause })
+    }
+    return result
+  }
+  async function entryOperation<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn()
+    } catch (error) {
+      if (error instanceof PartialMutationError) {
+        WorkspaceFileStatus.invalidate()
+        WorkspaceFileIndexer.invalidate()
+        await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+          file: "",
+          event: "changed",
+          parent: "",
+          resync: true,
+        }).catch((cause) => {
+          Log.create({ service: "workspace-files" }).warn("partial filesystem update could not be published", {
+            error: cause,
+          })
+        })
+      }
+      throw error
+    }
+  }
+
+  export async function createDirectory(input: WorkspaceFile.CreateDirectoryInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const absolute = resolve(input.path, { followFinalSymlink: false })
+      await FileEntry.mkdir({ ...input, path: absolute, signal, validate: validateEntry })
+      return changedEntry(absolute)
+    })
+  }
+  export async function move(input: WorkspaceFile.MoveInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const from = resolve(input.from, { followFinalSymlink: false }),
+        to = resolve(input.to, { followFinalSymlink: false })
+      await validateEntry(from, "write")
+      try {
+        await FileEntry.move({ ...input, from, to, signal, validate: validateEntry })
+        return await changedEntry(to, from)
+      } finally {
+        WorkspaceFileStatus.invalidate()
+        WorkspaceFileIndexer.invalidate()
+      }
+    })
+  }
+  export async function copy(input: WorkspaceFile.CopyInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const from = resolve(input.from, { followFinalSymlink: false }),
+        to = resolve(input.to, { followFinalSymlink: false })
+      await FileEntry.copy({ ...input, from, to, signal, validate: validateEntry })
+      return changedEntry(to)
+    })
+  }
+  export async function remove(input: WorkspaceFile.DeleteInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const absolute = resolve(input.path, { followFinalSymlink: false })
+      await validateEntry(absolute, "write")
+      try {
+        await FileEntry.remove({ ...input, path: absolute, signal, validate: validateEntry })
+        await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+          file: displayRelative(absolute),
+          event: "deleted",
+          parent: displayRelative(path.dirname(absolute)),
+        }).catch((cause) => {
+          throw new PartialMutationError("Entry removed, but publishing the update failed", [absolute], { cause })
+        })
+        return { path: displayRelative(absolute), removed: true as const }
+      } finally {
+        WorkspaceFileStatus.invalidate()
+        WorkspaceFileIndexer.invalidate()
+      }
+    })
   }
 
   export async function maybeNode(

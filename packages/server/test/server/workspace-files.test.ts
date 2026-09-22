@@ -843,3 +843,32 @@ describe("GET /workspace/files/content", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("workspace entry routes preserve conditional identities and publish usable SDK-shaped results", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const app = Server.App()
+    const post = async (operation: string, body: unknown) =>
+      app.request(await workspaceUrl(operation, tmp.path), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    expect((await post("directory", { path: "folder" })).status).toBe(200)
+    await Bun.write(path.join(tmp.path, "folder", "item.txt"), "original")
+    const stat = await (await app.request(await workspaceUrl("stat", tmp.path, { path: "folder" }))).json()
+    const copied = await post("copy", { from: "folder", to: "copied", expectedVersion: stat.entryVersion })
+    expect(copied.status).toBe(200)
+    const copy = await copied.json()
+    const moved = await post("move", { from: "copied", to: "moved", expectedVersion: copy.node.entryVersion })
+    expect(moved.status).toBe(200)
+    const move = await moved.json()
+    expect((await post("delete", { path: "moved", expectedVersion: move.node.entryVersion })).status).toBe(403)
+    expect(
+      (await post("delete", { path: "moved", expectedVersion: move.node.entryVersion, recursive: true })).status,
+    ).toBe(200)
+    expect((await post("copy", { from: "folder", to: "folder", expectedVersion: stat.entryVersion })).status).toBe(403)
+    expect((await post("delete", { path: "folder" })).status).toBe(400)
+    expect((await post("directory", { path: "folder" })).status).toBe(409)
+    expect(await Bun.file(path.join(tmp.path, "folder", "item.txt")).text()).toBe("original")
+  }))

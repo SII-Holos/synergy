@@ -22,7 +22,7 @@ beforeAll(async () => {
     export const a = { id: "wsp_a", generation: 1, scopeID: "scope", type: "directory", path: "/a" }
     export const b = { ...a, id: "wsp_b", path: "/b" }
     const [state, setState] = createStore({ session: { id: "session", workspace: { ...a } }, tabs: [], active: undefined })
-    const requests = []; const writes = []; const disk = {}; const pending = []; const listeners = new Set(); const writeState = { mode: "conflict", finish: undefined }
+    const requests = []; const writes = []; const entries = []; const disk = {}; const pending = []; const listeners = new Set(); const writeState = { mode: "conflict", finish: undefined }
     const result = (query) => ({ data: { kind: "text", path: query.path, content: disk[query.workspaceID]?.content ?? query.workspaceID ?? "wsp_a",
       contentVersion: disk[query.workspaceID]?.version ?? "sha256:" + "a".repeat(64),
       node: { path: query.path, mtime: 1, size: 5, type: "file" }, encoding: "utf-8" } })
@@ -35,6 +35,10 @@ beforeAll(async () => {
           disk[query.workspaceID] = { content: body.content, version: "sha256:" + "c".repeat(64) }
           return { data: { contentVersion: disk[query.workspaceID].version, mtime: 2, size: body.content.length, path: body.path, existed: true } }
         },
+        createDirectory: async (query) => { entries.push(query); return { data: { path: "created", node: { path: "created", type: "directory" } } } },
+        copy: async (query) => { entries.push(query); return { data: { path: query.workspaceFileCopyInput.to, node: {} } } },
+        move: async (query) => { entries.push(query); return { data: { path: query.workspaceFileMoveInput.to, node: {} } } },
+        remove: async (query) => { entries.push(query); return { data: { removed: true, path: query.workspaceFileDeleteInput.path } } },
         children: async () => ({ data: { children: [], truncated: false } }) } } },
       event: { listen(cb) { listeners.add(cb); return () => listeners.delete(cb) } } })
     export const useSync = () => ({ data: { path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
@@ -44,7 +48,8 @@ beforeAll(async () => {
       updateTab() {} })
     export const Persist = { workspace: () => ({}), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
-    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, disk, state, writeState,
+    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState,
+      emit(properties) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: { workspaceID: a.id, workspaceGeneration: a.generation, ...properties } } })) },
       flush() { pending.splice(0).forEach(resolve => resolve()) },
       event(ws) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: {
         workspaceID: ws.id, workspaceGeneration: ws.generation, file: ws.path + "/same.txt", event: "changed" } } })) } }
@@ -258,5 +263,61 @@ test("watcher bursts coalesce into one subsequent read", async () => {
   await page.waitForFunction(() => (window as any).fixture.requests.length === 2)
   await page.evaluate(() => (window as any).fixture.flush())
   expect(await page.evaluate(() => (window as any).fixture.requests.length)).toBe(2)
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("a confirmed filesystem rename cannot retarget or overwrite dirty drafts", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    void h.file.load("same.txt")
+    void h.file.load("target.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  const result = await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.file.draft.begin("same.txt")
+    h.file.draft.update("same.txt", "source draft")
+    h.file.draft.begin("target.txt")
+    h.file.draft.update("target.txt", "target draft")
+    h.emit({ file: "target.txt", oldPath: "same.txt", event: "renamed" })
+    return {
+      source: h.file.draft.get("same.txt"),
+      target: h.file.draft.get("target.txt"),
+      deleted: h.file.get("same.txt").deleted,
+    }
+  })
+  expect(result.source.content).toBe("source draft")
+  expect(result.target.content).toBe("target draft")
+  expect(result.deleted).toBe(true)
+  await page.evaluate(() => (window as any).fixture.flush())
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("filesystem actions capture Workspace generation and caller-observed entry version", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  const entries = await page.evaluate(async () => {
+    const h = (window as any).fixture
+    const actions = h.file.entries
+    h.select({ ...h.b, generation: 3 })
+    await actions.move({ from: "same.txt", to: "renamed.txt", expectedVersion: "entry:observed" })
+    await actions.copy({ from: "renamed.txt", to: "copied.txt", expectedVersion: "entry:next" })
+    await actions.remove({ path: "copied.txt", expectedVersion: "entry:last", recursive: false })
+    return h.entries
+  })
+  expect(
+    entries.map((entry: { workspaceID: string; workspaceGeneration: number }) => [
+      entry.workspaceID,
+      entry.workspaceGeneration,
+    ]),
+  ).toEqual([
+    ["wsp_a", 1],
+    ["wsp_a", 1],
+    ["wsp_a", 1],
+  ])
+  expect(entries[0].workspaceFileMoveInput.expectedVersion).toBe("entry:observed")
+  expect(entries[2].workspaceFileDeleteInput.expectedVersion).toBe("entry:last")
   expect(errors).toEqual([])
 }, 30_000)

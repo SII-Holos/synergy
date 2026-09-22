@@ -8,7 +8,9 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
 import { useFile } from "@/context/file"
-import { fileExplorer as X } from "@/locales/messages"
+import { fileExplorer as X, fileEntries as A } from "@/locales/messages"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { FileEntryDialog, type FileEntryOperation } from "./entry-dialog"
 
 type TreeNodeRow = { kind: "node"; path: string; level: number; parent: string }
 type TreeStateRow = { kind: "loading" | "error" | "more"; path: string; level: number }
@@ -26,6 +28,7 @@ function gitStatus(status: string | undefined) {
 export function FileExplorer(props: { onClose: () => void }) {
   const file = useFile()
   const lingui = useLingui()
+  const dialog = useDialog()
   const [query, setQuery] = createSignal("")
   const [searching, setSearching] = createSignal(false)
   const [searchError, setSearchError] = createSignal<string>()
@@ -115,6 +118,23 @@ export function FileExplorer(props: { onClose: () => void }) {
     if (rowIndex >= 0) listHandle?.scrollToIndex(rowIndex, { align: "nearest" })
   }
 
+  const openActions = (path = focusedPath() ?? selectedPath(), operation?: FileEntryOperation) => {
+    const node = path ? (file.explorer.node(path) ?? file.get(path)?.node) : undefined
+    const actions = file.entries
+    const workspacePath = file.workspace?.path
+    if (!workspacePath) return
+    const dirty = path ? file.draft.within(path) : false
+    dialog.show(() => (
+      <FileEntryDialog
+        actions={actions}
+        workspacePath={workspacePath}
+        node={node}
+        operation={operation}
+        dirty={dirty}
+      />
+    ))
+  }
+
   const handleTreeKey = (event: KeyboardEvent) => {
     const nodes = visibleNodeRows()
     if (nodes.length === 0) return
@@ -141,7 +161,9 @@ export function FileExplorer(props: { onClose: () => void }) {
     } else if (event.key === "Enter") {
       if (node?.type === "directory") file.explorer.setExpanded(row.path, !file.explorer.isExpanded(row.path))
       else void file.openWorkspaceFile(row.path)
-    } else return
+    } else if (event.key === "F2") openActions(row.path, "move")
+    else if (event.key === "Delete") openActions(row.path, "remove")
+    else return
     event.preventDefault()
   }
 
@@ -170,6 +192,12 @@ export function FileExplorer(props: { onClose: () => void }) {
       <div class="file-explorer-header">
         <span class="file-explorer-title">{lingui._({ id: X.title.id, message: X.title.message })}</span>
         <div class="file-explorer-actions">
+          <IconButton
+            icon={getSemanticIcon("action.more")}
+            variant="ghost"
+            aria-label={lingui._(A.title)}
+            onClick={() => openActions()}
+          />
           <IconButton
             icon={getSemanticIcon(file.explorer.showHidden() ? "action.hide" : "action.view")}
             variant="ghost"
@@ -279,6 +307,11 @@ export function FileExplorer(props: { onClose: () => void }) {
                           aria-selected={selectedPath() === nodeRow().path}
                           data-path={nodeRow().path}
                           style={{ "padding-left": `${(nodeRow().level - 1) * 14 + 6}px` }}
+                          onContextMenu={(event) => {
+                            event.preventDefault()
+                            setFocusedPath(nodeRow().path)
+                            openActions(nodeRow().path)
+                          }}
                           onMouseDown={() => setFocusedPath(nodeRow().path)}
                           onClick={() => {
                             if (directory()) file.explorer.setExpanded(nodeRow().path, !expanded())

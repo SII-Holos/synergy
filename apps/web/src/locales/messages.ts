@@ -425,6 +425,30 @@ export const attachmentWorkbench = {
 
 // ── File explorer ────────────────────────────────────────────────────────────
 
+export const fileEntries = {
+  title: { id: "app.fileEntries.title", message: "File actions" },
+  operation: { id: "app.fileEntries.operation", message: "Operation" },
+  createFile: { id: "app.fileEntries.createFile", message: "New file" },
+  createDirectory: { id: "app.fileEntries.createDirectory", message: "New folder" },
+  move: { id: "app.fileEntries.move", message: "Move or rename" },
+  copy: { id: "app.fileEntries.copy", message: "Copy" },
+  remove: { id: "app.fileEntries.remove", message: "Delete permanently" },
+  path: { id: "app.fileEntries.path", message: "Path within Workspace" },
+  deleteWarning: {
+    id: "app.fileEntries.deleteWarning",
+    message: "This permanently deletes the selected entry and its contents. This action cannot be undone.",
+  },
+  draftsKept: { id: "app.fileEntries.draftsKept", message: "Unsaved drafts stay open at their original paths." },
+  refreshRequired: {
+    id: "app.fileEntries.refreshRequired",
+    message: "Refresh the file list before changing this entry.",
+  },
+  failed: { id: "app.fileEntries.failed", message: "The file operation failed." },
+  cancel: { id: "app.fileEntries.cancel", message: "Cancel" },
+  apply: { id: "app.fileEntries.apply", message: "Apply" },
+  working: { id: "app.fileEntries.working", message: "Working…" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
 export const fileExplorer = {
   label: { id: "app.fileExplorer.label", message: "Files" },
   workspaceFiles: { id: "app.fileExplorer.tree.label", message: "Workspace files" },

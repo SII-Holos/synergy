@@ -79,7 +79,7 @@ File-result path enrichment has its own finite timeout and fails open to the com
 
 The classic debug file search is lazy and reuses this same bounded project index. Starting a project Scope does not launch a second fire-and-forget repository scan.
 
-The current public workspace-file routes are read/browse/search/status contracts plus `POST /workspace/files/write` (operationId `workspace.files.write`), a user-direct edit channel. Writes are bounded by the same path rules as reads — lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied — and additionally:
+The workspace-file routes include read/browse/search/status and conditional filesystem operations. The text-edit route is `POST /workspace/files/write` (operationId `workspace.files.write`), a user-direct edit channel. Writes are bounded by the same path rules as reads — lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied — and additionally:
 
 - sensitive paths are rejected via `SensitivePathPolicy` in write mode (Git metadata and secret/credential files such as `.git`, `.env`, and credential stores are not editable), and the check also runs against the resolved real path so a symlink whose target is a sensitive file cannot bypass it
 - a target can be missing or a regular file; directories, special files, dangling symbolic links and read-only filesystem targets are refused
@@ -91,6 +91,16 @@ Write failures use the same structured error shape as the rest of the API: `{ na
 A successful write invalidates the Git-status cache and the frontend refreshes through the filesystem watcher; no `file.edited` event is published. This route is the user editing their own workspace directly: it is profile-independent and bypasses the agent approval/sandbox pipeline, so path safety is enforced by the service itself rather than by execution policy. Agent write operations remain separate and use the governed tool pipeline (write/save_file tools with permission decisions, locking, events, formatting, and diagnostics), never this route.
 
 Writes share the native atomic replacement path with agent file tools and the anchored patcher. Canonical-path locks serialize cooperating processes. The writer stages and flushes a sibling file, rechecks content and directory identity, and publishes by rename or exclusive creation. Cancellation removes the staged file. Replacement preserves executable permission bits and leaves other hard links unchanged. Base64 content preserves raw bytes; invalid UTF-8 is returned as binary metadata instead of editable replacement characters.
+
+## Directory Entry Operations
+
+The file Explorer exposes new files, new folders, copy, move/rename and permanent deletion through generated `workspace.files` SDK methods. The action form captures its Workspace and the selected entry version. F2 opens move/rename and Delete opens an explicit permanent-deletion form. A failure preserves entered paths; choosing another Workspace does not retarget an open form. Unsaved drafts remain at their original paths through moves and deletion.
+
+`POST /workspace/files/directory`, `/copy`, `/move` and `/delete` share native Workspace write exclusion and path validation. Move, copy and delete require an `entryVersion` obtained from node metadata. This version describes filesystem entry identity and metadata; text replacement continues to use its independent exact-byte content version. Entry operations resolve parent directories while acting on the final symbolic link itself. Reads through an external or dangling link remain unavailable, but the link can be inspected, moved or deleted. Workspace roots and protected descendants cannot be modified through these routes.
+
+Copy prepares a sibling staging directory, preserves file bytes, permission bits, timestamps and link text, then verifies its source tree before publishing. The native destination operation never replaces an existing entry. Move uses the same native exclusion and uses verified copy followed by conditional source removal across filesystems. Directory operations bound traversal at 100,000 entries and 256 levels. Destructive operations check each selected entry and retain new or changed entries; a partially completed removal or cross-filesystem move returns a structured conflict with the completed paths. Permanent deletion is explicit and does not claim to use the operating system's Trash.
+
+Successful operations invalidate the file index and publish Workspace-qualified events. Only a confirmed move emits a rename event. A native watcher batch containing a sibling deletion and creation cannot establish that the two entries are the same file. External replacements remain ordinary content invalidations; unrelated files cannot inherit open tabs or drafts through a guessed rename.
 
 ## File Workbench Ownership and Bounds
 

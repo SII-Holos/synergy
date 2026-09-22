@@ -753,12 +753,24 @@ import type {
   WorkflowSessionUpdateLightloopErrors,
   WorkflowSessionUpdateLightloopResponses,
   WorkflowSetInput,
+  WorkspaceFileCopyInput,
+  WorkspaceFileCreateDirectoryInput,
+  WorkspaceFileDeleteInput,
+  WorkspaceFileMoveInput,
   WorkspaceFilesChildrenErrors,
   WorkspaceFilesChildrenResponses,
   WorkspaceFilesContentErrors,
   WorkspaceFilesContentResponses,
+  WorkspaceFilesCopyErrors,
+  WorkspaceFilesCopyResponses,
+  WorkspaceFilesCreateDirectoryErrors,
+  WorkspaceFilesCreateDirectoryResponses,
+  WorkspaceFilesMoveErrors,
+  WorkspaceFilesMoveResponses,
   WorkspaceFilesReadErrors,
   WorkspaceFilesReadResponses,
+  WorkspaceFilesRemoveErrors,
+  WorkspaceFilesRemoveResponses,
   WorkspaceFilesSearchErrors,
   WorkspaceFilesSearchResponses,
   WorkspaceFilesStatErrors,
@@ -1782,6 +1794,170 @@ export class Files extends HeyApiClient {
         },
       },
     )
+  }
+
+  /**
+   * Create a Workspace directory
+   */
+  public createDirectory<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileCreateDirectoryInput?: WorkspaceFileCreateDirectoryInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileCreateDirectoryInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceFilesCreateDirectoryResponses,
+      WorkspaceFilesCreateDirectoryErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/files/directory",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Copy a Workspace file or directory without replacing the destination
+   */
+  public copy<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileCopyInput?: WorkspaceFileCopyInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileCopyInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesCopyResponses, WorkspaceFilesCopyErrors, ThrowOnError>({
+      url: "/workspace/files/copy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Move a Workspace file or directory without replacing the destination
+   */
+  public move<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileMoveInput?: WorkspaceFileMoveInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileMoveInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesMoveResponses, WorkspaceFilesMoveErrors, ThrowOnError>({
+      url: "/workspace/files/move",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Permanently remove a Workspace file or directory
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileDeleteInput?: WorkspaceFileDeleteInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileDeleteInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceFilesRemoveResponses,
+      WorkspaceFilesRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/files/delete",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
   }
 }
 

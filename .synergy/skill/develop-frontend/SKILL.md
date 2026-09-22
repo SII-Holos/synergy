@@ -158,3 +158,5 @@ When changing file consumers, capture Workspace ID and binding generation before
 For editable file consumers, capture the complete-read content version when editing starts. Keep that baseline independent from watcher refresh, and preserve drafts through model remounts. Test a remote write during editing and new local input during a pending save; only the submitted revision may become clean.
 
 Workspace selection changes require catalog snapshot/event race coverage: deliver rebinding before an older bootstrap or Session response, retain the new Session generation without changing activity, and keep pinned file tabs on their captured generation. Conditional sharing/rebinding forms retain the revision observed when editing starts; incoming events must not silently authorize overwriting concurrent changes.
+
+For filesystem actions, capture the Workspace, binding generation and observed entry version when opening the form. Retain input on conflicts and keep dirty source and destination drafts independent across rename events. Native create/delete notifications alone cannot prove a rename; verify the editor behavior against unrelated sibling changes.

@@ -5,9 +5,8 @@ import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import type { Workspace } from "@ericsanchezok/synergy-harness/session/types"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { FileWatcherEvent } from "./watcher-event"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
-import { z } from "zod"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -34,22 +33,7 @@ export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
   type WorkspaceFileEvent = FileWatcherEvents.WorkspaceEvent
 
-  export const Event = {
-    Updated: BusEvent.define(
-      "file.watcher.updated",
-      z.object({
-        ...WorkspaceEvents.Fields,
-        file: z.string(),
-        event: z.enum(["added", "changed", "deleted", "renamed"]),
-        absolute: z.string().optional(),
-        oldPath: z.string().optional(),
-        oldAbsolute: z.string().optional(),
-        parent: z.string().optional(),
-        node: z.any().optional(),
-        resync: z.boolean().optional(),
-      }),
-    ),
-  }
+  export const Event = FileWatcherEvent
 
   function indexerEvent(event: Exclude<WorkspaceFileEvent, "renamed">): "add" | "change" | "unlink" {
     if (event === "added") return "add"

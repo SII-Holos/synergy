@@ -15582,6 +15582,478 @@
         ]
       }
     },
+    "/workspace/files/directory": {
+      "post": {
+        "operationId": "workspace.files.createDirectory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Create a Workspace directory",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileCreateDirectoryInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.createDirectory({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/copy": {
+      "post": {
+        "operationId": "workspace.files.copy",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Copy a Workspace file or directory without replacing the destination",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileCopyInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.copy({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/move": {
+      "post": {
+        "operationId": "workspace.files.move",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Move a Workspace file or directory without replacing the destination",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileMoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.move({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/delete": {
+      "post": {
+        "operationId": "workspace.files.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Permanently remove a Workspace file or directory",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileDeleteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileDeleteInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/workspace": {
       "get": {
         "operationId": "workspace.list",
@@ -50272,6 +50744,9 @@
           "path": {
             "type": "string"
           },
+          "entryVersion": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -50831,6 +51306,117 @@
           }
         },
         "required": ["path", "content", "expectedVersion"]
+      },
+      "WorkspaceFileEntryResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          }
+        },
+        "required": ["path", "node"]
+      },
+      "WorkspaceFileEntryError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "completed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorkspaceFileCreateDirectoryInput": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "createParents": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["path"]
+      },
+      "WorkspaceFileCopyInput": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "pattern": "^entry:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["from", "to", "expectedVersion"]
+      },
+      "WorkspaceFileMoveInput": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "pattern": "^entry:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["from", "to", "expectedVersion"]
+      },
+      "WorkspaceFileDeleteResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["path", "removed"]
+      },
+      "WorkspaceFileDeleteInput": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "recursive": {
+            "default": false,
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "pattern": "^entry:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["path", "expectedVersion"]
       },
       "EmbeddingStatus": {
         "anyOf": [
@@ -57190,7 +57776,9 @@
               "parent": {
                 "type": "string"
               },
-              "node": {},
+              "node": {
+                "$ref": "#/components/schemas/WorkspaceFileNode"
+              },
               "resync": {
                 "type": "boolean"
               }
