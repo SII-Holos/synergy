@@ -8,6 +8,7 @@ import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identi
 import { retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
 import { FileMutation } from "../file/mutation"
+import { DarwinCoalition } from "../process/darwin-coalition"
 
 const Root = z.object({ path: z.string(), physicalID: z.string().optional() })
 const Claim = z.object({
@@ -22,6 +23,9 @@ const Claim = z.object({
   pid: z.number().int().positive(),
   startIdentity: z.string().optional(),
   processBound: z.boolean().default(false),
+  processTree: z
+    .object({ kind: z.literal("darwin-coalition"), bootID: z.string(), coalitionID: z.string() })
+    .optional(),
   state: z.enum(["waiting", "active"]),
 })
 const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
@@ -106,7 +110,14 @@ export class WorkspaceCoordinator {
     })())
   }
 
-  private async alive(claim: Pick<Claim, "pid" | "startIdentity">, fresh = false) {
+  private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree">, fresh = false) {
+    if (claim.processTree) {
+      try {
+        return DarwinCoalition.inspect(claim.processTree).state === "active"
+      } catch {
+        return true
+      }
+    }
     const key = `${claim.pid}:${claim.startIdentity}`
     if (!fresh && (this.live.get(key) ?? 0) > Date.now()) return true
     try {
@@ -252,11 +263,15 @@ export class WorkspaceCoordinator {
     return {
       id: request.id,
       release: () => this.release(request.id, request.token),
-      bindProcess: (processID: number) => this.bindProcess(request.id, request.token, processID),
+      bindProcess: (processID: number, options?: { descendants?: boolean }) =>
+        this.bindProcess(request.id, request.token, processID, options),
     }
   }
 
-  private async bindProcess(id: string, token: string, pid: number) {
+  private async bindProcess(id: string, token: string, pid: number, options?: { descendants?: boolean }) {
+    const processTree = options?.descendants
+      ? { kind: "darwin-coalition" as const, ...DarwinCoalition.capture(pid) }
+      : undefined
     const identity = await processStartIdentity(pid)
     if (!identity) throw new Error("Cannot verify the Workspace process identity")
     await this.update((ledger) => {
@@ -266,6 +281,7 @@ export class WorkspaceCoordinator {
       claim.pid = pid
       claim.startIdentity = identity
       claim.processBound = true
+      claim.processTree = processTree
     })
   }
 

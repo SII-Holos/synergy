@@ -338,7 +338,8 @@
     "./test/migration/fixture": "./test/migration/fixture.ts",
     "./test/support/runtime": "./test/support/runtime.ts",
     "./test/support/runtime-home": "./test/support/runtime-home.ts",
-    "./enforcement/policy-worker/process-host": "./src/enforcement/policy-worker/process-host.ts"
+    "./enforcement/policy-worker/process-host": "./src/enforcement/policy-worker/process-host.ts",
+    "./process/handle": "./src/process/handle.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

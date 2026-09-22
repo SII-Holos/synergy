@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto"
 import { tmpdir } from "node:os"
 import { unlinkSync } from "node:fs"
 import path from "node:path"
-import type { ChildProcess } from "node:child_process"
+import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
 import type { Pointer } from "bun:ffi"
 
 export namespace WindowsProcessJob {
@@ -63,7 +63,7 @@ export namespace WindowsProcessJob {
      * cmd's quote state.
      */
     verbatimCommandLine: boolean
-    activate(child: ChildProcess): Promise<Owner>
+    activate(child: Pick<ProcessHandle, "pid" | "kill">): Promise<Owner>
     cleanup(): void
   }
 
@@ -124,7 +124,7 @@ export namespace WindowsProcessJob {
   }
 
   export function activateForTest(input: {
-    child: ChildProcess
+    child: Pick<ProcessHandle, "pid" | "kill">
     jobRuntime: RuntimeForTest | Promise<RuntimeForTest>
     openGate(): Promise<unknown>
     cleanup?(): void
@@ -136,7 +136,7 @@ export namespace WindowsProcessJob {
   }
 
   async function activate(input: {
-    child: ChildProcess
+    child: Pick<ProcessHandle, "pid" | "kill">
     cleanup(): void
     jobRuntime: RuntimeForTest | Promise<RuntimeForTest>
     openGate(): Promise<unknown>

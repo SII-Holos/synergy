@@ -12,6 +12,7 @@ const REQUIRED_NEEDS = [
   "quality",
   "typecheck",
   "windows",
+  "macos-workspace-processes",
   "test",
   "package-validation",
   "workflow-validation",
@@ -95,11 +96,15 @@ describe("CI topology", () => {
     expect(blocking.sort()).toEqual(
       [
         ...REQUIRED_NEEDS,
+        "agent-storage",
         "coverage-shards",
         "test-shards",
         "test-aux",
         "test-harness",
         "test-benchmark",
+        "test-benchmark-docker",
+        "test-benchmark-matrix",
+        "test-benchmark-streams",
         "test-rollout-long",
       ].sort(),
     )

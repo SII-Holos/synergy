@@ -29,6 +29,10 @@ import type { BashSandboxPrepare } from "@ericsanchezok/synergy-harness/tool/bas
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import { WindowsProcessJob } from "../../process/windows-process-job"
+import { OwnedProcess } from "../../process/owned-process"
+import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -533,9 +537,25 @@ export const LocalBashBackend = {
       scheduleMetadata()
     }
 
-    let child: ReturnType<typeof spawn>
+    let child: ProcessHandle
+    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
     try {
-      if (sandboxWrapper && !sandboxWrapper.skipReason) {
+      if (process.platform === "darwin") {
+        if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
+          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+        const invocation =
+          sandboxWrapper && !sandboxWrapper.skipReason
+            ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
+            : { command: shell, args: ["-c", executionCommand] }
+        const lease = await WorkspaceAccess.process(sandboxWriteRoots(sandboxWrapper), ctx.abort)
+        try {
+          owned = await OwnedProcess.prepare({ ...invocation, cwd, env: sandboxEnv, lease, signal: ctx.abort })
+        } catch (error) {
+          await lease.release()
+          throw error
+        }
+        child = owned.child
+      } else if (sandboxWrapper && !sandboxWrapper.skipReason) {
         const invocation = detachedDaemonAllowed
           ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
           : Shell.prepareOwnedProcessGroup({ command: sandboxWrapper.command, args: sandboxWrapper.args })
@@ -715,6 +735,7 @@ export const LocalBashBackend = {
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
 
+    if (owned) ProcessRegistry.setTerminator(regProc, owned.stop)
     if (windowsProcessOwner) {
       ProcessRegistry.setTerminator(regProc, terminateWindowsOwner)
     }
@@ -799,6 +820,7 @@ export const LocalBashBackend = {
     })
       .then(
         async (result) => {
+          await owned?.completion
           await outputPending
           await evidence?.finish({
             interrupted: result.drainTimedOut || aborted || timedOut,
@@ -810,6 +832,7 @@ export const LocalBashBackend = {
           finishClose(result.code, result.signal, result.drainTimedOut)
         },
         async (error: unknown) => {
+          await owned?.completion
           await outputPending
           await evidence?.finish({ interrupted: true, exitCode: null, signal: null, pid: child.pid })
           throw error
@@ -817,6 +840,17 @@ export const LocalBashBackend = {
       )
       .catch((error: unknown) => finishError(error instanceof Error ? error : new Error(String(error))))
     ProcessRegistry.trackClosure(regProc, closing)
+    if (owned) {
+      try {
+        await owned.activate()
+        regProc.pid = child.pid
+        if (denialSession && child.pid) denialSession.adoptPid(child.pid)
+      } catch (error) {
+        await owned.stop()
+        await closing
+        throw error
+      }
+    }
 
     await trace("process.spawn", {
       processId: regProc.id,

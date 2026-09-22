@@ -24,7 +24,7 @@ export namespace WorkspaceAccess {
   export interface Lease {
     id: string
     release(): Promise<void>
-    bindProcess(processID: number): Promise<void>
+    bindProcess(processID: number, options?: { descendants?: boolean }): Promise<void>
   }
   export interface Host {
     acquire(input: ClaimInput): Promise<Lease>
