@@ -218,6 +218,7 @@ export namespace WorkspaceFile {
         "WorkspaceFileWriteConflictError",
         "WorkspaceFileTooLargeError",
         "WorkspaceFileInvalidContentError",
+        "WorkspaceBusyError",
       ]),
       data: z.object({ message: z.string() }),
     })

@@ -1,4 +1,6 @@
 import { SessionRecords } from "./records"
+import { ExecutionCapacity } from "./execution-capacity"
+import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionInputProgress } from "./input-progress"
 import { Bus } from "../bus"
@@ -434,26 +436,30 @@ export namespace SessionManager {
       const workspace = session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")
       const runWithScope = () =>
-        ScopeRuntime.provide({
-          scope,
-          workspace,
-          ensure: workspace !== null,
-          fn: async () => {
-            assertExecutionContext(session, "session manager run")
-            const workspace = (session as Info).workspace
-            if (workspace?.type !== "git_worktree") {
-              activate(lease)
-              return fn(lease)
-            }
-            await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
-            try {
-              activate(lease)
-              return await fn(lease)
-            } finally {
-              await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
-            }
-          },
-        })
+        ExecutionCapacity.session(sessionID, () =>
+          WorkspaceAccess.task({ sessionID, parentSessionID: session.parentID, workspace, signal: lease.signal }, () =>
+            ScopeRuntime.provide({
+              scope,
+              workspace,
+              ensure: workspace !== null,
+              fn: async () => {
+                assertExecutionContext(session, "session manager run")
+                const workspace = (session as Info).workspace
+                if (workspace?.type !== "git_worktree") {
+                  activate(lease)
+                  return fn(lease)
+                }
+                await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
+                try {
+                  activate(lease)
+                  return await fn(lease)
+                } finally {
+                  await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
+                }
+              },
+            }),
+          ),
+        )
       let result: T
       if (workspace?.type !== "git_worktree") {
         result = await runWithScope()

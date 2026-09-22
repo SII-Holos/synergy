@@ -17,4 +17,6 @@ Keep lifecycle implementation in harness and local capability registration here.
 
 Workspace removal and automatic reclamation share the lifecycle gate. Preserve active users, on-disk lock ownership, and unverified local commits. Validate workspace changes with `bun test test/workspace` plus the Product Runtime worktree suites.
 
+Native Workspace coordination owns canonical-root overlap and process identity fencing across Runtime instances. Launchers bind process claims before activating commands and retain ownership through actual exit.
+
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.

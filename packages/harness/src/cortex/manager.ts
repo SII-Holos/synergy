@@ -1,3 +1,5 @@
+import { ExecutionCapacity } from "../session/execution-capacity"
+import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionExecutionContributions } from "../session/execution-contributions"
 import { SessionUsage } from "../session/usage"
@@ -46,6 +48,8 @@ export namespace Cortex {
     taskRuns: new Map() as Map<string, Promise<void>>,
     taskBudgets: new Map<string, { maxOutputTokens?: number; maxCost?: number }>(),
     acquiredTasks: new Set<string>(),
+    capacityOwners: new Map<string, { controller: AbortController; unregister(): void }>(),
+    admissions: new Map<string, AbortController>(),
     taskTimeouts: new Map<string, ReturnType<typeof setTimeout>>(),
     finalizingTasks: new Set<string>(),
     cancellationRequests: new Set<string>(),
@@ -309,7 +313,16 @@ export namespace Cortex {
     if (!task) throw new Error(`Cortex task ${taskID} not found`)
     if (task.status !== "queued") return task
 
-    await CortexConcurrency.acquire(task.agent)
+    const admission = new AbortController()
+    instanceState.admissions.set(taskID, admission)
+    try {
+      await ExecutionCapacity.wait(() => CortexConcurrency.acquire(task.agent, admission.signal))
+    } catch (error) {
+      if (instanceState.cancellationRequests.has(taskID) || isTerminal(task.status)) return task
+      throw error
+    } finally {
+      if (instanceState.admissions.get(taskID) === admission) instanceState.admissions.delete(taskID)
+    }
     instanceState.acquiredTasks.add(taskID)
 
     const current = instanceState.tasks.get(taskID)
@@ -320,6 +333,54 @@ export namespace Cortex {
       return current ?? task
     }
 
+    const controller = new AbortController()
+    let resuming: Promise<void> | undefined
+    const branches = new Set<{ active: boolean }>()
+    const pause = () => {
+      if (instanceState.acquiredTasks.delete(taskID)) CortexConcurrency.release(task.agent)
+    }
+    const resume = async () => {
+      if (instanceState.acquiredTasks.has(taskID) || controller.signal.aborted) return
+      if (resuming) return resuming
+      resuming = (async () => {
+        try {
+          await CortexConcurrency.acquire(task.agent, controller.signal)
+          if (controller.signal.aborted) {
+            CortexConcurrency.release(task.agent)
+            return
+          }
+          instanceState.acquiredTasks.add(taskID)
+        } catch (error) {
+          if (!controller.signal.aborted) throw error
+        }
+      })().finally(() => {
+        resuming = undefined
+      })
+      return resuming
+    }
+    const unregister = ExecutionCapacity.registerSession(task.sessionID, {
+      pause,
+      resume,
+      fork() {
+        const branch = { active: true }
+        branches.add(branch)
+        return {
+          pause() {
+            branch.active = false
+            if (![...branches].some((branch) => branch.active)) pause()
+          },
+          async resume() {
+            await resume()
+            branch.active = true
+          },
+          finish() {
+            branches.delete(branch)
+            if (branches.size && ![...branches].some((branch) => branch.active)) pause()
+          },
+        }
+      },
+    })
+    instanceState.capacityOwners.set(taskID, { controller, unregister })
     await setTaskStatus(taskID, "running")
 
     const budget = instanceState.taskBudgets.get(taskID)
@@ -375,7 +436,7 @@ export namespace Cortex {
 
   export const launch = fn(CortexTypes.LaunchInput, async (input) => {
     const task = await prepare(input)
-    return start(task.id)
+    return WorkspaceAccess.handoff(() => start(task.id))
   })
 
   async function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): Promise<void> {
@@ -777,6 +838,10 @@ export namespace Cortex {
         )
       }
 
+      const capacity = instanceState.capacityOwners.get(taskID)
+      capacity?.controller.abort(new DOMException("Cortex task ended", "AbortError"))
+      capacity?.unregister()
+      instanceState.capacityOwners.delete(taskID)
       if (instanceState.acquiredTasks.delete(taskID)) {
         CortexConcurrency.release(terminalTask.agent)
       }
@@ -1333,6 +1398,7 @@ export namespace Cortex {
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     instanceState.cancellationRequests.add(taskID)
+    instanceState.admissions.get(taskID)?.abort(new DOMException("Cortex task cancelled", "AbortError"))
     try {
       await SessionInbox.fenceQueuedWork(task.sessionID, (fenceQueuedBefore) => {
         SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
@@ -1395,6 +1461,7 @@ export namespace Cortex {
   export async function stop() {
     const state = runtimeState()
     state.stopped = true
+    for (const admission of state.admissions.values()) admission.abort(new DOMException("Cortex stopped", "AbortError"))
     try {
       await drain()
     } finally {
@@ -1521,37 +1588,48 @@ export namespace Cortex {
     return lines.join("\n")
   }
 
-  export async function waitFor(taskID: string, timeoutSeconds: number): Promise<CortexTypes.Task | undefined> {
+  export async function waitFor(
+    taskID: string,
+    timeoutSeconds: number,
+    signal = WorkspaceAccess.signal(),
+  ): Promise<CortexTypes.Task | undefined> {
     const instanceState = runtimeState()
-
+    signal?.throwIfAborted()
     const task = instanceState.tasks.get(taskID)
     if (!task || (task.status !== "running" && task.status !== "queued")) return task
-
-    return new Promise((resolve) => {
-      let resolved = false
-
-      const waiter = {
-        resolve: (completedTask: CortexTypes.Task) => {
-          if (resolved) return
-          resolved = true
-          resolve(completedTask)
-        },
-        timeout: setTimeout(() => {
-          if (resolved) return
-          resolved = true
-          // Unregister this waiter — if the task completes later with no waiters, mail will be sent
-          const waiters = instanceState.taskWaiters.get(taskID)
-          if (waiters) {
-            waiters.delete(waiter)
-            if (waiters.size === 0) instanceState.taskWaiters.delete(taskID)
+    return WorkspaceAccess.handoff(
+      () =>
+        new Promise((resolve, reject) => {
+          let settled = false
+          const cleanup = () => {
+            clearTimeout(waiter.timeout)
+            signal?.removeEventListener("abort", abort)
+            const waiters = instanceState.taskWaiters.get(taskID)
+            waiters?.delete(waiter)
+            if (waiters?.size === 0) instanceState.taskWaiters.delete(taskID)
           }
-          resolve(instanceState.tasks.get(taskID))
-        }, timeoutSeconds * 1000),
-      }
-
-      if (!instanceState.taskWaiters.has(taskID)) instanceState.taskWaiters.set(taskID, new Set())
-      instanceState.taskWaiters.get(taskID)!.add(waiter)
-    })
+          const finish = (value: CortexTypes.Task | undefined) => {
+            if (settled) return
+            settled = true
+            cleanup()
+            resolve(value)
+          }
+          const abort = () => {
+            if (settled) return
+            settled = true
+            cleanup()
+            reject(signal?.reason)
+          }
+          const waiter = {
+            resolve: finish,
+            timeout: setTimeout(() => finish(instanceState.tasks.get(taskID)), Math.max(0, timeoutSeconds * 1000)),
+          }
+          if (!instanceState.taskWaiters.has(taskID)) instanceState.taskWaiters.set(taskID, new Set())
+          instanceState.taskWaiters.get(taskID)!.add(waiter)
+          signal?.addEventListener("abort", abort, { once: true })
+          if (signal?.aborted) abort()
+        }),
+    )
   }
 
   export function reset(): void {
@@ -1562,6 +1640,14 @@ export namespace Cortex {
     instanceState.tasks.clear()
     instanceState.taskRuns.clear()
     instanceState.taskBudgets.clear()
+    for (const admission of instanceState.admissions.values())
+      admission.abort(new DOMException("Cortex stopped", "AbortError"))
+    instanceState.admissions.clear()
+    for (const owner of instanceState.capacityOwners.values()) {
+      owner.controller.abort(new DOMException("Cortex stopped", "AbortError"))
+      owner.unregister()
+    }
+    instanceState.capacityOwners.clear()
     instanceState.acquiredTasks.clear()
     instanceState.finalizingTasks.clear()
     instanceState.cancellationRequests.clear()

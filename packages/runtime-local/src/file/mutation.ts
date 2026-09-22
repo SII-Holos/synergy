@@ -1,3 +1,4 @@
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { constants } from "node:fs"
@@ -93,76 +94,82 @@ export namespace FileMutation {
     validate?(target: string): Promise<void>
   }) {
     const target = await canonical(input.path)
-    return withFileLock({ directory: await lockDirectory(), key: target, signal: input.signal }, async () => {
-      input.signal?.throwIfAborted()
-      await input.validate?.(target)
-      const before = await snapshot(target, input.signal)
-      if (input.expectedVersion !== undefined && input.expectedVersion !== (before?.version ?? null))
-        throw new ConflictError()
-      if (before && (before.mode & 0o222) === 0) throw new AccessDeniedError("Access denied: file is read-only")
-      const parent = path.dirname(target)
-      if (input.createParents) await fs.mkdir(parent, { recursive: true })
-      const parentBefore = await fs.stat(parent, { bigint: true })
-      const temporary = path.join(parent, `.${path.basename(target)}.synergy-write-${process.pid}-${randomUUID()}`)
-      try {
-        const file = await fs.open(temporary, "wx", before ? before.mode & 0o777 : 0o666)
-        try {
-          await file.writeFile(input.content)
-          if (before) await file.chmod(before.mode & 0o777)
-          await file.sync()
-        } finally {
-          await file.close()
-        }
-        await retry(
-          async () => {
-            input.signal?.throwIfAborted()
-            if ((await canonical(input.path)) !== target) throw new ConflictError()
-            await input.validate?.(target)
-            const current = await snapshot(target, input.signal)
-            const parentAfter = await fs.stat(parent, { bigint: true })
-            if (
-              (current?.version ?? null) !== (before?.version ?? null) ||
-              current?.mode !== before?.mode ||
-              parentBefore.dev !== parentAfter.dev ||
-              parentBefore.ino !== parentAfter.ino
-            )
-              throw new ConflictError()
-            if (before) await fs.rename(temporary, target)
-            else
-              await fs.link(temporary, target).catch((error: NodeJS.ErrnoException) => {
-                if (error.code === "EEXIST") throw new ConflictError()
-                throw error
-              })
-          },
-          {
-            attempts: 6,
-            delay: 25,
-            maxDelay: 150,
-            signal: input.signal,
-            retryIf: (error) =>
-              process.platform === "win32" && ["EBUSY", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? ""),
-          },
-        )
-        if (process.platform !== "win32") {
-          const directory = await fs.open(parent, constants.O_RDONLY)
+    return WorkspaceAccess.write(
+      [target],
+      async () =>
+        withFileLock({ directory: await lockDirectory(), key: target, signal: input.signal }, async () => {
+          input.signal?.throwIfAborted()
+          await input.validate?.(target)
+          const before = await snapshot(target, input.signal)
+          if (input.expectedVersion !== undefined && input.expectedVersion !== (before?.version ?? null))
+            throw new ConflictError()
+          if (before && (before.mode & 0o222) === 0) throw new AccessDeniedError("Access denied: file is read-only")
+          const parent = path.dirname(target)
+          if (input.createParents) await fs.mkdir(parent, { recursive: true })
+          const parentBefore = await fs.stat(parent, { bigint: true })
+          const temporary = path.join(parent, `.${path.basename(target)}.synergy-write-${process.pid}-${randomUUID()}`)
           try {
-            await directory.sync()
+            const file = await fs.open(temporary, "wx", before ? before.mode & 0o777 : 0o666)
+            try {
+              await file.writeFile(input.content)
+              if (before) await file.chmod(before.mode & 0o777)
+              await file.sync()
+            } finally {
+              await file.close()
+            }
+            await retry(
+              async () => {
+                input.signal?.throwIfAborted()
+                if ((await canonical(input.path)) !== target) throw new ConflictError()
+                await input.validate?.(target)
+                const current = await snapshot(target, input.signal)
+                const parentAfter = await fs.stat(parent, { bigint: true })
+                if (
+                  (current?.version ?? null) !== (before?.version ?? null) ||
+                  current?.mode !== before?.mode ||
+                  parentBefore.dev !== parentAfter.dev ||
+                  parentBefore.ino !== parentAfter.ino
+                )
+                  throw new ConflictError()
+                if (before) await fs.rename(temporary, target)
+                else
+                  await fs.link(temporary, target).catch((error: NodeJS.ErrnoException) => {
+                    if (error.code === "EEXIST") throw new ConflictError()
+                    throw error
+                  })
+              },
+              {
+                attempts: 6,
+                delay: 25,
+                maxDelay: 150,
+                signal: input.signal,
+                retryIf: (error) =>
+                  process.platform === "win32" &&
+                  ["EBUSY", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? ""),
+              },
+            )
+            if (process.platform !== "win32") {
+              const directory = await fs.open(parent, constants.O_RDONLY)
+              try {
+                await directory.sync()
+              } finally {
+                await directory.close()
+              }
+            }
+            const after = await fs.stat(target)
+            return {
+              mtime: after.mtimeMs,
+              size: Buffer.byteLength(input.content),
+              existed: before !== null,
+              contentVersion: FileTime.version(input.content),
+            }
           } finally {
-            await directory.close()
+            await fs.unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+              if (error.code !== "ENOENT") throw error
+            })
           }
-        }
-        const after = await fs.stat(target)
-        return {
-          mtime: after.mtimeMs,
-          size: Buffer.byteLength(input.content),
-          existed: before !== null,
-          contentVersion: FileTime.version(input.content),
-        }
-      } finally {
-        await fs.unlink(temporary).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error
-        })
-      }
-    })
+        }),
+      input.signal,
+    )
   }
 }

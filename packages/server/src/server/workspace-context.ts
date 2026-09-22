@@ -2,6 +2,7 @@ import { z } from "zod"
 import type { Context, Next } from "hono"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 
 export const WorkspaceReferenceQuery = z.object({
@@ -19,5 +20,7 @@ export async function provideWorkspace(c: Context, next: Next) {
   if (!parsed.success) return c.json({ success: false, data: {}, errors: parsed.error.issues }, 400)
   const scope = ScopeContext.current.scope
   const workspace = await WorkspaceBinding.validate(parsed.data.workspaceID, scope.id, parsed.data.workspaceGeneration)
-  return ScopeRuntime.provide({ scope, workspace, fn: next })
+  return WorkspaceAccess.task({ workspace, signal: c.req.raw.signal }, () =>
+    ScopeRuntime.provide({ scope, workspace, fn: next }),
+  )
 }

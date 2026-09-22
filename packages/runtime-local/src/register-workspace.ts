@@ -1,3 +1,5 @@
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceCoordinator } from "./workspace/coordinator"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Pty } from "./process/pty"
 import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
@@ -27,6 +29,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 }
 
 export function registerWorkspace() {
+  WorkspaceAccess.register(new WorkspaceCoordinator())
   SessionWorkspaceRuntime.register(workspaceServices)
   CortexWorkspace.register({
     async create(input) {

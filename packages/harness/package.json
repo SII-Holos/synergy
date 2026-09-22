@@ -14,6 +14,7 @@
     "./workspace": "./src/workspace/index.ts",
     "./workspace/state": "./src/workspace/state.ts",
     "./workspace/events": "./src/workspace/events.ts",
+    "./workspace/access": "./src/workspace/access.ts",
     "./storage/sqlite-worker": "./src/storage/sqlite-worker.ts",
     "./storage/bootstrap": "./src/storage/bootstrap.ts",
     "./storage/compat": "./src/storage/compat.ts",

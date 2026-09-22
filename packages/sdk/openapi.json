@@ -49927,7 +49927,8 @@
               "WorkspaceFileAccessDeniedError",
               "WorkspaceFileWriteConflictError",
               "WorkspaceFileTooLargeError",
-              "WorkspaceFileInvalidContentError"
+              "WorkspaceFileInvalidContentError",
+              "WorkspaceBusyError"
             ]
           },
           "data": {

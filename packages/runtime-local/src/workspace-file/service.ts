@@ -300,7 +300,10 @@ export namespace WorkspaceFileService {
     assertWritableTarget(await FileMutation.canonical(absolute))
   }
 
-  export async function write(input: WorkspaceFile.WriteFileInput): Promise<WorkspaceFile.WriteFileResult> {
+  export async function write(
+    input: WorkspaceFile.WriteFileInput,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceFile.WriteFileResult> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
     assertWritableTarget(absolute)
@@ -316,6 +319,7 @@ export namespace WorkspaceFileService {
       content,
       expectedVersion: input.conflictPolicy === "overwrite" ? undefined : input.expectedVersion,
       createParents: input.createParents,
+      signal,
       async validate(target) {
         await assertRealpathInside(target)
         assertWritableTarget(target)

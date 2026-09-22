@@ -21,6 +21,16 @@ File services use `WorkspaceState`, so Sessions sharing a Workspace share file r
 
 File, LSP and VCS notifications retain Scope event ordering and include Workspace ID and binding generation. Workspace subscribers filter both fields. Configuration subscriptions watch the owning Scope's configuration directory; editing a worktree's ordinary files does not relocate that configuration owner.
 
+## Workspace Write Coordination
+
+`WorkspaceAccess` owns a Session turn's native write reservation. Its first file mutation reserves the Workspace directory, so writes to different files in one Workspace serialize across Sessions while pure reads and disjoint native roots can proceed. Reservations expand when an operation touches additional roots. Runtime Local coordinates independent Runtime instances through a private, atomic host ledger; canonical paths, ancestor overlap and filesystem identities determine exclusion. A null root set excludes every host writer.
+
+Each physical write has an operation claim in addition to its turn reservation. Cancellation or Cortex handoff can release the turn reservation without releasing an in-flight mutation. Use claims protect directory lifetime without blocking ordinary writes. Exclusive lifecycle claims exclude both readers using the binding and writers. Process claims can transfer to a verified native process identity and cannot be released while that process is alive; native launchers are responsible for binding the claim before activating execution and retaining a supervisor until all owned processes exit.
+
+Waiting for Workspace access yields tool and Cortex execution capacity. Parallel tools retain the Cortex slot while any branch is still executing; the last active branch yields it when the remaining branches are waiting. Resumption reacquires capacity and revalidates cancellation and the binding before execution. Cortex launch and output waits hand off the parent's write reservation, allowing a child in the same Workspace to run. The parent reserves again before its next write. Waiting on a live process owned by the same Session or an ancestor reports `WorkspaceBusyError` instead of waiting on itself.
+
+The native coordinator bounds admission time and queued claims, preserves uncertain process ownership, and reaps only verified exited or recycled processes. Live claims are never expired merely because they are old. A stale lease cannot remove its successor. The coordinator is an execution ordering mechanism; capability authorization remains owned by execution policy.
+
 ## Worktree Ownership
 
 Worktrees have explicit owners such as a session, Cortex task, Blueprint workflow, or internal orchestration record. Creating or entering a worktree updates session workspace binding; leaving returns to the project checkout according to the worktree lifecycle.

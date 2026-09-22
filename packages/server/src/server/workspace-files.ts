@@ -459,7 +459,7 @@ export const WorkspaceFilesRoute = () =>
       async (c) => {
         const body = c.req.valid("json")
         try {
-          return c.json(await WorkspaceFileService.write(body))
+          return c.json(await WorkspaceFileService.write(body, c.req.raw.signal))
         } catch (err) {
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)

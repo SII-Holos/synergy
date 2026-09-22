@@ -8173,6 +8173,7 @@ export type WorkspaceFileWriteError = {
     | "WorkspaceFileWriteConflictError"
     | "WorkspaceFileTooLargeError"
     | "WorkspaceFileInvalidContentError"
+    | "WorkspaceBusyError"
   data: {
     message: string
   }

@@ -324,3 +324,31 @@ describe("CortexConcurrency", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("cancelling Cortex admission removes its waiter without consuming a slot", () =>
+  runtime.run(async () => {
+    CortexConcurrency.reset()
+    CortexConcurrency.configure(1)
+    await CortexConcurrency.acquire("one")
+    const controller = new AbortController()
+    let outcome = "waiting"
+    const waiting = CortexConcurrency.acquire("two", controller.signal).then(
+      () => {
+        outcome = "admitted"
+      },
+      () => {
+        outcome = "cancelled"
+      },
+    )
+    controller.abort(new Error("cancelled"))
+    await flushMicrotasks(8)
+    try {
+      expect(outcome).toBe("cancelled")
+      expect(CortexConcurrency.globalStatus().queued).toBe(0)
+      expect(CortexConcurrency.globalStatus().running).toBe(1)
+    } finally {
+      CortexConcurrency.release("one")
+      await waiting
+      CortexConcurrency.reset()
+    }
+  }))

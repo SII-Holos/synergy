@@ -44,6 +44,7 @@ import { SessionRoute } from "./session"
 import { PtyRoute } from "./pty"
 import { createProviderRoute } from "./provider"
 import { PermissionRoute } from "./permission"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { ScopePath } from "./scope-path"
 import { WorkspaceFilesRoute } from "./workspace-files"
@@ -499,6 +500,8 @@ export namespace Server {
       .onError((err, c) => {
         const instanceState = runtimeState()
 
+        if (err instanceof WorkspaceAccess.BusyError)
+          return c.json({ name: err.name, data: { message: err.message } }, 409)
         if (err instanceof Scope.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err instanceof SessionPreparingError) {
           c.header("Retry-After", "2")
