@@ -52,4 +52,6 @@ The worker-side metrics these watchdogs record now reach storage through [Forwar
 
 Final request policy is resolved after model options are merged: provider `timeout` fields override the legacy model `options.timeout`, then provider `options.timeout`, then global timeout fields and defaults. Legacy values are milliseconds and affect idle only. Both SDK and language-model cache identities include the effective policy and requested model; credential fingerprints retain their existing role. This costs an SDK entry per distinct model/policy but avoids stale timers and model labels when a worker is reused. `wall_sec: 0` remains an explicit disable value at global and provider levels.
 
+Preparation accepts a supplied model specification even when its provider is not registered. In that case, option resolution uses the model's options and global policy, preserving variant validation and sessionless preparation without requiring SDK initialization.
+
 Every request owns and clears its watchdog timers on completion, failure and cancellation. The wall watchdog uses a JavaScript timer in the request context: a native timeout-signal callback can lose Runtime asynchronous context and therefore drop its metric. Real worker tests cover all three watchdog kinds through host database insertion, and full-server tests verify the resulting retries and recovery.

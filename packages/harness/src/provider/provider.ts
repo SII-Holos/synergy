@@ -1116,12 +1116,12 @@ export namespace Provider {
 
   async function resolveModelOptions(
     model: Model,
-    provider: Info,
+    provider: Info | undefined,
     runtimeProfile: RuntimeProfileState | undefined,
   ): Promise<Record<string, any>> {
     const inlineModelKey =
       typeof model.options?.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
-    if (!inlineModelKey || !runtimeProfile) return { ...provider.options, ...(model.options ?? {}) }
+    if (!inlineModelKey || !runtimeProfile) return { ...provider?.options, ...(model.options ?? {}) }
 
     const profileInput = {
       providerID: model.providerID,

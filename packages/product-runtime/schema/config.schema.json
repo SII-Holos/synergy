@@ -695,7 +695,7 @@
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
                   },
-                  { "description": "Disable timeout for this provider entirely.", "type": "boolean", "const": false }
+                  { "description": "Disable idle timeout for this provider.", "type": "boolean", "const": false }
                 ]
               }
             },
