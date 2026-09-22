@@ -22,6 +22,8 @@ Session mutations use one `Storage.transaction()` for canonical session info and
 
 Page and navigation indexes are shared by sessions in a Scope, while child indexes are shared by siblings under one parent. Their read-modify-write operations participate in the same SQL business transaction. Completion notice operations also use a per-session queue outside that transaction to preserve operation order without waiting on another SQL writer from inside the current transaction.
 
+Navigation reconstruction reads canonical metadata through `SessionRecords` before applying the current Session schema. Owner-local on-access upgrades, their receipts and the rebuilt navigation commit in the same transaction. Reconstruction preserves conversation timestamps and unknown owner metadata without hydrating messages or rollout evidence. A versioned derived migration repairs previously persisted incomplete indexes; its deferred-owner path upgrades and publishes only the admitted Session.
+
 Event publication inside a transaction records a durable pending notification with the state change. Dispatch and cache effects run after commit. The storage and recovery behavior is defined in [Agent storage](agent-storage.md).
 
 Permanent removal drains pending part writes, then removes the session and its descendants, updates their indexes, registers snapshot cleanup and records child-first deletion notifications in one transaction. Runtime caches are cleared after commit, followed by workspace detachment and snapshot cleanup. Startup migrations and transfer recovery rebuild derived indexes from canonical session records; archived retired endpoint metadata remains in those records without recreating retired routing projections.
