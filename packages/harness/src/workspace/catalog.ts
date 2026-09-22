@@ -2,9 +2,12 @@ import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import type { StoreTransaction } from "../storage/transactional-store"
 
 export namespace WorkspaceCatalog {
   export const Binding = z.object({
+    state: z.enum(["bound", "unbound"]),
     hostID: z.string().min(1),
     path: z.string().min(1),
     physicalID: z.string().optional(),
@@ -23,6 +26,7 @@ export namespace WorkspaceCatalog {
       createdAt: z.number(),
       updatedAt: z.number(),
     })
+    .passthrough()
     .meta({ ref: "WorkspaceInfo" })
   export type Info = z.infer<typeof Info>
   export const BindingChanged = NamedError.create(
@@ -43,14 +47,10 @@ export namespace WorkspaceCatalog {
     metadata?: Record<string, unknown>
   }
 
-  const recordKey = (id: string) => ["workspace", id]
-  const scopeKey = (scopeID: string, id: string) => ["workspace_scope", scopeID, id]
-  const locationKey = (scopeID: string, hostID: string, value: string) => [
-    "workspace_location",
-    scopeID,
-    hostID,
-    createHash("sha256").update(value).digest("hex"),
-  ]
+  const recordKey = StoragePath.workspace
+  const scopeKey = StoragePath.workspaceScope
+  const locationKey = (scopeID: string, hostID: string, value: string) =>
+    StoragePath.workspaceLocation(scopeID, hostID, createHash("sha256").update(value).digest("hex"))
   const locations = (info: Pick<Info, "scopeID" | "binding">) => [
     locationKey(info.scopeID, info.binding.hostID, `path:${info.binding.path}`),
     ...(info.binding.physicalID
@@ -58,8 +58,12 @@ export namespace WorkspaceCatalog {
       : []),
   ]
 
-  export async function get(id: string, scopeID: string): Promise<Info> {
-    const [record] = await Storage.readMany<unknown>([recordKey(id)])
+  export async function get(
+    id: string,
+    scopeID: string,
+    transaction?: Pick<StoreTransaction, "readMany">,
+  ): Promise<Info> {
+    const [record] = await (transaction ?? Storage).readMany<unknown>([recordKey(id)])
     const info = record === undefined ? undefined : Info.parse(record)
     if (!info || info.scopeID !== scopeID)
       throw new Storage.NotFoundError({ message: "Workspace not found in this Scope" })
@@ -67,7 +71,7 @@ export namespace WorkspaceCatalog {
   }
 
   export async function list(scopeID: string): Promise<Info[]> {
-    const keys = await Storage.list(["workspace_scope", scopeID])
+    const keys = await Storage.list(StoragePath.workspaceScope(scopeID))
     const records = await Storage.readMany<unknown>(keys.map((key) => recordKey(key[2])))
     return records.flatMap((record) => (record === undefined ? [] : [Info.parse(record)]))
   }
@@ -78,7 +82,7 @@ export namespace WorkspaceCatalog {
       scopeID: input.scopeID,
       type: input.type,
       revision: 1,
-      binding: { hostID: input.hostID, path: input.path, physicalID: input.physicalID, generation: 1 },
+      binding: { state: "bound", hostID: input.hostID, path: input.path, physicalID: input.physicalID, generation: 1 },
       metadata: input.metadata ?? {},
       sharedWritableWorkspaceIDs: [],
       lifecycle: "active",
@@ -108,12 +112,36 @@ export namespace WorkspaceCatalog {
     })
   }
 
+  export async function importRecord(record: Info): Promise<Info> {
+    const source = Info.parse(record)
+    return Storage.transaction(async () => {
+      const [existing] = await Storage.readMany<Info>([recordKey(source.id)])
+      if (
+        existing?.scopeID === source.scopeID &&
+        existing.binding.state === "unbound" &&
+        existing.binding.hostID === source.binding.hostID &&
+        existing.binding.path === source.binding.path
+      )
+        return Info.parse(existing)
+      const imported = Info.parse({
+        ...source,
+        id: existing ? `wsp_${randomUUID().replaceAll("-", "")}` : source.id,
+        binding: { ...source.binding, state: "unbound" },
+        sharedWritableWorkspaceIDs: [],
+        lifecycle: "active",
+      })
+      await Storage.write(recordKey(imported.id), imported)
+      await Storage.write(scopeKey(imported.scopeID, imported.id), imported.id)
+      return imported
+    })
+  }
+
   export async function resolve(
     id: string,
     input: { scopeID: string; hostID: string; generation?: number },
   ): Promise<Info> {
     const info = await get(id, input.scopeID)
-    if (info.lifecycle !== "active" || info.binding.hostID !== input.hostID)
+    if (info.lifecycle !== "active" || info.binding.state !== "bound" || info.binding.hostID !== input.hostID)
       throw new Unavailable({ message: "Workspace has no active binding on this host", workspaceID: id })
     if (input.generation !== undefined && info.binding.generation !== input.generation)
       throw new BindingChanged({ message: "Workspace binding changed; refresh before continuing", workspaceID: id })
@@ -141,6 +169,7 @@ export namespace WorkspaceCatalog {
         revision: previous.revision + 1,
         updatedAt: Date.now(),
         binding: {
+          state: "bound",
           hostID: input.hostID,
           path: input.path,
           physicalID: input.physicalID,
@@ -151,7 +180,7 @@ export namespace WorkspaceCatalog {
       const conflicts = await Storage.readMany<string>(keys)
       if (conflicts.some((value) => value !== undefined && value !== id))
         throw new BindingChanged({ message: "The destination already belongs to another Workspace", workspaceID: id })
-      for (const key of locations(previous)) await Storage.remove(key)
+      if (previous.binding.state === "bound") for (const key of locations(previous)) await Storage.remove(key)
       await Storage.write(recordKey(id), next)
       for (const key of keys) await Storage.write(key, id)
       return next

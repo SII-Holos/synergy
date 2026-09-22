@@ -1,4 +1,5 @@
 import { normalizeLocalScope } from "../scope/migration"
+import { WorkspaceBinding } from "../workspace/binding"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionMigrationTarget } from "../migration/session-target"
 import { RolloutMigration } from "./rollout/migration"
@@ -2437,6 +2438,41 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260923-session-workspace-reference",
+    onAccess: true,
+    scope: "session",
+    dependsOn: ["20260921-session-workspace-binding"],
+    description: "Replace embedded Session locations with stable Workspace references",
+    upSession: migrateSessionWorkspaceReference,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        for (const sessionID of await SessionMigrationTarget.sessions(Identifier.asScopeID(scopeID))) {
+          await migrateSessionWorkspaceReference({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
+  {
+    id: "20260923-session-nav-workspace-reference",
+    scope: "derived",
+    dependsOn: ["20260923-session-workspace-reference"],
+    description: "Rebuild navigation from canonical Workspace references",
+    async upSession(owner) {
+      const { SessionRecords } = await import("./records")
+      const { SessionCompat } = await import("./compat-import")
+      await SessionRecords.read(
+        StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
+      )
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {
@@ -2478,6 +2514,7 @@ export function normalizeWorkspaceBinding(value: unknown, scope: Record<string, 
 export function normalizeSessionWorkspaceInfo(info: Record<string, unknown>): Record<string, unknown> {
   const source = asRecord(info.scope)
   if (!source || typeof source.id !== "string") return info
+  if (info.workspaceID !== undefined) return { ...info, scope: normalizeLocalScope(source) }
   return {
     ...info,
     scope: normalizeLocalScope(source),
@@ -2489,4 +2526,22 @@ async function migrateSessionWorkspaceBinding(owner: { scopeID: string; sessionI
   const key = StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID))
   const info = await Storage.read<Record<string, unknown>>(key)
   await Storage.write(key, normalizeSessionWorkspaceInfo(info))
+}
+
+export async function migrateSessionWorkspaceReference(owner: { scopeID: string; sessionID: string }) {
+  const key = StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID))
+  const info = normalizeSessionWorkspaceInfo(await Storage.read<Record<string, unknown>>(key))
+  if (info.workspaceID !== undefined) {
+    if (Object.hasOwn(info, "workspace")) {
+      delete info.workspace
+      await Storage.write(key, info)
+    }
+    return
+  }
+  const workspace = await WorkspaceBinding.migrate(
+    info.workspace as import("./workspace-schema").Workspace | null,
+    owner.scopeID,
+  )
+  const { workspace: _workspace, ...stored } = info
+  await Storage.write(key, { ...stored, workspaceID: workspace?.id ?? null })
 }

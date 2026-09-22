@@ -426,6 +426,10 @@ export namespace SessionManager {
 
     try {
       const session = await requireSession(sessionID)
+      if (session.workspaceID) {
+        const { WorkspaceBinding } = await import("../workspace/binding")
+        await WorkspaceBinding.validate(session.workspaceID, session.scope.id, session.workspace?.generation)
+      }
       const scope = session.scope as Scope
       const workspace = session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")

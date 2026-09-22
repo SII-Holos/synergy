@@ -10,11 +10,12 @@ export async function runtimeHome(options: { home?: string } = {}) {
   await fs.mkdir(cache, { recursive: true })
   await Bun.write(path.join(cache, "version"), "15")
   await Bun.write(path.join(cache, "models.json"), Bun.file(process.env.MODELS_DEV_API_JSON!))
+  let identity: Promise<string> | undefined
   const host: RuntimeHost = {
     home,
     root,
     workspaceLocation: {
-      hostID: () => readOrCreateIdentityFile(path.join(root, "workspace-host")),
+      hostID: () => (identity ??= readOrCreateIdentityFile(path.join(root, "workspace-host"))),
       identify: identifyDirectory,
     },
     env: {

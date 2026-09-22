@@ -30,8 +30,9 @@ test("startup upgrades only Scope metadata; Session access upgrades its binding 
           sessionID = session.id
           const { local, ...metadata } = scope
           const oldScope = { ...metadata, ...local, privateExtension: { revision: 7 } }
+          const { workspaceID: _workspaceID, ...legacySession } = session
           legacy = {
-            ...session,
+            ...legacySession,
             scope: oldScope,
             workspace: undefined,
             futureExtension: { preserve: true },
@@ -68,9 +69,13 @@ test("startup upgrades only Scope metadata; Session access upgrades its binding 
       fn: async () => {
         const session = await Session.get(sessionID)
         expect(session.scope.local?.directory).toBe(directory)
-        expect(session.workspace).toEqual({ type: "main", path: directory, scopeID })
+        expect(session.workspace).toMatchObject({ type: "main", path: directory, scopeID })
+        expect(session.workspaceID).toStartWith("wsp_")
         expect(session.time.archived).toBe(123)
         const stored = await Storage.read<Record<string, unknown>>(["sessions", scopeID, sessionID, "info"])
+        expect(stored.workspaceID).toBe(session.workspaceID)
+        expect(stored).not.toHaveProperty("workspace")
+        await expect(Session.assertWorkspaceAvailable(sessionID)).rejects.toThrow("unavailable")
         expect(stored.futureExtension).toEqual({ preserve: true })
         expect((stored.scope as Record<string, unknown>).privateExtension).toEqual({ revision: 7 })
         expect(await Storage.read<typeof evidence>(["sessions", scopeID, sessionID, "evidence", "record"])).toEqual(

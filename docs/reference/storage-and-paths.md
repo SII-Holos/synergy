@@ -35,6 +35,7 @@ Library, credentials, project files, browser profiles and observability remain s
 | Logical collection                                                                                  | Owner and contents                                                                                   |
 | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `projects`                                                                                          | Scope metadata                                                                                       |
+| `workspace`, `workspace_scope`, `workspace_location`                                                | Stable Workspace records and Scope/location lookup indexes                                           |
 | `sessions/<scope>/<session>`                                                                        | Session info, messages, parts, Inbox, Todo, DAG, history, summary and Rollout                        |
 | `operations/<scope>/<operation>`                                                                    | Sessionless Rollout metadata                                                                         |
 | `session_index`, `endpoint_session`, `sessions_page_index`, `session_child_index`, `session_nav_v2` | Session lookup and navigation projections                                                            |

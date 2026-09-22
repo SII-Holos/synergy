@@ -4,6 +4,10 @@ Runtime Local owns native filesystem subscriptions in `packages/runtime-local/sr
 
 Synergy keeps project ownership (`Scope`) separate from the directory in which a session executes (`workspace`). The normal workspace is the selected project directory; a session can instead bind to a Synergy-managed worktree without changing its owning Scope, config, Notes, or session index.
 
+The Harness Workspace catalog owns a stable ID and a versioned local binding. Sessions persist only `workspaceID`; their public `workspace` descriptor is resolved from that catalog. Multiple Sessions share the same binding, while rebinding preserves the ID and advances its generation. Execution verifies the host namespace, generation and directory identity. A missing catalog record, missing directory, or replaced directory retains its historical reference and fails execution.
+
+Owner-local migrations upgrade old embedded Session directories before navigation or other current projections read them, preserving activity and unrelated owner metadata. Transcript and Rollout archives include referenced Workspace metadata. Imported bindings remain unavailable until explicitly rebound, even if their historical path exists locally; import does not convey filesystem authority.
+
 ## Scope Runtime Services
 
 A project `ScopeRuntime` starts project-sensitive services lazily and disposes them as a unit:

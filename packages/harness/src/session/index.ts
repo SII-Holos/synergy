@@ -1,5 +1,6 @@
-import fs from "node:fs/promises"
 import { Workspace } from "./workspace-schema"
+import { WorkspaceBinding } from "../workspace/binding"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { SessionRecords } from "./records"
 import { RuntimeContext } from "../lifecycle/context"
 import type { StoreTransaction } from "../storage/transactional-store"
@@ -12,7 +13,7 @@ import { SnapshotRecords } from "./snapshot-records"
 import { Decimal } from "decimal.js"
 import { RolloutArtifact } from "./rollout/artifact"
 import { record, RolloutRecordingError } from "./rollout/error"
-import z from "zod"
+import { z } from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
@@ -167,10 +168,13 @@ export namespace Session {
         const batch = await tx.query<Info>({ kind: "session", scopeID, after, limit: 128 })
         if (!batch.length) break
         for (const record of batch) {
-          const session = {
-            ...record.value,
-            endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
-          }
+          const session = await SessionRecords.hydrate(
+            {
+              ...record.value,
+              endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
+            },
+            tx,
+          )
           const index = toIndex(session)
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
@@ -447,6 +451,7 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
       SessionWorking.resolve(session.id),
@@ -526,6 +531,7 @@ export namespace Session {
       cortex?: CortexDelegationInfoType
       workflow?: Info["workflow"]
       workspace?: import("./types").Workspace | null
+      workspaceID?: string | null
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
@@ -535,11 +541,18 @@ export namespace Session {
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
     const scope = input?.scope ?? parent?.scope ?? ScopeContext.current.scope
     const workspace =
-      input?.workspace !== undefined
-        ? input.workspace
-        : parent?.scope.id === scope.id
-          ? parent.workspace
-          : ScopeContext.defaultWorkspace(scope)
+      input?.workspaceID !== undefined
+        ? input.workspaceID === null
+          ? null
+          : WorkspaceCatalog.projection(await WorkspaceCatalog.get(input.workspaceID, scope.id))
+        : await WorkspaceBinding.adopt(
+            input?.workspace !== undefined
+              ? input.workspace
+              : parent?.scope.id === scope.id
+                ? parent.workspace
+                : ScopeContext.defaultWorkspace(scope),
+            scope.id,
+          )
     if (workspace) {
       Workspace.parse(workspace)
       if (workspace.scopeID !== scope.id) throw new Error("Workspace belongs to a different Scope")
@@ -584,6 +597,7 @@ export namespace Session {
       cortex: input?.cortex,
       workflow: input?.workflow,
       workspace,
+      workspaceID: workspace?.id ?? null,
       completionNotice,
       time: {
         created: createdAt,
@@ -597,7 +611,7 @@ export namespace Session {
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
-        withoutRuntimeInfo(result),
+        SessionRecords.serialize(result),
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await writeEndpointIndex(result)
@@ -791,17 +805,13 @@ export namespace Session {
   })
 
   export async function assertWorkspaceAvailable(sessionID: string) {
-    const { workspace } = await get(sessionID)
-    if (!workspace) return
-    const available = await fs.stat(workspace.path).then(
-      (stat) => stat.isDirectory(),
-      () => false,
-    )
-    if (!available)
-      throw new Scope.WorkspaceUnavailableError({
-        message: "The workspace for this session is no longer available.",
-        path: workspace.path,
-      })
+    const session = await get(sessionID)
+    const { workspace } = session
+    if (session.workspaceID) {
+      await WorkspaceBinding.validate(session.workspaceID, session.scope.id, workspace?.generation)
+      return
+    }
+    if (workspace) throw new Error("Session has no canonical Workspace reference")
   }
 
   export async function updateWorkspace(
@@ -809,6 +819,8 @@ export namespace Session {
     workspace: import("./types").Workspace | null,
     options?: { requireIdle?: boolean; preserveActivityAt?: boolean },
   ): Promise<Info> {
+    const session = await SessionManager.requireSession(sessionID)
+    workspace = await WorkspaceBinding.adopt(workspace, session.scope.id)
     return updateInternal(
       sessionID,
       (draft) => {
@@ -818,6 +830,7 @@ export namespace Session {
           if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
         }
         draft.workspace = workspace
+        draft.workspaceID = workspace?.id ?? null
       },
       options,
     )
@@ -991,7 +1004,7 @@ export namespace Session {
       }
 
       let changed = false
-      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+      const result = await SessionRecords.update(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         if (draft.rollbackAck?.rollbackID === rollbackID) return
         draft.rollbackAck = { rollbackID, acknowledgedAt: Date.now() }
         changed = true
@@ -1026,7 +1039,7 @@ export namespace Session {
         const sessionID = asSessionID(id)
 
         let actualAcknowledgedCount = 0
-        const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+        const result = await SessionRecords.update(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
           const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
           const next = Math.max(0, current - acknowledgedCount)
           actualAcknowledgedCount = current - next
@@ -1105,13 +1118,15 @@ export namespace Session {
       const scopeID = asScopeID(scope.id)
       const sessionID = asSessionID(id)
 
-      let before: Info | undefined
-      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
-        before = structuredClone(draft)
-        editor(draft)
-        if (!options?.preserveActivityAt) draft.time.updated = Date.now()
-      })
-      if (!before) throw new Error(`Session ${id} was not available before mutation`)
+      const before = structuredClone(session)
+      const result = structuredClone(session)
+      editor(result)
+      if (result.workspace) {
+        result.workspace = await WorkspaceBinding.adopt(result.workspace, scope.id)
+        result.workspaceID = result.workspace?.id ?? null
+      }
+      if (!options?.preserveActivityAt) result.time.updated = Date.now()
+      await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
 
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
@@ -1422,7 +1437,7 @@ export namespace Session {
       // since the caller (processor) already performs a proper Session.update().
 
       const infoPath = StoragePath.sessionInfo(scopeID, asSessionID(sessionID))
-      await Storage.update<Info>(infoPath, (draft) => {
+      await SessionRecords.update(infoPath, (draft) => {
         draft.lastExchange = lastExchange
       })
     })

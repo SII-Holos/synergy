@@ -3,7 +3,9 @@ import { SessionStaging } from "./staging"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import { SnapshotRecords } from "./snapshot-records"
-import z from "zod"
+import { z } from "zod"
+import { WorkspaceBinding } from "../workspace/binding"
+import { SessionRecords } from "./records"
 import { gunzipSync } from "node:zlib"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
@@ -114,7 +116,8 @@ export namespace SessionImport {
         if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry
         const record = entry as Record<string, unknown>
         if (!record.info || typeof record.info !== "object" || Array.isArray(record.info)) return entry
-        return { ...record, info: normalizeSessionWorkspaceInfo(record.info as Record<string, unknown>) }
+        const info = normalizeSessionWorkspaceInfo(record.info as Record<string, unknown>)
+        return { ...record, info: { ...info, workspace: info.workspace ?? null } }
       }
       raw = Array.isArray(value.sessions)
         ? { ...value, sessions: value.sessions.map(normalizeEntry) }
@@ -239,7 +242,22 @@ export namespace SessionImport {
         prepared.push({ data, sessionID, parentID, info, messages })
       }
       return await Storage.transaction(async () => {
+        const workspaces = new Map<string, NonNullable<Session.Info["workspace"]>>()
         for (const { data, sessionID, parentID, info, messages } of prepared) {
+          if (info.workspace) {
+            const key = info.workspaceID ?? JSON.stringify([info.workspace.scopeID, info.workspace.path])
+            let imported = workspaces.get(key)
+            if (!imported) {
+              imported = await WorkspaceBinding.importHistory(
+                info.workspace,
+                scope.id,
+                report.workspaces?.find((workspace) => workspace.id === info.workspaceID),
+              )
+              workspaces.set(key, imported)
+            }
+            info.workspace = imported
+            info.workspaceID = imported.id!
+          }
           await Session.create({
             scope,
             id: sessionID,
@@ -479,7 +497,7 @@ export namespace SessionImport {
   async function writeSessionInfo(scopeID: Identifier.ScopeID, info: Session.Info) {
     await Storage.write(
       StoragePath.sessionInfo(scopeID, Identifier.asSessionID(info.id)),
-      Session.withoutRuntimeInfo(info),
+      SessionRecords.serialize(info),
     )
     await Storage.write(StoragePath.sessionIndex(Identifier.asSessionID(info.id)), Session.toIndex(info))
     await Session.upsertPageIndexEntry(scopeID, {
