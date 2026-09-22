@@ -416,7 +416,7 @@ export namespace SessionManager {
   export async function run<T>(
     sessionID: string,
     fn: (lease: LoopLease) => Promise<T>,
-    options?: { lease?: LoopLease; releaseLease?: boolean; requestNextWorkOnFailure?: boolean },
+    options?: { lease?: LoopLease; releaseLease?: boolean; requestNextWorkOnFailure?: boolean; workspace?: "history" },
   ): Promise<T> {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
@@ -428,12 +428,12 @@ export namespace SessionManager {
 
     try {
       const session = await requireSession(sessionID)
-      if (session.workspaceID) {
+      if (session.workspaceID && options?.workspace !== "history") {
         const { WorkspaceBinding } = await import("../workspace/binding")
         await WorkspaceBinding.validate(session.workspaceID, session.scope.id, session.workspace?.generation)
       }
       const scope = session.scope as Scope
-      const workspace = session.workspace
+      const workspace = options?.workspace === "history" ? null : session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")
       const runWithScope = () =>
         ExecutionCapacity.session(sessionID, () =>
@@ -443,8 +443,7 @@ export namespace SessionManager {
               workspace,
               ensure: workspace !== null,
               fn: async () => {
-                assertExecutionContext(session, "session manager run")
-                const workspace = (session as Info).workspace
+                if (options?.workspace !== "history") assertExecutionContext(session, "session manager run")
                 if (workspace?.type !== "git_worktree") {
                   activate(lease)
                   return fn(lease)

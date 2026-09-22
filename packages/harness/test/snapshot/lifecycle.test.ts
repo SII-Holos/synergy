@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { Snapshot } from "../../src/session/snapshot"
@@ -13,7 +14,7 @@ import { SessionImport } from "../../src/session/session-import"
 import { StoragePath } from "../../src/storage/path"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 test("interrupted permanent deletion retains roots until canonical removal and resumes", () =>
   runtime.run(async () => {
@@ -120,7 +121,7 @@ for (const backend of ["shared", "legacy"] as const) {
           await SnapshotMaintenance.compact(scope.id, { apply: true, prune: true })
           expect(await SnapshotStore.owns(scope.id, source.id, hash)).toBe(false)
           await Bun.write(file, "changed")
-          await Snapshot.revert([{ hash, files: [file] }], fork.id)
+          await Snapshot.revert([{ hash, workspace: Snapshot.workspace(), files: [file] }], fork.id)
           expect(await Bun.file(file).text()).toBe("original")
         },
       })

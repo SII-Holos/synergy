@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { WorkspaceTransfer } from "./workspace-transfer"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { Session } from "."
 import { MessageV2 } from "./message-v2"
@@ -131,7 +132,7 @@ export namespace SessionExport {
     const collected = await Promise.all(sessions.map(collectSessionData))
     const shaped = collected.map((data) => applyMode(data, input.mode))
     const workspaces = await WorkspaceCatalog.list(sessions[0]!.scope.id)
-    const referenced = new Set(sessions.map((session) => session.workspaceID))
+    const referenced = WorkspaceTransfer.references(collected)
 
     return {
       version: 1,

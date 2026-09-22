@@ -164,6 +164,13 @@ export namespace WorkspaceAccess {
     return task({ workspace: ScopeContext.tryWorkspace(), signal }, () => fn(current()!))
   }
 
+  export async function reserveWrite(roots: string[] | null, signal?: AbortSignal): Promise<void> {
+    const task = current()
+    if (!task) throw new Error("A write reservation requires a Workspace task")
+    await ExecutionCapacity.wait(() => reserve(task, roots, signal))
+    await validate(task)
+  }
+
   export async function write<T>(roots: string[] | null, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (!RuntimeContext.tryCurrent()) return fn()
     return inTask(async (task) => {

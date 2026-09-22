@@ -64,3 +64,22 @@ describe("Workspace catalog", () => {
     })
   })
 })
+
+test("missing foreign references receive canonical unbound identities and can be explicitly rebound", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const imported = await WorkspaceCatalog.importMissingReference("foreign-legacy-id", "project")
+    expect(imported.id).toStartWith("wsp_")
+    expect(imported.importedFrom?.workspaceID).toBe("foreign-legacy-id")
+    expect(WorkspaceCatalog.projection(imported)).toBeNull()
+    await expect(WorkspaceCatalog.resolve(imported.id, { scopeID: "project", hostID: "host" })).rejects.toThrow()
+    const bound = await WorkspaceCatalog.rebind(imported.id, {
+      scopeID: "project",
+      expectedRevision: imported.revision,
+      hostID: "host",
+      path: "/selected",
+    })
+    expect(bound.binding.generation).toBe(imported.binding.generation + 1)
+    expect(WorkspaceCatalog.projection(bound)?.path).toBe("/selected")
+  })
+})

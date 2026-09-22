@@ -4983,9 +4983,13 @@ export type WorkspaceInfo = {
   binding: {
     state: "bound" | "unbound"
     hostID: string
-    path: string
+    path: string | null
     physicalID?: string
     generation: number
+  }
+  importedFrom?: {
+    workspaceID: string
+    hostID: string
   }
   metadata: {
     [key: string]: unknown
@@ -5001,9 +5005,13 @@ export type WorkspaceInfo = {
     | {
         state: "bound" | "unbound"
         hostID: string
-        path: string
+        path: string | null
         physicalID?: string
         generation: number
+      }
+    | {
+        workspaceID: string
+        hostID: string
       }
     | {
         [key: string]: unknown
@@ -5013,6 +5021,7 @@ export type WorkspaceInfo = {
     | "deleting"
     | "deleted"
     | number
+    | undefined
 }
 
 export type Command = {
@@ -5070,6 +5079,7 @@ export type SnapshotWorkspace = {
 export type FileDiff = {
   file: string
   workspace?: SnapshotWorkspace
+  legacyRoot?: string
   additions: number
   deletions: number
   binary?: boolean
@@ -7786,6 +7796,11 @@ export type SessionRollbackSummary = {
 
 export type SessionFileRestoreResult = {
   restoredFiles: Array<string>
+  failedFiles: Array<{
+    file: string
+    code: string
+    message: string
+  }>
   patchPartIDs: Array<string>
   rollbackID?: string
   messageID?: string
@@ -16714,6 +16729,13 @@ export type SessionFilesRestoreErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */

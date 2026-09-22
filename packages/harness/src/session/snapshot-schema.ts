@@ -15,6 +15,7 @@ export namespace SnapshotSchema {
     .object({
       file: z.string(),
       workspace: Workspace.optional(),
+      legacyRoot: z.string().optional(),
       additions: z.number(),
       deletions: z.number(),
       binary: z.boolean().optional(),
@@ -33,6 +34,7 @@ export namespace SnapshotSchema {
   export function fromContents(input: {
     file: string
     workspace?: Workspace
+    legacyRoot?: string
     before: string
     after: string
     additions: number
@@ -44,7 +46,7 @@ export namespace SnapshotSchema {
     const preview = SessionBounds.diffPreview(input.preview ?? simplePreview(input.before, input.after))
     return {
       file: input.file,
-      ...(input.workspace ? { workspace: input.workspace } : {}),
+      ...(input.workspace ? { workspace: input.workspace } : input.legacyRoot ? { legacyRoot: input.legacyRoot } : {}),
       additions: input.additions,
       deletions: input.deletions,
       ...preview,
@@ -56,6 +58,7 @@ export namespace SnapshotSchema {
   export function fromPatch(input: {
     file: string
     workspace?: Workspace
+    legacyRoot?: string
     additions: number
     deletions: number
     binary?: boolean
@@ -65,7 +68,7 @@ export namespace SnapshotSchema {
   }): FileDiff {
     return {
       file: input.file,
-      ...(input.workspace ? { workspace: input.workspace } : {}),
+      ...(input.workspace ? { workspace: input.workspace } : input.legacyRoot ? { legacyRoot: input.legacyRoot } : {}),
       additions: input.additions,
       deletions: input.deletions,
       ...(input.binary ? { binary: true } : {}),
@@ -82,7 +85,11 @@ export namespace SnapshotSchema {
     const file = typeof record.file === "string" ? record.file : undefined
     if (!file) return undefined
     const workspace = Workspace.safeParse(record.workspace)
-    const attribution = workspace.success ? { workspace: workspace.data } : {}
+    const attribution = workspace.success
+      ? { workspace: workspace.data }
+      : typeof record.legacyRoot === "string"
+        ? { legacyRoot: record.legacyRoot }
+        : {}
     const additions = typeof record.additions === "number" ? record.additions : 0
     const deletions = typeof record.deletions === "number" ? record.deletions : 0
     const before = typeof record.before === "string" ? record.before : undefined

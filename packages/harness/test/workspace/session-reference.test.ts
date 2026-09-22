@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test"
+import { Identifier } from "../../src/id/id"
+import { WorkspaceBinding } from "../../src/workspace/binding"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
@@ -72,6 +74,109 @@ test("transcript import preserves Workspace history without granting filesystem 
         expect(exported.workspaces?.[0]?.binding.state).toBe("unbound")
         await Session.remove(parent.id)
         await Session.remove(first.id)
+      },
+    })
+  })
+})
+
+test("transcripts include and remap every historical Workspace without inheriting local authority", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using files = await tmpdir()
+    await using historical = await tmpdir()
+    const scope = await files.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const history = await WorkspaceBinding.register(scope.id, historical.path)
+        const source = { id: history.id, generation: history.binding.generation, root: historical.path }
+        const userID = Identifier.ascending("message")
+        const assistantID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: userID,
+          sessionID: session.id,
+          role: "user",
+          time: { created: 1 },
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          summary: { title: "History", diffs: [{ file: "same.txt", workspace: source, additions: 1, deletions: 0 }] },
+        })
+        await Session.updateMessage({
+          id: assistantID,
+          sessionID: session.id,
+          role: "assistant",
+          parentID: userID,
+          time: { created: 2, completed: 3 },
+          modelID: "test",
+          providerID: "test",
+          mode: "build",
+          agent: "synergy",
+          path: { cwd: historical.path, root: historical.path },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: assistantID,
+          sessionID: session.id,
+          type: "patch",
+          hash: "a".repeat(40),
+          workspace: source,
+          files: [historical.path + "/same.txt"],
+        })
+        await Storage.write(
+          ["sessions", scope.id, session.id, "summary"],
+          [{ file: "same.txt", workspace: source, additions: 1, deletions: 0 }],
+        )
+        const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
+        expect(report.workspaces?.map((entry) => entry.id).sort()).toEqual([session.workspaceID!, history.id].sort())
+        const imported = await SessionImport.fromReport(report)
+        const messages = await Session.messages({ sessionID: imported.rootSessionID, raw: true })
+        const patch = messages.flatMap((message) => message.parts).find((part) => part.type === "patch")!
+        if (patch.type !== "patch") throw new Error("Expected patch")
+        expect(patch.workspace?.id).not.toBe(source.id)
+        expect(patch.workspace?.generation).toBe(source.generation)
+        expect(patch.workspace?.root).toBe(source.root)
+        const record = await WorkspaceCatalog.get(patch.workspace!.id, scope.id)
+        expect(record.binding.state).toBe("unbound")
+        await expect(WorkspaceBinding.validate(patch.workspace!.id, scope.id, source.generation)).rejects.toThrow()
+        expect(messages[0]!.info.role === "user" && messages[0]!.info.summary?.diffs[0]?.workspace?.id).toBe(record.id)
+        expect((await Session.diff(imported.rootSessionID))[0]?.workspace?.id).toBe(record.id)
+        expect((await WorkspaceCatalog.get(source.id, scope.id)).binding.state).toBe("bound")
+        await Session.remove(imported.rootSessionID)
+        await Session.remove(session.id)
+      },
+    })
+  })
+})
+
+test("an imported unresolved Workspace cannot adopt an existing local identity", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using files = await tmpdir()
+    const scope = await files.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const source = await Session.create({})
+        const report = await SessionExport.generate({ sessionID: source.id, mode: "full" })
+        report.workspaces = []
+        report.sessions[0]!.info.workspace = null
+        const result = await SessionImport.fromReport(report)
+        const imported = await Session.get(result.rootSessionID)
+        expect(imported.workspaceID).not.toBe(source.workspaceID)
+        expect(imported.workspaceID).toBeTruthy()
+        expect(imported.workspace).toBeNull()
+        await expect(Session.assertWorkspaceAvailable(imported.id)).rejects.toThrow()
+        const record = await WorkspaceCatalog.get(imported.workspaceID!, scope.id)
+        expect(record.binding.path).toBeNull()
+        expect(record.importedFrom?.workspaceID).toBe(source.workspaceID!)
+        const exported = await SessionExport.generate({ sessionID: imported.id, mode: "full" })
+        expect(exported.workspaces?.[0]?.binding.path).toBeNull()
+        await Session.assertWorkspaceAvailable(source.id)
+        await Session.remove(imported.id)
+        await Session.remove(source.id)
       },
     })
   })

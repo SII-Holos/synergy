@@ -1562,7 +1562,7 @@ export const SessionRoute = () =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -1576,10 +1576,21 @@ export const SessionRoute = () =>
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
         try {
-          const result = await Session.restoreFiles({ sessionID, ...body })
+          const result = await SessionHistory.restoreFilesWithSignal({ sessionID, ...body }, c.req.raw.signal)
           return c.json(result)
         } catch (error) {
           if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
+          if (error instanceof BusyError) return c.json({ name: error.name, data: { message: error.message } }, 409)
+          if (
+            error instanceof Error &&
+            [
+              "SnapshotRestoreUnavailable",
+              "WorkspaceFileWriteConflictError",
+              "WorkspaceFileAccessDeniedError",
+              "WorkspaceBusyError",
+            ].includes(error.name)
+          )
+            return c.json({ name: error.name, data: { message: error.message } }, 409)
           throw error
         }
       },

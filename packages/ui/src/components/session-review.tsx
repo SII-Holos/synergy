@@ -37,7 +37,11 @@ export interface SessionReviewProps {
 }
 
 export function reviewFileKey(diff: FileDiff) {
-  return diff.workspace ? JSON.stringify([diff.workspace.id, diff.workspace.generation, diff.file]) : diff.file
+  return diff.workspace
+    ? JSON.stringify([diff.workspace.id, diff.workspace.generation, diff.workspace.root, diff.file])
+    : diff.legacyRoot
+      ? JSON.stringify(["legacy", diff.legacyRoot, diff.file])
+      : diff.file
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
@@ -118,8 +122,8 @@ export const SessionReview = (props: SessionReviewProps) => {
                       <div data-slot="session-review-file-info">
                         <FileIcon node={{ path: diff.file, type: "file" }} />
                         <div data-slot="session-review-file-name-container">
-                          <Show when={diff.workspace}>
-                            {(workspace) => <span data-slot="session-review-directory">{workspace().root} / </span>}
+                          <Show when={diff.workspace?.root ?? diff.legacyRoot}>
+                            {(root) => <span data-slot="session-review-directory">{root()} / </span>}
                           </Show>
                           <Show when={diff.file.includes("/")}>
                             <span data-slot="session-review-directory">{getDirectory(diff.file)}&lrm;</span>

@@ -1,3 +1,5 @@
+import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
+import { WorkspaceFileRestore } from "./workspace-file/restore"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceCoordinator } from "./workspace/coordinator"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -29,6 +31,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 }
 
 export function registerWorkspace() {
+  SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceAccess.register(new WorkspaceCoordinator())
   SessionWorkspaceRuntime.register(workspaceServices)
   CortexWorkspace.register({

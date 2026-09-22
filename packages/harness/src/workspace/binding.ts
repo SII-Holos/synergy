@@ -28,20 +28,22 @@ export namespace WorkspaceBinding {
       throw new Error("Workspace belongs to a different Scope")
     const { path: location, scopeID: _scope, type, id, generation, ...metadata } = workspace
     const imported = await WorkspaceCatalog.importRecord(
-      record ?? {
-        id: id ?? `wsp_${randomUUID().replaceAll("-", "")}`,
-        scopeID,
-        type,
-        revision: 1,
-        metadata,
-        binding: { state: "unbound", hostID: "unknown", path: location, generation: generation ?? 1 },
-        sharedWritableWorkspaceIDs: [],
-        lifecycle: "active",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
+      record
+        ? { ...record, binding: { ...record.binding, path: record.binding.path ?? location } }
+        : {
+            id: id ?? `wsp_${randomUUID().replaceAll("-", "")}`,
+            scopeID,
+            type,
+            revision: 1,
+            metadata,
+            binding: { state: "unbound", hostID: "unknown", path: location, generation: generation ?? 1 },
+            sharedWritableWorkspaceIDs: [],
+            lifecycle: "active",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
     )
-    return WorkspaceCatalog.projection(imported)
+    return WorkspaceCatalog.projection(imported)!
   }
 
   export async function migrate(workspace: Workspace | null, scopeID: string): Promise<Workspace | null> {
@@ -104,7 +106,9 @@ export namespace WorkspaceBinding {
     const target = await source.identify(input.path)
     const roots = [
       target.path,
-      ...(previous.binding.state === "bound" && previous.binding.hostID === hostID ? [previous.binding.path] : []),
+      ...(previous.binding.state === "bound" && previous.binding.hostID === hostID && previous.binding.path
+        ? [previous.binding.path]
+        : []),
     ]
     return WorkspaceAccess.exclusive(
       roots,

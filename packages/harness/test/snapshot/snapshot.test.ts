@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
@@ -9,7 +10,7 @@ import { tmpdir } from "../support/fixture"
 import { SessionBounds } from "../../src/session/bounds"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 async function bootstrap(options?: { commit?: boolean }) {
   const sessionID = `test-${Math.random().toString(36).slice(2)}`
@@ -337,10 +338,13 @@ describe.serial("snapshot", () => {
         scope: await tmp.scope(),
         fn: async () => {
           // Should not crash with empty patches
-          expect(Snapshot.revert([], tmp.extra.sessionID)).resolves.toBeUndefined()
+          expect(Snapshot.revert([], tmp.extra.sessionID)).resolves.toEqual({ restoredFiles: [], failedFiles: [] })
 
           // Should not crash with patches that have empty file lists
-          expect(Snapshot.revert([{ hash: "dummy", files: [] }], tmp.extra.sessionID)).resolves.toBeUndefined()
+          expect(Snapshot.revert([{ hash: "dummy", files: [] }], tmp.extra.sessionID)).resolves.toEqual({
+            restoredFiles: [],
+            failedFiles: [],
+          })
         },
       })
     }))
@@ -381,12 +385,13 @@ describe.serial("snapshot", () => {
               [
                 {
                   hash: before!,
+                  workspace: Snapshot.workspace(),
                   files: [`${tmp.path}/nonexistent.txt`],
                 },
               ],
               tmp.extra.sessionID,
             ),
-          ).resolves.toBeUndefined()
+          ).resolves.toEqual({ restoredFiles: [`${tmp.path}/nonexistent.txt`], failedFiles: [] })
         },
       })
     }))

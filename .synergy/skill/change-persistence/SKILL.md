@@ -126,3 +126,5 @@ For optional whole-store rewrites, prove ordinary startup never calls the rewrit
 ## Preserve File History Attribution
 
 Snapshot and patch producers retain the source Workspace identity and binding generation. Derived summaries group those sources before comparing trees; current Session selection must not rewrite historical file ownership. Use literal, NUL-delimited Git filenames and object-store working directories for history-only reads. Exercise non-Git capture, missing directories, rebindings and equal relative filenames in different Workspaces.
+
+Restoration must hold the Session loop until native mutations and cancellation drain. Capture file entry and byte evidence before write admission, preflight every original binding before changing any file, and report partial results without retrying a user prompt automatically. Transfer all historical Workspace references, including message summaries; an imported ID without metadata must never resolve through a local record. Test missing provenance, rebindings, multiple historical roots, external links, newer queued writes, partial publication, binary bytes and Session cancellation.

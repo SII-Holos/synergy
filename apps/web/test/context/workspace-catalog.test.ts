@@ -36,3 +36,12 @@ test("a delayed Scope snapshot retains only newer Workspace events from its own 
   expect(tracker.mergeWorkspaces({ epoch: "run", seq: 5 }, [old], [first])).toEqual([old])
   expect(tracker.mergeWorkspaces({ epoch: "restart", seq: 0 }, [old], [first])).toEqual([old])
 })
+
+test("unresolved historical bindings clear stale paths and recover only the matching catalog identity", () => {
+  const missing = { ...first, binding: { ...first.binding, state: "unbound" as const, path: null } }
+  expect(projectWorkspaceBinding(previous, missing)).toBeNull()
+  const owner = { workspaceID: first.id, scopeID: first.scopeID }
+  expect(projectWorkspaceBinding(null, first, owner)).toMatchObject({ id: first.id, path: "/moved" })
+  expect(projectWorkspaceBinding(null, { ...first, id: "wsp_other" }, owner)).toBeNull()
+  expect(projectWorkspaceBinding(null, { ...first, scopeID: "other" }, owner)).toBeNull()
+})

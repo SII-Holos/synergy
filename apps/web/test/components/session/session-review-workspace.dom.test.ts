@@ -28,11 +28,11 @@ beforeAll(async () => {
     import {SessionReviewTab} from ${JSON.stringify(`/@fs/${appSrc}/components/session/session-review-tab.tsx`)}
     const [workspace,setWorkspace]=createSignal({id:"wsp_a",generation:1,path:"/a"})
     const [open,setOpen]=createSignal([])
-    const h=window.fixture={calls:[],switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
-    const diffs=[{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root}))
+    const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
+    const h=window.fixture={calls:[],legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
     const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
-    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={()=>diffs} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
   `,
   )
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -92,5 +92,19 @@ test("same-name historical changes keep independent rows and only open their cap
   ])
   await page.evaluate(() => (window as unknown as { fixture: { rebind(): void } }).fixture.rebind())
   expect(await buttons.nth(1).isEnabled()).toBe(false)
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("legacy files with equal names remain distinct without local file authority", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="session-review-view-button"]').nth(1).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { legacy(): void } }).fixture.legacy())
+  const rows = page.locator('[data-slot="accordion-item"][data-file]')
+  expect(
+    await rows.evaluateAll((elements) => new Set(elements.map((element) => element.getAttribute("data-file"))).size),
+  ).toBe(2)
+  expect(await rows.nth(0).textContent()).toContain("/legacy-a")
+  expect(await rows.nth(1).textContent()).toContain("/legacy-b")
+  expect(await page.locator('[data-slot="session-review-view-button"]:enabled').count()).toBe(0)
   expect(errors).toEqual([])
 }, 30_000)

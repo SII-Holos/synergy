@@ -92,7 +92,7 @@ test("raw documents keep Workspace generation in relative-resource URLs", () =>
       scopeID: scope.id,
       expectedRevision: record.revision,
       hostID: record.binding.hostID,
-      path: record.binding.path,
+      path: workspace.path,
       physicalID: record.binding.physicalID,
     })
     const stale = await app.request(prefix + "image.txt")

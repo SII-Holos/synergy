@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./session/snapshot-restore": "./src/session/snapshot-restore.ts",
     "./session/snapshot": "./src/session/snapshot.ts",
     "./session/snapshot-store": "./src/session/snapshot-store.ts",
     "./session/snapshot-maintenance": "./src/session/snapshot-maintenance.ts",

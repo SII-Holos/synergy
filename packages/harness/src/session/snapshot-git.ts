@@ -147,8 +147,8 @@ export namespace SnapshotGit {
     return { signal: controller.signal, cleanup }
   }
 
-  function abortedGitResult(): { exitCode: number; text: string; stderr: string } {
-    return { exitCode: -1, text: "", stderr: "" }
+  function abortedGitResult(): { exitCode: number; text: string; bytes: Uint8Array; stderr: string } {
+    return { exitCode: -1, text: "", bytes: new Uint8Array(), stderr: "" }
   }
 
   function abortError(signal: AbortSignal): Error {
@@ -217,7 +217,7 @@ export namespace SnapshotGit {
     env?: Record<string, string>,
     signal?: AbortSignal,
     stdin?: string,
-  ): Promise<{ exitCode: number; text: string; stderr: string }> {
+  ): Promise<{ exitCode: number; text: string; bytes: Uint8Array; stderr: string }> {
     if (signal?.aborted) return abortedGitResult()
     for (let attempt = 1; ; attempt++) {
       const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
@@ -236,14 +236,19 @@ export namespace SnapshotGit {
           proc.stdin.write(stdin)
           proc.stdin.end()
         }
-        const stdout = new Response(proc.stdout).text()
+        const stdout = new Response(proc.stdout).bytes()
         const stderr = new Response(proc.stderr).text().catch(() => "")
-        const [text, stderrText, exitCode] = await withTimeout(
+        const [bytes, stderrText, exitCode] = await withTimeout(
           withAbort(Promise.all([stdout, stderr, proc.exited]), childSignal.signal),
           SNAPSHOT_HARD_TIMEOUT_MS,
           { message: `git subprocess did not settle within ${SNAPSHOT_HARD_TIMEOUT_MS}ms` },
         )
-        return { exitCode, text, stderr: stderrText }
+        return {
+          exitCode,
+          text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes),
+          bytes,
+          stderr: stderrText,
+        }
       } catch (error) {
         if (signal?.aborted) {
           try {
@@ -267,7 +272,7 @@ export namespace SnapshotGit {
         })
         if (!retrying || !(await waitForGitSpawnRetry(attempt, signal))) {
           const stderr = details.code ? `${details.code}: ${details.message}` : details.message
-          return { exitCode: -1, text: "", stderr }
+          return { exitCode: -1, text: "", bytes: new Uint8Array(), stderr }
         }
       } finally {
         childSignal.cleanup()

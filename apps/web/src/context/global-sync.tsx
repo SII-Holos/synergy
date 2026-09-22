@@ -918,10 +918,11 @@ function createGlobalSync() {
   function refreshWorkspaceProjections(store: State, setStore: SetStoreFunction<State>) {
     for (let index = 0; index < store.session.length; index++) {
       const session = store.session[index]!
-      if (!session.workspace) continue
+      if (!session.workspaceID) continue
       const projected = projectWorkspaceBinding(
         session.workspace,
         store.workspaces.find((record) => record.id === session.workspaceID),
+        { workspaceID: session.workspaceID, scopeID: session.scope.id },
       )
       if (projected !== session.workspace) setStore("session", index, "workspace", reconcile(projected))
     }
@@ -1551,12 +1552,13 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const incoming = event.properties.info as Session
-        const info = incoming.workspace
+        const info = incoming.workspaceID
           ? {
               ...incoming,
               workspace: projectWorkspaceBinding(
                 incoming.workspace,
                 store.workspaces.find((record) => record.id === incoming.workspaceID),
+                { workspaceID: incoming.workspaceID, scopeID: incoming.scope.id },
               ),
             }
           : incoming

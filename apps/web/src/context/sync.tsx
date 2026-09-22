@@ -67,12 +67,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const reconcileCortexFromSession = (session: Session) => globalSync.reconcileCortexFromSession(session)
 
     const upsertSession = (incoming: Session) => {
-      const session = incoming.workspace
+      const session = incoming.workspaceID
         ? {
             ...incoming,
             workspace: projectWorkspaceBinding(
               incoming.workspace,
               store.workspaces.find((record) => record.id === incoming.workspaceID),
+              { workspaceID: incoming.workspaceID, scopeID: incoming.scope.id },
             ),
           }
         : incoming

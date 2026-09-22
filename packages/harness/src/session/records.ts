@@ -33,7 +33,7 @@ export namespace SessionRecords {
     return {
       ...info,
       workspace: workspace ? WorkspaceCatalog.projection(workspace) : null,
-      workspaceError: workspace ? undefined : "Workspace metadata is unavailable",
+      workspaceError: workspace?.binding.path ? undefined : "Workspace metadata is unavailable",
     }
   }
 

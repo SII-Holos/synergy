@@ -1,16 +1,18 @@
 import type { SessionWorkspace, WorkspaceInfo } from "@ericsanchezok/synergy-sdk/client"
 
 export function projectWorkspaceBinding(
-  workspace: SessionWorkspace,
+  workspace: SessionWorkspace | null,
   record: WorkspaceInfo | undefined,
-): SessionWorkspace {
+  owner?: { workspaceID?: string | null; scopeID: string },
+): SessionWorkspace | null {
   if (
     !record ||
-    workspace.id !== record.id ||
-    workspace.scopeID !== record.scopeID ||
-    (workspace.generation ?? 0) > record.binding.generation
+    (workspace?.id ?? owner?.workspaceID) !== record.id ||
+    (workspace?.scopeID ?? owner?.scopeID) !== record.scopeID ||
+    (workspace?.generation ?? 0) > record.binding.generation
   )
     return workspace
+  if (!record.binding.path) return null
   return {
     ...record.metadata,
     id: record.id,

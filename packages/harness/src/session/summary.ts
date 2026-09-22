@@ -537,7 +537,14 @@ export namespace SessionSummary {
     let cached = cache.get(key)
     if (!cached) {
       cached = Snapshot.diffSummary(range.from, range.to, sessionID, abort).then((diffs) =>
-        range.workspace ? diffs.map((diff) => ({ ...diff, workspace: range.workspace })) : diffs,
+        diffs.map((diff) => ({
+          ...diff,
+          ...(range.workspace
+            ? { workspace: range.workspace }
+            : range.legacyRoot
+              ? { legacyRoot: range.legacyRoot }
+              : {}),
+        })),
       )
       cache.set(key, cached)
     }

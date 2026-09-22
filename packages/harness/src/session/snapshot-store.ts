@@ -132,6 +132,25 @@ export namespace SnapshotStore {
     signal?: AbortSignal,
     options?: { historical?: boolean },
   ) {
+    const controller = new AbortController()
+    const forwardAbort = () => controller.abort(signal?.reason)
+    // Bun 1.3.14 cancels a timeout signal when its last listener is removed. Keep
+    // this operation's listener through Git, native admission and final cleanup.
+    signal?.addEventListener("abort", forwardAbort, { once: true })
+    if (signal?.aborted) forwardAbort()
+    try {
+      return await withSessionImpl(sessionID, fn, signal ? controller.signal : undefined, options)
+    } finally {
+      signal?.removeEventListener("abort", forwardAbort)
+    }
+  }
+
+  async function withSessionImpl<T>(
+    sessionID: string,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+    options?: { historical?: boolean },
+  ) {
     const scopeID = ScopeContext.current.scope.id
     component(sessionID)
     if (
@@ -148,7 +167,7 @@ export namespace SnapshotStore {
       false,
       () =>
         withFileLock(
-          { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}` },
+          { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}`, signal },
           async () => {
             signal?.throwIfAborted()
             const workspace = options?.historical ? undefined : ScopeContext.current.workspace

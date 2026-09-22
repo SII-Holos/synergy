@@ -4,13 +4,14 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { BusEvent } from "../bus/bus-event"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
+import type { Workspace } from "../session/workspace-schema"
 import type { StoreTransaction } from "../storage/transactional-store"
 
 export namespace WorkspaceCatalog {
   export const Binding = z.object({
     state: z.enum(["bound", "unbound"]),
     hostID: z.string().min(1),
-    path: z.string().min(1),
+    path: z.string().min(1).nullable(),
     physicalID: z.string().optional(),
     generation: z.number().int().positive(),
   })
@@ -21,6 +22,7 @@ export namespace WorkspaceCatalog {
       type: z.string().min(1),
       revision: z.number().int().positive(),
       binding: Binding,
+      importedFrom: z.object({ workspaceID: z.string(), hostID: z.string() }).optional(),
       metadata: z.record(z.string(), z.unknown()),
       sharedWritableWorkspaceIDs: z.array(z.string()),
       lifecycle: z.enum(["active", "deleting", "deleted"]),
@@ -118,6 +120,21 @@ export namespace WorkspaceCatalog {
     })
   }
 
+  export function importMissingReference(id: string, scopeID: string): Promise<Info> {
+    return importRecord({
+      id,
+      scopeID,
+      type: "unknown",
+      revision: 1,
+      binding: { state: "unbound", hostID: "unknown", path: null, generation: 1 },
+      metadata: {},
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  }
+
   export async function importRecord(record: Info): Promise<Info> {
     const source = Info.parse(record)
     return Storage.transaction(async () => {
@@ -131,8 +148,9 @@ export namespace WorkspaceCatalog {
         return Info.parse(existing)
       const imported = Info.parse({
         ...source,
-        id: existing ? `wsp_${randomUUID().replaceAll("-", "")}` : source.id,
+        id: existing || !source.id.startsWith("wsp_") ? `wsp_${randomUUID().replaceAll("-", "")}` : source.id,
         binding: { ...source.binding, state: "unbound" },
+        importedFrom: source.importedFrom ?? { workspaceID: source.id, hostID: source.binding.hostID },
         sharedWritableWorkspaceIDs: [],
         lifecycle: "active",
       })
@@ -145,13 +163,18 @@ export namespace WorkspaceCatalog {
   export async function resolve(
     id: string,
     input: { scopeID: string; hostID: string; generation?: number },
-  ): Promise<Info> {
+  ): Promise<Info & { binding: { path: string } }> {
     const info = await get(id, input.scopeID)
-    if (info.lifecycle !== "active" || info.binding.state !== "bound" || info.binding.hostID !== input.hostID)
+    if (
+      info.lifecycle !== "active" ||
+      info.binding.state !== "bound" ||
+      info.binding.hostID !== input.hostID ||
+      !info.binding.path
+    )
       throw new Unavailable({ message: "Workspace has no active binding on this host", workspaceID: id })
     if (input.generation !== undefined && info.binding.generation !== input.generation)
       throw new BindingChanged({ message: "Workspace binding changed; refresh before continuing", workspaceID: id })
-    return info
+    return { ...info, binding: { ...info.binding, path: info.binding.path } }
   }
 
   export async function rebind(
@@ -231,7 +254,10 @@ export namespace WorkspaceCatalog {
     })
   }
 
-  export function projection(info: Info) {
+  export function projection(info: Info & { binding: { path: string } }): Workspace
+  export function projection(info: Info): Workspace | null
+  export function projection(info: Info): Workspace | null {
+    if (!info.binding.path) return null
     return {
       ...info.metadata,
       id: info.id,

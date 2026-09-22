@@ -8,6 +8,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotStore } from "./snapshot-store"
 import { Storage } from "../storage/storage"
+import { SnapshotRestore } from "./snapshot-restore"
 import { WorkspaceBinding } from "../workspace/binding"
 import { ObservabilityMetrics } from "../observability/metrics"
 
@@ -80,7 +81,7 @@ export namespace Snapshot {
 
   export function workspace(): SnapshotSchema.Workspace | undefined {
     const source = ScopeContext.current.workspace
-    if (!source?.id || !source.generation) return
+    if (!source?.id || !source.generation || source.bindingState === "unbound") return
     return { id: source.id, generation: source.generation, root: source.path }
   }
 
@@ -170,18 +171,100 @@ export namespace Snapshot {
     })
   }
 
-  export async function restore(snapshot: string, sessionID: string) {
-    return SnapshotStore.withSession(sessionID, async () => {
-      if (await SnapshotStore.ownsCurrent(snapshot)) await restoreImpl(snapshot, sessionID)
-    })
-  }
-
-  export async function revert(patches: Patch[], sessionID: string) {
-    return SnapshotStore.withSession(sessionID, async () => {
-      const owned: Patch[] = []
-      for (const patch of patches) if (await SnapshotStore.ownsCurrent(patch.hash)) owned.push(patch)
-      await revertImpl(owned, sessionID)
-    })
+  export async function revert(
+    patches: Patch[],
+    sessionID: string,
+    signal?: AbortSignal,
+  ): Promise<SnapshotRestore.Result> {
+    if (!patches.some((patch) => patch.files.length)) return { restoredFiles: [], failedFiles: [] }
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        const files = new Map<string, SnapshotRestore.File>()
+        const trees = new Map<string, Map<string, { mode: string; oid: string }>>()
+        for (const patch of patches) {
+          if (!patch.files.length) continue
+          const source = patch.workspace
+          if (!source)
+            throw new SnapshotRestore.Invalid({ message: "This historical patch has no verified Workspace binding" })
+          const binding = await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
+          if (binding.path !== source.root)
+            throw new SnapshotRestore.Invalid({
+              message: "The historical Workspace location does not match its binding",
+            })
+          if (!(await SnapshotStore.ownsCurrent(patch.hash)))
+            throw new SnapshotRestore.Invalid({
+              message: "The historical file snapshot is unavailable to this session",
+            })
+          let tree = trees.get(patch.hash)
+          if (!tree) {
+            const listing = await gitSpawn(
+              ["git", "--git-dir", gitdir(), "ls-tree", "-r", "-l", "-z", patch.hash],
+              path.dirname(gitdir()),
+              undefined,
+              signal,
+            )
+            if (listing.exitCode !== 0)
+              throw new SnapshotRestore.Invalid({ message: "The historical file tree could not be read" })
+            tree = new Map(
+              listing.text
+                .split("\0")
+                .filter(Boolean)
+                .map((entry) => {
+                  const boundary = entry.indexOf("\t")
+                  const [mode, kind, oid, size] = entry.slice(0, boundary).trim().split(/\s+/)
+                  if (boundary < 0 || !SnapshotStore.OID.test(oid))
+                    throw new SnapshotRestore.Invalid({
+                      message: "The historical file tree contains an unsupported entry",
+                    })
+                  return [
+                    entry.slice(boundary + 1),
+                    { mode: kind === "blob" && Number(size) <= 50 * 1024 * 1024 ? mode : "unsupported", oid },
+                  ]
+                }),
+            )
+            trees.set(patch.hash, tree)
+          }
+          for (const file of patch.files) {
+            signal?.throwIfAborted()
+            const relative = path.relative(source.root, file)
+            if (
+              !path.isAbsolute(file) ||
+              !relative ||
+              relative === ".." ||
+              relative.startsWith(`..${path.sep}`) ||
+              path.isAbsolute(relative)
+            )
+              throw new SnapshotRestore.Invalid({ message: "A historical file is outside its Workspace" })
+            const normalized = path.normalize(file)
+            if (files.has(normalized)) continue
+            const entry = tree.get(process.platform === "win32" ? relative.replaceAll("\\", "/") : relative)
+            if (entry && !["100644", "100755", "120000"].includes(entry.mode))
+              throw new SnapshotRestore.Invalid({ message: "This snapshot file mode cannot be restored" })
+            files.set(normalized, {
+              file: normalized,
+              workspace: source,
+              mode: entry ? (entry.mode as "100644" | "100755" | "120000") : null,
+              async read() {
+                if (!entry) return new Uint8Array()
+                const result = await gitSpawn(
+                  ["git", "--git-dir", gitdir(), "cat-file", "blob", entry.oid],
+                  path.dirname(gitdir()),
+                  undefined,
+                  signal,
+                )
+                if (result.exitCode !== 0)
+                  throw new SnapshotRestore.Invalid({ message: "The historical file content is unavailable" })
+                return result.bytes
+              },
+            })
+          }
+        }
+        return SnapshotRestore.apply({ files: [...files.values()], signal })
+      },
+      signal,
+      { historical: true },
+    )
   }
 
   export const Patch = z.object({
@@ -251,114 +334,6 @@ export namespace Snapshot {
       hash,
       workspace: workspace(),
       files: filesText.split("\0").filter(Boolean).map(absoluteWorktreePath),
-    }
-  }
-
-  async function restoreImpl(snapshot: string, sessionID: string) {
-    log.info("restore", { snapshot, sessionID })
-    const git = gitdir()
-    let all
-    try {
-      const { Session } = await import(".")
-      all = await Session.messages({ sessionID, raw: true })
-    } catch {
-      // session not found — no patches to restore, no-op
-      return
-    }
-    const seen = new Set<string>()
-    for (const msg of all) {
-      for (const part of msg.parts) {
-        if (part.type !== "patch") continue
-        for (const file of part.files) {
-          if (seen.has(file)) continue
-          seen.add(file)
-          const relativePath = path.relative(ScopeContext.current.directory, file).replaceAll("\\", "/")
-          const result = await gitSpawn(
-            [
-              "git",
-              "--git-dir",
-              git,
-              "--work-tree",
-              ScopeContext.current.directory,
-              "checkout",
-              snapshot,
-              "--",
-              relativePath,
-            ],
-            ScopeContext.current.directory,
-          )
-          if (result.exitCode !== 0) {
-            log.warn("failed to restore file from snapshot", {
-              file,
-              snapshot,
-              stderr: result.stderr,
-            })
-          }
-        }
-      }
-    }
-  }
-
-  async function revertImpl(patches: Patch[], sessionID: string) {
-    const files = new Set<string>()
-    const git = gitdir()
-    for (const item of patches) {
-      for (const file of item.files) {
-        if (files.has(file)) continue
-        log.info("reverting", { file, hash: item.hash })
-        const relativePath = path.relative(ScopeContext.current.directory, file).replaceAll("\\", "/")
-        const checkTree = await gitSpawn(
-          [
-            "git",
-            "--git-dir",
-            git,
-            "--work-tree",
-            ScopeContext.current.directory,
-            "ls-tree",
-            item.hash,
-            "--",
-            relativePath,
-          ],
-          ScopeContext.current.directory,
-        )
-        if (checkTree.exitCode === 0) {
-          if (checkTree.text.trim()) {
-            // File existed in snapshot — restore it
-            const result = await gitSpawn(
-              [
-                "git",
-                "--git-dir",
-                git,
-                "--work-tree",
-                ScopeContext.current.directory,
-                "checkout",
-                item.hash,
-                "--",
-                relativePath,
-              ],
-              ScopeContext.current.directory,
-            )
-            if (result.exitCode !== 0) {
-              log.warn("file existed in snapshot but checkout failed", {
-                file,
-                stderr: result.stderr,
-              })
-            }
-          } else {
-            // ls-tree succeeded but returned empty — file did not exist in snapshot
-            log.info("file did not exist in snapshot, deleting", { file })
-            await fs.unlink(file).catch(() => {})
-          }
-        } else {
-          // ls-tree failed — don't delete; we can't confirm the file's status
-          log.warn("ls-tree failed, skipping revert for file", {
-            file,
-            exitCode: checkTree.exitCode,
-            stderr: checkTree.stderr,
-          })
-        }
-        files.add(file)
-      }
     }
   }
 

@@ -45,9 +45,12 @@ export function DialogWorkspace(props: {
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal("")
   const record = createMemo(() => records.data.find((item) => item.id === selected()))
-  const available = (item: WorkspaceInfo) => item.lifecycle === "active" && item.binding.state === "bound"
+  const available = (item: WorkspaceInfo) =>
+    item.lifecycle === "active" && item.binding.state === "bound" && !!item.binding.path
   const filtered = createMemo(() =>
-    records.data.filter((item) => `${item.binding.path} ${item.id}`.toLowerCase().includes(search().toLowerCase())),
+    records.data.filter((item) =>
+      `${item.binding.path ?? item.id} ${item.id}`.toLowerCase().includes(search().toLowerCase()),
+    ),
   )
   const sharingDirty = createMemo(() => {
     const current = record()
@@ -190,7 +193,7 @@ export function DialogWorkspace(props: {
                 class="h-auto justify-start whitespace-normal break-all text-left"
               >
                 <span>
-                  {item.binding.path}
+                  {item.binding.path ?? item.id}
                   <Show when={!available(item)}>
                     <span class="block text-small text-text-weak">{_(copy.unavailable)}</span>
                   </Show>
@@ -219,7 +222,7 @@ export function DialogWorkspace(props: {
                           )
                         }
                       >
-                        {item.binding.path}
+                        {item.binding.path ?? item.id}
                       </Checkbox>
                     )}
                   </For>

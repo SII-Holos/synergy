@@ -1,9 +1,11 @@
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { normalizeSessionWorkspaceInfo } from "./migration"
 import { SessionStaging } from "./staging"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import { SnapshotRecords } from "./snapshot-records"
 import { z } from "zod"
+import { WorkspaceTransfer } from "./workspace-transfer"
 import { WorkspaceBinding } from "../workspace/binding"
 import { SessionRecords } from "./records"
 import { gunzipSync } from "node:zlib"
@@ -243,6 +245,16 @@ export namespace SessionImport {
       }
       return await Storage.transaction(async () => {
         const workspaces = new Map<string, NonNullable<Session.Info["workspace"]>>()
+        for (const source of WorkspaceTransfer.sources(report.sessions)) {
+          if (workspaces.has(source.id)) continue
+          const imported = await WorkspaceBinding.importHistory(
+            { id: source.id, scopeID: scope.id, type: "directory", path: source.root, generation: source.generation },
+            scope.id,
+            report.workspaces?.find((workspace) => workspace.id === source.id),
+          )
+          workspaces.set(source.id, imported)
+        }
+        const workspaceIDs = new Map([...workspaces].map(([sourceID, workspace]) => [sourceID, workspace.id!]))
         for (const { data, sessionID, parentID, info, messages } of prepared) {
           if (info.workspace) {
             const key = info.workspaceID ?? JSON.stringify([info.workspace.scopeID, info.workspace.path])
@@ -255,8 +267,22 @@ export namespace SessionImport {
               )
               workspaces.set(key, imported)
             }
+            workspaceIDs.set(key, imported.id!)
             info.workspace = imported
             info.workspaceID = imported.id!
+          } else if (info.workspaceID) {
+            const key = info.workspaceID
+            const mapped = workspaceIDs.get(key)
+            const record = report.workspaces?.find((workspace) => workspace.id === key)
+            if (record && record.scopeID !== scope.id) throw new Error("Workspace belongs to a different Scope")
+            const imported = mapped
+              ? await WorkspaceCatalog.get(mapped, scope.id)
+              : record
+                ? await WorkspaceCatalog.importRecord(record)
+                : await WorkspaceCatalog.importMissingReference(key, scope.id)
+            workspaceIDs.set(key, imported.id)
+            info.workspace = WorkspaceCatalog.projection(imported)
+            info.workspaceID = imported.id
           }
           await Session.create({
             scope,
@@ -273,7 +299,8 @@ export namespace SessionImport {
             completionNotice: info.completionNotice,
           })
           await writeSessionInfo(scopeID, info)
-          for (const message of messages) {
+          for (const original of messages) {
+            const message = WorkspaceTransfer.message(original, workspaceIDs)
             await Session.updateMessage(message.info)
             messageCount++
 
@@ -293,7 +320,7 @@ export namespace SessionImport {
           if (data.diffs.length > 0) {
             await Storage.write(
               StoragePath.sessionSummary(scopeID, Identifier.asSessionID(sessionID)),
-              SnapshotSchema.boundArray(data.diffs),
+              SnapshotSchema.boundArray(data.diffs.map((diff) => WorkspaceTransfer.diff(diff, workspaceIDs))),
             )
           }
 

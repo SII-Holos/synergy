@@ -11799,6 +11799,23 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -11829,6 +11846,7 @@
                     "pattern": "^prt.*"
                   },
                   "files": {
+                    "maxItems": 10000,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -41229,8 +41247,15 @@
                 "minLength": 1
               },
               "path": {
-                "type": "string",
-                "minLength": 1
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "physicalID": {
                 "type": "string"
@@ -41242,6 +41267,18 @@
               }
             },
             "required": ["state", "hostID", "path", "generation"]
+          },
+          "importedFrom": {
+            "type": "object",
+            "properties": {
+              "workspaceID": {
+                "type": "string"
+              },
+              "hostID": {
+                "type": "string"
+              }
+            },
+            "required": ["workspaceID", "hostID"]
           },
           "metadata": {
             "type": "object",
@@ -41475,6 +41512,9 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/SnapshotWorkspace"
+          },
+          "legacyRoot": {
+            "type": "string"
           },
           "additions": {
             "type": "number"
@@ -49614,6 +49654,24 @@
               "type": "string"
             }
           },
+          "failedFiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["file", "code", "message"]
+            }
+          },
           "patchPartIDs": {
             "type": "array",
             "items": {
@@ -49634,7 +49692,7 @@
             "pattern": "^prt.*"
           }
         },
-        "required": ["restoredFiles", "patchPartIDs"]
+        "required": ["restoredFiles", "failedFiles", "patchPartIDs"]
       },
       "SessionVolatileState": {
         "type": "object",

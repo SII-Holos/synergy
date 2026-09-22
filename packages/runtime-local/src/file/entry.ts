@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import { constants, type BigIntStats } from "node:fs"
 import path from "node:path"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contain"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
@@ -186,6 +186,62 @@ export namespace FileEntry {
       return (await inspect(target!))!
     })
   }
+  export async function replace(
+    input: {
+      path: string
+      expectedVersion: string | null
+      content: Uint8Array
+      mode: "100644" | "100755" | "120000"
+      createParents?: boolean
+    } & Options,
+  ) {
+    return paths([input.path], input, async ([target], checkpoint) => {
+      const absolute = target!
+      const before = await inspect(absolute)
+      if ((before?.version ?? null) !== input.expectedVersion) throw new FileMutation.ConflictError()
+      if (before && before.type !== "file" && before.type !== "symlink")
+        throw new FileMutation.AccessDeniedError("A directory or special file cannot be replaced by a file snapshot")
+      if (before?.type === "file" && (before.stat.mode & 0o222n) === 0n)
+        throw new FileMutation.AccessDeniedError("Access denied: file is read-only")
+      await input.validate?.(absolute, "write")
+      if (input.createParents) await fs.mkdir(path.dirname(absolute), { recursive: true })
+      const temporary = path.join(path.dirname(absolute), `.synergy-restore-${randomUUID()}`)
+      let published = false
+      try {
+        if (input.mode === "120000") {
+          const link = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(input.content)
+          if (!link || link.includes("\0")) throw new FileMutation.AccessDeniedError("Invalid snapshot symlink")
+          await fs.symlink(link, temporary)
+        } else {
+          const mode = input.mode === "100755" ? 0o755 : 0o644
+          const file = await fs.open(temporary, "wx", mode)
+          try {
+            await file.writeFile(input.content)
+            await file.chmod(mode & ~process.umask())
+            await file.sync()
+          } finally {
+            await file.close()
+          }
+        }
+        await checkpoint()
+        await input.validate?.(absolute, "write")
+        if ((await inspect(absolute))?.version !== before?.version) throw new FileMutation.ConflictError()
+        if (before) await fs.rename(temporary, absolute)
+        else FileRename.exclusive(temporary, absolute)
+        published = true
+        await syncParent(absolute)
+      } catch (cause) {
+        if (published)
+          throw new PartialError("File restored, but durability confirmation failed", [absolute], { cause })
+        throw cause
+      } finally {
+        await fs.unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error
+        })
+      }
+    })
+  }
+
   interface Transfer extends Options {
     from: string
     to: string

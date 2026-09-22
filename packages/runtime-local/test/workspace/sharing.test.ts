@@ -18,7 +18,7 @@ test("write grants are explicit, direct, Scope-bound and separate from binding g
         const first = await WorkspaceBinding.register(scope.id, a.path)
         const second = await WorkspaceBinding.register(scope.id, b.path)
         const third = await WorkspaceBinding.register(scope.id, c.path)
-        const selected = WorkspaceCatalog.projection(first)
+        const selected = WorkspaceCatalog.projection(first)!
         expect(await WorkspaceBinding.writableRoots(selected)).toEqual([a.path])
         await WorkspaceBinding.setSharing(second.id, {
           scopeID: scope.id,
@@ -94,8 +94,8 @@ test("shared directories remain in use until the Session turn ends", async () =>
       expectedRevision: first.revision,
       workspaceIDs: [second.id],
     })
-    await WorkspaceAccess.task({ workspace: WorkspaceCatalog.projection(first) }, async () => {
-      await WorkspaceBinding.writableRoots(WorkspaceCatalog.projection(first))
+    await WorkspaceAccess.task({ workspace: WorkspaceCatalog.projection(first)! }, async () => {
+      await WorkspaceBinding.writableRoots(WorkspaceCatalog.projection(first)!)
       await expect(
         WorkspaceBinding.rebind(second.id, { scopeID: scope.id, expectedRevision: second.revision, path: c.path }),
       ).rejects.toThrow("busy")
@@ -107,6 +107,6 @@ test("shared directories remain in use until the Session turn ends", async () =>
     })
     expect(rebound.id).toBe(second.id)
     expect(rebound.binding.generation).toBe(second.binding.generation + 1)
-    expect(await WorkspaceBinding.writableRoots(WorkspaceCatalog.projection(first))).toEqual([a.path, c.path])
+    expect(await WorkspaceBinding.writableRoots(WorkspaceCatalog.projection(first)!)).toEqual([a.path, c.path])
   })
 })

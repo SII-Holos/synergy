@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
 import path from "path"
@@ -9,7 +10,7 @@ import { tmpdir } from "../support/fixture"
 import { Identifier } from "../../src/id/id"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 function fakeSessionID(): string {
   return Identifier.descending("session")
@@ -64,6 +65,7 @@ describe("Snapshot per-session isolation", () => {
 
           const patchA = {
             hash: hashA1!,
+            workspace: Snapshot.workspace(),
             files: [path.join(tmp.path, "file_a.txt")],
           }
           await Snapshot.revert([patchA], sessionA)
@@ -77,7 +79,7 @@ describe("Snapshot per-session isolation", () => {
       })
     }))
 
-  test("restore() only restores tracked files, not full working tree", () =>
+  test("file restoration changes only selected patch files", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -92,13 +94,17 @@ describe("Snapshot per-session isolation", () => {
           await Bun.write(path.join(tmp.path, "file_a.txt"), "modified a")
           await Bun.write(path.join(tmp.path, "file_b.txt"), "should survive restore")
 
-          await Snapshot.restore(snapshot!, sessionID)
+          const result = await Snapshot.revert(
+            [{ hash: snapshot!, workspace: Snapshot.workspace(), files: [path.join(tmp.path, "file_a.txt")] }],
+            sessionID,
+          )
+          expect(result.restoredFiles).toEqual([path.join(tmp.path, "file_a.txt")])
 
           const bExists = await Bun.file(path.join(tmp.path, "file_b.txt")).exists()
           expect(bExists).toBe(true)
 
           const contentA = await Bun.file(path.join(tmp.path, "file_a.txt")).text()
-          expect(contentA).toBe("modified a")
+          expect(contentA).toBe("original a")
         },
       })
     }))
