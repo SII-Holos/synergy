@@ -298,23 +298,23 @@ describe("git worktree integration", () => {
         fn: () =>
           using(async () => {
             const session = await Session.create({ title: "Running Core Worktree" })
-            const lease = SessionManager.acquire(session.id)
-            expect(lease).toBeDefined()
-
             let created: Worktree.Info | undefined
             try {
-              created = await Worktree.create({
-                name: "running-core",
-                sessionID: session.id,
-                bind: true,
-                baseRef: "current",
-              })
-              expect((await Session.get(session.id)).workspace?.type).toBe("git_worktree")
+              await SessionManager.run(session.id, async () => {
+                created = await Worktree.create({
+                  name: "running-core",
+                  sessionID: session.id,
+                  bind: true,
+                  baseRef: "current",
+                })
+                expect((await Session.get(session.id)).workspace?.type).toBe("git_worktree")
+                expect(ScopeContext.current.workspace?.path).toBe(created.path)
 
-              await Worktree.leave(session.id)
-              expect((await Session.get(session.id)).workspace?.type).toBe("main")
+                await Worktree.leave(session.id)
+                expect((await Session.get(session.id)).workspace?.type).toBe("main")
+                expect(ScopeContext.current.workspace?.path).toBe(tmp.path)
+              })
             } finally {
-              await SessionManager.release(lease!)
               if (created) await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
               await Session.remove(session.id)
             }

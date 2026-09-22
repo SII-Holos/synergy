@@ -38,8 +38,12 @@ export namespace WorkspaceAccess {
     workspace?: Workspace | null
     roots?: string[] | null
     lease?: Lease
+    use?: Lease
     uses: Map<string, Lease>
     useRoots: Set<string>
+    retired: Set<Lease>
+    activity: number
+    transitioning: boolean
     serial: Promise<void>
     closed: boolean
     signal: AbortSignal
@@ -92,14 +96,16 @@ export namespace WorkspaceAccess {
       closed: false,
       uses: new Map(),
       useRoots: new Set(input.workspace ? [input.workspace.path] : []),
+      retired: new Set(),
+      activity: 0,
+      transitioning: false,
       serial: Promise.resolve(),
       signal: input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal,
     }
-    let use: Lease | undefined
     try {
       if (value.workspace && state().host) {
         await ExecutionCapacity.wait(async () => {
-          use = await host().acquire({
+          value.use = await host().acquire({
             id: randomUUID(),
             owner: value.owner,
             ancestors: value.ancestors,
@@ -117,8 +123,9 @@ export namespace WorkspaceAccess {
       await value.serial.catch(() => {})
       const released = await Promise.allSettled([
         value.lease?.release(),
-        use?.release(),
+        value.use?.release(),
         ...[...value.uses.values()].map((lease) => lease.release()),
+        ...[...value.retired].map((lease) => lease.release()),
       ])
       const errors = released.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
       if (errors.length) throw new AggregateError(errors, "Workspace claims could not be released")
@@ -160,15 +167,94 @@ export namespace WorkspaceAccess {
   }
   async function inTask<T>(fn: (task: Task) => Promise<T>, signal?: AbortSignal) {
     const active = current()
-    if (active) return fn(active)
-    return task({ workspace: ScopeContext.tryWorkspace(), signal }, () => fn(current()!))
+    if (active) return withActivity(active, () => fn(active))
+    return task({ workspace: ScopeContext.tryWorkspace(), signal }, () => {
+      const active = current()!
+      return withActivity(active, () => fn(active))
+    })
+  }
+
+  async function withActivity<T>(task: Task, fn: () => Promise<T>): Promise<T> {
+    if (task.transitioning) throw new BusyError("A Workspace switch is in flight")
+    task.activity++
+    try {
+      return await fn()
+    } finally {
+      task.activity--
+    }
+  }
+
+  export function owns(sessionID: string) {
+    return current()?.sessionID === sessionID
+  }
+
+  export async function transition<T>(sessionID: string, workspace: Workspace | null, commit: () => Promise<T>) {
+    const task = current()
+    if (!task || task.sessionID !== sessionID) return commit()
+    const previous = task.workspace
+    if (
+      previous?.id === workspace?.id &&
+      previous?.generation === workspace?.generation &&
+      previous?.path === workspace?.path
+    )
+      return commit()
+    if (task.transitioning || task.activity) throw new BusyError("Workspace operations are in flight")
+    task.transitioning = true
+    try {
+      return await serial(task, async () => {
+        let nextUse: Lease | undefined
+        try {
+          if (workspace) {
+            if (!workspace.id) throw new Error("Workspace must be registered before switching an active Task")
+            await ExecutionCapacity.wait(async () => {
+              nextUse = await host().acquire({
+                id: randomUUID(),
+                owner: task.owner,
+                ancestors: task.ancestors,
+                kind: "use",
+                roots: [workspace.path],
+                signal: task.signal,
+              })
+              await WorkspaceBinding.validate(workspace.id!, workspace.scopeID, workspace.generation)
+            })
+          }
+          task.signal.throwIfAborted()
+          if (task.closed) throw new Error("Workspace task is closed")
+          const result = await commit()
+          for (const lease of [task.lease, task.use, ...task.uses.values()]) if (lease) task.retired.add(lease)
+          task.workspace = workspace
+          task.use = nextUse
+          nextUse = undefined
+          task.lease = undefined
+          task.roots = undefined
+          task.uses.clear()
+          task.useRoots = new Set(workspace ? [workspace.path] : [])
+          ScopeContext.refreshWorkspace(workspace)
+          const released = await Promise.allSettled(
+            [...task.retired].map(async (lease) => {
+              await lease.release()
+              task.retired.delete(lease)
+            }),
+          )
+          const failures = released.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+          if (failures.length) throw new AggregateError(failures, "Previous Workspace claims could not be released")
+          return result
+        } finally {
+          await nextUse?.release()
+        }
+      })
+    } finally {
+      task.transitioning = false
+    }
   }
 
   export async function reserveWrite(roots: string[] | null, signal?: AbortSignal): Promise<void> {
     const task = current()
     if (!task) throw new Error("A write reservation requires a Workspace task")
-    await ExecutionCapacity.wait(() => reserve(task, roots, signal))
-    await validate(task)
+    await withActivity(task, async () => {
+      await ExecutionCapacity.wait(() => reserve(task, roots, signal))
+      await validate(task)
+    })
   }
 
   export async function write<T>(roots: string[] | null, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -252,28 +338,30 @@ export namespace WorkspaceAccess {
   export async function use(workspaces: Workspace[]) {
     const task = current()
     if (!task || !state().host) return
-    await ExecutionCapacity.wait(() =>
-      serial(task, async () => {
-        for (const workspace of workspaces) {
-          task.useRoots.add(workspace.path)
-          const key = JSON.stringify([workspace.id, workspace.generation])
-          if (!task.uses.has(key))
-            task.uses.set(
-              key,
-              await host().acquire({
-                id: randomUUID(),
-                owner: task.owner,
-                ancestors: task.ancestors,
-                kind: "use",
-                roots: [workspace.path],
-                signal: task.signal,
-              }),
-            )
-          if (workspace.id) await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
-        }
-      }),
-    )
-    await validate(task)
+    await withActivity(task, async () => {
+      await ExecutionCapacity.wait(() =>
+        serial(task, async () => {
+          for (const workspace of workspaces) {
+            task.useRoots.add(workspace.path)
+            const key = JSON.stringify([workspace.id, workspace.generation])
+            if (!task.uses.has(key))
+              task.uses.set(
+                key,
+                await host().acquire({
+                  id: randomUUID(),
+                  owner: task.owner,
+                  ancestors: task.ancestors,
+                  kind: "use",
+                  roots: [workspace.path],
+                  signal: task.signal,
+                }),
+              )
+            if (workspace.id) await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
+          }
+        }),
+      )
+      await validate(task)
+    })
   }
 
   export function signal() {

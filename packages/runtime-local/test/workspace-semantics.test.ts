@@ -19,7 +19,10 @@ test("Home and explicit none retain a null workspace through creation and child 
         const parent = await Session.create()
         expect(parent.workspace).toBeNull()
         expect((await Session.create({ parentID: parent.id })).workspace).toBeNull()
-        await expect(Session.applyWorkspaceSelection(parent.id, { mode: "current" })).rejects.toThrow("workspace")
+        expect(await Session.applyWorkspaceSelection(parent.id, { mode: "current" })).toMatchObject({
+          workspace: null,
+          workspaceID: null,
+        })
       },
     }),
   )

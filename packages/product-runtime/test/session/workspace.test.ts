@@ -483,8 +483,8 @@ describe("session workspace binding", () => {
               await SessionManager.run(session.id, async () => {
                 expect(ScopeContext.current.directory).toBe(scope.local!.directory)
 
+                await fs.mkdir(worktreeWs.path, { recursive: true })
                 await Session.updateWorkspace(session.id, worktreeWs)
-                ScopeContext.refreshWorkspace(worktreeWs as Workspace)
 
                 expect(ScopeContext.current.directory).toBe(worktreeWs.path)
                 expect((ScopeContext.current.workspace as SessionWorkspace | undefined)?.type).toBe("git_worktree")
@@ -555,8 +555,8 @@ describe("session workspace binding", () => {
               }
 
               await SessionManager.run(session.id, async () => {
+                await fs.mkdir(worktreeWs.path, { recursive: true })
                 await Session.updateWorkspace(session.id, worktreeWs)
-                ScopeContext.refreshWorkspace(worktreeWs as Workspace)
 
                 const gate = (await EnforcementGate.create({
                   activeWorkspace: ScopeContext.current.directory,

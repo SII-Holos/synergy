@@ -30,11 +30,8 @@ test("current selection preserves a missing historical reference without adoptin
     await ScopeContext.provide({
       scope,
       fn: async () => {
-        const session = await Session.create({ workspace: null })
         const imported = await WorkspaceCatalog.importMissingReference("wsp_unknown_history", scope.id)
-        await Session.update(session.id, (draft) => {
-          draft.workspaceID = imported.id
-        })
+        const session = await Session.create({ workspaceID: imported.id })
         const response = await Server.App().request(`/session/${session.id}/workspace?scopeID=${scope.id}`, {
           method: "POST",
           headers: { "content-type": "application/json" },

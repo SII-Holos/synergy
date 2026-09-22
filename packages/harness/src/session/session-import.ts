@@ -295,6 +295,7 @@ export namespace SessionImport {
             interaction: info.interaction,
             cortex: info.cortex,
             workspace: info.workspace,
+            workspaceID: info.workspaceID,
             forkedFrom: info.forkedFrom,
             completionNotice: info.completionNotice,
           })

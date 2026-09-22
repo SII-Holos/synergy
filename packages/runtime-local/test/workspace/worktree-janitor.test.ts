@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { $ } from "bun"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -82,6 +82,36 @@ function sweepEvidence(overrides: Partial<Worktree.SweepEvidence> = {}): Worktre
 }
 
 describe("worktree sweep", () => {
+  test("a below-cap eligibility probe does not take the removal gate", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create()
+          const created = await Worktree.create({
+            name: "probe-use",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+          let use: Promise<boolean> | undefined
+          const isRunning = SessionManager.isRunning
+          using _probe = spyOn(SessionManager, "isRunning").mockImplementation((id) => {
+            if (id !== session.id) return isRunning(id)
+            use = Worktree.withUse(created.path, undefined, async () => true).catch(() => false)
+            return false
+          })
+          const report = await Worktree.sweep()
+          expect(await use).toBe(true)
+          expect(report.removed).toEqual([])
+          expect(report.skipped.some((item) => item.reason === "removal_failed")).toBe(false)
+          expect(await exists(created.path)).toBe(true)
+        },
+      })
+    }))
+
   test("reconciles a managed registration whose directory was deleted", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

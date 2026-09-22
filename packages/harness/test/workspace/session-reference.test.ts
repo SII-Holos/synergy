@@ -9,6 +9,39 @@ import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
 import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
+import { SessionManager } from "../../src/session/manager"
+
+test("creation, children and forks preserve an unresolved Workspace reference", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using files = await tmpdir()
+    const scope = await files.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const missing = await WorkspaceCatalog.importMissingReference("wsp_unresolved", scope.id)
+        const parent = await Session.create({ workspaceID: missing.id })
+        const child = await Session.create({ parentID: parent.id })
+        const fork = await Session.fork({ sessionID: parent.id })
+        for (const session of [parent, child, fork]) {
+          expect(session.workspaceID).toBe(missing.id)
+          expect(session.workspace).toBeNull()
+          expect(await Session.get(session.id)).toMatchObject({ workspaceID: missing.id, workspace: null })
+          let ran = false
+          await expect(
+            SessionManager.run(session.id, async () => {
+              ran = true
+            }),
+          ).rejects.toThrow()
+          expect(ran).toBe(false)
+        }
+        const unbound = await Session.create({ parentID: parent.id, workspace: null })
+        expect(unbound.workspaceID).toBeNull()
+        expect(unbound.workspace).toBeNull()
+      },
+    })
+  })
+})
 
 test("sessions persist a shared Workspace reference and read its current location", async () => {
   await using runtime = await testRuntime()

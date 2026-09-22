@@ -1400,6 +1400,11 @@ export namespace Worktree {
     for (const item of oldestFirst) {
       let finishRemoval: (() => void) | undefined
       try {
+        if (report.removed.length >= excess) {
+          const decision = await probe(item)
+          if (!decision.eligible) report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
+          continue
+        }
         finishRemoval = beginRemoval(item)
         const current = await find(item.id)
         const decision = await probe(current)
@@ -1407,7 +1412,6 @@ export namespace Worktree {
           report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
           continue
         }
-        if (report.removed.length >= excess) continue
         await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
         await removeWorktree(current, { force: false, reason: "managed cap" })
         report.removed.push(current.id)
