@@ -12,6 +12,40 @@ import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+test("creating a Home session with current selection preserves its absent Workspace", () =>
+  runtime.run(async () => {
+    const response = await Server.App().request("/session?scopeID=home", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspace: { mode: "current" } }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ scope: { id: "home" }, workspaceID: null, workspace: null })
+  }))
+
+test("current selection preserves a missing historical reference without adopting the Scope directory", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const imported = await WorkspaceCatalog.importMissingReference("wsp_unknown_history", scope.id)
+        await Session.update(session.id, (draft) => {
+          draft.workspaceID = imported.id
+        })
+        const response = await Server.App().request(`/session/${session.id}/workspace?scopeID=${scope.id}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "current" }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({ workspaceID: imported.id, workspace: null })
+      },
+    })
+  }))
+
 function url(scopeID: string, workspace: { id?: string; generation?: number }, endpoint = "read") {
   return `/workspace/files/${endpoint}?${new URLSearchParams({
     scopeID,

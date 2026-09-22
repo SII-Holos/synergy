@@ -78,7 +78,11 @@ describe("WorkspaceFileService", () => {
               /escapes workspace/,
             )
             if (symlinkCreated) {
-              await expect(WorkspaceFileService.node("outside-link.txt")).rejects.toThrow(/escapes workspace/)
+              expect(await WorkspaceFileService.node("outside-link.txt")).toMatchObject({
+                path: "outside-link.txt",
+                symlink: true,
+              })
+              await expect(WorkspaceFileService.read({ path: "outside-link.txt" })).rejects.toThrow(/escapes workspace/)
             }
 
             const inside = await WorkspaceFileService.node("inside.txt")

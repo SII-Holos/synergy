@@ -3,14 +3,28 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { withFileLock } from "./fs-lock"
 
+export async function identifyFilesystemObject(filename: string) {
+  const stat = await fs.stat(filename, { bigint: true })
+  const directory = stat.isDirectory()
+  const overlay =
+    directory && process.platform === "linux" && (await fs.statfs(filename, { bigint: true })).type === 0x794c7630n
+  // OverlayFS copy-up replaces lower metadata, including birthtime, while preserving the directory.
+  // Provenance: https://docs.kernel.org/filesystems/overlayfs.html#directories
+  // Local adaptation: bind overlay directories to their mount device/inode rather than the backing layer's birthtime.
+  return {
+    directory,
+    physicalID: overlay ? `overlay:${stat.dev}:${stat.ino}` : `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`,
+  }
+}
+
 export async function identifyDirectory(directory: string, allowMissing = false) {
   const absolute = path.resolve(directory)
   try {
     const canonical = await fs.realpath(absolute)
-    const stat = await fs.stat(canonical, { bigint: true })
-    if (!stat.isDirectory())
+    const identity = await identifyFilesystemObject(canonical)
+    if (!identity.directory)
       throw Object.assign(new Error("Workspace location is not a directory"), { code: "ENOTDIR" })
-    return { path: canonical, physicalID: `${stat.dev}:${stat.ino}:${stat.birthtimeNs}` }
+    return { path: canonical, physicalID: identity.physicalID }
   } catch (error) {
     if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT")
       return { path: absolute, physicalID: undefined }

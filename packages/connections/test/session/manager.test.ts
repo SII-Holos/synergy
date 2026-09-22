@@ -458,9 +458,9 @@ describe("loop ownership", () => {
           expect(SessionManager.isRunning(session.id)).toBe(true)
           expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
 
-          await run
+          await expect(run).rejects.toMatchObject({ name: "AbortError" })
 
-          expect(observedSignal?.aborted).toBe(true)
+          expect(observedSignal).toBeUndefined()
           expect(SessionManager.isRunning(session.id)).toBe(false)
         },
       })

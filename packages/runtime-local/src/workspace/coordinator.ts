@@ -6,6 +6,7 @@ import { z } from "zod"
 import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 import { retrySleep } from "@ericsanchezok/synergy-util/retry"
+import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
 import { FileMutation } from "../file/mutation"
 import { DarwinCoalition } from "../process/darwin-coalition"
@@ -183,8 +184,8 @@ export class WorkspaceCoordinator {
     const identify = (filename: string) => {
       let result = identities.get(filename)
       if (!result) {
-        result = fs.stat(filename, { bigint: true }).then(
-          (stat) => `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`,
+        result = identifyFilesystemObject(filename).then(
+          (identity) => identity.physicalID,
           (error: NodeJS.ErrnoException) => {
             if (error.code !== "ENOENT") throw error
             return undefined

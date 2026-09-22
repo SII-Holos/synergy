@@ -1,7 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test"
 import { Ripgrep } from "@ericsanchezok/synergy-runtime-local/file/ripgrep"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
-import { registerPluginStartup } from "@ericsanchezok/synergy-plugin-host/plugin/startup"
 import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -64,32 +63,40 @@ describe("ScopeRuntime", () => {
       const startupGate = new Promise<void>((resolve) => {
         releaseStartup = resolve
       })
+      const started = Promise.withResolvers<void>()
       let initCalls = 0
       let disposeCalls = 0
       using _init = spyOn(Plugin, "init").mockImplementation(async () => {
         initCalls++
-        if (initCalls === 1) await startupGate
+        if (initCalls === 1) {
+          started.resolve()
+          await startupGate
+        }
       })
       using _disposeScope = spyOn(Plugin, "disposeScope").mockImplementation(async () => {
         disposeCalls++
       })
 
       const firstEnsure = ScopeRuntime.ensure(scope)
-      await Bun.sleep(1)
+      await started.promise
       expect(initCalls).toBe(1)
 
       const disposal = ScopeRuntime.dispose(scope.id)
       const secondEnsure = ScopeRuntime.ensure(scope)
-      await Bun.sleep(1)
-      expect(disposeCalls).toBe(0)
-      expect(initCalls).toBe(1)
+      try {
+        await Promise.resolve()
+        expect(disposeCalls).toBe(0)
+        expect(initCalls).toBe(1)
 
-      releaseStartup()
-      await Promise.all([firstEnsure, disposal, secondEnsure])
-      expect(disposeCalls).toBe(1)
-      expect(initCalls).toBe(2)
-
-      await ScopeRuntime.dispose(scope.id)
+        releaseStartup()
+        await Promise.all([firstEnsure, disposal, secondEnsure])
+        expect(disposeCalls).toBe(1)
+        expect(initCalls).toBe(2)
+      } finally {
+        releaseStartup()
+        await Promise.allSettled([firstEnsure, disposal, secondEnsure])
+        await ScopeRuntime.dispose(scope.id)
+      }
     }))
 })
 

@@ -53,6 +53,8 @@ File API queries require `workspaceID` and `workspaceGeneration` alongside Scope
 
 The Session status bar and new-session composer open the same Workspace selector. Existing directories can be registered without moving the Scope; direct sharing and explicit rebinding use conditional updates. Editing either form retains its original revision across incoming catalog events. An unbound historical Workspace remains visible but cannot be selected for local execution until rebound. Busy or conflicting operations keep the dialog open with the server's structured error.
 
+The current selection preserves Home's absent Workspace and preserves unresolved historical Workspace references. It does not turn missing history into the Scope's default directory. Choosing none is the explicit operation that clears a reference.
+
 Scope bootstrap includes the Workspace catalog. The frontend merges catalog events and snapshots using the Scope epoch and sequence, then projects current Session bindings without changing conversation activity. Delayed Session responses cannot replace a newer known binding with an old generation. Already-open file tabs retain their captured binding instead of following the Session to another directory.
 
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.

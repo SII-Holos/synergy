@@ -183,6 +183,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
   const originalUpdateAssistantContextUsage = Session.updateAssistantContextUsage
   const originalUpdateLastExchange = Session.updateLastExchange
   const originalSnapshotTrack = Snapshot.track
+  const originalSnapshotWorkspace = Snapshot.workspace
   const originalConfigCurrent = Config.current
   const originalPluginTrigger = Plugin.trigger
   const originalExperienceComplete = ExperienceEncoder.onComplete
@@ -223,6 +224,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
     ;(Snapshot.track as any) = mock(async () => "snapshot_test")
+    Snapshot.workspace = mock(() => undefined)
     ;(AgentTurn.stream as any) = mock(async (input: Record<string, unknown>) => {
       scenario.inspectAgentInput?.(input)
       return {
@@ -284,6 +286,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(Session.updateAssistantContextUsage as any) = originalUpdateAssistantContextUsage
     ;(Session.updateLastExchange as any) = originalUpdateLastExchange
     ;(Snapshot.track as any) = originalSnapshotTrack
+    Snapshot.workspace = originalSnapshotWorkspace
     ;(Config.current as any) = originalConfigCurrent
     ;(Plugin.trigger as any) = originalPluginTrigger
     ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
@@ -699,6 +702,7 @@ describe("SessionProcessor context usage persistence", () => {
       await expect(
         Promise.race([processing, Bun.sleep(100).then(() => Promise.reject(new Error("blocked")))]),
       ).resolves.toBeDefined()
+      expect(persisted?.error).toBeUndefined()
       expect(persisted?.finish).toBe("stop")
       expect(persisted?.contextUsage).toBeUndefined()
       settleDraft(undefined)

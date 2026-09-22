@@ -12,7 +12,13 @@ The Harness Workspace catalog owns stable identities and transactional location 
 
 Runtime hosts explicitly supply local location identification. Runtime Local uses a persistent private namespace identity and filesystem directory identities; hosts without local file capabilities can omit that dependency. A record revision orders metadata changes, while a binding generation invalidates work resolved against a previous location.
 
+OverlayFS directory copy-up changes the backing layer's birth time without replacing the visible directory. On that filesystem, directory identity uses the overlay device/inode pair; other local filesystems retain the birth-time discriminator. The Workspace catalog and native exclusion coordinator share this implementation. A real container regression reproduces the first child creation changing birth time while the directory identity remains stable.
+
+Provenance: [Linux OverlayFS directory metadata and copy-up](https://docs.kernel.org/filesystems/overlayfs.html#directories). Local adaptation: do not mistake backing-layer metadata replacement for user-visible Workspace replacement. Mount or inode changes still require explicit rebinding.
+
 Sessions persist a nullable Workspace ID and hydrate public directory descriptors through the catalog. On-access owner migrations apply before navigation validation, with a new derived-index repair for already-completed historical index migrations. The Runtime initializes its namespace outside retryable storage transactions. Hosts without filesystem capabilities preserve historical bindings as unbound records.
+
+Selecting current preserves an absent Home Workspace and an unresolved historical reference. Selecting none explicitly clears the reference. Route regressions and the real plugin composer verify that a Home conversation can reach its provider without acquiring local file authority.
 
 Transcript and Rollout exports include the referenced catalog records. Imports retain their historical locations but mark bindings unbound and discard shared-write grants. If the original identity is already bound locally, import creates a separate historical identity so an uploaded transcript cannot authorize file access.
 

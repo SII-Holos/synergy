@@ -163,6 +163,8 @@ Use [Development reference](../../../docs/reference/development.md) and [Open-so
 3. Distinguish a product regression from a brittle expectation. Change the test only when the intended public contract is wrong or was asserted at the wrong level.
 4. Do not skip, weaken, or quarantine a relevant test merely to make the gate green.
 
+Directory-identity changes require a real OverlayFS copy-up check as well as ordinary temporary-directory tests. A newly created temporary directory already lives in the upper layer and cannot reproduce first-write metadata changes in an image's lower-layer directory. Keep catalog and coordinator identity checks on the same native primitive.
+
 ## Handoff
 
 Report the invariant, test location, red/green evidence, commands run, pass/fail counts, unrun gates, platform limitations, and any remaining nondeterminism.

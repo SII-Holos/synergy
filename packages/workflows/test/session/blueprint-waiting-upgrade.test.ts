@@ -106,7 +106,7 @@ describe("retired waiting Blueprint phase upgrade", () => {
           }
 
           const migrated = await Storage.read<Record<string, unknown>>(key)
-          expect(Session.Info.safeParse(migrated).success).toBe(true)
+          expect(Session.Info.safeParse(await Session.get(sessionID)).success).toBe(true)
           // `running` is the survivor; the binding itself is untouched, so
           // continue, abandon and the review controls still resolve the loop.
           expect(migrated.blueprint).toEqual({ loopID: "bll_legacy", loopRole: "execution", phase: "running" })
@@ -185,7 +185,7 @@ describe("retired waiting Blueprint phase upgrade", () => {
           expect(await Session.get(bound.id)).toMatchObject({ blueprint: { phase: "running" } })
           expect((await Session.get(bound.id)).paused).toBeUndefined()
           expect((await Session.get(plain.id)).paused).toBeUndefined()
-          expect(await Session.Info.safeParse(await Storage.read<unknown>(key))).toMatchObject({ success: true })
+          expect(await Session.Info.safeParse(await Session.get(bound.id))).toMatchObject({ success: true })
 
           await Session.remove(bound.id)
           await Session.remove(plain.id)
@@ -259,7 +259,7 @@ describe("retired waiting Blueprint phase upgrade", () => {
           await phase.up(() => {})
           await nav.up(() => {})
           expect((await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === sessionID)).toBeDefined()
-          expect(Session.Info.safeParse(await Storage.read<unknown>(key)).success).toBe(true)
+          expect(Session.Info.safeParse(await Session.get(sessionID)).success).toBe(true)
 
           await Session.remove(sessionID)
         },

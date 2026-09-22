@@ -641,7 +641,11 @@ export namespace Session {
     selection?: WorkspaceSelection,
   ): Promise<Info & { working?: WorkingInfoType }> {
     const session = await get(sessionID)
-    if (!selection || (selection.mode === "current" && session.workspace)) return session
+    if (
+      !selection ||
+      (selection.mode === "current" && (session.workspace || session.workspaceID || !session.scope.local))
+    )
+      return session
     if (selection.mode === "workspace") {
       SessionManager.assertIdle(sessionID)
       const workspace = await WorkspaceBinding.validate(
@@ -654,11 +658,6 @@ export namespace Session {
     if (selection.mode === "none" || selection.mode === "current") {
       SessionManager.assertIdle(sessionID)
       const workspace = selection.mode === "none" ? null : ScopeContext.defaultWorkspace(session.scope)
-      if (selection.mode === "current" && !workspace)
-        throw new Scope.WorkspaceRequiredError({
-          message: "This Scope has no local workspace.",
-          scopeID: session.scope.id,
-        })
       return updateWorkspace(sessionID, workspace, { requireIdle: true })
     }
 
