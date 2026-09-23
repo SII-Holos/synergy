@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "fs/promises"
 import { tmpdir } from "os"
 import path from "path"
+import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 
 const homes: string[] = []
 const servers: ReturnType<typeof Bun.serve>[] = []
@@ -67,6 +68,29 @@ async function mcpCli(args: string[], home: string) {
 }
 
 describe("mcp connect and restart CLI", () => {
+  test.each(["connect", "restart", "list"])("%s respects its Home ownership mode", async (command) => {
+    const home = await isolatedHome()
+    const lockPath = path.join(home, ".synergy", "state", "daemon", "runtime-lock.json")
+    const lock = await ServerProcessLock.acquire(lockPath, "server")
+    const before = await Bun.file(lockPath).text()
+    const { url, requests } = startStub("connected")
+    try {
+      const args = command === "list" ? ["mcp", "list"] : ["mcp", command, "demo", "--attach", url]
+      const result = await mcpCli(args, home)
+
+      expect(result.exitCode, result.output).toBe(command === "list" ? 1 : 0)
+      if (command === "list") {
+        expect(result.output).toContain("already owns this Home")
+        expect(requests).toHaveLength(0)
+      } else {
+        expect(requests).toContain(`POST /mcp/demo/${command}`)
+      }
+      expect(await Bun.file(lockPath).text()).toBe(before)
+    } finally {
+      await lock.release()
+    }
+  })
+
   test("connect drives the running server over HTTP and reports the settled status", async () => {
     const { url, requests } = startStub("connected")
 

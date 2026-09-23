@@ -146,7 +146,8 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
           (name) => name.split(" ")[0] === selectedCommand,
         ),
       )
-      if (entry?.storage === "maintenance" && !storage) {
+      const storageMode = typeof entry?.storage === "function" ? entry.storage(opts._) : entry?.storage
+      if (storageMode === "maintenance" && !storage) {
         const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
         const inspect = selectedCommand === "migration" && (argv.includes("status") || argv.includes("--dry-run"))
         storage = await StorageMaintenance.open({ readonly: inspect, migrate: selectedCommand !== "migration" })

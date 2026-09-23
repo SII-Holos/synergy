@@ -18,7 +18,7 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 3. Keep domain logic in its owning module. Let the command parse input, establish Scope or server attachment, call the domain API, format output, and set an appropriate exit status.
 4. Give every command, positional, and option useful help text. Support structured output when the adjacent command family already does.
 5. Register a generic root command in the CLI’s core command catalog or a business command in `packages/product-runtime/src/cli-commands.ts`; register nested commands in their owning command-group builder. Preserve the injected runtime factory. Nested product Data commands enter through `runCli({ dataCommands })`; the core Data builder owns path, set-home and snapshots, while Product Runtime contributes pack, merge and move and the root `migrate` alias.
-6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
+6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics. For a mixed local/attached command family, select `CommandEntry.storage` from parsed positionals so HTTP-only subcommands do not acquire the target Home lock. Test them while a real lock is held, and verify local subcommands still refuse competing ownership.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
 ## Command Contract

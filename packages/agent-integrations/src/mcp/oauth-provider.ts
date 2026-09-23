@@ -160,20 +160,25 @@ export class McpOAuthProvider implements OAuthClientProvider {
 
   // Provenance: MCP SDK `auth()` calls this after `invalid_grant`/`invalid_client` to clear
   // credentials the authorization server has rejected, then retries without user intervention.
-  // Background probes never write shared credential state, so they may only clear tokens that
-  // already exist; clearing client registration would break a concurrent interactive login.
+  // Background probes may clear stored tokens, but own only an in-memory verifier;
+  // clearing shared registration or verifiers would break a concurrent interactive login.
   async invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): Promise<void> {
     if (scope === "discovery") return
+    if (this.mode === "background" && (scope === "verifier" || scope === "all")) {
+      this.memoryCodeVerifier = undefined
+      if (scope === "verifier") return
+      this.memoryState = undefined
+    }
     if (this.mode === "background" && !(await McpAuth.getForUrl(this.mcpName, this.serverUrl))) return
 
     switch (scope) {
       case "verifier":
-        await McpAuth.clearCodeVerifier(this.mcpName)
+        await McpAuth.clearCodeVerifier(this.mcpName, undefined, this.mutationOptions)
         return
       case "client":
       case "all":
         if (this.mode === "background") break
-        await McpAuth.remove(this.mcpName)
+        await McpAuth.remove(this.mcpName, this.mutationOptions)
         log.info("invalidated oauth credentials", { mcpName: this.mcpName, scope })
         return
       default:
