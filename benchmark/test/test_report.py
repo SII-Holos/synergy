@@ -260,6 +260,7 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
         "missing_deadline",
         "idle",
         "policy",
+        "dependency_proxy",
         "seed",
         "missing",
         "legacy",
@@ -303,6 +304,10 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["config"].pop("request_idle_timeout_seconds")
             elif change == "policy":
                 plan["config"]["resources"]["reserve_cpus"] = 1
+            elif change == "dependency_proxy":
+                plan["dependency_proxy"] = {
+                    "endpoint_sha256": "different", "policy": "internet-enabled-environments-only"
+                }
             elif change == "seed":
                 plan["config"]["seed"] += 1
             elif change == "missing":

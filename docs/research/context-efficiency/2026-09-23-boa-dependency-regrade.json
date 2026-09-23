@@ -1,0 +1,57 @@
+{
+  "final": true,
+  "kind": "retained-patch-regrade",
+  "source": {
+    "study": "local24-v10-network-supplement",
+    "cell": "0017",
+    "harness": "baseline",
+    "revision": "024dd683e091d9fce3d1d26b79b2e188ce636b52",
+    "task": "deepswe-1.1/boa-hierarchical-evaluation-cancellation",
+    "task_sha256": "74755bc965bf367ed3f4af3549170ad3ab3fb70bd690543e42e3cf434331a935",
+    "patch_sha256": "c2d8e75b42233ab9a5cfd35f7962f8ea0bbf109bd9e612b6f49f825d52c5f583"
+  },
+  "condition": {
+    "network": "none",
+    "added_cached_package": {
+      "url": "https://static.crates.io/crates/husky-rs/husky-rs-0.3.3.crate",
+      "sha256": "7efd8aa8491dc34722e4038a2fff2ce6cf1343976c81aa94bc1da5eeb6b7d2b2",
+      "bytes": 44441
+    },
+    "native_tests_unchanged": true,
+    "model_patch_unchanged": true,
+    "original_reward_unchanged": true,
+    "original_reward": 0
+  },
+  "result": {
+    "reward": 0,
+    "tests_passed": 22,
+    "tests_failed": 2,
+    "tests_total": 24,
+    "missing_result_placeholders": 0,
+    "failed_tests": [
+      "[f2p] boa_engine: tests::evaluation::cancelled_session_jobs_are_skipped_but_unrelated_jobs_still_run",
+      "[f2p] boa_engine: tests::evaluation::parent_reason_wins_if_parent_cancels_first"
+    ],
+    "native_rewards": {
+      "reward": 0,
+      "f2p_total": 17,
+      "f2p_passed": 15,
+      "p2p_total": 7,
+      "p2p_passed": 7,
+      "f2p": 0.8823529411764706,
+      "p2p": 1.0,
+      "partial": 0.9166666666666666
+    },
+    "verifier_seconds": 159.94622611999512,
+    "wall_seconds": 173.17881107330322,
+    "resources_removed": true
+  },
+  "additional_model_requests": 0,
+  "additional_model_tokens": 0,
+  "evidence_sha256": {
+    "ctrf.json": "cf66d0d4f95519378c28188d6aea5c3df9a00e2481cb3c20b7f2e0c0c9a82fd9",
+    "reports/base_run.log": "3e74d5260a76a0f0f5a1604a9e6d5fa414a5fba0aa3be95614e92acbbd4bdf6d",
+    "reports/new_run.log": "8b5cfa954c3a31a6553fedd699a7bc7d5df242c3d2053c08543a3670c1f28750"
+  },
+  "limitation": "Separate dependency-only regrade; not a replacement of the original offline verifier outcome or an additional algorithm sample."
+}

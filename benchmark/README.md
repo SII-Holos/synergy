@@ -90,6 +90,8 @@ Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree
 
 模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。准备环境不能预置答案或 oracle 产物。
 
+可选 `dependency_proxy_env: BENCH_DEPENDENCY_PROXY` 引用宿主环境中的 HTTP 代理 URL；该 URL 必须带端口且不含凭据、路径或查询参数。代理只传给原生允许联网的任务和判题环境，不改变 `no-network` 或推理专用出口。宿主回环代理经临时 Docker bridge 转发，运行结束或取消时关闭；不修改系统或 Docker 全局配置。运行计划冻结代理地址摘要，恢复拒绝更换地址，跨运行配对也核对该条件。默认不继承宿主代理；设置代理不触发模型探针或预检。
+
 Synergy 的两种原生适配器保留任务镜像的 `HOME` 和 XDG 环境，仅用独立 `SYNERGY_HOME` 隔离产品数据。原生 shell 的环境变量过滤属于被测产品行为；评测器不能搬移依赖缓存来掩盖环境差异。隔离原理与请求关联见[评测修复决策](../docs/decisions/implemented/bug-fix/2026-09-22-benchmark-execution-evidence-integrity.md)。
 
 并发为 1 时按冻结 `schedule` 执行；并发大于 1 时所有正式项进入同一资源队列，同题不同版本可同时运行。配对关系用于报告，seed 固定优先顺序，`dispatch_sequence` 记录实际派发顺序。每项使用独立容器项目、工作区、运行目录、网关端口和账本。原生 reward 为 0 不改变调度；证据缺陷限制报告的配对资格，不阻止其他任务。
@@ -155,6 +157,8 @@ selection:
 进行中或中断且未形成终态的 attempt，即使已观测请求都有完整 usage，任务总量也只报告已知下界。逐请求的完整用量照常保留；没有观测到未知请求时不虚构未知调用次数。
 
 原生 reward、判题执行、功能测试启动、归档有效性、记录覆盖和 usage 完整性彼此独立。reward.txt 不证明测试已启动；只有原生日志或测试报告中的正面证据才能确认启动，其他情况保持 unknown。部分记录可构成有效失败证据。
+
+DeepSWE 为缺失结果生成的 CTRF `missing from report (...)` 条目记录在 `grading.missing_results`，不作为测试启动或完成证据。原生 reward 和原报告保持原样；部分测试已启动而其余缺失时，两者分别记录。依赖失败时应核对模型是否修改了 lockfile；离线判题缺包不能直接归因为随机网络故障，见[判题依赖复盘](../docs/postmortem/0025-benchmark-verifier-dependencies-and-missing-tests.md)。
 
 流式请求收到首段数据时立即保存 `first_byte_at`；进行中的推理或正文输出不记为等待首字节。`model_waiting` 表示尚未结束的请求总数，逐请求的 `response_started` 区分已开始响应与仍未收到数据；usage 在实际收到前保持未知。
 

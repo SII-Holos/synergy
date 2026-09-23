@@ -72,3 +72,4 @@ Postmortems are current-history documents: they record what actually happened, t
 
 | 0023 | Benchmark concurrency exhausted Docker network addresses | implemented | 2026-09-23 |
 | 0024 | Benchmark release observer imposed a hidden stream idle timeout | implemented | 2026-09-23 |
+| 0025 | Benchmark verifier dependencies and missing test results | implemented | 2026-09-23 |

@@ -146,6 +146,61 @@ def test_ctrf_and_go_test_events_provide_independent_execution_evidence(tmp_path
     assert result["test_count_semantics"] == "maximum_observed_count_across_overlapping_reports"
 
 
+def test_synthesized_missing_results_do_not_establish_test_execution(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {
+                        "name": "[f2p] expected-test",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    }
+                ]
+            }
+        },
+    )
+    result = grading_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0}}})
+    assert result["functional_tests"] == "unknown"
+    assert result["test_count"] is None
+    assert result["raw_rewards"] == {"reward": 0}
+    assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
+
+
+def test_partial_suite_keeps_actual_starts_separate_from_missing_results(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {"name": "finished", "status": "passed"},
+                    {
+                        "name": "unfinished",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {"name": "assertion", "status": "failed", "message": "expected true, received false"},
+                ]
+            }
+        },
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        "\n".join('{"Action":"run","Package":"pkg","Test":"' + name + '"}' for name in ["a", "b", "c"])
+    )
+    result = grading_evidence(tmp_path, {})
+    assert result["functional_tests"] == "started"
+    assert result["test_count"] == 3
+    assert next(row for row in result["observations"] if row["format"] == "ctrf")["count"] == 2
+    assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
+
+
 def test_private_runtime_home_is_not_public_evidence(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "agent/home"
     vault = home / ".synergy/data/auth/secret-vault.json"

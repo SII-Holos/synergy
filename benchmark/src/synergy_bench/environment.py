@@ -13,6 +13,7 @@ from pier.environments.docker.docker import DockerEnvironment
 
 from .cache import async_cache_lock, reference_run
 from .catalog import tree_digest
+from .dependency_proxy import dependency_environment
 from .prepare import command
 from .process import run_preparation_process, run_process
 from .resources import Request
@@ -38,9 +39,12 @@ class CachedDockerEnvironment(DockerEnvironment):
         benchmark_platform: str,
         inference_port: int | None = None,
         benchmark_run: str | None = None,
+        dependency_proxy_url: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
+        if dependency_proxy_url and self.task_env_config.allow_internet:
+            self._persistent_env = {**dependency_environment(dependency_proxy_url), **self._persistent_env}
         # The cache-key lock below owns shared builds; Pier's task-name lock conflates independent variants.
         self._image_build_locks = {}
         self._benchmark_cache = Path(benchmark_cache)

@@ -23,6 +23,12 @@ from .background import background
 from .cache import cache_activity, enforce_budget, reference_run, release_run
 from .catalog import Suite, materialize, tree_digest
 from .config import TASK_TIMEOUT_SECONDS, ExperimentConfig, ModelProfile, load_config, resolve_plan
+from .dependency_proxy import (
+    current_dependency_proxy,
+    dependency_proxy,
+    dependency_proxy_identity,
+    proxy_from_environment,
+)
 from .engines import prepare_external
 from .evidence import collect_evidence
 from .gateway import Gateway, read_ledger
@@ -80,6 +86,7 @@ def progress(message: str) -> None:
 
 
 def validate_inputs(config: ExperimentConfig, base: Path) -> None:
+    proxy_from_environment(config.dependency_proxy_env)
     for variant in config.variants.values():
         for key, reference in variant.env.items():
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or not re.fullmatch(
@@ -282,7 +289,14 @@ def _initialize(path: Path) -> Path:
                     ),
                 }
         concurrency = len(plan["schedule"]) if config.concurrency == "auto" else config.concurrency
-        plan.update({"host": host, "concurrency": concurrency, "cache": str(cache)})
+        plan.update(
+            {
+                "host": host,
+                "concurrency": concurrency,
+                "cache": str(cache),
+                "dependency_proxy": dependency_proxy_identity(config.dependency_proxy_env),
+            }
+        )
         plan.update({"variants": variants, "tasks": tasks})
         from .evaluator import freeze_evaluator
 
@@ -744,6 +758,7 @@ def trial_configuration(
                     "benchmark_run": str(root),
                     "benchmark_platform": plan["config"]["platform"],
                     "inference_port": urlsplit(gateway.url).port if gateway else None,
+                    "dependency_proxy_url": current_dependency_proxy.get(),
                 },
             }
         ),
@@ -1109,6 +1124,8 @@ async def _resume(root: Path, *, debug_trial: str | None = None) -> None:
             raise ValueError("Experiment plan changed")
         if plan["evaluator"] != evaluator_identity():
             raise ValueError("Evaluator changed; use the recorded evaluator revision to resume")
+        if plan.get("dependency_proxy") != dependency_proxy_identity(plan["config"].get("dependency_proxy_env")):
+            raise ValueError("Dependency proxy changed; use the frozen network configuration or a new experiment")
         progress("resume: verifying frozen artifacts, inputs and terminal evidence")
         for artifact in {variant["artifact"] for variant in plan["variants"].values()}:
             await background(verify_prepared, Path(artifact))
@@ -1159,13 +1176,14 @@ async def _resume(root: Path, *, debug_trial: str | None = None) -> None:
                 atomic_json(attempt / "recovery.json", {"issues": issues, "model_calls": 0})
             current["status"] = "completed" if result.get("attempt_status") == "completed" else "interrupted"
         atomic_json(state_file, state)
-        if debug_trial is not None:
-            index = int(debug_trial)
-            if index < 0 or index >= len(plan["schedule"]):
-                raise ValueError("Unknown trial index")
-            item = plan["schedule"][index]
-            attempt = root / "debug" / f"{index:04d}" / f"attempt-{uuid.uuid4().hex[:8]}"
-            attempt.mkdir(parents=True)
-            atomic_json(attempt / "evidence.json", await execute_trial(root, plan, item, attempt, debug=True))
-            return
-        await execute_plan(root, plan, lambda item, attempt: execute_trial(root, plan, item, attempt))
+        async with dependency_proxy(plan["config"].get("dependency_proxy_env")):
+            if debug_trial is not None:
+                index = int(debug_trial)
+                if index < 0 or index >= len(plan["schedule"]):
+                    raise ValueError("Unknown trial index")
+                item = plan["schedule"][index]
+                attempt = root / "debug" / f"{index:04d}" / f"attempt-{uuid.uuid4().hex[:8]}"
+                attempt.mkdir(parents=True)
+                atomic_json(attempt / "evidence.json", await execute_trial(root, plan, item, attempt, debug=True))
+                return
+            await execute_plan(root, plan, lambda item, attempt: execute_trial(root, plan, item, attempt))

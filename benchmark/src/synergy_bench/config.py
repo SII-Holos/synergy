@@ -237,6 +237,7 @@ class ExperimentConfig(StrictModel):
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
+    dependency_proxy_env: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
 
     @property
     def variants(self) -> dict[str, Variant]:

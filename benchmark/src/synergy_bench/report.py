@@ -187,6 +187,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "seed": config.get("seed"),
             "docker": plan.get("host", {}).get("docker"),
             "capacity": plan.get("host", {}).get("capacity"),
+            "dependency_proxy": plan.get("dependency_proxy"),
             "execution_policy": {key: config[key] for key in policy_fields}
             if all(key in config for key in policy_fields)
             else None,

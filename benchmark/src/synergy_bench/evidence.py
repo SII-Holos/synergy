@@ -42,6 +42,7 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
     count = None
     sources = []
     observations = []
+    missing_results = []
     for file in sorted((trial / "verifier").rglob("*")):
         if not file.is_file() or file.is_symlink():
             continue
@@ -60,7 +61,18 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(tests, list):
                     continue
                 format_name = "ctrf"
-                observed = sum(isinstance(test, dict) and test.get("status") in {"passed", "failed"} for test in tests)
+                reported = [
+                    test for test in tests if isinstance(test, dict) and test.get("status") in {"passed", "failed"}
+                ]
+                # Provenance: docs/research/context-efficiency/2026-09-23-local24-glm-paired-study.md.
+                # Local adaptation: DeepSWE synthesizes failures for absent results; those do not prove execution.
+                missing = sum(
+                    test.get("status") == "failed" and str(test.get("message", "")).startswith("missing from report (")
+                    for test in reported
+                )
+                observed = len(reported) - missing
+                if missing:
+                    missing_results.append({"source": file.relative_to(trial).as_posix(), "count": missing})
             elif file.suffix in {".txt", ".log", ".jsonl"}:
                 content = file.read_text(errors="replace")
                 matches = re.findall(r"running (\d+) tests?\b", content)
@@ -103,6 +115,7 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         "test_count": count,
         "test_count_semantics": "maximum_observed_count_across_overlapping_reports",
         "observations": observations,
+        "missing_results": missing_results,
         "sources": sources,
         "raw_rewards": (pier.get("verifier_result") or {}).get("rewards"),
     }

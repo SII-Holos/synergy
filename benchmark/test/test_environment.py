@@ -7,6 +7,30 @@ from synergy_bench.environment import CachedDockerEnvironment, environment_ident
 from synergy_bench.storage import atomic_json, digest
 
 
+@pytest.mark.parametrize("allow_internet", [False, True])
+async def test_dependency_proxy_reaches_commands_without_relaxing_task_networks(tmp_path, monkeypatch, allow_internet):
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name="dependency-fixture",
+        session_id="dependency-fixture",
+        trial_paths=TrialPaths(trial_dir=tmp_path / "trial"),
+        task_env_config=EnvironmentConfig(allow_internet=allow_internet),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/amd64",
+        dependency_proxy_url="http://host.docker.internal:12345",
+    )
+    commands = AsyncMock(return_value=SimpleNamespace(return_code=0, stdout="", stderr=""))
+    monkeypatch.setattr(env, "_compose_command", commands)
+    await env.exec("curl https://dependency.invalid/fixture", timeout_sec=30)
+    args = commands.call_args.args[0]
+    assert any("HTTPS_PROXY=http://host.docker.internal:12345" in str(arg) for arg in args) is allow_internet
+    assert env.task_env_config.allow_internet is allow_internet
+
+
 def test_independent_caches_do_not_claim_each_others_task_or_proxy_images(tmp_path):
     from pier.models.agent.network import NetworkAllowlist
     from pier.models.task.config import EnvironmentConfig

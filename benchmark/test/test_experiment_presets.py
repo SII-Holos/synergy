@@ -33,6 +33,7 @@ def test_boyue_comparison_uses_release_baseline_and_native_output_limit(tmp_path
 @pytest.mark.parametrize("protocol", ["synergy-session-v1", "synergy-rollout-v1"])
 def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
     from synergy_bench.config import ExperimentConfig, Variant
+    from synergy_bench.dependency_proxy import current_dependency_proxy
 
     variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
     root = tmp_path / "run-12345678"
@@ -56,7 +57,12 @@ def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
         "tasks": {"task": task},
     }
     attempt = root / "trials" / "0000/attempt-001"
-    trial, _, _ = trial_configuration(root, plan, {"variant": "native", "task": "task"}, attempt)
+    token = current_dependency_proxy.set("http://host.docker.internal:12345")
+    try:
+        trial, _, _ = trial_configuration(root, plan, {"variant": "native", "task": "task"}, attempt)
+    finally:
+        current_dependency_proxy.reset(token)
+    assert trial.environment.kwargs["dependency_proxy_url"] == "http://host.docker.internal:12345"
     assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == 10800
     assert trial.agent.override_timeout_sec == (
         10800 + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15

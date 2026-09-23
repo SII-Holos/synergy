@@ -112,6 +112,14 @@ def test_selection_precedes_pair_expansion():
         resolve_plan(parsed, [{"id": "slow", "tags": []}])
 
 
+def test_dependency_proxy_freezes_only_an_explicit_environment_reference():
+    parsed = ExperimentConfig.model_validate({**config(), "dependency_proxy_env": "BENCH_DEPENDENCY_PROXY"})
+    assert parsed.model_dump()["dependency_proxy_env"] == "BENCH_DEPENDENCY_PROXY"
+    assert ExperimentConfig.model_validate(config()).dependency_proxy_env is None
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**config(), "dependency_proxy_env": "http://private.invalid:7890"})
+
+
 def test_exact_cells_preserve_frozen_priority_and_do_not_expand_other_sides():
     value = {**config(), "seed": 20260921}
     tasks = [{"id": f"task-{i:02d}"} for i in range(24)]
