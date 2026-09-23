@@ -147,10 +147,15 @@ export namespace WorkspaceBinding {
   export async function validate(workspaceID: string, scopeID: string, generation?: number): Promise<Workspace> {
     const source = WorkspaceLocation.source()
     const info = await WorkspaceCatalog.resolve(workspaceID, { scopeID, hostID: await source.hostID(), generation })
+    if (!info.binding.physicalID)
+      throw new WorkspaceCatalog.Unavailable({
+        message: "The Workspace directory identity is unverified; explicitly rebind it before executing",
+        workspaceID,
+      })
     const actual = await source.identify(info.binding.path).catch(() => {
       throw new WorkspaceCatalog.Unavailable({ message: "The Workspace directory is unavailable", workspaceID })
     })
-    if (info.binding.physicalID && actual.physicalID !== info.binding.physicalID)
+    if (actual.physicalID !== info.binding.physicalID)
       throw new WorkspaceCatalog.Unavailable({
         message: "The Workspace directory was replaced; rebind it before executing",
         workspaceID,

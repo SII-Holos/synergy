@@ -8,6 +8,8 @@ The Harness Workspace catalog owns a stable ID and a versioned local binding. Se
 
 Owner-local migrations upgrade old embedded Session directories before navigation or other current projections read them, preserving activity and unrelated owner metadata. Transcript and Rollout archives include referenced Workspace metadata. Imported bindings remain unavailable until explicitly rebound, even if their historical path exists locally; import does not convey filesystem authority.
 
+A local binding without a verified physical directory identity cannot authorize execution or file access. Migration retains a missing directory's historical path; creating a new directory at that path or registering it again does not authorize the old binding. Explicit rebinding verifies the directory and advances the generation. See [unverified directory bindings](../decisions/implemented/bug-fix/2026-09-23-unverified-workspace-directory-bindings.md).
+
 ## Scope Runtime Services
 
 A project `ScopeRuntime` starts Scope configuration, commands, recovery and plugin services lazily. `WorkspaceRuntime` starts file services once per Workspace binding generation:

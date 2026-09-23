@@ -100,6 +100,39 @@ test("missing selection and stale generations cannot fall back to the main direc
     expect(await missing.json()).toMatchObject({ name: "WorkspaceUnavailable" })
   }))
 
+test("a directory missing during migration requires rebinding when its path becomes available", () =>
+  runtime.run(async () => {
+    await using main = await tmpdir()
+    const scope = await main.scope()
+    const directory = path.join(main.path, "missing-history")
+    const workspace = (await WorkspaceBinding.migrate(
+      { type: "directory", path: directory, scopeID: scope.id },
+      scope.id,
+    ))!
+    await fs.mkdir(directory)
+    await fs.writeFile(path.join(directory, "same.txt"), "new directory")
+    const registered = await WorkspaceBinding.register(scope.id, directory)
+    expect(registered.id).toBe(workspace.id!)
+    expect(registered.binding.physicalID).toBeUndefined()
+    const app = Server.App()
+    const unavailable = await app.request(url(scope.id, workspace))
+    expect(unavailable.status).toBe(409)
+    expect(await unavailable.json()).toMatchObject({ name: "WorkspaceUnavailable" })
+    const record = await WorkspaceCatalog.get(workspace.id!, scope.id)
+    const rebound = await WorkspaceBinding.rebind(record.id, {
+      scopeID: scope.id,
+      expectedRevision: record.revision,
+      path: directory,
+    })
+    const current = WorkspaceCatalog.projection(rebound)!
+    expect(await (await app.request(url(scope.id, current))).json()).toMatchObject({ content: "new directory" })
+    expect((await app.request(url(scope.id, workspace))).status).toBe(409)
+    await fs.rename(directory, directory + "-original")
+    await fs.mkdir(directory)
+    await fs.writeFile(path.join(directory, "same.txt"), "replacement directory")
+    expect((await app.request(url(scope.id, current))).status).toBe(409)
+  }))
+
 test("raw documents keep Workspace generation in relative-resource URLs", () =>
   runtime.run(async () => {
     await using main = await tmpdir()

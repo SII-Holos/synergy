@@ -35,6 +35,8 @@ A session belongs to a Scope and references a stable Workspace identity, or has 
 
 Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
 
+If a directory was missing during an upgrade, its history keeps the original location. Recreating that path does not activate the historical Workspace; explicitly rebind it to confirm which files the Session may use.
+
 This distinction lets configuration and project ownership remain stable while execution files move to an isolated checkout. Worktree sessions can inspect ordinary files from the original checkout, but writes and command execution outside the active worktree remain protected unless explicitly authorized.
 
 Settings lists worktrees for Git projects, including their branch, binding, lifecycle, dirty state, and managed-checkout size. Main and externally owned worktrees are informational. Deleting a Synergy-managed worktree requires confirmation, refuses active session use, returns idle bound sessions to the main checkout, and can clean an already-missing stale record. If one project has moved or is temporarily unreadable, its failure does not hide worktrees from the other projects.
