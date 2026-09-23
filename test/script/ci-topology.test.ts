@@ -90,6 +90,27 @@ describe("CI topology", () => {
     expect(block).not.toContain("gates.ts")
   })
 
+  test("coverage waits for and retrieves the native OS report with a numeric shard path", () => {
+    const workflow = Bun.YAML.parse(ciSource) as {
+      jobs: Record<
+        string,
+        {
+          needs?: string[]
+          steps?: Array<{ run?: string; with?: { name?: string; path?: string; pattern?: string } }>
+        }
+      >
+    }
+    const aggregate = workflow.jobs.coverage!
+    expect(aggregate.needs).toContain("macos-workspace-processes")
+    const pattern = aggregate.steps?.find((step) => step.with?.pattern)?.with?.pattern
+    expect(pattern).toBe("coverage-lcov-*")
+    const native = workflow.jobs["macos-workspace-processes"]!
+    expect(native.steps?.some((step) => step.run === "bun script/native-workspace-coverage.ts")).toBe(true)
+    const upload = native.steps?.find((step) => step.with?.name === "coverage-lcov-macos-native")?.with
+    expect(upload?.path).toContain("coverage-shard-anchor.txt")
+    expect(upload?.path).toMatch(/packages\/runtime-local\/coverage\/shards\/\d+\/lcov.info/)
+  })
+
   test("the blocking matrix has exactly the required jobs plus coverage and test shards", () => {
     const jobs = parseJobNames(ciSource)
     const blocking = jobs.filter((job) => job !== "all-checks-passed")

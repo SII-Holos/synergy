@@ -6,6 +6,7 @@ import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { DarwinCoalition } from "./darwin-coalition"
 import { OwnedProtocol } from "./owned-protocol"
+import { NativePty } from "./native-pty"
 
 export async function runOwnedProcessWorker(filename: string) {
   const raw = await fs.readFile(filename)
@@ -47,36 +48,51 @@ export async function runOwnedProcessWorker(filename: string) {
   }
   for (const socket of [control, input, output, error]) socket.on("error", () => void shutdown())
   control.once("close", () => void shutdown())
+  let terminal: ReturnType<typeof NativePty.spawn> | undefined
+  let activationReceived = false
   const activated = new Promise<void>((resolve, reject) => {
     OwnedProtocol.messages(
       control,
-      (message) => {
-        if (message && typeof message === "object" && "type" in message && message.type === "activate") resolve()
-        else reject(new Error("Invalid native process activation"))
+      (raw) => {
+        const message = OwnedProtocol.Control.parse(raw)
+        if (message.type === "activate" && !activationReceived) {
+          activationReceived = true
+          resolve()
+        } else if (message.type === "resize" && terminal) terminal.resize(message.cols, message.rows)
+        else throw new Error("Invalid native process control state")
       },
-      reject,
+      (error) => {
+        reject(error)
+        void shutdown()
+      },
     )
   })
   const activationTimer = setTimeout(() => void shutdown(), Math.max(1, config.deadline - Date.now()))
   try {
     await activated
     clearTimeout(activationTimer)
-    const child = spawn(config.command, config.args, {
-      cwd: config.cwd,
-      env: config.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    })
-    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-      child.once("error", reject)
-      child.once("exit", (code, signal) => resolve({ code, signal }))
-    })
+    const child = config.pty
+      ? (terminal = NativePty.spawn({ ...config, ...config.pty }))
+      : spawn(config.command, config.args, {
+          cwd: config.cwd,
+          env: config.env,
+          stdio: ["pipe", "pipe", "pipe"],
+        })
+    const exited =
+      "exited" in child
+        ? child.exited.then((code) => ({ code, signal: null }))
+        : new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+            child.once("error", reject)
+            child.once("exit", (code, signal) => resolve({ code, signal }))
+          })
     const drained = [output, error].map((socket) => new Promise<void>((resolve) => socket.once("finish", resolve)))
     void exited.catch(() => {})
     input.pipe(child.stdin)
     child.stdout.pipe(output)
-    child.stderr.pipe(error)
+    if ("stderr" in child) child.stderr.pipe(error)
+    else error.end()
     child.stdin.on("error", () => input.destroy())
-    await once(child, "spawn")
+    if (!("exited" in child)) await once(child, "spawn")
     OwnedProtocol.send(control, { type: "ready", pid: child.pid })
     const result = await exited
     for (;;) {
@@ -86,7 +102,7 @@ export async function runOwnedProcessWorker(filename: string) {
     }
     await Promise.all([
       child.stdout.readableEnded ? Promise.resolve() : once(child.stdout, "end"),
-      child.stderr.readableEnded ? Promise.resolve() : once(child.stderr, "end"),
+      !("stderr" in child) || child.stderr.readableEnded ? Promise.resolve() : once(child.stderr, "end"),
     ])
     await Promise.all(drained)
     stopping = true
@@ -103,6 +119,7 @@ export async function runOwnedProcessWorker(filename: string) {
     await shutdown()
   } finally {
     clearTimeout(activationTimer)
+    terminal?.close()
   }
 }
 

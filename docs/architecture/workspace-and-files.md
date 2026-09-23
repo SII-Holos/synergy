@@ -35,6 +35,10 @@ Waiting for Workspace access yields tool and Cortex execution capacity. Parallel
 
 The native coordinator bounds admission time and queued claims, preserves uncertain process ownership, and reaps only verified exited or recycled processes. Live claims are never expired merely because they are old. A stale lease cannot remove its successor. The coordinator is an execution ordering mechanism; capability authorization remains owned by execution policy.
 
+PTY records retain their Workspace ID and binding generation while their Scope index supports listing existing terminals after a Session changes directory. Workspace and Scope disposal drain terminal shutdown before dropping resources. On macOS, terminals launch through the same independently supervised native process tree as Bash; an empty-environment detached child retains the write claim after the shell and browser connection exit. User terminals are unconfined and therefore hold host-wide writable ownership.
+
+The native PTY transport uses bounded byte queues and Node stream backpressure. UTF-8 decoding happens after transport, EOF drains before terminal completion, and replay never splits surrogate pairs. Slow WebSocket consumers and oversized input are disconnected without terminating the terminal. Failed termination retains the visible terminal tab and native ownership. Core, full and workspace-module packages include the same verified native library and license notices.
+
 ## Worktree Ownership
 
 Worktrees have explicit owners such as a session, Cortex task, Blueprint workflow, or internal orchestration record. Creating or entering a worktree updates session workspace binding; leaving returns to the project checkout according to the worktree lifecycle.

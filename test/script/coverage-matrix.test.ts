@@ -79,7 +79,7 @@ describe("CI coverage matrix", () => {
 
   test("the Coverage job aggregates shard reports instead of running commands", () => {
     const coverage = workflow.jobs["coverage"]!
-    expect(coverage.needs).toEqual(["coverage-shards"])
+    expect(coverage.needs).toEqual(["coverage-shards", "macos-workspace-processes"])
     const download = coverage.steps?.find((step) => step.uses?.startsWith("actions/download-artifact"))
     expect(download?.with?.pattern).toBe("coverage-lcov-*")
     expect(download?.with?.["merge-multiple"]).toBe(true)

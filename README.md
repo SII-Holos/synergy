@@ -156,7 +156,7 @@ For headless tasks, versioned experiment settings, durable execution evidence an
 
 Synergy is a Bun monorepo using TypeScript ESM modules. The pinned package manager is declared in [`package.json`](package.json).
 
-Prepare a source checkout:
+Install Rust with Cargo for the native PTY library, then prepare a source checkout:
 
 ```bash
 bun dev prepare

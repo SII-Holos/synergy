@@ -11,6 +11,13 @@ export namespace OwnedProtocol {
     args: z.array(z.string()),
     cwd: z.string(),
     env: z.record(z.string(), z.string()),
+    pty: z
+      .object({
+        cols: z.number().int().min(1).max(65535),
+        rows: z.number().int().min(1).max(65535),
+        library: z.string(),
+      })
+      .optional(),
   })
   export type Configuration = z.infer<typeof Configuration>
   export const Greeting = z.object({
@@ -24,6 +31,14 @@ export namespace OwnedProtocol {
     z.object({ type: z.literal("error"), message: z.string() }),
   ])
   export type Event = z.infer<typeof Event>
+  export const Control = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("activate") }),
+    z.object({
+      type: z.literal("resize"),
+      cols: z.number().int().min(1).max(65535),
+      rows: z.number().int().min(1).max(65535),
+    }),
+  ])
   export function send(socket: Socket, value: unknown) {
     const data = JSON.stringify(value)
     if (Buffer.byteLength(data) > 8192) throw new Error("Native process control message exceeds its bound")

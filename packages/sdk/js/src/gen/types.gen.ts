@@ -5571,6 +5571,8 @@ export type Pty = {
   command: string
   args: Array<string>
   cwd: string
+  workspaceID: string
+  workspaceGeneration: number
   status: "running" | "exited"
   pid: number
 }

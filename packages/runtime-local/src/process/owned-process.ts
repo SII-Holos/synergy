@@ -35,6 +35,7 @@ export namespace OwnedProcess {
     env: Record<string, string | undefined>
     lease: WorkspaceAccess.Lease
     signal?: AbortSignal
+    pty?: { cols: number; rows: number; library: string }
   }
   function deferred<T>() {
     let resolve!: (value: T) => void
@@ -267,6 +268,7 @@ export namespace OwnedProcess {
         command: input.command,
         args: input.args,
         cwd: input.cwd,
+        pty: input.pty,
         env: Object.fromEntries(
           Object.entries(input.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
         ),
@@ -298,6 +300,10 @@ export namespace OwnedProcess {
           input.signal?.removeEventListener("abort", abort)
         },
         stop,
+        resize(cols: number, rows: number) {
+          if (!input.pty || !started || finished || stopping) throw new Error("Native PTY is not running")
+          OwnedProtocol.send(sockets.get("control")!, OwnedProtocol.Control.parse({ type: "resize", cols, rows }))
+        },
         completion: complete.promise,
       }
     } catch (error) {

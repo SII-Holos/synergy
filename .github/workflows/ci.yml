@@ -234,19 +234,22 @@ jobs:
         with:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
+      - name: Build native PTY
+        run: bun packages/runtime-local/script/build-pty.ts
       - name: Verify native ownership, sandbox footprints and shutdown
-        working-directory: packages/runtime-local
-        run: >-
-          bun test --timeout 30000
-          test/process/owned-process.test.ts
-          test/workspace/coordinator.test.ts
-          test/workspace/darwin-coalition.test.ts
-          test/workspace/bash-footprint.test.ts
-          test/sandbox/write-footprint.test.ts
-          test/process-shutdown.test.ts
-          test/session/tool-resolver-bash-profile.test.ts
-          test/workspace-file
-          test/file/watcher-events.test.ts
+        run: bun script/native-workspace-coverage.ts
+      - name: Anchor native coverage at the repository root
+        if: always()
+        run: echo macos-native > coverage-shard-anchor.txt
+      - name: Upload native coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: coverage-lcov-macos-native
+          path: |
+            packages/runtime-local/coverage/shards/1000000/lcov.info
+            coverage-shard-anchor.txt
+          if-no-files-found: error
 
   test-shards:
     name: Test Shards (${{ matrix.shard }})
@@ -801,7 +804,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    needs: [coverage-shards]
+    needs: [coverage-shards, macos-workspace-processes]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

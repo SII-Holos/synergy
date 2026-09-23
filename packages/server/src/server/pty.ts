@@ -50,7 +50,7 @@ export const PtyRoute = () =>
       }),
       validator("json", Pty.CreateInput),
       async (c) => {
-        const info = await Pty.create(c.req.valid("json"))
+        const info = await Pty.create(c.req.valid("json"), c.req.raw.signal)
         return c.json(info)
       },
     )
@@ -155,10 +155,27 @@ export const PtyRoute = () =>
         if (!id || !Pty.get(id)) throw new Error("Session not found")
         return {
           onOpen(_event, ws) {
-            handler = Pty.connect(id, ws)
+            handler = Pty.connect(id, {
+              get readyState() {
+                return ws.raw?.readyState ?? ws.readyState
+              },
+              get bufferedAmount() {
+                return ws.raw?.getBufferedAmount() ?? 0
+              },
+              send: (data) => {
+                if (ws.raw) {
+                  if (ws.raw.send(data) === 0) throw new Error("PTY WebSocket closed")
+                } else ws.send(data)
+              },
+              close: () => ws.close(),
+            })
           },
-          onMessage(event) {
-            handler?.onMessage(String(event.data))
+          onMessage(event, ws) {
+            if (event.data instanceof Blob) {
+              ws.close()
+              return
+            }
+            handler?.onMessage(event.data)
           },
           onClose() {
             handler?.onClose()
