@@ -6,6 +6,7 @@ on:
       - .github/workflows/workspace-path-probe.yml
       - test/script/windows-snapshot-path-probe.ts
       - packages/harness/src/session/snapshot-transfer.ts
+      - packages/runtime-local/src/file/mutation.ts
 permissions:
   contents: read
 jobs:
@@ -28,7 +29,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
         working-directory: packages/runtime-local
-      - run: bun test --timeout 60000 test/workspace-file/snapshot-links.test.ts
+      - run: bun test --timeout 60000 test/workspace-file/snapshot-links.test.ts test/workspace/coordinator-environment.test.ts
         working-directory: packages/runtime-local
       - if: always()
         run: bun test test/cli/data-files.test.ts

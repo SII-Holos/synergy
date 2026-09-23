@@ -40,7 +40,12 @@ export namespace FileMutation {
   }
 
   export async function lockDirectory() {
-    const directory = path.join(os.tmpdir(), `synergy-file-locks-${process.getuid?.() ?? "local"}`)
+    // Runtime-specific temporary directories must not split native exclusion on the same host.
+    // userInfo reads the OS profile rather than environment overrides: https://nodejs.org/api/os.html#osuserinfooptions
+    const directory =
+      process.platform === "win32"
+        ? path.join(os.userInfo().homedir, ".synergy-file-locks")
+        : path.join("/tmp", `synergy-file-locks-${process.getuid!()}`)
     await fs.mkdir(directory, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "EEXIST") throw error
     })

@@ -13,6 +13,7 @@ const suites = windows
       "test/workspace-file/long-path.test.ts",
       "test/workspace-file/mutation.test.ts",
       "test/workspace-file/snapshot-links.test.ts",
+      "test/workspace-file/crash-publication.test.ts",
       "test/process-shutdown.test.ts",
       "test/session/shell.test.ts",
       "test/workspace/change-attribution.test.ts",
@@ -38,6 +39,7 @@ const suites = windows
       "test/file/watcher-events.test.ts",
     ]
 suites.push(
+  "test/workspace/coordinator-environment.test.ts",
   "test/workspace/process.test.ts",
   "../harness/test/session/snapshot-long-path.test.ts",
   "../agent-integrations/test/format/formatter.test.ts",
