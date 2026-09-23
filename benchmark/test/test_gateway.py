@@ -165,6 +165,42 @@ async def test_native_unpaired_utf16_is_forwarded_and_recorded_losslessly(tmp_pa
     assert json.loads((retained / "upstream.json").read_text())["messages"][0]["content"] == content
 
 
+async def test_first_streamed_reasoning_is_visible_before_the_request_finishes(tmp_path, monkeypatch):
+    monkeypatch.setenv("FIXTURE_KEY", "fixture")
+    release = asyncio.Event()
+    first = b'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n'
+
+    async def handler(request):
+        response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
+        await response.prepare(request)
+        await response.write(first)
+        await release.wait()
+        await response.write(b'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}\n\n')
+        await response.write(b"data: [DONE]\n\n")
+        return response
+
+    async with provider(handler) as url, Gateway(model(url), tmp_path, bind="127.0.0.1") as gateway:
+        async with aiohttp.ClientSession(headers={"Authorization": "Bearer " + gateway.token}) as client:
+            async with client.post(
+                gateway.url + "/chat/completions", json={"model": "fixture-one", "messages": [], "stream": True}
+            ) as response:
+                try:
+                    async with asyncio.timeout(2):
+                        assert await response.content.readline() == first.splitlines(keepends=True)[0]
+                    [live] = read_ledger(tmp_path)
+                    assert live["status"] == "dispatching"
+                    assert live["headers_at"] <= live["first_byte_at"]
+                    assert live["ended_at"] is None
+                    assert live["usage"] is None
+                finally:
+                    release.set()
+                await response.read()
+    [complete] = read_ledger(tmp_path)
+    assert complete["status"] == "completed"
+    assert complete["first_byte_at"] == live["first_byte_at"]
+    assert complete["usage"] == {"prompt_tokens": 10, "completion_tokens": 2}
+
+
 def test_model_profile_controls_all_sampling_including_absent_native_defaults(tmp_path):
     gateway = Gateway(model("http://provider.invalid/v1"), tmp_path)
     payload, _ = gateway.effective(

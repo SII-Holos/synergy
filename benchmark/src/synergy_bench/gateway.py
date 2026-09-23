@@ -402,6 +402,7 @@ class Gateway:
                             raw.write(line)
                             if record["first_byte_at"] is None:
                                 record["first_byte_at"] = time.time()
+                                atomic_json(directory / "request.json", record)
                             if not bridge:
                                 await write(line)
                             decoded = line.decode("utf-8").rstrip("\r\n")
