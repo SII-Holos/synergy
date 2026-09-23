@@ -69,14 +69,14 @@ export const SaveFileTool = Tool.define(
 
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
-          await FileMutation.write({
+          const written = await FileMutation.write({
             path: filePath,
             content,
             expectedVersion: exists ? FileTime.version(oldContent) : null,
             createParents: true,
             signal: ctx.abort,
           })
-          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath })
+          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath, contentVersion: written.contentVersion })
           const finalContent = await FileMutation.readText(filePath)
           const finalConflict = detectConflicts(finalContent)
           FileTime.read(ctx.sessionID, filePath, finalContent)

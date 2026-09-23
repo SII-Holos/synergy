@@ -34,6 +34,7 @@ const suites = windows
       "test/workspace-file",
       "test/file/watcher-events.test.ts",
     ]
+suites.push("../agent-integrations/test/format/formatter.test.ts")
 const isolation = await createIsolatedTestEnv()
 try {
   await fs.rm(output, { recursive: true, force: true })

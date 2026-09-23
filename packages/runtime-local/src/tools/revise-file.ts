@@ -251,7 +251,10 @@ export const ReviseFileTool = Tool.define(
               result = await patcher.commit(p)
 
               // Fire format-on-write before recording final hash
-              await WorkspaceEvents.publish(File.Event.Edited, { file: p.canonicalPath })
+              await WorkspaceEvents.publish(File.Event.Edited, {
+                file: p.canonicalPath,
+                contentVersion: FileTime.version(result.written),
+              })
 
               // Re-read to pick up format-on-write changes (the formatter may have
               // rewritten the file asynchronously). Re-record the snapshot with

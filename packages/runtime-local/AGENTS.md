@@ -19,4 +19,6 @@ Workspace removal and automatic reclamation share the lifecycle gate. Preserve a
 
 Native Workspace coordination owns canonical-root overlap and process identity fencing across Runtime instances. Launchers bind process claims before activating commands and retain ownership through actual exit. Windows Job Objects, macOS coalitions and Linux subreaper completion receipts supply native liveness; native workers own stream drainage independently; validate both with `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and the Windows-owned process suites on Windows.
 
-Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
+Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
+
+First-party native integrations use the declared `process/owned-process` and `file/mutation` exports for native process ownership and byte-version validation. They must still acquire Workspace claims before activation; the process module does not infer a writable footprint.

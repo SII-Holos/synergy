@@ -52,7 +52,7 @@ export const WriteTool = Tool.define(
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
           if (exists) FileTime.assert(ctx.sessionID, filepath, await file.bytes())
-          await FileMutation.write({
+          const written = await FileMutation.write({
             path: filepath,
             content: params.content,
             expectedVersion: exists ? FileTime.version(contentOld) : null,
@@ -61,6 +61,7 @@ export const WriteTool = Tool.define(
           })
           await WorkspaceEvents.publish(File.Event.Edited, {
             file: filepath,
+            contentVersion: written.contentVersion,
           })
           const finalContent = await FileMutation.readText(filepath)
           const finalDiff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, finalContent))

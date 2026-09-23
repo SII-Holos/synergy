@@ -115,6 +115,7 @@ export namespace File {
       z.object({
         ...WorkspaceEvents.Fields,
         file: z.string(),
+        contentVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/),
       }),
     ),
   }

@@ -9,4 +9,4 @@ MCP, LSP, formatting, ACP, external agent adapters and the Link client. Optional
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
-LSP and formatter resources follow Workspace binding generations. Process recovery requires a matching host and process identity plus an absent owner; a stored PID alone never permits termination. Run `bun test test/lsp test/format` for file-resource ownership changes.
+LSP and formatter resources follow Workspace binding generations. Formatter commands and executable probes use native process ownership, retain whole-tree write exclusion, and cancel on resource disposal. File edit events carry the committed byte version; validate it again after native admission before launching formatters. Process recovery requires a matching host and process identity plus an absent owner; a stored PID alone never permits termination. Run `bun test test/lsp test/format` for file-resource ownership changes.

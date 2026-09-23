@@ -67,7 +67,7 @@ export const EditTool = Tool.define(
               },
             })
             beforeDiagnostics = await captureWriteDiagnosticsBefore()
-            await FileMutation.write({
+            const written = await FileMutation.write({
               path: filePath,
               content: params.newString,
               expectedVersion: null,
@@ -76,6 +76,7 @@ export const EditTool = Tool.define(
             })
             await WorkspaceEvents.publish(File.Event.Edited, {
               file: filePath,
+              contentVersion: written.contentVersion,
             })
             FileTime.read(ctx.sessionID, filePath, await Bun.file(filePath).bytes())
             return
@@ -103,7 +104,7 @@ export const EditTool = Tool.define(
           beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
           FileTime.assert(ctx.sessionID, filePath, await file.bytes())
-          await FileMutation.write({
+          const written = await FileMutation.write({
             path: filePath,
             content: contentNew,
             expectedVersion: FileTime.version(contentOld),
@@ -111,6 +112,7 @@ export const EditTool = Tool.define(
           })
           await WorkspaceEvents.publish(File.Event.Edited, {
             file: filePath,
+            contentVersion: written.contentVersion,
           })
           contentNew = await FileMutation.readText(filePath)
           diff = trimDiff(

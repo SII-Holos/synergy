@@ -57963,9 +57963,13 @@
               },
               "file": {
                 "type": "string"
+              },
+              "contentVersion": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
               }
             },
-            "required": ["workspaceID", "workspaceGeneration", "file"]
+            "required": ["workspaceID", "workspaceGeneration", "file", "contentVersion"]
           }
         },
         "required": ["type", "properties"]

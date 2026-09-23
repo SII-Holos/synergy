@@ -145,14 +145,14 @@ export const ResolveConflictsTool = Tool.define(
           if (currentContent !== oldContent) throw staleTagError(title)
 
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
-          await FileMutation.write({
+          const written = await FileMutation.write({
             path: filePath,
             content: candidate,
             expectedVersion: FileTime.version(currentContent),
             signal: ctx.abort,
             validate: () => assertPathStaysWithinWorkspace(filePath, title),
           })
-          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath })
+          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath, contentVersion: written.contentVersion })
 
           const finalContent = await readUtf8TextPreservingBom(Bun.file(filePath))
           const finalConflict = detectConflicts(finalContent)

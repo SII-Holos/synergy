@@ -191,6 +191,12 @@ export namespace WorkspaceAccess {
       await validate(task)
     })
   }
+  export function withinTask<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const active = current()
+    if (active) return withActivity(active, fn)
+    return task({ workspace: ScopeContext.tryWorkspace(), signal }, () => withActivity(current()!, fn))
+  }
+
   async function inTask<T>(fn: (task: Task) => Promise<T>, signal?: AbortSignal) {
     const active = current()
     if (active) return withActivity(active, () => fn(active))

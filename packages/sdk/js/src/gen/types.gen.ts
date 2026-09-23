@@ -10538,6 +10538,7 @@ export type EventFileEdited = {
     workspaceID: string
     workspaceGeneration: number
     file: string
+    contentVersion: string
   }
 }
 
