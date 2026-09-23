@@ -458,3 +458,40 @@ test("retirement descendants reuse an ancestor write reservation while siblings 
   }
   expect(await coordinator.inspect()).toEqual([])
 })
+
+test.each(["process", "operation"] as const)(
+  "retirement rejects an unreserved %s footprint before waiting on another retirement",
+  async (kind) => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+    const owners = [request([]), request([])]
+    const reservations = await Promise.all(owners.map((owner) => coordinator.acquire(owner)))
+    const retirements = await Promise.all(
+      owners.map((owner, index) =>
+        coordinator.acquire({
+          ...request([path.join(tmp.path, String(index))], owner.owner),
+          kind: "exclusive",
+          parentClaim: owner.id,
+          transient: true,
+        }),
+      ),
+    )
+    try {
+      for (const roots of [null, [tmp.path]]) {
+        await expect(
+          coordinator.acquire({
+            ...request(roots, owners[0]!.owner),
+            kind,
+            parentClaim: retirements[0]!.id,
+            timeoutMs: 100,
+          }),
+        ).rejects.toThrow("footprint")
+      }
+      expect((await coordinator.inspect()).filter((claim) => claim.state === "waiting")).toEqual([])
+    } finally {
+      await Promise.all(retirements.map((lease) => lease.release()))
+      await Promise.all(reservations.map((lease) => lease.release()))
+    }
+    expect(await coordinator.inspect()).toEqual([])
+  },
+)

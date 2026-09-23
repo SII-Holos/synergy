@@ -112,3 +112,32 @@ test("retirement can publish its own binding change without releasing native exc
     })
   })
 })
+
+test("retirement writes reuse their native exclusion and reject late reservation expansion", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using directory = await tmpdir()
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(new Error("Retirement fixture deadline")), 1000)
+    try {
+      await WorkspaceAccess.maintenance(
+        () =>
+          WorkspaceAccess.retire([directory.path], async () => {
+            await FileMutation.write({
+              path: path.join(directory.path, "owned.txt"),
+              content: "owned",
+              expectedVersion: null,
+            })
+            await expect(WorkspaceAccess.reserveWrite(null)).rejects.toThrow("before retirement")
+            await expect(WorkspaceAccess.handoff(async () => {})).rejects.toThrow("retirement")
+          }),
+        { signal: controller.signal },
+      )
+      expect(await FileMutation.readText(path.join(directory.path, "owned.txt"))).toBe("owned")
+    } finally {
+      clearTimeout(timer)
+      controller.abort()
+    }
+    await WorkspaceAccess.exclusive([directory.path], async () => {})
+  })
+})

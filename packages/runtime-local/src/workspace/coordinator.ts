@@ -314,6 +314,28 @@ export class WorkspaceCoordinator {
                 (!alreadyAdmitted && !current.transient))
             )
               throw new WorkspaceBusyError("Workspace parent reservation is no longer available")
+            if (parent?.kind === "exclusive") {
+              const visited = new Set<string>()
+              let ancestor: Claim | undefined = parent
+              let reserved = false
+              while (ancestor && !visited.has(ancestor.id)) {
+                visited.add(ancestor.id)
+                if (covers(ancestor.roots, current.roots)) {
+                  reserved = true
+                  break
+                }
+                const parentID: string | undefined = ancestor.parentClaim
+                ancestor = ledger.claims.find(
+                  (claim) =>
+                    claim.id === parentID &&
+                    claim.owner === current.owner &&
+                    claim.state === "active" &&
+                    (claim.kind === "task" || claim.kind === "exclusive"),
+                )
+              }
+              if (!reserved)
+                throw new WorkspaceBusyError("Write footprint must be reserved before acquiring retirement ownership")
+            }
             const blockers = ledger.claims.filter(
               (claim, position) =>
                 (claim.state === "active" || (!alreadyAdmitted && position < index)) &&

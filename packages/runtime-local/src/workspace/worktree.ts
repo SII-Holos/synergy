@@ -851,32 +851,36 @@ export namespace Worktree {
   async function cleanupCreatedWorktree(repoRoot: string, creation: Creation) {
     const { info, base } = creation
     if (creation.published) return unlockCreation(repoRoot, creation)
-    await WorkspaceAccess.retire([info.directory], async () => {
-      const entry = (await gitList(repoRoot)).find(
-        (item) => canonicalDirectory(item.path) === canonicalDirectory(info.directory),
-      )
-      if (!entry) return
-      if (entry.locked !== creation.marker)
-        throw new CreateFailedError({ message: "Unfinished worktree retained because its creation lock changed" })
-      await unlockCreation(repoRoot, creation)
-      if (entry.head !== base.resolvedCommit || entry.branch !== info.branch)
-        throw new CreateFailedError({ message: "Unfinished worktree retained because its branch or commit changed" })
-      const removed = await gitMutation(
-        repoRoot,
-        ["worktree", "remove", "--force", info.directory],
-        [repoRoot, info.directory],
-      )
-      if (removed.exitCode !== 0)
-        throw new CreateFailedError({ message: errorText(removed) || "Failed to remove unfinished worktree" })
-      const deleted = await gitMutation(repoRoot, [
-        "update-ref",
-        "-d",
-        `refs/heads/${info.branch}`,
-        base.resolvedCommit,
-      ])
-      if (deleted.exitCode !== 0)
-        throw new CreateFailedError({ message: errorText(deleted) || "Unfinished worktree branch was retained" })
-    })
+    await WorkspaceAccess.retire(
+      [info.directory],
+      async () => {
+        const entry = (await gitList(repoRoot)).find(
+          (item) => canonicalDirectory(item.path) === canonicalDirectory(info.directory),
+        )
+        if (!entry) return
+        if (entry.locked !== creation.marker)
+          throw new CreateFailedError({ message: "Unfinished worktree retained because its creation lock changed" })
+        await unlockCreation(repoRoot, creation)
+        if (entry.head !== base.resolvedCommit || entry.branch !== info.branch)
+          throw new CreateFailedError({ message: "Unfinished worktree retained because its branch or commit changed" })
+        const removed = await gitMutation(
+          repoRoot,
+          ["worktree", "remove", "--force", info.directory],
+          [repoRoot, info.directory],
+        )
+        if (removed.exitCode !== 0)
+          throw new CreateFailedError({ message: errorText(removed) || "Failed to remove unfinished worktree" })
+        const deleted = await gitMutation(repoRoot, [
+          "update-ref",
+          "-d",
+          `refs/heads/${info.branch}`,
+          base.resolvedCommit,
+        ])
+        if (deleted.exitCode !== 0)
+          throw new CreateFailedError({ message: errorText(deleted) || "Unfinished worktree branch was retained" })
+      },
+      { writeRoots: null },
+    )
   }
 
   export const create = fn(CreateInput.optional(), async (input) => {
@@ -1247,32 +1251,36 @@ export namespace Worktree {
    * and branch rules.
    */
   async function removeWorktree(info: Info, options: { force: boolean; reason: string }) {
-    return WorkspaceAccess.retire([info.path], async () => {
-      const { repoRoot } = ensureGitScope()
-      // An explicit removal runs inside the turn that holds a git-level lock, and
-      // the janitor may meet a Synergy lock a dead holder left behind. Either one
-      // blocks `git worktree remove` at every force level below `-f -f`, so
-      // release it here; `-f -f` is not an option because the turn's own finally
-      // would then unlock a path that is no longer a working tree and throw.
-      // A lock this repository did not write is refused, never cleared: it is
-      // indistinguishable from one a user pinned by hand.
-      if (!(await releaseLockForRemoval(info.path))) {
-        throw new CreateFailedError({
-          message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
-        })
-      }
-      const removed = await gitMutation(
-        repoRoot,
-        ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
-        [repoRoot, info.path],
-      )
-      if (removed.exitCode !== 0) {
-        throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
-      }
-      if (info.managed) await removeRegistry(info.id)
-      await deleteBranchIfLanded(repoRoot, info.branch ?? "")
-      log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
-    })
+    return WorkspaceAccess.retire(
+      [info.path],
+      async () => {
+        const { repoRoot } = ensureGitScope()
+        // An explicit removal runs inside the turn that holds a git-level lock, and
+        // the janitor may meet a Synergy lock a dead holder left behind. Either one
+        // blocks `git worktree remove` at every force level below `-f -f`, so
+        // release it here; `-f -f` is not an option because the turn's own finally
+        // would then unlock a path that is no longer a working tree and throw.
+        // A lock this repository did not write is refused, never cleared: it is
+        // indistinguishable from one a user pinned by hand.
+        if (!(await releaseLockForRemoval(info.path))) {
+          throw new CreateFailedError({
+            message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
+          })
+        }
+        const removed = await gitMutation(
+          repoRoot,
+          ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
+          [repoRoot, info.path],
+        )
+        if (removed.exitCode !== 0) {
+          throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
+        }
+        if (info.managed) await removeRegistry(info.id)
+        await deleteBranchIfLanded(repoRoot, info.branch ?? "")
+        log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
+      },
+      { writeRoots: null },
+    )
   }
 
   const LOCK_MARKER_PREFIX = "synergy:v1:"
@@ -1625,14 +1633,18 @@ export namespace Worktree {
         if (!missing) continue
         await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
         if (!current.stale) {
-          await WorkspaceAccess.retire([current.path], async () => {
-            const removed = await gitMutation(
-              repoRoot,
-              ["worktree", "remove", "--force", current.path],
-              [repoRoot, current.path],
-            )
-            if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
-          })
+          await WorkspaceAccess.retire(
+            [current.path],
+            async () => {
+              const removed = await gitMutation(
+                repoRoot,
+                ["worktree", "remove", "--force", current.path],
+                [repoRoot, current.path],
+              )
+              if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
+            },
+            { writeRoots: null },
+          )
         }
         await removeRegistry(current.id, repoRoot)
         reconciled.add(current.id)

@@ -180,6 +180,7 @@ export namespace WorkspaceAccess {
     return pending
   }
   async function reserve(task: Task, roots: string[] | null, signal?: AbortSignal, includeWorkspace = true) {
+    if (retirement.getStore()?.task === task) throw new BusyError("Write footprints must be reserved before retirement")
     return serial(task, async () => {
       await validate(task)
       const combined = signal ? AbortSignal.any([task.signal, signal]) : task.signal
@@ -321,13 +322,14 @@ export namespace WorkspaceAccess {
       let finalize: WriteFinalizer | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          await reserve(task, roots, signal)
+          const parent = retirement.getStore()
+          if (parent?.task !== task) await reserve(task, roots, signal)
           operation = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
             ancestors: task.ancestors,
             kind: "operation",
-            parentClaim: task.id,
+            parentClaim: parent?.task === task ? parent.lease.id : task.id,
             roots: roots === null ? null : [...new Set([...(task.workspace ? [task.workspace.path] : []), ...roots])],
             signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
           })
@@ -496,6 +498,7 @@ export namespace WorkspaceAccess {
 
   export async function handoff<T>(fn: () => Promise<T>): Promise<T> {
     const task = current()
+    if (task?.retiring) throw new BusyError("Cannot release write ownership during retirement")
     return ExecutionCapacity.wait(async () => {
       if (task)
         await serial(task, async () => {
@@ -545,7 +548,11 @@ export namespace WorkspaceAccess {
     }
   }
 
-  export async function retire<T>(roots: string[], fn: () => Promise<T>): Promise<T> {
+  export async function retire<T>(
+    roots: string[],
+    fn: () => Promise<T>,
+    options: { writeRoots?: string[] | null } = {},
+  ): Promise<T> {
     return inTask(async (task) => {
       if (task.activity !== 1 || task.retiring) throw new BusyError("Workspace operations are in flight")
       const bindings = [...(task.workspace ? [task.workspace] : []), ...task.bindings.values()]
@@ -565,7 +572,7 @@ export namespace WorkspaceAccess {
       let lease: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          await reserve(task, [], undefined, false)
+          await reserve(task, options.writeRoots === undefined ? [] : options.writeRoots, undefined, false)
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
