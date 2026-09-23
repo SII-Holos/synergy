@@ -22,6 +22,8 @@ Selecting current preserves an absent Home Workspace and an unresolved historica
 
 Transcript and Rollout exports include the referenced catalog records. Imports retain their historical locations but mark bindings unbound and discard shared-write grants. If the original identity is already bound locally, import creates a separate historical identity so an uploaded transcript cannot authorize file access.
 
+Untrusted Home merges apply the same authority boundary to the full portable record stream. Harness owns Session and file-history reference conversion; Workflows owns Agenda origins; Product Runtime coordinates the catalog mapping and publication. Imported Workspace IDs cannot alias an existing bound record. Missing metadata and legacy directory selections become explicit unbound identities, while raw evidence and unknown owner data remain unchanged. Repeated merges reuse matching imported identities. Original archive checksums remain authoritative even when owner transforms publish new local references.
+
 ## Alternatives considered
 
 Deriving Workspace IDs from absolute paths would change identity on a move and conflate equal paths on different hosts. Keeping a path in every Session would leave multiple mutable owners of the same binding. Neither supports an atomic destination uniqueness check.
@@ -54,7 +56,7 @@ Recovery cannot reconstruct a crashed operation's endpoint from the latest files
 
 Worktree cancellation remains connected after native activation and drains checkout hooks before rollback. A unique creation lock proves which unfinished directory belongs to the operation. Cleanup runs independently of the cancelled execution capacity while retaining its owner identity, uses exclusive retirement, and preserves foreign locks, changed commits and published registrations. Branch deletion checks the original object ID. Provenance: [Git worktree creation locks](https://git-scm.com/docs/git-worktree) and [conditional reference deletion](https://git-scm.com/docs/git-update-ref).
 
-Agenda captures the origin Session's nullable Workspace reference once. Its owning migration stamps historical Scope defaults rather than guessing from a Session that may have moved since creation. Persistent execution Sessions retain their own selection; new executions validate the captured binding, and startup failures enter the ordinary failure ledger. File subscriptions start without an open Session and reattach after rebinding. Debounce admission requires matching Scope, Workspace and generation, and global storage visibility does not expand file ownership. This adds explicit binding requirements to file watches and keeps duplicate detection within the captured execution context.
+Agenda captures the origin Session's nullable Workspace reference once. Its global-metadata migration leaves deferred Session history pending and stamps historical Scope defaults rather than guessing from a Session that may have moved since creation. Persistent execution Sessions retain their own selection; new executions validate the captured binding, and startup failures enter the ordinary failure ledger. File subscriptions start without an open Session and reattach after rebinding. Debounce admission requires matching Scope, Workspace and generation, and global storage visibility does not expand file ownership. This adds explicit binding requirements to file watches and keeps duplicate detection within the captured execution context.
 
 ## Verification
 

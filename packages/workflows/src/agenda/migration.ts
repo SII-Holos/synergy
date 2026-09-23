@@ -169,6 +169,7 @@ export const migrations: Migration[] = [
   {
     id: "20260923-agenda-workspace-reference",
     description: "Capture the existing default Workspace for historical Agenda execution",
+    scope: "global",
     async up(progress) {
       let done = 0
       for (const scopeID of await Storage.scan(["agenda", "items"])) {

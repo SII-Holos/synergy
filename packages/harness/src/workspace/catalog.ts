@@ -137,7 +137,7 @@ export namespace WorkspaceCatalog {
 
   export async function importRecord(record: Info): Promise<Info> {
     const source = Info.parse(record)
-    return Storage.transaction(async () => {
+    return Storage.transaction(async (tx) => {
       const [existing] = await Storage.readMany<Info>([recordKey(source.id)])
       if (
         existing?.scopeID === source.scopeID &&
@@ -146,18 +146,33 @@ export namespace WorkspaceCatalog {
         existing.binding.path === source.binding.path
       )
         return Info.parse(existing)
-      const imported = Info.parse({
-        ...source,
-        id: existing || !source.id.startsWith("wsp_") ? `wsp_${randomUUID().replaceAll("-", "")}` : source.id,
-        binding: { ...source.binding, state: "unbound" },
-        importedFrom: source.importedFrom ?? { workspaceID: source.id, hostID: source.binding.hostID },
-        sharedWritableWorkspaceIDs: [],
-        lifecycle: "active",
-      })
-      await Storage.write(recordKey(imported.id), imported)
-      await Storage.write(scopeKey(imported.scopeID, imported.id), imported.id)
+      const imported = forImport(
+        source,
+        existing || !source.id.startsWith("wsp_") ? `wsp_${randomUUID().replaceAll("-", "")}` : source.id,
+      )
+      await writeImported(imported, tx)
       return imported
     })
+  }
+
+  export function forImport(source: Info, id: string): Info {
+    return Info.parse({
+      ...source,
+      id,
+      binding: { ...source.binding, state: "unbound" },
+      importedFrom: source.importedFrom ?? { workspaceID: source.id, hostID: source.binding.hostID },
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+    })
+  }
+
+  export async function writeImported(info: Info, tx: StoreTransaction) {
+    if (info.binding.state !== "unbound" || info.sharedWritableWorkspaceIDs.length)
+      throw new Invalid({ message: "Imported Workspace cannot carry local authority", workspaceID: info.id })
+    if ((await tx.readMany([recordKey(info.id)]))[0] !== undefined)
+      throw new BindingChanged({ message: "Workspace identity was occupied during import", workspaceID: info.id })
+    await tx.write(recordKey(info.id), info)
+    await tx.write(scopeKey(info.scopeID, info.id), info.id)
   }
 
   export async function resolve(

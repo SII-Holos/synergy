@@ -10,6 +10,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
+import { WorkspaceHomeTransfer } from "./workspace-transfer"
 import {
   archiveExclusions,
   copyDirSkipExisting,
@@ -136,12 +137,16 @@ export namespace DataTransfer {
         { accept: acceptArtifact },
       )
       const conflicts = new Set<string>()
+      const workspaces = options.trusted
+        ? undefined
+        : await WorkspaceHomeTransfer.prepare(source.store, target.store, acceptArtifact)
       const result = await StoragePortable.importFile(target.store, path.join(backup, "data", "agent-records.ndjson"), {
         operationID: id,
         accept: async (entry, tx) => {
           if (entry.type === "event") return false
           if (entry.type === "receipt") return true
           if (local.has(entry.key[0]) || derived.has(entry.key[0])) return false
+          if (workspaces && WorkspaceHomeTransfer.roots.has(entry.key[0])) return false
           // Grants, consent and trust decisions never cross homes through an
           // untrusted merge: an imported approval would silently satisfy the
           // consent prompt for a later plugin install. Same-home relocation
@@ -163,7 +168,12 @@ export namespace DataTransfer {
           }
           return (await tx.readMany([entry.key]))[0] === undefined
         },
+        transform: (entry) =>
+          entry.type === "record" && workspaces && acceptArtifact(entry.key)
+            ? { ...entry, value: workspaces.record(entry.key, entry.value) }
+            : entry,
         afterImport: async (tx) => {
+          await workspaces?.publish(tx)
           await Session.rebuildStorageIndexes(tx)
           await tx.write(["storage_transfer", id], {
             version: 1,

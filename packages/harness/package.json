@@ -191,6 +191,7 @@
     "./cortex/tools": "./src/cortex/tools.ts",
     "./cortex/session-runtime": "./src/cortex/session-runtime.ts",
     "./session/workspace-runtime": "./src/session/workspace-runtime.ts",
+    "./session/workspace-transfer": "./src/session/workspace-transfer.ts",
     "./session/project-health": "./src/session/project-health.ts",
     "./session/title": "./src/session/title.ts",
     "./util/fn": "./src/util/fn.ts",

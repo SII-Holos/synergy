@@ -11,7 +11,247 @@ import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
+import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
 const runtime = await testRuntime()
+
+test("Home imports normalize historical directory selections without local adoption", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir(),
+      working = await tmpdir()
+    const scope = await tmp.scope()
+    const sourceRoot = path.join(tmp.path, "source")
+    const targetRoot = path.join(tmp.path, "target")
+    const prepared = await StorageBootstrap.prepare({ root: sourceRoot })
+    let sessionID!: string
+    let agendaID!: string
+    try {
+      await Storage.provide({ store: prepared.store, artifactDirectory: path.join(sourceRoot, "data") }, () =>
+        ScopeContext.provide({
+          scope,
+          async fn() {
+            await Storage.write(["projects", scope.id], scope)
+            const session = await Session.create({})
+            sessionID = session.id
+            const key = ["sessions", scope.id, session.id, "info"]
+            await Storage.update<Record<string, unknown>>(key, (record) => {
+              delete record.workspaceID
+              record.workspace = { type: "directory", path: working.path, scopeID: scope.id, futureField: "retained" }
+            })
+            const item = await AgendaStore.create({ createdBy: "user", title: "Historical default", prompt: "test" })
+            agendaID = item.id
+            await Storage.update<{ origin: { workspaceID?: string | null } }>(
+              ["agenda", "items", scope.id, item.id],
+              (record) => {
+                delete record.origin.workspaceID
+              },
+            )
+          },
+        }),
+      )
+      await prepared.activate()
+    } finally {
+      await prepared.store.close()
+    }
+    const fresh = await StorageBootstrap.prepare({ root: targetRoot })
+    await fresh.activate()
+    await fresh.store.close()
+    await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+    await DataTransfer.merge(sourceRoot, targetRoot)
+    const target = (await StorageBootstrap.inspect(targetRoot))!
+    try {
+      const session = await target.store.read<{ workspaceID: string; workspace?: unknown }>([
+        "sessions",
+        scope.id,
+        sessionID,
+        "info",
+      ])
+      expect(session.workspace).toBeUndefined()
+      expect(session.workspaceID.startsWith("wsp_")).toBe(true)
+      const imported = await target.store.read<WorkspaceCatalog.Info>(["workspace", session.workspaceID])
+      expect(imported.binding).toMatchObject({ state: "unbound", path: working.path })
+      expect(imported.metadata.futureField).toBe("retained")
+      const agenda = await target.store.read<{ origin: { workspaceID: string } }>([
+        "agenda",
+        "items",
+        scope.id,
+        agendaID,
+      ])
+      expect(
+        (await target.store.read<WorkspaceCatalog.Info>(["workspace", agenda.origin.workspaceID])).binding,
+      ).toMatchObject({ state: "unbound", path: scope.local!.directory })
+    } finally {
+      await target.store.close()
+    }
+  }))
+
+test.each([
+  { collision: false, metadata: true },
+  { collision: true, metadata: true },
+  { collision: true, metadata: false },
+])(
+  "untrusted Home merge detaches Workspace authority and remaps history (%j)",
+  ({ collision, metadata }) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir(),
+        working = await tmpdir(),
+        existing = await tmpdir()
+      const scope = await tmp.scope()
+      const sourceRoot = path.join(tmp.path, "source")
+      const targetRoot = path.join(tmp.path, "target")
+      const targetHost = createLocalHost({ root: targetRoot })
+      const source = await StorageBootstrap.prepare({ root: sourceRoot })
+      const sessionID = Identifier.descending("session")
+      const targetSessionID = Identifier.descending("session")
+      const messageID = Identifier.descending("message")
+      const partID = Identifier.ascending("part")
+      const sessionKey = ["sessions", scope.id, sessionID]
+      const patchKey = [...sessionKey, "messages", messageID, "parts", partID]
+      let workspace!: WorkspaceCatalog.Info
+      let agendaID!: string
+      try {
+        await Storage.provide({ store: source.store, artifactDirectory: path.join(sourceRoot, "data") }, () =>
+          ScopeContext.provide({
+            scope,
+            workspace: null,
+            async fn() {
+              await Storage.write(["projects", scope.id], scope)
+              workspace = await WorkspaceCatalog.register({
+                scopeID: scope.id,
+                type: "directory",
+                hostID: await targetHost.workspaceLocation!.hostID(),
+                ...(await targetHost.workspaceLocation!.identify(working.path)),
+              })
+              await Session.create({ id: sessionID, workspaceID: workspace.id })
+              const provenance = { id: workspace.id, generation: 1, root: workspace.binding.path! }
+              const diff = { file: "file.txt", workspace: provenance, additions: 1, deletions: 0 }
+              await Session.updateMessage({
+                id: messageID,
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: "synergy",
+                model: { providerID: "test", modelID: "test" },
+                summary: { diffs: [diff] },
+              })
+              await Storage.write(patchKey, {
+                type: "patch",
+                id: partID,
+                sessionID,
+                messageID,
+                hash: "",
+                files: ["file.txt"],
+                workspace: provenance,
+                operation: { status: "incomplete" },
+              })
+              await Storage.write([...sessionKey, "summary"], [diff])
+              await Storage.write([...sessionKey, "summary_cursor"], {
+                version: 3,
+                ranges: [{ workspace: provenance, files: ["file.txt"], incomplete: true }],
+              })
+              await Storage.write([...sessionKey, "future-owner"], { workspaceID: workspace.id, untouched: true })
+              const item = await AgendaStore.create({
+                createdBy: "user",
+                title: "Imported schedule",
+                prompt: "test",
+                sessionID,
+              })
+              agendaID = item.id
+              if (!metadata) await Storage.remove(["workspace", workspace.id])
+            },
+          }),
+        )
+        await source.activate()
+      } finally {
+        await source.store.close()
+      }
+      const target = await StorageBootstrap.prepare({ root: targetRoot })
+      try {
+        if (collision) {
+          await Storage.provide({ store: target.store, artifactDirectory: path.join(targetRoot, "data") }, () =>
+            ScopeContext.provide({
+              scope,
+              workspace: null,
+              async fn() {
+                await Storage.write(["projects", scope.id], scope)
+                await Storage.write(["workspace", workspace.id], {
+                  ...workspace,
+                  binding: { ...workspace.binding, ...(await targetHost.workspaceLocation!.identify(existing.path)) },
+                })
+                await Storage.write(["workspace_scope", scope.id, workspace.id], workspace.id)
+                await Session.create({ id: targetSessionID, workspaceID: workspace.id })
+              },
+            }),
+          )
+        }
+        await target.activate()
+      } finally {
+        await target.store.close()
+      }
+      await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+      await DataTransfer.merge(sourceRoot, targetRoot)
+      const merged = (await StorageBootstrap.inspect(targetRoot))!
+      let catalogIDs: string[] = []
+      try {
+        const session = await merged.store.read<{ workspaceID: string }>([...sessionKey, "info"])
+        const imported = await merged.store.read<WorkspaceCatalog.Info>(["workspace", session.workspaceID])
+        expect(imported.binding.state).toBe("unbound")
+        expect(imported.sharedWritableWorkspaceIDs).toEqual([])
+        expect(imported.binding.path).toBe(metadata ? workspace.binding.path : null)
+        if (collision) {
+          expect(session.workspaceID).not.toBe(workspace.id)
+          expect((await merged.store.read<WorkspaceCatalog.Info>(["workspace", workspace.id])).binding.path).toBe(
+            await fs.realpath(existing.path),
+          )
+          expect(
+            (await merged.store.read<{ workspaceID: string }>(["sessions", scope.id, targetSessionID, "info"]))
+              .workspaceID,
+          ).toBe(workspace.id)
+        }
+        expect(
+          (await merged.store.read<{ workspace: { id: string; generation: number; root: string } }>(patchKey))
+            .workspace,
+        ).toEqual({ id: imported.id, generation: 1, root: workspace.binding.path! })
+        expect(
+          (await merged.store.read<Array<{ workspace: { id: string } }>>([...sessionKey, "summary"]))[0]!.workspace.id,
+        ).toBe(imported.id)
+        expect(
+          (
+            await merged.store.read<{ summary: { diffs: Array<{ workspace: { id: string } }> } }>([
+              ...sessionKey,
+              "messages",
+              messageID,
+              "info",
+            ])
+          ).summary.diffs[0]!.workspace.id,
+        ).toBe(imported.id)
+        expect(
+          (await merged.store.read<{ ranges: Array<{ workspace: { id: string } }> }>([...sessionKey, "summary_cursor"]))
+            .ranges[0]!.workspace.id,
+        ).toBe(imported.id)
+        expect(
+          (await merged.store.read<{ origin: { workspaceID: string } }>(["agenda", "items", scope.id, agendaID])).origin
+            .workspaceID,
+        ).toBe(imported.id)
+        expect(
+          await merged.store.read<{ workspaceID: string; untouched: boolean }>([...sessionKey, "future-owner"]),
+        ).toEqual({ workspaceID: workspace.id, untouched: true })
+        expect((await merged.store.verify()).issues).toEqual([])
+        catalogIDs = await merged.store.scan(["workspace"])
+      } finally {
+        await merged.store.close()
+      }
+      await DataTransfer.merge(sourceRoot, targetRoot)
+      const repeated = (await StorageBootstrap.inspect(targetRoot))!
+      try {
+        expect(await repeated.store.scan(["workspace"])).toEqual(catalogIDs)
+      } finally {
+        await repeated.store.close()
+      }
+    }),
+  20000,
+)
 
 test("merge keeps the target session aggregate and retains skipped source evidence", () =>
   runtime.run(async () => {

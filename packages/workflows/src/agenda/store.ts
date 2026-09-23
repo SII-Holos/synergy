@@ -5,6 +5,7 @@ import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { WorkspaceTransfer } from "@ericsanchezok/synergy-harness/session/workspace-transfer"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { AgendaEvent } from "./event"
 import { AgendaTypes } from "./types"
@@ -12,6 +13,11 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 
 export namespace AgendaStore {
+  export function transferWorkspace(value: unknown, resolve: WorkspaceTransfer.Resolve): unknown {
+    const item = value as AgendaTypes.Item
+    return { ...item, origin: WorkspaceTransfer.selection({ ...item.origin }, item.origin.scope.id, resolve) }
+  }
+
   const log = Log.create({ service: "agenda.store" })
   const HOME_SCOPE_ID = "home"
 
