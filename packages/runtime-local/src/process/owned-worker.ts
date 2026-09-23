@@ -135,6 +135,7 @@ export async function runOwnedProcessWorker(filename: string) {
     OwnedProtocol.send(control, { type: "ready", pid: child.pid })
     OwnedProtocol.send(control, { type: "stage", stage: "launched" })
     const result = await exited
+    if (process.platform === "win32") WindowsJob.detachConsole()
     OwnedProtocol.send(control, { type: "stage", stage: "root-exited" })
     terminal?.close()
     while (OwnedTree.hasDescendants(reference)) await Bun.sleep(25)
