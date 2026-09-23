@@ -37,12 +37,12 @@ export namespace NativePty {
       synergy_pty_write: { args: [FFIType.i32, FFIType.ptr, FFIType.u64], returns: FFIType.i32 },
       synergy_pty_resize: { args: [FFIType.i32, FFIType.u16, FFIType.u16], returns: FFIType.i32 },
       synergy_pty_pid: { args: [FFIType.i32], returns: FFIType.i32 },
-      synergy_pty_exit: { args: [FFIType.i32], returns: FFIType.i32 },
+      synergy_pty_exit: { args: [FFIType.i32], returns: FFIType.i64 },
       synergy_pty_kill: { args: [FFIType.i32], returns: FFIType.i32 },
       synergy_pty_close: { args: [FFIType.i32], returns: FFIType.void },
       synergy_pty_error: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i32 },
     })
-    if (library.symbols.synergy_pty_version() !== 1) {
+    if (library.symbols.synergy_pty_version() !== 2) {
       library.close()
       throw new Error("Native PTY library version is incompatible")
     }
@@ -139,7 +139,7 @@ export namespace NativePty {
         }
         if (count === -2) {
           eof = true
-          const code = native.synergy_pty_exit(handle)
+          const code = Number(native.synergy_pty_exit(handle))
           if (code >= 0) {
             stdout.push(null)
             completion.resolve(code)

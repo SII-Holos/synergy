@@ -9,7 +9,7 @@ import { retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
 import { FileMutation } from "../file/mutation"
-import { DarwinCoalition } from "../process/darwin-coalition"
+import { OwnedTree } from "../process/owned-tree"
 
 const Root = z.object({
   path: z.string(),
@@ -28,9 +28,7 @@ const Claim = z.object({
   pid: z.number().int().positive(),
   startIdentity: z.string().optional(),
   processBound: z.boolean().default(false),
-  processTree: z
-    .object({ kind: z.literal("darwin-coalition"), bootID: z.string(), coalitionID: z.string() })
-    .optional(),
+  processTree: OwnedTree.Reference.optional(),
   state: z.enum(["waiting", "active"]),
 })
 const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
@@ -123,7 +121,7 @@ export class WorkspaceCoordinator {
   private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree">, fresh = false) {
     if (claim.processTree) {
       try {
-        return DarwinCoalition.inspect(claim.processTree).state === "active"
+        return OwnedTree.inspect(claim.processTree).state === "active"
       } catch {
         return true
       }
@@ -302,9 +300,7 @@ export class WorkspaceCoordinator {
   }
 
   private async bindProcess(id: string, token: string, pid: number, options?: { descendants?: boolean }) {
-    const processTree = options?.descendants
-      ? { kind: "darwin-coalition" as const, ...DarwinCoalition.capture(pid) }
-      : undefined
+    const processTree = options?.descendants ? OwnedTree.capture(pid) : undefined
     const identity = await processStartIdentity(pid)
     if (!identity) throw new Error("Cannot verify the Workspace process identity")
     await this.update((ledger) => {

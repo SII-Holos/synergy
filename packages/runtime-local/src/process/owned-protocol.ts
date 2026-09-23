@@ -6,7 +6,7 @@ export namespace OwnedProtocol {
     socket: z.string(),
     token: z.string(),
     deadline: z.number(),
-    ownerCoalition: z.object({ bootID: z.string(), coalitionID: z.string() }),
+    ownerCoalition: z.object({ bootID: z.string(), coalitionID: z.string() }).optional(),
     command: z.string(),
     args: z.array(z.string()),
     cwd: z.string(),

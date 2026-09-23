@@ -4,7 +4,7 @@ import path from "node:path"
 import { DarwinJob } from "./darwin-job"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { DarwinCoalition } from "./darwin-coalition"
+import { OwnedTree } from "./owned-tree"
 import { OwnedProtocol } from "./owned-protocol"
 import { NativePty } from "./native-pty"
 
@@ -12,8 +12,13 @@ export async function runOwnedProcessWorker(filename: string) {
   const raw = await fs.readFile(filename)
   if (raw.length > 16 * 1024 * 1024) throw new Error("Native process configuration exceeds its bound")
   const config = OwnedProtocol.Configuration.parse(JSON.parse(raw.toString()))
-  const reference = DarwinCoalition.current()
-  if (reference.bootID !== config.ownerCoalition.bootID || reference.coalitionID === config.ownerCoalition.coalitionID)
+  let reference = process.platform === "darwin" ? OwnedTree.current() : undefined
+  if (
+    reference?.kind === "darwin-coalition" &&
+    (!config.ownerCoalition ||
+      reference.bootID !== config.ownerCoalition.bootID ||
+      reference.coalitionID === config.ownerCoalition.coalitionID)
+  )
     throw new Error("Native process worker must run independently of its owner")
   await fs.unlink(filename)
   if (Date.now() >= config.deadline) throw new Error("Native process activation expired")
@@ -33,17 +38,18 @@ export async function runOwnedProcessWorker(filename: string) {
   const shutdown = async () => {
     if (stopping) return
     stopping = true
-    DarwinCoalition.terminateDescendants("SIGTERM")
+    if (reference) OwnedTree.terminateDescendants(reference, "SIGTERM")
     await Bun.sleep(200)
     const until = Date.now() + 5000
-    for (;;) {
-      const active = DarwinCoalition.inspect(reference)
+    while (reference) {
+      const active = OwnedTree.inspect(reference)
       if (active.state === "exited" || active.processes <= 1) break
-      DarwinCoalition.terminateDescendants("SIGKILL")
+      OwnedTree.terminateDescendants(reference, "SIGKILL")
       if (Date.now() >= until) break
       await Bun.sleep(25)
     }
-    await DarwinJob.releaseDisconnectedWorker(path.dirname(filename)).catch(() => {})
+    if (process.platform === "darwin") await DarwinJob.releaseDisconnectedWorker(path.dirname(filename)).catch(() => {})
+    else await fs.rm(path.dirname(filename), { recursive: true, force: true }).catch(() => {})
     process.exit(1)
   }
   for (const socket of [control, input, output, error]) socket.on("error", () => void shutdown())
@@ -70,6 +76,7 @@ export async function runOwnedProcessWorker(filename: string) {
   const activationTimer = setTimeout(() => void shutdown(), Math.max(1, config.deadline - Date.now()))
   try {
     await activated
+    reference ??= OwnedTree.current()
     clearTimeout(activationTimer)
     const child = config.pty
       ? (terminal = NativePty.spawn({ ...config, ...config.pty }))
@@ -77,6 +84,10 @@ export async function runOwnedProcessWorker(filename: string) {
           cwd: config.cwd,
           env: config.env,
           stdio: ["pipe", "pipe", "pipe"],
+          windowsHide: true,
+          windowsVerbatimArguments:
+            process.platform === "win32" &&
+            ["cmd", "cmd.exe"].includes(path.win32.basename(config.command).toLowerCase()),
         })
     const exited =
       "exited" in child
@@ -95,8 +106,9 @@ export async function runOwnedProcessWorker(filename: string) {
     if (!("exited" in child)) await once(child, "spawn")
     OwnedProtocol.send(control, { type: "ready", pid: child.pid })
     const result = await exited
+    terminal?.close()
     for (;;) {
-      const live = DarwinCoalition.inspect(reference)
+      const live = OwnedTree.inspect(reference)
       if (live.state === "exited" || live.processes === 1) break
       await Bun.sleep(25)
     }

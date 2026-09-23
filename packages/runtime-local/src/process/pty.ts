@@ -7,6 +7,7 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { z } from "zod"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
@@ -32,7 +33,7 @@ export namespace Pty {
 
   async function spawn(input: NativePty.Input, signal: AbortSignal) {
     signal.throwIfAborted()
-    if (process.platform === "darwin") {
+    if (process.platform === "darwin" || process.platform === "win32") {
       const lease = await WorkspaceAccess.process(null, signal)
       const owned = await OwnedProcess.prepare({
         ...input,
@@ -182,7 +183,10 @@ export namespace Pty {
   async function createInWorkspace(input: CreateInput, signal?: AbortSignal): Promise<Info> {
     const workspace = ScopeContext.current.workspace
     if (!workspace?.id || workspace.generation === undefined)
-      throw new Error("A resolved Workspace is required for a terminal")
+      throw new Scope.WorkspaceRequiredError({
+        message: "A resolved Workspace is required for a terminal",
+        scopeID: ScopeContext.current.scope.id,
+      })
     const workspaceDirectory = workspace.path
     const id = Identifier.create("pty", false)
     const command = input.command || Shell.preferred()

@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, VecDeque},
     io::{Read, Write},
     sync::{
-        atomic::{AtomicI32, Ordering},
+        atomic::{AtomicI32, AtomicI64, Ordering},
         mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError},
         Arc, Mutex, OnceLock,
     },
@@ -36,7 +36,7 @@ struct Pty {
     pending: VecDeque<u8>,
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
-    exit: Arc<AtomicI32>,
+    exit: Arc<AtomicI64>,
     pid: i32,
 }
 
@@ -82,12 +82,12 @@ fn create(input: Input) -> Result<Pty, Box<dyn std::error::Error + Send + Sync>>
     drop(pair.slave);
     let (output_tx, output) = sync_channel(QUEUE);
     let (input_tx, input_rx) = sync_channel::<Vec<u8>>(QUEUE);
-    let exit = Arc::new(AtomicI32::new(-1));
+    let exit = Arc::new(AtomicI64::new(-1));
     let status = exit.clone();
     thread::spawn(move || {
         let code = child
             .wait()
-            .map(|status| status.exit_code() as i32)
+            .map(|status| i64::from(status.exit_code()))
             .unwrap_or(1);
         status.store(code, Ordering::Release);
     });
@@ -137,7 +137,7 @@ fn with(handle: i32, action: impl FnOnce(&mut Pty) -> i32) -> i32 {
 
 #[no_mangle]
 pub extern "C" fn synergy_pty_version() -> i32 {
-    1
+    2
 }
 
 #[no_mangle]
@@ -234,8 +234,14 @@ pub extern "C" fn synergy_pty_pid(handle: i32) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn synergy_pty_exit(handle: i32) -> i32 {
-    with(handle, |pty| pty.exit.load(Ordering::Acquire))
+pub extern "C" fn synergy_pty_exit(handle: i32) -> i64 {
+    match registry().lock() {
+        Ok(entries) => entries
+            .get(&handle)
+            .map(|pty| pty.exit.load(Ordering::Acquire))
+            .unwrap_or(i64::from(ERROR)),
+        Err(error) => i64::from(failure(error)),
+    }
 }
 
 #[no_mangle]

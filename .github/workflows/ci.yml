@@ -206,12 +206,26 @@ jobs:
           cargo check --locked --manifest-path $manifest
           cargo build --locked --manifest-path $manifest
 
-      - name: Run Synergy Windows-focused tests
+      - name: Build native PTY
+        run: bun packages/runtime-local/script/build-pty.ts
+      - name: Verify native Windows ownership and workspace processes
+        run: bun script/native-workspace-coverage.ts
+      - name: Anchor native Windows coverage at the repository root
+        if: always()
+        run: echo windows-native > coverage-shard-anchor.txt
+      - name: Upload native Windows coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: coverage-lcov-windows-native
+          path: |
+            packages/runtime-local/coverage/shards/1000001/lcov.info
+            coverage-shard-anchor.txt
+          if-no-files-found: error
+      - name: Run Synergy Windows storage tests
         run: |
-          bun test --timeout 30000 --cwd packages/runtime-local test/file/watcher-events.test.ts test/sandbox/phase3-windows-config.test.ts test/process/windows-process-job.test.ts
           bun test --timeout 30000 --cwd packages/harness test/global/schema-publish.test.ts
           bun test --timeout 30000 --cwd packages/harness test/util/server-process-lock.test.ts
-          bun test --timeout 30000 --cwd packages/runtime-local test/session/tool-resolver-bash-profile.test.ts
 
       - name: Run util lock tests
         run: bun test --timeout 30000 --cwd packages/util test/fs-lock.test.ts test/process-identity.test.ts
@@ -804,7 +818,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    needs: [coverage-shards, macos-workspace-processes]
+    needs: [coverage-shards, macos-workspace-processes, windows]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

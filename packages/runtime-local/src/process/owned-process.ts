@@ -11,6 +11,8 @@ import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handl
 import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { DarwinCoalition } from "./darwin-coalition"
 import { DarwinJob } from "./darwin-job"
+import { WindowsJob } from "./windows-job"
+import { OwnedTree } from "./owned-tree"
 import { OwnedProtocol } from "./owned-protocol"
 
 export namespace OwnedProcess {
@@ -49,10 +51,14 @@ export namespace OwnedProcess {
   }
   export async function prepare(input: Input) {
     input.signal?.throwIfAborted()
-    if (process.platform !== "darwin") throw new Error("Native process ownership is unavailable on this platform")
+    if (process.platform !== "darwin" && process.platform !== "win32")
+      throw new Error("Native process ownership is unavailable on this platform")
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "sy-p-"))
     await fs.chmod(directory, 0o700)
-    const socketPath = path.join(directory, "io")
+    const socketPath =
+      process.platform === "win32"
+        ? String.raw`\\.\pipe\synergy-process-${randomBytes(24).toString("hex")}`
+        : path.join(directory, "io")
     const token = randomBytes(32).toString("hex")
     const child = new Child()
     child.on("error", () => {})
@@ -64,7 +70,7 @@ export namespace OwnedProcess {
     const activated = deferred<void>()
     const complete = deferred<void>()
     let workerPID: number | undefined
-    let reference: DarwinCoalition.Reference | undefined
+    let reference: OwnedTree.Reference | undefined
     let job: Awaited<ReturnType<typeof DarwinJob.start>> | undefined
     let result: { code: number | null; signal: NodeJS.Signals | null } = { code: null, signal: null }
     let failure: Error | undefined
@@ -193,7 +199,7 @@ export namespace OwnedProcess {
     }
     async function observe() {
       try {
-        while (reference && DarwinCoalition.inspect(reference).state === "active") await Bun.sleep(25)
+        while (reference && OwnedTree.inspect(reference).state === "active") await Bun.sleep(25)
         await controlClosed
         if (!reported && !stopping)
           failure ??= new Error("Native process supervisor exited without a completion record")
@@ -212,11 +218,11 @@ export namespace OwnedProcess {
       return (stopping ??= (async () => {
         result = { code: null, signal: "SIGTERM" }
         if (reference) {
-          DarwinCoalition.terminate(reference)
+          OwnedTree.terminate(reference)
           const until = Date.now() + 5000
           await Bun.sleep(200)
-          while (DarwinCoalition.inspect(reference).state === "active") {
-            DarwinCoalition.terminate(reference, "SIGKILL")
+          while (OwnedTree.inspect(reference).state === "active") {
+            OwnedTree.terminate(reference, "SIGKILL")
             if (Date.now() >= until) throw new Error("Native process descendants have not exited")
             await Bun.sleep(25)
           }
@@ -248,7 +254,7 @@ export namespace OwnedProcess {
     child.alive = () => {
       if (!reference) return undefined
       try {
-        return DarwinCoalition.inspect(reference).state === "active"
+        return OwnedTree.inspect(reference).state === "active"
       } catch {
         return undefined
       }
@@ -258,13 +264,13 @@ export namespace OwnedProcess {
         server.once("error", reject)
         server.listen(socketPath, resolve)
       })
-      await fs.chmod(socketPath, 0o600)
+      if (process.platform !== "win32") await fs.chmod(socketPath, 0o600)
       const filename = path.join(directory, "input.json")
       const configuration: OwnedProtocol.Configuration = {
         socket: socketPath,
         token,
         deadline: Date.now() + 30000,
-        ownerCoalition: DarwinCoalition.current(),
+        ownerCoalition: process.platform === "darwin" ? DarwinCoalition.current() : undefined,
         command: input.command,
         args: input.args,
         cwd: input.cwd,
@@ -281,9 +287,12 @@ export namespace OwnedProcess {
       startupTimer = setTimeout(() => fail(new Error("Native process startup timed out")), 30000)
       input.signal?.addEventListener("abort", abort, { once: true })
       input.signal?.throwIfAborted()
-      job = await DarwinJob.start(command, directory)
+      job =
+        process.platform === "darwin"
+          ? await DarwinJob.start(command, directory)
+          : await WindowsJob.start(command, directory)
       const pid = await connected.promise
-      reference = DarwinCoalition.capture(pid)
+      reference = OwnedTree.capture(pid)
       await input.lease.bindProcess(pid, { descendants: true })
       input.signal?.throwIfAborted()
       clearTimeout(startupTimer)

@@ -102,6 +102,7 @@ describe("CI topology", () => {
     }
     const aggregate = workflow.jobs.coverage!
     expect(aggregate.needs).toContain("macos-workspace-processes")
+    expect(aggregate.needs).toContain("windows")
     const pattern = aggregate.steps?.find((step) => step.with?.pattern)?.with?.pattern
     expect(pattern).toBe("coverage-lcov-*")
     const native = workflow.jobs["macos-workspace-processes"]!
