@@ -3,7 +3,7 @@ import type { Socket } from "node:net"
 
 export namespace OwnedProtocol {
   export const Configuration = z.object({
-    socket: z.string(),
+    socket: z.union([z.string(), z.object({ host: z.literal("127.0.0.1"), port: z.number().int().min(1).max(65535) })]),
     token: z.string(),
     deadline: z.number(),
     ownerCoalition: z.object({ bootID: z.string(), coalitionID: z.string() }).optional(),

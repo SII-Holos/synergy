@@ -33,46 +33,28 @@ export namespace Pty {
 
   async function spawn(input: NativePty.Input, signal: AbortSignal) {
     signal.throwIfAborted()
-    if (process.platform === "darwin" || process.platform === "win32") {
-      const lease = await WorkspaceAccess.process(null, signal)
-      const owned = await OwnedProcess.prepare({
-        ...input,
-        lease,
-        signal,
-        pty: { cols: input.cols ?? 80, rows: input.rows ?? 24, library: NativePty.libraryPath() },
-      })
-      owned.child.stderr.resume()
-      try {
-        await owned.activate()
-        signal.throwIfAborted()
-      } catch (error) {
-        await owned.stop()
-        throw error
-      }
-      return {
-        pid: owned.child.pid!,
-        input: owned.child.stdin,
-        output: owned.child.stdout,
-        completed: owned.completion.then(() => owned.child.exitCode ?? 1),
-        stop: owned.stop,
-        resize: owned.resize,
-      }
+    const lease = await WorkspaceAccess.process(null, signal)
+    const owned = await OwnedProcess.prepare({
+      ...input,
+      lease,
+      signal,
+      pty: { cols: input.cols ?? 80, rows: input.rows ?? 24, library: NativePty.libraryPath() },
+    })
+    owned.child.stderr.resume()
+    try {
+      await owned.activate()
+      signal.throwIfAborted()
+    } catch (error) {
+      await owned.stop()
+      throw error
     }
-    const child = NativePty.spawn(input)
     return {
-      pid: child.pid,
-      input: child.stdin,
-      output: child.stdout,
-      completed: child.exited.finally(child.close),
-      async stop() {
-        child.kill()
-        try {
-          await child.exited
-        } finally {
-          child.close()
-        }
-      },
-      resize: child.resize,
+      pid: owned.child.pid!,
+      input: owned.child.stdin,
+      output: owned.child.stdout,
+      completed: owned.completion.then(() => owned.child.exitCode ?? 1),
+      stop: owned.stop,
+      resize: owned.resize,
     }
   }
 

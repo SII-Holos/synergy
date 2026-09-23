@@ -12,6 +12,7 @@ import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/a
 import { DarwinCoalition } from "./darwin-coalition"
 import { DarwinJob } from "./darwin-job"
 import { WindowsJob } from "./windows-job"
+import { LinuxTree } from "./linux-tree"
 import { OwnedTree } from "./owned-tree"
 import { OwnedProtocol } from "./owned-protocol"
 
@@ -51,14 +52,11 @@ export namespace OwnedProcess {
   }
   export async function prepare(input: Input) {
     input.signal?.throwIfAborted()
-    if (process.platform !== "darwin" && process.platform !== "win32")
+    if (!["darwin", "win32", "linux"].includes(process.platform))
       throw new Error("Native process ownership is unavailable on this platform")
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "sy-p-"))
     await fs.chmod(directory, 0o700)
-    const socketPath =
-      process.platform === "win32"
-        ? String.raw`\\.\pipe\synergy-process-${randomBytes(24).toString("hex")}`
-        : path.join(directory, "io")
+    const socketPath = path.join(directory, "io")
     const token = randomBytes(32).toString("hex")
     const child = new Child()
     child.on("error", () => {})
@@ -82,6 +80,7 @@ export namespace OwnedProcess {
     let started = false
     let stopping: Promise<void> | undefined
     let observing: Promise<void> | undefined
+    let abandoned: Promise<void> | undefined
     let startupTimer: ReturnType<typeof setTimeout> | undefined
     const fail = (error: Error) => {
       failure ??= error
@@ -163,8 +162,21 @@ export namespace OwnedProcess {
       for (const socket of accepted) socket.destroy()
       server.close()
       await job?.remove()
-      await fs.rm(directory, { recursive: true, force: true })
       await input.lease.release()
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+    function abandon() {
+      return (abandoned ??= (async () => {
+        clearTimeout(startupTimer)
+        input.signal?.removeEventListener("abort", abort)
+        for (const socket of accepted) socket.destroy()
+        server.close()
+        child.stdin.destroy()
+        child.stdout.destroy()
+        child.stderr.destroy()
+        await job?.remove()
+        await input.lease.release()
+      })())
     }
     function announceError() {
       if (!failure || errorAnnounced) return
@@ -211,6 +223,7 @@ export namespace OwnedProcess {
         failure ??= error instanceof Error ? error : new Error(String(error))
         complete.reject(failure)
         child.emit("error", failure)
+        await abandon()
       }
     }
     async function stop() {
@@ -221,7 +234,7 @@ export namespace OwnedProcess {
           OwnedTree.terminate(reference)
           const until = Date.now() + 5000
           await Bun.sleep(200)
-          while (OwnedTree.inspect(reference).state === "active") {
+          while (!finished && OwnedTree.inspect(reference).state === "active") {
             OwnedTree.terminate(reference, "SIGKILL")
             if (Date.now() >= until) throw new Error("Native process descendants have not exited")
             await Bun.sleep(25)
@@ -245,13 +258,17 @@ export namespace OwnedProcess {
             clearTimeout(timer)
           }
         } else await finish()
-      })())
+      })().catch(async (error) => {
+        await abandon()
+        throw error
+      }))
     }
     const abort = () => {
       fail(input.signal?.reason instanceof Error ? input.signal.reason : new Error("Native process launch cancelled"))
     }
     child.stop = stop
     child.alive = () => {
+      if (finished) return false
       if (!reference) return undefined
       try {
         return OwnedTree.inspect(reference).state === "active"
@@ -262,12 +279,18 @@ export namespace OwnedProcess {
     try {
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject)
-        server.listen(socketPath, resolve)
+        if (process.platform === "win32") server.listen(0, "127.0.0.1", resolve)
+        else server.listen(socketPath, resolve)
       })
       if (process.platform !== "win32") await fs.chmod(socketPath, 0o600)
+      const address = server.address()
+      const transport =
+        process.platform === "win32" && address && typeof address !== "string"
+          ? { host: "127.0.0.1" as const, port: address.port }
+          : socketPath
       const filename = path.join(directory, "input.json")
       const configuration: OwnedProtocol.Configuration = {
-        socket: socketPath,
+        socket: transport,
         token,
         deadline: Date.now() + 30000,
         ownerCoalition: process.platform === "darwin" ? DarwinCoalition.current() : undefined,
@@ -290,7 +313,9 @@ export namespace OwnedProcess {
       job =
         process.platform === "darwin"
           ? await DarwinJob.start(command, directory)
-          : await WindowsJob.start(command, directory)
+          : process.platform === "win32"
+            ? await WindowsJob.start(command, directory)
+            : await LinuxTree.start(command, directory)
       const pid = await connected.promise
       reference = OwnedTree.capture(pid)
       await input.lease.bindProcess(pid, { descendants: true })

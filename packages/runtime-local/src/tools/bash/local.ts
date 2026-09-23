@@ -1,6 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { RolloutProcess } from "@ericsanchezok/synergy-harness/session/rollout/process"
-import { spawn } from "child_process"
 import * as fs from "node:fs"
 import { fileURLToPath } from "url"
 import { Language, type Node } from "web-tree-sitter"
@@ -429,7 +428,6 @@ export const LocalBashBackend = {
     // source of the denied path that the structured explanation needs.
     let denialSession: DenialLoggerSession | null = null
     using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
-    let ownsUnixProcessGroup = false
     let artifactsCleaned = false
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
@@ -537,60 +535,27 @@ export const LocalBashBackend = {
     let child: ProcessHandle
     let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
     try {
-      if (process.platform === "darwin" || process.platform === "win32") {
-        if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
-          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-        const shellName = path.win32.basename(shell).toLowerCase()
-        const args =
-          process.platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
-            ? ["/d", "/s", "/c", `"${executionCommand}"`]
-            : process.platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
-              ? ["-NoProfile", "-Command", executionCommand]
-              : ["-c", executionCommand]
-        const invocation =
-          sandboxWrapper && !sandboxWrapper.skipReason
-            ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
-            : { command: shell, args }
-        const lease = await WorkspaceAccess.process(sandboxWriteRoots(sandboxWrapper), ctx.abort)
-        try {
-          owned = await OwnedProcess.prepare({ ...invocation, cwd, env: sandboxEnv, lease, signal: ctx.abort })
-        } catch (error) {
-          await lease.release()
-          throw error
-        }
-        child = owned.child
-      } else if (sandboxWrapper && !sandboxWrapper.skipReason) {
-        const invocation = detachedDaemonAllowed
+      if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
+        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+      const shellName = path.win32.basename(shell).toLowerCase()
+      const args =
+        process.platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
+          ? ["/d", "/s", "/c", `"${executionCommand}"`]
+          : process.platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
+            ? ["-NoProfile", "-Command", executionCommand]
+            : ["-c", executionCommand]
+      const invocation =
+        sandboxWrapper && !sandboxWrapper.skipReason
           ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
-          : Shell.prepareOwnedProcessGroup({ command: sandboxWrapper.command, args: sandboxWrapper.args })
-        ownsUnixProcessGroup = !detachedDaemonAllowed
-        child = spawn(invocation.command, invocation.args, {
-          cwd,
-          env: sandboxEnv,
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: true,
-        })
-      } else {
-        if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
-          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-        }
-        if (sandboxWrapper?.skipReason) {
-          log.warn("sandbox unavailable, running unsandboxed", {
-            reason: sandboxWrapper.skipReason,
-            fallback: sandboxFallback,
-          })
-        }
-        const invocation = detachedDaemonAllowed
-          ? { command: shell, args: ["-c", executionCommand] }
-          : Shell.prepareOwnedProcessGroup({ command: shell, args: ["-c", executionCommand] })
-        ownsUnixProcessGroup = !detachedDaemonAllowed
-        child = spawn(invocation.command, invocation.args, {
-          cwd,
-          env: sandboxEnv,
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: true,
-        })
+          : { command: shell, args }
+      const lease = await WorkspaceAccess.process(sandboxWriteRoots(sandboxWrapper), ctx.abort)
+      try {
+        owned = await OwnedProcess.prepare({ ...invocation, cwd, env: sandboxEnv, lease, signal: ctx.abort })
+      } catch (error) {
+        await lease.release()
+        throw error
       }
+      child = owned.child
     } catch (e: unknown) {
       await evidence?.finish({ interrupted: true, exitCode: null, signal: null })
       ProcessRegistry.remove(regProc.id)
@@ -654,7 +619,6 @@ export const LocalBashBackend = {
       child.stdout?.off("data", appendStdout)
       child.stderr?.off("data", appendStderr)
       ProcessRegistry.setTerminator(regProc, undefined)
-      if (ownsUnixProcessGroup) Shell.releaseOwnedProcessGroup(child)
       regProc.child = undefined
       regProc.stdin = undefined
     }

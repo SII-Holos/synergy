@@ -34,7 +34,7 @@ struct Pty {
     output: Receiver<Vec<u8>>,
     input: SyncSender<Vec<u8>>,
     pending: VecDeque<u8>,
-    master: Box<dyn MasterPty + Send>,
+    master: Arc<Mutex<Option<Box<dyn MasterPty + Send>>>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     exit: Arc<AtomicI64>,
     pid: i32,
@@ -84,12 +84,23 @@ fn create(input: Input) -> Result<Pty, Box<dyn std::error::Error + Send + Sync>>
     let (input_tx, input_rx) = sync_channel::<Vec<u8>>(QUEUE);
     let exit = Arc::new(AtomicI64::new(-1));
     let status = exit.clone();
+    let master = Arc::new(Mutex::new(Some(pair.master)));
+    #[cfg(windows)]
+    let closing_master = master.clone();
     thread::spawn(move || {
         let code = child
             .wait()
             .map(|status| i64::from(status.exit_code()))
             .unwrap_or(1);
         status.store(code, Ordering::Release);
+        // ClosePseudoConsole needs a concurrent reader to drain its final output.
+        // https://learn.microsoft.com/en-us/windows/console/closepseudoconsole
+        #[cfg(windows)]
+        if let Ok(mut master) = closing_master.lock() {
+            let closed = master.take();
+            drop(master);
+            drop(closed);
+        }
     });
     thread::spawn(move || {
         let mut buffer = [0_u8; CHUNK];
@@ -121,7 +132,7 @@ fn create(input: Input) -> Result<Pty, Box<dyn std::error::Error + Send + Sync>>
         output,
         input: input_tx,
         pending: VecDeque::new(),
-        master: pair.master,
+        master,
         killer,
         exit,
         pid,
@@ -216,7 +227,14 @@ pub extern "C" fn synergy_pty_resize(handle: i32, cols: u16, rows: u16) -> i32 {
         return ERROR;
     }
     with(handle, |pty| {
-        pty.master
+        let master = match pty.master.lock() {
+            Ok(master) => master,
+            Err(error) => return failure(error),
+        };
+        let Some(master) = master.as_ref() else {
+            return ERROR;
+        };
+        master
             .resize(PtySize {
                 cols,
                 rows,

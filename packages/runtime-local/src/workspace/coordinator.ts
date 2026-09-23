@@ -160,10 +160,17 @@ export class WorkspaceCoordinator {
         })
         const ledger = raw === undefined ? { version: 1 as const, claims: [] } : Ledger.parse(JSON.parse(raw))
         const alive = await Promise.all(ledger.claims.map((claim) => this.alive(claim)))
+        const retired = ledger.claims.filter((_claim, index) => !alive[index])
         ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
         const result = await fn(ledger)
         const serialized = JSON.stringify(ledger)
         if (raw !== serialized) await AtomicFile.writeJsonAtomic(filename, serialized, { durable: true, private: true })
+        for (const claim of retired) {
+          if (!claim.processTree) continue
+          try {
+            OwnedTree.retire(claim.processTree)
+          } catch {}
+        }
         return result
       },
     )

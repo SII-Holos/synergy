@@ -7,7 +7,7 @@ import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
 
-const nativeTest = test.skipIf(process.platform !== "darwin")
+const nativeTest = test.skipIf(!["darwin", "linux"].includes(process.platform))
 
 nativeTest(
   "activation records ownership before any command runs and preserves bytes, cwd, env and exit",
@@ -179,7 +179,7 @@ nativeTest(
   20000,
 )
 
-nativeTest(
+test.skipIf(process.platform !== "darwin")(
   "supervisor death cannot release an escaped descendant's claim",
   async () => {
     await using tmp = await tmpdir()

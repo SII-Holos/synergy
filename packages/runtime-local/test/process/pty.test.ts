@@ -94,7 +94,7 @@ test.skipIf(process.platform === "win32")(
   30_000,
 )
 
-test.skipIf(process.platform !== "darwin")(
+test.skipIf(!["darwin", "linux"].includes(process.platform))(
   "a disconnected PTY retains its binding and detached descendants until removal completes",
   () =>
     runtime.run(async () => {
@@ -192,7 +192,7 @@ test.skipIf(process.platform === "win32")(
   30_000,
 )
 
-test.skipIf(process.platform !== "darwin")(
+test.skipIf(!["darwin", "linux"].includes(process.platform))(
   "Workspace disposal cancels a terminal launch waiting for native write ownership",
   () =>
     runtime.run(async () => {
