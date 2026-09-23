@@ -11,7 +11,9 @@ from synergy_bench.storage import atomic_json, read_json
 
 
 def configuration(**changes):
-    return {"version": 1, "suite": "fixture.json", "variants": {"a": {"model": "fixture/model"}}, **changes}
+    from test_config import config
+
+    return {**config(), **changes}
 
 
 @pytest.mark.parametrize("value", [1, 48, 128, "auto"])
@@ -110,7 +112,7 @@ def test_memory_budget_accounts_for_other_applications(tmp_path, monkeypatch):
     monkeypatch.setattr(resources, "command", lambda *args, **kwargs: json.dumps({"NCPU": 28, "MemTotal": 64 * gib}))
     monkeypatch.setattr(resources.psutil, "virtual_memory", lambda: memory)
     monkeypatch.setattr(resources, "host_limits", lambda cpus, total, available: (cpus, total, available))
-    host = resources.inspect_host(tmp_path, Resources(reserve_memory_fraction=0, reserve_memory_gib=4))
+    host = resources.inspect_host(tmp_path, Resources(reserve_memory_gib=4))
     assert host["capacity"]["memory_bytes"] == 26 * gib
 
 
@@ -146,7 +148,7 @@ async def test_unreadable_request_record_retains_unknown_cost_and_continues(tmp_
     from synergy_bench.report import report_data
 
     schedule = [{"pair": "p", "variant": side} for side in ["a", "b"]]
-    plan = {"concurrency": 1, "result_version": 4, "schedule": schedule}
+    plan = {"version": 4, "concurrency": 1, "result_version": 5, "schedule": schedule}
     atomic_json(tmp_path / "plan.json", plan)
     called = []
 
@@ -281,8 +283,8 @@ async def test_resume_records_broken_terminal_and_dispatches_only_unstarted_cell
     from synergy_bench.storage import digest
 
     plan = {
-        "version": 3,
-        "result_version": 4,
+        "version": 4,
+        "result_version": 5,
         "evaluator": evaluator_identity(),
         "variants": {},
         "tasks": {},
@@ -385,11 +387,11 @@ def test_report_lists_all_pairs_and_retains_missing_and_cleanup_warnings(tmp_pat
         for pair in range(24)
         for side in ["a", "b"]
     ]
-    atomic_json(tmp_path / "plan.json", {"version": 3, "result_version": 4, "schedule": schedule})
+    atomic_json(tmp_path / "plan.json", {"version": 4, "result_version": 5, "schedule": schedule})
     atomic_json(
         tmp_path / "trials/0000/attempt-001/evidence.json",
         {
-            "version": 4,
+            "version": 5,
             "attempt_status": "completed",
             "execution": {"outcome": "completed"},
             "verifier": {"rewards": {"reward": 0}},

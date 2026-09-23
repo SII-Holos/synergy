@@ -39,6 +39,7 @@ SESSION_RUNTIME = {
     "session-capture.mjs",
     "session-relay.mjs",
     "session-prepare.mjs",
+    "session-entry.mjs",
 }
 
 

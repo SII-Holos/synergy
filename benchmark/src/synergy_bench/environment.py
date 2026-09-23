@@ -15,6 +15,8 @@ from .cache import async_cache_lock, reference_run
 from .catalog import tree_digest
 from .prepare import command
 from .process import run_preparation_process, run_process
+from .resources import Request
+from .scheduling import current_resources, queued
 from .storage import atomic_json, digest, read_json
 
 # Pier 0.3.1 Docker lifecycle extension. See third_party/pier/NOTICE.
@@ -39,6 +41,8 @@ class CachedDockerEnvironment(DockerEnvironment):
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
+        # The cache-key lock below owns shared builds; Pier's task-name lock conflates independent variants.
+        self._image_build_locks = {}
         self._benchmark_cache = Path(benchmark_cache)
         self._benchmark_run = Path(benchmark_run) if benchmark_run else None
         self._inference_port = inference_port
@@ -188,7 +192,22 @@ class CachedDockerEnvironment(DockerEnvironment):
                 }
             atomic_json(self._mounts_compose_path, value)
         if command_args[0] != "build":
-            return await self._compose_command(command_args, check=check, timeout_sec=timeout_sec)
+            scheduler = current_resources.get()
+            if scheduler and command_args[0] == "up":
+                native = self.task_env_config
+                await scheduler.acquire(
+                    self.session_id, Request(float(native.cpus or 1), int(native.memory_mb or 1024) * 1024**2)
+                )
+            result = await self._compose_command(command_args, check=check, timeout_sec=timeout_sec)
+            if scheduler and command_args[0] in {"down", "stop"} and result.return_code == 0:
+                remaining = await asyncio.to_thread(
+                    command,
+                    ["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={self.session_id}"],
+                    timeout=15,
+                )
+                if not remaining:
+                    await scheduler.release(self.session_id)
+            return result
         if "--no-cache" in command_args:
             raise ValueError("Frozen benchmark images cannot force-build in an existing experiment")
         entries = [("main", self._env_vars.main_image_name, self._benchmark_identity)]
@@ -198,7 +217,11 @@ class CachedDockerEnvironment(DockerEnvironment):
             )
         for service, tag, identity in entries:
             key = digest(identity)
-            async with async_cache_lock(self._benchmark_cache / "locks" / key, wait_seconds=timeout_sec or 1800):
+            async with queued(
+                async_cache_lock(self._benchmark_cache / "locks" / key, wait_seconds=None),
+                self.session_id,
+                "image_cache_lock",
+            ):
                 file = self._benchmark_cache / "images" / (key + ".json")
                 pending = self._benchmark_cache / "images" / (key + ".pending.json")
                 observed = await self._image_id(tag)
@@ -230,8 +253,21 @@ class CachedDockerEnvironment(DockerEnvironment):
                     run = getattr(self, "_benchmark_run", None)
                     plan = read_json(run / "plan.json") if run and (run / "plan.json").exists() else {}
                     limit = plan.get("config", {}).get("resources", {}).get("build_concurrency", 2)
-                    async with build_slot(self._benchmark_cache, wait_seconds=timeout_sec or 1800, limit=limit):
-                        await self._compose_command(["build", service], check=check, timeout_sec=timeout_sec)
+                    async with queued(
+                        build_slot(self._benchmark_cache, wait_seconds=None, limit=limit), self.session_id, "build_slot"
+                    ):
+                        scheduler = current_resources.get()
+                        if scheduler:
+                            async with queued(
+                                scheduler.pool.reserve(
+                                    Request(2, 4 * 1024**3), priority=int("__verifier__" in self.session_id)
+                                ),
+                                self.session_id,
+                                "build_resources",
+                            ):
+                                await self._compose_command(["build", service], check=check, timeout_sec=timeout_sec)
+                        else:
+                            await self._compose_command(["build", service], check=check, timeout_sec=timeout_sec)
                 image_id = await self._image_id(tag)
                 if not image_id:
                     raise ValueError("Prepared image was not published")

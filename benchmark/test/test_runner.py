@@ -64,7 +64,7 @@ async def test_exception_keeps_paid_wire_evidence_and_original_terminal(tmp_path
         )
         atomic_json(
             attempt / "evidence.json",
-            {"version": 3, "execution": {"outcome": "failed"}, "accounting": None, "evidence": {"valid": False}},
+            {"version": 5, "execution": {"outcome": "failed"}, "accounting": None, "evidence": {"valid": False}},
         )
         raise RuntimeError("export interrupted")
 
@@ -103,7 +103,7 @@ async def test_terminal_evidence_repairs_interrupted_state_without_paid_executio
     atomic_json(tmp_path / "state.json", {"trials": {"0000": {"status": "interrupted", "attempt": 1}}})
     atomic_json(
         tmp_path / "trials/0000/attempt-001/evidence.json",
-        {"version": 3, "attempt_status": "completed", "execution": {"outcome": "failed"}},
+        {"version": 5, "attempt_status": "completed", "execution": {"outcome": "failed"}},
     )
 
     async def execute(item: dict, attempt: Path) -> dict:
@@ -122,7 +122,7 @@ def test_changed_terminal_bytes_are_not_rescheduled(tmp_path: Path) -> None:
     file.parent.mkdir(parents=True)
     file.write_bytes(b"original")
     evidence = {
-        "version": 4,
+        "version": 5,
         "trial_directory": "owned",
         "files": {"agent/events.jsonl": {"bytes": 8, "sha256": hashlib.sha256(b"original").hexdigest()}},
     }
@@ -154,8 +154,8 @@ async def test_resume_recovers_retained_terminal_before_scheduling_any_model(
 
     root = tmp_path / "run-12345678"
     plan = {
-        "version": 3,
-        "result_version": 4,
+        "version": 4,
+        "result_version": 5,
         "evaluator": evaluator_identity(),
         "variants": {},
         "tasks": {},

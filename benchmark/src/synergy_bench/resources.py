@@ -43,6 +43,51 @@ class Capacity:
 class Waiting:
     request: Request
     bypasses: int = 0
+    priority: int = 0
+
+
+class ResourceLease:
+    def __init__(self, pool: ResourcePool, key: str, request: Request, adaptive: bool) -> None:
+        self.pool = pool
+        self.key = key
+        self.initial = request
+        self.request = request
+        self.adaptive = adaptive
+        self.sampled_at: float | None = None
+        self.peak_memory = 0
+        self.last_memory = 0
+        self.stage = "agent"
+
+    @property
+    def healthy(self) -> bool:
+        return not self.adaptive or (self.sampled_at is not None and time.time() - self.sampled_at < 10)
+
+    async def sample(self, memory: int | None, cpus: float | None) -> None:
+        async with self.pool._condition:
+            valid = memory is not None and cpus is not None and memory >= 0 and math.isfinite(cpus) and cpus >= 0
+            self.sampled_at = time.time() if valid else None
+            if valid:
+                assert memory is not None and cpus is not None
+                self.last_memory = memory
+                self.peak_memory = max(self.peak_memory, memory)
+                updated = Request(
+                    max(self.initial.cpus, cpus * 1.25),
+                    max(self.initial.memory_bytes, math.ceil(self.peak_memory * 1.25)),
+                )
+                self.pool._cpus += updated.cpus - self.request.cpus
+                self.pool._memory += updated.memory_bytes - self.request.memory_bytes
+                self.request = updated
+            if self.pool.shared:
+                self.pool.shared.update(self)
+            self.pool._condition.notify_all()
+
+    async def phase(self, stage: str) -> None:
+        self.stage = stage
+        self.peak_memory = self.last_memory
+        # The same container retains its resident pages during a phase transition.
+        # Keep that reservation until fresh measurements establish its working set.
+        if self.pool.shared:
+            self.pool.shared.update(self)
 
 
 class SharedResources:
@@ -51,6 +96,7 @@ class SharedResources:
         self.scope = scope
         self.held: dict[str, int] = {}
         self.active = 0
+        self.healthy = True
 
     def _rows(self) -> list[dict[str, Any]]:
         rows = []
@@ -75,7 +121,27 @@ class SharedResources:
             finally:
                 os.close(fd)
         self.active = len(rows)
+        self.healthy = all(
+            not row.get("adaptive") or (row.get("sampled_at") is not None and time.time() - row["sampled_at"] < 10)
+            for row in rows
+        )
         return rows
+
+    def update(self, lease: ResourceLease) -> None:
+        with cache_lock(self.directory / "budget", timeout=5):
+            fd = self.held[lease.key]
+            value = {
+                **asdict(lease.request),
+                "scope": self.scope,
+                "pid": os.getpid(),
+                "adaptive": lease.adaptive,
+                "sampled_at": lease.sampled_at,
+                "phase": lease.stage,
+            }
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, json.dumps(value).encode())
+            os.fsync(fd)
 
     def available(self, capacity: Capacity) -> Capacity:
         with cache_lock(self.directory / "budget", timeout=5):
@@ -136,7 +202,7 @@ def inspect_host(root: Path, settings: Resources) -> dict[str, Any]:
     memory = int(docker["MemTotal"])
     host_memory = psutil.virtual_memory()
     cpus, memory, available = host_limits(cpus, memory, host_memory.available)
-    reserved = max(int(settings.reserve_memory_gib * 1024**3), int(memory * settings.reserve_memory_fraction))
+    reserved = int(settings.reserve_memory_gib * 1024**3)
     capacity = usable_capacity(cpus, available, settings.reserve_cpus, reserved)
     directory = root.resolve()
     while not directory.exists():
@@ -151,6 +217,7 @@ def inspect_host(root: Path, settings: Resources) -> dict[str, Any]:
         },
         "limits": {"cpus": cpus, "memory_bytes": memory, "available_memory_bytes": available},
         "capacity": asdict(capacity),
+        "ceiling": asdict(usable_capacity(cpus, memory, settings.reserve_cpus, reserved)),
         "disk": {"free_bytes": disk.free, "total_bytes": disk.total},
         "host_load": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
         "host_memory": host_memory._asdict(),
@@ -186,6 +253,8 @@ class ResourcePool:
         self._memory = 0
         self._condition = asyncio.Condition()
         self._queue: list[Waiting] = []
+        self._leases: dict[str, ResourceLease] = {}
+        self.wait_reason = "queue_priority"
 
     def validate(self, request: Request) -> None:
         if request.cpus > self.capacity.cpus or request.memory_bytes > self.capacity.memory_bytes:
@@ -193,7 +262,9 @@ class ResourcePool:
 
     def fits(self, request: Request) -> bool:
         return (
-            self.active < self.concurrency
+            all(lease.healthy for lease in self._leases.values())
+            and (self.shared is None or self.shared.healthy)
+            and self.active < self.concurrency
             and self._cpus + request.cpus <= self.capacity.cpus
             and self._memory + request.memory_bytes <= self.capacity.memory_bytes
             and request.cpus <= self._available.cpus
@@ -201,32 +272,60 @@ class ResourcePool:
         )
 
     def eligible(self, token: Waiting) -> bool:
-        head = self._queue[0]
+        ordered = sorted(self._queue, key=lambda row: -row.priority)
+        head = ordered[0]
         if self.fits(head.request):
             return token is head
         if head.bypasses >= 2 * self.concurrency:
             return False
-        return next((row for row in self._queue if self.fits(row.request)), None) is token
+        return next((row for row in ordered if self.fits(row.request)), None) is token
 
     def admit(self, token: Waiting, shared_key: str) -> bool:
         if self.shared:
             self._available = self.shared.available(self.capacity)
-        return (
-            self.eligible(token)
-            and self.admission(token.request)
-            and (self.shared is None or self.shared.acquire(shared_key, token.request, self.capacity))
-        )
+        if not self.eligible(token):
+            self.wait_reason = (
+                "resource_sample_unavailable"
+                if not all(lease.healthy for lease in self._leases.values())
+                or (self.shared and not self.shared.healthy)
+                else "memory_budget"
+                if self._memory + token.request.memory_bytes > self.capacity.memory_bytes
+                or token.request.memory_bytes > self._available.memory_bytes
+                else "cpu_budget"
+                if self._cpus + token.request.cpus > self.capacity.cpus or token.request.cpus > self._available.cpus
+                else "queue_priority_or_concurrency"
+            )
+            return False
+        if not self.admission(token.request):
+            self.wait_reason = getattr(self.admission, "reason", "host_pressure")
+            return False
+        if self.shared and not self.shared.acquire(shared_key, token.request, self.capacity):
+            self.wait_reason = "shared_resource_budget"
+            return False
+        return True
 
     @asynccontextmanager
-    async def reserve(self, request: Request) -> AsyncIterator[None]:
+    async def reserve(
+        self,
+        request: Request,
+        *,
+        adaptive: bool = False,
+        priority: int = 0,
+        on_wait: Callable[[str], None] | None = None,
+    ) -> AsyncIterator[ResourceLease]:
         self.validate(request)
-        token = Waiting(request)
+        token = Waiting(request, priority=priority)
         shared_key = uuid.uuid4().hex
+        lease = ResourceLease(self, shared_key, request, adaptive)
         async with self._condition:
             self._queue.append(token)
             idle_pressure_since = time.monotonic()
+            last_reason = None
             try:
                 while not self.admit(token, shared_key):
+                    if on_wait and last_reason != self.wait_reason:
+                        on_wait(self.wait_reason)
+                        last_reason = self.wait_reason
                     if self.active or (self.shared and self.shared.active):
                         idle_pressure_since = time.monotonic()
                     elif time.monotonic() - idle_pressure_since >= self.pressure_timeout_seconds:
@@ -238,16 +337,28 @@ class ResourcePool:
                             await self._condition.wait()
                     except TimeoutError:
                         pass
-                if self._queue[0] is not token:
-                    self._queue[0].bypasses += 1
+                head = max(self._queue, key=lambda row: row.priority)
+                if head is not token:
+                    head.bypasses += 1
                 self.active += 1
                 self._cpus += request.cpus
                 self._memory += request.memory_bytes
+                self._leases[shared_key] = lease
+                if self.shared:
+                    try:
+                        self.shared.update(lease)
+                    except BaseException:
+                        self.active -= 1
+                        self._cpus -= request.cpus
+                        self._memory -= request.memory_bytes
+                        self._leases.pop(shared_key)
+                        self.shared.release(shared_key)
+                        raise
             finally:
                 self._queue.remove(token)
                 self._condition.notify_all()
         try:
-            yield
+            yield lease
         finally:
             try:
                 if self.shared:
@@ -255,8 +366,9 @@ class ResourcePool:
             finally:
                 async with self._condition:
                     self.active -= 1
-                    self._cpus -= request.cpus
-                    self._memory -= request.memory_bytes
+                    self._cpus -= lease.request.cpus
+                    self._memory -= lease.request.memory_bytes
+                    self._leases.pop(shared_key)
                     self._condition.notify_all()
 
 
@@ -285,32 +397,55 @@ def parse_bytes(value: str) -> int | None:
     return int(float(match[1]) * units[match[2]])
 
 
-def pressure_ready(root: Path, *, min_free_bytes: int, reserve_memory_bytes: int, request_bytes: int = 0) -> bool:
-    memory = psutil.virtual_memory()
-    return (
-        shutil.disk_usage(root).free >= min_free_bytes
-        and host_limits(float(psutil.cpu_count() or 1), memory.total, memory.available)[2]
-        >= reserve_memory_bytes + request_bytes
-        and psutil.cpu_percent() < 95
-    )
+class HostPressure:
+    def __init__(self, root: Path, settings: Resources, docker_memory: int) -> None:
+        self.root = root
+        self.settings = settings
+        self.docker_memory = docker_memory
+        self.previous: tuple[float, float, float] | None = None
+        self.saturated_since: float | None = None
+        self.cpu_ready = False
+        self.reason = "host_sample_unavailable"
+
+    def __call__(self, request: Request) -> bool:
+        try:
+            now = time.monotonic()
+            if self.previous is None or now - self.previous[0] >= 1:
+                times = psutil.cpu_times()._asdict()
+                total = sum(value for key, value in times.items() if key not in {"guest", "guest_nice"})
+                idle = times["idle"] + times.get("iowait", 0)
+                previous, self.previous = self.previous, (now, total, idle)
+                self.cpu_ready = previous is not None and total > previous[1]
+                if self.cpu_ready:
+                    assert previous is not None
+                    busy = 1 - (idle - previous[2]) / (total - previous[1])
+                    self.saturated_since = (
+                        (self.saturated_since if self.saturated_since is not None else now) if busy >= 0.95 else None
+                    )
+            memory = psutil.virtual_memory()
+            available = host_limits(float(psutil.cpu_count() or 1), memory.total, memory.available)[2]
+            available = min(available, max(0, self.docker_memory - (memory.total - memory.available)))
+            if not self.cpu_ready:
+                self.reason = "host_sample_unavailable"
+            elif available < self.settings.reserve_memory_gib * 1024**3 + request.memory_bytes:
+                self.reason = "host_memory_pressure"
+            elif shutil.disk_usage(self.root).free < self.settings.min_free_disk_gib * 1024**3:
+                self.reason = "disk_pressure"
+            elif self.saturated_since is not None and now - self.saturated_since >= 3:
+                self.reason = "cpu_saturated"
+            else:
+                self.reason = "ready"
+                return True
+        except (OSError, ValueError, KeyError, TypeError, psutil.Error):
+            self.reason = "host_sample_unavailable"
+        return False
 
 
 def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[Request], bool]:
     settings = plan.get("config", {}).get("resources")
     if not settings:
         return lambda request: True
-    return lambda request: pressure_ready(
-        root,
-        min_free_bytes=int(settings["min_free_disk_gib"] * 1024**3),
-        request_bytes=request.memory_bytes,
-        reserve_memory_bytes=max(
-            int(settings["reserve_memory_gib"] * 1024**3),
-            int(
-                plan.get("host", {}).get("limits", {}).get("memory_bytes", psutil.virtual_memory().total)
-                * settings["reserve_memory_fraction"]
-            ),
-        ),
-    )
+    return HostPressure(root, Resources.model_validate(settings), int(plan["host"]["limits"]["memory_bytes"]))
 
 
 def shared_pool_options(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
@@ -349,7 +484,7 @@ class BuildSlots:
 
 
 @asynccontextmanager
-async def build_slot(cache: Path, *, wait_seconds: float, limit: int = 2) -> AsyncIterator[None]:
+async def build_slot(cache: Path, *, wait_seconds: float | None, limit: int = 2) -> AsyncIterator[None]:
     slots = BuildSlots(cache / "build-slots", limit=limit)
     try:
         async with asyncio.timeout(wait_seconds):
@@ -375,14 +510,14 @@ def build_reservation(cache: Path, *, timeout: float, settings: Resources | None
     started = time.monotonic()
     acquired = False
     try:
-        while not (acquired := shared.acquire(key, request, capacity)):
-            if time.monotonic() - started >= timeout:
-                raise TimeoutError("Build resource admission timed out")
-            time.sleep(0.2)
         while not slots.acquire():
             if time.monotonic() - started >= timeout:
                 raise TimeoutError("Build slot admission timed out")
             time.sleep(0.1)
+        while not (acquired := shared.acquire(key, request, capacity)):
+            if time.monotonic() - started >= timeout:
+                raise TimeoutError("Build resource admission timed out")
+            time.sleep(0.2)
         yield
     finally:
         try:
@@ -394,3 +529,7 @@ def build_reservation(cache: Path, *, timeout: float, settings: Resources | None
 
 def with_runtime_overhead(native: Request) -> Request:
     return Request(native.cpus + 0.2, native.memory_bytes + 128 * 1024**2)
+
+
+def working_set_request(native: Request) -> Request:
+    return with_runtime_overhead(Request(min(native.cpus, 0.25), min(native.memory_bytes, 1024**3)))

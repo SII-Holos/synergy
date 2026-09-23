@@ -129,7 +129,7 @@ def prepare_oracle(suite_path: Path, output: Path, cache: Path, *, concurrency: 
                 }
             )
     plan: dict[str, Any] = {
-        "version": 3,
+        "version": 4,
         "kind": "native_oracle_audit",
         "task_timeout_seconds": TASK_TIMEOUT_SECONDS,
         "tasks": tasks,

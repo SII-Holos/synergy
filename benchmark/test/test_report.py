@@ -4,10 +4,32 @@ from synergy_bench.report import paired_compare, report_data, write_report
 from synergy_bench.storage import atomic_json
 
 
+def test_sealed_prior_costs_are_referenced_without_opening_old_runs(tmp_path):
+    from synergy_bench.storage import read_json
+
+    fixture(tmp_path, [(1, 30)])
+    plan = read_json(tmp_path / "plan.json")
+    plan["config"]["prior_costs"] = [
+        {
+            "label": "sealed study",
+            "sha256": "a" * 64,
+            "observed_requests": 4,
+            "known_tokens": 120,
+            "unknown_usage_requests": 1,
+        }
+    ]
+    atomic_json(tmp_path / "plan.json", plan)
+    report = report_data(tmp_path)
+    assert report["family_known_tokens"] == 150
+    assert report["family_observed_requests"] == 5
+    assert report["scored"][0]["known_tokens"] == 30
+    assert report["prior_costs"][0]["unknown_usage_requests"] == 1
+
+
 def fixture(root, rows):
     plan = {
-        "version": 3,
-        "result_version": 3,
+        "version": 4,
+        "result_version": 5,
         "task_timeout_seconds": 10800,
         "config": {"seed": 13, "platform": "linux/amd64"},
         "schedule": [{"harness": "a", "model": "m", "variant": "a__m", "task": "task", "repeat": 0}],
@@ -19,7 +41,7 @@ def fixture(root, rows):
         atomic_json(
             root / f"trials/0000/attempt-{number:03d}/evidence.json",
             {
-                "version": 3,
+                "version": 5,
                 "attempt_status": "completed",
                 "execution": {"outcome": "completed"},
                 "verifier": {"rewards": {"reward": reward}},
@@ -104,20 +126,15 @@ def test_clustered_pairs_expose_missing_and_refuse_inexact_token_delta():
     assert paired_compare(left, right, seed=19, samples=100)["pairs"] == 2
 
 
-def test_report_includes_preflight_cost_and_planned_missing_denominator(tmp_path):
+def test_report_keeps_planned_missing_denominator(tmp_path):
     from synergy_bench.storage import read_json
 
     fixture(tmp_path, [(1, 30)])
     plan = read_json(tmp_path / "plan.json")
     plan["schedule"].append({**plan["schedule"][0], "task": "missing"})
     atomic_json(tmp_path / "plan.json", plan)
-    atomic_json(tmp_path / "probes/0000/attempt-001/trial.json", {**plan["schedule"][0], "scoring_eligible": False})
-    atomic_json(
-        tmp_path / "probes/0000/attempt-001/evidence.json",
-        read_json(tmp_path / "trials/0000/attempt-001/evidence.json"),
-    )
     result = report_data(tmp_path)
-    assert result["usage"]["known_tokens"] == 60
+    assert result["usage"]["known_tokens"] == 30
     assert len(result["scored"]) == 1
     assert result["groups"][0]["planned"] == 2
     assert result["groups"][0]["success_rate"] is None
@@ -151,7 +168,7 @@ def test_startup_failure_does_not_replace_the_first_dispatched_attempt(tmp_path)
     value["execution"] = {"outcome": "timed_out", "lifecycle": {"model_started_at": None, "timeout_stage": "startup"}}
     atomic_json(file, value)
     report = report_data(tmp_path)
-    assert report["scored"][0]["attempt"] == "attempt-002"
+    assert report["scored"][0]["attempt"] == "attempt-001"
     assert report["all_attempts"][0]["model_started"] is False
 
 
@@ -243,7 +260,6 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
         "missing_deadline",
         "idle",
         "policy",
-        "admission",
         "seed",
         "missing",
         "legacy",
@@ -287,8 +303,6 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["config"].pop("request_idle_timeout_seconds")
             elif change == "policy":
                 plan["config"]["resources"]["reserve_cpus"] = 1
-            elif change == "admission":
-                plan["config"]["admission_policy"] = "strict-synergy-v1"
             elif change == "seed":
                 plan["config"]["seed"] += 1
             elif change == "missing":

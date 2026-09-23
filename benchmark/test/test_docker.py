@@ -1,8 +1,11 @@
 import asyncio
+import importlib.util
 import json
 import os
 import shutil
+import threading
 import zipfile
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -22,6 +25,16 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     tmp_path = tmp_path_factory.mktemp("docker-benchmark")
+    spec = importlib.util.spec_from_file_location(
+        "benchmark_fixture_provider", BENCHMARK / "test/fixtures/task/environment/provider.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.Handler.artifacts = tmp_path / "provider-artifacts"
+    module.Handler.artifacts.mkdir()
+    provider = ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
     dataset = tmp_path / "dataset"
     shutil.copytree(BENCHMARK / "test/fixtures/task", dataset / "tasks/fixture")
     separate = dataset / "tasks/separate"
@@ -106,10 +119,9 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
         "source": {"artifact": os.environ["SYNERGY_BENCH_TEST_ARTIFACT"]}
         if os.environ.get("SYNERGY_BENCH_TEST_ARTIFACT")
         else {"path": str(BENCHMARK.parent)},
+        "kind": "synergy",
         "runtime": "core",
-        "model": "fixture/fixture",
         "config": "provider.json",
-        "env": {"BENCH_FIXTURE_KEY": "BENCH_FIXTURE_KEY"},
     }
     library_config = read_json(tmp_path / "provider.json")
     library_config["embedding"] = {
@@ -119,12 +131,24 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     }
     atomic_json(tmp_path / "library.json", library_config)
     config = {
-        "version": 1,
+        "version": 2,
         "suite": "suite.json",
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
-        "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
+        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
+        if os.environ.get("CI") == "true"
+        else {"cache_budget_gib": 384},
+        "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/integration"),
-        "variants": {
+        "models": {
+            "m": {
+                "model": "fixture",
+                "protocol": "chat-completions",
+                "base_url": f"http://127.0.0.1:{provider.server_port}/v1",
+                "api_key_env": "BENCH_FIXTURE_KEY",
+                "context_window": 128000,
+                "max_output_tokens": 4096,
+            }
+        },
+        "harnesses": {
             "A": variant,
             "B": variant,
             "library": {**variant, "runtime": "core-library", "config": "library.json"},
@@ -137,11 +161,16 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
         monkeypatch.setenv("BENCH_FIXTURE_KEY", "deterministic-local-fixture")
         root = initialize(path)
         print(f"Integration evidence: {root}", flush=True)
-        yield root, path
+        try:
+            yield root, path, module.Handler.artifacts
+        finally:
+            provider.shutdown()
+            provider.server_close()
+            thread.join(timeout=5)
 
 
 def test_real_synergy_paired_rollout(prepared_fixture) -> None:
-    root, _ = prepared_fixture
+    root, _, _ = prepared_fixture
     asyncio.run(resume(root))
     evidence = [read_json(file) for file in root.glob("trials/*/attempt-*/evidence.json")]
     assert len(evidence) == 8
@@ -182,13 +211,15 @@ def primary_attempts(root: Path):
 def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: str, monkeypatch) -> None:
     from synergy_bench.prepare import command
 
-    original, path = prepared_fixture
+    original, path, provider_artifacts = prepared_fixture
+    for marker in provider_artifacts.iterdir():
+        marker.unlink()
     config = yaml.safe_load(path.read_text())
-    artifact = read_json(original / "plan.json")["variants"]["A"]["artifact"]
-    variant = config["variants"]["A"]
+    artifact = read_json(original / "plan.json")["variants"]["A__m"]["artifact"]
+    variant = config["harnesses"]["A"]
     variant["source"] = {"artifact": artifact}
-    variant["model"] = "fixture/" + ("hang" if mode in {"timeout", "cancel", "docker-stop"} else mode)
-    config["variants"] = {mode: variant}
+    config["models"]["m"]["model"] = "hang" if mode in {"timeout", "cancel", "docker-stop"} else mode
+    config["harnesses"] = {mode: variant}
     config["selection"] = {"tasks": ["fixture/marker"]}
     if mode in {"timeout", "disconnect"}:
         monkeypatch.setattr("synergy_bench.runner.TASK_TIMEOUT_SECONDS", 15 if mode == "timeout" else 90)
@@ -204,7 +235,7 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
             return
         try:
             async with asyncio.timeout(180):
-                while not list(root.glob("trials/*/attempt-*/*/artifacts/provider-started")):
+                while not (provider_artifacts / "provider-started").exists():
                     if execution.done():
                         await execution
                         pytest.fail("Primary provider response was never recorded")
@@ -214,8 +245,14 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
                 containers = await asyncio.to_thread(
                     command, ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
                 )
-                assert len(containers.splitlines()) == 1
-                container = containers.strip()
+                container = next(
+                    name
+                    for name in containers.splitlines()
+                    if command(
+                        ["docker", "inspect", "--format", '{{index .Config.Labels "com.docker.compose.service"}}', name]
+                    )
+                    == "main"
+                )
                 probe = (BENCHMARK / "test/fixtures/rollout_progress.py").read_text()
                 while (
                     await asyncio.to_thread(
@@ -227,7 +264,7 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
                         pytest.fail("Primary provider response was never recorded")
                     await asyncio.sleep(0.05)
             if mode == "disconnect":
-                marker = next(root.glob("trials/*/attempt-*/*/artifacts/provider-started"))
+                marker = provider_artifacts / "provider-started"
                 marker.with_name("disconnect-release").touch()
                 await execution
                 return

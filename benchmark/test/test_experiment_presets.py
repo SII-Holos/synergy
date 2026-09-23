@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_config import config as matrix_config
 
 from synergy_bench.config import load_config, resolve_plan
 from synergy_bench.gateway import Gateway
@@ -39,7 +40,7 @@ def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
         root / "inputs/native/config.json",
         {"provider": {"benchmark": {"options": {"baseURL": "http://fixture.invalid/v1"}}}},
     )
-    config = ExperimentConfig(version=1, suite="fixture.json", variants={"native": variant})
+    config = ExperimentConfig.model_validate(matrix_config())
     task = {"local_path": str(tmp_path / "task"), "agent_seconds": 90}
     plan = {
         "config": config.model_dump(),
@@ -169,7 +170,7 @@ def test_synergy_jit_condition_reaches_launcher_without_becoming_a_credential_re
     root = tmp_path / "run-12345678"
     atomic_json(root / "inputs/synergy/config.json", {})
     plan = {
-        "config": ExperimentConfig(version=1, suite="fixture.json", variants={"synergy": variant}).model_dump(),
+        "config": ExperimentConfig.model_validate(matrix_config()).model_dump(),
         "cache": str(tmp_path / "cache"),
         "variants": {"synergy": {**variant.model_dump(), "artifact": str(tmp_path), "artifact_id": "fixture"}},
         "tasks": {"task": {"local_path": str(tmp_path / "task"), "agent_seconds": 90}},
@@ -191,7 +192,7 @@ def test_session_release_uses_its_native_cli_and_inherited_capture(tmp_path):
         {"provider": {"benchmark": {"options": {"baseURL": "http://fixture.invalid/v1"}}}},
     )
     plan = {
-        "config": ExperimentConfig(version=1, suite="fixture.json", variants={"release": variant}).model_dump(),
+        "config": ExperimentConfig.model_validate(matrix_config()).model_dump(),
         "cache": str(tmp_path / "cache"),
         "variants": {
             "release": {
@@ -209,7 +210,7 @@ def test_session_release_uses_its_native_cli_and_inherited_capture(tmp_path):
     native = options["native"]
     assert native["argv"] == [
         "/opt/synergy/bin/bun",
-        "/opt/synergy/source/packages/synergy/src/index.ts",
+        "/opt/synergy/runtime/session-entry.mjs",
         "send",
         "--format",
         "json",

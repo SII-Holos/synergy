@@ -38,9 +38,10 @@ from .resources import (
     admission_for,
     inspect_host,
     shared_pool_options,
-    with_runtime_overhead,
+    working_set_request,
 )
-from .results import RESULT_VERSION, AttemptResult
+from .results import PLAN_VERSION, RESULT_VERSION, AttemptResult, require_current_plan
+from .scheduling import PhaseResources, current_resources
 from .storage import atomic_json, digest, locked, read_json
 from .trial import BenchmarkTrial
 from .usage import aggregate_usage
@@ -50,7 +51,7 @@ def inspect_config(path: Path) -> tuple[ExperimentConfig, Suite, dict[str, Any]]
     config = load_config(path)
     suite = Suite.load((path.parent / config.suite).resolve())
     plan = {
-        "version": 3,
+        "version": PLAN_VERSION,
         "result_version": RESULT_VERSION,
         "task_timeout_seconds": TASK_TIMEOUT_SECONDS,
         "config": config.model_dump(),
@@ -184,6 +185,9 @@ def _initialize(path: Path) -> Path:
                 )
                 settings.update(generated["config"])
             settings = {"controlProfile": "full_access", **settings}
+            if variant.harness == "synergy":
+                permissions = settings.get("permission")
+                settings["permission"] = {**(permissions if isinstance(permissions, dict) else {}), "question": "deny"}
             for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
                 settings.setdefault(f"{role}_model", variant.model)
             atomic_json(inputs / "config.json", settings)
@@ -274,7 +278,7 @@ def _initialize(path: Path) -> Path:
                     "local_path": str(task_path),
                     "native_resources": resources,
                     "resources": asdict(
-                        with_runtime_overhead(Request(float(resources["cpus"]), int(resources["memory_bytes"])))
+                        working_set_request(Request(float(resources["cpus"]), int(resources["memory_bytes"])))
                     ),
                 }
         concurrency = len(plan["schedule"]) if config.concurrency == "auto" else config.concurrency
@@ -320,6 +324,8 @@ def dispatch_blocker(attempt: Path, result: dict[str, Any]) -> str | None:
         return "Owned resources could not be removed or verified"
     if any(row.get("http_status") == 401 for row in read_ledger(attempt / "wire")):
         return "Provider rejected the configured credential (HTTP 401)"
+    if (result.get("infrastructure_error") or {}).get("type") in {"ResourceRecordingError", "ResourcePressureError"}:
+        return "Shared resource conditions or durable resource recording failed"
     return None
 
 
@@ -331,11 +337,15 @@ async def execute_plan(
     state_file = root / "state.json"
     state = read_json(state_file) if state_file.exists() else {"trials": {}}
     concurrency = plan["concurrency"]
-    capacity = plan.get("host", {}).get("capacity", {"cpus": concurrency, "memory_bytes": concurrency * 1024**3})
+    capacity = plan.get("host", {}).get(
+        "ceiling", plan.get("host", {}).get("capacity", {"cpus": concurrency, "memory_bytes": concurrency * 1024**3})
+    )
     pool = ResourcePool(
         Capacity(**capacity), concurrency, admission=admission_for(root, plan), **shared_pool_options(root, plan)
     )
+    slots = asyncio.Semaphore(concurrency)
     report_lock = asyncio.Lock()
+    active_resources: dict[str, PhaseResources] = {}
     stopped = False
     schedule = [(f"{index:04d}", item) for index, item in enumerate(plan["schedule"])]
 
@@ -376,16 +386,16 @@ async def execute_plan(
             atomic_json(state_file, state)
             return
         queued = time.monotonic()
-        request = Request(
-            **plan.get("tasks", {}).get(item.get("task"), {}).get("resources", {"cpus": 1, "memory_bytes": 1024**3})
-        )
         current = None
         attempt = None
         try:
-            async with pool.reserve(request):
+            async with slots:
                 if stopped:
                     return
                 attempt, current = begin(trial_id, item, queued)
+                resources = PhaseResources(pool, attempt)
+                active_resources[trial_id] = resources
+                token = current_resources.set(resources)
                 try:
                     result = await execute(item, attempt)
                 except asyncio.CancelledError as error:
@@ -396,6 +406,16 @@ async def execute_plan(
                     raise
                 except Exception as error:
                     result = retain_failure(attempt, error)
+                finally:
+                    current_resources.reset(token)
+                    cleanup_file = attempt / "cleanup.json"
+                    removed = (
+                        read_json(cleanup_file).get("resources_removed") is True
+                        if cleanup_file.exists()
+                        else not resources.leases
+                    )
+                    await resources.finish(resources_removed=removed)
+                    active_resources.pop(trial_id, None)
                 result["attempt_status"] = "completed"
                 seal_attempt(attempt, result)
                 atomic_json(attempt / "evidence.json", result)
@@ -429,6 +449,32 @@ async def execute_plan(
     state["status"] = "running"
     state.pop("stop_reason", None)
     atomic_json(state_file, state)
+    progress_done = asyncio.Event()
+
+    async def track_progress() -> None:
+        last_summary = None
+        while True:
+            snapshot = progress_snapshot(root, plan, state, active_resources)
+            atomic_json(root / "progress.json", snapshot)
+            summary = {
+                key: snapshot[key] for key in ["completed", "active", "queued", "model_waiting", "resource_waiting"]
+            }
+            if summary != last_summary:
+                progress(f"progress: {json.dumps(summary, sort_keys=True)}")
+                last_summary = summary
+            if progress_done.is_set():
+                return
+            try:
+                async with asyncio.timeout(5):
+                    await progress_done.wait()
+            except TimeoutError:
+                pass
+
+    owner = asyncio.current_task()
+    tracker = asyncio.create_task(track_progress())
+    tracker.add_done_callback(
+        lambda task: owner.cancel() if not task.cancelled() and task.exception() and owner else None
+    )
     try:
         if concurrency == 1:
             for trial_id, item in schedule:
@@ -445,8 +491,58 @@ async def execute_plan(
             raise DispatchStopped(str(error.exceptions[0])) from error
         raise
     finally:
+        progress_done.set()
+        await tracker
         atomic_json(state_file, state)
         await refresh_report(root)
+
+
+def progress_snapshot(
+    root: Path, plan: dict[str, Any], state: dict[str, Any], resources: dict[str, PhaseResources]
+) -> dict[str, Any]:
+    requests = []
+    for scheduler in resources.values():
+        for file in (scheduler.directory / "wire").glob("*/request.json"):
+            try:
+                row = read_json(file)
+            except (OSError, ValueError):
+                continue
+            if row.get("status") == "dispatching":
+                requests.append(
+                    {
+                        "trial": scheduler.directory.parent.name,
+                        "seconds": time.time() - row["started_at"],
+                        "response_started": row.get("first_byte_at") is not None,
+                    }
+                )
+    active = sum(bool(scheduler.leases) for scheduler in resources.values())
+    completed = sum(row["status"] == "completed" for row in state["trials"].values())
+    reasons = {}
+    for identity, scheduler in resources.items():
+        if not scheduler.leases and scheduler.events:
+            latest = scheduler.events[-1]
+            if latest["event"] in {"queued", "pressure"}:
+                reasons[identity] = latest.get("reason", "resource_budget")
+    return {
+        "version": 1,
+        "at": time.time(),
+        "planned": len(plan["schedule"]),
+        "completed": completed,
+        "started": len(state["trials"]),
+        "active": active,
+        "queued": len(plan["schedule"]) - len(state["trials"]) + len(reasons),
+        "preparing_or_archiving": len(resources) - active - len(reasons),
+        "model_waiting": len(requests),
+        "resource_waiting": len(reasons),
+        "resource_wait_reasons": reasons,
+        "requests_waiting": requests,
+        "reserved": {
+            "memory_bytes": next(iter(resources.values())).pool._memory,
+            "cpus": next(iter(resources.values())).pool._cpus,
+        }
+        if resources
+        else None,
+    }
 
 
 async def execute_trial(
@@ -681,7 +777,7 @@ async def _execute_trial(
     trial = await BenchmarkTrial.create(config)
     try:
         try:
-            async with ResourceMonitor(attempt, trial_name):
+            async with ResourceMonitor(attempt, trial_name, scheduler=current_resources.get()):
                 result = await trial.run()
         finally:
             if not debug:
@@ -824,6 +920,8 @@ def seal_attempt(attempt: Path, result: dict[str, Any]) -> None:
         for name in [
             "stages.json",
             "resources.json",
+            "resource-samples.jsonl",
+            "scheduling.json",
             "trial.json",
             "cleanup.json",
             "environment.json",
@@ -844,7 +942,7 @@ def seal_attempt(attempt: Path, result: dict[str, Any]) -> None:
 
 def verify_terminal(attempt: Path, result: dict[str, Any]) -> None:
     if result.get("version") != RESULT_VERSION:
-        raise ValueError("Historical attempt is read-only with this evaluator")
+        raise ValueError("Unsupported benchmark result version")
     AttemptResult.model_validate(result)
     for name, expected in result.get("sidecar_files", {}).items():
         file = attempt / name
@@ -1006,8 +1104,7 @@ async def _resume(root: Path, *, debug_trial: str | None = None) -> None:
         if not (root / "plan.json").exists():
             raise ValueError("Preparation did not complete; inspect preparation records and create a new run")
         plan = read_json(root / "plan.json")
-        if plan.get("version") != 3 or plan.get("result_version") != RESULT_VERSION:
-            raise ValueError("Historical experiment is read-only with this evaluator")
+        require_current_plan(plan)
         if plan["digest"] != digest({key: value for key, value in plan.items() if key != "digest"}):
             raise ValueError("Experiment plan changed")
         if plan["evaluator"] != evaluator_identity():

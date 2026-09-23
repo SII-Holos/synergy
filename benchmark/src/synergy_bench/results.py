@@ -5,7 +5,8 @@ from pydantic import Field
 
 from .config import StrictModel
 
-RESULT_VERSION: Literal[4] = 4
+PLAN_VERSION = 4
+RESULT_VERSION: Literal[5] = 5
 
 
 class FileEvidence(StrictModel):
@@ -28,7 +29,7 @@ class Cleanup(StrictModel):
 
 
 class AttemptResult(StrictModel):
-    version: Literal[4] = RESULT_VERSION
+    version: Literal[5] = RESULT_VERSION
     attempt_status: Literal["completed", "interrupted"] | None = None
     trial_directory: str | None = None
     execution: dict[str, Any] | None
@@ -59,3 +60,8 @@ def native_reward(rewards: Any) -> float | None:
         if isinstance(reward, (int, float)) and not isinstance(reward, bool) and math.isfinite(reward)
         else None
     )
+
+
+def require_current_plan(value: dict[str, Any]) -> None:
+    if value.get("version") != PLAN_VERSION or value.get("result_version") != RESULT_VERSION:
+        raise ValueError("Unsupported benchmark format; only the current plan and result versions are accepted")

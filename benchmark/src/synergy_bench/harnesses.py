@@ -45,7 +45,7 @@ def session_configuration(settings: dict[str, Any], options: dict[str, Any]) -> 
         env["BUN_JSC_useJIT"] = str(int(options["bun_jit"]))
     argv = [
         "/opt/synergy/bin/bun",
-        "/opt/synergy/source/packages/synergy/src/index.ts",
+        "/opt/synergy/runtime/session-entry.mjs",
         "send",
         "--format",
         "json",
@@ -116,6 +116,7 @@ def harness_configuration(
         config: dict[str, Any] = {"provider": {"benchmark": provider}, "model": f"benchmark/{name}"}
         if kind == "synergy":
             config["controlProfile"] = "full_access"
+            config["permission"] = {"question": "deny"}
             for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
                 config[f"{role}_model"] = f"benchmark/{name}"
             put("synergy-config.json", config)

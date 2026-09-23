@@ -9,16 +9,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from .cache import collect_cache, inspect_cache, release_run
 from .catalog import Suite
-from .config import load_config, normalize_legacy
 from .evaluator import recorded_environment
 from .evidence import summarize
 from .prepare import BENCHMARK, remove_owned_container
 from .recovery import recover_export
 from .report import paired_compare, report_data, write_report
+from .results import PLAN_VERSION, RESULT_VERSION, require_current_plan
 from .runner import initialize, inspect_config, remove_environment, resume
 from .storage import atomic_json, locked, read_json
 
@@ -27,12 +25,19 @@ def emit(value: Any) -> None:
     print(json.dumps(value, indent=2, ensure_ascii=False))
 
 
-def recorded_command(root: Path, arguments: list[str]) -> int:
+def run_frozen(root: Path, arguments: list[str]) -> int:
     plan = read_json(root / "plan.json")
-    if plan.get("version") != 3:
-        raise ValueError("Historical experiments cannot execute with this evaluator")
+    if plan.get("version") != PLAN_VERSION:
+        raise ValueError("Unsupported benchmark plan version")
     env = recorded_environment(root, plan["evaluator"])
     return subprocess.call([sys.executable, "-m", "synergy_bench.cli", *arguments], env=env)
+
+
+def current_result(file: Path) -> dict[str, Any]:
+    result: dict[str, Any] = read_json(file)
+    if result.get("version") != RESULT_VERSION:
+        raise ValueError("Unsupported benchmark result version")
+    return result
 
 
 def clean(root: Path) -> None:
@@ -40,7 +45,9 @@ def clean(root: Path) -> None:
     with locked(root, create=False):
         if read_json(root / "owner.json") != {"kind": "synergy-benchmark-run", "version": 1}:
             raise ValueError("Not a benchmark-owned run")
-        for category in ["trials", "debug", "probes", "prewarming"]:
+        if (root / "plan.json").exists():
+            require_current_plan(read_json(root / "plan.json"))
+        for category in ["trials", "debug"]:
             for record in (root / category).glob("*/attempt-*/environment.json"):
                 remove_environment(root, record)
         for category in ["recoveries", "preparation"]:
@@ -66,10 +73,6 @@ def main() -> None:
     for name in ["resume", "inspect", "debug", "clean"]:
         action = sub.add_parser(name)
         action.add_argument("run", type=Path)
-        if name in {"resume", "debug"}:
-            action.add_argument(
-                "--recorded-evaluator", action="store_true", help="Execute the verified frozen evaluator"
-            )
         if name in {"inspect", "debug"}:
             action.add_argument("--trial", required=name == "debug")
     oracle = sub.add_parser(
@@ -84,7 +87,6 @@ def main() -> None:
         "oracle-resume", help="Reconcile or continue an oracle audit without repeating completed grading"
     )
     oracle_resume.add_argument("run", type=Path)
-    oracle_resume.add_argument("--recorded-evaluator", action="store_true")
     oracle_report = sub.add_parser("oracle-report", help="Read-only import of raw oracle scores and evidence")
     oracle_report.add_argument("run", type=Path)
     oracle_report.add_argument("--output", type=Path)
@@ -95,11 +97,7 @@ def main() -> None:
     recovery.add_argument("--trial", required=True)
     recovery.add_argument("--attempt", type=int, default=1)
     recovery.add_argument("--timeout", type=int, default=300)
-    normalize = sub.add_parser("normalize", help="Explicitly migrate a v1 config; supply model profiles and bindings")
-    normalize.add_argument("config", type=Path)
-    normalize.add_argument("--models", type=Path, required=True)
-    normalize.add_argument("--output", type=Path, required=True)
-    report = sub.add_parser("report", help="Read current or historical evidence without executing it")
+    report = sub.add_parser("report", help="Read current-format evidence without executing it")
     report.add_argument("run", type=Path)
     report.add_argument("--output", type=Path)
     report.add_argument(
@@ -127,11 +125,6 @@ def main() -> None:
     args = parser.parse_args()
     root = getattr(args, "run", None)
     try:
-        if getattr(args, "recorded_evaluator", False):
-            arguments = [args.command, str(args.run.resolve())]
-            if args.command == "debug":
-                arguments.extend(["--trial", args.trial])
-            raise SystemExit(recorded_command(args.run, arguments))
         if args.command == "oracle":
             from .oracle import prepare_oracle
 
@@ -139,7 +132,7 @@ def main() -> None:
                 args.suite, args.output, args.cache, concurrency=args.concurrency, platform=args.platform
             )
             emit({"run": str(root), "purpose": "native_oracle_audit"})
-            raise SystemExit(recorded_command(root, ["oracle-resume", str(root)]))
+            raise SystemExit(run_frozen(root, ["oracle-resume", str(root)]))
         elif args.command == "oracle-report":
             from .oracle import report_oracle
 
@@ -151,20 +144,6 @@ def main() -> None:
             from .oracle import run_oracle
 
             emit(asyncio.run(run_oracle(args.run)))
-        elif args.command == "normalize":
-            if args.output.exists():
-                raise ValueError("Normalization destination already exists")
-            profiles = yaml.safe_load(args.models.read_text())
-            result = normalize_legacy(
-                yaml.safe_load(args.config.read_text()),
-                profiles["models"],
-                profiles["bindings"],
-                args.config.resolve().parent,
-            )
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            with args.output.open("x") as file:
-                file.write(yaml.safe_dump(result, sort_keys=False, allow_unicode=True))
-            emit({"config": str(args.output), "version": 2})
         elif args.command == "report":
             emit(write_report(args.run, args.output or args.run / "reports" / "current", related=args.include_run))
         elif args.command == "compare":
@@ -223,11 +202,9 @@ def main() -> None:
         elif args.command == "plan":
             emit(inspect_config(args.config.resolve())[2])
         elif args.command in {"prepare", "run"}:
-            if load_config(args.config).version != 2:
-                raise ValueError("Version 1 is migration input only; run normalize with explicit model profiles first")
             root = initialize(args.config)
             if args.command == "run":
-                raise SystemExit(recorded_command(root, ["resume", str(root)]))
+                raise SystemExit(run_frozen(root, ["resume", str(root)]))
             emit({"run": str(root), "status": "prepared"})
         elif args.command in {"resume", "debug"}:
             asyncio.run(resume(args.run, debug_trial=args.trial if args.command == "debug" else None))
@@ -235,6 +212,7 @@ def main() -> None:
             emit(result)
             raise SystemExit(result["exit_code"])
         elif args.command == "inspect":
+            require_current_plan(read_json(args.run / "plan.json"))
             if args.trial is None:
                 emit(
                     {
@@ -246,7 +224,7 @@ def main() -> None:
                 trial_id = f"{int(args.trial):04d}"
                 emit(
                     [
-                        {"attempt": file.parent.name, "result": read_json(file)}
+                        {"attempt": file.parent.name, "result": current_result(file)}
                         for file in sorted((args.run / "trials" / trial_id).glob("*/evidence.json"))
                     ]
                 )

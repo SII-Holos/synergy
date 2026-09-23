@@ -78,33 +78,8 @@ def test_cli_declares_direct_execution_and_reporting_commands(capsys, monkeypatc
         cli.main()
     assert exit.value.code == 0
     output = capsys.readouterr().out
-    for command in ["run", "resume", "report", "compare", "cache", "normalize"]:
+    for command in ["run", "resume", "report", "compare", "cache"]:
         assert command in output
-
-
-def test_legacy_normalization_requires_explicit_model_binding(tmp_path):
-    from synergy_bench.config import ExperimentConfig, ModelProfile, normalize_legacy
-
-    legacy = {"version": 1, "suite": "suite.json", "variants": {"A": {"model": "old/m", "runtime": "full"}}}
-    profiles = {
-        "m": ModelProfile(
-            model="m",
-            protocol="chat-completions",
-            base_url="https://provider.test/v1",
-            api_key_env="MODEL_KEY",
-            context_window=32000,
-            max_output_tokens=2048,
-        ).model_dump()
-    }
-    with pytest.raises(ValueError, match="binding"):
-        normalize_legacy(legacy, profiles, {}, tmp_path)
-    result = normalize_legacy(legacy, profiles, {"old/m": "m"}, tmp_path)
-    normalized = ExperimentConfig.model_validate(result)
-    assert normalized.version == 2
-    assert "timeout_seconds" not in normalized.model_dump()
-    assert normalized.harnesses["A"].runtime == "full"
-    assert normalized.models["m"].api_key_env == "MODEL_KEY"
-    assert list(normalized.variants) == ["A__m"]
 
 
 def test_compare_models_keeps_same_harness_and_uses_descriptive_groups(tmp_path, monkeypatch, capsys):
@@ -143,11 +118,3 @@ def test_compare_models_keeps_same_harness_and_uses_descriptive_groups(tmp_path,
     assert result["left"]["successes"] == 1
     assert result["right"]["successes"] == 0
     assert result["paired_difference"] is None
-
-
-@pytest.mark.parametrize("deadline", ["native", None, 60, 10800])
-def test_legacy_normalization_rejects_retired_task_deadline(tmp_path, deadline):
-    from synergy_bench.config import normalize_legacy
-
-    with pytest.raises(ValueError, match="timeout_seconds"):
-        normalize_legacy({"version": 1, "suite": "suite.json", "timeout_seconds": deadline}, {}, {}, tmp_path)

@@ -9,13 +9,23 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, StrictBool, model_validator
 
 TASK_TIMEOUT_SECONDS = 10_800
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class PriorCost(StrictModel):
+    label: str
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    observed_requests: int = Field(ge=0)
+    known_tokens: int = Field(ge=0)
+    unknown_usage_requests: int | None = Field(default=None, ge=0)
+    unknown_attempts: int | None = Field(default=None, ge=0)
+    unconfirmed_dispatches: int | None = Field(default=None, ge=0)
 
 
 class Source(StrictModel):
@@ -171,7 +181,6 @@ class Resources(StrictModel):
     build_concurrency: int = Field(default=2, ge=1, le=16)
     reserve_cpus: float = Field(default=2, ge=0)
     reserve_memory_gib: float = Field(default=2, ge=0)
-    reserve_memory_fraction: float = Field(default=0.15, ge=0, lt=1)
     min_free_disk_gib: float = Field(default=20, ge=0)
     cache_budget_gib: float = Field(default=32, gt=0)
 
@@ -201,13 +210,14 @@ class Selection(StrictModel):
 
 
 class ExperimentConfig(StrictModel):
-    version: Literal[1, 2]
+    version: Literal[2]
     suite: str
-    variants: dict[str, Variant] = Field(default_factory=dict)
+    _variants: dict[str, Variant] = PrivateAttr(default_factory=dict)
     harnesses: dict[str, HarnessProfile] = Field(default_factory=dict)
     models: dict[str, ModelProfile] = Field(default_factory=dict)
     matrix: Matrix = Field(default_factory=Matrix)
     resources: Resources = Field(default_factory=Resources)
+    prior_costs: list[PriorCost] = Field(default_factory=list)
     selection: Selection = Field(default_factory=Selection)
     repeat: int = Field(default=1, gt=0)
     task_repeats: dict[str, Annotated[int, Field(gt=0)]] = Field(default_factory=dict)
@@ -222,15 +232,17 @@ class ExperimentConfig(StrictModel):
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
 
+    @property
+    def variants(self) -> dict[str, Variant]:
+        return self._variants
+
     @model_validator(mode="after")
     def validate_names(self) -> ExperimentConfig:
+        if len({row.sha256 for row in self.prior_costs}) != len(self.prior_costs):
+            raise ValueError("Duplicate sealed prior cost summary")
         for name in self.variants.keys() | self.harnesses.keys() | self.models.keys():
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
                 raise ValueError("Names must contain only letters, digits, underscores or hyphens")
-        if self.version == 1:
-            if not self.variants or self.harnesses or self.models or self.matrix != Matrix():
-                raise ValueError("Version 1 requires variants; use version 2 for an independent matrix")
-            return self
         if not self.harnesses or not self.models:
             raise ValueError("Version 2 requires harnesses and models")
         for cell in self.matrix.include + self.matrix.exclude:
@@ -269,9 +281,7 @@ class ExperimentConfig(StrictModel):
             )
         if not resolved:
             raise ValueError("No matrix combinations selected")
-        if self.variants and self.variants != resolved:
-            raise ValueError("Resolved variants disagree with the matrix")
-        self.variants = resolved
+        self._variants = resolved
         return self
 
 
@@ -342,46 +352,3 @@ def resolve_plan(config: ExperimentConfig, tasks: list[dict[str, Any]]) -> list[
                 }
             )
     return plan
-
-
-def normalize_legacy(
-    value: dict[str, Any], models: dict[str, Any], bindings: dict[str, str], base: Path
-) -> dict[str, Any]:
-    legacy = ExperimentConfig.model_validate(value)
-    if legacy.version != 1:
-        raise ValueError("Only version 1 configurations require normalization")
-    harnesses = {}
-    combinations = []
-    for name, variant in legacy.variants.items():
-        if variant.model not in bindings or bindings[variant.model] not in models:
-            raise ValueError(f"Explicit model binding required for {variant.model}")
-        if variant.variant is not None:
-            raise ValueError("Move legacy sampling variants into explicit model profiles before normalization")
-        source = variant.source.model_dump()
-        for field in ["path", "artifact"]:
-            if source.get(field):
-                source[field] = str((base / source[field]).resolve())
-        harnesses[name] = {
-            "kind": variant.harness,
-            "source": source,
-            "runtime": variant.runtime,
-            "agent": variant.agent,
-            "package_version": variant.package_version,
-            **{
-                field: str((base / file).resolve())
-                for field in ["config", "experiment"]
-                if (file := getattr(variant, field))
-            },
-        }
-        combinations.append({"harness": name, "model": bindings[variant.model]})
-    result = {
-        key: item
-        for key, item in legacy.model_dump().items()
-        if key not in {"variants", "harnesses", "models", "matrix"}
-    }
-    for field in ["suite", "cache", "output"]:
-        result[field] = str((base / result[field]).resolve())
-    result.update(version=2, harnesses=harnesses, models=models, matrix={"include": combinations})
-    normalized = ExperimentConfig.model_validate(result).model_dump()
-    normalized.pop("variants")
-    return normalized

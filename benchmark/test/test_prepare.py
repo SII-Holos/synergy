@@ -16,7 +16,15 @@ def test_session_export_release_uses_its_own_public_package_and_rejects_unknown_
 
 
 @pytest.mark.parametrize(
-    "name", ["external.mjs", "capture.mjs", "native-outcome.mjs", "session-capture.mjs", "session-relay.mjs"]
+    "name",
+    [
+        "external.mjs",
+        "capture.mjs",
+        "native-outcome.mjs",
+        "session-capture.mjs",
+        "session-relay.mjs",
+        "session-entry.mjs",
+    ],
 )
 def test_session_export_runtime_invalidates_when_an_executed_observer_changes(tmp_path, name):
     from synergy_bench.prepare import synergy_runtime_digest
@@ -38,19 +46,21 @@ def test_recipe_resolves_public_names_without_a_benchmark_workspace(tmp_path: Pa
 @pytest.mark.parametrize("failure", [RuntimeError("injected build failure"), KeyboardInterrupt()])
 def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monkeypatch, failure) -> None:
     import yaml
+    from test_config import config
 
     from synergy_bench import runner
     from synergy_bench.prepare import BENCHMARK
     from synergy_bench.storage import read_json
 
+    monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture")
     path = tmp_path / "experiment.yaml"
     path.write_text(
         yaml.safe_dump(
             {
-                "version": 1,
+                **config(),
                 "suite": str(BENCHMARK / "suites/local-24.json"),
                 "output": "runs",
-                "variants": {"A": {"source": {"path": str(tmp_path)}, "model": "fixture/model"}},
+                "harnesses": {"A": {"source": {"path": str(tmp_path)}, "kind": "synergy"}},
             }
         )
     )

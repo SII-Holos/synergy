@@ -90,6 +90,7 @@ async def test_native_execution_outlives_preparation_ceiling(tmp_path, monkeypat
 
 async def test_diagnostic_failure_cannot_prevent_environment_stop(monkeypatch):
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._egress_proxy_compose_path = None
     env._keep_containers = False
     monkeypatch.setattr(env, "_compose_command", AsyncMock(side_effect=TimeoutError("logs timed out")))
@@ -155,6 +156,7 @@ def test_image_identity_changes_with_context_platform_and_native_limits(tmp_path
 async def test_warm_image_skips_compose_build_and_remote_pull(tmp_path, monkeypatch):
 
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._benchmark_cache = tmp_path
     env._benchmark_identity = {"platform": "linux/amd64", "source": "frozen"}
     key = digest(env._benchmark_identity)
@@ -186,6 +188,7 @@ async def test_warm_image_skips_compose_build_and_remote_pull(tmp_path, monkeypa
 async def test_missing_frozen_image_cannot_be_rebuilt_silently(tmp_path, monkeypatch):
 
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._benchmark_cache = tmp_path
     env._benchmark_identity = {"platform": "linux/amd64", "source": "frozen"}
     key = digest(env._benchmark_identity)
@@ -206,6 +209,7 @@ async def test_missing_frozen_image_cannot_be_rebuilt_silently(tmp_path, monkeyp
 
 async def test_finished_build_is_reconciled_after_publisher_exit(tmp_path, monkeypatch):
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._benchmark_cache = tmp_path
     env._benchmark_identity = {"platform": "linux/amd64", "source": "frozen"}
     key = digest(env._benchmark_identity)

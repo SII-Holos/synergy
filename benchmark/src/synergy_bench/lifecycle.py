@@ -2,12 +2,32 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
 from .storage import atomic_json, read_json
+
+_deadlines: ContextVar[tuple[tuple[asyncio.Timeout, dict[str, Any]], ...]] = ContextVar("stage_deadlines", default=())
+
+
+@contextmanager
+def pause_deadlines() -> Iterator[None]:
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    active = [(timer, row, timer.when()) for timer, row in _deadlines.get() if timer.when() is not None]
+    for timer, _, _ in active:
+        timer.reschedule(None)
+    try:
+        yield
+    finally:
+        elapsed = loop.time() - started
+        for timer, row, deadline in active:
+            assert deadline is not None
+            row["queue_seconds"] += elapsed
+            timer.reschedule(deadline + elapsed)
 
 
 def error_trace(error: BaseException) -> list[dict[str, Any]]:
@@ -44,12 +64,21 @@ class Lifecycle:
         if deadline is not None and deadline <= 0:
             raise ValueError("Stage deadline must be positive")
         started = time.monotonic()
-        row: dict[str, Any] = {"status": "running", "started_at": time.time(), "deadline_seconds": deadline}
+        row: dict[str, Any] = {
+            "status": "running",
+            "started_at": time.time(),
+            "deadline_seconds": deadline,
+            "queue_seconds": 0.0,
+        }
         self.records.setdefault(name, []).append(row)
         atomic_json(self.file, self.records)
         try:
-            async with asyncio.timeout(deadline):
-                yield
+            async with asyncio.timeout(deadline) as timer:
+                token = _deadlines.set((*_deadlines.get(), (timer, row)))
+                try:
+                    yield
+                finally:
+                    _deadlines.reset(token)
             row["status"] = "completed"
         except BaseException as error:
             row["status"] = (
@@ -72,4 +101,5 @@ class Lifecycle:
         finally:
             row["ended_at"] = time.time()
             row["wall_seconds"] = time.monotonic() - started
+            row["active_seconds"] = row["wall_seconds"] - row["queue_seconds"]
             atomic_json(self.file, self.records)

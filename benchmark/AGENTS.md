@@ -2,7 +2,7 @@
 
 Own local research orchestration, frozen source inputs, task catalogs, runtime compositions and experiment records here. Product execution, accounting and rollout remain owned by their runtime packages.
 
-Offline trajectory diagnostics also live here: preserve unknown usage, separate formal trials from probes, and keep analysis output outside retained evidence. Payload sizes are bytes, not token or quota attribution.
+Offline trajectory diagnostics also live here: preserve unknown usage, separate scored trials from diagnostic work, and keep analysis output outside retained evidence. Payload sizes are bytes, not token or quota attribution.
 
 - Use public workspace exports. Never duplicate the Synergy CLI parser, agent loop or accounting.
 - Keep the workspace registered as private and independently versioned in the unified release catalog.
@@ -11,7 +11,7 @@ Offline trajectory diagnostics also live here: preserve unknown usage, separate 
 - Tests live in `test/`. Use isolated homes and deterministic providers; never use personal credentials in tests.
 - Run `uv run --project benchmark pytest benchmark/test`, Python checks, runtime tests and affected repository gates.
 - Never overwrite prior trials or silently retry a paid execution. Preserve incomplete evidence. Formal runs dispatch directly; do not add paid preflights or oracle/prewarm prerequisites.
-- Version attempt results; historical experiments are read-only when evaluator or result versions differ. Reconcile durable terminal evidence before rescheduling or cleanup.
+- Accept only the current matrix, plan and result versions. Preserve historical evidence and its frozen evaluator separately; reference sealed historical cost summaries without format conversion. Reconcile durable terminal evidence before rescheduling or cleanup.
 - Keep execution, cleanup and export deadlines independent. Validate rollout archives with the product contract and keep structural validity, recording coverage and usage coverage distinct.
 - Pass credentials through temporary mode-0600 files outside retained evidence. Never pass their values to Docker arguments or persistent options.
 - Keep pure contracts, Docker lifecycle, five native harness integrations and streaming fault tests in separate CI jobs. Use two deterministic models, both protocols and a real Git working tree. Keep live-provider acceptance outside CI.
@@ -21,3 +21,6 @@ Offline trajectory diagnostics also live here: preserve unknown usage, separate 
 
 - Native cancellation observers must forward cancellation without awaiting an unbounded upstream acknowledgement. Persist interrupted calls independently and preserve unknown usage.
 - Keep native oracle audits separate from model runs. Reference solutions enter only disposable oracle environments; preserve every failed task and never use the oracle to repair an agent workspace.
+
+- Native Synergy sessions must be unattended before execution; verify real parent/child metadata and request tool catalogs on supported product versions. Headless CLI flags are insufficient.
+- Schedule stage working sets independently of native container hard limits. Missing samples pause admission; queue time never consumes solve or verifier budgets. Keep actual starts, pressure reasons and verified cleanup in evidence.

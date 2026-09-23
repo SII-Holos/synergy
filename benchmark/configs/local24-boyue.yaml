@@ -26,14 +26,16 @@ harnesses:
     agent: synergy-max
     bun_jit: true
 models:
-  boyue-deepseek41flash-no-thinking:
-    model: bailian/deepseek-v4.1-flash
+  boyue-glm53flash-low:
+    model: glm-5.3-flash
     protocol: chat-completions
     base_url: http://provider.example/v1
     api_key_env: BOYUE_API_KEY
-    context_window: 1000000
-    max_output_tokens: 393216
+    context_window: 1048576
+    max_output_tokens: 131072
     supports_developer_role: false
     parameters:
       temperature: 1
-      enable_thinking: false
+      thinking:
+        type: enabled
+      reasoning_effort: low

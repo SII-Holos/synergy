@@ -285,17 +285,17 @@ def collect_cache(cache: Path, *, budget_bytes: int, min_free_bytes: int = 20 * 
 
 
 @asynccontextmanager
-async def async_cache_lock(path: Path, *, wait_seconds: float = 1800) -> AsyncIterator[None]:
+async def async_cache_lock(path: Path, *, wait_seconds: float | None = 1800) -> AsyncIterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path.parent / ("." + path.name + ".lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    deadline = time.monotonic() + wait_seconds
+    deadline = time.monotonic() + wait_seconds if wait_seconds is not None else None
     try:
         while True:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if time.monotonic() >= deadline:
+                if deadline is not None and time.monotonic() >= deadline:
                     raise TimeoutError("Timed out waiting for cache publication") from None
                 await asyncio.sleep(0.1)
         try:

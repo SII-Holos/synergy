@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .prepare import BENCHMARK, command, recipe_links, remove_owned_container, verify_prepared
+from .results import RESULT_VERSION, require_current_plan
 from .storage import atomic_json, locked, read_json
 
 
@@ -19,9 +20,12 @@ def recover_export(root: Path, trial: str, attempt: int, *, timeout: int = 300) 
     with locked(root, create=False):
         if read_json(root / "owner.json") != {"kind": "synergy-benchmark-run", "version": 1}:
             raise ValueError("Not a benchmark-owned run")
+        require_current_plan(read_json(root / "plan.json"))
         original = root / "trials" / f"{int(trial):04d}" / f"attempt-{attempt:03d}"
         evidence_file = original / "evidence.json"
         evidence = read_json(evidence_file)
+        if evidence.get("version") != RESULT_VERSION:
+            raise ValueError("Unsupported benchmark result version")
         execution = evidence.get("execution") or {}
         if not execution.get("session_id") or not execution.get("run_id"):
             raise ValueError("Original evidence has no exportable session/run identity")

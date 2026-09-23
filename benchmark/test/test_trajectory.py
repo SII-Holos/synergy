@@ -16,7 +16,7 @@ from synergy_bench.trajectory import (
 
 
 def retained_run(root):
-    atomic_json(root / "plan.json", {"version": 3, "schedule": [{"task": "fixture"}]})
+    atomic_json(root / "plan.json", {"version": 4, "result_version": 5, "schedule": [{"task": "fixture"}]})
     attempt = root / "trials/0000/attempt-001"
     body = {
         "messages": [
@@ -57,7 +57,7 @@ def retained_run(root):
     atomic_json(
         attempt / "evidence.json",
         {
-            "version": 3,
+            "version": 5,
             "accounting": {"request_records": native},
             "execution": {"started_at": 0, "ended_at": 50000, "wall_ms": 50000, "outcome": "timeout"},
             "verifier": {"rewards": {"reward": 1}},

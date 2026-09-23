@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,13 +14,16 @@ from pier.models.task.config import EnvironmentConfig as TaskEnvironmentConfig
 from pier.models.task.task import Task
 from pier.models.task.verifier_mode import resolve_effective_verifier_env_config
 from pier.models.trial.config import TrialConfig
+from pier.models.trial.result import TimingInfo
 from pier.models.verifier.result import VerifierResult
 from pier.trial.execution import AgentTimeoutError
+from pier.trial.hooks import TrialEvent
 from pier.trial.trial import Trial, VerifierTimeoutError
 from pier.verifier.verifier import Verifier
 
 from .agent import SynergyAgent
 from .lifecycle import Lifecycle
+from .scheduling import current_resources
 from .storage import atomic_json, read_json
 
 
@@ -43,7 +47,12 @@ class BenchmarkTrial(Trial):
     async def _setup_environment(self) -> None:
         deadline = self.config.agent.kwargs["settings"].get("preparation_timeout_seconds", 1800)
         async with self._lifecycle.stage("environment_preparation", deadline=deadline):
-            await super()._setup_environment()
+            await self._invoke_hooks(TrialEvent.ENVIRONMENT_START)
+            self.result.environment_setup = TimingInfo(started_at=datetime.now(UTC))
+            try:
+                await self._environment.start(force_build=self.config.environment.force_build)
+            finally:
+                self.result.environment_setup.finished_at = datetime.now(UTC)
 
     async def _setup_agent(self) -> None:
         async with self._lifecycle.stage("harness_setup", deadline=self._AGENT_SETUP_TIMEOUT_SEC):
@@ -63,6 +72,8 @@ class BenchmarkTrial(Trial):
             await super()._collect_artifacts()
 
     async def _run_verification(self) -> None:
+        if scheduler := current_resources.get():
+            await scheduler.phase("verifier")
         preparation = self.config.agent.kwargs["settings"].get("preparation_timeout_seconds", 1800)
         async with self._lifecycle.stage("verifier", deadline=preparation + self._verifier_timeout_sec + 1):
             await super()._run_verification()

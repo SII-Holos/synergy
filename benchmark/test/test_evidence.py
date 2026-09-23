@@ -55,11 +55,15 @@ def test_unreadable_payload_keeps_scoring_and_marks_evidence_failure(tmp_path: P
 def test_summary_reports_wrong_answers_as_task_failures_without_infrastructure_failure(tmp_path: Path) -> None:
     from synergy_bench.evidence import summarize
 
+    (tmp_path / "plan.json").write_text(
+        json.dumps({"version": 4, "result_version": 5, "schedule": [{"variant": "a", "task": "t"}]})
+    )
     attempt = tmp_path / "trials/0000/attempt-001"
     attempt.mkdir(parents=True)
     (attempt / "evidence.json").write_text(
         json.dumps(
             {
+                "version": 5,
                 "execution": {"outcome": "completed"},
                 "verifier": {"rewards": {"reward": 0.0}},
                 "evidence": {"valid": True},

@@ -1,6 +1,26 @@
 import json
 
+import pytest
+
 from synergy_bench.monitor import ResourceMonitor
+
+
+async def test_resource_recording_failure_is_fatal_instead_of_an_unknown_sample(tmp_path, monkeypatch):
+    from synergy_bench.monitor import ResourceRecordingError
+
+    monitor = ResourceMonitor(tmp_path, "sb-run")
+
+    def failed_save(*args):
+        raise OSError("storage unavailable")
+
+    monkeypatch.setattr("synergy_bench.monitor.atomic_json", failed_save)
+
+    async def sample():
+        monitor.persist()
+
+    monkeypatch.setattr(monitor, "sample", sample)
+    with pytest.raises(ResourceRecordingError):
+        await monitor.run()
 
 
 async def test_live_event_disconnect_retains_observed_lower_bound(tmp_path, monkeypatch):
@@ -38,26 +58,54 @@ async def test_live_event_disconnect_retains_observed_lower_bound(tmp_path, monk
 
 
 async def test_resource_samples_include_separate_verifier_and_exclude_other_runs(tmp_path, monkeypatch):
+    import uuid
+    from pathlib import Path
+
+    from aiohttp import web
+
+    socket = Path("/tmp") / ("sb-stats-" + uuid.uuid4().hex + ".sock")
     seen = []
 
-    async def process(args, *, log, **kwargs):
-        seen.append(args)
-        if args[1] == "ps":
-            log.write_text("one sb-run\ntwo sb-run__verifier__trial\nother sb-run-other\n")
-        elif args[1] == "stats":
-            log.write_text("\n".join(json.dumps({"MemUsage": "1GiB / 8GiB", "CPUPerc": "20%"}) for _ in args[5:]))
-        else:
-            log.write_text("PID RSS\n11 120\n12 80\n")
-        return 0
+    async def containers(request):
+        return web.json_response(
+            [
+                {"Id": identity, "Labels": {"com.docker.compose.project": project}}
+                for identity, project in [
+                    ("one", "sb-run"),
+                    ("two", "sb-run__verifier__trial"),
+                    ("other", "sb-run-other"),
+                ]
+            ]
+        )
 
-    monkeypatch.setattr("synergy_bench.monitor.run_process", process)
+    async def stats(request):
+        seen.append(request.match_info["id"])
+        return web.json_response(
+            {
+                "memory_stats": {"usage": 2 * 1024**3, "stats": {"inactive_file": 1024**3}},
+                "cpu_stats": {"system_cpu_usage": 2000, "cpu_usage": {"total_usage": 300}, "online_cpus": 2},
+                "precpu_stats": {"system_cpu_usage": 1000, "cpu_usage": {"total_usage": 200}},
+            }
+        )
+
+    app = web.Application()
+    app.router.add_get("/containers/json", containers)
+    app.router.add_get("/containers/{id}/stats", stats)
+    server = web.AppRunner(app)
+    await server.setup()
+    await web.UnixSite(server, str(socket)).start()
+    monkeypatch.setenv("DOCKER_HOST", "unix://" + str(socket))
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
     monitor = ResourceMonitor(tmp_path, "sb-run")
-    await monitor.sample()
-    stats = next(args for args in seen if args[1] == "stats")
-    assert stats[5:] == ["one", "two"]
-    assert monitor.samples[0]["memory_bytes"] == 2 * 1024**3
-    assert monitor.samples[0]["cpu_percent"] == 40
-    assert monitor.samples[0]["process_rss_sum_bytes"] == 400 * 1024
+    try:
+        await monitor.sample()
+        assert sorted(seen) == ["one", "two"]
+        assert monitor.samples[0]["memory_bytes"] == 2 * 1024**3
+        assert monitor.samples[0]["cpu_percent"] == 40
+        assert monitor.samples[0]["process_rss_sum_bytes"] is None
+    finally:
+        await server.cleanup()
+        socket.unlink(missing_ok=True)
 
 
 async def test_oom_events_survive_container_cleanup_and_exclude_other_trials(tmp_path, monkeypatch):

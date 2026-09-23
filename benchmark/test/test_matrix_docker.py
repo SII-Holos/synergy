@@ -279,6 +279,10 @@ async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeyp
     )
 
 
+async def test_synergy_unattended_sessions_inherit_and_exclude_question(tmp_path, monkeypatch):
+    await run_native_matrix(tmp_path, monkeypatch, "chat-completions", unattended=True, bun_jit=True)
+
+
 async def run_native_matrix(
     tmp_path,
     monkeypatch,
@@ -289,6 +293,7 @@ async def run_native_matrix(
     bun_jit=False,
     task_home=False,
     empty_stop=False,
+    unattended=False,
 ):
     create_matrix_suite(tmp_path, task_home=task_home)
 
@@ -311,7 +316,15 @@ async def run_native_matrix(
 
     async def provider_with_runtime_evidence(request):
         body = await request.json()
-        if protocol == "chat-completions":
+        if unattended:
+            assert body["thinking"] == {"type": "enabled"}
+            assert body["reasoning_effort"] == "low"
+            assert body["max_tokens"] == 131072
+            assert all(
+                tool.get("function", tool).get("name", "").split("__")[-1] != "question"
+                for tool in body.get("tools", [])
+            )
+        elif protocol == "chat-completions":
             assert body["enable_thinking"] is False
             assert "reasoning_effort" not in body
         messages = body.get("messages", body.get("input", []))
@@ -356,7 +369,21 @@ async def run_native_matrix(
             command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
             + native_probe
             + "; "
-            + environment_check,
+            + environment_check
+            + (
+                shlex.join(
+                    [
+                        "env",
+                        "SYNERGY_HOME=/logs/agent/home",
+                        "/opt/synergy/bin/bun",
+                        "--eval",
+                        (BENCHMARK / "test/fixtures/unattended-check.mjs").read_text(),
+                    ]
+                )
+                + " && "
+                if unattended
+                else ""
+            ),
             force_tool=count < tool_turns if long_session and not probe else None,
             observation_turn=count if long_session and not probe and not task_home else None,
         )
@@ -387,9 +414,9 @@ async def run_native_matrix(
         }
         for kind in kinds
     }
-    if long_session:
+    if long_session or unattended:
         harnesses = {
-            "synergy-jit" if bun_jit else "synergy-jitless": {
+            "synergy-unattended" if unattended else "synergy-jit" if bun_jit else "synergy-jitless": {
                 **harnesses["synergy"],
                 "runtime": "full",
                 "agent": "synergy-max",
@@ -407,9 +434,11 @@ async def run_native_matrix(
             "protocol": protocol,
             "base_url": f"http://127.0.0.1:{provider.addresses[0][1]}/v1",
             "api_key_env": "BENCH_FIXTURE_KEY",
-            "context_window": 1000000 if long_session else 32000,
-            "max_output_tokens": 393216 if long_session else 2048,
-            "parameters": {"enable_thinking": False}
+            "context_window": 1048576 if unattended else 1000000 if long_session else 32000,
+            "max_output_tokens": 131072 if unattended else 393216 if long_session else 2048,
+            "parameters": {"thinking": {"type": "enabled"}, "reasoning_effort": "low", "temperature": 1}
+            if unattended
+            else {"enable_thinking": False}
             if protocol == "chat-completions"
             else {"reasoning": {"effort": "none"}},
         }
@@ -421,7 +450,9 @@ async def run_native_matrix(
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 1 if long_session else 4,
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
+        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
+        if os.environ.get("CI") == "true"
+        else {"cache_budget_gib": 384},
         "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
     }
@@ -499,6 +530,13 @@ async def run_native_matrix(
             return results
 
         results = await asyncio.to_thread(retained_results)
+        if unattended:
+            for attempt in await asyncio.to_thread(lambda: list(root.glob("trials/*/attempt-*"))):
+                parent = read_json(next(attempt.glob("*/agent/unattended.json")))
+                child = read_json(next(attempt.glob("*/agent/unattended-child.json")))
+                assert parent["interaction"] == {"mode": "unattended", "source": "benchmark"}
+                assert child["parent"] == child["child"] == parent["interaction"]
+                assert child["question_disabled"] is True
         assert len(results) == 2 * len(harnesses)
         assert all((result["execution"] or {}).get("outcome") == "completed" for result in results), results
         assert all((result["verifier"] or {}).get("rewards") == {"reward": 1.0} for result in results), results
