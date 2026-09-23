@@ -5,15 +5,15 @@ import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { LSPClient } from "./client"
 import path from "path"
-import { pathToFileURL } from "url"
+import { fileURLToPath, pathToFileURL } from "url"
 import { LSPServer } from "./server"
 import { z } from "zod"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { spawn } from "child_process"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { LSPProcess } from "./process"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { LSPPid } from "./pid"
-import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { LSPSchema } from "./schema"
 
 export namespace LSP {
@@ -53,146 +53,125 @@ export namespace LSP {
     })
   export type DocumentSymbol = z.infer<typeof DocumentSymbol>
 
-  // Idle reaping (issue #350 D3/H4): a language-server subprocess (tsserver,
-  // etc.) can hold hundreds of MB and previously lived until the process exited.
-  // Each client is stamped on use; a per-scope sweeper shuts down clients idle
-  // beyond the timeout. Reaping is transparent — getClients re-spawns on the
-  // next request. Controlled by execution.lspIdleReap.
-  const runtimeState = RuntimeContext.state(() => ({
-    lastUsedAt: new WeakMap<LSPClient.Info, number>(),
-  }))
-  const worktreeClients = RuntimeContext.state(() => new WeakSet<LSPClient.Info>())
-  const processLeases = RuntimeContext.state(() => new WeakMap<LSPClient.Info, () => Promise<void>>())
-
-  async function releaseProcess(client: LSPClient.Info) {
-    await processLeases().get(client)?.()
-    processLeases().delete(client)
+  type Running = Awaited<ReturnType<typeof LSPProcess.start>>
+  interface Connection {
+    server: LSPServer.Info
+    root: string
+    diagnostics: Map<string, LSPClient.Diagnostic[]>
+    files: Set<string>
+    live?: Managed
+    spawning?: Promise<Managed | undefined>
+  }
+  interface Managed {
+    client: LSPClient.Info
+    process: Running
+    record: Connection
+    active: number
+    idle: ReturnType<typeof Promise.withResolvers<void>>
+    lastUsed: number
+    idleMs: number
+    retiring?: Promise<void>
+    retire(): Promise<void>
   }
   const LSP_IDLE_MS = 30 * 60 * 1000
   const LSP_WORKTREE_IDLE_MS = 5 * 60 * 1000
-  const LSP_SWEEP_MS = 5 * 60 * 1000
-  const LSP_MAX_CLIENTS_PER_SERVER = Math.max(
-    1,
-    Number.parseInt(process.env.SYNERGY_LSP_MAX_CLIENTS_PER_SERVER ?? "2", 10) || 2,
-  )
-  // A capacity eviction only targets clients idle at least this long, so a
-  // client actively serving a concurrent session is never shut down mid-request.
-  const LSP_CAPACITY_REAP_MIN_IDLE_MS = 30 * 1000
-  function touchClient(client: LSPClient.Info) {
-    const instanceState = runtimeState()
-
-    instanceState.lastUsedAt.set(client, Date.now())
+  const LSP_QUERY_MS = 30000
+  const runtimeState = RuntimeContext.state(() => ({
+    clients: new Set<Managed>(),
+    timer: undefined as ReturnType<typeof setInterval> | undefined,
+    polling: undefined as Promise<void> | undefined,
+  }))
+  function monitor(entry: Managed) {
+    const runtime = RuntimeContext.current()
+    const state = runtimeState()
+    state.clients.add(entry)
+    if (state.timer) return
+    state.timer = setInterval(() => {
+      if (state.polling) return
+      state.polling = RuntimeContext.exit(() =>
+        runtime.run(async () => {
+          const waiting = new Set(await WorkspaceAccess.contendedProcesses())
+          await Promise.all(
+            [...state.clients].map(async (client) => {
+              if (client.active || client.retiring) return
+              if (!waiting.has(client.process.claimID) && Date.now() - client.lastUsed < client.idleMs) return
+              await client.retire()
+            }),
+          )
+        }),
+      )
+        .catch((error) => log.warn("LSP retirement failed", { error }))
+        .finally(() => {
+          state.polling = undefined
+          if (state.clients.size) return
+          clearInterval(state.timer)
+          state.timer = undefined
+        })
+    }, 100)
+    state.timer.unref()
   }
-
-  function clientIdleMs(client: LSPClient.Info) {
-    return worktreeClients().has(client) ? LSP_WORKTREE_IDLE_MS : LSP_IDLE_MS
-  }
-
   const state = WorkspaceState.create(
     async () => {
-      const clients: LSPClient.Info[] = []
-      const servers: Record<string, LSPServer.Info> = {}
       const cfg = await Config.current()
-
-      if (cfg.lsp === false) {
-        log.info("all LSPs are disabled")
-        await LSPPid.cleanupOrphans()
-        return {
-          broken: new Set<string>(),
-          servers,
-          clients,
-          spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
-          sweeper: undefined as ReturnType<typeof setInterval> | undefined,
-        }
-      }
-
+      const servers: Record<string, LSPServer.Info> = {}
       await LSPPid.cleanupOrphans()
-
-      for (const server of Object.values(LSPServer)) {
-        servers[server.id] = server
-      }
-
-      if (cfg.lsp?.ty?.disabled !== false) delete servers.ty
-
-      for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
-        const existing = servers[name] ?? Object.values(LSPServer).find((server) => server.id === name)
-        if (item.disabled) {
-          log.info(`LSP server ${name} is disabled`)
-          delete servers[name]
-          continue
-        }
-        if (!item.command) {
-          if (!existing) throw new Error(`LSP server ${name} requires a command`)
-          if (item.env) throw new Error(`LSP server ${name} requires an explicit command to override its environment`)
+      if (cfg.lsp !== false) {
+        for (const server of Object.values(LSPServer)) servers[server.id] = server
+        if (cfg.lsp?.ty?.disabled !== false) delete servers.ty
+        for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
+          const existing = servers[name] ?? Object.values(LSPServer).find((server) => server.id === name)
+          if (item.disabled) {
+            delete servers[name]
+            continue
+          }
+          if (!item.command) {
+            if (!existing) throw new Error(`LSP server ${name} requires a command`)
+            if (item.env) throw new Error(`LSP server ${name} requires an explicit command to override its environment`)
+            servers[name] = {
+              ...existing,
+              extensions: item.extensions ?? existing.extensions,
+              async resolve(root) {
+                const resolved = await existing.resolve(root)
+                if (!resolved) return
+                return { ...resolved, initialization: { ...resolved.initialization, ...item.initialization } }
+              },
+            }
+            continue
+          }
+          const command = item.command
           servers[name] = {
             ...existing,
-            extensions: item.extensions ?? existing.extensions,
-            async spawn(root) {
-              const spawned = await existing.spawn(root)
-              if (!spawned) return spawned
-              return { ...spawned, initialization: { ...spawned.initialization, ...item.initialization } }
+            id: name,
+            root: existing?.root ?? (async () => ScopeContext.current.directory),
+            extensions: item.extensions ?? existing?.extensions ?? [],
+            async resolve(root) {
+              return {
+                command: { command: command[0]!, args: command.slice(1), cwd: root, env: item.env },
+                initialization: item.initialization,
+              }
             },
           }
-          continue
-        }
-        const command = item.command
-        servers[name] = {
-          ...existing,
-          id: name,
-          root: existing?.root ?? (async () => ScopeContext.current.directory),
-          extensions: item.extensions ?? existing?.extensions ?? [],
-          spawn: async (root) => {
-            return {
-              process: spawn(command[0], command.slice(1), {
-                cwd: root,
-                detached: process.platform !== "win32",
-                env: {
-                  ...RuntimeContext.current().host.env,
-                  ...item.env,
-                },
-              }),
-              initialization: item.initialization,
-            }
-          },
         }
       }
-
-      log.info("enabled LSP servers", {
-        serverIds: Object.values(servers)
-          .map((server) => server.id)
-          .join(", "),
-      })
-
-      const sweeper =
-        cfg.execution?.lspIdleReap === false
-          ? undefined
-          : setInterval(() => {
-              const instanceState = runtimeState()
-
-              const now = Date.now()
-              for (const client of [...clients]) {
-                if (now - (instanceState.lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
-                void reapClient(clients, client, "idle")
-              }
-            }, LSP_SWEEP_MS)
-      sweeper?.unref()
-
       return {
-        broken: new Set<string>(),
         servers,
-        clients,
-        spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
-        sweeper,
+        connections: new Map<string, Connection>(),
+        broken: new Set<string>(),
+        controller: new AbortController(),
+        pending: new Set<Promise<unknown>>(),
+        idleReap: cfg.execution?.lspIdleReap !== false,
       }
     },
     async (state) => {
-      if (state.sweeper) clearInterval(state.sweeper)
-      await Promise.all(
-        state.clients.map(async (client) => {
-          await client.shutdown()
-          await releaseProcess(client)
-        }),
-      )
+      state.controller.abort(new DOMException("Language server resources disposed", "AbortError"))
+      await Promise.allSettled([...state.pending])
+      await Promise.all([...state.connections.values()].map((record) => record.live?.retire()))
+      const registry = runtimeState()
+      if (!registry.clients.size) {
+        clearInterval(registry.timer)
+        registry.timer = undefined
+        await registry.polling
+      }
     },
   )
 
@@ -218,162 +197,223 @@ export namespace LSP {
     })
   export type Status = z.infer<typeof Status>
 
-  export async function status() {
-    return state().then((x) => {
-      const result: Status[] = []
-      for (const client of x.clients) {
-        result.push({
-          id: client.serverID,
-          name: x.servers[client.serverID].id,
-          root: path.relative(ScopeContext.current.directory, client.root),
-          status: "connected",
-        })
-      }
-      return result
-    })
+  export async function connectionCount() {
+    const s = await state()
+    return [...s.connections.keys()].filter((key) => !s.broken.has(key)).length
   }
 
-  async function getClients(file: string) {
+  export async function status() {
+    const s = await state()
+    return [...s.connections.values()].flatMap((record): Status[] =>
+      record.live && !record.live.retiring
+        ? [
+            {
+              id: record.server.id,
+              name: record.server.id,
+              root: path.relative(ScopeContext.current.directory, record.root),
+              status: "connected",
+            },
+          ]
+        : [],
+    )
+  }
+
+  async function schedule(s: Awaited<ReturnType<typeof state>>, record: Connection, key: string) {
+    const scope = ScopeContext.current.scope
+    const workspace = ScopeContext.current.workspace
+    const publish = () =>
+      ScopeContext.provide({ scope, workspace, fn: () => WorkspaceEvents.publish(Event.Updated, {}) })
+    const deadline = new AbortController()
+    const timer = setTimeout(
+      () => deadline.abort(new DOMException("Language server startup timed out", "TimeoutError")),
+      LSP_QUERY_MS,
+    )
+    const task = WorkspaceAccess.signal()
+    const signal = AbortSignal.any([s.controller.signal, deadline.signal, ...(task ? [task] : [])])
+    let process: Running | undefined
+    let client: LSPClient.Info | undefined
+    let cleanup: (() => Promise<void>) | undefined
+    const stop = () => {
+      void process?.stop().catch(() => {})
+    }
+    signal.addEventListener("abort", stop, { once: true })
+    try {
+      const prepared = await LSPProcess.resolving(signal, () => record.server.resolve(record.root))
+      cleanup = prepared.dispose
+      const launch = prepared.value
+      signal.throwIfAborted()
+      if (!launch) {
+        s.broken.add(key)
+        return
+      }
+      process = await LSPProcess.start(launch.command, signal, true, cleanup)
+      process.child.stderr.resume()
+      signal.throwIfAborted()
+      await process.activate()
+      client = await LSPClient.create({
+        serverID: record.server.id,
+        server: { process: process.child, initialization: launch.initialization },
+        root: record.root,
+        signal,
+      })
+      signal.throwIfAborted()
+      for (const file of record.files)
+        await client.notify
+          .open({ path: file })
+          .catch((error) => log.info("LSP document could not be reopened", { error }))
+      const owned = process
+      const connected = client
+      const registry = runtimeState()
+      const entry: Managed = {
+        process: owned,
+        client: connected,
+        record,
+        active: 0,
+        idle: Promise.withResolvers<void>(),
+        lastUsed: Date.now(),
+        idleMs: !s.idleReap
+          ? Infinity
+          : ScopeContext.current.workspace?.type === "git_worktree"
+            ? LSP_WORKTREE_IDLE_MS
+            : LSP_IDLE_MS,
+        retire() {
+          return (entry.retiring ??= (async () => {
+            if (entry.active) await entry.idle.promise
+            try {
+              await connected.shutdown()
+            } finally {
+              await owned.stop()
+              await remove()
+            }
+          })())
+        },
+      }
+      record.live = entry
+      record.diagnostics = connected.diagnostics
+      const remove = async () => {
+        registry.clients.delete(entry)
+        if (record.live !== entry) return
+        record.live = undefined
+        await publish()
+      }
+      const dispose = () => {
+        void entry.retire().catch((error) => log.warn("LSP disposal failed", { error }))
+      }
+      s.controller.signal.addEventListener("abort", dispose, { once: true })
+      void owned.completion
+        .catch((error) => log.warn("LSP process failed", { error }))
+        .finally(async () => {
+          s.controller.signal.removeEventListener("abort", dispose)
+          await remove()
+          s.broken.delete(key)
+        })
+        .catch((error) => log.warn("LSP exit notification failed", { error }))
+      monitor(entry)
+      await publish()
+      return entry
+    } catch (error) {
+      if (client) await client.shutdown()
+      else if (process) {
+        process.child.stdout.resume()
+        await process.stop()
+      }
+      if (!signal.aborted) s.broken.add(key)
+      log.error(`Failed to start LSP server ${record.server.id}`, { error })
+      signal.throwIfAborted()
+    } finally {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", stop)
+      if (!process) await cleanup?.()
+    }
+  }
+
+  async function use<T>(
+    s: Awaited<ReturnType<typeof state>>,
+    record: Connection,
+    input: (client: LSPClient.Info) => Promise<T>,
+  ): Promise<T | undefined> {
+    const key = JSON.stringify([record.root, record.server.id])
+    while (true) {
+      s.controller.signal.throwIfAborted()
+      WorkspaceAccess.signal()?.throwIfAborted()
+      let entry = record.live
+      if (entry?.retiring) {
+        await entry.retiring
+        continue
+      }
+      if (entry && !entry.active && (await WorkspaceAccess.contendedProcesses()).includes(entry.process.claimID)) {
+        await entry.retire()
+        continue
+      }
+      if (!entry) {
+        if (s.broken.has(key)) return
+        let launching = false
+        if (!record.spawning) {
+          launching = true
+          const task = schedule(s, record, key)
+          record.spawning = task
+          s.pending.add(task)
+          void task
+            .finally(() => {
+              s.pending.delete(task)
+              if (record.spawning === task) record.spawning = undefined
+            })
+            .catch(() => {})
+        }
+        try {
+          entry = await record.spawning
+        } catch (error) {
+          s.controller.signal.throwIfAborted()
+          WorkspaceAccess.signal()?.throwIfAborted()
+          if (!launching && error instanceof Error && error.name === "AbortError") continue
+          throw error
+        }
+        if (!entry) return
+      }
+      if (entry.retiring || record.live !== entry) continue
+      if (!entry.active) entry.idle = Promise.withResolvers<void>()
+      entry.active++
+      entry.lastUsed = Date.now()
+      const taskSignal = WorkspaceAccess.signal()
+      const signal = AbortSignal.any([s.controller.signal, ...(taskSignal ? [taskSignal] : [])])
+      const cancelled = Promise.withResolvers<never>()
+      void cancelled.promise.catch(() => {})
+      const abort = () => cancelled.reject(signal.reason)
+      signal.addEventListener("abort", abort, { once: true })
+      try {
+        signal.throwIfAborted()
+        return await withTimeout(Promise.race([input(entry.client), cancelled.promise]), LSP_QUERY_MS)
+      } catch (error) {
+        void entry.retire().catch((error) => log.warn("LSP query retirement failed", { error }))
+        throw error
+      } finally {
+        signal.removeEventListener("abort", abort)
+        entry.active--
+        if (!entry.active) entry.idle.resolve()
+        entry.lastUsed = Date.now()
+        if (entry.retiring) await entry.retiring
+      }
+    }
+  }
+
+  async function records(file: string) {
     const s = await state()
     const extension = path.parse(file).ext || file
-    const result: LSPClient.Info[] = []
-
-    async function schedule(server: LSPServer.Info, root: string, key: string) {
-      const handle = await withTimeout(server.spawn(root), 30_000, {
-        message: `Timed out spawning LSP server ${server.id}`,
-      })
-        .then((value) => {
-          if (!value) s.broken.add(key)
-          return value
-        })
-        .catch((err) => {
-          s.broken.add(key)
-          log.error(`Failed to spawn LSP server ${server.id}`, { error: err })
-          return undefined
-        })
-
-      if (!handle) return undefined
-      log.info("spawned lsp server", { serverID: server.id })
-      const client = await LSPClient.create({
-        serverID: server.id,
-        server: handle,
-        root,
-      }).catch((err) => {
-        s.broken.add(key)
-        void Shell.killTree(handle.process)
-        log.error(`Failed to initialize LSP client ${server.id}`, { error: err })
-        return undefined
-      })
-
-      if (!client) {
-        void Shell.killTree(handle.process)
-        return undefined
-      }
-
-      const existing = s.clients.find((x) => x.root === root && x.serverID === server.id)
-      if (existing) {
-        void Shell.killTree(handle.process)
-        return existing
-      }
-
-      s.clients.push(client)
-      if (ScopeContext.current.workspace?.type === "git_worktree") worktreeClients().add(client)
-      touchClient(client)
-      if (handle.process.pid) {
-        processLeases().set(client, await LSPPid.track(handle.process.pid))
-      }
-
-      handle.process.once("exit", (code, signal) => {
-        void releaseProcess(client).catch((error) => log.warn("LSP process record cleanup failed", { error }))
-        log.info("LSP server process exited", { serverID: server.id, root, code, signal })
-        const idx = s.clients.indexOf(client)
-        if (idx !== -1) {
-          s.clients.splice(idx, 1)
-        }
-        s.broken.delete(key)
-      })
-
-      return client
-    }
-
+    const result: Connection[] = []
     for (const server of Object.values(s.servers)) {
       if (server.extensions.length && !server.extensions.includes(extension)) continue
-
       const root = await server.root(file)
       if (!root) continue
-      if (s.broken.has(root + server.id)) continue
-
-      const match = s.clients.find((x) => x.root === root && x.serverID === server.id)
-      if (match) {
-        result.push(match)
-        continue
+      const key = JSON.stringify([root, server.id])
+      if (s.broken.has(key)) continue
+      let record = s.connections.get(key)
+      if (!record) {
+        record = { server, root, diagnostics: new Map(), files: new Set() }
+        s.connections.set(key, record)
       }
-
-      const inflight = s.spawning.get(root + server.id)
-      if (inflight) {
-        const client = await inflight
-        if (!client) continue
-        result.push(client)
-        continue
-      }
-
-      // Register the spawn placeholder synchronously (no await between the
-      // `spawning.get` check above and this `set`), otherwise two concurrent
-      // getClients for the same (root, server) could both miss the in-flight
-      // entry and spawn duplicate servers. The capacity reap is awaited inside
-      // the task instead of before it.
-      const key = root + server.id
-      const task = (async () => {
-        await reapForCapacity(s.clients, server.id)
-        return schedule(server, root, key)
-      })()
-      s.spawning.set(key, task)
-
-      task.finally(() => {
-        if (s.spawning.get(key) === task) {
-          s.spawning.delete(key)
-        }
-      })
-
-      const client = await task
-      if (!client) continue
-
-      result.push(client)
-      WorkspaceEvents.publish(Event.Updated, {})
+      result.push(record)
     }
-
-    for (const client of result) touchClient(client)
-    return result
-  }
-
-  async function reapForCapacity(clients: LSPClient.Info[], serverID: string) {
-    const instanceState = runtimeState()
-
-    const matches = clients.filter((client) => client.serverID === serverID)
-    if (matches.length < LSP_MAX_CLIENTS_PER_SERVER) return
-    const now = Date.now()
-    const oldest = matches.toSorted((a, b) => {
-      const instanceState = runtimeState()
-      return (instanceState.lastUsedAt.get(a) ?? 0) - (instanceState.lastUsedAt.get(b) ?? 0)
-    })[0]
-    // Only evict a client that has been idle past the grace window. touchClient
-    // stamps a client on every getClients/run, so a recently-stamped client is
-    // likely serving an in-flight request on another concurrent session —
-    // shutting it down mid-request would fail that request. When every client is
-    // hot, tolerate briefly exceeding the cap instead; the idle sweeper reclaims
-    // them once they cool down.
-    if (!oldest || now - (instanceState.lastUsedAt.get(oldest) ?? 0) < LSP_CAPACITY_REAP_MIN_IDLE_MS) return
-    await reapClient(clients, oldest, "capacity")
-  }
-
-  async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: "idle" | "capacity") {
-    const idx = clients.indexOf(client)
-    if (idx !== -1) clients.splice(idx, 1)
-    log.info("reaping LSP client", { serverID: client.serverID, root: client.root, reason })
-    await client
-      .shutdown()
-      .then(() => releaseProcess(client))
-      .catch((error) => log.warn("failed to shut down LSP client", { error, reason }))
+    return { s, records: result }
   }
 
   export async function hasClients(file: string) {
@@ -383,34 +423,32 @@ export namespace LSP {
       if (server.extensions.length && !server.extensions.includes(extension)) continue
       const root = await server.root(file)
       if (!root) continue
-      if (s.broken.has(root + server.id)) continue
+      if (s.broken.has(JSON.stringify([root, server.id]))) continue
       return true
     }
     return false
   }
 
-  export async function touchFile(input: string, waitForDiagnostics?: boolean) {
-    log.info("touching file", { file: input })
-    const clients = await getClients(input)
-    await Promise.all(
-      clients.map(async (client) => {
-        const wait = waitForDiagnostics ? client.waitForDiagnostics({ path: input }) : Promise.resolve()
-        await client.notify.open({ path: input })
-        return wait
-      }),
-    ).catch((err) => {
-      log.error("failed to touch file", { err, file: input })
+  export async function touchFile(file: string, waitForDiagnostics?: boolean) {
+    await WorkspaceAccess.withinTask(async () => {
+      const selected = await records(file)
+      for (const record of selected.records) {
+        await use(selected.s, record, async (client) => {
+          const wait = waitForDiagnostics ? client.waitForDiagnostics({ path: file }) : Promise.resolve()
+          await client.notify.open({ path: file })
+          record.files.add(file)
+          await wait
+        })
+      }
+    }).catch((error) => {
+      log.error("failed to touch file", { error, file })
     })
   }
 
   export async function diagnostics() {
     const results: Record<string, LSPClient.Diagnostic[]> = {}
-    for (const result of await runAll(async (client) => client.diagnostics)) {
-      for (const [path, diagnostics] of result.entries()) {
-        const arr = results[path] || []
-        arr.push(...diagnostics)
-        results[path] = arr
-      }
+    for (const record of (await state()).connections.values()) {
+      for (const [file, diagnostics] of record.diagnostics) (results[file] ??= []).push(...diagnostics)
     }
     return results
   }
@@ -471,20 +509,22 @@ export namespace LSP {
     SymbolKind.Enum,
   ]
 
-  export async function workspaceSymbol(query: string) {
-    return runAll((client) =>
-      client.connection
-        .sendRequest("workspace/symbol", {
-          query,
-        })
-        .then((result: any) => result.filter((x: LSP.Symbol) => kinds.includes(x.kind)))
-        .then((result: any) => result.slice(0, 10))
-        .catch(() => []),
+  export async function workspaceSymbol(query: string, signal?: AbortSignal) {
+    return runAll(
+      (client) =>
+        client.connection
+          .sendRequest("workspace/symbol", {
+            query,
+          })
+          .then((result: any) => result.filter((x: LSP.Symbol) => kinds.includes(x.kind)))
+          .then((result: any) => result.slice(0, 10))
+          .catch(() => []),
+      signal,
     ).then((result) => result.flat() as LSP.Symbol[])
   }
 
   export async function documentSymbol(uri: string) {
-    const file = new URL(uri).pathname
+    const file = fileURLToPath(uri)
     return run(file, (client) =>
       client.connection
         .sendRequest("textDocument/documentSymbol", {
@@ -569,16 +609,28 @@ export namespace LSP {
     }).then((result) => result.flat().filter(Boolean))
   }
 
-  async function runAll<T>(input: (client: LSPClient.Info) => Promise<T>): Promise<T[]> {
-    const clients = await state().then((x) => x.clients)
-    const tasks = clients.map((x) => input(x))
-    return Promise.all(tasks)
+  async function runAll<T>(input: (client: LSPClient.Info) => Promise<T>, signal?: AbortSignal): Promise<T[]> {
+    return WorkspaceAccess.withinTask(async () => {
+      const s = await state()
+      const result: T[] = []
+      for (const record of [...s.connections.values()]) {
+        const value = await use(s, record, input)
+        if (value !== undefined) result.push(value)
+      }
+      return result
+    }, signal)
   }
 
   async function run<T>(file: string, input: (client: LSPClient.Info) => Promise<T>): Promise<T[]> {
-    const clients = await getClients(file)
-    const tasks = clients.map((x) => input(x))
-    return Promise.all(tasks)
+    return WorkspaceAccess.withinTask(async () => {
+      const selected = await records(file)
+      const result: T[] = []
+      for (const record of selected.records) {
+        const value = await use(selected.s, record, input)
+        if (value !== undefined) result.push(value)
+      }
+      return result
+    })
   }
 
   export namespace Diagnostic {

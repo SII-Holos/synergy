@@ -300,7 +300,10 @@ test("a process keeps its claim after the turn ends and self-dependent writes fa
       parentClaim: turn.id,
       processID: child.pid,
     })
-    await expect(coordinator.acquire({ ...turn })).rejects.toThrow("process")
+    expect((await coordinator.acquire({ ...turn })).id).toBe(task.id)
+    await expect(
+      coordinator.acquire({ ...request([tmp.path], "parent"), kind: "operation", parentClaim: turn.id }),
+    ).rejects.toThrow("process")
     await expect(coordinator.acquire({ ...request([tmp.path], "child"), ancestors: ["parent"] })).rejects.toThrow(
       "process",
     )

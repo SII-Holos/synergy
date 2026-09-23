@@ -45,6 +45,10 @@ PTY records retain their Workspace ID and binding generation while their Scope i
 
 Native process claims can explicitly opt into cooperative retirement. The coordinator reports conflicting queued writers to the owner, including writers in other Runtime instances. This is a request to drain an idle resource, never permission to release a live process. These claims keep the same native liveness and finalization requirements; ordinary background commands retain their immediate self-dependency error. Cancelled waiters and non-conflicting readers do not request retirement.
 
+Language servers and their executable probes, installers and archive extraction use native process ownership. Unconfined language servers reserve all host writable roots. Idle servers retire when another writer is queued; an active query completes before retirement, and query cancellation does not interrupt other borrowers. Matching servers are queried sequentially so one server cannot retain the write claim needed to start another. Diagnostics, opened documents and server identities survive retirement within the same Workspace generation; subsequent queries and symbol search reopen the server. Reload aborts queued preparation and drains active native trees. Temporary language-server data is removed before releasing its process claim.
+
+Reacquiring an existing task reservation does not grant a new physical write. Each operation or process acquires its own claim; background commands still prevent their owning Session from starting conflicting writes. This lets a cooperative child retire while its parent's next operation waits, without treating a reused active task as an invisible waiter.
+
 The native PTY transport uses bounded byte queues and Node stream backpressure. UTF-8 decoding happens after transport, EOF drains before terminal completion, and replay never splits surrogate pairs. Slow WebSocket consumers and oversized input are disconnected without terminating the terminal. Failed termination retains the visible terminal tab and native ownership. Core, full and workspace-module packages include the same verified native library and license notices.
 
 ## Worktree Ownership
@@ -89,7 +93,7 @@ Search has three independent modes:
 
 - files — a cached workspace index plus fuzzy path matching
 - content — bounded fixed-string ripgrep results
-- symbol — active LSP workspace-symbol results, with an explicit unavailable capability when no LSP client is active
+- symbol — Workspace-owned LSP symbols, with lazy restart of retired servers and an explicit unavailable capability before any configured server is discovered
 
 File-index scans consume and retain at most 50,000 complete paths, deduplicate retained paths, preserve results collected before a subprocess output limit or scan timeout, and mark the search response as truncated whenever a bound is reached. A workspace that is too large for one bounded index scan therefore returns partial file matches instead of failing the route with a 500 response or retaining an output-sized object graph indefinitely.
 

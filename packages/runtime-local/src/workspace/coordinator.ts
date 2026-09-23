@@ -266,8 +266,12 @@ export class WorkspaceCoordinator {
             const own = ledger.claims.find((claim) => claim.id === request.id)
             if (own && own.owner !== request.owner) throw new Error("Workspace claim identity belongs to another owner")
             if (!registered) {
-              if (own?.state === "active" && covers(own.roots, roots)) request.token = own.token
-              else {
+              if (own?.state === "active" && covers(own.roots, roots)) {
+                request.token = own.token
+                // Reusing a task reservation is not a new physical write admission.
+                // Its next operation/process claim must wait on retained native children.
+                if (own.kind === "task" && request.kind === "task") return true
+              } else {
                 ledger.claims = ledger.claims.filter((claim) => claim.id !== request.id)
                 if (ledger.claims.length >= 1024) throw new WorkspaceBusyError("Workspace coordination queue is busy")
                 ledger.claims.push(request)

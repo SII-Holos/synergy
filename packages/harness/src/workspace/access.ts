@@ -330,7 +330,7 @@ export namespace WorkspaceAccess {
   export async function process(
     roots: string[] | null,
     signal?: AbortSignal,
-    options?: { cooperative?: boolean },
+    options?: { cooperative?: boolean; retainAfterExit?: boolean },
   ): Promise<Lease> {
     if (options?.cooperative && !host().contendedProcesses)
       throw new Error("This Runtime cannot monitor cooperative process contention")
@@ -346,7 +346,7 @@ export namespace WorkspaceAccess {
             owner: task.owner,
             ancestors: task.ancestors,
             kind: "process",
-            retainAfterExit: !!observe,
+            retainAfterExit: !!observe || options?.retainAfterExit,
             cooperative: options?.cooperative,
             parentClaim: writes ? task.id : undefined,
             roots,

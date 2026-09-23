@@ -40,7 +40,13 @@ export namespace LSPClient {
     ),
   }
 
-  export async function create(input: { serverID: string; server: LSPServer.Handle; root: string }) {
+  export async function create(input: {
+    serverID: string
+    server: LSPServer.Handle
+    root: string
+    signal?: AbortSignal
+  }) {
+    input.signal?.throwIfAborted()
     const l = log.clone().tag("serverID", input.serverID)
     l.info("starting client")
 
@@ -48,6 +54,7 @@ export namespace LSPClient {
       new StreamMessageReader(input.server.process.stdout as any),
       new StreamMessageWriter(input.server.process.stdin as any),
     )
+    connection.onClose(() => connection.dispose())
 
     const diagnostics = new Map<string, Diagnostic[]>()
     connection.onNotification("textDocument/publishDiagnostics", (params) => {
@@ -79,6 +86,9 @@ export namespace LSPClient {
     ])
     connection.listen()
 
+    const abort = () => connection.dispose()
+    input.signal?.addEventListener("abort", abort, { once: true })
+    if (input.signal?.aborted) abort()
     l.info("sending initialize")
     await withTimeout(
       connection.sendRequest("initialize", {
@@ -115,15 +125,19 @@ export namespace LSPClient {
         },
       }),
       45_000,
-    ).catch((err) => {
-      l.error("initialize error", { error: err })
-      throw new InitializeError(
-        { serverID: input.serverID },
-        {
-          cause: err,
-        },
-      )
-    })
+    )
+      .catch((err) => {
+        connection.dispose()
+        l.error("initialize error", { error: err })
+        throw new InitializeError(
+          { serverID: input.serverID },
+          {
+            cause: err,
+          },
+        )
+      })
+      .finally(() => input.signal?.removeEventListener("abort", abort))
+    input.signal?.throwIfAborted()
 
     await connection.sendNotification("initialized", {})
 
@@ -137,6 +151,7 @@ export namespace LSPClient {
       [path: string]: number
     } = {}
 
+    let shutdown: Promise<void> | undefined
     const result = {
       root: input.root,
       get pid() {
@@ -242,18 +257,23 @@ export namespace LSPClient {
             unsub?.()
           })
       },
-      async shutdown() {
-        l.info("shutting down")
-        try {
-          await withTimeout(connection.sendRequest("shutdown"), 5000)
-          connection.sendNotification("exit")
-        } catch {
-          // LSP server didn't respond to shutdown request, force kill
-        }
-        connection.end()
-        connection.dispose()
-        await Shell.killTree(input.server.process)
-        l.info("shutdown")
+      shutdown() {
+        return (shutdown ??= (async () => {
+          l.info("shutting down")
+          try {
+            await withTimeout(connection.sendRequest("shutdown"), 5000)
+            await connection.sendNotification("exit")
+          } catch {
+            // A stalled protocol still needs native process-tree termination.
+          } finally {
+            connection.end()
+            connection.dispose()
+            input.server.process.stdout.resume()
+            input.server.process.stderr.resume()
+            await Shell.killTree(input.server.process)
+          }
+          l.info("shutdown")
+        })())
       },
     }
 
