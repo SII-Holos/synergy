@@ -32,6 +32,8 @@ Working-file resources are keyed by Runtime, Workspace ID and binding generation
 
 LSP process recovery verifies host, owner process identity and child process identity before signaling an orphan. Concurrent registrations use one locked, atomic process ledger; per-client release tokens prevent an earlier client from removing another record. PID-only historical files cannot establish authority to signal a process. Starting another Workspace preserves active queries; idle unconfined language servers retire before another native writer is admitted.
 
+Native installation and extraction use Runtime Local's owned process path. The unused Harness ZIP launcher and its export are removed after migrating its consumers; retaining an unowned launch helper would leave a second execution path outside Workspace coordination.
+
 Local bindings and their indexes are persisted separately from Session history. Consumers must resolve an explicit Workspace and retain its generation for execution. A directory that is missing or has been replaced cannot be made usable merely by finding another directory at the stored pathname.
 
 File API requests carry an explicit Workspace and generation. Open file tabs retain their owner across session selection and rebinding; server-side generation validation is also applied to raw document assets. Scope and Workspace caches remain separate so same-named files cannot alias across directories.

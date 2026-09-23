@@ -156,7 +156,6 @@
     "./util/shell": "./src/util/shell.ts",
     "./config/lsp-catalog": "./src/config/lsp-catalog.ts",
     "./session/symbol-range": "./src/session/symbol-range.ts",
-    "./util/archive": "./src/util/archive.ts",
     "./session/input-source": "./src/session/input-source.ts",
     "./tool/lsp-source": "./src/tool/lsp-source.ts",
     "./tool/exposure": "./src/tool/exposure.ts",
