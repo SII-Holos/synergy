@@ -5,6 +5,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { FileMutation } from "../../src/file/mutation"
+import { FileEntry } from "../../src/file/entry"
 import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { testRuntime } from "../support/runtime"
 
@@ -63,3 +64,39 @@ test("native Workspace read, write, copy, move and delete retain bytes beyond MA
     })
   })
 }, 30000)
+
+test.skipIf(process.platform !== "win32")(
+  "copying Windows directory links preserves dangling links and junctions",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          for (const type of ["dir", "junction"] as const) {
+            const directory = path.join(tmp.path, type, "nested-".repeat(12), "directory-".repeat(12))
+            await fs.mkdir(directory, { recursive: true })
+            const source = path.join(directory, "source"),
+              destination = path.join(directory, "copy")
+            const target = path.join(directory, "missing-directory")
+            await fs.symlink(type === "dir" ? "missing-directory" : target, source, type)
+            await FileEntry.copy({
+              from: source,
+              to: destination,
+              expectedVersion: (await FileEntry.inspect(source))!.version,
+            })
+            expect(await fs.readlink(destination)).toBe(await fs.readlink(source))
+            await fs.mkdir(target)
+            await fs.writeFile(path.join(target, "keep.txt"), "keep")
+            expect((await fs.stat(destination)).isDirectory()).toBe(true)
+            expect(await fs.readFile(path.join(destination, "keep.txt"), "utf8")).toBe("keep")
+            await fs.rmdir(destination)
+            expect(await fs.readFile(path.join(target, "keep.txt"), "utf8")).toBe("keep")
+          }
+        },
+      })
+    })
+  },
+  30000,
+)

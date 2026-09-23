@@ -21,5 +21,5 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun test test/session/snapshot-long-path.test.ts test/snapshot/workspace.test.ts test/snapshot/initialization.test.ts
         working-directory: packages/harness
-      - run: bun test test/workspace-file/long-path.test.ts
+      - run: bun test test/workspace-file/long-path.test.ts test/workspace-file/mutation.test.ts
         working-directory: packages/runtime-local
