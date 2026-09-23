@@ -5,6 +5,8 @@ import path from "path"
 import os from "os"
 import { UI } from "../../../util/ui"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { FileRename } from "@ericsanchezok/synergy-runtime-local/file/rename"
+import { FileMutation } from "@ericsanchezok/synergy-runtime-local/file/mutation"
 import { FileLink } from "@ericsanchezok/synergy-runtime-local/file/link"
 
 export interface Category {
@@ -231,18 +233,23 @@ export async function copyDirSkipExisting(
           const temporary = path.join(currentDst, `.synergy-copy-${randomUUID()}`)
           try {
             await fs.copyFile(srcPath, temporary, fsSync.constants.COPYFILE_EXCL)
-            const handle = await fs.open(temporary, "r")
+            const mode = (await fs.stat(temporary)).mode
+            if (process.platform === "win32") await fs.chmod(temporary, mode | 0o200)
+            // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
+            // Windows flushing requires a writable handle, including read-only copies.
+            const handle = await fs.open(temporary, process.platform === "win32" ? "r+" : "r")
             try {
+              if (process.platform === "win32") await handle.chmod(mode)
               await handle.sync()
             } finally {
               await handle.close()
             }
             // Publish a complete file without replacing a concurrent destination.
             try {
-              await fs.link(temporary, dstPath)
+              FileRename.exclusive(temporary, dstPath)
               acc.copied++
             } catch (error) {
-              if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") acc.skipped++
+              if (error instanceof FileMutation.ConflictError) acc.skipped++
               else throw error
             }
           } finally {

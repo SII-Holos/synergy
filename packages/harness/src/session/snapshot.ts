@@ -7,6 +7,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotCapture } from "./snapshot-capture"
 import { SnapshotStore } from "./snapshot-store"
+import { SnapshotLink } from "./snapshot-link"
 import { SnapshotRestore } from "./snapshot-restore"
 import { WorkspaceBinding } from "../workspace/binding"
 import { ObservabilityMetrics } from "../observability/metrics"
@@ -383,7 +384,7 @@ export namespace Snapshot {
     }
 
     const parsed = parseNumstatPatch(diff.text)
-    const sizes = await objectSizes(
+    const entries = await objectEntries(
       git,
       parsed.stats.flatMap((stat) => [
         { tree: from, file: stat.file },
@@ -395,6 +396,36 @@ export namespace Snapshot {
       const stat = parsed.stats[index]
       const { additions, deletions, file } = stat
       const isBinaryFile = additions === "-" && deletions === "-"
+      const before = entries.get(objectSizeKey(from, file))
+      const after = entries.get(objectSizeKey(to, file))
+      if (isBinaryFile && (before?.mode === "120000" || after?.mode === "120000")) {
+        const describe = async (entry: TreeEntry | undefined) => {
+          if (!entry) return ""
+          if (entry.mode !== "120000") return `File (${entry.size} bytes)`
+          if (entry.size > 256 * 1024) throw new SnapshotStore.StorageError("Snapshot link exceeds its size limit")
+          const content = await gitSpawn(
+            ["git", "--git-dir", git, "cat-file", "blob", entry.oid],
+            path.dirname(git),
+            undefined,
+            signal,
+          )
+          if (content.exitCode !== 0) throw new SnapshotStore.StorageError("Snapshot link is unavailable")
+          return SnapshotLink.display(SnapshotLink.decode(content.bytes))
+        }
+        const descriptions = await Promise.all([describe(before), describe(after)])
+        result.push({
+          ...SnapshotSchema.fromContents({
+            file,
+            before: descriptions[0],
+            after: descriptions[1],
+            additions: after ? 1 : 0,
+            deletions: before ? 1 : 0,
+          }),
+          beforeBytes: before?.size,
+          afterBytes: after?.size,
+        })
+        continue
+      }
       const added = isBinaryFile ? 0 : parseInt(additions)
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
       const patch = isBinaryFile ? "" : (parsed.patches[index] ?? "")
@@ -405,8 +436,8 @@ export namespace Snapshot {
           deletions: Number.isFinite(deleted) ? deleted : 0,
           binary: isBinaryFile,
           patch,
-          beforeBytes: sizes.get(objectSizeKey(from, file)),
-          afterBytes: sizes.get(objectSizeKey(to, file)),
+          beforeBytes: before?.size,
+          afterBytes: after?.size,
         }),
       )
     }
@@ -464,12 +495,18 @@ export namespace Snapshot {
     return `${tree}:${file}`
   }
 
-  async function objectSizes(
+  interface TreeEntry {
+    mode: string
+    oid: string
+    size: number
+  }
+
+  async function objectEntries(
     git: string,
     objects: Array<{ tree: string; file: string }>,
     signal?: AbortSignal,
-  ): Promise<Map<string, number>> {
-    const result = new Map<string, number>()
+  ): Promise<Map<string, TreeEntry>> {
+    const result = new Map<string, TreeEntry>()
     if (objects.length === 0) return result
     const requested = new Set(objects.map((object) => objectSizeKey(object.tree, object.file)))
     // Provenance: https://git-scm.com/docs/git-ls-tree (-l -z).
@@ -485,9 +522,9 @@ export namespace Snapshot {
       for (const entry of listing.text.split("\0")) {
         if (!entry) continue
         const separator = entry.indexOf("\t")
-        const size = entry.slice(0, separator).trim().split(/\s+/)[3]
+        const [mode, , oid, size] = entry.slice(0, separator).trim().split(/\s+/)
         const key = objectSizeKey(tree, entry.slice(separator + 1))
-        if (requested.has(key) && /^\d+$/.test(size)) result.set(key, Number(size))
+        if (requested.has(key) && /^\d+$/.test(size)) result.set(key, { mode, oid, size: Number(size) })
       }
     }
     return result

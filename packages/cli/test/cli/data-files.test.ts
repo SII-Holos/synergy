@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test, spyOn } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { FileLink } from "@ericsanchezok/synergy-runtime-local/file/link"
@@ -110,4 +110,28 @@ test("data copies preserve native link kinds after their targets disappear", asy
     expect(await fs.readlink(path.join(target, type))).toBe(await fs.readlink(path.join(source, type)))
     expect(FileLink.type(path.join(target, type))).toBe(process.platform === "win32" ? type : undefined)
   }
+})
+
+test("durable Home copies retain read-only mode and cannot replace a concurrent destination", async () => {
+  await using tmp = await tmpdir()
+  const source = path.join(tmp.path, "source"),
+    target = path.join(tmp.path, "target")
+  await fs.mkdir(source)
+  await fs.mkdir(target)
+  const file = path.join(source, "readonly")
+  await fs.writeFile(file, "immutable bytes")
+  await fs.chmod(file, 0o444)
+  const mode = (await fs.stat(file)).mode & 0o777
+  expect(await copyDirSkipExisting(source, target)).toEqual({ copied: 1, skipped: 0 })
+  expect(await fs.readFile(path.join(target, "readonly"), "utf8")).toBe("immutable bytes")
+  expect((await fs.stat(path.join(target, "readonly"))).mode & 0o777).toBe(mode)
+  await fs.writeFile(path.join(source, "raced"), "source")
+  const copy = fs.copyFile
+  using publish = spyOn(fs, "copyFile").mockImplementation(async (...args) => {
+    await copy(...args)
+    await fs.writeFile(path.join(target, "raced"), "newer destination")
+  })
+  expect(await copyDirSkipExisting(source, target)).toEqual({ copied: 0, skipped: 2 })
+  expect(await fs.readFile(path.join(target, "raced"), "utf8")).toBe("newer destination")
+  expect((await fs.readdir(target)).sort()).toEqual(["raced", "readonly"])
 })

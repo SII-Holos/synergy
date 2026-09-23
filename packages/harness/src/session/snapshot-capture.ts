@@ -5,6 +5,7 @@ import os from "node:os"
 import { createHash } from "node:crypto"
 import ignore, { type Ignore } from "ignore"
 import { RuntimeContext } from "../lifecycle/context"
+import { SnapshotLink } from "./snapshot-link"
 import { SnapshotGit } from "./snapshot-git"
 import type { SnapshotStore } from "./snapshot-store"
 
@@ -249,7 +250,7 @@ export namespace SnapshotCapture {
         }
         if (ignored && !previous.has(name)) continue
         if (stat.isSymbolicLink()) {
-          const bytes = Buffer.from(await fs.readlink(filename))
+          const bytes = SnapshotLink.capture(filename, await fs.readlink(filename))
           if (!same(stat, await fs.lstat(filename))) throw new Error("Snapshot symbolic link changed while reading")
           await retain(name, "120000", bytes)
         } else if (stat.isFile()) {

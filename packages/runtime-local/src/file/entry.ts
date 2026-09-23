@@ -7,6 +7,7 @@ import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contai
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { FileMutation } from "./mutation"
 import { FileRename } from "./rename"
+import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileLink } from "./link"
 
 export namespace FileEntry {
@@ -212,9 +213,10 @@ export namespace FileEntry {
       let published = false
       try {
         if (input.mode === "120000") {
-          const link = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(input.content)
-          if (!link || link.includes("\0")) throw new FileMutation.AccessDeniedError("Invalid snapshot symlink")
-          await fs.symlink(link, temporary)
+          const link = SnapshotLink.decode(input.content)
+          if (process.platform === "win32" && !link.kind)
+            throw new FileMutation.AccessDeniedError("Historical symbolic link native kind is unavailable")
+          await fs.symlink(link.target, temporary, link.kind)
         } else {
           const mode = input.mode === "100755" ? 0o755 : 0o644
           const file = await fs.open(temporary, "wx", mode)
