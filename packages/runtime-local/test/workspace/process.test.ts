@@ -28,16 +28,21 @@ test("worktree command cancellation drains the activated native process before r
           roots: null,
           signal: controller.signal,
         }).catch((error: unknown) => error)
-        await waitUntil(() => Bun.file(marker).exists())
-        const pid = Number(await Bun.file(marker).text())
-        controller.abort(new DOMException("Cancelled after activation", "AbortError"))
-        const result = await running
-        expect(result).toBeInstanceOf(DOMException)
-        expect(ProcessInspection.alive(pid)).toBe(false)
-        await WorkspaceAccess.write([tmp.path], async () => {
-          await fs.writeFile(path.join(tmp.path, "next-write"), "released")
-        })
-        expect(await fs.readFile(path.join(tmp.path, "next-write"), "utf8")).toBe("released")
+        try {
+          await waitUntil(() => Bun.file(marker).exists())
+          const pid = Number(await Bun.file(marker).text())
+          controller.abort(new DOMException("Cancelled after activation", "AbortError"))
+          const result = await running
+          expect(result).toBeInstanceOf(DOMException)
+          expect(ProcessInspection.alive(pid)).toBe(false)
+          await WorkspaceAccess.write([tmp.path], async () => {
+            await fs.writeFile(path.join(tmp.path, "next-write"), "released")
+          })
+          expect(await fs.readFile(path.join(tmp.path, "next-write"), "utf8")).toBe("released")
+        } finally {
+          controller.abort(new DOMException("Worktree process fixture closed", "AbortError"))
+          await running
+        }
       },
     })
   })
