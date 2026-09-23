@@ -840,33 +840,42 @@ export namespace Session {
     workspace: import("./types").Workspace | null,
     options?: { requireIdle?: boolean; preserveActivityAt?: boolean },
   ): Promise<Info> {
-    const session = await SessionManager.requireSession(sessionID)
-    if (!WorkspaceAccess.owns(sessionID)) SessionManager.assertIdle(sessionID)
-    workspace = workspace?.id
-      ? await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
-      : await WorkspaceBinding.adopt(workspace, session.scope.id)
-    return WorkspaceAccess.transition(sessionID, workspace, async () => {
-      if (workspace && WorkspaceAccess.owns(sessionID)) {
-        const { WorkspaceRuntime } = await import("../workspace/runtime")
-        await ScopeContext.provide({
-          scope: session.scope,
-          workspace,
-          fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
-        })
+    return SessionWorkspaceRuntime.withBinding(sessionID, async () => {
+      const session = await SessionManager.requireSession(sessionID)
+      const owns = WorkspaceAccess.owns(sessionID)
+      if (!owns) SessionManager.assertIdle(sessionID)
+      workspace = workspace?.id
+        ? await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        : await WorkspaceBinding.adopt(workspace, session.scope.id)
+      const commit = async () => {
+        if (workspace?.id) await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+        if (workspace && owns) {
+          const { WorkspaceRuntime } = await import("../workspace/runtime")
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace,
+            fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
+          })
+        }
+        await SessionWorkspaceRuntime.beforeTransition(session, workspace)
+        return updateInternal(
+          sessionID,
+          (draft) => {
+            if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+            if (workspace) {
+              Workspace.parse(workspace)
+              if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+            }
+            draft.workspace = workspace
+            draft.workspaceID = workspace?.id ?? null
+          },
+          { ...options, workspaceChange: true },
+        )
       }
-      return updateInternal(
-        sessionID,
-        (draft) => {
-          if (options?.requireIdle || !WorkspaceAccess.owns(sessionID)) SessionManager.assertIdle(sessionID)
-          if (workspace) {
-            Workspace.parse(workspace)
-            if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
-          }
-          draft.workspace = workspace
-          draft.workspaceID = workspace?.id ?? null
-        },
-        { ...options, workspaceChange: true },
-      )
+      return owns
+        ? WorkspaceAccess.transition(sessionID, workspace, commit)
+        : WorkspaceAccess.task({ workspace }, commit)
     })
   }
 

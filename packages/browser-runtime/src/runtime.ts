@@ -10,6 +10,10 @@ import { BrowserHostPage } from "./host-page.js"
 import { BrowserNetworkGateway } from "./network-gateway.js"
 import { BrowserHostBrokerProcess } from "./host-broker-process.js"
 import { BrowserEvent } from "./event.js"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
+import { withinBrowserOwner } from "./owner-context"
 
 import type { BrowserSession } from "./types.js"
 export { type BrowserSession } from "./types.js"
@@ -40,15 +44,46 @@ function requireCommandExecutor(): BrowserCommandExecutor {
 
 export namespace BrowserRuntime {
   const log = Log.create({ service: "browser.runtime" })
+  export const withinOwner = withinBrowserOwner
 
   const runtimeState = RuntimeContext.state(() => ({
     sessions: new Map<string, BrowserSession>(),
     sessionPromises: new Map<string, Promise<BrowserSession>>(),
     disposalPromises: new Map<string, Promise<void>>(),
+    memberships: new Map<string, Map<string, BrowserSession>>(),
     running: false,
     driver: null as BrowserDriver.Driver | null,
     reaperInstalled: false,
   }))
+
+  const workspaceSessions = WorkspaceState.create(
+    () => new Map<string, BrowserSession>(),
+    async (sessions) => {
+      for (const [key, session] of sessions) {
+        if (runtimeState().sessions.get(key) === session) await invalidateSession(session.owner)
+      }
+    },
+  )
+
+  function forgetSession(key: string) {
+    const current = runtimeState()
+    current.sessions.delete(key)
+    current.memberships.get(key)?.delete(key)
+    current.memberships.delete(key)
+  }
+
+  export async function invalidateSession(owner: BrowserOwner.Info): Promise<void> {
+    const key = BrowserOwner.key(owner)
+    await runtimeState().sessionPromises.get(key)
+    await requireCommandExecutor().disposeOwner(owner, async () => {
+      const session = runtimeState().sessions.get(key)
+      const pageID = session?.page?.id
+      await session?.dispose()
+      forgetSession(key)
+      BrowserNetworkGateway.revoke(owner)
+      if (pageID) BrowserEvent.publish(owner, { type: "page.closed", pageId: pageID })
+    })
+  }
 
   function installSessionReaper() {
     const instanceState = runtimeState()
@@ -106,7 +141,7 @@ export namespace BrowserRuntime {
       BrowserBroker.release(session.owner)
       BrowserEvent.remove(session.owner)
     }
-    instanceState.sessions.clear()
+    for (const key of instanceState.sessions.keys()) forgetSession(key)
     instanceState.sessionPromises.clear()
     executor.clear()
 
@@ -139,7 +174,9 @@ export namespace BrowserRuntime {
     const active = instanceState.disposalPromises.get(k)
     if (active) return active
 
-    const operation = disposeSessionOnce(owner, k).finally(() => {
+    const operation = SessionWorkspaceRuntime.withBinding(owner.sessionID ?? `browser-scope:${owner.scopeID}`, () =>
+      disposeSessionOnce(owner, k),
+    ).finally(() => {
       const instanceState = runtimeState()
 
       if (instanceState.disposalPromises.get(k) === operation) instanceState.disposalPromises.delete(k)
@@ -156,7 +193,7 @@ export namespace BrowserRuntime {
     const session = instanceState.sessions.get(key)
     if (!session) return
     await requireCommandExecutor().disposeOwner(owner, () => session.dispose())
-    instanceState.sessions.delete(key)
+    forgetSession(key)
     BrowserNetworkGateway.revoke(owner)
     BrowserBroker.release(owner)
     BrowserEvent.remove(owner)
@@ -164,13 +201,15 @@ export namespace BrowserRuntime {
 
   /** Create or retrieve a BrowserSession for the given owner. */
   export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
+    return withinOwner(owner, createSession)
+  }
+
+  async function createSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
     const instanceState = runtimeState()
 
     BrowserOwner.assertValid(owner)
     installSessionReaper()
     const k = BrowserOwner.key(owner)
-    const disposing = instanceState.disposalPromises.get(k)
-    if (disposing) await disposing
     const existing = instanceState.sessions.get(k)
     if (existing) return existing
     const pending = instanceState.sessionPromises.get(k)
@@ -200,6 +239,11 @@ export namespace BrowserRuntime {
       )
       instanceState.sessions.set(k, session)
       await session.restore()
+      if (ScopeContext.current.workspace) {
+        const members = workspaceSessions()
+        members.set(k, session)
+        instanceState.memberships.set(k, members)
+      }
       return session
     })().finally(() => {
       const instanceState = runtimeState()

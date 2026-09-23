@@ -9,6 +9,8 @@ Browser backend state, page ownership, profiles, tools, routes, installation, li
 
 Uploads pin the Workspace binding through dispatch, enforce actual bytes while reading, and revalidate open-handle and pathname identity. Keep shared protocol, headless staging and native-host staging behavior aligned, including zero-byte files.
 
+Commands and idle suspension acquire the Session binding lease before the command queue. Session transitions and Workspace resource disposal close old pages before publishing new file authority, clear command replay results, and preserve owner presentation and history. Test selection, rebind, cancellation and failed Host closure with `test/workspace-lifecycle.test.ts`.
+
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
 Independent hosts call `registerBrowser()` from `./register` before opening Harness, then connect `disposeBrowser()` to their runtime extension cleanup. Registration restores no page and launches no Chromium process; Browser sessions and pages remain lazy. Routes are a separate host transport contribution.

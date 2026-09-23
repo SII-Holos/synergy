@@ -294,7 +294,12 @@ export namespace BrowserBroker {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         requestId: nextRequestId(),
         ownerKey: BrowserOwner.key(input.owner),
-        owner: input.owner,
+        owner: {
+          mode: input.owner.mode,
+          scopeID: input.owner.scopeID,
+          sessionID: input.owner.sessionID,
+          directory: input.owner.directory,
+        },
         routeDirectory: input.routeDirectory,
         presentation: input.presentation,
         page: {
