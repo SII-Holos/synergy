@@ -12,6 +12,8 @@ import { AgendaTypes } from "./types"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { AgendaSessionWakeup } from "./session-wakeup"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export namespace AgendaReactor {
   const log = Log.create({ service: "agenda.reactor" })
@@ -47,7 +49,7 @@ export namespace AgendaReactor {
     }
 
     const scope = storedItem.origin.scope ?? Scope.home()
-    return ScopeContext.provide({ scope, fn: () => runInScope(storedItem, signal, scopeID, scope) })
+    return ScopeContext.provide({ scope, workspace: null, fn: () => runInScope(storedItem, signal, scopeID, scope) })
   }
 
   async function runInScope(
@@ -117,14 +119,13 @@ export namespace AgendaReactor {
 
       await ScopeContext.provide({
         scope,
+        workspace: null,
         fn: async () => {
-          sessionID = persistent
-            ? await resolveOrCreateSession(item, scope, scopeID)
-            : await createEphemeralSession(item, scope)
-
-          const promptText = AgendaPrompt.build(item, signal)
-
           try {
+            sessionID = persistent
+              ? await resolveOrCreateSession(item, scope, scopeID)
+              : await createEphemeralSession(item, scope)
+            const promptText = AgendaPrompt.build(item, signal)
             await withTimeout(
               SessionInvoke.invoke({
                 sessionID: sessionID!,
@@ -246,6 +247,8 @@ export namespace AgendaReactor {
   }
 
   async function createEphemeralSession(item: AgendaTypes.Item, scope: Scope): Promise<string> {
+    if (item.origin.workspaceID === undefined) throw new Error("Agenda Workspace reference has not been upgraded")
+    if (item.origin.workspaceID) await WorkspaceBinding.validate(item.origin.workspaceID, scope.id)
     // Append a short date to the title so ephemeral sessions are easy to
     // identify in the session list. Use the cron/every trigger's timezone if
     // available, otherwise fall back to UTC.
@@ -261,6 +264,7 @@ export namespace AgendaReactor {
     }).format(new Date())
     const session = await Session.create({
       scope,
+      workspaceID: item.origin.workspaceID,
       title: `Agenda: ${item.title} ${date}`,
       agenda: { itemID: item.id },
       controlProfile: item.controlProfile,
@@ -274,10 +278,15 @@ export namespace AgendaReactor {
   async function resolveOrCreateSession(item: AgendaTypes.Item, scope: Scope, scopeID: string): Promise<string> {
     const existing = item.state.persistentSessionID
     if (existing) {
-      const valid = await Session.get(existing)
-        .then(() => true)
-        .catch(() => false)
-      if (valid) return existing
+      const session = await Session.get(existing).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      })
+      if (session) {
+        if (session.scope.id !== scope.id) throw new Error("Agenda execution Session belongs to another Scope")
+        if (session.workspaceID) await WorkspaceBinding.validate(session.workspaceID, scope.id)
+        return existing
+      }
     }
 
     const sessionID = await createEphemeralSession(item, scope)

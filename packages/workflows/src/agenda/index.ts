@@ -80,7 +80,7 @@ export namespace Agenda {
   export async function create(input: AgendaStore.InternalCreateInput, id?: string) {
     const item = await AgendaStore.create(input, id)
     if (item.status === "active") {
-      syncItem(item.origin.scope.id, item)
+      syncItem(item.global ? "home" : item.origin.scope.id, item)
     }
     return item
   }
@@ -187,7 +187,10 @@ export namespace Agenda {
       AgendaClock.unload(item.id)
     }
     AgendaWatcher.unregister(item.id)
-    AgendaWatcher.register(item.id, scopeID, item.triggers, { autoDone: item.autoDone })
+    AgendaWatcher.register(item.id, scopeID, item.triggers, {
+      workspaceID: item.origin.workspaceID,
+      sourceScopeID: item.origin.scope.id,
+    })
     AgendaWebhook.unregister(item.id)
     AgendaWebhook.register(item.id, scopeID, item.triggers)
     AgendaSessionTrigger.unregister(item.id)

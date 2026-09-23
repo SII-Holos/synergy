@@ -1,14 +1,35 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { beforeEach, afterEach, describe, expect, test } from "bun:test"
 import { AgendaWatcher } from "../../src/agenda/watcher"
 import { AgendaTypes } from "../../src/agenda/types"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 const runtime = await testRuntime()
+const workspaces = new Map<string, WorkspaceCatalog.Info>()
+let directories: Awaited<ReturnType<typeof tmpdir>>[] = []
+
+beforeEach(() =>
+  runtime.run(async () => {
+    directories = await Promise.all([tmpdir(), tmpdir()])
+    for (const [i, directory] of directories.entries()) {
+      const scope = await directory.scope()
+      workspaces.set(`scope-${i + 1}`, await WorkspaceBinding.register(scope.id, directory.path))
+    }
+  }),
+)
+
+function register(id: string, scopeID: string, triggers: AgendaTypes.Trigger[]) {
+  const workspace = workspaces.get(scopeID)!
+  AgendaWatcher.register(id, scopeID, triggers, { workspaceID: workspace.id, sourceScopeID: workspace.scopeID })
+}
 
 afterEach(() =>
-  runtime.run(() => {
+  runtime.run(async () => {
     AgendaWatcher.stop()
+    for (const directory of directories) await directory[Symbol.asyncDispose]()
+    workspaces.clear()
   }),
 )
 
@@ -64,9 +85,10 @@ function makeItem(id: string, triggers: AgendaTypes.Trigger[], scopeID = "scope-
     silent: false,
     autoDone: false,
     origin: {
+      workspaceID: workspaces.get(scopeID)!.id,
       scope: {
         type: "project",
-        id: scopeID,
+        id: workspaces.get(scopeID)!.scopeID,
         local: { directory: "/tmp", worktree: "/tmp", sandboxes: [] },
 
         time: { created: now, updated: now },
@@ -89,7 +111,7 @@ function noop() {
 describe("register / unregister / active", () => {
   test("register with a file trigger shows files: 1", () =>
     runtime.run(() => {
-      AgendaWatcher.register("item-2", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
+      register("item-2", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
       expect(AgendaWatcher.active()).toEqual({ files: 1 })
     }))
 
@@ -99,13 +121,13 @@ describe("register / unregister / active", () => {
         { type: "cron", expr: "0 9 * * *" },
         { type: "every", interval: "30m" },
       ]
-      AgendaWatcher.register("item-4", "scope-1", triggers)
+      register("item-4", "scope-1", triggers)
       expect(AgendaWatcher.active()).toEqual({ files: 0 })
     }))
 
   test("unregister removes all watches for an item", () =>
     runtime.run(() => {
-      AgendaWatcher.register("item-5", "scope-1", [makeFileTrigger({ glob: "*.ts" })])
+      register("item-5", "scope-1", [makeFileTrigger({ glob: "*.ts" })])
       expect(AgendaWatcher.active()).toEqual({ files: 1 })
 
       AgendaWatcher.unregister("item-5")
@@ -147,10 +169,14 @@ describe("start / stop lifecycle", () => {
 // ---------------------------------------------------------------------------
 
 describe("file — glob matching", () => {
-  function emitFileEvent(file: string, event: string) {
+  function emitFileEvent(file: string, event: string, scope = "scope-1") {
+    const workspace = workspaces.get(scope)!
     GlobalBus().emit("event", {
-      scopeID: null,
-      payload: { type: "file.watcher.updated", properties: { file, event } },
+      scopeID: workspace.scopeID,
+      payload: {
+        type: "file.watcher.updated",
+        properties: { file, event, workspaceID: workspace.id, workspaceGeneration: workspace.binding.generation },
+      },
     })
   }
 
@@ -162,14 +188,19 @@ describe("file — glob matching", () => {
       }
 
       AgendaWatcher.start(handler, [])
-      AgendaWatcher.register("file-1", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
+      register("file-1", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
 
       emitFileEvent("src/foo.ts", "changed")
 
       await waitUntil(() => calls.length === 1)
       expect(calls[0].signal.type).toBe("watch")
       expect(calls[0].signal.source).toBe("file-1")
-      expect(calls[0].signal.payload).toEqual({ file: "src/foo.ts", event: "change" })
+      expect(calls[0].signal.payload).toEqual({
+        file: "src/foo.ts",
+        event: "change",
+        workspaceID: workspaces.get("scope-1")!.id,
+        workspaceGeneration: 1,
+      })
       expect(calls[0].scopeID).toBe("scope-1")
       AgendaWatcher.stop()
     }))
@@ -182,7 +213,7 @@ describe("file — glob matching", () => {
       }
 
       AgendaWatcher.start(handler, [])
-      AgendaWatcher.register("file-2", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
+      register("file-2", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
 
       emitFileEvent("docs/readme.md", "change")
 
@@ -199,7 +230,7 @@ describe("file — glob matching", () => {
       }
 
       AgendaWatcher.start(handler, [])
-      AgendaWatcher.register("file-3", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts", event: "add" })])
+      register("file-3", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts", event: "add" })])
 
       emitFileEvent("src/bar.ts", "change")
 
@@ -216,14 +247,19 @@ describe("file — glob matching", () => {
       }
 
       AgendaWatcher.start(handler, [])
-      AgendaWatcher.register("file-4", "scope-1", [makeFileTrigger({ glob: "**/*.css" })])
+      register("file-4", "scope-1", [makeFileTrigger({ glob: "**/*.css" })])
 
       emitFileEvent("styles/main.css", "add")
       emitFileEvent("styles/main.css", "change")
       emitFileEvent("styles/main.css", "unlink")
 
       await waitUntil(() => calls.length === 1)
-      expect(calls[0].signal.payload).toEqual({ file: "styles/main.css", event: "unlink" })
+      expect(calls[0].signal.payload).toEqual({
+        file: "styles/main.css",
+        event: "unlink",
+        workspaceID: workspaces.get("scope-1")!.id,
+        workspaceGeneration: 1,
+      })
       AgendaWatcher.stop()
     }))
 
@@ -235,10 +271,11 @@ describe("file — glob matching", () => {
       }
 
       AgendaWatcher.start(handler, [])
-      AgendaWatcher.register("file-item-1", "scope-1", [makeFileTrigger({ glob: "**/*.ts" })])
-      AgendaWatcher.register("file-item-2", "scope-2", [makeFileTrigger({ glob: "**/*.ts" })])
+      register("file-item-1", "scope-1", [makeFileTrigger({ glob: "**/*.ts" })])
+      register("file-item-2", "scope-2", [makeFileTrigger({ glob: "**/*.ts" })])
 
       emitFileEvent("src/app.ts", "change")
+      emitFileEvent("src/app.ts", "change", "scope-2")
 
       await waitUntil(() => calls.length === 2)
 

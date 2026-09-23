@@ -1,4 +1,4 @@
-Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief.
+Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their separate execution session; the prompt must be a complete, self-contained brief. The schedule captures this Session’s selected Workspace when created. Changing this conversation’s Workspace later does not move the schedule.
 
 Triggers:
 - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron

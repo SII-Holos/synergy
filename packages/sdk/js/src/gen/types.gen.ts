@@ -1678,6 +1678,10 @@ export type AgendaOrigin = {
    * Session where the item was created
    */
   sessionID?: string
+  /**
+   * Workspace captured when the item was created
+   */
+  workspaceID?: string | null
   endpoint?: SessionEndpoint
 }
 

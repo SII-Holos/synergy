@@ -52,6 +52,8 @@ Recovery cannot reconstruct a crashed operation's endpoint from the latest files
 
 Worktree cancellation remains connected after native activation and drains checkout hooks before rollback. A unique creation lock proves which unfinished directory belongs to the operation. Cleanup runs independently of the cancelled execution capacity while retaining its owner identity, uses exclusive retirement, and preserves foreign locks, changed commits and published registrations. Branch deletion checks the original object ID. Provenance: [Git worktree creation locks](https://git-scm.com/docs/git-worktree) and [conditional reference deletion](https://git-scm.com/docs/git-update-ref).
 
+Agenda captures the origin Session's nullable Workspace reference once. Its owning migration stamps historical Scope defaults rather than guessing from a Session that may have moved since creation. Persistent execution Sessions retain their own selection; new executions validate the captured binding, and startup failures enter the ordinary failure ledger. File subscriptions start without an open Session and reattach after rebinding. Debounce admission requires matching Scope, Workspace and generation, and global storage visibility does not expand file ownership. This adds explicit binding requirements to file watches and keeps duplicate detection within the captured execution context.
+
 ## Verification
 
 Native fixture homes remain subject to host-wide unconfined writers. Browser rebind tests bound retries of explicit busy admission, and LSP tests check protocol completion and native exit independently of the caller promise cleanup order. Connected status is asserted while a query is active, since an idle process may already have retired for another writer.

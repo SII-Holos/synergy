@@ -34620,6 +34620,17 @@
             "description": "Session where the item was created",
             "type": "string"
           },
+          "workspaceID": {
+            "description": "Workspace captured when the item was created",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"
           }
