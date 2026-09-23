@@ -382,7 +382,11 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const content = createMemo(() => documentState()?.content)
   const textContent = createMemo(() => {
     const value = content()
-    return value?.kind === "text" ? value : undefined
+    if (value?.kind === "text") return value
+    const draft = file.draft.get(path())
+    return draft
+      ? { content: draft.baseContent, contentVersion: draft.expectedVersion, truncationReason: undefined }
+      : undefined
   })
   const imageContent = createMemo(() => {
     const value = content()
@@ -395,9 +399,10 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const pdfContent = createMemo(() => file.pdf.get(path()))
   const capability = createMemo(() => {
     const value = content()
-    return classifyFilePreview(path(), value?.kind ?? "binary", value?.mimeType)
+    return classifyFilePreview(path(), file.draft.get(path()) ? "text" : (value?.kind ?? "binary"), value?.mimeType)
   })
   const mode = createMemo(() => {
+    if (file.draft.get(path())) return "source"
     const saved = file.view.mode(path())
     if (capability().dual && saved) return saved
     return capability().defaultMode
@@ -653,6 +658,16 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
       </div>
       <div class="file-workbench-main">
         <main class="file-viewer">
+          <Show when={file.draft.backupUnavailable()}>
+            <div class="file-state-banner" role="alert">
+              {lingui._({ id: F.draftBackupUnavailable.id, message: F.draftBackupUnavailable.message })}
+            </div>
+          </Show>
+          <Show when={documentState()?.error && file.draft.get(path())}>
+            <div class="file-state-banner" role="status">
+              {documentState()?.error}
+            </div>
+          </Show>
           <Show when={documentState()?.deleted}>
             <div class="file-state-banner">
               <span>{lingui._({ id: F.fileDeleted.id, message: F.fileDeleted.message })}</span>
@@ -677,13 +692,13 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                 <span>{lingui._({ id: F.chooseFromTree.id, message: F.chooseFromTree.message })}</span>
               </div>
             </Match>
-            <Match when={documentState()?.loading && !content()}>
+            <Match when={documentState()?.loading && !textContent() && !content()}>
               <div class="file-workbench-loading">
                 <Spinner class="size-5" />
                 <span>{lingui._({ id: F.loading.id, message: F.loading.message, values: { path: path() } })}</span>
               </div>
             </Match>
-            <Match when={documentState()?.error && !content()}>
+            <Match when={documentState()?.error && !textContent() && !content()}>
               {(error) => (
                 <div class="file-workbench-state">
                   <FileIcon node={{ path: path(), type: "file" }} class="size-10" />

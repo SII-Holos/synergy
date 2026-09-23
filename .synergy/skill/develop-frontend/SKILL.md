@@ -160,3 +160,5 @@ For editable file consumers, capture the complete-read content version when edit
 Workspace selection changes require catalog snapshot/event race coverage: deliver rebinding before an older bootstrap or Session response, retain the new Session generation without changing activity, and keep pinned file tabs on their captured generation. Conditional sharing/rebinding forms retain the revision observed when editing starts; incoming events must not silently authorize overwriting concurrent changes.
 
 For filesystem actions, capture the Workspace, binding generation and observed entry version when opening the form. Retain input on conflicts and keep dirty source and destination drafts independent across rename events. Native create/delete notifications alone cannot prove a rename; verify the editor behavior against unrelated sibling changes.
+
+For file-draft changes, verify reload as well as component remount, original content-version conflicts, Workspace generation separation, missing source files and local-storage quota failure. Preserve in-memory edits when durable backup fails and expose the recovery state in the existing editor.

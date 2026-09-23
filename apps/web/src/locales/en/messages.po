@@ -2500,6 +2500,10 @@ msgid "app.file.banner.deleted"
 msgstr "File was deleted. Showing the last available content."
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.banner.draftBackupUnavailable"
+msgstr "Local draft backup is unavailable. Save or copy your edits before closing this window."
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.banner.truncated"
 msgstr "Showing the first 512 KiB of this file."
 

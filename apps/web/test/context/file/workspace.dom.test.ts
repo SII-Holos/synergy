@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -27,7 +27,7 @@ beforeAll(async () => {
       contentVersion: disk[query.workspaceID]?.version ?? "sha256:" + "a".repeat(64),
       node: { path: query.path, mtime: 1, size: 5, type: "file" }, encoding: "utf-8" } })
     export const useSDK = () => ({ scopeID: "scope", scopeKey: "scope", url: "http://server",
-      client: { workspace: { files: { read(query) { requests.push(query); const response = result(query); return new Promise(resolve => pending.push(() => resolve(response))) },
+      client: { workspace: { files: { read(query) { requests.push(query); if (disk[query.workspaceID]?.missing) return Promise.reject({ name: "NotFoundError", data: { message: "file missing" } }); const response = result(query); return new Promise(resolve => pending.push(() => resolve(response))) },
         async write(query) { writes.push(query);
           if (writeState.mode === "conflict") throw { name: "WorkspaceFileWriteConflictError", data: { message: "changed" } }
           await new Promise(resolve => writeState.finish = resolve)
@@ -46,7 +46,7 @@ beforeAll(async () => {
     export const useWorkbenchPanels = () => ({ surface: () => ({ tabs: () => state.tabs, activeTab: () => state.active }),
       async openPanel(panelId, { init }) { const tab = { id: String(state.tabs.length), panelId, ...init }; setState("tabs", list => [...list, tab]); setState("active", tab); return tab },
       updateTab() {} })
-    export const Persist = { workspace: () => ({}), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
+    export const Persist = { workspace: (owner, key) => ({ storage: "fixture:" + owner, key }), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
     window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState,
       emit(properties) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: { workspaceID: a.id, workspaceGeneration: a.generation, ...properties } } })) },
@@ -100,6 +100,10 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
+})
+
+beforeEach(async () => {
+  if (page.url().startsWith(base)) await page.evaluate(() => localStorage.clear())
 })
 
 test("switching Workspaces isolates late reads, cache entries, and watcher invalidation", async () => {
@@ -319,5 +323,100 @@ test("filesystem actions capture Workspace generation and caller-observed entry 
   ])
   expect(entries[0].workspaceFileMoveInput.expectedVersion).toBe("entry:observed")
   expect(entries[2].workspaceFileDeleteInput.expectedVersion).toBe("entry:last")
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("a reload restores unsaved text and its original conflict baseline only to the captured Workspace generation", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    void (window as any).fixture.file.load("same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.evaluate(() => (window as any).fixture.file.draft.update("same.txt", "unsaved after reload"))
+  await page.reload()
+  await page.waitForSelector("output")
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.get("same.txt"))).toMatchObject({
+    content: "unsaved after reload",
+    baseContent: "wsp_a",
+    expectedVersion: "sha256:" + "a".repeat(64),
+  })
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.disk.wsp_a = { content: "new disk", version: "sha256:" + "b".repeat(64) }
+    void h.file.load("same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  const saved = await page.evaluate(async () => {
+    const h = (window as any).fixture
+    await h.file.save("same.txt", h.file.draft.get("same.txt").content).catch(() => {})
+    return h.writes[0]
+  })
+  expect(saved.workspaceFileWriteFileInput.expectedVersion).toBe("sha256:" + "a".repeat(64))
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.select({ ...h.a, generation: 2 })
+  })
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.get("same.txt"))).toBeUndefined()
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.select(h.a)
+    h.file.draft.discard("same.txt")
+  })
+  await page.reload()
+  await page.waitForSelector("output")
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.get("same.txt"))).toBeUndefined()
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("backup quota failure keeps edits in memory, reports the risk and recovers after a successful retry", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    void (window as any).fixture.file.load("same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.originalSetItem = Storage.prototype.setItem
+    Storage.prototype.setItem = () => {
+      throw new DOMException("quota", "QuotaExceededError")
+    }
+    h.file.draft.update("same.txt", "recoverable memory")
+  })
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.backupUnavailable())).toBe(true)
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.get("same.txt").content)).toBe(
+    "recoverable memory",
+  )
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    Storage.prototype.setItem = h.originalSetItem
+    h.file.draft.update("same.txt", "durable retry")
+  })
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.backupUnavailable())).toBe(false)
+  await page.reload()
+  await page.waitForSelector("output")
+  expect(await page.evaluate(() => (window as any).fixture.file.draft.get("same.txt").content)).toBe("durable retry")
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("a recovered draft remains accessible after the original file disappears", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    void (window as any).fixture.file.load("same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.evaluate(() => (window as any).fixture.file.draft.update("same.txt", "keep despite deletion"))
+  await page.reload()
+  await page.waitForSelector("output")
+  const result = await page.evaluate(async () => {
+    const h = (window as any).fixture
+    h.disk.wsp_a = { missing: true }
+    await h.file.load("same.txt")
+    return { draft: h.file.draft.get("same.txt"), deleted: h.file.get("same.txt").deleted }
+  })
+  expect(result.deleted).toBe(true)
+  expect(result.draft.content).toBe("keep despite deletion")
   expect(errors).toEqual([])
 }, 30_000)

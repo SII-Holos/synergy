@@ -3,11 +3,14 @@ import {
   createEffect,
   createMemo,
   createRoot,
+  createSignal,
   getOwner,
   onCleanup,
   useContext,
   type ParentProps,
 } from "solid-js"
+import { createFileDraftStorage, type FileDraft } from "./draft-storage"
+export type { FileDraft } from "./draft-storage"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import type {
@@ -64,8 +67,6 @@ export type FileViewState = {
   selectedLines?: SelectedLineRange | null
   imageScaleMode?: "fit" | "actual"
 }
-
-export type FileDraft = { content: string; baseContent: string; expectedVersion: string; revision: number }
 
 export type FileDocumentState = {
   draft?: FileDraft
@@ -645,7 +646,35 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     return promise
   }
 
+  const backup = createFileDraftStorage(Persist.workspace(resourceKey, "file-drafts"))
+  const [backupUnavailable, setBackupUnavailable] = createSignal(!backup.available())
   let draftRevision = 0
+  for (const [input, draft] of Object.entries(backup.drafts)) {
+    const path = normalize(input)
+    if (!path || path !== input) continue
+    ensureDocument(path)
+    draftRevision = Math.max(draftRevision, draft.revision)
+    setStore("documents", path, "draft", draft)
+  }
+  createEffect(() => {
+    const drafts = Object.fromEntries(
+      Object.entries(store.documents).flatMap(([path, document]) =>
+        document.draft ? [[path, { ...document.draft }]] : [],
+      ),
+    )
+    setBackupUnavailable(!backup.write(drafts))
+  })
+  const beforeUnload = (event: BeforeUnloadEvent) => {
+    if (
+      !backupUnavailable() ||
+      !Object.values(store.documents).some((document) => document.draft?.content !== document.draft?.baseContent)
+    )
+      return
+    event.preventDefault()
+    event.returnValue = ""
+  }
+  window.addEventListener("beforeunload", beforeUnload)
+  onCleanup(() => window.removeEventListener("beforeunload", beforeUnload))
   const draftFor = (input: string) => {
     const path = normalize(input)
     return path ? store.documents[path]?.draft : undefined
@@ -1013,6 +1042,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     },
     hasDrafts: () => Object.values(store.documents).some((document) => !!document.draft),
     draft: {
+      backupUnavailable,
       get: draftFor,
       within: (path: string) =>
         Object.entries(store.documents).some(

@@ -2500,6 +2500,10 @@ msgid "app.file.banner.deleted"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.banner.draftBackupUnavailable"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.banner.truncated"
 msgstr ""
 

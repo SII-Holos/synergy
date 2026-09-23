@@ -2500,6 +2500,10 @@ msgid "app.file.banner.deleted"
 msgstr "文件已删除。正在显示最后可用的内容。"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.banner.draftBackupUnavailable"
+msgstr "本地草稿备份不可用。关闭窗口前，请保存文件或复制你的修改。"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.banner.truncated"
 msgstr "正在显示此文件的前 512 KiB。"
 

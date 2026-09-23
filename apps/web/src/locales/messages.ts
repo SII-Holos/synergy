@@ -356,6 +356,10 @@ export const fileWorkbench = {
   retry: { id: "app.file.action.retry", message: "Retry" },
   close: { id: "app.file.action.close", message: "Close" },
   fileDeleted: { id: "app.file.banner.deleted", message: "File was deleted. Showing the last available content." },
+  draftBackupUnavailable: {
+    id: "app.file.banner.draftBackupUnavailable",
+    message: "Local draft backup is unavailable. Save or copy your edits before closing this window.",
+  },
   fileTruncated: { id: "app.file.banner.truncated", message: "Showing the first 512 KiB of this file." },
   binaryInfo: { id: "app.file.binary.info", message: "{mimeType} · {bytes} bytes" },
   addToContext: { id: "app.file.toolbar.addToContext", message: "Add to context" },

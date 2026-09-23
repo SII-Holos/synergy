@@ -130,7 +130,7 @@ Successful operations invalidate the file index and publish Workspace-qualified 
 
 Each session persists its open files, active tab, source/preview mode, selection, scroll state, and Explorer layout. Scope-level directory state keeps the expanded tree and hidden/ignored preference warm across sessions in the same project.
 
-Editor drafts capture their original content version and survive file-panel remounts and Workspace selection within the Scope. Watcher refresh updates the disk snapshot without changing that baseline. A conflicted save retains the draft; typing during an in-flight successful save retains the newer text and advances its baseline to the saved version. Drafts are protected from document and Workspace-cache eviction.
+Editor drafts capture their original content version and survive file-panel remounts and Workspace selection within the Scope. A versioned local backup restores unsaved text and its original content version after reload, keyed by connection, Scope, Workspace and binding generation. Corrupt backups and another window’s changed backup are retained instead of overwritten. Quota or storage failure keeps the in-memory edit, displays a recovery warning and guards window close; successful save or explicit discard clears the settled backup. A recovered draft remains editable when its source file is unavailable. Watcher refresh updates the disk snapshot without changing that baseline. A conflicted save retains the draft; typing during an in-flight successful save retains the newer text and advances its baseline to the saved version. Drafts are protected from document and Workspace-cache eviction.
 
 The workbench keeps resource use bounded:
 
