@@ -13,8 +13,10 @@ import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-
 import { OwnedProcess } from "../../src/process/owned-process"
 import { FileMutation } from "../../src/file/mutation"
 import { testRuntime } from "../support/runtime"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 
 const runtime = await testRuntime()
+await runtime.run(() => Log.init({ print: true, level: "WARN" }))
 afterAll(() => runtime.close())
 
 async function actor() {
