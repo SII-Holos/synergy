@@ -9,6 +9,8 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { CortexWorkspace } from "@ericsanchezok/synergy-harness/cortex/workspace"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Worktree } from "./workspace/worktree"
+import { WorkspaceFileImport } from "@ericsanchezok/synergy-harness/workspace/file-import"
+import { WorkspaceFileService } from "./workspace-file/service"
 
 const log = Log.create({ service: "runtime.workspace" })
 
@@ -32,6 +34,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 
 export function registerWorkspace() {
   SnapshotRestore.register(WorkspaceFileRestore)
+  WorkspaceFileImport.register(WorkspaceFileService)
   WorkspaceAccess.register(new WorkspaceCoordinator())
   SessionWorkspaceRuntime.register(workspaceServices)
   CortexWorkspace.register({

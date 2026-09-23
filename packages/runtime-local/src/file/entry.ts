@@ -168,16 +168,18 @@ export namespace FileEntry {
       await options.validate?.(path.join(root, member.relative), operation)
     }
   }
-  export async function mkdir(input: { path: string; createParents?: boolean } & Options) {
+  export async function mkdir(input: { path: string; createParents?: boolean; mode?: number } & Options) {
     return paths([input.path], input, async ([target], checkpoint) => {
       await input.validate?.(target!, "write")
       if (await inspect(target!)) throw new FileMutation.ConflictError()
-      if (input.createParents) await fs.mkdir(path.dirname(target!), { recursive: true })
+      if (input.mode !== undefined && (!Number.isInteger(input.mode) || input.mode < 0 || input.mode > 0o777))
+        throw new FileMutation.AccessDeniedError("Invalid directory permissions")
+      if (input.createParents) await fs.mkdir(path.dirname(target!), { recursive: true, mode: input.mode })
       if ((await canonical(input.path)) !== target) throw new FileMutation.ConflictError()
       await input.validate?.(target!, "write")
       input.signal?.throwIfAborted()
       await checkpoint()
-      await fs.mkdir(target!)
+      await fs.mkdir(target!, { mode: input.mode })
       try {
         await syncParent(target!)
       } catch (cause) {

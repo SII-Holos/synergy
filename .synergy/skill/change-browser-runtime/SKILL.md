@@ -27,6 +27,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 11. Keep Browser implementations out of the Agent worker runner's static dependency graph. Only serializable Browser tool definitions cross into the worker; callbacks, canonical sessions, Playwright/Chromium state, host signaling, native views, and WebRTC state remain Control Plane/tool-runtime owned.
 12. Attribute resource state by owner and page backend without exposing owner IDs. Retire the remote Host only after the broker reports no active canonical page; Performance aggregation must never close a page or stop the Host.
 13. Keep Browser viewer Origin authorization on explicit server CORS origins. Do not promote auto-detected LAN CORS origins or reverse-proxy forwarding headers into the viewer trust boundary. Origin checks supplement one-shot owner/page/role-bound tickets and never replace them.
+14. Capture the Workspace binding before collecting export data. Keep path resolution free of writes; stage bundles privately and publish through the Harness file-import Host and Runtime Local's conditional file service. Pass cancellation through admission, preserve occupied targets, and remove only private staging during failure cleanup. Test queued cancellation, changed source bytes, binding replacement, protected paths and complete-bundle publication.
 
 ## Verify
 

@@ -127,6 +127,8 @@ Strict locators never select the first of multiple matches. `browser_locator_amb
 
 `browser_screenshot` persists each PNG as a Synergy asset. When the active model accepts image input, the tool also supplies the PNG directly as a provider-file model attachment. For text-only models, it returns the real local asset path. The output directs the agent to use `look_at` when the configured `vision_model` is image-capable, or reports only the saved local path otherwise. Screenshot inspection does not depend on guessed session paths or an unavailable image tool.
 
+Download, asset-bundle and performance-trace exports capture the destination Workspace and binding generation before collecting browser data. Resolving an export path has no filesystem effects. Asset bundles and trace bytes are staged in private temporary directories, then the Harness file-import Host delegates to Runtime Local for publication with native write admission, conditional source validation, protected-path checks and Workspace-qualified file events. An occupied target is a conflict; cancellation during admission creates no destination directories. A binding change rejects publication instead of redirecting old data into the new directory. Cleanup removes only private staging. If parent creation succeeds but publication fails, the native service reports the partial mutation and requests a file-tree resync.
+
 ## Invariants
 
 - One owner has at most one canonical Browser page.

@@ -5,6 +5,7 @@ Browser backend state, page ownership, profiles, tools, routes, installation, li
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
+- Workspace exports use the Harness file-import Host contract, implemented by Runtime Local. Capture the Workspace generation before collecting browser data, stage bundles privately, and publish through native write admission with cancellation and qualified file events. Keep native implementations out of this package's production dependency graph.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 

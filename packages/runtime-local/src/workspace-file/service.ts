@@ -1,3 +1,4 @@
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { FileMutation } from "../file/mutation"
 import { FileEntry } from "../file/entry"
 import { FileWatcherEvent } from "../file/watcher-event"
@@ -230,6 +231,59 @@ export namespace WorkspaceFileService {
       return changedEntry(to)
     })
   }
+  export async function importEntry(
+    input: {
+      from: string
+      to: string
+      validateSource: (source: string) => Promise<void>
+    },
+    signal?: AbortSignal,
+  ) {
+    const from = await FileEntry.canonical(input.from)
+    const source = await FileEntry.inspect(from)
+    if (!source) throw new NotFoundError("Import source is unavailable")
+    await input.validateSource(from)
+    const to = resolve(input.to, { followFinalSymlink: false })
+    return WorkspaceAccess.withinTask(
+      () =>
+        entryOperation(async () => {
+          await WorkspaceAccess.reserveWrite([root(), path.dirname(from)], signal)
+          await validateEntry(to, "write")
+          if (await FileEntry.inspect(to)) throw new WriteConflictError()
+          const parent = path.dirname(to)
+          let createdParent = false
+          try {
+            if (!(await FileEntry.inspect(parent))) {
+              await FileEntry.mkdir({ path: parent, createParents: true, mode: 0o700, signal, validate: validateEntry })
+              createdParent = true
+            }
+            await FileEntry.copy({
+              from,
+              to,
+              expectedVersion: source.version,
+              signal,
+              async validate(target, operation) {
+                if (operation === "write") return validateEntry(target, operation)
+                if (!isPathContained(from, target, { followFinalSymlink: false }))
+                  throw new AccessDeniedError("Import source escaped its owner")
+                await input.validateSource(target)
+              },
+            })
+            return await changedEntry(to)
+          } catch (cause) {
+            if (createdParent && !(cause instanceof PartialMutationError))
+              throw new PartialMutationError(
+                "Import did not publish its target; parent directories were created",
+                [parent],
+                { cause },
+              )
+            throw cause
+          }
+        }),
+      signal,
+    )
+  }
+
   export async function remove(input: WorkspaceFile.DeleteInput, signal?: AbortSignal) {
     return entryOperation(async () => {
       const absolute = resolve(input.path, { followFinalSymlink: false })
