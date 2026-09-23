@@ -36,6 +36,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
+import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
@@ -789,7 +790,7 @@ export namespace Session {
               : undefined
           return preparePart(
             {
-              ...part,
+              ...SnapshotEvidence.interrupt(part),
               ...(artifact ? { artifact } : {}),
               ...(state ? { state } : {}),
               id,

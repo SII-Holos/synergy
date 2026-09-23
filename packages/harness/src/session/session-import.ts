@@ -6,6 +6,7 @@ import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import { SnapshotRecords } from "./snapshot-records"
 import { z } from "zod"
 import { WorkspaceTransfer } from "./workspace-transfer"
+import { SnapshotEvidence } from "./snapshot-evidence"
 import { WorkspaceBinding } from "../workspace/binding"
 import { SessionRecords } from "./records"
 import { gunzipSync } from "node:zlib"
@@ -507,7 +508,7 @@ export namespace SessionImport {
         attachment.localPath = undefined
       }
     }
-    return next
+    return SnapshotEvidence.interrupt(next)
   }
 
   function remapSessionIDs(value: unknown, idMap: Map<string, string>): unknown {

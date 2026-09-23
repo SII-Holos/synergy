@@ -48,6 +48,8 @@ Retained file tabs display their own Workspace directory in the breadcrumb. A Se
 
 Preview reads use native file descriptors with bounded allocation and before/after identity checks. A file growing after metadata resolution cannot bypass image limits. Symbolic-link metadata describes its readable target while entry versions continue to identify the link itself. Windows move publication uses extended-length paths, and link copies inspect native reparse tags without following missing targets.
 
+Recovery cannot reconstruct a crashed operation's endpoint from the latest filesystem state because another actor may have changed it. Exclusive owner recovery therefore preserves its baseline and marks pending evidence incomplete, bounded to message identities in the existing Rollout ledger. Completed evidence remains immutable. Fork and import apply the same interruption rule to their copied pending parts.
+
 ## Verification
 
 Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.
