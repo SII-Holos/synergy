@@ -94,19 +94,21 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     if (!scrollRef()) return
     if (!props.current) return
     const key = props.key(props.current)
-    requestAnimationFrame(() => {
-      scrollToItem(scrollRef()!.querySelector(`[data-key="${key}"]`))
+    const frame = requestAnimationFrame(() => {
+      scrollToItem(scrollRef()?.querySelector(`[data-key="${CSS.escape(key)}"]`))
     })
+    onCleanup(() => cancelAnimationFrame(frame))
   })
 
   createEffect(() => {
     const all = flat()
-    if (store.mouseActive || all.length === 0) return
-    if (active() === props.key(all[0])) {
+    const key = active()
+    if (store.mouseActive || all.length === 0 || key === null || key === undefined) return
+    if (key === props.key(all[0])) {
       scrollRef()?.scrollTo(0, 0)
       return
     }
-    scrollToItem(scrollRef()?.querySelector(`[data-key="${active()}"]`), "smooth")
+    scrollToItem(scrollRef()?.querySelector(`[data-key="${CSS.escape(key)}"]`), "smooth")
   })
 
   createEffect(() => {

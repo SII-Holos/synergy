@@ -16,6 +16,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 Observer targets delivered by asynchronous mount callbacks must be reactive element signals, with cleanup on unmount. Verify late mount and replacement against rendered layout or computed CSS properties instead of asserting implementation strings.
 
+Treat resource and operation keys as opaque strings. Escape them with `CSS.escape()` before placing them in selectors in both current-selection and keyboard-navigation paths. Cancel deferred scrolling on selection replacement and unmount. Test actual rendered scrolling and selection with composite JSON keys, quotes, backslashes, Unicode and empty strings.
+
 Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
 
 1. Use stores for coherent keyed collections and signals for independent scalar state. Read project-overridable configuration from the current Scope through `useSync`; `useGlobalSync().data.config` contains global settings only. Test differing global and project values plus a Scope config refresh.
