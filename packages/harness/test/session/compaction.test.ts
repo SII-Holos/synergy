@@ -5,7 +5,7 @@ import { Session } from "../../src/session"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Config } from "../../src/config/config"
-import type { Provider } from "../../src/provider/provider"
+import { Provider } from "../../src/provider/provider"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import type { ModelMessage } from "ai"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -40,6 +40,83 @@ function createModel(opts: { context: number; output: number; cost?: Provider.Mo
 // Preflight compaction triggering now lives in session/invoke.ts via PromptBudgeter;
 // isContextExceeded and Token.estimateJSON are tested below.
 
+describe("Codex remote compaction replay identity", () => {
+  test("requires resolved matching profile and wire model, including named connections", () =>
+    runtime.run(async () => {
+      const originalConfig = Config.current
+      const originalProvider = Provider.getProvider
+      const originalModel = Provider.getModel
+      const summary = {
+        info: {
+          id: "summary",
+          role: "assistant",
+          providerID: "codex-work",
+          modelID: "alias",
+          summary: true,
+          finish: "stop",
+          metadata: {
+            remoteCompaction: {
+              version: 2,
+              provider: "openai-responses-compaction",
+              implementation: "responses_compaction_v2",
+              modelKey: "codex-work/alias",
+              providerID: "codex-work",
+              modelID: "alias",
+              profileID: "openai-codex",
+              apiModelID: "gpt-5",
+              summaryText: "summary",
+              replacementHistory: [{ type: "compaction", encrypted_content: "opaque" }],
+            },
+          },
+        },
+        parts: [],
+      } as unknown as MessageV2.WithParts
+      try {
+        Config.current = mock(async () => ({ compaction: { codexRemote: true } })) as typeof Config.current
+        Provider.getProvider = mock(async (id: string) => ({
+          profileID: id === "openai" ? "openai" : "openai-codex",
+        })) as unknown as typeof Provider.getProvider
+        Provider.getModel = mock(async (_providerID: string, modelID: string) => ({
+          api: { id: modelID === "other" ? "gpt-5-mini" : "gpt-5" },
+        })) as unknown as typeof Provider.getModel
+        const plan = (providerID: string, modelID: string, profileID = "openai-codex", apiModelID = "gpt-5") =>
+          SessionCompaction.codexReplayPlan({ messages: [summary], providerID, modelID, profileID, apiModelID })
+        expect(await plan("codex-work", "alias")).toMatchObject({ summaryText: "summary" })
+        expect(await plan("codex-work", "compatible-alias")).toMatchObject({ summaryText: "summary" })
+        expect(await plan("codex-other", "alias")).toBeUndefined()
+        expect(await plan("codex-work", "other")).toBeUndefined()
+        expect(await plan("openai", "alias")).toBeUndefined()
+        expect(await plan("codex-work", "alias", "openai", "gpt-5")).toBeUndefined()
+        expect(await plan("codex-work", "alias", "openai-codex", "gpt-5-mini")).toBeUndefined()
+        expect(
+          await SessionCompaction.codexReplayPlan({ messages: [summary], providerID: "codex-work", modelID: "alias" }),
+        ).toBeUndefined()
+        const remote =
+          summary.info.role === "assistant" ? (summary.info.metadata!.remoteCompaction as Record<string, unknown>) : {}
+        delete remote.apiModelID
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+        remote.apiModelID = "gpt-5"
+        delete remote.profileID
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+        remote.profileID = "openai-codex"
+        Provider.getProvider = mock(async () => {
+          throw new Error("unavailable")
+        }) as typeof Provider.getProvider
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+        Provider.getProvider = mock(async () => ({
+          profileID: "openai-codex",
+        })) as unknown as typeof Provider.getProvider
+        Provider.getModel = mock(async () => {
+          throw new Error("unavailable")
+        }) as typeof Provider.getModel
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+      } finally {
+        Config.current = originalConfig
+        Provider.getProvider = originalProvider
+        Provider.getModel = originalModel
+      }
+    }))
+})
 describe("util.token.estimate", () => {
   test("estimates tokens from text (4 chars per token)", () =>
     runtime.run(() => {

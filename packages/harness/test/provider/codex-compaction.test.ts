@@ -249,6 +249,48 @@ describe("codex-compaction applyReplaySplice", () => {
       expect(applyReplaySplice(gapBody, plan)).toBeUndefined()
     }))
 
+  test("splices same-model summary reasoning with the compacted boundary", () =>
+    runtime.run(() => {
+      const reasoning: CodexResponseItem = {
+        type: "reasoning",
+        id: "rs_summary",
+        summary: [{ type: "summary_text", text: "thinking about summary" }],
+        encrypted_content: "opaque-summary-reasoning",
+      }
+      const body = {
+        input: [devItem("sys"), userItem("root"), reasoning, assistantItem("SUMMARY TEXT HERE"), userItem("tail")],
+      }
+      const spliced = applyReplaySplice(body, plan)
+      expect(spliced).toBeDefined()
+      const input = spliced!.input as CodexResponseItem[]
+      expect(input).toEqual([devItem("sys"), ...history, userItem("tail")])
+      expect(JSON.stringify(input)).not.toContain("opaque-summary-reasoning")
+    }))
+
+  test("keeps other assistant content and reasoning after the summary outside the splice", () =>
+    runtime.run(() => {
+      const body = {
+        input: [
+          devItem("sys"),
+          userItem("root"),
+          assistantItem("unrelated"),
+          { type: "reasoning", id: "rs_summary", encrypted_content: "opaque" } as CodexResponseItem,
+          assistantItem("SUMMARY TEXT HERE"),
+        ],
+      }
+      expect(applyReplaySplice(body, plan)).toBeUndefined()
+      const tailReasoning = {
+        input: [
+          devItem("sys"),
+          userItem("root"),
+          assistantItem("SUMMARY TEXT HERE"),
+          { type: "reasoning", id: "rs_tail", encrypted_content: "tail" } as CodexResponseItem,
+        ],
+      }
+      const spliced = applyReplaySplice(tailReasoning, plan)
+      expect((spliced!.input as CodexResponseItem[]).at(-1)).toEqual(tailReasoning.input.at(-1))
+    }))
+
   test("returns undefined when input is not an array", () =>
     runtime.run(() => {
       expect(applyReplaySplice({ input: "nope" }, plan)).toBeUndefined()
@@ -319,6 +361,8 @@ describe("codex-compaction metadata", () => {
           modelKey: "openai-codex/gpt-5.3-codex",
           providerID: "openai-codex",
           modelID: "gpt-5.3-codex",
+          profileID: "openai-codex",
+          apiModelID: "gpt-5.3-codex",
           replacementHistory: USER_ITEMS,
           usage: { input: 1 },
         },
@@ -349,6 +393,8 @@ describe("codex-compaction metadata", () => {
           modelKey: "k",
           providerID: "openai-codex",
           modelID: "m",
+          profileID: "openai-codex",
+          apiModelID: "wire-m",
           replacementHistory: [USER_ITEMS[0], { type: "garbage" }],
         },
       })
@@ -446,6 +492,39 @@ describe("codex-compaction replay registry", () => {
     }))
 })
 
+describe("codex-compaction modelMessagesToItems reasoning", () => {
+  test("retains encrypted reasoning sequences and omits legacy reasoning when store is false", () =>
+    runtime.run(() => {
+      const items = modelMessagesToItems([
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "first", providerOptions: { openai: { itemId: "rs_1" } } },
+            {
+              type: "reasoning",
+              text: "last",
+              providerOptions: { openai: { itemId: "rs_1", reasoningEncryptedContent: "opaque" } },
+            },
+            { type: "reasoning", text: "old", providerOptions: { openai: { itemId: "rs_old" } } },
+            { type: "text", text: "answer" },
+          ],
+        },
+      ])
+      expect(items).toEqual([
+        {
+          type: "reasoning",
+          id: "rs_1",
+          encrypted_content: "opaque",
+          summary: [
+            { type: "summary_text", text: "first" },
+            { type: "summary_text", text: "last" },
+          ],
+        },
+        { role: "assistant", content: [{ type: "output_text", text: "answer" }] },
+      ])
+    }))
+})
+
 describe("codex-compaction modelMessagesToItems image URLs", () => {
   function imagePartsOf(items: CodexResponseItem[]): Array<{ type: string; image_url?: string }> {
     const message = items.find((item) => "role" in item && item.role === "user")
@@ -509,6 +588,7 @@ describe("codex-compaction metadata apiModelID", () => {
           providerID: "openai-codex",
           modelID: "alias",
           apiModelID: "gpt-5.4-codex",
+          profileID: "openai-codex",
           replacementHistory: USER_ITEMS,
         },
       })
@@ -516,7 +596,7 @@ describe("codex-compaction metadata apiModelID", () => {
       expect(meta!.apiModelID).toBe("gpt-5.4-codex")
     }))
 
-  test("omits apiModelID when absent", () =>
+  test("keeps historical metadata readable with absent replay identity", () =>
     runtime.run(() => {
       const meta = extractRemoteCompactionMetadata({
         remoteCompaction: {
@@ -531,6 +611,8 @@ describe("codex-compaction metadata apiModelID", () => {
       })
       expect(meta).toBeDefined()
       expect(meta!.apiModelID).toBeUndefined()
+      expect(meta!.profileID).toBeUndefined()
+      expect(meta!.replacementHistory).toEqual(USER_ITEMS)
     }))
 })
 

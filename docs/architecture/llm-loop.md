@@ -138,6 +138,8 @@ Some managed-inference providers reject requests that lack a per-conversation re
 
 Plugins can transform the system prompt at budget and final phases. If a transform removes every system message, Synergy restores the pre-transform system prompt rather than sending an empty safety/instruction context.
 
+Historical reasoning replay for `openai-codex` is conditional: `MessageV2.projectModelMessages()` retains the Responses reasoning item ID and encrypted content only when the producing assistant and current request have the same resolved canonical `openai-codex` profile, connection provider ID, and wire API model ID, and the item's parts contain a non-empty encrypted payload. The logical catalog model ID is not sufficient to establish wire compatibility. It keeps all summary parts of that item together for the stateless (`store: false`) SDK request. Older messages without recorded producer identity or ciphertext cannot be inferred from current configuration; their reasoning IDs, text/tool item references, and encrypted payloads are omitted while readable summaries remain. Remote compaction applies the same identity and ciphertext checks to its input and artifact replay, preserving the local summary when remote replay is unavailable.
+
 ## Library Recall
 
 The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it.
@@ -210,7 +212,7 @@ The post-job captures only session, root-message, and terminal-revision identifi
 - stable and late system context
 - projected history
 - tool names, descriptions, schemas, and protocol overhead
-- bounded estimates for historical image/file parts
+- bounded estimates for historical image/file parts; encrypted reasoning bytes are replaced with an opaque placeholder and counted once per item using producer-reported reasoning usage where available (or output usage where reasoning usage is absent), with a conservative per-item floor when usage is unavailable
 
 The budget derives from the model's declared limits. For a context `C`, an effective requested output `O` bounded by the model's configured output and the global output maximum, and no explicit separate input limit, Synergy reserves the requested output plus a safety margin only when that reservation leaves a positive input envelope:
 
@@ -221,7 +223,7 @@ Models with an explicit input limit (for example 400k context / 272k input / 128
 
 Before each provider call, the per-request maximum output is clamped to the configured output and to the context remaining after the measured input and margin, so a long prompt cannot push the request past the window. An explicit per-request output limit remains effective when context metadata is unavailable. If no response space remains, automatic compaction runs first when enabled; Synergy permits one hard-overflow recovery attempt for the root before the next provider turn, then records a local actionable error instead of repeatedly compacting or sending a guaranteed-to-fail provider request.
 
-After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider. The baseline is only reused for the provider and model that reported it, the delta counts every part that reaches the provider — including reasoning traces — and calibration withdraws itself in favor of a full measurement once that delta grows large relative to the baseline.
+After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider. The baseline is only reused for the provider and model that reported it, the delta counts every part that reaches the provider — including reasoning traces — and calibration withdraws itself in favor of a full measurement once that delta grows large relative to the baseline. When calibration is unavailable, the full measurement uses the producer usage of projected encrypted reasoning items rather than their encoded ciphertext length; items removed from the provider-bound prompt do not consume that allowance.
 
 ## Context Usage Snapshots
 

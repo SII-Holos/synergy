@@ -731,6 +731,112 @@ describe("session.message-v2.toModelMessage", () => {
       expect(projection.provenance.items.toolActivity).toBe(2)
     }))
 
+  test("replays encrypted Codex reasoning only for the producing profile and wire model", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [{ ...basePart(userID, "u1"), type: "text", text: "continue" }] as MessageV2.Part[],
+        },
+        {
+          info: {
+            ...assistantInfo(assistantID, userID),
+            providerID: "codex-work",
+            modelID: "alias",
+            profileID: "openai-codex",
+            apiModelID: "gpt-5",
+          },
+          parts: [
+            {
+              ...basePart(assistantID, "r1"),
+              type: "reasoning",
+              text: "first summary",
+              time: { start: 0 },
+              metadata: { openai: { itemId: "rs_shared" } },
+            },
+            {
+              ...basePart(assistantID, "r2"),
+              type: "reasoning",
+              text: "last summary",
+              time: { start: 0 },
+              metadata: { openai: { itemId: "rs_shared", reasoningEncryptedContent: "opaque" } },
+            },
+            {
+              ...basePart(assistantID, "r3"),
+              type: "reasoning",
+              text: "legacy summary",
+              time: { start: 0 },
+              metadata: { openai: { itemId: "rs_legacy" } },
+            },
+            {
+              ...basePart(assistantID, "t1"),
+              type: "text",
+              text: "answer",
+              metadata: { openai: { itemId: "msg_old" } },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      const codex = MessageV2.toModelMessage(input, {
+        model: {
+          providerID: "codex-work",
+          modelID: "different-alias",
+          profileID: "openai-codex",
+          apiModelID: "gpt-5",
+        },
+      })
+      expect(codex[1]).toMatchObject({
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "first summary", providerOptions: { openai: { itemId: "rs_shared" } } },
+          {
+            type: "reasoning",
+            text: "last summary",
+            providerOptions: { openai: { itemId: "rs_shared", reasoningEncryptedContent: "opaque" } },
+          },
+          { type: "reasoning", text: "legacy summary", providerOptions: undefined },
+          { type: "text", text: "answer" },
+        ],
+      })
+      expect(JSON.stringify(codex)).toContain("opaque")
+      for (const model of [
+        { providerID: "codex-work", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5-mini" },
+        { providerID: "codex-work", modelID: "alias", profileID: "openai", apiModelID: "gpt-5" },
+        { providerID: "codex-personal", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5" },
+        { providerID: "openai", modelID: "alias", profileID: "openai", apiModelID: "gpt-5" },
+      ]) {
+        expect(JSON.stringify(MessageV2.toModelMessage(input, { model }))).not.toContain("opaque")
+        expect(JSON.stringify(MessageV2.toModelMessage(input, { model }))).not.toContain("rs_shared")
+      }
+      const incomplete = [
+        { ...input[1].info, profileID: undefined },
+        { ...input[1].info, apiModelID: undefined },
+      ]
+      for (const assistant of incomplete) {
+        const projected = MessageV2.toModelMessage(
+          [{ ...input[0] }, { ...input[1], info: assistant }] as MessageV2.WithParts[],
+          {
+            model: { providerID: "codex-work", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5" },
+          },
+        )
+        expect(JSON.stringify(projected)).toContain("last summary")
+        expect(JSON.stringify(projected)).not.toContain("opaque")
+      }
+      const historical = [
+        { ...input[0] },
+        { ...input[1], info: { ...input[1].info, profileID: undefined, apiModelID: undefined } },
+      ] as MessageV2.WithParts[]
+      const projection = MessageV2.toModelMessage(historical, {
+        model: { providerID: "codex-work", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5" },
+      })
+      expect(JSON.stringify(projection)).toContain("last summary")
+      expect(JSON.stringify(projection)).not.toContain("opaque")
+      expect(JSON.stringify(projection)).not.toContain("rs_shared")
+    }))
+
   test("removes OpenAI response item references from model provider metadata", () =>
     runtime.run(() => {
       const userID = "m-user"
@@ -1508,6 +1614,21 @@ describe("session.message-v2 context usage schema", () => {
     runtime.run(() => {
       const assistant = { ...assistantInfo("m-assistant", "m-parent"), contextUsage }
       expect(MessageV2.Assistant.parse(assistant)).toEqual(assistant)
+    }))
+
+  test("round-trips producing-call identity and accepts historical assistants without it", () =>
+    runtime.run(() => {
+      const assistant = {
+        ...assistantInfo("m-assistant", "m-parent"),
+        providerID: "codex-work",
+        modelID: "alias",
+        profileID: "openai-codex",
+        apiModelID: "gpt-5",
+      }
+      expect(MessageV2.Assistant.parse(assistant)).toEqual(assistant)
+      const historical = assistantInfo("m-historical", "m-parent")
+      expect(MessageV2.Assistant.parse(historical)).not.toHaveProperty("profileID")
+      expect(MessageV2.Assistant.parse(historical)).not.toHaveProperty("apiModelID")
     }))
 
   test("continues to parse legacy assistants without context usage", () =>

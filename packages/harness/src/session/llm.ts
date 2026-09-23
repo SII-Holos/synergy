@@ -454,7 +454,7 @@ export namespace LLM {
     // sessionID when no override is set. A codex turn without a plan clears
     // any previous entry for the session; the runner releases it when the
     // turn ends so a long-lived worker never retains per-session artifacts.
-    if (input.model.providerID === CODEX_PROVIDER_ID) {
+    if (prepared.provider.profileID === CODEX_PROVIDER_ID) {
       const resolvedCacheKey =
         typeof params.options?.promptCacheKey === "string" && params.options.promptCacheKey !== ""
           ? params.options.promptCacheKey
