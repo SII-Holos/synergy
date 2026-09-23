@@ -66,6 +66,8 @@ For embedded Runtime lifecycle changes, repeat real open/task/close cycles in on
 
 Cold-cache tests construct a fresh Runtime and an unseeded isolated home. Module imports and the test preloader do not populate another instance’s caches. Use a subprocess when process startup, native callbacks, signals, installed artifacts or worker protocols are the contract. Never remove the positive test-home isolation marker.
 
+Compile standalone Bun artifacts in a fresh `bun build --compile` subprocess, drain both output streams, and assert its exit code before exercising the executable. In-process compilation after plugin builds can reuse invalid compiler state on Linux; retain the artifact behavior assertions and run the combined suites under coverage. See the [standalone compilation decision](../../../docs/decisions/implemented/testing/2026-09-23-isolate-standalone-plugin-kit-compilation.md).
+
 Exercise opt-in and platform-specific entrypoints with the same explicit ownership. A developer's PATH can hide an unowned executable lookup, and an undefined build-time digest can hide import-time Home access. Test isolated PATH/Home lookup and compiled constants without an active Runtime. Coverage failure summaries must retain the owning test file for unnamed setup/teardown failures so CI truncation does not discard their identity.
 
 Linux OS-sandbox probes that replace `/tmp` need an explicit fixture Home outside that mount. Use a unique directory in the owning package's ignored `.artifacts`, close its Runtime before removal, and clean it on opening failure. Keep ordinary fixtures under the shared test root. Preserve positive command-start and host-baseline assertions so a hidden working directory cannot pass as a successful denial.
