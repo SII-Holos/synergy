@@ -19,6 +19,7 @@ import psutil
 
 from .cache import cache_lock
 from .config import Resources
+from .network_resources import DEFAULT_POOLS, inspect_network_capacity
 from .prepare import command
 from .storage import atomic_json, read_json
 
@@ -27,9 +28,10 @@ from .storage import atomic_json, read_json
 class Request:
     cpus: float
     memory_bytes: int
+    networks: int = 0
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.cpus) or self.cpus <= 0 or self.memory_bytes <= 0:
+        if not math.isfinite(self.cpus) or self.cpus <= 0 or self.memory_bytes <= 0 or self.networks < 0:
             raise ValueError("Resource requests must be positive")
 
 
@@ -73,6 +75,7 @@ class ResourceLease:
                 updated = Request(
                     max(self.initial.cpus, cpus * 1.25),
                     max(self.initial.memory_bytes, math.ceil(self.peak_memory * 1.25)),
+                    self.initial.networks,
                 )
                 self.pool._cpus += updated.cpus - self.request.cpus
                 self.pool._memory += updated.memory_bytes - self.request.memory_bytes
@@ -214,6 +217,7 @@ def inspect_host(root: Path, settings: Resources) -> dict[str, Any]:
             "cpus": docker["NCPU"],
             "memory_bytes": docker["MemTotal"],
             "architecture": docker.get("Architecture"),
+            "address_pools": docker.get("DefaultAddressPools") or DEFAULT_POOLS,
         },
         "limits": {"cpus": cpus, "memory_bytes": memory, "available_memory_bytes": available},
         "capacity": asdict(capacity),
@@ -398,10 +402,13 @@ def parse_bytes(value: str) -> int | None:
 
 
 class HostPressure:
-    def __init__(self, root: Path, settings: Resources, docker_memory: int) -> None:
+    def __init__(
+        self, root: Path, settings: Resources, docker_memory: int, address_pools: list[dict[str, Any]] | None = None
+    ) -> None:
         self.root = root
         self.settings = settings
         self.docker_memory = docker_memory
+        self.address_pools = address_pools
         self.previous: tuple[float, float, float] | None = None
         self.saturated_since: float | None = None
         self.cpu_ready = False
@@ -434,6 +441,16 @@ class HostPressure:
             elif self.saturated_since is not None and now - self.saturated_since >= 3:
                 self.reason = "cpu_saturated"
             else:
+                if request.networks:
+                    available_networks = (
+                        inspect_network_capacity(self.address_pools) if self.address_pools is not None else None
+                    )
+                    if available_networks is None:
+                        self.reason = "network_sample_unavailable"
+                        return False
+                    if available_networks < request.networks:
+                        self.reason = "network_address_pressure"
+                        return False
                 self.reason = "ready"
                 return True
         except (OSError, ValueError, KeyError, TypeError, psutil.Error):
@@ -445,7 +462,12 @@ def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[Request], bool]
     settings = plan.get("config", {}).get("resources")
     if not settings:
         return lambda request: True
-    return HostPressure(root, Resources.model_validate(settings), int(plan["host"]["limits"]["memory_bytes"]))
+    return HostPressure(
+        root,
+        Resources.model_validate(settings),
+        int(plan["host"]["limits"]["memory_bytes"]),
+        plan["host"]["docker"]["address_pools"],
+    )
 
 
 def shared_pool_options(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
@@ -528,8 +550,8 @@ def build_reservation(cache: Path, *, timeout: float, settings: Resources | None
 
 
 def with_runtime_overhead(native: Request) -> Request:
-    return Request(native.cpus + 0.2, native.memory_bytes + 128 * 1024**2)
+    return Request(native.cpus + 0.2, native.memory_bytes + 128 * 1024**2, native.networks)
 
 
 def working_set_request(native: Request) -> Request:
-    return with_runtime_overhead(Request(min(native.cpus, 0.25), min(native.memory_bytes, 1024**3)))
+    return with_runtime_overhead(Request(min(native.cpus, 0.25), min(native.memory_bytes, 1024**3), native.networks))

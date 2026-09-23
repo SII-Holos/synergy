@@ -51,7 +51,7 @@ async def test_all_48_cells_can_overlap_including_both_sides_of_each_pair(tmp_pa
         if len(entered) == 48:
             ready.set()
         await asyncio.wait_for(ready.wait(), 1)
-        return {"execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 0}}}
+        return {"version": 5, "execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 0}}}
 
     await execute_plan(tmp_path, plan, execute)
     assert entered == schedule
@@ -70,7 +70,7 @@ async def test_started_cells_are_never_replayed_even_without_terminal_evidence(t
 
     async def execute(item, attempt):
         called.append(item["variant"])
-        return {"execution": {"outcome": "completed"}}
+        return {"version": 5, "execution": {"outcome": "completed"}}
 
     await execute_plan(tmp_path, {"schedule": schedule, "concurrency": 2}, execute)
     assert called == ["c"]
@@ -136,7 +136,7 @@ async def test_48_cells_retain_failures_and_continue_without_retries(tmp_path):
         index = int(attempt.parent.name)
         if index in {1, 9, 22}:
             raise RuntimeError("task-specific build, verifier or archive failure")
-        return {"execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": index % 2}}}
+        return {"version": 5, "execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": index % 2}}}
 
     await execute_plan(tmp_path, {"schedule": schedule, "concurrency": 6}, execute)
     assert len(called) == 48
@@ -168,7 +168,7 @@ async def test_unreadable_request_record_retains_unknown_cost_and_continues(tmp_
             broken.parent.mkdir(parents=True)
             broken.write_text('{"id":')
             raise ValueError("per-cell request evidence failed")
-        return {"execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 1}}}
+        return {"version": 5, "execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 1}}}
 
     await execute_plan(tmp_path, plan, execute)
     assert called == ["a", "b"]
@@ -269,7 +269,7 @@ async def test_report_failure_does_not_stop_formal_dispatch(tmp_path, monkeypatc
 
     async def execute(item, attempt):
         called.append(item)
-        return {"execution": {"outcome": "completed"}}
+        return {"version": 5, "execution": {"outcome": "completed"}}
 
     await execute_plan(tmp_path, {"schedule": schedule, "concurrency": 1}, execute)
     assert called == schedule
@@ -304,7 +304,7 @@ async def test_resume_records_broken_terminal_and_dispatches_only_unstarted_cell
 
     async def execute(root, plan, item, directory):
         called.append(item["variant"])
-        return {"execution": {"outcome": "completed"}}
+        return {"version": 5, "execution": {"outcome": "completed"}}
 
     monkeypatch.setattr(runner, "execute_trial", execute)
     await runner.resume(tmp_path)
@@ -341,7 +341,7 @@ async def test_failed_terminal_persistence_stops_new_dispatch(tmp_path, monkeypa
 
     async def execute(item, attempt):
         called.append(item["variant"])
-        return {"execution": {"outcome": "completed"}}
+        return {"version": 5, "execution": {"outcome": "completed"}}
 
     monkeypatch.setattr(runner, "atomic_json", write)
     plan = {"concurrency": 1, "schedule": [{"pair": "p", "variant": side} for side in ["a", "b"]]}
@@ -362,7 +362,7 @@ async def test_global_failure_drains_active_cells_without_starting_waiters(tmp_p
         called.append(item["variant"])
         if item["variant"] == "a":
             await active.wait()
-            return {"cleanup": {"resources_removed": False}}
+            return {"version": 5, "cleanup": {"resources_removed": False}}
         active.set()
         try:
             await asyncio.Future()

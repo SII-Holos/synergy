@@ -196,7 +196,12 @@ class CachedDockerEnvironment(DockerEnvironment):
             if scheduler and command_args[0] == "up":
                 native = self.task_env_config
                 await scheduler.acquire(
-                    self.session_id, Request(float(native.cpus or 1), int(native.memory_mb or 1024) * 1024**2)
+                    self.session_id,
+                    Request(
+                        float(native.cpus or 1),
+                        int(native.memory_mb or 1024) * 1024**2,
+                        networks=2 if self._egress_proxy_compose_path else 1,
+                    ),
                 )
             result = await self._compose_command(command_args, check=check, timeout_sec=timeout_sec)
             if scheduler and command_args[0] in {"down", "stop"} and result.return_code == 0:
