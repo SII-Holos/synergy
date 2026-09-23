@@ -35,6 +35,7 @@ const suites = windows
       "test/file/watcher-events.test.ts",
     ]
 suites.push(
+  "../harness/test/session/snapshot-long-path.test.ts",
   "../agent-integrations/test/format/formatter.test.ts",
   "../agent-integrations/test/lsp/owner-runtime.test.ts",
   "../agent-integrations/test/lsp/process.test.ts",

@@ -5,12 +5,19 @@ import path from "node:path"
 import fs from "node:fs/promises"
 
 export namespace SnapshotGit {
+  function command(args: string[]) {
+    // Provenance: https://github.com/git-for-windows/git/blob/main/Documentation/config/core.adoc#corelongpaths
+    // Snapshot stores and indexes are private and can exceed Windows MAX_PATH.
+    // Apply before repository discovery, including initialization and transfers.
+    return [args[0], "-c", "core.longpaths=true", ...args.slice(1)]
+  }
+
   export async function* lines(repo: string, args: string[], options: { signal?: AbortSignal; input?: string } = {}) {
     const signal = options.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(30 * 60_000)])
       : AbortSignal.timeout(30 * 60_000)
     signal.throwIfAborted()
-    const proc = Bun.spawn(["git", "--git-dir", repo, ...args], {
+    const proc = Bun.spawn(command(["git", "--git-dir", repo, ...args]), {
       cwd: path.dirname(repo),
       env: environment(),
       stdout: "pipe",
@@ -82,7 +89,7 @@ export namespace SnapshotGit {
     let pack: Bun.Subprocess<Bun.BunFile, Bun.BunFile, "pipe"> | undefined
     let errors: Promise<string> | undefined
     try {
-      pack = Bun.spawn(["git", "--git-dir", source, "pack-objects", "--stdout"], {
+      pack = Bun.spawn(command(["git", "--git-dir", source, "pack-objects", "--stdout"]), {
         cwd: path.dirname(source),
         env: environment(),
         stdin: Bun.file(inventory),
@@ -223,7 +230,7 @@ export namespace SnapshotGit {
       const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
       let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
       try {
-        proc = Bun.spawn(args, {
+        proc = Bun.spawn(command(args), {
           cwd,
           stdin: stdin === undefined ? "ignore" : "pipe",
           stdout: "pipe",
