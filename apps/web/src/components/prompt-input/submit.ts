@@ -8,6 +8,7 @@ import { base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
+import { thinkingSelection } from "@/context/prompt/model-selection"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
@@ -349,7 +350,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       sessions = sessions.map((part) => resolveSessionReference(part, globalSync.data.scope))
-      const selectedVariant = local.model.variant.current()
+      const selectedVariant = local.model.variant.displayed()
       const selectedModel = {
         modelID: currentModel.id,
         providerID: currentModel.provider.id,
@@ -474,8 +475,22 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (session) {
           createdSessionForSubmit = true
           local.handoffNewSessionIntent(session.id)
-          if (selectedVariant) {
-            local.model.variant.setForSession(session.id, selectedVariant, selectedModel, sessionScopeKey)
+          try {
+            const saved = await client.session.setModelSelection(
+              {
+                sessionID: session.id,
+                sessionModelSelectionInput: {
+                  model: selectedModel,
+                  thinking: thinkingSelection(selectedVariant),
+                  expectedRevision: 0,
+                },
+              },
+              { throwOnError: true },
+            )
+            if (saved.data) session = saved.data
+          } catch (error) {
+            failCreatedSessionSetup(session.id, i18n._(PI.submitFailedStart), errorMessage(error))
+            return
           }
           input.props.onNewSessionWorkspaceSelectionReset?.()
           publishNewSessionTransition(
@@ -1114,10 +1129,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .input({
           sessionID: activeSession.id,
           agent,
-          model,
           ...(messageID ? { messageID } : {}),
           parts: requestParts,
-          variant,
           metadata: {
             promptDraft: draftSnapshot,
             ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),

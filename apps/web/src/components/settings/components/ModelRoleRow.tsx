@@ -8,7 +8,7 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
 import { createProviderModelIndex, fieldLabel, modelRoleCopy, resolveModelRoleDraftDisplay } from "../model-role-draft"
-import { ModelVariantPicker } from "./ModelVariantPicker"
+import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
 
 const noAgentsUse = { id: "settings.modelRole.noAgentsUse", message: "No agents directly use this role." }
 const usedByLabel = { id: "settings.modelRole.usedBy", message: "Used by" }

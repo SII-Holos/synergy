@@ -241,4 +241,22 @@
     width: 32px;
     height: 32px;
   }
+
+  .stb-center .stb-selector-btn {
+    height: 22px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .stb-center .settings-model-variant-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stb-center .stb-icon-btn {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
 }

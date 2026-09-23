@@ -1,6 +1,7 @@
 import { normalizeLocalScope } from "../scope/migration"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionMigrationTarget } from "../migration/session-target"
+import type { Session } from "."
 import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
 import path from "path"
@@ -2435,6 +2436,39 @@ export const migrations: Migration[] = [
     },
     async up(progress) {
       await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
+  {
+    id: "20260923-session-model-selection",
+    scope: "session",
+    description: "Preserve session models and root thinking choices in durable model selections",
+    upSession(owner, progress) {
+      return SessionMigrationTarget.provide(owner, () => this.up(progress))
+    },
+    async up(progress) {
+      const { ModelSelection } = await import("./model-selection-schema")
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        const scope = Identifier.asScopeID(scopeID)
+        const sessionIDs = await SessionMigrationTarget.sessions(scope)
+        for (const sessionID of sessionIDs) {
+          const sid = Identifier.asSessionID(sessionID)
+          const key = StoragePath.sessionInfo(scope, sid)
+          const info = await Storage.read<Session.Info>(key).catch(missingHistoricalRecord)
+          if (!info || info.modelSelection) continue
+          const roots: MessageV2.User[] = []
+          for (const messageID of await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid))) {
+            const message = await Storage.read<MessageV2.Info>(
+              StoragePath.messageInfo(scope, sid, Identifier.asMessageID(messageID)),
+            ).catch(missingHistoricalRecord)
+            if (message?.role === "user" && message.isRoot) roots.push(message)
+          }
+          roots.sort((a, b) => a.id.localeCompare(b.id))
+          const selection = ModelSelection.legacy(info.modelOverride, roots)
+          if (selection) await Storage.write(key, { ...info, modelSelection: selection })
+          progress(++done, sessionIDs.length)
+        }
+      }
     },
   },
 ]

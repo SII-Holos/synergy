@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { SessionSchemaRegistry } from "./schema-registry"
+import { ModelSelection } from "./model-selection-schema"
 
 export interface SessionExtensionShape {}
 export interface SessionCreationExtensions {
@@ -249,7 +250,8 @@ const BaseInfo = z.preprocess(
         modelID: z.string(),
       })
       .optional()
-      .describe("Per-session model override set by /model command"),
+      .describe("Legacy model preference projection; modelSelection owns live model and thinking choices"),
+    modelSelection: ModelSelection.State.optional(),
     agentOverride: z.string().optional().describe("Per-session agent override set by session control"),
     paused: PausedInfo.optional(),
     interaction: SessionInteraction.Info.optional(),

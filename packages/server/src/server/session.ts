@@ -515,6 +515,14 @@ export const SessionRoute = () =>
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
 
+        if (updates.resolvePendingPermissions === true && updates.controlProfile !== "full_access") {
+          return c.json(
+            { name: "BadRequestError", message: "resolvePendingPermissions requires controlProfile: full_access" },
+            400,
+          )
+        }
+        if (updates.modelOverride) await Session.setModelSelection(sessionID, { model: updates.modelOverride })
+        if (updates.modelOverride === null) await Session.resetModelSelection(sessionID)
         const applyOtherUpdates = (session: Session.Info) => {
           if (updates.title !== undefined) session.title = updates.title
           if (updates.tags !== undefined) session.tags = updates.tags
@@ -524,19 +532,9 @@ export const SessionRoute = () =>
             session.completionNotice.unread = false
             session.completionNotice.unreadCount = 0
           }
-          if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
         }
 
         if (updates.resolvePendingPermissions === true) {
-          if (updates.controlProfile !== "full_access") {
-            return c.json(
-              {
-                name: "BadRequestError",
-                message: "resolvePendingPermissions requires controlProfile: full_access",
-              },
-              400,
-            )
-          }
           const result = await Session.transitionControlProfileAndResolve(sessionID, "full_access", applyOtherUpdates)
           return c.json(result)
         }
@@ -559,6 +557,42 @@ export const SessionRoute = () =>
             : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
 
         return c.json(updatedSession)
+      },
+    )
+    .put(
+      "/:sessionID/model-selection",
+      describeRoute({
+        summary: "Set session model and thinking",
+        description:
+          "Save an atomic model selection for the next eligible model request. Does not interrupt in-flight work.",
+        operationId: "session.setModelSelection",
+        responses: {
+          200: {
+            description: "Saved session selection",
+            content: { "application/json": { schema: resolver(Session.Info) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      validator("json", Session.ModelSelectionInput),
+      async (c) => {
+        try {
+          return c.json(await Session.setModelSelection(c.req.valid("param").sessionID, c.req.valid("json")))
+        } catch (error) {
+          if (error instanceof Error && "toObject" in error && typeof error.toObject === "function") {
+            if (error.name === "SessionModelSelectionConflictError") return c.json(error.toObject(), 409)
+            if (
+              [
+                "SessionThinkingUnavailableError",
+                "SessionModelSelectionUnavailableError",
+                "ProviderModelVariantUnavailableError",
+              ].includes(error.name)
+            )
+              return c.json(error.toObject(), 400)
+          }
+          throw error
+        }
       },
     )
     .post(

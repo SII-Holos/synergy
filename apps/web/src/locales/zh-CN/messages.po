@@ -13168,6 +13168,22 @@ msgstr "更新"
 msgid "session.lsp.noServers"
 msgstr "没有 LSP 服务器"
 
+#. js-lingui-explicit-id
+msgid "session.modelSelection.pending"
+msgstr "将在下一次请求生效"
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.retry"
+msgstr "保存失败，点击重试"
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.saving"
+msgstr "正在保存…"
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.toolTurn"
+msgstr "将在当前工具调用轮次结束后生效"
+
 #. session-new-view
 msgid "session.new.subtitle"
 msgstr "今天要构建什么？"
@@ -17602,7 +17618,7 @@ msgstr "选择模型"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.selectVariant"
-msgstr "选择模型变体"
+msgstr "选择思考强度"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.system"
@@ -17626,11 +17642,19 @@ msgstr "默认"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.variant.desc"
-msgstr "使用此角色的默认配置"
+msgstr "使用提供方默认设置"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.variant.off"
+msgstr "关闭"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.variant.offDesc"
+msgstr "关闭思考"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.variant.role"
-msgstr "角色默认配置"
+msgstr "思考强度"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.visionModel.description"
@@ -17666,7 +17690,7 @@ msgstr "连接提供商以选择具体模型。角色仍可使用备用模型。
 
 #. js-lingui-explicit-id
 msgid "settings.models.page.description"
-msgstr "为不同任务选择模型，并设置快速切换列表中显示哪些模型。"
+msgstr "为新会话和专用角色设置默认模型。项目设置可能提供不同的模型目录。"
 
 #. js-lingui-explicit-id
 msgid "settings.models.page.title"

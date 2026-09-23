@@ -1,7 +1,12 @@
 import { createStore } from "solid-js/store"
 import { batch, createMemo, createRoot, onCleanup } from "solid-js"
 import { uniqueBy } from "remeda"
-import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
+import type {
+  ProviderListResponse,
+  SessionModelSelection,
+  SessionModelChoice,
+  SessionThinkingSelection,
+} from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
@@ -12,6 +17,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
 import { createModelVariantSession } from "./prompt/model-variant"
 import * as ComposerIntent from "./prompt/composer-intent"
+import { createModelSelectionWriter, thinkingSelection, thinkingValue } from "./prompt/model-selection"
 import {
   isSelectableModel,
   recommendQuickSwitcherModels,
@@ -231,6 +237,79 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
 
       const variantSession = createMemo(() => loadVariantSession(sdk.scopeKey, params.id))
+      const selectionWriter = createModelSelectionWriter()
+      const [accepted, setAccepted] = createStore<Record<string, SessionModelSelection>>({})
+      const [pending, setPending] = createStore<Record<string, { generation: number; choice: SessionModelChoice }>>({})
+      const [failed, setFailed] = createStore<Record<string, boolean>>({})
+      const retries = new Map<string, () => void>()
+      let generation = 0
+      const selectionKey = (id: string, scope = sdk.scopeKey) => JSON.stringify([scope, id])
+      const savedSelection = (id = params.id, scope = sdk.scopeKey) => {
+        if (!id) return
+        const server = scope === sdk.scopeKey ? view().sessionFor(id)?.modelSelection : undefined
+        const response = accepted[selectionKey(id, scope)]
+        if (!response || (server && server.revision >= response.revision)) return server
+        return response
+      }
+      const selected = () => {
+        const id = params.id
+        return id ? (pending[selectionKey(id)]?.choice ?? savedSelection(id)?.selected) : undefined
+      }
+
+      const saveSelection = (model: ModelKey, thinking?: SessionThinkingSelection) => {
+        const id = params.id
+        if (!id) return
+        const scope = sdk.scopeKey
+        const client = sdk.client
+        const key = selectionKey(id, scope)
+        const operation = ++generation
+        const choice = {
+          model,
+          thinking: thinking ??
+            savedSelection(id)?.preferences[JSON.stringify([model.providerID, model.modelID])] ?? {
+              mode: "provider-default" as const,
+            },
+        }
+        setPending(key, { generation: operation, choice })
+        setFailed(key, false)
+        retries.set(key, () => saveSelection(model, thinking))
+        void selectionWriter
+          .enqueue(key, async () => {
+            const response = await client.session.setModelSelection(
+              {
+                sessionID: id,
+                sessionModelSelectionInput: {
+                  model,
+                  thinking,
+                  expectedRevision: savedSelection(id, scope)?.revision ?? 0,
+                },
+              },
+              { throwOnError: true },
+            )
+            const state = response.data?.modelSelection
+            if (!state) throw new Error("Missing model selection")
+            setAccepted(key, state)
+          })
+          .then(() => {
+            if (pending[key]?.generation === operation) {
+              setPending(key, undefined!)
+              retries.delete(key)
+            }
+          })
+          .catch(() => {
+            if (pending[key]?.generation === operation) {
+              setPending(key, undefined!)
+              setFailed(key, true)
+            }
+            void client.session
+              .get({ sessionID: id })
+              .then((response) => {
+                const state = response.data?.modelSelection
+                if (state && state.revision >= (accepted[key]?.revision ?? 0)) setAccepted(key, state)
+              })
+              .catch(() => {})
+          })
+      }
 
       const keyOf = (model: ModelKey) => `${model.providerID}:${model.modelID}`
       const keyOfLocalModel = (model: LocalModel) => keyOf({ providerID: model.provider.id, modelID: model.id })
@@ -308,13 +387,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const sessionDefaultModel = createMemo((): ModelKey | undefined => {
         const id = params.id
         if (!id) return undefined
-        return ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, view().messagesFor(id))
+        return (
+          selected()?.model ??
+          ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, view().messagesFor(id))
+        )
       })
 
       const current = createMemo(() => {
         const a = agent.current()
         if (!a) return undefined
-        const draftModel = draft.model[intentKey()]
+        const draftModel = params.id && selected() ? undefined : draft.model[intentKey()]
         const activeDraft = find(draftModel)
         if (activeDraft) return activeDraft
         const retainedDraft = params.id ? resolveSessionModel(providers.connected(), draftModel) : undefined
@@ -344,12 +426,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const id = params.id
         const m = current()
         const model = m ? { providerID: m.provider.id, modelID: m.id } : undefined
+        const choice = selected()
+        if (id && choice) return { ready: true, value: thinkingValue(choice.thinking) }
         const session = variantSession()
         if (!session.ready()) return { ready: false, value: undefined }
         return ComposerIntent.resolveSessionVariant({
           hasSession: !!id,
-          hasDraft: session.has(model),
-          draft: session.get(model),
+          hasDraft: !id && session.has(model),
+          draft: !id ? session.get(model) : undefined,
           model,
           // Explicit exemption: resolveSessionVariant treats messages ===
           // undefined as "session not ready"; the view layer's empty array
@@ -360,8 +444,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const currentVariant = () => variantResolution().value
 
       const displayedVariant = () => {
+        const choice = selected()
+        if (choice) return thinkingValue(choice.thinking)
         const a = agent.current()
         const model = current()
+        if (!params.id && model && variantSession().has({ providerID: model.provider.id, modelID: model.id }))
+          return currentVariant()
         return ComposerIntent.resolveVariantDisplay(
           variantResolution(),
           a?.defaultVariant,
@@ -411,27 +499,27 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         quickSwitcher,
         quickSwitcherPreferences,
         cycle,
+        selection: {
+          state: () => savedSelection(),
+          saving: () => !!params.id && !!pending[selectionKey(params.id)],
+          error: () => !!params.id && !!failed[selectionKey(params.id)],
+          retry: () => {
+            if (params.id) retries.get(selectionKey(params.id))?.()
+          },
+        },
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
             // Explicit user choice → session-scoped draft (layer 1). Falling back
             // to fallbackModel() keeps a concrete value when the caller clears.
             const resolved = model ?? fallbackModel()
-            if (resolved) setDraft("model", intentKey(), resolved)
+            if (resolved && !params.id) setDraft("model", intentKey(), resolved)
             if (options?.recent && model) {
               const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
               if (uniq.length > 5) uniq.pop()
               setStore("recent", uniq)
             }
           })
-          // A genuine selector pick (recent) persists as the session's
-          // modelOverride (layer 2), so the choice survives reload and matches
-          // the channel /model command. Fire-and-forget; the draft already
-          // reflects it locally. Skipped for the new-session composer.
-          if (options?.recent && model && params.id) {
-            void sdk.client.session
-              .update({ sessionID: params.id, modelOverride: { providerID: model.providerID, modelID: model.modelID } })
-              .catch(() => {})
-          }
+          if (model && params.id) saveSelection(model)
         },
         handoffNewSessionIntent(sessionID: string) {
           const next = ComposerIntent.handoffNewSessionDraft(draft.model, NEW_SESSION_INTENT_KEY, sessionID)
@@ -444,7 +532,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return recommendedSet().has(keyOf(model))
         },
         variant: {
-          ready: () => variantResolution().ready,
+          ready: () => variantResolution().ready && (!params.id || !pending[selectionKey(params.id)]),
           current: currentVariant,
           displayed: displayedVariant,
           list() {
@@ -457,7 +545,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const m = current()
             const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
             if (!modelKey) return
-            variantSession().set(modelKey, value)
+            if (params.id) saveSelection(modelKey, thinkingSelection(value))
+            else variantSession().set(modelKey, value)
           },
           setForSession(sessionID: string, value: string | undefined, target?: ModelKey, scopeKey = sdk.scopeKey) {
             const m = current()
@@ -468,7 +557,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           cycle() {
             const variants = this.list()
             if (variants.length === 0) return
-            const currentVariant = this.current()
+            const currentVariant = this.displayed()
             if (!currentVariant) {
               this.set(variants[0])
               return

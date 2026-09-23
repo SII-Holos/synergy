@@ -1,4 +1,5 @@
 import { RolloutLedger } from "./rollout/ledger"
+import { SessionModelSelection } from "./model-selection"
 import { RolloutAccounting } from "./rollout/accounting"
 import { RolloutRecordingError } from "./rollout/error"
 import { MessageV2 } from "./message-v2"
@@ -1055,6 +1056,12 @@ export namespace SessionProcessor {
                 ...agentTurnInput
               } = streamInput
               retryEligible = true
+              if (streamInput.modelSelection)
+                await SessionModelSelection.applied(
+                  input.sessionID,
+                  streamInput.modelSelection,
+                  input.assistantMessage.id,
+                )
               const stream = await AgentTurn.stream(agentTurnInput)
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []

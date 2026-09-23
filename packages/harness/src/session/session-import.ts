@@ -1,4 +1,5 @@
 import { normalizeSessionWorkspaceInfo } from "./migration"
+import { ModelSelection } from "./model-selection-schema"
 import { SessionStaging } from "./staging"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
@@ -236,6 +237,10 @@ export namespace SessionImport {
             )
           messages.push({ info: await remapMessage(message.info, sessionID, idMap), parts })
         }
+        info.modelSelection ??= ModelSelection.legacy(
+          info.modelOverride,
+          messages.flatMap((message) => (message.info.role === "user" && message.info.isRoot ? [message.info] : [])),
+        )
         prepared.push({ data, sessionID, parentID, info, messages })
       }
       return await Storage.transaction(async () => {
