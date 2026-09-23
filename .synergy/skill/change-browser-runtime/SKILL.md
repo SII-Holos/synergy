@@ -53,3 +53,5 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 ## Handoff
 
 Report owner/page effects, command and event changes, persistence and cleanup, navigation/enforcement behavior, native and remote presentation coverage, generated contracts, tests, and manual runtime evidence.
+
+For uploads, pin the Workspace generation through dispatch and check cancellation before accessing a page. Bound bytes during the read, revalidate both the open handle and pathname, and reject concurrent growth or replacement. Use real temporary files for size, same-size edit, symlink, cancellation and rebind tests; transport stubs do not establish actual native or headless upload acceptance.

@@ -55614,7 +55614,6 @@
                         },
                         "dataBase64": {
                           "type": "string",
-                          "minLength": 1,
                           "maxLength": 36700160
                         }
                       },

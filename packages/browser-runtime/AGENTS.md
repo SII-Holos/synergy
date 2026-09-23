@@ -7,6 +7,8 @@ Browser backend state, page ownership, profiles, tools, routes, installation, li
 - Tests live under test/ and use isolated homes through the testing support package.
 - Workspace exports use the Harness file-import Host contract, implemented by Runtime Local. Capture the Workspace generation before collecting browser data, stage bundles privately, and publish through native write admission with cancellation and qualified file events. Keep native implementations out of this package's production dependency graph.
 
+Uploads pin the Workspace binding through dispatch, enforce actual bytes while reading, and revalidate open-handle and pathname identity. Keep shared protocol, headless staging and native-host staging behavior aligned, including zero-byte files.
+
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
 Independent hosts call `registerBrowser()` from `./register` before opening Harness, then connect `disposeBrowser()` to their runtime extension cleanup. Registration restores no page and launches no Chromium process; Browser sessions and pages remain lazy. Routes are a separate host transport contribution.

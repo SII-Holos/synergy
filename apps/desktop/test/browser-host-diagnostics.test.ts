@@ -361,6 +361,18 @@ describe("Browser Host diagnostics", () => {
     expect(fileEvent.entry.warning).toContain("unsafe")
   })
 
+  test("stages an empty upload as an actual zero-byte file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([{ name: "empty.txt", data: "" }])
+    try {
+      expect(staged.paths).toHaveLength(1)
+      expect((await stat(staged.paths[0]!)).size).toBe(0)
+    } finally {
+      await staged.cleanup()
+    }
+  })
+
   test("writes uploaded files with restricted permissions and cleans up on failure", async () => {
     const fixture = await createFixture()
     fixtures.push(fixture)

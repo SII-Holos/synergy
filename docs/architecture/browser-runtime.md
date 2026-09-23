@@ -145,3 +145,5 @@ Download, asset-bundle and performance-trace exports capture the destination Wor
 - Command inactivity suspends only session-owned headless pages; it never removes the canonical session or its event subscribers.
 - Recoverable idle suspension and terminal owner disposal remain distinct lifecycle transitions.
 - Browser implementations and runtime state never load through the Agent worker runner dependency graph.
+
+Browser uploads pin the resolved Workspace binding through file collection and command dispatch. Cancelled or stale callers fail before obtaining a page. Each file is read in bounded chunks with both per-file and whole-request byte limits enforced while reading; a prior size check cannot authorize unbounded growth. The reader rejects final symlinks, escaping paths, changed file identity, changed byte length and modified timestamps, including content changes that preserve the modification time. File handles close on every result and the binding is revalidated before dispatch. Zero-byte files are valid through the shared command schema and both staging backends; malformed base64 padding remains invalid.
