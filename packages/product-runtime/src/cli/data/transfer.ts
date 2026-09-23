@@ -11,6 +11,8 @@ import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
 import { WorkspaceHomeTransfer } from "./workspace-transfer"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import {
   archiveExclusions,
   copyDirSkipExisting,
@@ -35,26 +37,39 @@ const local = new Set([
 ])
 
 export namespace DataTransfer {
-  export async function validateHomes(roots: string[]) {
-    async function canonical(directory: string): Promise<string> {
-      try {
-        return await fs.realpath(directory)
-      } catch (error) {
-        const parent = path.dirname(directory)
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT" || parent === directory) throw error
-        return path.join(await canonical(parent), path.basename(directory))
-      }
+  const fileClaims = RuntimeContext.createAsyncContext<string[]>()
+  async function canonical(directory: string): Promise<string> {
+    try {
+      return await fs.realpath(directory)
+    } catch (error) {
+      const parent = path.dirname(directory)
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || parent === directory) throw error
+      return path.join(await canonical(parent), path.basename(directory))
     }
+  }
+
+  function contains(root: string, filename: string) {
+    const relative = path.relative(root, filename)
+    return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+
+  export async function withFiles<T>(roots: string[], fn: () => Promise<T>) {
+    const resolved = await Promise.all(roots.map((root) => canonical(path.resolve(root))))
+    const current = fileClaims.getStore()
+    if (current) {
+      if (!resolved.every((root) => current.some((claimed) => contains(claimed, root))))
+        throw new Error("Nested Home transfer escaped its file ownership")
+      return fn()
+    }
+    return WorkspaceAccess.maintenance(() => WorkspaceAccess.retire(resolved, () => fileClaims.run(resolved, fn)))
+  }
+
+  export async function validateHomes(roots: string[]) {
     const resolved = await Promise.all(roots.map((root) => canonical(path.resolve(root))))
     for (let i = 0; i < resolved.length; i++)
       for (let j = 0; j < resolved.length; j++) {
         if (i === j) continue
-        const relative = path.relative(resolved[i], resolved[j])
-        if (
-          relative === "" ||
-          (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-        )
-          throw new Error("Source and target Homes must not overlap")
+        if (contains(resolved[i], resolved[j])) throw new Error("Source and target Homes must not overlap")
       }
   }
 
@@ -95,6 +110,10 @@ export namespace DataTransfer {
   }
 
   export async function pack(sourceRoot: string, destination: string) {
+    return withFiles([sourceRoot, destination], () => packRecords(sourceRoot, destination))
+  }
+
+  async function packRecords(sourceRoot: string, destination: string) {
     const handle = await StorageBootstrap.inspect(sourceRoot)
     if (!handle) throw new Error("Source storage has not been initialized")
     try {
@@ -120,6 +139,14 @@ export namespace DataTransfer {
     sourceRoot: string,
     targetRoot: string,
     options: { progress?: (progress: CopyProgress) => void; trusted?: boolean } = {},
+  ) {
+    return withFiles([sourceRoot, targetRoot], () => mergeRecords(sourceRoot, targetRoot, options))
+  }
+
+  async function mergeRecords(
+    sourceRoot: string,
+    targetRoot: string,
+    options: { progress?: (progress: CopyProgress) => void; trusted?: boolean },
   ) {
     await validateHomes([sourceRoot, targetRoot])
     const source = await StorageBootstrap.inspect(sourceRoot)

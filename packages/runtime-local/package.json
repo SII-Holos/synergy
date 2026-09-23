@@ -50,6 +50,7 @@
     "./tools/bash/virtual-file": "./src/tools/bash/virtual-file.ts",
     "./skill/manifest": "./src/skill/manifest.ts",
     "./workspace/worktree": "./src/workspace/worktree.ts",
+    "./workspace/relocation": "./src/workspace/relocation.ts",
     "./index": "./src/index.ts",
     "./register": "./src/register.ts",
     "./client": "./src/client.ts",

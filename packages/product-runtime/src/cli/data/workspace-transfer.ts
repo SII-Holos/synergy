@@ -9,6 +9,7 @@ import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { ScopeTransfer } from "@ericsanchezok/synergy-harness/scope/transfer"
 import { ChannelWorkspaceTransfer } from "@ericsanchezok/synergy-connections/channel/workspace-transfer"
 import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
+import { WorktreeRelocation } from "@ericsanchezok/synergy-runtime-local/workspace/relocation"
 
 export namespace WorkspaceHomeTransfer {
   export const roots = new Set(["workspace", "workspace_scope", "workspace_location"])
@@ -123,10 +124,14 @@ export namespace WorkspaceHomeTransfer {
       }
       const id = previous || !reference.id.startsWith("wsp_") ? `wsp_${randomUUID().replaceAll("-", "")}` : reference.id
       ids.set(reference.id, id)
-      const info = WorkspaceCatalog.forImport(historical, id)
+      const info = WorkspaceCatalog.forImport(
+        binding && relocation ? WorktreeRelocation.workspace(historical, relocation.path) : historical,
+        id,
+      )
       originals.set(id, historical)
       imported.push(binding ? { ...info, binding, revision: info.revision + 1, updatedAt: Date.now() } : info)
     }
+    await relocation?.complete()
     const destinations = new Map([...existing.values(), ...imported].map((info) => [info.id, info]))
     for (const info of imported) {
       if (info.binding.state !== "bound") continue
@@ -187,8 +192,10 @@ export namespace WorkspaceHomeTransfer {
         if (inside(root, filename)) return path.join(targetRoot, path.relative(root, filename))
       return filename
     }
+    const moved: string[] = []
     return {
       path: relocate,
+      complete: () => WorktreeRelocation.repairCopied({ sourceRoot, targetRoot, directories: moved }),
       async binding(info: WorkspaceCatalog.Info): Promise<WorkspaceCatalog.Info["binding"] | undefined> {
         const before = info.binding
         if (
@@ -208,6 +215,7 @@ export namespace WorkspaceHomeTransfer {
           throw new Error("Relocated Workspace escapes the target Home")
         if (destination === actual.path && after.physicalID !== actual.physicalID)
           throw new Error("Workspace directory changed during Home relocation")
+        if (destination !== actual.path) moved.push(actual.path)
         return {
           state: "bound",
           hostID: targetHost,

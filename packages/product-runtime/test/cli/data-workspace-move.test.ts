@@ -8,6 +8,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
@@ -263,3 +264,139 @@ test("Home relocation rejects overlapping locations including native aliases bef
       await expect(DataTransfer.merge(source, target, { trusted: true })).rejects.toThrow("must not overlap")
     expect(await fs.readdir(source)).toEqual([])
   }))
+
+test.each(["source", "target"] as const)(
+  "Home transfer refuses an independently active Workspace under the %s Home",
+  (kind) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const sourceRoot = path.join(tmp.path, "source")
+      const targetRoot = path.join(tmp.path, "target")
+      for (const root of [sourceRoot, targetRoot]) {
+        const store = await StorageBootstrap.prepare({ root })
+        await store.activate()
+        await store.store.close()
+      }
+      await fs.writeFile(path.join(sourceRoot, "data", "owned-file"), "stable bytes")
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const active = WorkspaceAccess.task(
+        { workspace: { type: "directory", scopeID: "home", path: kind === "source" ? sourceRoot : targetRoot } },
+        async () => {
+          entered.resolve()
+          await release.promise
+        },
+      )
+      try {
+        await entered.promise
+        await using homes = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+        const error = await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true }).then(
+          () => undefined,
+          (error) => error,
+        )
+        expect(error).toBeInstanceOf(WorkspaceAccess.BusyError)
+        expect(await fs.stat(path.join(targetRoot, "data", "owned-file")).catch(() => undefined)).toBeUndefined()
+      } finally {
+        release.resolve()
+        await active
+      }
+      await using homes = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+      await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })
+      expect(await fs.readFile(path.join(targetRoot, "data", "owned-file"), "utf8")).toBe("stable bytes")
+    }),
+)
+
+test.each(["complete", "absolute-common", "external", "target-conflict"] as const)(
+  "Home relocation protects copied Git relationships (%s)",
+  (kind) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir(),
+        repository = await tmpdir({ git: true })
+      const sourceRoot = path.join(tmp.path, "source")
+      const targetRoot = path.join(tmp.path, "target")
+      const main = path.join(sourceRoot, "data", "projects", "main")
+      const linked =
+        kind === "external" ? path.join(tmp.path, "external") : path.join(sourceRoot, "data", "projects", "linked")
+      await fs.cp(repository.path, main, { recursive: true })
+      const git = async (directory: string, args: string[]) => {
+        const proc = Bun.spawn(["git", ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" })
+        const [stdout, stderr, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ])
+        if (code !== 0) throw new Error(stderr)
+        return stdout
+      }
+      await git(main, ["worktree", "add", "--detach", linked, "HEAD"])
+      const originalLink = await fs.readFile(path.join(linked, ".git"), "utf8")
+      if (kind === "absolute-common") {
+        const gitdir = originalLink.slice(8).replace(/\r?\n$/, "")
+        await fs.writeFile(path.join(gitdir, "commondir"), path.join(main, ".git") + "\n")
+        await git(main, ["config", "core.worktree", main])
+      }
+      const source = await StorageBootstrap.prepare({ root: sourceRoot })
+      const host = createLocalHost({ root: sourceRoot })
+      let linkedID!: string
+      try {
+        await Storage.provide({ store: source.store, artifactDirectory: path.join(sourceRoot, "data") }, async () => {
+          for (const directory of [main, linked]) {
+            const workspace = await WorkspaceCatalog.register({
+              scopeID: "home",
+              type: directory === linked ? "git_worktree" : "main",
+              hostID: await host.workspaceLocation!.hostID(),
+              ...(await host.workspaceLocation!.identify(directory)),
+              metadata: { originalCheckout: main, futureField: main },
+            })
+            if (directory === linked) linkedID = workspace.id
+          }
+        })
+        await source.activate()
+      } finally {
+        await source.store.close()
+      }
+      const target = await StorageBootstrap.prepare({ root: targetRoot })
+      await target.activate()
+      await target.store.close()
+      const unrelated = path.join(tmp.path, "unrelated.git")
+      if (kind === "target-conflict") {
+        await fs.writeFile(unrelated, "unrelated Git metadata")
+        const extra = path.join(targetRoot, path.relative(sourceRoot, main), ".git", "worktrees", "unrelated")
+        await fs.mkdir(extra, { recursive: true })
+        await fs.writeFile(path.join(extra, "gitdir"), unrelated + "\n")
+      }
+      await using homes = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+      if (kind === "external" || kind === "target-conflict") {
+        await expect(DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })).rejects.toThrow(
+          kind === "external" ? "external Git metadata" : "unrelated worktrees",
+        )
+        expect(await fs.readFile(path.join(linked, ".git"), "utf8")).toBe(originalLink)
+        expect(await git(linked, ["rev-parse", "--git-common-dir"])).toContain(sourceRoot)
+        if (kind === "target-conflict") expect(await fs.readFile(unrelated, "utf8")).toBe("unrelated Git metadata")
+        const unchanged = (await StorageBootstrap.inspect(targetRoot))!
+        try {
+          expect(await unchanged.store.scan(["workspace"])).toEqual([])
+        } finally {
+          await unchanged.store.close()
+        }
+        return
+      }
+      await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })
+      expect(await fs.readFile(path.join(linked, ".git"), "utf8")).toBe(originalLink)
+      expect(await git(linked, ["rev-parse", "--git-common-dir"])).toContain(sourceRoot)
+      await fs.rename(sourceRoot, sourceRoot + "-preserved")
+      const movedMain = path.join(targetRoot, path.relative(sourceRoot, main))
+      const movedLinked = path.join(targetRoot, path.relative(sourceRoot, linked))
+      const restored = (await StorageBootstrap.inspect(targetRoot))!
+      try {
+        const workspace = await restored.store.read<WorkspaceCatalog.Info>(["workspace", linkedID])
+        expect(workspace.metadata.originalCheckout).toBe(movedMain)
+        expect(workspace.metadata.futureField).toBe(main)
+      } finally {
+        await restored.store.close()
+      }
+      expect(await git(movedLinked, ["rev-parse", "--git-common-dir"])).toContain(movedMain)
+      expect(await git(movedLinked, ["status", "--porcelain"])).toBe("")
+      expect(await git(movedMain, ["status", "--porcelain"])).toBe("")
+    }),
+)
