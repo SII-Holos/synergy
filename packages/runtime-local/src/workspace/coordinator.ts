@@ -32,6 +32,7 @@ const Claim = z.object({
   finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
   finalizing: z.boolean().optional(),
   cooperative: z.boolean().optional(),
+  transient: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
 const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
@@ -49,6 +50,7 @@ export interface WorkspaceClaimInput {
   processID?: number
   retainAfterExit?: boolean
   cooperative?: boolean
+  transient?: boolean
   signal?: AbortSignal
   timeoutMs?: number
 }
@@ -87,11 +89,13 @@ function covers(a: Claim["roots"], b: Claim["roots"]) {
 }
 function conflicts(request: Claim, held: Claim) {
   if (request.id === held.id) return false
+  if (request.parentClaim === held.id && request.owner === held.owner) return false
+  if (request.kind === "exclusive" && request.parentClaim && request.owner === held.owner && held.kind === "use")
+    return false
   if (request.kind === "exclusive" && overlaps(request.roots, held.useRoots)) return true
   if (held.kind === "exclusive" && overlaps(held.roots, request.useRoots)) return true
   if ((request.kind === "use" && held.kind !== "exclusive") || (held.kind === "use" && request.kind !== "exclusive"))
     return false
-  if (request.parentClaim === held.id && request.owner === held.owner) return false
   if (
     request.kind === "task" &&
     held.kind === "operation" &&
@@ -247,6 +251,7 @@ export class WorkspaceCoordinator {
       kind: input.kind,
       parentClaim: input.parentClaim,
       cooperative: input.cooperative,
+      transient: input.transient,
       roots,
       useRoots,
       pid,
@@ -285,8 +290,14 @@ export class WorkspaceCoordinator {
             const parent = ledger.claims.find(
               (claim) => claim.id === current.parentClaim && claim.owner === current.owner && claim.state === "active",
             )
-            const alreadyAdmitted = parent?.kind === "task" && covers(parent.roots, current.roots)
-            if (current.parentClaim && !alreadyAdmitted)
+            const alreadyAdmitted =
+              parent?.kind === "exclusive" || (parent?.kind === "task" && covers(parent.roots, current.roots))
+            if (
+              current.parentClaim &&
+              (!parent ||
+                (parent.kind !== "task" && parent.kind !== "exclusive") ||
+                (!alreadyAdmitted && !current.transient))
+            )
               throw new WorkspaceBusyError("Workspace parent reservation is no longer available")
             const blockers = ledger.claims.filter(
               (claim, position) =>

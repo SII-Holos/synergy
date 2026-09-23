@@ -4,6 +4,7 @@ import { ScopeContext } from "../scope/context"
 import { ExecutionCapacity } from "../session/execution-capacity"
 import type { Workspace } from "../session/workspace-schema"
 import { WorkspaceBinding } from "./binding"
+import path from "node:path"
 
 export namespace WorkspaceAccess {
   export class BusyError extends Error {
@@ -20,6 +21,7 @@ export namespace WorkspaceAccess {
     processID?: number
     retainAfterExit?: boolean
     cooperative?: boolean
+    transient?: boolean
     signal?: AbortSignal
     timeoutMs?: number
   }
@@ -48,6 +50,7 @@ export namespace WorkspaceAccess {
     retired: Set<Lease>
     activity: number
     transitioning: boolean
+    retiring?: boolean
     serial: Promise<void>
     closed: boolean
     signal: AbortSignal
@@ -76,6 +79,7 @@ export namespace WorkspaceAccess {
     }
   }
   const context = RuntimeContext.createAsyncContext<Task>()
+  const retirement = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease }>()
   const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
 
   export function register(host: Host) {
@@ -199,6 +203,10 @@ export namespace WorkspaceAccess {
     return task({ workspace: ScopeContext.tryWorkspace(), signal }, () => withActivity(current()!, fn))
   }
 
+  export function maintenance<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    return ExecutionCapacity.detached(() => observeWrites(undefined, () => task({ workspace: null, signal }, fn)))
+  }
+
   async function inTask<T>(fn: (task: Task) => Promise<T>, signal?: AbortSignal) {
     const active = current()
     if (active) return withActivity(active, () => fn(active))
@@ -210,6 +218,7 @@ export namespace WorkspaceAccess {
 
   async function withActivity<T>(task: Task, fn: () => Promise<T>): Promise<T> {
     if (task.transitioning) throw new BusyError("A Workspace switch is in flight")
+    if (task.retiring && retirement.getStore()?.task !== task) throw new BusyError("Workspace removal is in flight")
     task.activity++
     try {
       return await fn()
@@ -327,10 +336,37 @@ export namespace WorkspaceAccess {
     }, signal)
   }
 
+  export async function metadata<T>(roots: string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    return inTask(async (task) => {
+      let lease: Lease | undefined
+      try {
+        await ExecutionCapacity.wait(async () => {
+          const parent = retirement.getStore()
+          if (parent?.task !== task) await reserve(task, [], signal, false)
+          lease = await host().acquire({
+            id: randomUUID(),
+            owner: task.owner,
+            ancestors: task.ancestors,
+            kind: "operation",
+            parentClaim: parent?.task === task ? parent.lease.id : task.id,
+            transient: true,
+            roots,
+            signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
+          })
+        })
+        signal?.throwIfAborted()
+        await validate(task)
+        return await fn()
+      } finally {
+        await lease?.release()
+      }
+    }, signal)
+  }
+
   export async function process(
     roots: string[] | null,
     signal?: AbortSignal,
-    options?: { cooperative?: boolean; retainAfterExit?: boolean },
+    options?: { cooperative?: boolean; retainAfterExit?: boolean; transient?: boolean },
   ): Promise<Lease> {
     if (options?.cooperative && !host().contendedProcesses)
       throw new Error("This Runtime cannot monitor cooperative process contention")
@@ -340,7 +376,8 @@ export namespace WorkspaceAccess {
       try {
         await ExecutionCapacity.wait(async () => {
           const writes = roots === null || roots.length > 0
-          if (writes) await reserve(task, roots, signal, false)
+          const parent = retirement.getStore()
+          if (writes && parent?.task !== task) await reserve(task, options?.transient ? [] : roots, signal, false)
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
@@ -348,7 +385,8 @@ export namespace WorkspaceAccess {
             kind: "process",
             retainAfterExit: !!observe || options?.retainAfterExit,
             cooperative: options?.cooperative,
-            parentClaim: writes ? task.id : undefined,
+            parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
+            transient: options?.transient || parent?.task === task,
             roots,
             useRoots: [...task.useRoots],
             signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
@@ -475,5 +513,50 @@ export namespace WorkspaceAccess {
     } finally {
       await lease?.release()
     }
+  }
+
+  export async function retire<T>(roots: string[], fn: () => Promise<T>): Promise<T> {
+    return inTask(async (task) => {
+      if (task.activity !== 1 || task.retiring) throw new BusyError("Workspace operations are in flight")
+      const bindings = [...(task.workspace ? [task.workspace] : []), ...task.bindings.values()]
+      if (
+        roots.some((root) =>
+          bindings.some((binding) => {
+            const relative = path.relative(root, binding.path)
+            return (
+              relative === "" ||
+              (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+            )
+          }),
+        )
+      )
+        throw new BusyError("Leave the Workspace before removing its directory")
+      task.retiring = true
+      let lease: Lease | undefined
+      try {
+        await ExecutionCapacity.wait(async () => {
+          await reserve(task, [], undefined, false)
+          lease = await host().acquire({
+            id: randomUUID(),
+            owner: task.owner,
+            ancestors: task.ancestors,
+            kind: "exclusive",
+            parentClaim: task.id,
+            transient: true,
+            roots,
+            signal: task.signal,
+            timeoutMs: 1000,
+          })
+        })
+        await validate(task)
+        return await retirement.run({ task, lease: lease! }, fn)
+      } finally {
+        try {
+          await lease?.release()
+        } finally {
+          task.retiring = false
+        }
+      }
+    })
   }
 }

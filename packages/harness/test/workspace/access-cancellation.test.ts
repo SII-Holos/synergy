@@ -35,7 +35,7 @@ test("process admission uses the compiled write footprint separately from bindin
   })
 })
 
-for (const operation of ["write", "process", "exclusive"] as const) {
+for (const operation of ["write", "metadata", "process", "exclusive", "retire"] as const) {
   for (const failure of ["cancel", "resume-error"] as const) {
     test(`${operation} releases admission when capacity resume ${failure}`, async () => {
       const claims = new Set<string>()
@@ -73,6 +73,10 @@ for (const operation of ["write", "process", "exclusive"] as const) {
                 const lease = await WorkspaceAccess.process(["/workspace"], controller.signal)
                 executed = true
                 await lease.release()
+              } else if (operation === "retire") {
+                await WorkspaceAccess.retire(["/workspace"], async () => {
+                  executed = true
+                })
               } else {
                 await WorkspaceAccess[operation](
                   ["/workspace"],
@@ -94,3 +98,48 @@ for (const operation of ["write", "process", "exclusive"] as const) {
     })
   }
 }
+
+test("maintenance can finish after its caller's capacity and write observer close", async () => {
+  await using runtime = await testRuntime({
+    register: () =>
+      WorkspaceAccess.register({
+        async acquire(input) {
+          input.signal?.throwIfAborted()
+          return { id: input.id, async release() {}, async bindProcess() {} }
+        },
+      }),
+  })
+  await runtime.run(async () => {
+    const release = Promise.withResolvers<void>()
+    let closed = false
+    let finished = false
+    const work = ExecutionCapacity.provide(
+      "cortex",
+      {
+        pause() {
+          if (closed) throw new Error("Caller capacity is closed")
+        },
+        async resume() {
+          if (closed) throw new Error("Caller capacity is closed")
+        },
+      },
+      () =>
+        WorkspaceAccess.observeWrites(
+          async () => {
+            throw new Error("Caller observer is closed")
+          },
+          () =>
+            WorkspaceAccess.maintenance(async () => {
+              await release.promise
+              await WorkspaceAccess.metadata(["/metadata"], async () => {
+                finished = true
+              })
+            }),
+        ),
+    )
+    closed = true
+    release.resolve()
+    await work
+    expect(finished).toBe(true)
+  })
+})
