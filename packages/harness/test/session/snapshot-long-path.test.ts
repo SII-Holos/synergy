@@ -3,6 +3,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { SnapshotGit } from "../../src/session/snapshot-git"
 import { SnapshotStore } from "../../src/session/snapshot-store"
+import { SnapshotCapture } from "../../src/session/snapshot-capture"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
@@ -20,11 +21,19 @@ test("snapshot indexes, retained refs and pack transfers work beyond Windows MAX
     await SnapshotStore.initializeBareRepository(repo)
     const workspace = path.join(deep, "working-files")
     await fs.mkdir(workspace)
-    await Bun.write(path.join(workspace, "content.txt"), "original bytes\r\n")
-    const args = ["git", "--git-dir", repo, "--work-tree", workspace]
-    const added = await SnapshotGit.run([...args, "add", "--all"], workspace, { GIT_INDEX_FILE: index })
-    expect(added.stderr).toBe("")
-    expect(added.exitCode).toBe(0)
+    await fs.writeFile(path.join(workspace, "content.txt"), "original bytes\r\n")
+    const args = ["git", "--git-dir", repo]
+    expect(
+      await SnapshotCapture.refresh({
+        scopeID: "long-path",
+        sessionID: "long-path",
+        backend: "shared",
+        repository: repo,
+        workspace,
+        index,
+        temporary: path.dirname(index),
+      }),
+    ).toBe(true)
     const tree = await SnapshotGit.run([...args, "write-tree"], workspace, { GIT_INDEX_FILE: index })
     expect(tree.exitCode).toBe(0)
     const hash = tree.text.trim()
@@ -36,7 +45,7 @@ test("snapshot indexes, retained refs and pack transfers work beyond Windows MAX
     const objects: string[] = []
     for await (const object of SnapshotGit.lines(repo, ["rev-list", "--objects", "--no-object-names", hash]))
       objects.push(object)
-    await Bun.write(inventory, objects.join("\n") + "\n")
+    await fs.writeFile(inventory, objects.join("\n") + "\n")
     const target = path.join(deep, "imported-store.git")
     await SnapshotStore.initializeBareRepository(target)
     const pack = await SnapshotGit.importObjects(repo, target, inventory)

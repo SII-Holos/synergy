@@ -3,13 +3,14 @@ import { Log } from "../util/log"
 import { withTimeout } from "../util/timeout"
 import path from "node:path"
 import fs from "node:fs/promises"
+import { SnapshotPath } from "./snapshot-path"
 
 export namespace SnapshotGit {
   function command(args: string[]) {
     // Provenance: https://github.com/git-for-windows/git/blob/main/Documentation/config/core.adoc#corelongpaths
     // Snapshot stores and indexes are private and can exceed Windows MAX_PATH.
     // Apply before repository discovery, including initialization and transfers.
-    return [args[0], "-c", "core.longpaths=true", ...args.slice(1)]
+    return [args[0], "-c", "core.longpaths=true", "-c", "core.fsmonitor=false", ...args.slice(1)]
   }
 
   function startupDirectory(cwd: string, args: string[]) {
@@ -23,14 +24,22 @@ export namespace SnapshotGit {
       ? AbortSignal.any([options.signal, AbortSignal.timeout(30 * 60_000)])
       : AbortSignal.timeout(30 * 60_000)
     signal.throwIfAborted()
-    const proc = Bun.spawn(command(["git", "--git-dir", repo, ...args]), {
-      cwd: startupDirectory(path.dirname(repo), ["--git-dir"]),
-      env: environment(),
-      stdout: "pipe",
-      stderr: "pipe",
-      stdin: options.input ? Bun.file(options.input) : "ignore",
-      signal,
-    })
+    await using location = await SnapshotPath.repository(["git", "--git-dir", repo, ...args])
+    const input = options.input ? await fs.open(options.input, "r") : undefined
+    let proc: Bun.Subprocess<number | "ignore", "pipe", "pipe">
+    try {
+      proc = Bun.spawn(command(location.args), {
+        cwd: startupDirectory(path.dirname(repo), ["--git-dir"]),
+        env: environment(),
+        stdout: "pipe",
+        stderr: "pipe",
+        stdin: input?.fd ?? "ignore",
+        signal,
+      })
+    } catch (error) {
+      await input?.close()
+      throw error
+    }
     const errors = tail(proc.stderr)
     const reader = proc.stdout.getReader()
     const decoder = new TextDecoder()
@@ -55,6 +64,7 @@ export namespace SnapshotGit {
       reader.releaseLock()
       if (proc.exitCode === null) proc.kill()
       await Promise.allSettled([proc.exited, errors])
+      await input?.close()
     }
   }
 
@@ -92,30 +102,40 @@ export namespace SnapshotGit {
     abort.throwIfAborted()
     const directory = await fs.mkdtemp(path.join(path.dirname(inventory), "pack-transfer-"))
     const filename = path.join(directory, "objects.pack")
-    let pack: Bun.Subprocess<Bun.BunFile, Bun.BunFile, "pipe"> | undefined
+    let pack: Bun.Subprocess<number, number, "pipe"> | undefined
     let errors: Promise<string> | undefined
+    let input: Awaited<ReturnType<typeof fs.open>> | undefined
+    let output: Awaited<ReturnType<typeof fs.open>> | undefined
+    let location: Awaited<ReturnType<typeof SnapshotPath.repository>> | undefined
     try {
-      pack = Bun.spawn(command(["git", "--git-dir", source, "pack-objects", "--stdout"]), {
+      location = await SnapshotPath.repository(["git", "--git-dir", source, "pack-objects", "--stdout"])
+      input = await fs.open(inventory, "r")
+      output = await fs.open(filename, "wx", 0o600)
+      pack = Bun.spawn(command(location.args), {
         cwd: startupDirectory(path.dirname(source), ["--git-dir"]),
         env: environment(),
-        stdin: Bun.file(inventory),
-        stdout: Bun.file(filename),
+        stdin: input.fd,
+        stdout: output.fd,
         stderr: "pipe",
         signal: abort,
       })
       errors = tail(pack.stderr)
       const [code, stderr] = await withAbort(Promise.all([pack.exited, errors]), abort)
       if (code !== 0) throw new Error(`Snapshot git pack-objects failed: ${stderr.trim()}`)
-      const output = await checked(target, ["index-pack", "--stdin", "--strict", `--keep=${keepToken}`], {
+      await output.close()
+      output = undefined
+      const imported = await checked(target, ["index-pack", "--stdin", "--strict", `--keep=${keepToken}`], {
         signal: abort,
         input: filename,
       })
-      const hash = output.trim().split(/\s+/).at(-1)
+      const hash = imported.trim().split(/\s+/).at(-1)
       if (!hash || !/^[0-9a-f]{40}$/.test(hash)) throw new Error("Snapshot pack import did not report an object ID")
       return hash
     } finally {
       if (pack?.exitCode === null) pack.kill()
       await Promise.allSettled([pack?.exited, errors])
+      await Promise.allSettled([input?.close(), output?.close()])
+      await location?.[Symbol.asyncDispose]()
       await fs.rm(directory, { recursive: true, force: true })
     }
   }
@@ -235,8 +255,10 @@ export namespace SnapshotGit {
     for (let attempt = 1; ; attempt++) {
       const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
       let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
+      let location: Awaited<ReturnType<typeof SnapshotPath.repository>> | undefined
       try {
-        proc = Bun.spawn(command(args), {
+        location = await SnapshotPath.repository(args)
+        proc = Bun.spawn(command(location.args), {
           cwd: startupDirectory(cwd, args),
           stdin: stdin === undefined ? "ignore" : "pipe",
           stdout: "pipe",
@@ -288,6 +310,9 @@ export namespace SnapshotGit {
           return { exitCode: -1, text: "", bytes: new Uint8Array(), stderr }
         }
       } finally {
+        if (proc?.exitCode === null) proc.kill()
+        await proc?.exited.catch(() => {})
+        await location?.[Symbol.asyncDispose]()
         childSignal.cleanup()
       }
     }

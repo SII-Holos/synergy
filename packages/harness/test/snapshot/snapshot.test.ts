@@ -81,12 +81,12 @@ describe.serial("snapshot", () => {
       await using tmp = await bootstrap()
       const scope = await tmp.scope()
       const originalSpawn = Bun.spawn
-      let diffFilesAttempts = 0
+      let indexReadAttempts = 0
       using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
         const command = args[0]
-        if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
-          diffFilesAttempts++
-          if (diffFilesAttempts === 1) {
+        if (Array.isArray(command) && command[0] === "git" && command.includes("ls-files")) {
+          indexReadAttempts++
+          if (indexReadAttempts === 1) {
             throw Object.assign(new Error("too many open files"), { code: "EMFILE" })
           }
         }
@@ -99,7 +99,7 @@ describe.serial("snapshot", () => {
           expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
         },
       })
-      expect(diffFilesAttempts).toBe(2)
+      expect(indexReadAttempts).toBe(2)
     }))
 
   test("does not retry a permanent git spawn failure", () =>
@@ -107,11 +107,11 @@ describe.serial("snapshot", () => {
       await using tmp = await bootstrap()
       const scope = await tmp.scope()
       const originalSpawn = Bun.spawn
-      let diffFilesAttempts = 0
+      let indexReadAttempts = 0
       using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
         const command = args[0]
-        if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
-          diffFilesAttempts++
+        if (Array.isArray(command) && command[0] === "git" && command.includes("ls-files")) {
+          indexReadAttempts++
           throw Object.assign(new Error("permission denied"), { code: "EACCES" })
         }
         return originalSpawn(...args)
@@ -123,7 +123,7 @@ describe.serial("snapshot", () => {
           expect(await Snapshot.track(tmp.extra.sessionID)).toBeUndefined()
         },
       })
-      expect(diffFilesAttempts).toBe(1)
+      expect(indexReadAttempts).toBe(1)
     }))
 
   test("tracks deleted files correctly", () =>

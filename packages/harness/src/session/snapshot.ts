@@ -1,64 +1,18 @@
 import path from "path"
-import fs from "fs/promises"
 import { Log } from "../util/log"
 import { z } from "zod"
 import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
+import { SnapshotCapture } from "./snapshot-capture"
 import { SnapshotStore } from "./snapshot-store"
-import { Storage } from "../storage/storage"
 import { SnapshotRestore } from "./snapshot-restore"
 import { WorkspaceBinding } from "../workspace/binding"
 import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
-  const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
-  const CANDIDATE_STATE_CONCURRENCY = 32
-  const EXCLUDED_DIRS = new Set([
-    ".git",
-    ".synergy",
-    "node_modules",
-    "dist",
-    "build",
-    "target",
-    ".next",
-    ".nuxt",
-    ".cache",
-    "coverage",
-  ])
-  const EXCLUDED_EXTENSIONS = new Set([
-    ".zip",
-    ".7z",
-    ".rar",
-    ".tar",
-    ".gz",
-    ".tgz",
-    ".bz2",
-    ".xz",
-    ".db",
-    ".sqlite",
-    ".sqlite3",
-    ".pdf",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".mp3",
-    ".mp4",
-    ".mov",
-    ".avi",
-    ".mkv",
-    ".bin",
-    ".exe",
-    ".dll",
-    ".dylib",
-    ".so",
-    ".lock",
-  ])
-
   async function gitSpawn(...args: Parameters<typeof SnapshotGit.run>) {
     const context = SnapshotStore.current()
     args[2] = { ...args[2], GIT_INDEX_FILE: context.index, GIT_LITERAL_PATHSPECS: "1" }
@@ -91,15 +45,13 @@ export namespace Snapshot {
     log.debug("track start", { sessionID, cwd: ScopeContext.current.directory })
     const git = gitdir()
     await SnapshotStore.initialize(SnapshotStore.current())
-    // ensureExclude runs inside refreshIndex (which every snapshot path funnels
-    // through), so it need not be repeated here.
     const addResult = await refreshIndex(sessionID, signal)
     if (!addResult) {
       log.warn("track add failed", { sessionID, duration: Date.now() - started })
       return undefined
     }
     const writeResult = await gitSpawn(
-      ["git", "--git-dir", git, "--work-tree", ScopeContext.current.directory, "write-tree"],
+      ["git", "--git-dir", git, "write-tree"],
       ScopeContext.current.directory,
       undefined,
       signal,
@@ -327,8 +279,6 @@ export namespace Snapshot {
         "core.autocrlf=false",
         "--git-dir",
         git,
-        "--work-tree",
-        ScopeContext.current.directory,
         "diff",
         "--no-ext-diff",
         "--name-only",
@@ -374,21 +324,7 @@ export namespace Snapshot {
     const git = gitdir()
     if (!opts?.indexFresh) await refreshIndex(sessionID, opts?.signal)
     const result = await gitSpawn(
-      [
-        "git",
-        "-c",
-        "core.autocrlf=false",
-        "--git-dir",
-        git,
-        "--work-tree",
-        ScopeContext.current.directory,
-        "diff",
-        "--no-ext-diff",
-        "--cached",
-        hash,
-        "--",
-        ".",
-      ],
+      ["git", "-c", "core.autocrlf=false", "--git-dir", git, "diff", "--no-ext-diff", "--cached", hash, "--", "."],
       ScopeContext.current.directory,
       undefined,
       opts?.signal,
@@ -478,150 +414,12 @@ export namespace Snapshot {
   }
 
   async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {
-    const git = gitdir()
-    const cwd = ScopeContext.current.directory
-    await ensureExclude(git)
-
-    const changed = await changedFiles(git, cwd, signal)
-    if (changed === undefined) return false
-    if (changed.length === 0) return true
-
-    const addable: string[] = []
-    const removable: string[] = []
-    // Classify candidates with bounded-concurrency lstat rather than a serial
-    // await-per-file loop, so the (one-time) first-track scan over a large repo
-    // doesn't stall the event loop or exhaust file descriptors.
-    const states = await mapWithConcurrency(changed, CANDIDATE_STATE_CONCURRENCY, (rel) => candidateState(cwd, rel))
-    for (let i = 0; i < changed.length; i++) {
-      // "missing" (deleted from the work tree) is staged for removal via the
-      // `git add --all` below, so it belongs with the addable pathspec.
-      if (states[i] === "remove") removable.push(changed[i])
-      else addable.push(changed[i])
-    }
-
-    if (removable.length > 0) {
-      // Provenance: https://git-scm.com/docs/git-update-index/2.25.0
-      // Remove literal NUL-delimited paths from only the snapshot index; older
-      // Git supports this form but not git rm --pathspec-from-file.
-      const rm = await gitSpawn(
-        ["git", "--git-dir", git, "--work-tree", cwd, "update-index", "--force-remove", "-z", "--stdin"],
-        cwd,
-        undefined,
-        signal,
-        removable.join("\0") + "\0",
-      )
-      if (rm.exitCode !== 0) return false
-    }
-
-    if (addable.length === 0) return true
-
-    const pathspec = path.join(SnapshotStore.current().temporary, "add-pathspec")
-    await fs.writeFile(pathspec, addable.join("\0") + "\0")
     try {
-      const add = await gitSpawn(
-        [
-          "git",
-          "--git-dir",
-          git,
-          "--work-tree",
-          cwd,
-          "add",
-          "--all",
-          "--pathspec-from-file",
-          pathspec,
-          "--pathspec-file-nul",
-        ],
-        cwd,
-        undefined,
-        signal,
-      )
-      if (add.exitCode !== 0) log.warn("snapshot index update failed", { exitCode: add.exitCode, stderr: add.stderr })
-      return add.exitCode === 0
-    } finally {
-      await fs.unlink(pathspec).catch(() => undefined)
+      return await SnapshotCapture.refresh(SnapshotStore.current(), signal)
+    } catch (error) {
+      log.warn("snapshot capture failed", { sessionID, error })
+      return false
     }
-  }
-
-  // Only the files that actually changed since the shadow index was last
-  // refreshed. This must not depend on HEAD: the shadow repo only ever
-  // `write-tree`s and never commits, so its HEAD is unborn and `git status`
-  // would report every indexed file as a staged addition — forcing a full
-  // rescan every step. `diff-files` (work tree vs. index) plus
-  // `ls-files --others` (new untracked) give the true delta independent of
-  // HEAD. A worktree rename surfaces as a delete of the old path (diff-files)
-  // plus a new untracked path (ls-files), which is exactly what the index
-  // update needs, so no explicit rename handling is required. With `-z`,
-  // paths are emitted verbatim (no quoting), so core.quotepath is irrelevant.
-  async function changedFiles(git: string, cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
-    const modified = await gitSpawn(
-      ["git", "--git-dir", git, "--work-tree", cwd, "diff-files", "--name-only", "-z"],
-      cwd,
-      undefined,
-      signal,
-    )
-    if (modified.exitCode !== 0) {
-      log.warn("diff-files failed", { cwd, exitCode: modified.exitCode, stderr: modified.stderr })
-      return undefined
-    }
-    const untracked = await gitSpawn(
-      ["git", "--git-dir", git, "--work-tree", cwd, "ls-files", "--others", "--exclude-standard", "-z"],
-      cwd,
-      undefined,
-      signal,
-    )
-    if (untracked.exitCode !== 0) {
-      log.warn("ls-files failed", { cwd, exitCode: untracked.exitCode, stderr: untracked.stderr })
-      return undefined
-    }
-    const files = new Set<string>()
-    for (const raw of [...modified.text.split("\0"), ...untracked.text.split("\0")]) {
-      if (raw) files.add(raw)
-    }
-    return [...files]
-  }
-
-  async function candidateState(cwd: string, rel: string): Promise<"add" | "remove" | "missing"> {
-    if (excludePath(rel)) return "remove"
-    const absolute = path.join(cwd, rel)
-    const stat = await fs.lstat(absolute).catch(() => undefined)
-    if (!stat) return "missing"
-    if (!stat.isFile() && !stat.isSymbolicLink()) return "remove"
-    if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) return "remove"
-    return "add"
-  }
-
-  async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-    const result: R[] = new Array(items.length)
-    let next = 0
-    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const index = next++
-        result[index] = await fn(items[index])
-      }
-    })
-    await Promise.all(workers)
-    return result
-  }
-
-  function excludePath(rel: string): boolean {
-    const normalized = process.platform === "win32" ? rel.replaceAll("\\", "/") : rel
-    const segments = normalized.split("/")
-    if (segments.some((segment) => EXCLUDED_DIRS.has(segment))) return true
-    return EXCLUDED_EXTENSIONS.has(path.extname(normalized).toLowerCase())
-  }
-
-  async function ensureExclude(git: string) {
-    const info = path.join(git, "info")
-    await fs.mkdir(info, { recursive: true })
-    const body = [
-      "# Synergy snapshot exclusions",
-      ...[...EXCLUDED_DIRS].sort().map((dir) => `${dir}/`),
-      ...[...EXCLUDED_EXTENSIONS].sort().map((extension) => `*${extension}`),
-      "",
-    ].join("\n")
-    const file = path.join(info, "exclude")
-    const current = await fs.readFile(file, "utf8").catch(() => undefined)
-    if (current !== body) await Storage.writeJsonAtomic(file, body)
   }
 
   function absoluteWorktreePath(rel: string): string {
