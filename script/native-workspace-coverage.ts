@@ -12,6 +12,7 @@ const suites = windows
       "test/workspace/windows-bash-footprint.test.ts",
       "test/process-shutdown.test.ts",
       "test/session/shell.test.ts",
+      "test/sandbox/async-execution.test.ts",
       "test/file/watcher-events.test.ts",
       "test/sandbox/phase3-windows-config.test.ts",
       "test/session/tool-resolver-bash-profile.test.ts",
@@ -19,6 +20,7 @@ const suites = windows
   : [
       "test/process/owned-process.test.ts",
       "test/session/shell.test.ts",
+      "test/sandbox/async-execution.test.ts",
       "test/process/native-pty.test.ts",
       "test/process/pty.test.ts",
       "test/workspace/coordinator.test.ts",
