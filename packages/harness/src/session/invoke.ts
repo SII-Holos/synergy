@@ -804,6 +804,7 @@ export namespace SessionInvoke {
               const maxSteps = agent.steps ?? Infinity
               const isLastStep = step >= maxSteps
 
+              const producingProvider = await Provider.getProvider(model.providerID)
               const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
               const toolDisplayByName = new Map<string, ToolDisplay>()
               const processor = SessionProcessor.create({
@@ -828,6 +829,8 @@ export namespace SessionInvoke {
                   },
                   modelID: model.id,
                   providerID: model.providerID,
+                  ...(producingProvider?.profileID ? { profileID: producingProvider.profileID } : {}),
+                  ...(model.api.id ? { apiModelID: model.api.id } : {}),
                   time: {
                     created: Date.now(),
                   },
@@ -1062,6 +1065,12 @@ export namespace SessionInvoke {
               })
               const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
                 maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+                model: {
+                  providerID: model.providerID,
+                  modelID: model.id,
+                  profileID: producingProvider?.profileID,
+                  apiModelID: model.api.id,
+                },
               })
               const { converted, dropped, failed } = modelProjection.sanitization
               if (converted + dropped + failed > 0) {
@@ -1105,12 +1114,14 @@ export namespace SessionInvoke {
               if (!promptPlan) break
 
               const calibration = buildCalibration(msgs, model)
+              const encryptedReasoningTokens = PromptBudgeter.reasoningReplayTokens(modelSessionMessages)
               const requestedMaxOutputTokens = runtimeState().maxOutputTokensByMessage.get(R.id)
               const promptDecideTimer = log.time("promptBudgeter.decide")
               let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
                 overflowThreshold: jobCtx.compactionOverflowThreshold,
                 calibration,
                 maxOutputTokens: requestedMaxOutputTokens,
+                encryptedReasoningTokens,
               }).catch(async (error) => {
                 await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
@@ -1308,6 +1319,8 @@ export namespace SessionInvoke {
                 messages: msgs,
                 providerID: model.providerID,
                 modelID: model.id,
+                profileID: producingProvider?.profileID,
+                apiModelID: model.api.id,
               })
               streamInput = {
                 user: R,

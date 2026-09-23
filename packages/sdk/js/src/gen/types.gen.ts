@@ -7382,6 +7382,8 @@ export type AssistantMessage = {
   parentID: string
   modelID: string
   providerID: string
+  profileID?: string
+  apiModelID?: string
   mode: string
   agent: string
   path: {

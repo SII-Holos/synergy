@@ -766,8 +766,10 @@ jobs:
             packages: packages/product-runtime,packages/workbench,packages/agent-integrations,packages/library,packages/note,packages/computer-runtime,packages/computer,packages/synergy-link-protocol
           - group: web-plugin
             packages: apps/web,packages/plugin,packages/plugin-kit,packages/sdk/js,packages/util,packages/secret-detection
+          - group: harness
+            packages: packages/harness
           - group: core-server
-            packages: packages/harness,packages/connections,packages/cli,packages/server,packages/plugin-host
+            packages: packages/connections,packages/cli,packages/server,packages/plugin-host
           - group: runtime-media
             packages: packages/media,packages/browser-runtime,packages/runtime-local,packages/workflows,packages/testing,packages/ui,apps/desktop,packages/browser,packages/synergy-link
     steps:

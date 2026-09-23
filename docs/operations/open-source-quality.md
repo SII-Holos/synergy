@@ -69,12 +69,12 @@ CI runs on push to `dev` / `main` and on pull requests targeting those branches.
 | `smoke`               | Server health check smoke test                                                                     |
 | `runtime-artifacts`   | Installed core and product artifact builds verified outside the repository                         |
 | `windows`             | Windows-focused typecheck, sandbox helper, and platform test subset                                |
-| `coverage-shards`     | Four balanced matrix shards running coverage commands and uploading lcov reports                   |
+| `coverage-shards`     | Five coverage shards with a dedicated Harness runner, uploading lcov reports                       |
 | `coverage`            | Aggregates shard lcov reports and enforces unioned per-package thresholds                          |
 
 All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
 
-The `test-shards` matrix runs the workspace suites with bounded Turbo concurrency; `test-aux` covers the browser smoke and the plugin UI and release contracts; `test-harness` executes the Harness CI runner separately with isolated fresh-process shards and JUnit reports; the `Test` fan-in fails unless all three pass. The blocking `runtime-artifacts` job verifies compiled and tarball-installed CLI behavior outside the repository. The `coverage-shards` matrix job runs coverage commands in four duration-balanced shards and uploads their lcov reports; the blocking `coverage` job downloads the reports, unions source hits across the complete invocation, and enforces per-package thresholds — the same evaluation a local `bun run coverage:check` performs. Superseded pull-request runs are cancelled through the workflow `concurrency` group.
+The `test-shards` matrix runs the workspace suites with bounded Turbo concurrency; `test-aux` covers the browser smoke and the plugin UI and release contracts; `test-harness` executes the Harness CI runner separately with isolated fresh-process shards and JUnit reports; the `Test` fan-in fails unless all three pass. The blocking `runtime-artifacts` job verifies compiled and tarball-installed CLI behavior outside the repository. The `coverage-shards` matrix job runs coverage commands in five shards, with Harness on its own runner, and uploads their lcov reports; the blocking `coverage` job downloads the reports, unions source hits across the complete invocation, and enforces per-package thresholds — the same evaluation a local `bun run coverage:check` performs. Superseded pull-request runs are cancelled through the workflow `concurrency` group.
 
 ## Tool Responsibilities
 

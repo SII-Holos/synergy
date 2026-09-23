@@ -63,28 +63,33 @@ describe("ScopeRuntime", () => {
       const startupGate = new Promise<void>((resolve) => {
         releaseStartup = resolve
       })
-      const started = Promise.withResolvers<void>()
+      const startupEntered = Promise.withResolvers<void>()
+      const order: string[] = []
       let initCalls = 0
       let disposeCalls = 0
       using _init = spyOn(Plugin, "init").mockImplementation(async () => {
         initCalls++
+        order.push(`init:start:${initCalls}`)
         if (initCalls === 1) {
-          started.resolve()
+          startupEntered.resolve()
           await startupGate
         }
+        order.push(`init:end:${initCalls}`)
       })
       using _disposeScope = spyOn(Plugin, "disposeScope").mockImplementation(async () => {
         disposeCalls++
+        order.push("dispose")
       })
 
       const firstEnsure = ScopeRuntime.ensure(scope)
-      await started.promise
-      expect(initCalls).toBe(1)
-
-      const disposal = ScopeRuntime.dispose(scope.id)
-      const secondEnsure = ScopeRuntime.ensure(scope)
+      let disposal: Promise<void> | undefined
+      let secondEnsure: Promise<void> | undefined
       try {
-        await Promise.resolve()
+        await startupEntered.promise
+        expect(initCalls).toBe(1)
+
+        disposal = ScopeRuntime.dispose(scope.id)
+        secondEnsure = ScopeRuntime.ensure(scope)
         expect(disposeCalls).toBe(0)
         expect(initCalls).toBe(1)
 
@@ -92,6 +97,7 @@ describe("ScopeRuntime", () => {
         await Promise.all([firstEnsure, disposal, secondEnsure])
         expect(disposeCalls).toBe(1)
         expect(initCalls).toBe(2)
+        expect(order).toEqual(["init:start:1", "init:end:1", "dispose", "init:start:2", "init:end:2"])
       } finally {
         releaseStartup()
         await Promise.allSettled([firstEnsure, disposal, secondEnsure])

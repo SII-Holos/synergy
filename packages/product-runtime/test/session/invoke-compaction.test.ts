@@ -74,7 +74,7 @@ function testModel(limit: { context: number; output: number } = { context: 100_0
       input: { text: true, image: false, audio: false, video: false },
       output: { text: true, image: false, audio: false, video: false },
     },
-    api: { npm: "@ai-sdk/openai" },
+    api: { id: "test-model-wire", npm: "@ai-sdk/openai" },
     options: {},
   }
 }
@@ -183,6 +183,7 @@ async function filterNewestFirst(messages: MessageV2.WithParts[]) {
 
 async function runCompactionProcessCase(input: {
   providerID?: string
+  replayModelID?: string
   beforeLocal?: () => Promise<void>
   auto?: boolean
   error?: MessageV2.Assistant["error"]
@@ -195,6 +196,7 @@ async function runCompactionProcessCase(input: {
   const scope = await tmp.scope()
 
   const originalGetModel = Provider.getModel
+  const originalGetProvider = Provider.getProvider
   const originalGetAgent = Agent.get
   const originalGetAvailableModel = Agent.getAvailableModel
   const originalProcessorCreate = SessionProcessor.create
@@ -209,7 +211,17 @@ async function runCompactionProcessCase(input: {
   let processMaxOutputTokens: number | undefined
 
   try {
-    ;(Provider.getModel as any) = mock(async () => testModel(input.modelLimit))
+    ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
+      ...testModel(input.modelLimit),
+      providerID,
+      id: modelID,
+    }))
+    ;(Provider.getProvider as any) = mock(async (providerID: string) => ({
+      profileID:
+        providerID === CodexProvider.PROVIDER_ID || providerID === "codex-work"
+          ? CodexProvider.PROVIDER_ID
+          : "test-provider",
+    }))
     ;(Agent.get as any) = mock(async () => primaryAgent())
     ;(Agent.getAvailableModel as any) = mock(async () => ({
       providerID: "test-provider",
@@ -307,10 +319,20 @@ async function runCompactionProcessCase(input: {
         if (!root) throw new Error("compaction root was not persisted")
 
         const calls =
-          input.providerID === CodexProvider.PROVIDER_ID
+          input.providerID === CodexProvider.PROVIDER_ID || input.providerID === "codex-work"
             ? await RolloutLedger.calls({ kind: "session", scopeID: scope.id, sessionID: session.id }, user.id)
             : []
+        const replayPlan = input.replayModelID
+          ? await SessionCompaction.codexReplayPlan({
+              messages: after,
+              providerID: input.providerID ?? "test-provider",
+              modelID: input.replayModelID,
+              profileID: CodexProvider.PROVIDER_ID,
+              apiModelID: "test-model-wire",
+            })
+          : undefined
         return {
+          replayPlan,
           calls,
           messages: after,
           result,
@@ -328,6 +350,7 @@ async function runCompactionProcessCase(input: {
     })
   } finally {
     ;(Provider.getModel as any) = originalGetModel
+    ;(Provider.getProvider as any) = originalGetProvider
     ;(Agent.get as any) = originalGetAgent
     ;(Agent.getAvailableModel as any) = originalGetAvailableModel
     ;(SessionProcessor.create as any) = originalProcessorCreate
@@ -1535,10 +1558,54 @@ describe("remote compaction rollout", () => {
         status: "completed",
         transportCaptured: true,
       })
-      expect(observed.attempt.info.metadata?.remoteCompaction).toMatchObject({ summaryText: "Local summary" })
+      expect(observed.attempt.info.metadata?.remoteCompaction).toMatchObject({
+        summaryText: "Local summary",
+        providerID: CodexProvider.PROVIDER_ID,
+        modelID: "test-model",
+        profileID: CodexProvider.PROVIDER_ID,
+        apiModelID: "test-model-wire",
+      })
+      expect(observed.attempt.info.metadata?.remoteCompaction?.replacementHistory.at(-1)).toEqual({
+        type: "compaction",
+        encrypted_content: "opaque",
+      })
       expect(
         observed.messages.filter((message) => message.info.role === "assistant" && message.info.mode === "compaction"),
       ).toHaveLength(1)
+    }))
+
+  test("persists named connection identity and replays through a compatible catalog alias", () =>
+    runtime.run(async () => {
+      using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+      using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockResolvedValue({
+        compactionItem: { type: "compaction", encrypted_content: "named-opaque" },
+      })
+      const observed = await runCompactionProcessCase({
+        providerID: "codex-work",
+        replayModelID: "compatible-alias",
+        text: "Local summary",
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(remote).toHaveBeenCalledWith(
+        expect.objectContaining({ providerID: "codex-work", modelID: "test-model-wire" }),
+      )
+      expect(observed.calls).toHaveLength(1)
+      expect(observed.attempt.info.metadata?.remoteCompaction).toMatchObject({
+        modelKey: "codex-work/test-model",
+        providerID: "codex-work",
+        modelID: "test-model",
+        profileID: CodexProvider.PROVIDER_ID,
+        apiModelID: "test-model-wire",
+        summaryText: "Local summary",
+      })
+      expect(observed.attempt.info.metadata?.remoteCompaction?.replacementHistory.at(-1)).toEqual({
+        type: "compaction",
+        encrypted_content: "named-opaque",
+      })
+      expect(observed.replayPlan).toMatchObject({
+        summaryText: "Local summary",
+        replacementHistory: expect.arrayContaining([{ type: "compaction", encrypted_content: "named-opaque" }]),
+      })
     }))
 
   test("cancels and drains remote work when the local summary fails", () =>

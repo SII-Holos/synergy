@@ -48275,6 +48275,12 @@
           "providerID": {
             "type": "string"
           },
+          "profileID": {
+            "type": "string"
+          },
+          "apiModelID": {
+            "type": "string"
+          },
           "mode": {
             "type": "string"
           },
