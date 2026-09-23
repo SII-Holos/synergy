@@ -12,6 +12,25 @@ import { FileLink } from "../../src/file/link"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+async function exportSnapshots(
+  sessionID: string,
+  roots: string[],
+  consume: (packs: string[], roots: string[]) => Promise<void>,
+) {
+  try {
+    return await SnapshotArchive.exportSession(sessionID, roots, consume)
+  } catch (error) {
+    const details = (value: unknown, depth = 0): void => {
+      if (!value || typeof value !== "object" || depth > 5) return
+      if (value instanceof Error) console.error(`Snapshot transfer: ${value.name}: ${value.message}`)
+      for (const key of ["error", "suppressed", "cause"])
+        if (key in value) details((value as Record<string, unknown>)[key], depth + 1)
+    }
+    details(error)
+    throw error
+  }
+}
+
 async function* readPack(file: string) {
   yield await fs.readFile(file)
 }
@@ -71,7 +90,7 @@ test.skipIf(process.platform !== "win32")(
           expect(diff[0]!.binary).not.toBe(true)
           expect(diff[0]!.preview).toContain("Directory symbolic link")
           expect(diff[0]!.preview).not.toContain("\0")
-          const exported = await SnapshotArchive.exportSession("link-kinds", [before], async (packs, roots) => {
+          const exported = await exportSnapshots("link-kinds", [before], async (packs, roots) => {
             await SnapshotArchive.importSession("link-kinds-copy", roots, packs.map(readPack))
           })
           expect(exported.missing).toEqual([])
@@ -118,7 +137,7 @@ test("native link metadata survives snapshot diff and object transfer", () =>
         expect(diffs[0]!.preview).toContain("File symbolic link")
         expect(diffs[0]!.preview).toContain("Directory symbolic link")
         expect(diffs[0]!.preview).not.toContain("\0")
-        const exported = await SnapshotArchive.exportSession("encoded-link", [before], async (packs, roots) => {
+        const exported = await exportSnapshots("encoded-link", [before], async (packs, roots) => {
           await SnapshotArchive.importSession("encoded-link-copy", roots, packs.map(readPack))
         })
         expect(exported.missing).toEqual([])

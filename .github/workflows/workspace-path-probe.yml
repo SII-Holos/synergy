@@ -29,7 +29,9 @@ jobs:
         working-directory: packages/runtime-local
       - run: bun test --timeout 60000 test/workspace-file/snapshot-links.test.ts
         working-directory: packages/runtime-local
-      - run: bun test test/cli/data-files.test.ts
+      - if: always()
+        run: bun test test/cli/data-files.test.ts
         working-directory: packages/cli
-      - run: bun test --timeout 60000 test/cli/data-workspace-move.test.ts test/cli/data-transfer.test.ts
+      - if: always()
+        run: bun test --timeout 60000 test/cli/data-workspace-move.test.ts test/cli/data-transfer.test.ts
         working-directory: packages/product-runtime
