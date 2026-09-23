@@ -18,7 +18,7 @@ test("snapshot indexes, retained refs and pack transfers work beyond Windows MAX
     expect(index.length).toBeGreaterThan(260)
     await fs.mkdir(path.dirname(index), { recursive: true })
     await SnapshotStore.initializeBareRepository(repo)
-    const workspace = path.join(tmp.path, "working-files")
+    const workspace = path.join(deep, "working-files")
     await fs.mkdir(workspace)
     await Bun.write(path.join(workspace, "content.txt"), "original bytes\r\n")
     const args = ["git", "--git-dir", repo, "--work-tree", workspace]

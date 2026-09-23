@@ -12,13 +12,19 @@ export namespace SnapshotGit {
     return [args[0], "-c", "core.longpaths=true", ...args.slice(1)]
   }
 
+  function startupDirectory(cwd: string, args: string[]) {
+    if (process.platform !== "win32" || !args.includes("--git-dir")) return cwd
+    // Git's startup getcwd precedes core.longpaths. Snapshot paths are absolute.
+    return path.parse(path.resolve(cwd)).root
+  }
+
   export async function* lines(repo: string, args: string[], options: { signal?: AbortSignal; input?: string } = {}) {
     const signal = options.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(30 * 60_000)])
       : AbortSignal.timeout(30 * 60_000)
     signal.throwIfAborted()
     const proc = Bun.spawn(command(["git", "--git-dir", repo, ...args]), {
-      cwd: path.dirname(repo),
+      cwd: startupDirectory(path.dirname(repo), ["--git-dir"]),
       env: environment(),
       stdout: "pipe",
       stderr: "pipe",
@@ -90,7 +96,7 @@ export namespace SnapshotGit {
     let errors: Promise<string> | undefined
     try {
       pack = Bun.spawn(command(["git", "--git-dir", source, "pack-objects", "--stdout"]), {
-        cwd: path.dirname(source),
+        cwd: startupDirectory(path.dirname(source), ["--git-dir"]),
         env: environment(),
         stdin: Bun.file(inventory),
         stdout: Bun.file(filename),
@@ -231,7 +237,7 @@ export namespace SnapshotGit {
       let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
       try {
         proc = Bun.spawn(command(args), {
-          cwd,
+          cwd: startupDirectory(cwd, args),
           stdin: stdin === undefined ? "ignore" : "pipe",
           stdout: "pipe",
           stderr: "pipe",

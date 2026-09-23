@@ -251,17 +251,15 @@ export namespace SnapshotStore {
   }
 
   export async function initializeBareRepository(repo: string) {
-    await fs.mkdir(repo, { recursive: true })
+    await fs.mkdir(path.dirname(repo), { recursive: true })
     if (!(await Bun.file(path.join(repo, "HEAD")).exists())) {
       // Provenance: https://git-scm.com/docs/git-init (GIT_DEFAULT_HASH).
       // Git before 2.29 only writes SHA-1; the environment also pins newer Git
       // without requiring the newer --object-format command-line option.
-      // Git for Windows chdirs before reading core.longpaths during init. Start
-      // inside the repository and keep GIT_DIR relative through that phase.
+      // An explicit git-dir avoids init's positional-path chdir before config.
       // Provenance: https://github.com/git-for-windows/git/blob/main/builtin/init-db.c
-      const init = await SnapshotGit.run(["git", "init", "--bare"], repo, {
+      const init = await SnapshotGit.run(["git", "--git-dir", repo, "init", "--bare"], path.dirname(repo), {
         GIT_DEFAULT_HASH: "sha1",
-        GIT_DIR: ".",
       })
       if (init.exitCode !== 0)
         throw new StorageError(

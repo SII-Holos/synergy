@@ -9,6 +9,7 @@ import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { FileWatcher } from "../../src/file/watcher"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
+import { waitForLinuxSubscription } from "../support/watcher"
 
 test("file indexes and Git status follow each Session Workspace in one Scope", async () => {
   await using runtime = await testRuntime()
@@ -66,12 +67,20 @@ test("native watcher delivers changes only to the owning Workspace subscribers",
         await ScopeRuntime.provide({
           scope,
           workspace: session.workspace,
-          fn: () =>
-            WorkspaceEvents.subscribe(FileWatcher.Event.Updated, (event) => {
+          fn: async () => {
+            const unsubscribe = WorkspaceEvents.subscribe(FileWatcher.Event.Updated, (event) => {
               if (event.properties.file !== "observed.txt") return
               events[index]!.push(event.properties.workspaceID)
               if (index === 1) received.resolve()
-            }),
+            })
+            try {
+              await waitForLinuxSubscription(session.workspace!.path)
+              return unsubscribe
+            } catch (error) {
+              unsubscribe()
+              throw error
+            }
+          },
         }),
       )
     }
