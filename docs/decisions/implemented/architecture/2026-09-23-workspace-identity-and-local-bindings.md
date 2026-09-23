@@ -38,7 +38,7 @@ Native installation and extraction use Runtime Local's owned process path. The u
 
 Local bindings and their indexes are persisted separately from Session history. Consumers must resolve an explicit Workspace and retain its generation for execution. A directory that is missing or has been replaced cannot be made usable merely by finding another directory at the stored pathname.
 
-File API requests carry an explicit Workspace and generation. Open file tabs retain their owner across session selection and rebinding; server-side generation validation is also applied to raw document assets. Scope and Workspace caches remain separate so same-named files cannot alias across directories.
+File API requests carry an explicit Workspace and generation. Open file tabs retain their owner across session selection and rebinding; server-side generation validation is also applied to raw document assets. Scope and Workspace caches remain separate so same-named files cannot alias across directories. Encoded resource identifiers remain internal; tab tooltips and accessible names use the resolved human-readable panel title.
 
 Session binding leases serialize selection with consumers that retain file authority beyond a single lookup. Optional owners register pre-commit retirement through the Harness, so Browser can close its actual page without introducing Browser dependencies into Session persistence. The target binding remains pinned through selection commit. Browser catalog retirement also participates in generation-scoped resources. A close failure aborts selection, while preserved checkpoints require policy validation on resume; silently discarding a forbidden checkpoint would turn a failed recovery into an unrelated blank page.
 
