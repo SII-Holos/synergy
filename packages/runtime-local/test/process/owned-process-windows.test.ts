@@ -7,6 +7,7 @@ import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
 import { NativePty } from "../../src/process/native-pty"
+import { WindowsJob } from "../../src/process/windows-job"
 
 const nativeTest = test.skipIf(process.platform !== "win32")
 const environment = () =>
@@ -46,6 +47,9 @@ nativeTest(
     const diagnostics = setTimeout(() => {
       console.error("Windows binary process drainage", owned.diagnostics())
       void (async () => {
+        const tree = (await coordinator.inspect())[0]?.processTree
+        if (tree?.kind === "windows-job")
+          console.error("Windows native job members", { job: tree.name, members: WindowsJob.members(tree) })
         const inspection = Bun.spawn(
           [
             "powershell.exe",

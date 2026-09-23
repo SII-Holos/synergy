@@ -99,6 +99,20 @@ export namespace WindowsJob {
       close(job)
     }
   }
+  export function members(reference: Reference): number[] {
+    const job = open(reference, QUERY)
+    if (!job) return []
+    try {
+      const list = Buffer.alloc(8 + 65536 * 8)
+      if (!runtime().QueryInformationJobObject(job, 3, ptr(list), list.length, null))
+        throw error("QueryInformationJobObject")
+      const count = list.readUInt32LE(4)
+      if (count > 65536) throw new Error("Native Windows job exceeds its process bound")
+      return Array.from({ length: count }, (_, index) => Number(list.readBigUInt64LE(8 + index * 8)))
+    } finally {
+      close(job)
+    }
+  }
   export function terminateDescendants(reference: Reference) {
     const host = runtime()
     const job = open(reference, QUERY)
