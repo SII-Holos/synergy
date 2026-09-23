@@ -43,7 +43,22 @@ nativeTest(
       env: { ...environment(), VALUE: "explicit" },
       lease,
     })
-    const diagnostics = setTimeout(() => console.error("Windows binary process drainage", owned.diagnostics()), 10000)
+    const diagnostics = setTimeout(() => {
+      console.error("Windows binary process drainage", owned.diagnostics())
+      void (async () => {
+        const inspection = Bun.spawn(
+          [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('bun.exe', 'conhost.exe', 'OpenConsole.exe') } | Select-Object Name, ProcessId, ParentProcessId | ConvertTo-Json -Compress",
+          ],
+          { stdout: "pipe", stderr: "ignore" },
+        )
+        console.error("Windows fixture process ancestry", await new Response(inspection.stdout).text())
+        await inspection.exited
+      })().catch((error) => console.error("Windows native diagnostics failed", String(error)))
+    }, 10000)
     try {
       expect(await Bun.file(marker).exists()).toBe(false)
       expect((await coordinator.inspect())[0]?.processTree?.kind).toBe("windows-job")
