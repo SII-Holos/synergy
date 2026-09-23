@@ -1,7 +1,11 @@
 import fs from "fs/promises"
 import path from "path"
-import z from "zod"
-import { $ } from "bun"
+import { z } from "zod"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceCatalog, WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceRuntime } from "@ericsanchezok/synergy-harness/workspace/runtime"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { WorktreeProcess } from "@ericsanchezok/synergy-runtime-local/workspace/process"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -19,6 +23,7 @@ const WorkspaceRecord = z.object({
   issueNumber: z.number().int().positive(),
   directory: z.string(),
   scopeID: z.string(),
+  workspaceID: z.string().optional(),
   branch: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -62,26 +67,57 @@ export namespace GithubChannelWorkspace {
     const accountHash = externalIdentityHash(input.accountId)
     const hash = workspaceHash(input.repository, input.issueNumber)
     const raw = await Storage.read<unknown>(StoragePath.githubChannelWorkspaceIndexEntry(accountHash, hash)).catch(
-      () => undefined,
+      (error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      },
     )
     if (raw === undefined) return undefined
     const parsed = WorkspaceRecord.safeParse(raw)
     return parsed.success ? parsed.data : undefined
   }
 
-  /**
-   * Ensure a checkout exists for the repository thread and return its Scope.
-   *
-   * - Creates the random-hash directory under the configured workspace root.
-   * - Clones the repository (fresh or reuses an existing checkout).
-   * - When `pullNumber` is given, fetches `pull/<n>/head` into a local branch
-   *   and checks it out so the agent reviews the exact PR head.
-   * - Binds the directory to a project Scope (persisted) and records the
-   *   mapping in the account workspace index.
-   * - When `workspaceTtlHours` is set and the existing checkout has been
-   *   unused longer than the TTL, the local clone is removed first and
-   *   recreated below. Session history is never touched.
-   */
+  async function directoryExists(directory: string) {
+    const entry = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined
+      throw error
+    })
+    if (entry && (!entry.isDirectory() || entry.isSymbolicLink()))
+      throw new Error("GitHub checkout must be a real directory")
+    return !!entry
+  }
+
+  async function binding(record: WorkspaceRecord) {
+    if (!record.workspaceID) throw new Error("GitHub checkout has no verified local Workspace binding")
+    const workspace = await WorkspaceCatalog.get(record.workspaceID, record.scopeID)
+    if (
+      workspace.lifecycle !== "active" ||
+      workspace.binding.state !== "bound" ||
+      workspace.binding.hostID !== (await RuntimeContext.current().host.workspaceLocation!.hostID()) ||
+      workspace.binding.path !== record.directory
+    )
+      throw new Error("GitHub checkout has no verified local Workspace binding")
+    if (await directoryExists(record.directory)) await WorkspaceBinding.validate(workspace.id, record.scopeID)
+    return workspace
+  }
+
+  async function clean(directory: string, signal?: AbortSignal) {
+    const run = (args: string[]) =>
+      WorktreeProcess.run({
+        command: ["git", "-c", "core.fsmonitor=false", ...args],
+        directory,
+        roots: [],
+        metadata: true,
+        signal,
+        env: { GIT_OPTIONAL_LOCKS: "0", GIT_DIR: undefined, GIT_WORK_TREE: undefined, GIT_INDEX_FILE: undefined },
+      })
+    if (!(await directoryExists(path.join(directory, ".git")))) return false
+    const status = await run(["status", "--porcelain"])
+    if (status.exitCode !== 0 || status.stdout.length) return false
+    const commits = await run(["rev-list", "--count", "--all", "--not", "--remotes"])
+    return commits.exitCode === 0 && commits.stdout.toString("utf8").trim() === "0"
+  }
+
   export async function ensure(input: {
     accountId: string
     workspaceDir: string
@@ -91,122 +127,134 @@ export namespace GithubChannelWorkspace {
     pullNumber?: number
     defaultBranch?: string
     token: string
+    signal?: AbortSignal
   }): Promise<{ record: WorkspaceRecord; scope: Scope.Project }> {
+    input.signal?.throwIfAborted()
     const accountHash = externalIdentityHash(input.accountId)
-    const directory = resolveDirectory(input)
-    const lock = `github-channel:workspace:${accountHash}:${workspaceHash(input.repository, input.issueNumber)}`
-
-    using _ = await Lock.write(lock)
-
-    const recordKey = StoragePath.githubChannelWorkspaceIndexEntry(
-      accountHash,
-      workspaceHash(input.repository, input.issueNumber),
-    )
+    const hash = workspaceHash(input.repository, input.issueNumber)
+    using _ = await Lock.write(`github-channel:workspace:${accountHash}:${hash}`)
+    input.signal?.throwIfAborted()
+    const recordKey = StoragePath.githubChannelWorkspaceIndexEntry(accountHash, hash)
     const existing = await find(input)
-
-    await fs.mkdir(path.dirname(directory), { recursive: true })
-    const repoUrl = `https://github.com/${input.repository}.git`
-    const gitDir = path.join(directory, ".git")
-
-    let branch = existing?.branch
-    if (input.pullNumber) {
-      branch = `pr-${input.pullNumber}`
-    }
-
-    // TTL expiry: an unused checkout older than the TTL is removed so the
-    // clone is recreated fresh on the next trigger. The workspace record and
-    // the thread's session history are preserved.
-    const ttlMs = (input.workspaceTtlHours ?? 24) * 60 * 60 * 1_000
-    if (existing && Date.now() - (existing.updatedAt ?? 0) > ttlMs) {
-      log.info("workspace checkout expired; removing local clone", {
-        repository: input.repository,
-        issueNumber: input.issueNumber,
-        directory,
-        ttlHours: input.workspaceTtlHours ?? 24,
-      })
-      await fs.rm(directory, { recursive: true, force: true }).catch(() => {})
-    }
-
-    if (existing && !(await fs.stat(gitDir).catch(() => undefined))) {
-      // The checkout disappeared (TTL expiry or user cleanup); recreate it.
-      await fs.rm(directory, { recursive: true, force: true }).catch(() => {})
-      await fs.mkdir(directory, { recursive: true })
-    }
-
-    const credential = buildCredentialCommand({ token: input.token, args: [] })
-
-    // Run git with the credential helper as a plain argv array so static
-    // analysis (knip) recognizes the subcommand; template interpolation of
-    // the credential args would otherwise hide `clone`/`fetch`/`pull` behind
-    // a dynamic token and trip the unlisted-binaries check.
-    const runGit = async (args: string[], options?: { cwd?: string }): Promise<number> => {
-      const proc = Bun.spawn(["git", ...credential.args, ...args], {
-        ...(options?.cwd ? { cwd: options.cwd } : {}),
-        env: credential.env,
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-      return proc.exited
-    }
-
-    if (!(await fs.stat(gitDir).catch(() => undefined))) {
-      log.info("cloning repository workspace", { repository: input.repository, directory })
-      const cloneExit = await runGit(["clone", "--no-checkout", repoUrl, directory])
-      if (cloneExit !== 0 || !(await fs.stat(gitDir).catch(() => undefined))) {
-        throw new Error(`GithubChannelWorkspaceError: clone failed for ${input.repository}`)
-      }
-      if (input.defaultBranch) {
-        await runGit(["checkout", input.defaultBranch], { cwd: directory })
-      }
-    } else {
-      await runGit(["fetch", "origin", "--prune"], { cwd: directory })
-    }
-
-    if (input.pullNumber && branch) {
-      const fetchRef = `pull/${input.pullNumber}/head:refs/remotes/origin/${branch}`
-      const fetched = await runGit(["fetch", "origin", fetchRef], { cwd: directory })
-      if (fetched === 0) {
-        await $`git checkout ${branch}`.cwd(directory).quiet().nothrow()
-        await $`git reset --hard origin/${branch}`.cwd(directory).quiet().nothrow()
-      } else {
-        log.warn("pull head fetch failed; keeping current checkout", {
-          repository: input.repository,
-          pullNumber: input.pullNumber,
+    const requested = resolveDirectory(input)
+    await fs.mkdir(path.dirname(requested), { recursive: true })
+    const parent = await fs.realpath(path.dirname(requested))
+    const directory = path.join(parent, path.basename(requested))
+    if (existing && path.resolve(existing.directory) !== directory)
+      throw new Error("GitHub checkout configuration changed; relocate its Workspace explicitly")
+    const before = existing ? await binding(existing) : undefined
+    const signal = AbortSignal.any([AbortSignal.timeout(300_000), ...(input.signal ? [input.signal] : [])])
+    const branch = input.pullNumber ? `pr-${input.pullNumber}` : input.defaultBranch
+    return WorkspaceAccess.maintenance(
+      async () => {
+        // Git filters and credential helpers are native processes with an unconfined footprint.
+        // Reserve it before retirement so concurrent checkouts cannot deadlock while expanding roots.
+        await WorkspaceAccess.reserveWrite(null, signal)
+        return WorkspaceAccess.retire([directory], async () => {
+          if ((await fs.realpath(path.dirname(requested))) !== parent) throw new Error("GitHub checkout parent changed")
+          let present = await directoryExists(directory)
+          if (existing) await binding(existing)
+          if (present && existing && !(await clean(directory, signal)))
+            throw new Error("GitHub checkout contains local work or unverified Git metadata")
+          const expired =
+            existing && Date.now() - existing.updatedAt > Math.max(1, input.workspaceTtlHours ?? 24) * 3_600_000
+          if (present && expired) {
+            if (!before) throw new Error("GitHub checkout expiry requires a verified Workspace")
+            await WorkspaceRuntime.disposeWorkspace(before.id)
+            await fs.rm(directory, { recursive: true })
+            present = false
+          }
+          if (present && !existing && (await fs.readdir(directory)).length)
+            throw new Error("GitHub checkout directory already contains unowned files")
+          const credential = buildCredentialCommand({ token: input.token, args: [] })
+          const git = async (args: string[], cwd = directory) => {
+            const result = await WorktreeProcess.run({
+              command: [
+                "git",
+                "-c",
+                "core.hooksPath=" + (process.platform === "win32" ? "NUL" : "/dev/null"),
+                ...credential.args,
+                ...args,
+              ],
+              directory: cwd,
+              roots: null,
+              signal,
+              env: { ...credential.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined, GIT_INDEX_FILE: undefined },
+            })
+            if (result.exitCode !== 0) throw new Error(`GitHub checkout ${args[0]} failed`)
+          }
+          const cloned = !(await directoryExists(path.join(directory, ".git")))
+          if (!present) await fs.mkdir(directory)
+          const owned = cloned ? await RuntimeContext.current().host.workspaceLocation!.identify(directory) : undefined
+          let scope: Scope.Project | undefined
+          try {
+            if (cloned)
+              await git(["clone", "--no-checkout", `https://github.com/${input.repository}.git`, directory], parent)
+            else await git(["fetch", "origin", "--prune"])
+            if (input.pullNumber && branch) {
+              await git(["fetch", "origin", `pull/${input.pullNumber}/head:refs/remotes/origin/${branch}`])
+              await git(["checkout", "-B", branch, `refs/remotes/origin/${branch}`])
+            } else if (input.defaultBranch) {
+              await git(["checkout", input.defaultBranch])
+              if (!cloned) await git(["pull", "--ff-only", "origin", input.defaultBranch])
+            } else if (cloned) await git(["checkout"])
+            const resolved = (await Scope.fromDirectory(directory, { persist: true })).scope
+            if (resolved.type !== "project" || (existing && existing.scopeID !== resolved.id))
+              throw new Error("GitHub checkout changed its owning Scope")
+            scope = resolved
+            const location = await RuntimeContext.current().host.workspaceLocation!.identify(directory)
+            const rebound = before
+              ? before.binding.physicalID === location.physicalID
+                ? before
+                : await WorkspaceBinding.rebind(
+                    before.id,
+                    {
+                      scopeID: before.scopeID,
+                      expectedRevision: before.revision,
+                      path: directory,
+                    },
+                    signal,
+                  )
+              : undefined
+            return await Storage.transaction(async () => {
+              const workspace = rebound ?? (await WorkspaceBinding.register(resolved.id, directory))
+              const now = Date.now()
+              const record: WorkspaceRecord = {
+                workspaceHash: hash,
+                repository: input.repository,
+                issueNumber: input.issueNumber,
+                directory,
+                scopeID: resolved.id,
+                workspaceID: workspace.id,
+                branch,
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now,
+              }
+              await Storage.write(recordKey, record)
+              return { record, scope: resolved }
+            })
+          } catch (error) {
+            if (owned) {
+              const current = await RuntimeContext.current()
+                .host.workspaceLocation!.identify(directory)
+                .catch(() => undefined)
+              const published = scope
+                ? (await WorkspaceCatalog.list(scope.id)).some((entry) => entry.binding.physicalID === owned.physicalID)
+                : false
+              if (!published && current?.physicalID === owned.physicalID) await fs.rm(directory, { recursive: true })
+            }
+            throw error
+          }
         })
-      }
-    } else if (input.defaultBranch) {
-      await $`git checkout ${input.defaultBranch}`.cwd(directory).quiet().nothrow()
-      await runGit(["pull", "--ff-only", "origin", input.defaultBranch], { cwd: directory })
-    }
-
-    const { scope } = await Scope.fromDirectory(directory, { persist: true })
-    if (scope.type !== "project") {
-      throw new Error(
-        `GithubChannelWorkspaceError: workspace did not resolve to a project Scope for ${input.repository}`,
-      )
-    }
-
-    const now = Date.now()
-    const record: WorkspaceRecord = {
-      workspaceHash: workspaceHash(input.repository, input.issueNumber),
-      repository: input.repository,
-      issueNumber: input.issueNumber,
-      directory,
-      scopeID: scope.id,
-      branch,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    }
-    await Storage.write(recordKey, record)
-
-    return { record, scope }
+      },
+      { signal },
+    )
   }
 
   export async function list(input: { accountId: string }): Promise<WorkspaceRecord[]> {
     const accountHash = externalIdentityHash(input.accountId)
     const root = StoragePath.githubChannelWorkspaceIndexRoot(accountHash)
-    const keys = await Storage.scan(root).catch(() => [])
+    const keys = await Storage.scan(root)
     if (keys.length === 0) return []
     const records = await Storage.readMany<unknown>(keys.map((key) => [...root, key]))
     return records.flatMap((raw) => {
@@ -226,15 +274,35 @@ export namespace GithubChannelWorkspace {
     const records = await list(input)
     let removed = 0
     for (const record of records) {
-      if (Date.now() - (record.updatedAt ?? 0) <= ttlMs) continue
-      log.info("sweeping expired workspace checkout", {
-        repository: record.repository,
-        issueNumber: record.issueNumber,
-        directory: record.directory,
-        ttlHours: input.workspaceTtlHours,
-      })
-      await fs.rm(record.directory, { recursive: true, force: true }).catch(() => {})
-      removed += 1
+      if (Date.now() - record.updatedAt <= ttlMs || !record.workspaceID) continue
+      using _ = await Lock.write(
+        `github-channel:workspace:${externalIdentityHash(input.accountId)}:${record.workspaceHash}`,
+      )
+      try {
+        await WorkspaceAccess.maintenance(() =>
+          WorkspaceAccess.retire([record.directory], async () => {
+            const current = await find({
+              accountId: input.accountId,
+              repository: record.repository,
+              issueNumber: record.issueNumber,
+            })
+            if (
+              !current ||
+              current.workspaceID !== record.workspaceID ||
+              current.directory !== record.directory ||
+              Date.now() - current.updatedAt <= ttlMs
+            )
+              return
+            const workspace = await binding(current)
+            if (!workspace || !(await directoryExists(current.directory)) || !(await clean(current.directory))) return
+            await WorkspaceRuntime.disposeWorkspace(workspace.id)
+            await fs.rm(current.directory, { recursive: true })
+            removed++
+          }),
+        )
+      } catch (error) {
+        log.warn("GitHub checkout retained during expiry", { workspaceHash: record.workspaceHash, error })
+      }
     }
     return removed
   }

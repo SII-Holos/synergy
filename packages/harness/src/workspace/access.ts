@@ -79,7 +79,7 @@ export namespace WorkspaceAccess {
     }
   }
   const context = RuntimeContext.createAsyncContext<Task>()
-  const retirement = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease }>()
+  const retirement = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease; roots: string[] }>()
   const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
 
   export function register(host: Host) {
@@ -508,13 +508,30 @@ export namespace WorkspaceAccess {
   }
 
   export async function exclusive<T>(roots: string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const parent = retirement.getStore()
+    if (parent && (!parent.task.retiring || parent.task !== current()))
+      throw new BusyError("Workspace retirement is no longer active")
+    if (
+      parent &&
+      !roots.every((root) =>
+        parent.roots.some((allowed) => {
+          const relative = path.relative(allowed, path.resolve(root))
+          return (
+            relative === "" ||
+            (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+          )
+        }),
+      )
+    )
+      throw new BusyError("Exclusive operation escapes its retirement roots")
     let lease: Lease | undefined
     try {
       await ExecutionCapacity.wait(async () => {
         lease = await host().acquire({
           id: randomUUID(),
-          owner: randomUUID(),
-          ancestors: [],
+          owner: parent?.task.owner ?? randomUUID(),
+          ancestors: parent?.task.ancestors ?? [],
+          parentClaim: parent?.lease.id,
           kind: "exclusive",
           roots,
           signal,
@@ -562,7 +579,7 @@ export namespace WorkspaceAccess {
           })
         })
         await validate(task)
-        return await retirement.run({ task, lease: lease! }, fn)
+        return await retirement.run({ task, lease: lease!, roots: roots.map((root) => path.resolve(root)) }, fn)
       } finally {
         try {
           await lease?.release()

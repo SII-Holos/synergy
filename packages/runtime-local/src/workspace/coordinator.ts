@@ -87,7 +87,22 @@ function covers(a: Claim["roots"], b: Claim["roots"]) {
     b.every((right) => a.some((left) => contains(left.path, right.path) || physicallyContains(left, right)))
   )
 }
-function conflicts(request: Claim, held: Claim) {
+function conflicts(request: Claim, held: Claim, claims: readonly Claim[]) {
+  const visited = new Set<string>()
+  let parent = request.parentClaim
+  while (parent && !visited.has(parent)) {
+    visited.add(parent)
+    const ancestor = claims.find(
+      (claim) =>
+        claim.id === parent &&
+        claim.owner === request.owner &&
+        claim.state === "active" &&
+        (claim.kind === "task" || claim.kind === "exclusive"),
+    )
+    if (!ancestor) break
+    if (ancestor.id === held.id) return false
+    parent = ancestor.parentClaim
+  }
   if (request.id === held.id) return false
   if (request.parentClaim === held.id && request.owner === held.owner) return false
   if (request.kind === "exclusive" && request.parentClaim && request.owner === held.owner && held.kind === "use")
@@ -301,7 +316,8 @@ export class WorkspaceCoordinator {
               throw new WorkspaceBusyError("Workspace parent reservation is no longer available")
             const blockers = ledger.claims.filter(
               (claim, position) =>
-                (claim.state === "active" || (!alreadyAdmitted && position < index)) && conflicts(current, claim),
+                (claim.state === "active" || (!alreadyAdmitted && position < index)) &&
+                conflicts(current, claim, ledger.claims),
             )
             if (
               blockers.some(
@@ -389,7 +405,10 @@ export class WorkspaceCoordinator {
       const waiting = ledger.claims.filter((claim) => claim.state === "waiting")
       return ledger.claims
         .filter(
-          (claim) => claim.cooperative && claim.state === "active" && waiting.some((next) => conflicts(next, claim)),
+          (claim) =>
+            claim.cooperative &&
+            claim.state === "active" &&
+            waiting.some((next) => conflicts(next, claim, ledger.claims)),
         )
         .map((claim) => claim.id)
     })

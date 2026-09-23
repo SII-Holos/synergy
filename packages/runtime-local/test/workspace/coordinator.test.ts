@@ -419,3 +419,42 @@ test("renaming an occupied directory cannot hide its physical descendants from o
   const next = await coordinator.acquire(request([path.join(moved, "nested")]))
   await next.release()
 })
+
+test("retirement descendants reuse an ancestor write reservation while siblings remain excluded", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const owner = request(null)
+  const reservation = await coordinator.acquire(owner)
+  const retirement = await coordinator.acquire({
+    ...request([tmp.path], owner.owner),
+    kind: "exclusive",
+    parentClaim: owner.id,
+  })
+  try {
+    const child = await coordinator.acquire({
+      ...request(null, owner.owner),
+      kind: "process",
+      parentClaim: retirement.id,
+      timeoutMs: 100,
+    })
+    try {
+      await expect(
+        coordinator.acquire({
+          ...request(null, owner.owner),
+          kind: "process",
+          parentClaim: retirement.id,
+          timeoutMs: 100,
+        }),
+      ).rejects.toThrow("process")
+      await expect(
+        coordinator.acquire({ ...request([tmp.path]), kind: "operation", parentClaim: retirement.id, timeoutMs: 100 }),
+      ).rejects.toThrow("parent")
+    } finally {
+      await child.release()
+    }
+  } finally {
+    await retirement.release()
+    await reservation.release()
+  }
+  expect(await coordinator.inspect()).toEqual([])
+})

@@ -37,7 +37,7 @@ test("data copy keeps destination records, excludes derived stores, and reports 
   expect(result).toEqual({ copied: 2, skipped: 1 })
   expect(await Bun.file(path.join(target, "keep.txt")).text()).toBe("destination")
   expect(await Bun.file(path.join(target, "nested/new.txt")).text()).toBe("new")
-  expect(await fs.readlink(path.join(target, "link"))).toBe("nested/new.txt")
+  expect(await fs.readlink(path.join(target, "link"))).toBe(await fs.readlink(path.join(source, "link")))
   expect(await dirExists(path.join(target, "snapshot"))).toBe(false)
   expect(progress.sort()).toEqual(["keep.txt", "link", path.join("nested", "new.txt")].sort())
   expect(await copyDirSkipExisting(source, target, undefined, undefined, undefined, ["snapshot"])).toEqual({

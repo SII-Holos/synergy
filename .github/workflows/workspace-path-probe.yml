@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/workspace-path-probe.yml
       - test/script/windows-snapshot-path-probe.ts
+      - packages/harness/src/session/snapshot-transfer.ts
 permissions:
   contents: read
 jobs:

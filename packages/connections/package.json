@@ -9,6 +9,7 @@
     "./channel/cli/channel": "./src/channel/cli/channel.ts",
     "./holos/cli/holos": "./src/holos/cli/holos.ts",
     "./holos/util": "./src/holos/util.ts",
+    "./channel/migration": "./src/channel/migration.ts",
     "./holos/migration": "./src/holos/migration.ts",
     "./email/tools": "./src/email/tools.ts",
     "./channel/tools": "./src/channel/tools.ts",

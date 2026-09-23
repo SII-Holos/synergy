@@ -21,7 +21,7 @@ export namespace WorkspaceHomeTransfer {
     relocate?: ScopeTransfer.Relocate,
   ) {
     if (relocate && key.length === 2 && key[0] === "projects") return ScopeTransfer.paths(value, relocate)
-    if (relocate && key[0] === "channel") return ChannelWorkspaceTransfer.record(key, value, relocate)
+    if (key[0] === "channel") return ChannelWorkspaceTransfer.record(key, value, resolve, relocate)
     if (key.length === 4 && key[0] === "agenda" && key[1] === "items")
       return AgendaStore.transferWorkspace(value, resolve, relocate)
     return WorkspaceTransfer.record(key, value, resolve, relocate)

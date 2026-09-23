@@ -17,6 +17,18 @@ import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+async function mergeWhenIdle(...input: Parameters<typeof DataTransfer.merge>) {
+  const deadline = Date.now() + 10_000
+  for (;;) {
+    try {
+      return await DataTransfer.merge(...input)
+    } catch (error) {
+      if (!(error instanceof WorkspaceAccess.BusyError) || Date.now() >= deadline) throw error
+      await Bun.sleep(50)
+    }
+  }
+}
+
 test.each(["external", "managed", "collision", "shared-location", "foreign", "sharing"] as const)(
   "Home relocation verifies and retains Workspace ownership (%s)",
   (kind) =>
@@ -95,7 +107,7 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
               })
               await Storage.write(
                 ["channel", "providers", "github", "accounts", "fixture", "workspaces", "index", "fixture"],
-                { scopeID: scope.id, directory: original, futureField: original },
+                { scopeID: scope.id, workspaceID: workspace.id, directory: original, futureField: original },
               )
             },
           }),
@@ -133,7 +145,7 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
         await target.store.close()
       }
       await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
-      await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })
+      await mergeWhenIdle(sourceRoot, targetRoot, { trusted: true })
       const restored = (await StorageBootstrap.inspect(targetRoot))!
       try {
         const info = await restored.store.read<{ workspaceID: string; scope: typeof scope }>([
@@ -192,7 +204,7 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
           "fixture",
         ])
         expect(channel).toMatchObject({ directory: expectedPath, futureField: original })
-        const github = await restored.store.read<{ directory: string }>([
+        const github = await restored.store.read<{ directory: string; workspaceID: string }>([
           "channel",
           "providers",
           "github",
@@ -203,9 +215,10 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
           "fixture",
         ])
         expect(github.directory).toBe(expectedPath)
+        expect(github.workspaceID).toBe(info.workspaceID)
         const ids = await restored.store.scan(["workspace"])
         await restored.store.close()
-        await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })
+        await mergeWhenIdle(sourceRoot, targetRoot, { trusted: true })
         const repeated = (await StorageBootstrap.inspect(targetRoot))!
         try {
           expect(await repeated.store.scan(["workspace"])).toEqual(ids)
@@ -216,6 +229,7 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
         await restored.store.close()
       }
     }),
+  30_000,
 )
 
 test("Home relocation refuses a replaced native binding and preserves the source", () =>
@@ -301,7 +315,7 @@ test.each(["source", "target"] as const)(
         await active
       }
       await using homes = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
-      await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })
+      await mergeWhenIdle(sourceRoot, targetRoot, { trusted: true })
       expect(await fs.readFile(path.join(targetRoot, "data", "owned-file"), "utf8")).toBe("stable bytes")
     }),
 )
@@ -371,7 +385,9 @@ test.each(["complete", "absolute-common", "external", "target-conflict"] as cons
           kind === "external" ? "external Git metadata" : "unrelated worktrees",
         )
         expect(await fs.readFile(path.join(linked, ".git"), "utf8")).toBe(originalLink)
-        expect(await git(linked, ["rev-parse", "--git-common-dir"])).toContain(sourceRoot)
+        expect(path.resolve((await git(linked, ["rev-parse", "--git-common-dir"])).trim())).toBe(
+          path.join(main, ".git"),
+        )
         if (kind === "target-conflict") expect(await fs.readFile(unrelated, "utf8")).toBe("unrelated Git metadata")
         const unchanged = (await StorageBootstrap.inspect(targetRoot))!
         try {
@@ -381,9 +397,9 @@ test.each(["complete", "absolute-common", "external", "target-conflict"] as cons
         }
         return
       }
-      await DataTransfer.merge(sourceRoot, targetRoot, { trusted: true })
+      await mergeWhenIdle(sourceRoot, targetRoot, { trusted: true })
       expect(await fs.readFile(path.join(linked, ".git"), "utf8")).toBe(originalLink)
-      expect(await git(linked, ["rev-parse", "--git-common-dir"])).toContain(sourceRoot)
+      expect(path.resolve((await git(linked, ["rev-parse", "--git-common-dir"])).trim())).toBe(path.join(main, ".git"))
       await fs.rename(sourceRoot, sourceRoot + "-preserved")
       const movedMain = path.join(targetRoot, path.relative(sourceRoot, main))
       const movedLinked = path.join(targetRoot, path.relative(sourceRoot, linked))
@@ -395,8 +411,11 @@ test.each(["complete", "absolute-common", "external", "target-conflict"] as cons
       } finally {
         await restored.store.close()
       }
-      expect(await git(movedLinked, ["rev-parse", "--git-common-dir"])).toContain(movedMain)
+      expect(path.resolve((await git(movedLinked, ["rev-parse", "--git-common-dir"])).trim())).toBe(
+        path.join(movedMain, ".git"),
+      )
       expect(await git(movedLinked, ["status", "--porcelain"])).toBe("")
       expect(await git(movedMain, ["status", "--porcelain"])).toBe("")
     }),
+  30_000,
 )

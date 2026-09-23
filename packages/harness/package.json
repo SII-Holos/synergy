@@ -13,6 +13,7 @@
     "./session/snapshot-git": "./src/session/snapshot-git.ts",
     "./scope": "./src/scope/index.ts",
     "./scope/context": "./src/scope/context.ts",
+    "./workspace/runtime": "./src/workspace/runtime.ts",
     "./workspace": "./src/workspace/index.ts",
     "./workspace/state": "./src/workspace/state.ts",
     "./workspace/events": "./src/workspace/events.ts",

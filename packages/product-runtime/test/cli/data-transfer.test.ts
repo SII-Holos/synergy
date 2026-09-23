@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { migrations as channelMigrations } from "@ericsanchezok/synergy-connections/channel/migration"
 import { DataTransfer } from "../../src/cli/data/transfer"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -32,6 +33,14 @@ test("Home imports normalize historical directory selections without local adopt
           scope,
           async fn() {
             await Storage.write(["projects", scope.id], scope)
+            await Storage.write(
+              ["channel", "providers", "github", "accounts", "fixture", "workspaces", "index", "legacy"],
+              {
+                scopeID: scope.id,
+                directory: working.path,
+                futureField: "retained",
+              },
+            )
             const session = await Session.create({})
             sessionID = session.id
             const key = ["sessions", scope.id, session.id, "info"]
@@ -72,6 +81,24 @@ test("Home imports normalize historical directory selections without local adopt
       const imported = await target.store.read<WorkspaceCatalog.Info>(["workspace", session.workspaceID])
       expect(imported.binding).toMatchObject({ state: "unbound", path: working.path })
       expect(imported.metadata.futureField).toBe("retained")
+      const checkout = await target.store.read<{ workspaceID: string; futureField: string }>([
+        "channel",
+        "providers",
+        "github",
+        "accounts",
+        "fixture",
+        "workspaces",
+        "index",
+        "legacy",
+      ])
+      expect(checkout.workspaceID).toBe(session.workspaceID)
+      expect(checkout.futureField).toBe("retained")
+      await Storage.provide({ store: target.store, artifactDirectory: path.join(targetRoot, "data") }, () =>
+        channelMigrations[0]!.up(() => {}),
+      )
+      expect((await target.store.read<WorkspaceCatalog.Info>(["workspace", checkout.workspaceID])).binding.state).toBe(
+        "unbound",
+      )
       const agenda = await target.store.read<{ origin: { workspaceID: string } }>([
         "agenda",
         "items",

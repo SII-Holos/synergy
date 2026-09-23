@@ -83,3 +83,32 @@ test("a parent hands off its write reservation to a child in the same Workspace"
     expect(order).toEqual(["parent", "child", "parent-resumed"])
   })
 }, 10_000)
+
+test("retirement can publish its own binding change without releasing native exclusion", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using directory = await tmpdir(),
+      outside = await tmpdir()
+    const { WorkspaceBinding } = await import("@ericsanchezok/synergy-harness/workspace")
+    const scope = await directory.scope()
+    const before = await WorkspaceBinding.register(scope.id, directory.path)
+    await WorkspaceAccess.maintenance(async () => {
+      await WorkspaceAccess.reserveWrite(null)
+      await WorkspaceAccess.retire([directory.path], async () => {
+        const after = await WorkspaceBinding.rebind(before.id, {
+          scopeID: scope.id,
+          expectedRevision: before.revision,
+          path: directory.path,
+        })
+        expect(after.binding.generation).toBe(before.binding.generation + 1)
+        let escaped = false
+        await expect(
+          WorkspaceAccess.exclusive([outside.path], async () => {
+            escaped = true
+          }),
+        ).rejects.toThrow("retirement")
+        expect(escaped).toBe(false)
+      })
+    })
+  })
+})

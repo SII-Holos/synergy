@@ -1,3 +1,7 @@
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { WorktreeProcess } from "@ericsanchezok/synergy-runtime-local/workspace/process"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -103,16 +107,20 @@ export function assertNotBaseBranch(branch: string, baseBranch: string): void {
  * `refs/heads/<branch>` when a branch is checked out). Returns undefined when
  * the ref does not name a local branch (missing ref, tag, detached HEAD).
  */
-export async function resolveCanonicalBranch(directory: string, ref: string): Promise<string | undefined> {
-  const proc = Bun.spawn(["git", "rev-parse", "--verify", "--symbolic-full-name", ref], {
-    cwd: directory,
-    stdout: "pipe",
-    stderr: "pipe",
+export async function resolveCanonicalBranch(
+  directory: string,
+  ref: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  const result = await WorktreeProcess.run({
+    command: ["git", "rev-parse", "--verify", "--symbolic-full-name", ref],
+    directory,
+    signal,
+    roots: [],
+    metadata: true,
   })
-  const [stdout] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-  const exitCode = await proc.exited
-  if (exitCode !== 0) return undefined
-  const canonical = stdout.trim()
+  if (result.exitCode !== 0) return undefined
+  const canonical = result.stdout.toString("utf8").trim()
   return canonical.startsWith("refs/heads/") ? canonical : undefined
 }
 
@@ -309,11 +317,12 @@ export class GithubProvider
       accountId: input.accountId,
       workspaceDir: account.workspaceDir,
       workspaceTtlHours: account.workspaceTtlHours ?? 24,
+      signal: state?.abort.signal,
       repository: parsed.repository,
       issueNumber: parsed.issueNumber,
       pullNumber: facts.pullNumber,
       defaultBranch: facts.defaultBranch,
-      token: await this.resolveInstallationToken(owner, repo),
+      token: await this.resolveInstallationToken(owner, repo, state?.abort.signal),
     })
     log.info("github conversation scope resolved", {
       repository: parsed.repository,
@@ -360,130 +369,150 @@ export class GithubProvider
     if (!/^[A-Za-z0-9_.\-/]+$/.test(input.branch) || input.branch.startsWith("/") || input.branch.includes("..")) {
       throw new Error(`Invalid branch name: ${input.branch}`)
     }
-    const session = await SessionManager.getSession(input.sessionID)
-    const channel = session?.endpoint?.channel
-    if (session?.endpoint?.kind !== "channel" || channel?.type !== "github") {
-      throw new Error("This session is not bound to a GitHub channel thread")
-    }
-    const accountId = channel.accountId ?? "default"
-    const parsed = parseChatId(channel.chatId ?? "")
-    if (!parsed) throw new Error(`Invalid GitHub chatId: ${channel.chatId}`)
+    return SessionWorkspaceRuntime.withBinding(
+      input.sessionID,
+      async () => {
+        const session = await SessionManager.getSession(input.sessionID)
+        const channel = session?.endpoint?.channel
+        if (session?.endpoint?.kind !== "channel" || channel?.type !== "github") {
+          throw new Error("This session is not bound to a GitHub channel thread")
+        }
+        const accountId = channel.accountId ?? "default"
+        const parsed = parseChatId(channel.chatId ?? "")
+        if (!parsed) throw new Error(`Invalid GitHub chatId: ${channel.chatId}`)
 
-    const record = await GithubChannelWorkspace.find({
-      accountId,
-      repository: parsed.repository,
-      issueNumber: parsed.issueNumber,
-    })
-    if (!record) throw new Error(`No workspace checkout found for ${parsed.repository}#${parsed.issueNumber}`)
-
-    // Resolve the base branch (repository default branch preferred).
-    const { owner, repo } = splitRepository(parsed.repository)
-    const token = await this.resolveInstallationToken(owner, repo, signal)
-    const facts = this.accounts.get(accountId)?.threadFacts.get(`${parsed.repository}#${parsed.issueNumber}`)
-    const baseBranch = facts?.defaultBranch ?? (await this.resolveDefaultBranch(owner, repo, token, signal)) ?? "main"
-
-    // Resolve the supplied ref to its canonical local branch. This rejects
-    // symbolic refs such as `HEAD` (which would push whatever branch is
-    // checked out — potentially the default branch) before the base-branch
-    // comparison, and verifies the branch exists.
-    const canonical = await resolveCanonicalBranch(record.directory, input.branch)
-    if (!canonical) throw new Error(`Local branch ${input.branch} does not exist`)
-    const canonicalBranch = canonical.replace(/^refs\/heads\//, "")
-    assertNotBaseBranch(canonicalBranch, baseBranch)
-
-    const credential = buildCredentialCommand({ token, args: [] })
-
-    // Require at least one commit beyond the comparison ref: for PR threads
-    // the fetched PR head (so pushing the unchanged PR back is never reported
-    // as a delivery), otherwise the repository base branch.
-    const aheadRef = facts?.pullNumber ? `origin/pr-${facts.pullNumber}` : `origin/${baseBranch}`
-    const ahead = await this.runGit(["git", "rev-list", "--count", canonicalBranch, `^${aheadRef}`], {
-      cwd: record.directory,
-      env: credential.env,
-      signal,
-    })
-    const aheadCount = Number(ahead.stdout.trim())
-    if (!Number.isFinite(aheadCount) || aheadCount <= 0) {
-      throw new Error(`Local branch ${canonicalBranch} has no commits ahead of ${aheadRef}`)
-    }
-
-    // When the thread is a pull request, prefer pushing the fix to the PR
-    // head branch so the PR updates in place (Codex-style behavior).
-    if (facts?.pullNumber && facts.headRef) {
-      const updated = await this.tryPushToPullRequestHead(
-        {
+        const record = await GithubChannelWorkspace.find({
+          accountId,
           repository: parsed.repository,
-          pullNumber: facts.pullNumber,
-          headRef: facts.headRef,
-          headRepoFullName: facts.headRepoFullName,
-          branch: canonicalBranch,
-          directory: record.directory,
-        },
-        signal,
-      )
-      if (updated) {
-        log.info("github fix pushed to existing pull request", {
-          repository: parsed.repository,
-          pullNumber: facts.pullNumber,
-          headRef: facts.headRef,
+          issueNumber: parsed.issueNumber,
         })
-        return updated
-      }
-      log.info("github fix push to pull request head unavailable; falling back to a new PR", {
-        repository: parsed.repository,
-        pullNumber: facts.pullNumber,
-      })
-    }
+        if (!record) throw new Error(`No workspace checkout found for ${parsed.repository}#${parsed.issueNumber}`)
 
-    // Fallback: push the fix branch and open (or reuse) a PR against the base.
-    const pushed = await this.runGit(["git", ...credential.args, "push", "--no-verify", "origin", canonicalBranch], {
-      cwd: record.directory,
-      env: credential.env,
-      signal,
-    })
-    if (pushed.exitCode !== 0) {
-      throw new Error(`Failed to push branch ${canonicalBranch}: ${pushed.stderr.slice(0, 500)}`)
-    }
+        if (!record.workspaceID || session.workspaceID !== record.workspaceID || session.scope.id !== record.scopeID) {
+          throw new Error("The GitHub checkout is not this session's selected Workspace")
+        }
+        const workspaceID = record.workspaceID
+        return WorkspaceAccess.withinTask(async () => {
+          const workspace = await WorkspaceBinding.validate(workspaceID, record.scopeID)
+          if (workspace.path !== record.directory)
+            throw new Error("The GitHub checkout has moved from its selected Workspace")
+          await WorkspaceAccess.use([workspace])
+          // Resolve the base branch (repository default branch preferred).
+          const { owner, repo } = splitRepository(parsed.repository)
+          const token = await this.resolveInstallationToken(owner, repo, signal)
+          const facts = this.accounts.get(accountId)?.threadFacts.get(`${parsed.repository}#${parsed.issueNumber}`)
+          const baseBranch =
+            facts?.defaultBranch ?? (await this.resolveDefaultBranch(owner, repo, token, signal)) ?? "main"
 
-    // Deduplicate: reuse an existing open PR with the same head branch.
-    const existing = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown; html_url?: unknown }[]>(
-      GitHubChannelAuth.GitHubClient.listPullRequests({
-        owner,
-        repo,
-        state: "open",
-        head: `${owner}:${canonicalBranch}`,
-        installationToken: token,
-      }),
+          // Resolve the supplied ref to its canonical local branch. This rejects
+          // symbolic refs such as `HEAD` (which would push whatever branch is
+          // checked out — potentially the default branch) before the base-branch
+          // comparison, and verifies the branch exists.
+          const canonical = await resolveCanonicalBranch(record.directory, input.branch, signal)
+          if (!canonical) throw new Error(`Local branch ${input.branch} does not exist`)
+          const canonicalBranch = canonical.replace(/^refs\/heads\//, "")
+          assertNotBaseBranch(canonicalBranch, baseBranch)
+
+          const credential = buildCredentialCommand({ token, args: [] })
+
+          // Require at least one commit beyond the comparison ref: for PR threads
+          // the fetched PR head (so pushing the unchanged PR back is never reported
+          // as a delivery), otherwise the repository base branch.
+          const aheadRef = facts?.pullNumber ? `origin/pr-${facts.pullNumber}` : `origin/${baseBranch}`
+          const ahead = await this.runGit(["git", "rev-list", "--count", canonicalBranch, `^${aheadRef}`], {
+            cwd: record.directory,
+            env: credential.env,
+            signal,
+          })
+          const aheadCount = Number(ahead.stdout.trim())
+          if (!Number.isFinite(aheadCount) || aheadCount <= 0) {
+            throw new Error(`Local branch ${canonicalBranch} has no commits ahead of ${aheadRef}`)
+          }
+
+          // When the thread is a pull request, prefer pushing the fix to the PR
+          // head branch so the PR updates in place (Codex-style behavior).
+          if (facts?.pullNumber && facts.headRef) {
+            const updated = await this.tryPushToPullRequestHead(
+              {
+                repository: parsed.repository,
+                pullNumber: facts.pullNumber,
+                headRef: facts.headRef,
+                headRepoFullName: facts.headRepoFullName,
+                branch: canonicalBranch,
+                directory: record.directory,
+              },
+              signal,
+            )
+            if (updated) {
+              log.info("github fix pushed to existing pull request", {
+                repository: parsed.repository,
+                pullNumber: facts.pullNumber,
+                headRef: facts.headRef,
+              })
+              return updated
+            }
+            log.info("github fix push to pull request head unavailable; falling back to a new PR", {
+              repository: parsed.repository,
+              pullNumber: facts.pullNumber,
+            })
+          }
+
+          // Fallback: push the fix branch and open (or reuse) a PR against the base.
+          const pushed = await this.runGit(
+            ["git", ...credential.args, "push", "--no-verify", "origin", canonicalBranch],
+            {
+              cwd: record.directory,
+              env: credential.env,
+              signal,
+            },
+          )
+          if (pushed.exitCode !== 0) {
+            throw new Error(`Failed to push branch ${canonicalBranch}: ${pushed.stderr.slice(0, 500)}`)
+          }
+
+          // Deduplicate: reuse an existing open PR with the same head branch.
+          const existing = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown; html_url?: unknown }[]>(
+            GitHubChannelAuth.GitHubClient.listPullRequests({
+              owner,
+              repo,
+              state: "open",
+              head: `${owner}:${canonicalBranch}`,
+              installationToken: token,
+            }),
+            signal,
+          )
+          const open = existing?.find((item) => typeof item?.number === "number")
+          if (open) {
+            return {
+              pullRequestURL:
+                typeof open.html_url === "string"
+                  ? open.html_url
+                  : `https://github.com/${parsed.repository}/pull/${open.number}`,
+              pullNumber: open.number as number,
+              headBranch: canonicalBranch,
+            }
+          }
+
+          const created = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown; html_url?: unknown }>(
+            GitHubChannelAuth.GitHubClient.createPullRequest({
+              owner,
+              repo,
+              title: input.title,
+              body: input.body,
+              head: canonicalBranch,
+              base: baseBranch,
+              installationToken: token,
+            }),
+            signal,
+          )
+          if (typeof created?.number !== "number" || typeof created.html_url !== "string") {
+            throw new Error(`GitHub PR creation returned an invalid response for ${input.branch}`)
+          }
+          return { pullRequestURL: created.html_url, pullNumber: created.number, headBranch: canonicalBranch }
+        }, signal)
+      },
       signal,
     )
-    const open = existing?.find((item) => typeof item?.number === "number")
-    if (open) {
-      return {
-        pullRequestURL:
-          typeof open.html_url === "string"
-            ? open.html_url
-            : `https://github.com/${parsed.repository}/pull/${open.number}`,
-        pullNumber: open.number as number,
-        headBranch: canonicalBranch,
-      }
-    }
-
-    const created = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown; html_url?: unknown }>(
-      GitHubChannelAuth.GitHubClient.createPullRequest({
-        owner,
-        repo,
-        title: input.title,
-        body: input.body,
-        head: canonicalBranch,
-        base: baseBranch,
-        installationToken: token,
-      }),
-      signal,
-    )
-    if (typeof created?.number !== "number" || typeof created.html_url !== "string") {
-      throw new Error(`GitHub PR creation returned an invalid response for ${input.branch}`)
-    }
-    return { pullRequestURL: created.html_url, pullNumber: created.number, headBranch: canonicalBranch }
   }
 
   /**
@@ -556,16 +585,18 @@ export class GithubProvider
     args: string[],
     options: { cwd: string; env: Record<string, string | undefined>; signal?: AbortSignal },
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-    const proc = Bun.spawn(args, {
-      cwd: options.cwd,
+    const result = await WorktreeProcess.run({
+      command: args,
+      directory: options.cwd,
+      roots: null,
       env: options.env,
       signal: options.signal,
-      stdout: "pipe",
-      stderr: "pipe",
     })
-    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-    const exitCode = await proc.exited
-    return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() }
+    return {
+      exitCode: result.exitCode,
+      stdout: result.stdout.toString("utf8").trim(),
+      stderr: result.stderr.toString("utf8").trim(),
+    }
   }
 
   private async resolveDefaultBranch(
