@@ -8,6 +8,7 @@ import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
 import { NativePty } from "../../src/process/native-pty"
 import { WindowsJob } from "../../src/process/windows-job"
+import fs from "node:fs/promises"
 
 const nativeTest = test.skipIf(process.platform !== "win32")
 const environment = () =>
@@ -20,6 +21,30 @@ async function waitForFile(filename: string) {
     await Bun.sleep(20)
   }
 }
+
+nativeTest(
+  "Windows worker creation preserves Unicode, empty and quoted arguments before Job-owned execution",
+  async () => {
+    await using directory = await tmpdir()
+    const cwd = path.join(directory.path, "worker 路径 with spaces")
+    await fs.mkdir(cwd)
+    const script = path.join(cwd, "entry script.cjs")
+    const marker = path.join(cwd, "result.json")
+    await Bun.write(
+      script,
+      `const fs=require('node:fs'); fs.writeFileSync('pending.json',JSON.stringify(process.argv.slice(2))); fs.renameSync('pending.json','result.json'); setInterval(()=>{},1000)`,
+    )
+    const values = ["", "space here", 'quoted"value', 'a\\"b', "trailing space\\", "中文"]
+    const job = await WindowsJob.start([process.execPath, script, ...values], cwd)
+    try {
+      await waitForFile(marker)
+      expect(await Bun.file(marker).json()).toEqual(values)
+    } finally {
+      await job.remove()
+    }
+  },
+  20000,
+)
 
 nativeTest(
   "Windows fences activation and preserves complete binary streams",

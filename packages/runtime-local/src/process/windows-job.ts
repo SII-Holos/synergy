@@ -1,6 +1,4 @@
 import { dlopen, ptr, type Pointer } from "bun:ffi"
-import { spawn } from "node:child_process"
-import { once } from "node:events"
 
 export namespace WindowsJob {
   export interface Reference {
@@ -28,6 +26,11 @@ export namespace WindowsJob {
       CloseHandle: { args: ["ptr"], returns: "bool" },
       GetLastError: { args: [], returns: "u32" },
       FreeConsole: { args: [], returns: "bool" },
+      CreateProcessW: {
+        args: ["ptr", "ptr", "ptr", "ptr", "bool", "u32", "ptr", "ptr", "ptr", "ptr"],
+        returns: "bool",
+      },
+      ResumeThread: { args: ["ptr"], returns: "u32" },
     }).symbols
   }
   const runtime = () => (native ??= initialize())
@@ -151,12 +154,39 @@ export namespace WindowsJob {
   }
 
   export async function start(command: string[], directory: string) {
-    const child = spawn(command[0]!, command.slice(1), { cwd: directory, stdio: "ignore", windowsHide: true })
+    if (!command.length || command.some((value) => value.includes("\0")) || directory.includes("\0"))
+      throw new Error("Invalid Windows worker command")
+    const host = runtime()
+    const executable = wide(command[0]!)
+    const line = wide(command.map(quoteArgument).join(" "))
+    if (line.length / 2 > 32767) throw new Error("Windows worker command exceeds the native limit")
+    const cwd = wide(directory)
+    const startup = Buffer.alloc(104)
+    startup.writeUInt32LE(startup.length, 0)
+    const information = Buffer.alloc(24)
+    // Provenance: https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
+    // Suspend before Job assignment; an IPC-only supervisor must not inherit a console or inheritable handles.
+    if (
+      !host.CreateProcessW(
+        ptr(executable),
+        ptr(line),
+        null,
+        null,
+        false,
+        0x4 | 0x8,
+        null,
+        ptr(cwd),
+        ptr(startup),
+        ptr(information),
+      )
+    )
+      throw error("CreateProcessW")
+    const processHandle = Number(information.readBigUInt64LE(0)) as Pointer
+    const threadHandle = Number(information.readBigUInt64LE(8)) as Pointer
+    const pid = information.readUInt32LE(16)
     let job: Pointer | undefined
     try {
-      await once(child, "spawn")
-      const reference = referenceFor(child.pid!)
-      const host = runtime()
+      const reference = referenceFor(pid)
       const name = wide(reference.name)
       const created = host.CreateJobObjectW(null, ptr(name))
       if (!created) throw error("CreateJobObjectW")
@@ -168,13 +198,8 @@ export namespace WindowsJob {
       const limits = Buffer.alloc(144)
       limits.writeUInt32LE(0x2000, 16)
       if (!host.SetInformationJobObject(job, 9, ptr(limits), limits.length)) throw error("SetInformationJobObject")
-      const handle = host.OpenProcess(0x0101, false, child.pid!)
-      if (!handle) throw error("OpenProcess")
-      try {
-        if (!host.AssignProcessToJobObject(job, handle)) throw error("AssignProcessToJobObject")
-      } finally {
-        close(handle)
-      }
+      if (!host.AssignProcessToJobObject(job, processHandle)) throw error("AssignProcessToJobObject")
+      if (host.ResumeThread(threadHandle) === 0xffffffff) throw error("ResumeThread")
       return {
         async remove() {
           if (!job) return
@@ -184,9 +209,17 @@ export namespace WindowsJob {
         },
       }
     } catch (failure) {
+      host.TerminateProcess(processHandle, 1)
       if (job) close(job)
-      child.kill()
       throw failure
+    } finally {
+      close(threadHandle)
+      close(processHandle)
     }
+  }
+
+  function quoteArgument(value: string) {
+    if (value.length && !/[\s"]/.test(value)) return value
+    return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/\\+$/, "$&$&")}"`
   }
 }
