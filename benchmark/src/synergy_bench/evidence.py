@@ -108,7 +108,7 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required: bool = True) -> dict[str, Any]:
+def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
     agent = trial / "agent"
     missing: list[str] = []
 
@@ -172,9 +172,21 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
         missing.append("recording_failed")
     if execution and (execution.get("forced") or execution.get("invalid_event_lines")):
         missing.append("execution_truncated")
+    cleanup_file = trial.parent / "cleanup.json"
+    cleanup = (
+        read_json(cleanup_file)
+        if cleanup_file.exists()
+        else {"status": "unknown", "resources_removed": None, "issues": []}
+    )
     for name in ["cleanup", "credential-cleanup", "environment-cleanup"]:
         if (agent / f"{name}.json").exists():
-            missing.append(f"{name}_failed")
+            issue = f"{name}_failed"
+            if issue not in cleanup["issues"]:
+                cleanup["issues"].append(issue)
+    if cleanup["issues"] and cleanup["resources_removed"] is not False:
+        cleanup["status"] = "warning"
+    if cleanup["resources_removed"] is False:
+        missing.append("cleanup_unresolved")
     exception = pier.get("exception_info")
     expected = exception and exception.get("exception_type") in {
         "AgentTimeoutError",
@@ -182,15 +194,10 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
         "NonZeroAgentExitCodeError",
         "CancelledError",
     }
-    if (
-        verification_required
-        and not pier.get("verifier_result")
-        and (exception or {}).get("exception_type")
-        not in {
-            "CancelledError",
-            "VerifierTimeoutError",
-        }
-    ):
+    if not pier.get("verifier_result") and (exception or {}).get("exception_type") not in {
+        "CancelledError",
+        "VerifierTimeoutError",
+    }:
         missing.append("verifier_missing")
     tokens = accounting.get("tokens", {}) if accounting else {}
     if not isinstance(tokens, dict):
@@ -219,6 +226,7 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
             "recording": recording,
             "usage": usage,
         },
+        "cleanup": cleanup,
         "files": files,
     }
     return AttemptResult.model_validate(result).model_dump(exclude_none=False)
@@ -226,31 +234,13 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
 
 def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
     from .report import report_data
-    from .runner import startup_retryable
 
     report = report_data(root, category=category)
     results = report["scored"]
     failures = [
         row for row in report["all_attempts"] if not row["evidence"].get("valid", False) or row["infrastructure_error"]
     ]
-    recovered = 0
-    for row in failures:
-        owner = {"task": "trials", "preflight": "probes", "debug": "debug"}[row["purpose"]]
-        attempt = root / owner / row["trial"] / row["attempt"]
-        evidence = attempt / "evidence.json"
-        if not evidence.exists() or not startup_retryable(attempt, read_json(evidence)):
-            continue
-        recovered += any(
-            later["purpose"] == row["purpose"]
-            and later["trial"] == row["trial"]
-            and later["attempt"] > row["attempt"]
-            and later["terminal"]
-            and later["model_started"]
-            and later["evidence"].get("valid", False)
-            and not later["infrastructure_error"]
-            for later in report["all_attempts"]
-        )
-    unresolved = len(failures) - recovered
+    unresolved = len(failures)
     outcomes: dict[str, int] = {}
     for row in results:
         outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
@@ -264,7 +254,6 @@ def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
             row["outcome"] != "completed" or (row["reward"] is not None and row["reward"] <= 0) for row in results
         ),
         "recording_or_infrastructure_failures": len(failures),
-        "recovered_startup_failures": recovered,
         "unresolved_recording_or_infrastructure_failures": unresolved,
         "rewards": [row["raw_rewards"] for row in results],
         "usage": report["usage"],

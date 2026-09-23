@@ -111,25 +111,55 @@ class SharedResources:
             os.close(fd)
 
 
+def host_limits(
+    cpus: float, memory: int, available: int, cgroup: Path = Path("/sys/fs/cgroup")
+) -> tuple[float, int, int]:
+    if hasattr(os, "sched_getaffinity"):
+        cpus = min(cpus, len(os.sched_getaffinity(0)))
+    quota = cgroup / "cpu.max"
+    if quota.is_file():
+        value, period = quota.read_text().split()
+        if value != "max":
+            cpus = min(cpus, int(value) / int(period))
+    limit = cgroup / "memory.max"
+    current = cgroup / "memory.current"
+    if limit.is_file() and (value := limit.read_text().strip()) != "max":
+        memory = min(memory, int(value))
+        if current.is_file():
+            available = min(available, max(0, int(value) - int(current.read_text())))
+    return cpus, memory, min(memory, available)
+
+
 def inspect_host(root: Path, settings: Resources) -> dict[str, Any]:
     docker = json.loads(command(["docker", "info", "--format", "{{json .}}"], timeout=30))
     cpus = float(docker["NCPU"])
     memory = int(docker["MemTotal"])
+    host_memory = psutil.virtual_memory()
+    cpus, memory, available = host_limits(cpus, memory, host_memory.available)
     reserved = max(int(settings.reserve_memory_gib * 1024**3), int(memory * settings.reserve_memory_fraction))
-    capacity = usable_capacity(cpus, memory, settings.reserve_cpus, reserved)
+    capacity = usable_capacity(cpus, available, settings.reserve_cpus, reserved)
     directory = root.resolve()
     while not directory.exists():
         directory = directory.parent
     disk = shutil.disk_usage(directory)
     return {
         "captured_at": time.time(),
-        "docker": {"cpus": cpus, "memory_bytes": memory, "architecture": docker.get("Architecture")},
+        "docker": {
+            "cpus": docker["NCPU"],
+            "memory_bytes": docker["MemTotal"],
+            "architecture": docker.get("Architecture"),
+        },
+        "limits": {"cpus": cpus, "memory_bytes": memory, "available_memory_bytes": available},
         "capacity": asdict(capacity),
         "disk": {"free_bytes": disk.free, "total_bytes": disk.total},
         "host_load": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
-        "host_memory": psutil.virtual_memory()._asdict(),
+        "host_memory": host_memory._asdict(),
         "disk_ready": disk.free >= settings.min_free_disk_gib * 1024**3,
     }
+
+
+class ResourcePressureError(ValueError):
+    pass
 
 
 class ResourcePool:
@@ -138,14 +168,14 @@ class ResourcePool:
         capacity: Capacity,
         concurrency: int,
         *,
-        admission: Callable[[], bool] | None = None,
+        admission: Callable[[Request], bool] | None = None,
         pressure_timeout_seconds: float = 600,
         shared_directory: Path | None = None,
         scope: str | None = None,
     ) -> None:
         if capacity.cpus <= 0 or capacity.memory_bytes <= 0 or concurrency < 1:
             raise ValueError("Insufficient scheduler capacity")
-        self.admission = admission or (lambda: True)
+        self.admission = admission or (lambda request: True)
         self.pressure_timeout_seconds = pressure_timeout_seconds
         self.shared = SharedResources(shared_directory, scope) if shared_directory is not None else None
         self._available = capacity
@@ -183,7 +213,7 @@ class ResourcePool:
             self._available = self.shared.available(self.capacity)
         return (
             self.eligible(token)
-            and self.admission()
+            and self.admission(token.request)
             and (self.shared is None or self.shared.acquire(shared_key, token.request, self.capacity))
         )
 
@@ -200,7 +230,7 @@ class ResourcePool:
                     if self.active or (self.shared and self.shared.active):
                         idle_pressure_since = time.monotonic()
                     elif time.monotonic() - idle_pressure_since >= self.pressure_timeout_seconds:
-                        raise ValueError(
+                        raise ResourcePressureError(
                             "Sustained host or disk pressure prevents admission; no running task was stopped"
                         )
                     try:
@@ -255,25 +285,30 @@ def parse_bytes(value: str) -> int | None:
     return int(float(match[1]) * units[match[2]])
 
 
-def pressure_ready(root: Path, *, min_free_bytes: int, reserve_memory_bytes: int) -> bool:
+def pressure_ready(root: Path, *, min_free_bytes: int, reserve_memory_bytes: int, request_bytes: int = 0) -> bool:
     memory = psutil.virtual_memory()
     return (
         shutil.disk_usage(root).free >= min_free_bytes
-        and memory.available >= reserve_memory_bytes
+        and host_limits(float(psutil.cpu_count() or 1), memory.total, memory.available)[2]
+        >= reserve_memory_bytes + request_bytes
         and psutil.cpu_percent() < 95
     )
 
 
-def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[], bool]:
+def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[Request], bool]:
     settings = plan.get("config", {}).get("resources")
     if not settings:
-        return lambda: True
-    return lambda: pressure_ready(
+        return lambda request: True
+    return lambda request: pressure_ready(
         root,
         min_free_bytes=int(settings["min_free_disk_gib"] * 1024**3),
+        request_bytes=request.memory_bytes,
         reserve_memory_bytes=max(
             int(settings["reserve_memory_gib"] * 1024**3),
-            int(psutil.virtual_memory().total * settings["reserve_memory_fraction"]),
+            int(
+                plan.get("host", {}).get("limits", {}).get("memory_bytes", psutil.virtual_memory().total)
+                * settings["reserve_memory_fraction"]
+            ),
         ),
     )
 

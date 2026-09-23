@@ -22,7 +22,9 @@ The Docker environment propagates nonzero teardown failures to the trial's termi
 
 Native oracle results and read-only imports also inspect retained cleanup-failure evidence. A successful native reward remains unchanged, but cleanup failure prevents a passed audit status. Historical imports verify the marker against the retained file inventory and preserve the recorded status separately; they do not rewrite or repeat the oracle.
 
-Implementation: [adapter](../../../../benchmark/runtime/external.mjs), [gateway](../../../../benchmark/src/synergy_bench/gateway.py), [native evidence](../../../../benchmark/src/synergy_bench/native_usage.py), [scheduler](../../../../benchmark/src/synergy_bench/runner.py), [doctor](../../../../benchmark/src/synergy_bench/maintenance.py), [Docker teardown](../../../../benchmark/src/synergy_bench/environment.py). The incident and missed controls are recorded in the [postmortem](../../../postmortem/0022-benchmark-execution-evidence-integrity.md).
+Implementation: [adapter](../../../../benchmark/runtime/external.mjs), [gateway](../../../../benchmark/src/synergy_bench/gateway.py), [native evidence](../../../../benchmark/src/synergy_bench/native_usage.py), [scheduler](../../../../benchmark/src/synergy_bench/runner.py), [Docker teardown](../../../../benchmark/src/synergy_bench/environment.py). The incident and missed controls are recorded in the [postmortem](../../../postmortem/0022-benchmark-execution-evidence-integrity.md).
+
+The [direct-execution decision](../simplification/2026-09-23-benchmark-direct-execution.md) supersedes the scheduling and formal-task cleanup admission rules; the native transport and task-environment repairs remain in force.
 
 ## Alternatives considered
 

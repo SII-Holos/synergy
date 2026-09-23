@@ -1,5 +1,5 @@
-import { BenchmarkInputError } from "./input-error"
-import { loadComposition } from "./composition"
+import { BenchmarkInputError } from "../../runtime/input-error"
+import { loadComposition } from "../../runtime/composition"
 import { Config } from "@ericsanchezok/synergy-harness/config"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tools"

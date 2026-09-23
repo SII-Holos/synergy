@@ -66,7 +66,7 @@ async def test_pressure_delays_new_admission_without_cancelling_active_job():
     from synergy_bench.resources import Capacity, Request, ResourcePool
 
     ready = False
-    pool = ResourcePool(Capacity(4, 4 * 1024**3), 2, admission=lambda: ready)
+    pool = ResourcePool(Capacity(4, 4 * 1024**3), 2, admission=lambda request: ready)
     entered = asyncio.Event()
 
     async def job():
@@ -108,7 +108,7 @@ def test_nonfinite_resource_requests_cannot_wait_forever():
 
 
 async def test_permanent_external_pressure_fails_instead_of_queueing_forever():
-    pool = ResourcePool(Capacity(4, 4096), 2, admission=lambda: False, pressure_timeout_seconds=0.02)
+    pool = ResourcePool(Capacity(4, 4096), 2, admission=lambda request: False, pressure_timeout_seconds=0.02)
     with pytest.raises(ValueError, match="pressure"):
         async with pool.reserve(Request(1, 1024)):
             pytest.fail("must not admit")

@@ -63,10 +63,10 @@ def main() -> None:
     for name in ["plan", "prepare", "run"]:
         action = sub.add_parser(name)
         action.add_argument("config", type=Path)
-    for name in ["resume", "inspect", "debug", "clean", "doctor", "prewarm"]:
+    for name in ["resume", "inspect", "debug", "clean"]:
         action = sub.add_parser(name)
         action.add_argument("run", type=Path)
-        if name in {"resume", "debug", "doctor", "prewarm"}:
+        if name in {"resume", "debug"}:
             action.add_argument(
                 "--recorded-evaluator", action="store_true", help="Execute the verified frozen evaluator"
             )
@@ -217,9 +217,6 @@ def main() -> None:
                 if args.collect
                 else inspect_cache(args.path)
             )
-        elif args.command in {"doctor", "prewarm"}:
-            asyncio.run(resume(args.run, maintenance=args.command))
-            emit(read_json(args.run / (args.command + ".json")))
         elif args.command == "list":
             suite = Suite.load(args.suite)
             emit([task.model_dump() for task in suite.tasks if set(args.tag) <= set(task.tags)])
@@ -265,7 +262,10 @@ def main() -> None:
         if root and root.exists():
             result = summarize(root)
             emit({**result, "exit_code": 130, "interrupted": True})
-        print("Interrupted; retained attempts are preserved. Resume continues unfinished trials.", file=sys.stderr)
+        print(
+            "Interrupted; retained attempts are preserved. Resume dispatches only trials that never started.",
+            file=sys.stderr,
+        )
         raise SystemExit(130) from None
     except ValueError as error:
         print(f"synergy-bench: {error}", file=sys.stderr)

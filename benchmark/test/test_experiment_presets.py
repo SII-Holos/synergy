@@ -13,7 +13,6 @@ from synergy_bench.storage import atomic_json, read_json
 def test_boyue_comparison_uses_release_baseline_and_native_output_limit(tmp_path):
     config = load_config(Path(__file__).parents[1] / "configs/coding-observations-boyue.yaml")
     assert config.harnesses["baseline"].source.revision == "024dd683e091d9fce3d1d26b79b2e188ce636b52"
-    assert config.preflight_timeout_seconds == 600
     model = config.models["boyue-deepseek41flash-no-thinking"]
     settings = harness_configuration("synergy", model, "http://gateway.invalid/v1", "/home/fixture")["config"]
     spec = settings["provider"]["benchmark"]["models"][model.model]
@@ -31,7 +30,7 @@ def test_boyue_comparison_uses_release_baseline_and_native_output_limit(tmp_path
 
 
 @pytest.mark.parametrize("protocol", ["synergy-session-v1", "synergy-rollout-v1"])
-def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trials(tmp_path, protocol):
+def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
     from synergy_bench.config import ExperimentConfig, Variant
 
     variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
@@ -43,7 +42,7 @@ def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trial
     config = ExperimentConfig(version=1, suite="fixture.json", variants={"native": variant})
     task = {"local_path": str(tmp_path / "task"), "agent_seconds": 90}
     plan = {
-        "config": {**config.model_dump(), "preflight_timeout_seconds": 600},
+        "config": config.model_dump(),
         "cache": str(tmp_path / "cache"),
         "variants": {
             "native": {
@@ -55,23 +54,15 @@ def test_preflight_deadline_reaches_both_launchers_without_changing_formal_trial
         },
         "tasks": {"task": task},
     }
-    for probe in [True, False]:
-        attempt = root / ("probes" if probe else "trials") / "0000/attempt-001"
-        trial, _, _ = trial_configuration(
-            root,
-            plan,
-            {"variant": "native", "task": "task"},
-            attempt,
-            probe_instruction="Run the connectivity marker" if probe else None,
-        )
-        expected = 600 if probe else 10800
-        assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == expected
-        assert trial.agent.override_timeout_sec == (
-            expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
-        )
-        assert trial.verifier.disable is probe
-        assert trial.verifier.override_timeout_sec == 10800
-        assert task["agent_seconds"] == 90
+    attempt = root / "trials" / "0000/attempt-001"
+    trial, _, _ = trial_configuration(root, plan, {"variant": "native", "task": "task"}, attempt)
+    assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == 10800
+    assert trial.agent.override_timeout_sec == (
+        10800 + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
+    )
+    assert not trial.verifier.disable
+    assert trial.verifier.override_timeout_sec == 10800
+    assert task["agent_seconds"] == 90
 
 
 @pytest.mark.parametrize("filename", ["glm53-acceptance.yaml", "glm53-long-session.yaml"])

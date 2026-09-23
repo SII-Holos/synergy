@@ -38,7 +38,6 @@ SESSION_RUNTIME = {
     "native-outcome.mjs",
     "session-capture.mjs",
     "session-relay.mjs",
-    "session-inspect.mjs",
     "session-prepare.mjs",
 }
 
@@ -359,75 +358,3 @@ def prepare_source(
                 finally:
                     os.close(parent)
                 return target
-
-
-def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform: str, logs: Path) -> dict[str, Any]:
-    session = read_json(artifact / "receipt.json")["identity"].get("runtime_protocol") == "synergy-session-v1"
-    args = [
-        "docker",
-        "run",
-        "--rm",
-        "--platform",
-        platform,
-        "--network",
-        "none",
-        "-e",
-        "SYNERGY_HOME=/tmp/synergy-benchmark",
-        "-e",
-        "SYNERGY_CONFIG_CONTENT={}",
-        "-v",
-        f"{artifact / 'bundle'}:/opt/synergy:ro",
-        "-v",
-        f"{directory}:/inputs:ro",
-        read_json(artifact / "receipt.json")["base_image"],
-        "/opt/synergy/bin/bun",
-        "/opt/synergy/runtime/session-inspect.mjs" if session else "/opt/synergy/runtime/inspect.ts",
-        variant["runtime"],
-        "/inputs/config.json",
-    ]
-    args += [
-        "/inputs/experiment.json" if variant.get("experiment") else "",
-        variant["model"],
-        variant["agent"],
-        variant.get("variant") or "",
-    ]
-    for key in variant.get("env", {}):
-        args[2:2] = ["-e", f"{key}=benchmark-preflight"]
-    for key, value in {
-        "SYNERGY_CONFIG": "/inputs/config.json",
-        "SYNERGY_DISABLE_MODELS_FETCH": "1",
-        "SYNERGY_DISABLE_DEFAULT_PLUGINS": "1",
-        "SYNERGY_DISABLE_AUTOUPDATE": "1",
-        "MODELS_DEV_API_JSON": "/opt/synergy/source/packages/synergy/test/tool/fixtures/models-api.json"
-        if session
-        else "/opt/synergy/source/packages/testing/fixtures/models-api.json",
-    }.items():
-        args[2:2] = ["-e", f"{key}={value}"]
-    logs.mkdir(parents=True, exist_ok=True)
-    args[2:2] = ["--cidfile", str(logs / "container.id")]
-    started = time.time()
-    timed_out = False
-    result = None
-    try:
-        with (logs / "stdout.log").open("w") as stdout, (logs / "stderr.log").open("w") as stderr:
-            result = subprocess.run(args, stdout=stdout, stderr=stderr, timeout=120)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        raise
-    finally:
-        atomic_json(
-            logs / "process.json",
-            {
-                "started_at": started,
-                "ended_at": time.time(),
-                "timed_out": timed_out,
-                "exit_code": result.returncode if result is not None else None,
-            },
-        )
-        remove_owned_container(logs / "container.id")
-    if result.returncode == 2:
-        raise ValueError(f"Frozen runtime rejected the experiment; see {logs / 'stderr.log'}")
-    if result.returncode:
-        raise RuntimeError(f"Frozen runtime validation failed; see {logs / 'stderr.log'}")
-    capability: dict[str, Any] = read_json(logs / "stdout.log")
-    return capability

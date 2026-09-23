@@ -1,6 +1,6 @@
 # 多 Harness × 多模型本地评测
 
-配置 v2 分离 harness、model、task 和 repeat；结果 v3 分离执行、原生 reward、判题状态、归档和计量覆盖。Synergy、Codex CLI、OpenCode、Pi、DeepSeek Harness 保留各自的提示词、工具、循环与压缩策略。评测层负责冻结输入、安装、受限网络、请求账本、独立判题和统计报告。
+配置 v2 分离 harness、model、task 和 repeat；结果 v4 分离执行、原生 reward、判题状态、清理、归档和计量覆盖。Synergy、Codex CLI、OpenCode、Pi、DeepSeek Harness 保留各自的提示词、工具、循环与压缩策略。评测层负责冻结输入、安装、受限网络、请求账本、独立判题和统计报告。
 
 ## 开始实验
 
@@ -8,16 +8,13 @@
 
 ```bash
 bun bench list
-bun bench plan benchmark/configs/ab.yaml
-bun bench prepare benchmark/configs/ab.yaml
-bun bench prewarm /absolute/path/to/run
-bun bench doctor /absolute/path/to/run
-bun bench resume /absolute/path/to/run
+bun bench plan benchmark/configs/local24-boyue.yaml
+bun bench run benchmark/configs/local24-boyue.yaml
 ```
 
-`run config.yaml` 串联上述流程。`prewarm` 准备 agent 与独立 verifier 镜像，不调用模型或执行 oracle。`doctor` 在一次性任务环境中经过实际网络策略、原生 harness、流式记录和工具结果；调用消耗计入报告，预检产物不进入正式任务。预检失败阻止正式运行。
+`run` 冻结配置、源码和题单后直接执行正式任务，按需准备任务镜像并复用缓存。首个模型请求属于正式任务或其辅助工作，没有独立探针、预热阶段或启动前 oracle 门槛。可用 `prepare CONFIG` 单独冻结输入；`resume RUN --recorded-evaluator` 只派发从未启动的项。完整 [local-24 配置](configs/local24-boyue.yaml) 使用修复依赖的 24 题、两个冻结版本、一次重复，共 48 项，默认自动并发；运行前填写自己的模型端点和凭据环境变量。
 
-显式设置 `admission_policy: strict-synergy-v1` 可在串行 Synergy v2 矩阵中逐次审查：原生 reward 为 0 或解题期限耗尽且判题完整时继续；基础设施、判题、归档或逐请求计量失效时，在持久化原始结果后停止后续正式任务和 doctor 派发。恢复首先复查已保留的失败，不能隐式重跑。只有已证明零模型请求、完整归档和成功清理的启动超时保留最多三次自动尝试。默认 `continue` 保持普通矩阵的失败收集行为；策略随实验冻结并参与配对条件，取舍见[逐次准入](../docs/decisions/implemented/architecture/2026-09-22-benchmark-serial-admission.md)。
+单项解题、构建、判题、归档或计量失败写入记录后继续，未知评分不填成 0。无法保存记录、无法确认所属进程已清除、Docker 或共享凭据失效等全局条件阻止后续派发；已阻塞运行保留原因，修复后创建新实验。整项执行不自动重试。清理超时警告保留；确认资源已移除时不据此否定有效评分和归档。取舍见[直接执行与资源调度](../docs/decisions/implemented/simplification/2026-09-23-benchmark-direct-execution.md)。
 
 ```bash
 bun bench inspect /absolute/path/to/run --trial 0
@@ -39,29 +36,28 @@ bun bench clean /absolute/path/to/run
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。
 
-| 字段                                         | 含义                                                                                |
-| -------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment         |
-| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT           |
-| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                |
-| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                          |
-| `suite`                                      | 锁定的题目清单、上游 revision 和内容摘要                                            |
-| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                |
-| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                          |
-| `seed` / `concurrency`                       | 固定调度与分析 seed；默认并发 `auto`，初始上限 8                                    |
-| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                       |
-| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                        |
-| `request_idle_timeout_seconds`               | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件       |
-| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                |
-| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                              |
-| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；正式解题时钟从首次派发开始       |
-| `preflight_timeout_seconds`                  | doctor 工具往返期限，默认 120 秒；1–3600 的严格整数，独立于正式题目期限并随配置冻结 |
+| 字段                                         | 含义                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment          |
+| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT            |
+| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                 |
+| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                           |
+| `suite`                                      | 锁定的题目清单、上游 revision 和内容摘要                                             |
+| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                 |
+| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                           |
+| `seed` / `concurrency`                       | 固定调度与分析 seed；默认 `auto` 按可用资源调度；正整数手动设置执行并发上限，包括 48 |
+| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                        |
+| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                         |
+| `request_idle_timeout_seconds`               | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件        |
+| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                 |
+| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                               |
+| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；正式解题时钟从首次派发开始        |
 
 正式解题、oracle 参考解执行和判题分别统一使用 10800 秒上限，由配置模块中的唯一常量定义。题目清单不接受逐题期限，实验配置不接受 `timeout_seconds` 或 verifier 期限覆盖；旧字段会报错，必须删除后才能准备新的实验。冻结 `plan.json` 的 `task_timeout_seconds` 记录同一预算，每次启动的 `inputs/options.json` 与 Pier 解题、判题参数均由它的唯一实现来源产生。所有预设和新增 YAML 走同一执行逻辑，[传播测试](test/test_experiment_presets.py)自动发现预设，真实 Docker 回归验证短时限任务仍可完成解题和判题。原始任务文件、旧计划及失败记录保持完整；它们不为新执行提供时限。历史实验的缺失预算保持未知，不补造三小时条件。
 
 [GLM 验收示例](configs/glm53-acceptance.yaml) 声明五种 harness、六道题，以及证书和多语言任务各三次重复，共 50 个评分单元。[GLM 长会话示例](configs/glm53-long-session.yaml) 使用相同任务与重复安排，并显式选择 `opencode-jitless`；两者与其他预设使用相同的三小时执行预算。平台实现不绑定该模型或智谱端点。
 
-正式解题时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。准备、排队、导出和判题不占模型解题预算，模型在任务中安装依赖属于解题时间。网关默认不设读空闲期限，断连仍会报错，连接建立保留 30 秒期限。`doctor` 使用独立的 `preflight_timeout_seconds`，默认 120 秒；Boyue 预设采用 600 秒以容纳已观察到的慢首响应。预检、准备及清理期限不是正式题目预算，不得截断它。取舍见[统一三小时策略](../docs/decisions/implemented/architecture/2026-09-22-benchmark-fixed-three-hour-budget.md)。
+正式解题时钟从首个实际模型请求开始计时；Synergy 内部 CLI 的兜底期限包含启动和清理余量，不能先耗尽解题预算。准备、排队、导出和判题不占模型解题预算，模型在任务中安装依赖属于解题时间。网关默认不设读空闲期限，断连仍会报错，连接建立保留 30 秒期限。准备及清理期限不是正式题目预算，不得截断它。取舍见[统一三小时策略](../docs/decisions/implemented/architecture/2026-09-22-benchmark-fixed-three-hour-budget.md)。
 
 模型协议为 `chat-completions` 或 `responses`。`supports_developer_role` 显式声明是否支持 developer 消息；采样和推理参数以模型 profile 为准，记录原生参数到有效参数的差异。Codex 原生使用 Responses；跨协议调用保留桥版本、转换前后请求和原始响应。桥不执行工具、不增加 agent 循环、不自行压缩历史。加密推理状态、previous_response_id、托管搜索等无法表示的能力明确报错。Codex 的原生 hosted web search 显式关闭，这属于实验条件。
 
@@ -95,11 +91,11 @@ Provenance: [DeepSWE 锁定源码](https://github.com/datacurve-ai/deep-swe/tree
 
 原始 instruction、镜像语义、资源、网络、collect hook 和 verifier 断言不被改写；执行期限统一由三小时策略拥有。DeepSWE 使用独立 verifier，原生 hook 收集基于 HEAD 的 patch；要求提交的任务不会由评测器代为提交。模型破坏环境后不在判题前偷偷修复。`oracle` 使用 Pier 原生 OracleAgent 在独立环境逐题验证参考解和 verifier，失败题保留在清单中。`oracle-resume --recorded-evaluator` 核对已完成证据或保留中断结果，不自动重新判题。
 
-模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。预检不能预置解题依赖、答案或 oracle 产物。
+模型进程接收 Pier 的 `agent_process_env`；Node CLI 显式启用环境代理。Squid 只放行推理入口主机和端口，对该 Docker 主机地址固定 IPv4 解析。准备、清理、verifier 和 agent 的网络环境独立。准备环境不能预置答案或 oracle 产物。
 
 Synergy 的两种原生适配器保留任务镜像的 `HOME` 和 XDG 环境，仅用独立 `SYNERGY_HOME` 隔离产品数据。原生 shell 的环境变量过滤属于被测产品行为；评测器不能搬移依赖缓存来掩盖环境差异。隔离原理与请求关联见[评测修复决策](../docs/decisions/implemented/bug-fix/2026-09-22-benchmark-execution-evidence-integrity.md)。
 
-并发为 1 时，正式执行严格遍历冻结 `schedule`，恢复时跳过已完成尝试并保留剩余顺序；并发大于 1 时保留各配对内的先后顺序。原生 reward 为 0 不改变调度。doctor 除核查实际工具往返、完成请求 usage 和归档外，还要求终态证据有效且无基础设施错误；清理失败不能通过预检。Docker 清理的非零退出与超时都进入终态证据。原生 oracle 和只读导入同样以清理证据约束审计状态，原生 reward 单独保留。有效的 partial recording 与未知中断用量仍按原始口径保留。
+并发为 1 时按冻结 `schedule` 执行；并发大于 1 时所有正式项进入同一资源队列，同题不同版本可同时运行。配对关系用于报告，seed 固定优先顺序，`dispatch_sequence` 记录实际派发顺序。每项使用独立容器项目、工作区、运行目录、网关端口和账本。原生 reward 为 0 不改变调度；证据缺陷限制报告的配对资格，不阻止其他任务。
 
 ## 证据与统计
 
@@ -111,11 +107,10 @@ run/
   evaluator/
   evaluator.json
   inputs/<variant>/
-  prewarming/
-  probes/
   trials/<index>/attempt-001/
     trial.json
     environment.json
+    cleanup.json
     stages.json
     resources.json
     wire/<request-id>/
@@ -143,17 +138,15 @@ run/
 
 账本在发送网络请求前持久化意图，正常结束、错误、取消、未知送达和缺失 usage 分开记录。原生记录交叉核对主任务、辅助调用、重试和压缩请求。累计 usage 帧及重复终态不重复计量；未知输入/输出保留已知下界，缓存和推理保持输入/输出子集关系。字节不冒充 token。Synergy 继续使用公开 rollout/accounting 合同：网关返回带命名空间的 `X-Request-ID`，与原生归档的响应头关联后，再核对请求摘要和逐次 usage。没有响应头的历史或中断记录只允许唯一请求摘要匹配；重复、矛盾或缺失证据不能由聚合用量补足。Codex 使用原生 token_usage_record 的 response ID，与账本中的下游 response ID 逐条核对，累计事件不重复计量。协议桥同时保留转换前后的响应字节。
 
-报告统计所有 attempts，包括预检和失败重跑；评分预先选定每个计划单元的首次模型执行。已结束的失败是终态，resume 不自动重抽样。恢复先核对原有执行终态、归档和账本摘要，再修复调度状态；改变 evaluator、Python 版本、冻结输入或任务摘要会拒绝续跑。`resume`、`doctor`、`prewarm` 和 `debug` 的 `--recorded-evaluator` 显式使用已校验的冻结评测器；它不会用新代码续跑旧实验。
+每个计划单元只启动一次；恢复先核对终态、归档和账本摘要，已启动但中断的项保留中断状态，不产生替代 attempt。终态缺失或损坏单列证据问题，不自动重跑。改变 evaluator、Python 版本、冻结输入或任务摘要会拒绝续跑。`resume` 和 `debug` 的 `--recorded-evaluator` 显式使用已校验的冻结评测器；历史证据可以只读报告，不能用新代码重写其结果。
 
-只有明确发生在首次模型请求前的原生启动超时可以自动重试：原生生命周期确认模型未开始、请求账本目录为空、归档已完成且没有清理错误。预检每次调用最多三次启动尝试；正式任务的三次上限随调度状态持久化，恢复不重置。退避为 1、2 秒，每次创建新的 attempt 并记录原因，原失败证据保持终态。账本残片、送达不明、已请求模型、输出中断或原生判题失败都不进入这条自动重试路径。
-
-CLI 汇总保留全部记录或基础设施失败数，另列已恢复的启动失败和未解决失败。只有同一任务或预检的后续模型尝试留下完整终态证据，才将符合上述条件的早期启动失败计为已恢复；未解决失败或缺失任务返回非零状态。恢复不改变原始失败、分数或全部 attempts 的消耗统计。
+报告计入所有已观察费用，包括历史预检、辅助请求和失败重跑。旧配置中的 `preflight_timeout_seconds`、`admission_policy`、`resources.max_concurrency` 被拒绝，不能通过这些字段恢复另一套执行逻辑。CLI 对证据失败、基础设施失败、中断和未启动项返回非零状态；正常答错保留 reward 0。
 
 进行中或中断且未形成终态的 attempt，即使已观测请求都有完整 usage，任务总量也只报告已知下界。逐请求的完整用量照常保留；没有观测到未知请求时不虚构未知调用次数。
 
 原生 reward、判题执行、功能测试启动、归档有效性、记录覆盖和 usage 完整性彼此独立。reward.txt 不证明测试已启动；只有原生日志或测试报告中的正面证据才能确认启动，其他情况保持 unknown。部分记录可构成有效失败证据。
 
-`report` 输出 JSON、CSV 和离线中文 HTML。成功率仅在计划单元的 reward 全部可见时给出；缺失时公开上下界和原因。Wilson 区间描述已观测 reward。横向差值限定同模型、任务、repeat 和实验条件，公开缺失配对，用固定 seed 按任务聚类 bootstrap。只有完整可核对的用量参与精确 token 差值。没有版本化价格来源就不换算货币，订阅 token 不虚构金额。`--include-run` 将关联实验的全部消耗纳入报告，但评分仍来自位置参数指定的 run；不得在看到分数后更换评分 run。不同模型在同一 harness 下作描述性比较，不混入同模型配对 bootstrap。
+每项结束后自动更新 `reports/current`；整个运行完成、中断或阻塞时再次生成报告，派生报告写入失败不丢弃原始记录。`report` 输出 JSON、全部尝试 CSV、含未启动项的逐题配对 CSV 和离线中文 HTML。每对保留评分、失败原因、输入/输出/cache token、已知下界、耗时、排队时间及缺失项；JSON 同时包含符合条件的配对差值和数量。成功率仅在计划单元的 reward 全部可见时给出；缺失时公开上下界和原因。Wilson 区间描述已观测 reward。横向差值限定同模型、任务、repeat 和实验条件，公开缺失配对，用固定 seed 按任务聚类 bootstrap。只有完整可核对的用量参与精确 token 差值。没有版本化价格来源就不换算货币，订阅 token 不虚构金额。`--include-run` 将关联实验的全部消耗纳入报告，但评分仍来自位置参数指定的 run；不得在看到分数后更换评分 run。不同模型在同一 harness 下作描述性比较，不混入同模型配对 bootstrap。
 
 跨 run 配对同时核对实际并发上限、实验 seed、Docker 配额、可用资源预算及已声明的生命周期/资源策略。缺失这些条件的旧数据保留在报告和缺失配对清单中，不填入当前默认值。不同 harness variant 是被比较的因素；宿主瞬时负载只作观测记录，不假设各次运行的负载相同。
 
@@ -171,9 +164,9 @@ token 来自服务商 usage，缓存属于 input、reasoning 属于 output；已
 
 ### 运行资源与缓存维护
 
-调度读取 Docker CPU/内存配额，预留至少 2 核及 max(2 GiB, 15%) 内存；不满足静态资源需求时提前报错。宿主内存压力或磁盘余量不足会延迟新任务，不杀正在运行的任务。agent 与独立 verifier 的原生资源声明共同决定准入。8 GB 任务等待时允许有限次数的轻任务补位，随后为队首释放容量；无人运行而宿主持续受压时有界报错。每项准入另计 0.2 核与 128 MiB 的代理和记录服务余量，容器自身的原生资源限制不变。源码和安装包构建预留 2 核、4 GiB，与执行共享预算；构建默认最多两项，跨进程使用可自动释放的锁。实际峰值另行采样，构建资源预留属于准入估计。
+调度取 Docker、可见 cgroup 限制和宿主当前可用内存的较小预算，默认预留 2 核及 max(2 GiB, 15%) 内存。`concurrency` 是唯一执行并发设置，`auto` 不附加固定数量上限；无法装入资源预算的单项记录失败后继续。启动前再次检查下一项所需内存及系统预留，宿主内存压力或磁盘余量不足会延迟新任务，不杀正在运行的任务。agent 与独立 verifier 的原生资源声明共同决定准入。8 GB 任务等待时允许有限次数的轻任务补位，随后为队首释放容量；无人运行而宿主持续受压时有界报错。每项准入另计 0.2 核与 128 MiB 的代理和记录服务余量，容器自身的原生资源限制不变。源码和安装包构建预留 2 核、4 GiB，与执行共享预算；构建默认最多两项，跨进程使用可自动释放的锁。实际峰值另行采样，构建资源预留属于准入估计。
 
-暖任务镜像按原题内容、原生声明、安装步骤和平台复用。冻结镜像缺失或 ID 改变会报错；预热与执行使用相同镜像条件。正常清理只删除本次容器、网络和卷，避免 Pier 的 `--rmi all` 删除共享镜像。缓存发布校验内容、按键合并构建并原子发布。活动构建/运行与回收互斥，冻结 run 持有产物引用；只回收明确属于 benchmark 的无引用对象，不自动认领共享镜像。
+暖任务镜像按原题内容、原生声明、安装步骤和平台复用。冻结镜像缺失或 ID 改变会报错；正式任务按需构建或复用镜像。正常清理只删除本次容器、网络和卷，避免 Pier 的 `--rmi all` 删除共享镜像。缓存发布校验内容、按键合并构建并原子发布。活动构建/运行与回收互斥，冻结 run 持有产物引用；只回收明确属于 benchmark 的无引用对象，不自动认领共享镜像。
 
 任务与推理代理镜像的身份包含解析后的缓存根目录摘要。同一缓存的不同路径别名共享镜像，独立缓存使用不同标签及归属记录。迁移缓存目录后应冻结新实验；旧实验继续使用原位置及记录的 evaluator。此隔离不改变任务或代理镜像的构建步骤。
 
@@ -201,22 +194,22 @@ Synergy 长会话控制的覆盖范围、确定性 provider 请求体容量与 C
 
 原生 oracle 记录可通过 `oracle-report RUN --output REPORT.json` 只读导入。报告读取明确的 `reward` 主字段，并保留 DeepSWE 的辅助指标；不会再次执行判题或改写旧记录。
 
-隔离的性能验收使用确定性 provider、固定 Pi 安装包和含 Git 的轻任务，对 1/2/4/6 并发各执行 12 次。每次请求固定延迟 2 秒，工具任务执行固定 CPU 工作并分配 192 MiB；报告分别记录初始化、预热、执行时间、吞吐和资源峰值。第一轮任务镜像冷准备，其后必须没有重复构建或拉取。运行期间应让其他实验结束，避免把共享预算的排队计入吞吐对比：
+隔离的性能验收使用确定性 provider、固定 Pi 安装包和含 Git 的轻任务，对 1/2/4/6 并发各执行 12 次。每次请求固定延迟 2 秒，工具任务执行固定 CPU 工作并分配 192 MiB；报告分别记录初始化、执行时间、吞吐和资源峰值。第一轮任务镜像冷准备，其后必须没有重复构建或拉取。运行期间应让其他实验结束，避免把共享预算的排队计入吞吐对比：
 
 ```bash
 SYNERGY_BENCH_PERFORMANCE=1 SYNERGY_BENCH_NATIVE_ARTIFACTS='{"pi":"/absolute/path/to/prepared-pi"}' \
   uv run --locked --project benchmark pytest -s benchmark/test/test_performance_docker.py
 ```
 
-完整矩阵共享只读安装包挂载和镜像前置依赖，预热按题目去重并分批检查缓存预算；每个 harness/model 的真实运行兼容性仍由 doctor 独立检查。冻结输入受 run 引用保护，执行期间允许回收其他无引用缓存。缺失的冻结镜像只能恢复到记录的 image ID；重新构建应使用新的缓存目录和实验，原实验继续只读保留。
+完整矩阵共享只读安装包挂载和镜像前置依赖，镜像按需准备并以缓存锁合并构建；每个 harness/model 在正式执行中记录其真实运行结果。冻结输入受 run 引用保护，执行期间允许回收其他无引用缓存。缺失的冻结镜像只能恢复到记录的 image ID；重新构建应使用新的缓存目录和实验，原实验继续只读保留。
 
-CI 使用轻量确定性任务（1 核、2 GiB），并为临时 runner 显式设置 10 GiB 缓存、2 GiB 磁盘余量。研究实验仍默认 32 GiB 缓存与 20 GiB 余量；CPU/内存预留不变。CI 配置依据 [GitHub 标准 runner 资源说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，实际可用资源仍由 doctor 检查。
+CI 使用轻量确定性任务（1 核、2 GiB），并为临时 runner 显式设置 10 GiB 缓存、2 GiB 磁盘余量。研究实验仍默认 32 GiB 缓存与 20 GiB 余量；CPU/内存预留不变。CI 配置依据 [GitHub 标准 runner 资源说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，实际可用资源由调度器检查。
 
 runtime 缓存按实际执行入口区分：Synergy 由 Bun 执行 `trial.ts`，其配方覆盖 TypeScript 源码及共享的 `deadline.mjs`；外部 CLI 由 Node 执行 `external.mjs`，其独立安装产物对 `engines.NATIVE_RUNTIME` 中全部入口和 capture helper 求摘要。外部 CLI 不执行 Synergy bundle 内附带的 `.mjs` 副本。增加 Synergy 使用的非 TypeScript 依赖时，必须同步扩展其配方与失效回归；不得把新执行依赖排除在缓存身份之外。每个已冻结 bundle 仍逐字节校验自身 receipt。
 
 CI 保留 `archive.json`、`export.json` 和归档验证结果。外部 CLI 的 `rollout.tar.gz` 包含原生 Home（包括认证存储），因此只在本地私有实验中保留，不上传 CI artifact；这与 Synergy 公开 rollout 合同的 `rollout.zip` 不同。省略原生 Home payload 是证据发布边界，不能省略本地归档校验或用量核对。
 
-Docker `exec` 未显式指定命令期限时继承调用方的原生阶段期限；准备阶段默认 1800 秒上限不能截断原生 10800 秒的 agent 执行。显式命令期限仍有效，取消仍回收所属进程树。跨阶段期限回归同时验证未指定、显式长期限和准备期限；不能只用短任务证明长任务可靠。阶段及预热失败保留异常类型、模块、函数、行号和因果链，不持久化异常文本、源代码行或局部变量；可结合冻结源码定位原因，避免错误值携带凭据。
+Docker `exec` 未显式指定命令期限时继承调用方的原生阶段期限；准备阶段默认 1800 秒上限不能截断原生 10800 秒的 agent 执行。显式命令期限仍有效，取消仍回收所属进程树。跨阶段期限回归同时验证未指定、显式长期限和准备期限；不能只用短任务证明长任务可靠。阶段失败保留异常类型、模块、函数、行号和因果链，不持久化异常文本、源代码行或局部变量；可结合冻结源码定位原因，避免错误值携带凭据。
 
 父进程异常退出后的恢复先交还容器私有日志的文件所有权，再读取原有终态；交接保持文件内容与 0600/0700 权限，通过原容器的不可变镜像完成，运行中和已停止的容器均可恢复。
 

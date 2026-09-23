@@ -72,13 +72,13 @@ def test_recovery_and_cleanup_cannot_cross_an_active_run_lock(tmp_path: Path) ->
         assert not (tmp_path / "run/recoveries").exists()
 
 
-def test_cli_declares_matrix_maintenance_commands(capsys, monkeypatch):
+def test_cli_declares_direct_execution_and_reporting_commands(capsys, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["synergy-bench", "--help"])
     with pytest.raises(SystemExit) as exit:
         cli.main()
     assert exit.value.code == 0
     output = capsys.readouterr().out
-    for command in ["doctor", "prewarm", "report", "compare", "cache", "normalize"]:
+    for command in ["run", "resume", "report", "compare", "cache", "normalize"]:
         assert command in output
 
 

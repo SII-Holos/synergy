@@ -8,7 +8,7 @@ async function inspect(runtime: string, config: Record<string, unknown> = {}, mo
   try {
     const file = path.join(home, "config.json")
     await Bun.write(file, JSON.stringify(config))
-    const child = Bun.spawn([process.execPath, "runtime/inspect.ts", runtime, file, "", model ?? "", "synergy"], {
+    const child = Bun.spawn([process.execPath, "test/fixtures/inspect.ts", runtime, file, "", model ?? "", "synergy"], {
       cwd: path.resolve(import.meta.dir, ".."),
       env: {
         PATH: process.env.PATH,
@@ -62,24 +62,27 @@ test("each named composition reports its own capabilities", async () => {
   }
 }, 30_000)
 
-test("offline preflight rejects an unavailable measured model before inference", async () => {
+test("runtime contract rejects an unavailable measured model before inference", async () => {
   const home = await mkdtemp(path.join(os.tmpdir(), "synergy-bench-model-"))
   try {
     const config = path.join(home, "config.json")
     await Bun.write(config, "{}")
-    const child = Bun.spawn([process.execPath, "runtime/inspect.ts", "core", config, "", "missing/model", "synergy"], {
-      cwd: path.resolve(import.meta.dir, ".."),
-      env: {
-        PATH: process.env.PATH,
-        SYNERGY_HOME: home,
-        SYNERGY_CONFIG: config,
-        SYNERGY_CONFIG_CONTENT: "{}",
-        SYNERGY_DISABLE_MODELS_FETCH: "1",
-        MODELS_DEV_API_JSON: path.resolve(import.meta.dir, "../../packages/testing/fixtures/models-api.json"),
+    const child = Bun.spawn(
+      [process.execPath, "test/fixtures/inspect.ts", "core", config, "", "missing/model", "synergy"],
+      {
+        cwd: path.resolve(import.meta.dir, ".."),
+        env: {
+          PATH: process.env.PATH,
+          SYNERGY_HOME: home,
+          SYNERGY_CONFIG: config,
+          SYNERGY_CONFIG_CONTENT: "{}",
+          SYNERGY_DISABLE_MODELS_FETCH: "1",
+          MODELS_DEV_API_JSON: path.resolve(import.meta.dir, "../../packages/testing/fixtures/models-api.json"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
       },
-      stdout: "pipe",
-      stderr: "pipe",
-    })
+    )
     const [code, , stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -92,7 +95,7 @@ test("offline preflight rejects an unavailable measured model before inference",
   }
 }, 30000)
 
-test("full preflight measures a configured model with an owned transactional runtime", async () => {
+test("full runtime resolves a configured model with an owned transactional runtime", async () => {
   const result = await inspect(
     "full",
     {

@@ -56,9 +56,15 @@ def aggregate_usage(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
                 raise ValueError("Conflicting terminal usage for the same request")
             continue
         attempts[identity] = record
-    normalized = [normalize_usage(row.get("usage"), row["protocol"]) for row in attempts.values()]
+    normalized = [
+        dict.fromkeys(FIELDS) if row.get("recording_error") else normalize_usage(row.get("usage"), row["protocol"])
+        for row in attempts.values()
+    ]
     bounds = [
-        normalize_usage(row.get("usage") or row.get("observed_usage"), row["protocol"]) for row in attempts.values()
+        dict.fromkeys(FIELDS)
+        if row.get("recording_error")
+        else normalize_usage(row.get("usage") or row.get("observed_usage"), row["protocol"])
+        for row in attempts.values()
     ]
     tokens = {}
     for field in FIELDS:
@@ -67,4 +73,10 @@ def aggregate_usage(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
             known = sum((row["input"] or 0) + (row["output"] or 0) for row in bounds)
         unknown = sum(row[field] is None for row in normalized)
         tokens[field] = {"known": known, "unknown": unknown, "total": None if unknown else known}
-    return {"version": 1, "attempts": len(attempts), "tokens": tokens}
+    issues = [
+        f"{row['id']}:{row[field]}"
+        for row in attempts.values()
+        for field in ["recording_error", "request_body_error"]
+        if row.get(field)
+    ]
+    return {"version": 1, "attempts": len(attempts), "tokens": tokens, **({"issues": issues} if issues else {})}

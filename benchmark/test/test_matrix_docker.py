@@ -16,7 +16,7 @@ from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
 from synergy_bench.prepare import BENCHMARK, evaluator_identity
 from synergy_bench.process import run_process
-from synergy_bench.runner import startup_retryable, verify_terminal
+from synergy_bench.runner import verify_terminal
 from synergy_bench.source import git
 from synergy_bench.storage import atomic_json, read_json
 
@@ -421,7 +421,6 @@ async def run_native_matrix(
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 1 if long_session else 4,
-        "preflight_timeout_seconds": 600 if long_session else 120,
         "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
         "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
@@ -463,13 +462,10 @@ async def run_native_matrix(
             results = []
             for trial in sorted((root / "trials").iterdir()):
                 attempts = sorted(trial.glob("attempt-*"))
-                assert 1 <= len(attempts) <= 3
+                assert len(attempts) == 1
                 for attempt in attempts:
                     result = read_json(attempt / "evidence.json")
                     verify_terminal(attempt, result)
-                    if attempt != attempts[-1]:
-                        assert startup_retryable(attempt, result), result
-                        continue
                     results.append(result)
                     harness = read_json(attempt / "trial.json")["harness"]
                     if harness.endswith(("-jitless", "-jit")):
@@ -532,9 +528,9 @@ async def run_native_matrix(
                     assert result["wire_usage"]["attempts"] >= tool_turns + 1
 
         await asyncio.to_thread(check_native_transport)
-        assert read_json(root / "doctor.json")["status"] == "completed"
-        for attempt in (root / "probes").glob("*/attempt-*"):
-            assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == config["preflight_timeout_seconds"]
+        assert not (root / "doctor.json").exists()
+        assert not (root / "probes").exists()
+        assert not (root / "prewarming").exists()
     finally:
         await provider.cleanup()
 

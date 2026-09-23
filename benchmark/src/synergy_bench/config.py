@@ -168,7 +168,6 @@ class Matrix(StrictModel):
 
 
 class Resources(StrictModel):
-    max_concurrency: int = Field(default=8, ge=1, le=64)
     build_concurrency: int = Field(default=2, ge=1, le=16)
     reserve_cpus: float = Field(default=2, ge=0)
     reserve_memory_gib: float = Field(default=2, ge=0)
@@ -212,7 +211,7 @@ class ExperimentConfig(StrictModel):
     selection: Selection = Field(default_factory=Selection)
     repeat: int = Field(default=1, gt=0)
     task_repeats: dict[str, Annotated[int, Field(gt=0)]] = Field(default_factory=dict)
-    concurrency: Literal["auto"] | int = "auto"
+    concurrency: Literal["auto"] | Annotated[int, Field(gt=0, strict=True)] = "auto"
     seed: int = 0
     platform: Literal["linux/amd64", "linux/arm64"] = "linux/amd64"
     output: str = ".artifacts/benchmark/runs"
@@ -221,20 +220,10 @@ class ExperimentConfig(StrictModel):
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
-    preflight_timeout_seconds: int = Field(default=120, ge=1, le=3600, strict=True)
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
-    admission_policy: Literal["continue", "strict-synergy-v1"] = "continue"
 
     @model_validator(mode="after")
     def validate_names(self) -> ExperimentConfig:
-        if self.concurrency != "auto" and not 1 <= self.concurrency <= 64:
-            raise ValueError("Concurrency must be auto or an integer from 1 to 64")
-        if self.admission_policy == "strict-synergy-v1" and (
-            self.version != 2
-            or self.concurrency != 1
-            or any(harness.kind != "synergy" for harness in self.harnesses.values())
-        ):
-            raise ValueError("Strict Synergy admission requires a version 2 serial Synergy matrix")
         for name in self.variants.keys() | self.harnesses.keys() | self.models.keys():
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
                 raise ValueError("Names must contain only letters, digits, underscores or hyphens")

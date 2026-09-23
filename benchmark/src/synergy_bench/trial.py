@@ -150,26 +150,6 @@ class BenchmarkTrial(Trial):
         self._verifier_environments.append(environment)
         return environment
 
-    async def prewarm(self) -> None:
-        try:
-            deadline = self.config.agent.kwargs["settings"].get("preparation_timeout_seconds", 1800)
-            async with self._lifecycle.stage("environment_preparation", deadline=deadline):
-                await self._environment.start(force_build=False)
-                await self._environment.run_healthcheck()
-            async with self._lifecycle.stage("harness_setup", deadline=self._AGENT_SETUP_TIMEOUT_SEC):
-                self._environment.default_user = self._task.config.agent.user
-                await self._agent.setup(self._environment)
-            await self._stop_agent_environment(keep_images=True)
-            config = resolve_effective_verifier_env_config(self._task.config, None)
-            if config is not None:
-                environment = self._new_verifier_environment(config, key="trial", step_cfg=None)
-                async with self._lifecycle.stage("verifier_preparation", deadline=deadline):
-                    await environment.start(force_build=False)
-        finally:
-            await self._cleanup_verifiers()
-            await self._stop_agent_environment(keep_images=True)
-            self._close_logger_handler()
-
     async def _stop(self, environment: BaseEnvironment, *, delete: bool) -> None:
         try:
             # Pier's delete=True removes all compose images, including shared task images.

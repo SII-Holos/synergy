@@ -37,6 +37,40 @@ def model(url):
     )
 
 
+@pytest.mark.parametrize("body", ['{"id":', "[]", '{"id":"broken","protocol":{}}'])
+def test_unreadable_ledger_records_remain_unknown_without_rewriting_files(tmp_path, body):
+    path = tmp_path / "broken/request.json"
+    path.parent.mkdir()
+    path.write_text(body)
+    records = read_ledger(tmp_path)
+    usage = aggregate_usage(records)
+    assert records[0]["status"] == "unknown"
+    assert usage["attempts"] == 1
+    assert usage["tokens"]["total"] == {"known": 0, "unknown": 1, "total": None}
+    assert usage["issues"] == ["broken:request_record_unreadable"]
+    assert path.read_text() == body
+
+
+def test_unreadable_request_body_keeps_usage_but_loses_request_association(tmp_path):
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "known/request.json",
+        {
+            "id": "known",
+            "status": "completed",
+            "protocol": "chat-completions",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+        },
+    )
+    (tmp_path / "known/downstream.json").write_text('{"model":')
+    records = read_ledger(tmp_path)
+    usage = aggregate_usage(records)
+    assert records[0]["request_digest"] is None
+    assert usage["tokens"]["total"]["total"] == 12
+    assert usage["issues"] == ["known:request_body_unreadable"]
+
+
 @pytest.mark.parametrize("status", [200, 429])
 async def test_each_repeated_request_has_a_native_visible_response_identity(tmp_path, monkeypatch, status):
     monkeypatch.setenv("FIXTURE_KEY", "fixture")

@@ -1,6 +1,7 @@
 # Decision Record: Serial benchmark evidence admission
 
 Status: implemented
+Archived: 2026-09-23
 
 ## Problem
 
@@ -8,7 +9,7 @@ A final report can expose invalid evidence after an entire paid schedule has alr
 
 ## Decision
 
-The explicit `strict-synergy-v1` policy accepts only a version 2 Synergy matrix with concurrency one. The [runner](../../../../benchmark/src/synergy_bench/runner.py) and [doctor](../../../../benchmark/src/synergy_bench/maintenance.py) persist native evidence and scheduler state before applying [admission](../../../../benchmark/src/synergy_bench/admission.py). Each next dispatch depends on the preceding admission. Recovery rechecks retained attempts and cannot turn a paid failure into an automatic retry. The existing bounded startup exception still requires positive proof of zero requests, a complete archive and clean teardown.
+The explicit `strict-synergy-v1` policy accepts only a version 2 Synergy matrix with concurrency one. The [runner](../../../../benchmark/src/synergy_bench/runner.py) and doctor persist native evidence and scheduler state before applying admission. Each next dispatch depends on the preceding admission. Recovery rechecks retained attempts and cannot turn a paid failure into an automatic retry. The existing bounded startup exception still requires positive proof of zero requests, a complete archive and clean teardown.
 
 Admission verifies retained hashes, archive readability, completed grading with positive test-start evidence, and a native reward. Zero reward and expiry of the fixed solving budget remain observations; they do not stop the schedule when grading and evidence are valid. Operator cancellation and infrastructure failures stop new dispatches. Independent admission receipts do not rewrite attempt results or original coverage.
 

@@ -36,10 +36,27 @@ async def stream_lines(content: aiohttp.StreamReader) -> AsyncIterator[bytes]:
 def read_ledger(root: Path) -> list[dict[str, Any]]:
     records = []
     for path in sorted(root.glob("*/request.json")):
-        row = read_json(path)
+        try:
+            row = read_json(path)
+            if (
+                not isinstance(row, dict)
+                or not isinstance(row.get("id"), str)
+                or not row["id"]
+                or row.get("protocol") not in ("chat-completions", "responses", "pi")
+                or any(
+                    row.get(key) is not None and not isinstance(row[key], dict) for key in ["usage", "observed_usage"]
+                )
+            ):
+                raise ValueError("Invalid request record")
+        except (ValueError, OSError):
+            row = {"id": path.parent.name, "status": "unknown", "recording_error": "request_record_unreadable"}
         request = path.parent / "downstream.json"
         if request.exists():
-            row["request_digest"] = digest(read_json(request))
+            try:
+                row["request_digest"] = digest(read_json(request))
+            except (ValueError, OSError):
+                row["request_digest"] = None
+                row["request_body_error"] = "request_body_unreadable"
         records.append(row)
     return records
 

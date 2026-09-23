@@ -5,7 +5,7 @@ from pydantic import Field
 
 from .config import StrictModel
 
-RESULT_VERSION: Literal[3] = 3
+RESULT_VERSION: Literal[4] = 4
 
 
 class FileEvidence(StrictModel):
@@ -21,8 +21,14 @@ class Coverage(StrictModel):
     usage: Literal["complete", "partial", "unknown"]
 
 
+class Cleanup(StrictModel):
+    status: Literal["completed", "warning", "failed", "unknown"] = "unknown"
+    resources_removed: bool | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
 class AttemptResult(StrictModel):
-    version: Literal[3] = RESULT_VERSION
+    version: Literal[4] = RESULT_VERSION
     attempt_status: Literal["completed", "interrupted"] | None = None
     trial_directory: str | None = None
     execution: dict[str, Any] | None
@@ -36,6 +42,7 @@ class AttemptResult(StrictModel):
     grading: dict[str, Any] = Field(default_factory=lambda: {"execution": "unknown", "functional_tests": "unknown"})
     stages: dict[str, Any] = Field(default_factory=dict)
     resources: dict[str, Any] = Field(default_factory=dict)
+    cleanup: Cleanup = Field(default_factory=Cleanup)
     evidence: Coverage
     sidecar_files: dict[str, FileEvidence] = Field(default_factory=dict)
     files: dict[str, FileEvidence]

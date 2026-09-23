@@ -45,32 +45,6 @@ def config():
     }
 
 
-def test_strict_admission_is_explicit_serial_and_synergy_only():
-    value = {
-        "version": 2,
-        "suite": "suite.json",
-        "harnesses": {"one": {"kind": "synergy", "source": {"path": "."}}},
-        "models": {
-            "one": {
-                "model": "fixture",
-                "protocol": "chat-completions",
-                "base_url": "http://provider.invalid/v1",
-                "api_key_env": "KEY",
-                "context_window": 1000,
-                "max_output_tokens": 100,
-            }
-        },
-        "concurrency": 1,
-        "admission_policy": "strict-synergy-v1",
-    }
-    parsed = ExperimentConfig.model_validate(value)
-    assert ExperimentConfig.model_validate(parsed.model_dump()).admission_policy == "strict-synergy-v1"
-    assert ExperimentConfig.model_validate(config()).admission_policy == "continue"
-    for override in [{"concurrency": 2}, {"concurrency": "auto"}, {"admission_policy": True}]:
-        with pytest.raises(ValidationError):
-            ExperimentConfig.model_validate({**value, **override})
-
-
 def test_new_yaml_has_no_task_deadline_override(tmp_path):
     import yaml
 
@@ -96,26 +70,6 @@ def test_task_deadline_overrides_are_rejected(field, deadline):
 def test_request_idle_deadline_is_explicit_and_frozen(deadline):
     parsed = ExperimentConfig.model_validate({**config(), "request_idle_timeout_seconds": deadline})
     assert parsed.model_dump()["request_idle_timeout_seconds"] == deadline
-
-
-def test_preflight_deadline_default_survives_freezing():
-    parsed = ExperimentConfig.model_validate(config())
-    assert parsed.preflight_timeout_seconds == 120
-    assert ExperimentConfig.model_validate(parsed.model_dump()).preflight_timeout_seconds == 120
-
-
-@pytest.mark.parametrize("deadline", [1, 600, 3600])
-def test_explicit_preflight_deadline_is_independent_of_task_deadline(deadline):
-    parsed = ExperimentConfig.model_validate({**config(), "preflight_timeout_seconds": deadline})
-    frozen = ExperimentConfig.model_validate(parsed.model_dump())
-    assert frozen.preflight_timeout_seconds == deadline
-    assert "timeout_seconds" not in frozen.model_dump()
-
-
-@pytest.mark.parametrize("deadline", [None, 0, -1, True, "600", 600.0, 3601])
-def test_invalid_preflight_deadlines_are_rejected(deadline):
-    with pytest.raises(ValidationError):
-        ExperimentConfig.model_validate({**config(), "preflight_timeout_seconds": deadline})
 
 
 def test_rejects_unknown_fields_and_missing_model():

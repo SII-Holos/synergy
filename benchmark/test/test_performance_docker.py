@@ -85,7 +85,7 @@ async def test_controlled_native_throughput_at_one_two_four_six(tmp_path, monkey
                 "initialize_seconds": time.monotonic() - prepare_started,
             }
             environment = recorded_environment(root, read_json(root / "plan.json")["evaluator"])
-            for phase in ["prewarm", "doctor", "resume"]:
+            for phase in ["resume"]:
                 started = time.monotonic()
                 code = await run_process(
                     [sys.executable, "-m", "synergy_bench.cli", phase, str(root)],

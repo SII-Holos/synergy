@@ -1,16 +1,13 @@
 version: 2
-suite: ../suites/local-24.json
-output: ../../.artifacts/benchmark/coding-observations-boyue
+suite: ../suites/local-24-repro-v6.json
+output: ../../.artifacts/benchmark/local24-boyue
 cache: ../../.artifacts/benchmark/cache
 platform: linux/amd64
 seed: 20260921
 repeat: 1
-concurrency: 1
-selection:
-  tasks:
-    - deepswe-1.1/dasel-html-document-format
-    - deepswe-1.1/superjson-error-stack-serialization
-    - terminal-bench-2.1/large-scale-text-editing
+concurrency: auto
+resources:
+  cache_budget_gib: 384
 harnesses:
   baseline:
     kind: synergy
@@ -24,6 +21,7 @@ harnesses:
     kind: synergy
     source:
       path: ../..
+      revision: ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05
     runtime: full
     agent: synergy-max
     bun_jit: true
