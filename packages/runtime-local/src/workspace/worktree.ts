@@ -829,10 +829,54 @@ export namespace Worktree {
     throw new NameGenerationFailedError({ message: "Failed to generate a unique worktree name" })
   }
 
-  async function cleanupCreatedWorktree(repoRoot: string, directory: string, branch: string) {
-    await gitMutation(repoRoot, ["worktree", "remove", "--force", directory], [repoRoot, directory])
-    await gitMutation(repoRoot, ["branch", "-D", branch])
-    await removeRegistry(hashID(path.resolve(directory)), repoRoot)
+  interface Creation {
+    info: Awaited<ReturnType<typeof candidate>>
+    base: Awaited<ReturnType<typeof resolveBase>>
+    marker: string
+    published: boolean
+  }
+
+  async function unlockCreation(repoRoot: string, creation: Creation) {
+    const result = await WorktreeProcess.run({
+      command: ["git", "worktree", "unlock", creation.info.directory],
+      directory: repoRoot,
+      roots: [await gitMetadataRoot(repoRoot)],
+      metadata: true,
+      beforeStart: async () => (await readLockReason(creation.info.directory, repoRoot)) === creation.marker,
+    })
+    if (result.exitCode !== 0)
+      throw new CreateFailedError({ message: errorText(result) || "Failed to release worktree creation lock" })
+  }
+
+  async function cleanupCreatedWorktree(repoRoot: string, creation: Creation) {
+    const { info, base } = creation
+    if (creation.published) return unlockCreation(repoRoot, creation)
+    await WorkspaceAccess.retire([info.directory], async () => {
+      const entry = (await gitList(repoRoot)).find(
+        (item) => canonicalDirectory(item.path) === canonicalDirectory(info.directory),
+      )
+      if (!entry) return
+      if (entry.locked !== creation.marker)
+        throw new CreateFailedError({ message: "Unfinished worktree retained because its creation lock changed" })
+      await unlockCreation(repoRoot, creation)
+      if (entry.head !== base.resolvedCommit || entry.branch !== info.branch)
+        throw new CreateFailedError({ message: "Unfinished worktree retained because its branch or commit changed" })
+      const removed = await gitMutation(
+        repoRoot,
+        ["worktree", "remove", "--force", info.directory],
+        [repoRoot, info.directory],
+      )
+      if (removed.exitCode !== 0)
+        throw new CreateFailedError({ message: errorText(removed) || "Failed to remove unfinished worktree" })
+      const deleted = await gitMutation(repoRoot, [
+        "update-ref",
+        "-d",
+        `refs/heads/${info.branch}`,
+        base.resolvedCommit,
+      ])
+      if (deleted.exitCode !== 0)
+        throw new CreateFailedError({ message: errorText(deleted) || "Unfinished worktree branch was retained" })
+    })
   }
 
   export const create = fn(CreateInput.optional(), async (input) => {
@@ -846,44 +890,54 @@ export namespace Worktree {
 
     const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
     const titleName = session?.title && !isDefaultTitle(session.title) ? session.title : undefined
-    const plan: {
-      selection?: { info: Awaited<ReturnType<typeof candidate>>; base: Awaited<ReturnType<typeof resolveBase>> }
-    } = {}
-    const created = await WorktreeProcess.run({
-      async command() {
-        const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
-        const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
-        plan.selection = { info, base }
-        return ["git", "worktree", "add", "-b", info.branch, info.directory, base.revision]
-      },
-      directory: repoRoot,
-      roots: null,
-    })
-    if (created.exitCode !== 0)
-      throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
-
-    if (!plan.selection) throw new CreateFailedError({ message: "Worktree creation did not start" })
-    const { info, base } = plan.selection
-    const now = Date.now()
-    const registry: RegistryInfo = RegistryInfo.parse({
-      branch: info.branch,
-      id: hashID(path.resolve(info.directory)),
-      name: info.name,
-      path: path.resolve(info.directory),
-      scopeID: scope.id,
-      baseRef: parsed.baseRef,
-      baseRevision: parsed.baseRevision,
-      resolvedBaseCommit: base.resolvedCommit,
-      managed: true,
-      owner: parsed.owner ?? (parsed.sessionID ? { type: "session", sessionID: parsed.sessionID } : { type: "user" }),
-      bindings: parsed.sessionID && parsed.bind ? [parsed.sessionID] : [],
-      lifecycle: "active",
-      createdAt: now,
-      updatedAt: now,
-      lastUsedAt: now,
-    })
-
+    const plan: { selection?: Creation } = {}
     try {
+      const created = await WorktreeProcess.run({
+        async command() {
+          const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
+          const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
+          const marker = `synergy:creating:${crypto.randomUUID()}`
+          plan.selection = { info, base, marker, published: false }
+          return [
+            "git",
+            "worktree",
+            "add",
+            "--lock",
+            "--reason",
+            marker,
+            "-b",
+            info.branch,
+            info.directory,
+            base.revision,
+          ]
+        },
+        directory: repoRoot,
+        roots: null,
+      })
+      if (created.exitCode !== 0)
+        throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
+
+      if (!plan.selection) throw new CreateFailedError({ message: "Worktree creation did not start" })
+      const creation = plan.selection
+      const { info, base } = creation
+      const now = Date.now()
+      const registry: RegistryInfo = RegistryInfo.parse({
+        branch: info.branch,
+        id: hashID(path.resolve(info.directory)),
+        name: info.name,
+        path: path.resolve(info.directory),
+        scopeID: scope.id,
+        baseRef: parsed.baseRef,
+        baseRevision: parsed.baseRevision,
+        resolvedBaseCommit: base.resolvedCommit,
+        managed: true,
+        owner: parsed.owner ?? (parsed.sessionID ? { type: "session", sessionID: parsed.sessionID } : { type: "user" }),
+        bindings: [],
+        lifecycle: "active",
+        createdAt: now,
+        updatedAt: now,
+        lastUsedAt: now,
+      })
       const result = await withUse(registry.path, parsed.sessionID, async () => {
         const setup = await setupInfo(repoRoot)
         try {
@@ -894,8 +948,14 @@ export namespace Worktree {
           registry.setupFailed = true
           registry.setupError = error instanceof Error ? error.message : String(error)
         }
+        WorkspaceAccess.signal()?.throwIfAborted()
         await writeRegistry(registry, repoRoot)
-        if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
+        creation.published = true
+        await unlockCreation(repoRoot, creation)
+        if (parsed.sessionID && parsed.bind) {
+          await bindSession(parsed.sessionID, registry)
+          registry.bindings = [parsed.sessionID]
+        }
         return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
       })
       // Opportunistic cap top-up, fire-and-forget by contract: creation has
@@ -904,11 +964,18 @@ export namespace Worktree {
       requestSweep(scope)
       return result
     } catch (error) {
-      await WorkspaceAccess.handoff(() =>
-        WorkspaceAccess.task({ workspace: null }, () =>
-          cleanupCreatedWorktree(repoRoot, registry.path, registry.branch),
-        ),
-      )
+      const creation = plan.selection
+      if (creation)
+        try {
+          await WorkspaceAccess.handoff(() =>
+            WorkspaceAccess.maintenance(() => cleanupCreatedWorktree(repoRoot, creation), { inheritOwner: true }),
+          )
+        } catch (cleanupError) {
+          throw new AggregateError(
+            [error, cleanupError],
+            "Worktree creation failed and its remaining files were retained",
+          )
+        }
       throw error
     }
   })
@@ -1327,17 +1394,20 @@ export namespace Worktree {
       return
     }
     const signal = resource.controller.signal
-    const pending = WorkspaceAccess.maintenance(async () => {
-      while (!signal.aborted) {
-        try {
-          await unlockOwned(resolved, state, repoRoot, signal)
-          return
-        } catch (error) {
-          if (signal.aborted) return
-          if (!(error instanceof WorkspaceAccess.BusyError)) throw error
+    const pending = WorkspaceAccess.maintenance(
+      async () => {
+        while (!signal.aborted) {
+          try {
+            await unlockOwned(resolved, state, repoRoot, signal)
+            return
+          } catch (error) {
+            if (signal.aborted) return
+            if (!(error instanceof WorkspaceAccess.BusyError)) throw error
+          }
         }
-      }
-    }, signal)
+      },
+      { signal },
+    )
       .catch((error) => {
         if (!signal.aborted) log.warn("worktree unlock failed", { directory: resolved, error })
       })

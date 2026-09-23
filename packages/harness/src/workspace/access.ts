@@ -105,17 +105,24 @@ export namespace WorkspaceAccess {
     if (workspace?.id) await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
   }
 
-  export async function task<T>(
-    input: { sessionID?: string; parentSessionID?: string; workspace?: Workspace | null; signal?: AbortSignal },
-    fn: () => Promise<T>,
-  ): Promise<T> {
+  interface TaskInput {
+    sessionID?: string
+    parentSessionID?: string
+    workspace?: Workspace | null
+    signal?: AbortSignal
+  }
+  export function task<T>(input: TaskInput, fn: () => Promise<T>): Promise<T> {
+    return runTask(input, fn)
+  }
+
+  async function runTask<T>(input: TaskInput, fn: () => Promise<T>, owner?: string): Promise<T> {
     const runtime = RuntimeContext.current()
     const parent = context.getStore()
     const controller = new AbortController()
     const value: Task = {
       runtime,
       id: randomUUID(),
-      owner: JSON.stringify([runtime.host.root, input.sessionID ?? randomUUID()]),
+      owner: owner ?? JSON.stringify([runtime.host.root, input.sessionID ?? randomUUID()]),
       sessionID: input.sessionID,
       ancestors: input.parentSessionID
         ? [
@@ -203,8 +210,14 @@ export namespace WorkspaceAccess {
     return task({ workspace: ScopeContext.tryWorkspace(), signal }, () => withActivity(current()!, fn))
   }
 
-  export function maintenance<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    return ExecutionCapacity.detached(() => observeWrites(undefined, () => task({ workspace: null, signal }, fn)))
+  export function maintenance<T>(
+    fn: () => Promise<T>,
+    options: { signal?: AbortSignal; inheritOwner?: boolean } = {},
+  ): Promise<T> {
+    const owner = options.inheritOwner ? current()?.owner : undefined
+    return ExecutionCapacity.detached(() =>
+      observeWrites(undefined, () => runTask({ workspace: null, signal: options.signal }, fn, owner)),
+    )
   }
 
   async function inTask<T>(fn: (task: Task) => Promise<T>, signal?: AbortSignal) {

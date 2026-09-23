@@ -50,6 +50,8 @@ Preview reads use native file descriptors with bounded allocation and before/aft
 
 Recovery cannot reconstruct a crashed operation's endpoint from the latest filesystem state because another actor may have changed it. Exclusive owner recovery therefore preserves its baseline and marks pending evidence incomplete, bounded to message identities in the existing Rollout ledger. Completed evidence remains immutable. Fork and import apply the same interruption rule to their copied pending parts.
 
+Worktree cancellation remains connected after native activation and drains checkout hooks before rollback. A unique creation lock proves which unfinished directory belongs to the operation. Cleanup runs independently of the cancelled execution capacity while retaining its owner identity, uses exclusive retirement, and preserves foreign locks, changed commits and published registrations. Branch deletion checks the original object ID. Provenance: [Git worktree creation locks](https://git-scm.com/docs/git-worktree) and [conditional reference deletion](https://git-scm.com/docs/git-update-ref).
+
 ## Verification
 
 Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.

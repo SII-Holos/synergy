@@ -60,8 +60,16 @@ export namespace WorktreeProcess {
       owned.child.stderr.on("data", collect(stderr))
       await owned.activate()
       owned.child.stdin.end()
-      await owned.completion
-      signal.throwIfAborted()
+      const cancelled = Promise.withResolvers<never>()
+      const abort = () => cancelled.reject(signal.reason)
+      signal.addEventListener("abort", abort, { once: true })
+      try {
+        signal.throwIfAborted()
+        await Promise.race([owned.completion, cancelled.promise])
+        signal.throwIfAborted()
+      } finally {
+        signal.removeEventListener("abort", abort)
+      }
       if (overflow) throw new Error("Worktree command output exceeded 1 MiB")
       return { exitCode: owned.child.exitCode ?? -1, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) }
     } finally {

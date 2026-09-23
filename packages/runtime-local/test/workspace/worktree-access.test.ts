@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { $ } from "bun"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { OwnedProcess } from "../../src/process/owned-process"
@@ -12,6 +13,115 @@ import { Worktree } from "../../src/workspace/worktree"
 import { testRuntime } from "../support/runtime"
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+
+test.skipIf(process.platform === "win32")(
+  "cancelling an active checkout hook removes only its owned unfinished worktree",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await using scripts = await tmpdir()
+      const marker = path.join(scripts.path, "started")
+      const hook = path.join(scripts.path, "hook.ts")
+      await fs.writeFile(hook, "await Bun.write(process.argv[2]!, process.cwd()); setInterval(() => {}, 1000)")
+      const hooks = path.join(tmp.path, ".git", "hooks")
+      await fs.mkdir(hooks, { recursive: true })
+      await fs.writeFile(
+        path.join(hooks, "post-checkout"),
+        `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(hook)} ${quote(marker)}\n`,
+        { mode: 0o755 },
+      )
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const session = await Session.create({})
+          const controller = new AbortController()
+          const creation = WorkspaceAccess.task(
+            { sessionID: session.id, workspace: session.workspace, signal: controller.signal },
+            () => Worktree.create({ name: "cancel-hook", bind: false, baseRef: "current" }),
+          ).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          await waitUntil(() => Bun.file(marker).exists())
+          controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
+          const failure = await creation
+          if (failure instanceof AggregateError) throw failure
+          expect(failure).toBeInstanceOf(Error)
+          expect(await Bun.file(marker).text()).toContain("cancel-hook")
+          expect(await Worktree.list()).toHaveLength(1)
+          expect((await $`git branch --list ${"synergy/cancel-hook-*"}`.cwd(tmp.path).quiet().text()).trim()).toBe("")
+        },
+      })
+    })
+  },
+  20000,
+)
+
+test.skipIf(process.platform === "win32").each(["foreign lock", "new commit"])(
+  "cancelled checkout preserves a worktree containing a %s",
+  async (change) => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await using scripts = await tmpdir()
+      const marker = path.join(scripts.path, "started")
+      const hook = path.join(scripts.path, "hook.ts")
+      await fs.writeFile(
+        hook,
+        `
+        import fs from "node:fs"
+        import { spawnSync } from "node:child_process"
+        const git = (...args) => {
+          const result = spawnSync("git", args, { encoding: "utf8" })
+          if (result.status !== 0) throw new Error(result.stderr)
+        }
+        if (process.argv[3] === "foreign lock") {
+          git("worktree", "unlock", process.cwd())
+          git("worktree", "lock", "--reason", "user pinned", process.cwd())
+        } else {
+          fs.writeFileSync("important.txt", "keep this commit")
+          git("add", "important.txt")
+          git("commit", "-m", "preserved fixture commit")
+        }
+        fs.writeFileSync(process.argv[2], process.cwd())
+        setInterval(() => {}, 1000)
+      `,
+      )
+      const hooks = path.join(tmp.path, ".git", "hooks")
+      await fs.mkdir(hooks, { recursive: true })
+      await fs.writeFile(
+        path.join(hooks, "post-checkout"),
+        `#!/bin/sh\nexec ${[process.execPath, hook, marker, change].map(quote).join(" ")}\n`,
+        { mode: 0o755 },
+      )
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const controller = new AbortController()
+          const creation = WorkspaceAccess.task({ workspace: null, signal: controller.signal }, () =>
+            Worktree.create({ name: "preserve-hook", bind: false, baseRef: "current" }),
+          ).catch((error: unknown) => error)
+          await waitUntil(() => Bun.file(marker).exists())
+          controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
+          expect(await creation).toBeInstanceOf(AggregateError)
+          const directory = await Bun.file(marker).text()
+          const kept = (await Worktree.list()).find((item) => item.path === directory)
+          expect(kept).toBeDefined()
+          if (change === "foreign lock") expect(kept?.locked).toBe("user pinned")
+          else {
+            expect(await fs.readFile(path.join(directory, "important.txt"), "utf8")).toBe("keep this commit")
+            expect((await $`git log -1 --format=%s`.cwd(directory).quiet().text()).trim()).toBe(
+              "preserved fixture commit",
+            )
+            expect(kept?.locked).toBeUndefined()
+          }
+        },
+      })
+    })
+  },
+  20000,
+)
 
 test("cancelled worktree creation has no Git or filesystem effects", async () => {
   await using runtime = await testRuntime()
