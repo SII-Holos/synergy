@@ -157,10 +157,10 @@ describe("synergy-link local service log files", () => {
     // eventually emitted and truncation resets the read offset.
     const waitForContent = async (content: string) => {
       const deadline = Date.now() + 15_000
-      while (!chunks.some((chunk) => chunk.includes(content)) && Date.now() < deadline) {
+      while (!chunks.join("").includes(content) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
-      expect(chunks.some((chunk) => chunk.includes(content))).toBe(true)
+      expect(chunks.join("")).toContain(content)
     }
 
     try {
