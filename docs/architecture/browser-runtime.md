@@ -15,6 +15,8 @@ The server derives the canonical owner key and includes it in every session-stat
 
 Browser commands resolve and pin the current Workspace ID and binding generation. Session selection and Browser commands share the Session binding lease; idle suspension acquires that lease before joining the command queue. Before a selection commits, the Browser transition participant drains commands, acknowledges closing the old page, and invalidates command replay results. Catalog rebinding retires the same resources through `WorkspaceState` before publishing its new generation. Both paths preserve owner identity, profiles, descriptors, presentation preference and event subscribers. A failed close leaves the original binding selected. Resuming a saved local-file checkpoint validates its URL against the new binding before creating a page.
 
+Upload staging preserves sanitized original basenames for both headless and Host pages. Duplicate filenames occupy separate private subdirectories so browser-visible file names remain correct without overwriting another staged file.
+
 ## Lazy Runtime and Session State
 
 Browser execution is owned by `packages/browser-runtime`; the harness has no Browser driver or presentation dependency. The reaper consumes the shared session terminal-event contract, so archive, deletion, and child-task termination preserve the same cleanup behavior without importing product task orchestration. A host registers the Browser routes explicitly with its server composition.
