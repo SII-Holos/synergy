@@ -26,6 +26,8 @@ Untrusted Home merges apply the same authority boundary to the full portable rec
 
 ## Alternatives considered
 
+Automatic claims-ledger reconstruction would discard ownership that a malformed record or missing completion receipt cannot disprove. Recovery preserves the evidence and requires a host lifecycle boundary before replacing an unreadable ledger. A valid Linux receipt instead remains in place and becomes reclaimable when its recorded boot differs from the host. The [operator procedure](../../../../.synergy/skill/find-logs/SKILL.md#recover-native-workspace-coordination) keeps these cases separate and does not treat Runtime restart as process-tree completion.
+
 Deriving Workspace IDs from absolute paths would change identity on a move and conflate equal paths on different hosts. Keeping a path in every Session would leave multiple mutable owners of the same binding. Neither supports an atomic destination uniqueness check.
 
 ## Consequences
