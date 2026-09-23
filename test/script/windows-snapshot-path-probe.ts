@@ -47,6 +47,16 @@ try {
   const workAlias = path.join(root, "work")
   await fs.symlink(path.join(deep, "deep-workdir"), workAlias, "junction")
   await roundtrip("repo-and-work-alias", repoAlias, workAlias)
+  git("disable-symlinks", ["--git-dir", repoAlias, "config", "core.symlinks", "false"])
+  await roundtrip("alias-no-symlinks", repoAlias, workAlias)
+  await fs.symlink("content.txt", path.join(workAlias, "file-link"), "file")
+  await fs.mkdir(path.join(workAlias, "directory"))
+  await fs.symlink("directory", path.join(workAlias, "directory-link"), "dir")
+  await fs.symlink("missing", path.join(workAlias, "dangling-link"), "file")
+  await roundtrip("alias-link-entries", repoAlias, workAlias)
+  git("alias-link-modes", ["--git-dir", repoAlias, "ls-files", "--stage"], {
+    GIT_INDEX_FILE: path.join(deep, "alias-link-entries-index"),
+  })
   const privateConfig = path.join(root, "bootstrap-config")
   await fs.writeFile(privateConfig, "[core]\nlongpaths = true\n")
   git("config-init", ["--git-dir", path.join(deep, "config.git"), "init", "--bare"], {
