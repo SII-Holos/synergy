@@ -229,6 +229,43 @@ describe("prompt-budgeter decision", () => {
       expect(large.budget.usable).toBe(small.budget.usable)
     }))
 
+  test("does not count encrypted reasoning payload as ordinary prompt text", () =>
+    runtime.run(async () => {
+      const model = createModel({ context: 100_000, output: 8_192 })
+      ;(Token.estimateModelJSON as any) = mock(async (_modelID: string, value: unknown) => String(value).length)
+      const reasoning = {
+        role: "assistant" as const,
+        content: [
+          {
+            type: "reasoning" as const,
+            text: "summary",
+            providerOptions: { openai: { itemId: "rs_1", reasoningEncryptedContent: "a".repeat(10_000) } },
+          },
+        ],
+      }
+      const plan: PromptBudgeter.PromptPlan = { system: [], messages: [reasoning], toolDefinitions: [] }
+      const measured = await PromptBudgeter.measure(plan, model.id)
+      const short = await PromptBudgeter.measure(
+        {
+          ...plan,
+          messages: [
+            {
+              ...reasoning,
+              content: [
+                {
+                  ...reasoning.content[0],
+                  providerOptions: { openai: { itemId: "rs_1", reasoningEncryptedContent: "opaque" } },
+                },
+              ],
+            },
+          ],
+        },
+        model.id,
+      )
+      expect(measured.messages - short.messages).toBeLessThan(100)
+      expect(reasoning.content[0].providerOptions.openai.reasoningEncryptedContent).toHaveLength(10_000)
+    }))
+
   test("reuses cached message estimates across repeated decisions", () =>
     runtime.run(async () => {
       const model = createModel({ context: 100_000, output: 8_192 })

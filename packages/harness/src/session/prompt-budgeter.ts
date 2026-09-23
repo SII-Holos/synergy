@@ -213,9 +213,9 @@ export namespace PromptBudgeter {
 
   /**
    * Sanitize ModelMessage content for token estimation by replacing
-   * base64 data URLs with short placeholders. Text tokenizers cannot
-   * distinguish binary data from natural language and would count every
-   * base64 character as a text token, producing wildly inflated counts.
+   * opaque image, file, and encrypted reasoning payloads with placeholders.
+   * Text tokenizers count encoded bytes as text rather than provider-side
+   * tokens, producing inflated estimates and premature compaction.
    */
   function sanitizeForEstimation(msgs: ModelMessage[]) {
     let imageParts = 0
@@ -230,6 +230,18 @@ export namespace PromptBudgeter {
             if (part.type === "file") {
               imageParts++
               return { ...part, data: "[file data]", mediaType: part.mediaType }
+            }
+            if (
+              part.type === "reasoning" &&
+              typeof part.providerOptions?.openai?.reasoningEncryptedContent === "string"
+            ) {
+              return {
+                ...part,
+                providerOptions: {
+                  ...part.providerOptions,
+                  openai: { ...part.providerOptions.openai, reasoningEncryptedContent: "[encrypted reasoning]" },
+                },
+              }
             }
             return part
           })

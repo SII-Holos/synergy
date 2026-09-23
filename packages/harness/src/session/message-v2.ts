@@ -633,6 +633,7 @@ export namespace MessageV2 {
   function modelProviderMetadata(
     metadata: Record<string, any> | undefined,
     stats: PromptSanitizationStats,
+    replayReasoning = false,
   ): Record<string, any> | undefined {
     if (!metadata) return undefined
     const openai = metadata.openai
@@ -640,8 +641,10 @@ export namespace MessageV2 {
     if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return sanitizePromptPayload(metadata, stats)
 
     const nextOpenAI = { ...openai }
-    delete nextOpenAI.itemId
-    delete nextOpenAI.reasoningEncryptedContent
+    if (!replayReasoning) {
+      delete nextOpenAI.itemId
+      delete nextOpenAI.reasoningEncryptedContent
+    }
 
     const next = { ...metadata }
     if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
@@ -1133,7 +1136,7 @@ export namespace MessageV2 {
 
   export function projectModelMessages(
     input: WithParts[],
-    opts?: { maxHistoryImages?: number },
+    opts?: { maxHistoryImages?: number; model?: { providerID: string; modelID: string } },
   ): { messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats } {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
@@ -1211,6 +1214,24 @@ export namespace MessageV2 {
           parts: [],
         }
         const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
+        const replayCodexReasoning =
+          opts?.model?.providerID === "openai-codex" &&
+          msg.info.providerID === opts.model.providerID &&
+          msg.info.modelID === opts.model.modelID
+        const encryptedReasoningIds = new Set(
+          replayCodexReasoning
+            ? msg.parts.flatMap((part) => {
+                if (part.type !== "reasoning") return []
+                const openai = part.metadata?.openai
+                return typeof openai?.itemId === "string" &&
+                  openai.itemId.length > 0 &&
+                  typeof openai.reasoningEncryptedContent === "string" &&
+                  openai.reasoningEncryptedContent.length > 0
+                  ? [openai.itemId]
+                  : []
+              })
+            : [],
+        )
         for (const part of msg.parts) {
           if (part.type === "text") {
             assistantMessage.parts.push({
@@ -1280,7 +1301,11 @@ export namespace MessageV2 {
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
-              providerMetadata: modelProviderMetadata(part.metadata, sanitization),
+              providerMetadata: modelProviderMetadata(
+                part.metadata,
+                sanitization,
+                encryptedReasoningIds.has(part.metadata?.openai?.itemId),
+              ),
             })
             addModelMessageContribution(provenance, "conversation", part.text)
           }
@@ -1298,7 +1323,10 @@ export namespace MessageV2 {
     }
   }
 
-  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+  export function toModelMessage(
+    input: WithParts[],
+    opts?: { maxHistoryImages?: number; model?: { providerID: string; modelID: string } },
+  ): ModelMessage[] {
     return projectModelMessages(input, opts).messages
   }
 

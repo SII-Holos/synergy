@@ -549,9 +549,9 @@ function textOf(part: CodexModelPartLike): string {
  * - system → developer message item (reasoning model) with string content
  * - user text → input_text; image/file → input_image base64
  * - assistant text → one assistant item per text part with output_text;
- *   tool-calls → function_call; reasoning without encrypted content is
- *   dropped (SDK drops it when store is false); provider-executed tool
- *   results are skipped
+ *   tool-calls → function_call; reasoning items are grouped by itemId and
+ *   retained only with encrypted content (store: false); provider-executed
+ *   tool results are skipped
  * - tool results → function_call_output
  *
  * Used to build the remote compaction request body from the same local
@@ -593,6 +593,7 @@ export function modelMessagesToItems(messages: CodexModelMessageLike[]): CodexRe
       continue
     }
     if (role === "assistant" && Array.isArray(content)) {
+      const reasoningMessages = new Map<string, Extract<CodexResponseItem, { type: "reasoning" }>>()
       for (const part of content as CodexModelPartLike[]) {
         if (part.type === "text") {
           const text = textOf(part)
@@ -600,9 +601,19 @@ export function modelMessagesToItems(messages: CodexModelMessageLike[]): CodexRe
             items.push({ role: "assistant", content: [{ type: "output_text", text }] })
           }
         } else if (part.type === "reasoning") {
-          // store=false drops reasoning without encrypted content; we never
-          // have encrypted content locally, so skip it for parity.
-          continue
+          const openai = isRecord(part.providerOptions) ? part.providerOptions.openai : undefined
+          if (!isRecord(openai) || typeof openai.itemId !== "string" || openai.itemId.length === 0) continue
+          let reasoning = reasoningMessages.get(openai.itemId)
+          if (!reasoning) {
+            reasoning = { type: "reasoning", id: openai.itemId, summary: [] }
+            reasoningMessages.set(openai.itemId, reasoning)
+            items.push(reasoning)
+          }
+          const text = textOf(part)
+          if (text.length > 0) reasoning.summary?.push({ type: "summary_text", text })
+          if (typeof openai.reasoningEncryptedContent === "string") {
+            reasoning.encrypted_content = openai.reasoningEncryptedContent
+          }
         } else if (part.type === "tool-call") {
           if ((part as { providerExecuted?: unknown }).providerExecuted === true) continue
           const input = part.input
@@ -638,7 +649,7 @@ export function modelMessagesToItems(messages: CodexModelMessageLike[]): CodexRe
       }
     }
   }
-  return items
+  return items.filter((item) => item.type !== "reasoning" || item.encrypted_content != null)
 }
 
 /**

@@ -522,6 +522,7 @@ export namespace SessionCompaction {
     })
     const modelMessages = MessageV2.projectModelMessages(projected, {
       maxHistoryImages: input.maxHistoryImages,
+      model: { providerID: input.providerID, modelID: input.modelID },
     }).messages
     const items = modelMessagesToItems(modelMessages)
     if (!prior) return items

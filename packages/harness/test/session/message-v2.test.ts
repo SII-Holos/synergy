@@ -731,6 +731,75 @@ describe("session.message-v2.toModelMessage", () => {
       expect(projection.provenance.items.toolActivity).toBe(2)
     }))
 
+  test("replays encrypted Codex reasoning only for the producing model", () =>
+    runtime.run(() => {
+      const userID = "m-user"
+      const assistantID = "m-assistant"
+      const input: MessageV2.WithParts[] = [
+        {
+          info: userInfo(userID),
+          parts: [{ ...basePart(userID, "u1"), type: "text", text: "continue" }] as MessageV2.Part[],
+        },
+        {
+          info: { ...assistantInfo(assistantID, userID), providerID: "openai-codex", modelID: "gpt-5" },
+          parts: [
+            {
+              ...basePart(assistantID, "r1"),
+              type: "reasoning",
+              text: "first summary",
+              time: { start: 0 },
+              metadata: { openai: { itemId: "rs_shared" } },
+            },
+            {
+              ...basePart(assistantID, "r2"),
+              type: "reasoning",
+              text: "last summary",
+              time: { start: 0 },
+              metadata: { openai: { itemId: "rs_shared", reasoningEncryptedContent: "opaque" } },
+            },
+            {
+              ...basePart(assistantID, "r3"),
+              type: "reasoning",
+              text: "legacy summary",
+              time: { start: 0 },
+              metadata: { openai: { itemId: "rs_legacy" } },
+            },
+            {
+              ...basePart(assistantID, "t1"),
+              type: "text",
+              text: "answer",
+              metadata: { openai: { itemId: "msg_old" } },
+            },
+          ] as MessageV2.Part[],
+        },
+      ]
+
+      const codex = MessageV2.toModelMessage(input, {
+        model: { providerID: "openai-codex", modelID: "gpt-5" },
+      })
+      expect(codex[1]).toMatchObject({
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "first summary", providerOptions: { openai: { itemId: "rs_shared" } } },
+          {
+            type: "reasoning",
+            text: "last summary",
+            providerOptions: { openai: { itemId: "rs_shared", reasoningEncryptedContent: "opaque" } },
+          },
+          { type: "reasoning", text: "legacy summary", providerOptions: undefined },
+          { type: "text", text: "answer" },
+        ],
+      })
+      expect(JSON.stringify(codex)).toContain("opaque")
+      for (const model of [
+        { providerID: "openai-codex", modelID: "gpt-5-mini" },
+        { providerID: "openai", modelID: "gpt-5" },
+      ]) {
+        expect(JSON.stringify(MessageV2.toModelMessage(input, { model }))).not.toContain("opaque")
+        expect(JSON.stringify(MessageV2.toModelMessage(input, { model }))).not.toContain("rs_shared")
+      }
+    }))
+
   test("removes OpenAI response item references from model provider metadata", () =>
     runtime.run(() => {
       const userID = "m-user"

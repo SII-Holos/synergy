@@ -446,6 +446,39 @@ describe("codex-compaction replay registry", () => {
     }))
 })
 
+describe("codex-compaction modelMessagesToItems reasoning", () => {
+  test("retains encrypted reasoning sequences and omits legacy reasoning when store is false", () =>
+    runtime.run(() => {
+      const items = modelMessagesToItems([
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "first", providerOptions: { openai: { itemId: "rs_1" } } },
+            {
+              type: "reasoning",
+              text: "last",
+              providerOptions: { openai: { itemId: "rs_1", reasoningEncryptedContent: "opaque" } },
+            },
+            { type: "reasoning", text: "old", providerOptions: { openai: { itemId: "rs_old" } } },
+            { type: "text", text: "answer" },
+          ],
+        },
+      ])
+      expect(items).toEqual([
+        {
+          type: "reasoning",
+          id: "rs_1",
+          encrypted_content: "opaque",
+          summary: [
+            { type: "summary_text", text: "first" },
+            { type: "summary_text", text: "last" },
+          ],
+        },
+        { role: "assistant", content: [{ type: "output_text", text: "answer" }] },
+      ])
+    }))
+})
+
 describe("codex-compaction modelMessagesToItems image URLs", () => {
   function imagePartsOf(items: CodexResponseItem[]): Array<{ type: string; image_url?: string }> {
     const message = items.find((item) => "role" in item && item.role === "user")

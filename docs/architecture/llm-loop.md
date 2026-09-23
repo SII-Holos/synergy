@@ -138,6 +138,8 @@ Some managed-inference providers reject requests that lack a per-conversation re
 
 Plugins can transform the system prompt at budget and final phases. If a transform removes every system message, Synergy restores the pre-transform system prompt rather than sending an empty safety/instruction context.
 
+Historical reasoning replay for `openai-codex` is conditional: `MessageV2.projectModelMessages()` retains the Responses reasoning item ID and encrypted content only when the producing assistant and current request use the same provider and model and the item's parts contain a non-empty encrypted payload. It keeps all summary parts of that item together for the stateless (`store: false`) SDK request. Missing ciphertext in older parts cannot be regenerated; those reasoning IDs, text/tool item references, and cross-model reasoning references are stripped from model prompts. Local summary generation uses the portable projection without replay metadata. The optional Codex remote-compaction request uses the same gated projection and serializes only complete encrypted reasoning items.
+
 ## Library Recall
 
 The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it.
@@ -210,7 +212,7 @@ The post-job captures only session, root-message, and terminal-revision identifi
 - stable and late system context
 - projected history
 - tool names, descriptions, schemas, and protocol overhead
-- bounded estimates for historical image/file parts
+- bounded estimates for historical image/file parts and an opaque placeholder for encrypted reasoning bytes (provider-reported usage calibrates subsequent turns)
 
 The budget derives from the model's declared limits. For a context `C`, an effective requested output `O` bounded by the model's configured output and the global output maximum, and no explicit separate input limit, Synergy reserves the requested output plus a safety margin only when that reservation leaves a positive input envelope:
 

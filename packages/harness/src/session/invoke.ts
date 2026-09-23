@@ -1067,6 +1067,7 @@ export namespace SessionInvoke {
               })
               const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
                 maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+                model: { providerID: model.providerID, modelID: model.id },
               })
               const { converted, dropped, failed } = modelProjection.sanitization
               if (converted + dropped + failed > 0) {
