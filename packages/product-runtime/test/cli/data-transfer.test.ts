@@ -48,6 +48,11 @@ test("Home imports normalize historical directory selections without local adopt
               delete record.workspaceID
               record.workspace = { type: "directory", path: working.path, scopeID: scope.id, futureField: "retained" }
             })
+            const sibling = await Session.create({})
+            await Storage.update<Record<string, unknown>>(["sessions", scope.id, sibling.id, "info"], (record) => {
+              delete record.workspaceID
+              record.workspace = { type: "directory", path: working.path, scopeID: scope.id, siblingField: "retained" }
+            })
             const item = await AgendaStore.create({ createdBy: "user", title: "Historical default", prompt: "test" })
             agendaID = item.id
             await Storage.update<{ origin: { workspaceID?: string | null } }>(
@@ -81,6 +86,7 @@ test("Home imports normalize historical directory selections without local adopt
       const imported = await target.store.read<WorkspaceCatalog.Info>(["workspace", session.workspaceID])
       expect(imported.binding).toMatchObject({ state: "unbound", path: working.path })
       expect(imported.metadata.futureField).toBe("retained")
+      expect(imported.metadata.siblingField).toBe("retained")
       const checkout = await target.store.read<{ workspaceID: string; futureField: string }>([
         "channel",
         "providers",

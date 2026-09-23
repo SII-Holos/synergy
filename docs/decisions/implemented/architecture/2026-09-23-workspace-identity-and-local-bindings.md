@@ -196,6 +196,8 @@ GitHub polling commits its seen-event state after durable acceptance. Native che
 
 A registered Channel global migration converges historical local checkout references before provider startup. Missing directories retain stable metadata for explicit recreation; existing imported references are preserved. This keeps handler preparation from becoming a second persisted-state upgrade mechanism and avoids activating deferred Session history merely to update provider metadata.
 
+Home import collects complementary metadata from every historical descriptor for the same directory. A minimal Channel reference must not erase fields retained by a Session reference because the storage engine enumerated it later. A real multi-owner import regression verifies retained fields and an unbound destination.
+
 Native exclusion uses a stable OS-account location rather than `os.tmpdir()`. Per-process temporary-directory overrides otherwise allow two Runtimes to acquire conflicting writes against the same physical directory. A real child-process regression varies the temporary environment, holds a task reservation, rejects its competitor, then verifies admission after release. Boss worker regressions also verify selected and absent Workspaces through nested children and later parent selection changes.
 
 Crash publication tests kill real native writers after copy or restore staging and before rename. The original destination remains intact and the next operation can reclaim the dead process lock and publish successfully. Abruptly interrupted staging entries are conservatively retained: a filename prefix alone cannot prove deletion authority, and retries preserve unrelated similarly named entries. Ordinary error and cancellation paths still clean their own staging.

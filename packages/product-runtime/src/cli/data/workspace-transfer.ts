@@ -53,7 +53,11 @@ export namespace WorkspaceHomeTransfer {
       const previous = references.get(reference.id)
       if (previous && previous.scopeID !== reference.scopeID)
         throw new Error("Workspace reference crosses imported Scopes")
-      references.set(reference.id, { ...previous, ...reference, legacy: reference.legacy ?? previous?.legacy })
+      references.set(reference.id, {
+        ...previous,
+        ...reference,
+        legacy: reference.legacy ? { ...previous?.legacy, ...reference.legacy } : previous?.legacy,
+      })
       return reference.id
     }
     for (const workspace of incoming.values()) collect({ id: workspace.id, scopeID: workspace.scopeID })
