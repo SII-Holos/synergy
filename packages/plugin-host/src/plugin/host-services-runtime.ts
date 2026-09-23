@@ -1,6 +1,8 @@
+import { PluginInvocationWorkspace } from "./invocation-workspace"
+import { WorkspaceFileService } from "@ericsanchezok/synergy-runtime-local/workspace-file/service"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
-import fs from "fs/promises"
 import { createHash } from "node:crypto"
 import Ajv2020 from "ajv/dist/2020"
 import {
@@ -351,6 +353,16 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
 }
 
 async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Promise<T>): Promise<T> {
+  input.signal.throwIfAborted()
+  const selected = PluginInvocationWorkspace.current()
+  if (selected) {
+    if (
+      selected.invocation.scopeId !== input.invocation.scopeId ||
+      selected.invocation.sessionId !== input.invocation.sessionId
+    )
+      throw new Error("Plugin invocation binding mismatch")
+    return ScopeContext.provide({ scope: selected.scope, workspace: selected.workspace, fn })
+  }
   const scope = await Scope.fromID(input.invocation.scopeId)
   if (!scope) throw new Error(`Plugin invocation scope not found: ${input.invocation.scopeId}`)
   return ScopeContext.provide({
@@ -729,13 +741,37 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       return { scopeId: input.invocation.scopeId, directory: ScopeContext.current.directory }
     }
     if (input.method === "workspace.read") {
-      return Bun.file(workspacePath(ScopeContext.current.directory, value.path)).text()
+      const target = workspacePath(ScopeContext.current.directory, value.path)
+      const { stream } = await WorkspaceFileService.serveFile({ path: target, signal: input.signal })
+      const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+      const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
+      const versions = PluginInvocationWorkspace.current()?.versions
+      if (versions && !versions.has(target) && versions.size >= 256)
+        throw new Error("Plugin invocation file limit exceeded")
+      versions?.set(target, FileTime.version(bytes))
+      return content
     }
     if (input.method === "workspace.write") {
       if (typeof value.content !== "string") throw new Error("workspace.write requires string content")
       const target = workspacePath(ScopeContext.current.directory, value.path)
-      await fs.mkdir(path.dirname(target), { recursive: true })
-      await Bun.write(target, value.content)
+      const versions = PluginInvocationWorkspace.current()?.versions
+      const expectedVersion = versions?.get(target)
+      const result = await WorkspaceFileService.write(
+        {
+          path: target,
+          content: value.content,
+          expectedVersion: expectedVersion ?? null,
+          encoding: "utf-8",
+          conflictPolicy: expectedVersion === undefined ? "overwrite" : "fail",
+          createParents: true,
+        },
+        input.signal,
+      ).catch((error: unknown) => {
+        if (error instanceof WorkspaceFileService.WriteConflictError)
+          throw pluginHostServiceError("CONFLICT", error.message)
+        throw error
+      })
+      if (versions?.has(target)) versions.set(target, result.contentVersion)
       return
     }
     if (input.method === "settings.get") return getPluginConfig(input.pluginId, { manifest: input.manifest })
