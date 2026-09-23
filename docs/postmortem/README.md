@@ -79,6 +79,8 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0028 | [Unverified Workspace directory access](0028-unverified-workspace-directory-access.md) | implemented | 2026-09-23 |
 
+| 0029 | [Recreated GitHub checkout generation](0029-recreated-github-checkout-generation.md) | implemented | 2026-09-23 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

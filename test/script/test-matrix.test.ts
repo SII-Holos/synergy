@@ -77,11 +77,11 @@ describe("CI test matrix", () => {
     expect(workflow.jobs["test-shards"]?.strategy?.["fail-fast"]).toBe(false)
   })
 
-  test("test shards keep bounded concurrency and wire the package list through env", () => {
+  test("test shards serialize package suites and wire the package list through env", () => {
     const shard = workflow.jobs["test-shards"]!
     const turboSteps = shard.steps?.filter((step) => step.run?.includes("bun turbo test")) ?? []
     expect(turboSteps).toHaveLength(1)
-    expect(turboSteps[0]!.run).toContain("--concurrency=2")
+    expect(turboSteps[0]!.run).toContain("--concurrency=1")
     expect(turboSteps[0]!.run).toContain('"${filters[@]}"')
     expect(turboSteps[0]!.env?.TEST_PACKAGES).toBe("${{ matrix.packages }}")
     expect(turboSteps[0]!.env?.SYNERGY_LINK_HOME).toBe("/tmp/synergy-link-ci-test")

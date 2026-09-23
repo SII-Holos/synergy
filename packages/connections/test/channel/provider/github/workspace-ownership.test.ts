@@ -184,6 +184,66 @@ test(
   30_000,
 )
 
+test("a recreated GitHub checkout advances its generation even when the filesystem reuses its identity", () =>
+  runtime.run(async () => {
+    await using source = await tmpdir({ git: true }),
+      root = await tmpdir()
+    const branch = Bun.spawnSync(["git", "branch", "--show-current"], { cwd: source.path }).stdout.toString().trim()
+    await using isolated = await testRuntime({
+      env: {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: `url.file://${source.path}.insteadOf`,
+        GIT_CONFIG_VALUE_0: "https://github.com/fixture/project.git",
+        GIT_ALLOW_PROTOCOL: "file",
+      },
+    })
+    await isolated.run(async () => {
+      const input = {
+        accountId: crypto.randomUUID(),
+        workspaceDir: root.path,
+        repository: "fixture/project",
+        issueNumber: 1,
+        token: "fixture-only-token",
+        defaultBranch: branch,
+        workspaceTtlHours: 1,
+      }
+      const first = await GithubChannelWorkspace.ensure(input)
+      const before = await WorkspaceCatalog.get(first.record.workspaceID!, first.scope.id)
+      const location = isolated.host.workspaceLocation!
+      const identify = location.identify.bind(location)
+      const identity = spyOn(location, "identify").mockImplementation(async (directory, allowMissing) => {
+        const current = await identify(directory, allowMissing)
+        return current.path === first.record.directory && current.physicalID
+          ? { ...current, physicalID: before.binding.physicalID }
+          : current
+      })
+      try {
+        const reused = await GithubChannelWorkspace.ensure(input)
+        expect((await WorkspaceBinding.validate(reused.record.workspaceID!, reused.scope.id)).generation).toBe(
+          before.binding.generation,
+        )
+        await Storage.write(
+          StoragePath.githubChannelWorkspaceIndexEntry(
+            externalIdentityHash(input.accountId),
+            first.record.workspaceHash,
+          ),
+          { ...reused.record, updatedAt: 1 },
+        )
+        const recreated = await GithubChannelWorkspace.ensure(input)
+        const after = await WorkspaceCatalog.get(recreated.record.workspaceID!, recreated.scope.id)
+        expect(after.id).toBe(before.id)
+        expect(after.binding.physicalID).toBe(before.binding.physicalID)
+        expect(after.binding.generation).toBe(before.binding.generation + 1)
+        await expect(WorkspaceBinding.validate(before.id, before.scopeID, before.binding.generation)).rejects.toThrow(
+          "binding changed",
+        )
+        expect((await WorkspaceBinding.validate(after.id, after.scopeID)).generation).toBe(after.binding.generation)
+      } finally {
+        identity.mockRestore()
+      }
+    })
+  }))
+
 test("GitHub delivery rejects another selected Workspace before contacting GitHub", () =>
   runtime.run(async () => {
     await using directory = await tmpdir(),

@@ -68,13 +68,13 @@ describe("CI topology", () => {
     expect(job.env?.SYNERGY_BUILD_TARGETS).toBe("linux-x64")
   })
 
-  test("workspace suites bound concurrent native processes on every test shard", () => {
+  test("independent package suites cannot contend for native host claims on a test shard", () => {
     const workflow = Bun.YAML.parse(ciSource) as {
       jobs: Record<string, { steps?: Array<{ name?: string; run?: string }> }>
     }
     const turboSteps = workflow.jobs["test-shards"]!.steps?.filter((step) => step.run?.includes("bun turbo test")) ?? []
     expect(turboSteps).toHaveLength(1)
-    expect(turboSteps[0]!.run).toContain("--concurrency=2")
+    expect(turboSteps[0]!.run).toContain("--concurrency=1")
   })
 
   test("quality job runs the ci-static gate cluster", () => {

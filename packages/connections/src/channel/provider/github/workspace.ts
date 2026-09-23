@@ -204,7 +204,7 @@ export namespace GithubChannelWorkspace {
             scope = resolved
             const location = await RuntimeContext.current().host.workspaceLocation!.identify(directory)
             const rebound = before
-              ? before.binding.physicalID === location.physicalID
+              ? !cloned && before.binding.physicalID === location.physicalID
                 ? before
                 : await WorkspaceBinding.rebind(
                     before.id,

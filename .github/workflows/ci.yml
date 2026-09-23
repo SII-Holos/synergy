@@ -335,7 +335,7 @@ jobs:
           for package in "${shard_packages[@]}"; do
             filters+=(--filter="$package")
           done
-          bun turbo test --concurrency=2 "${filters[@]}"
+          bun turbo test --concurrency=1 "${filters[@]}"
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
           SYNERGY_TEST_LINUX_SANDBOX_E2E: ${{ matrix.shard == 'runtime' && '1' || '' }}
