@@ -57,6 +57,23 @@ try {
   git("alias-link-modes", ["--git-dir", repoAlias, "ls-files", "--stage"], {
     GIT_INDEX_FILE: path.join(deep, "alias-link-entries-index"),
   })
+  const view = path.join(root, "view")
+  await fs.mkdir(view)
+  await fs.writeFile(path.join(workAlias, "directory", "nested.txt"), "nested bytes\r\n")
+  for (const name of await fs.readdir(workAlias)) {
+    const source = path.join(workAlias, name)
+    const target = path.join(view, name)
+    const stat = await fs.lstat(source)
+    if (stat.isSymbolicLink())
+      await fs.symlink(await fs.readlink(source), target, name === "directory-link" ? "dir" : "file")
+    else if (stat.isDirectory()) await fs.symlink(source, target, "junction")
+    else await fs.copyFile(source, target)
+  }
+  git("restore-symlinks", ["--git-dir", repoAlias, "config", "core.symlinks", "true"])
+  await roundtrip("shallow-work-view", repoAlias, view)
+  git("shallow-view-modes", ["--git-dir", repoAlias, "ls-files", "--stage"], {
+    GIT_INDEX_FILE: path.join(deep, "shallow-work-view-index"),
+  })
   const privateConfig = path.join(root, "bootstrap-config")
   await fs.writeFile(privateConfig, "[core]\nlongpaths = true\n")
   git("config-init", ["--git-dir", path.join(deep, "config.git"), "init", "--bare"], {
