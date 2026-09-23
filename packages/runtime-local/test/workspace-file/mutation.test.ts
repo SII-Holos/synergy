@@ -6,10 +6,60 @@ import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { FileMutation } from "../../src/file/mutation"
 import { WorkspaceFileService } from "../../src/workspace-file/service"
+import { WorkspaceFileRead } from "../../src/workspace-file/read"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("a file that grows after metadata capture cannot bypass the preview read bound", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const filename = path.join(tmp.path, "image.png")
+        await fs.writeFile(filename, Buffer.from([137, 80, 78, 71]))
+        const result = await WorkspaceFileRead.read(
+          { path: filename, mode: "document" },
+          {
+            resolve: WorkspaceFileService.resolve,
+            validate: WorkspaceFileService.assertRealpathInside,
+            node: async (input) => {
+              const node = await WorkspaceFileService.node(input)
+              await fs.writeFile(filename, Buffer.alloc(11 * 1024 * 1024))
+              return node
+            },
+          },
+        ).then(
+          () => "accepted",
+          (error: Error) => error.name,
+        )
+        expect(result).toBe("WorkspaceFileWriteConflictError")
+      },
+    })
+  }))
+
+test("reading an internal symbolic link returns the full target content", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const content = "original target bytes\r\n".repeat(50)
+        await fs.writeFile(path.join(tmp.path, "target.txt"), content)
+        await fs.symlink("target.txt", path.join(tmp.path, "alias.txt"), "file")
+        const result = await WorkspaceFileService.read({ path: "alias.txt", mode: "document" })
+        expect(result).toMatchObject({
+          kind: "text",
+          content,
+          totalBytes: Buffer.byteLength(content),
+          contentVersion: FileTime.version(content),
+        })
+        expect(result.node.size).toBe(Buffer.byteLength(content))
+      },
+    })
+  }))
 
 test("atomic file replacement preserves mode without changing an external hard link", () =>
   runtime.run(async () => {
@@ -22,6 +72,7 @@ test("atomic file replacement preserves mode without changing an external hard l
         const alias = path.join(other.path, "alias.sh")
         await Bun.write(file, "old\n")
         await fs.chmod(file, 0o751)
+        const mode = (await fs.stat(file)).mode & 0o777
         await fs.link(file, alias)
         await WorkspaceFileService.write({
           path: "script.sh",
@@ -33,7 +84,7 @@ test("atomic file replacement preserves mode without changing an external hard l
         })
         expect(await Bun.file(file).text()).toBe("new\n")
         expect(await Bun.file(alias).text()).toBe("old\n")
-        expect((await fs.stat(file)).mode & 0o777).toBe(0o751)
+        expect((await fs.stat(file)).mode & 0o777).toBe(mode)
       },
     })
   }))

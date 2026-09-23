@@ -111,7 +111,7 @@ export namespace WorkspaceFileService {
     const symlink = stat.isSymbolicLink()
     const targetStat = symlink
       ? await assertRealpathInside(absolute)
-          .then(() => fs.stat(absolute))
+          .then(() => fs.stat(absolute, { bigint: true }))
           .catch(() => undefined)
       : stat
     const type: WorkspaceFile.NodeType = targetStat?.isDirectory()
@@ -121,6 +121,7 @@ export namespace WorkspaceFileService {
         : symlink
           ? "symlink"
           : "unknown"
+    const metadata = targetStat ?? stat
     const file = Bun.file(absolute)
     const mime = file.type
     const binary = type === "file" && (mime?.startsWith("text/") ? false : likelyBinaryByExtension(absolute))
@@ -132,12 +133,12 @@ export namespace WorkspaceFileService {
       entryVersion: entry.version,
       name: relativePath ? path.basename(relativePath) : path.basename(root()),
       type,
-      size: Number(stat.size),
-      mtime: Number(stat.mtimeNs) / 1e6,
-      ctime: Number(stat.ctimeNs) / 1e6,
+      size: Number(metadata.size),
+      mtime: Number(metadata.mtimeNs) / 1e6,
+      ctime: Number(metadata.ctimeNs) / 1e6,
       ignored: isIgnored(relativePath),
       hidden: hiddenPath(relativePath),
-      readonly: (stat.mode & 0o200n) === 0n,
+      readonly: (metadata.mode & 0o200n) === 0n,
       symlink,
       binary,
       gitStatus,
@@ -400,7 +401,12 @@ export namespace WorkspaceFileService {
     preview?: boolean
     mode?: "range" | "document"
   }): Promise<WorkspaceFile.ReadResult> {
-    return WorkspaceFileRead.read(input, { resolve, node })
+    const lease = await WorkspaceAccess.pin()
+    try {
+      return await WorkspaceFileRead.read(input, { resolve, node, validate: assertRealpathInside })
+    } finally {
+      await lease.release()
+    }
   }
   const PREVIEW_MAX_BYTES = 50 * 1024 * 1024
   const PREVIEW_MIME_PDF = "application/pdf"

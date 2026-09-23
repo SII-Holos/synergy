@@ -10,7 +10,7 @@ import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 
 export namespace FileMutation {
   export async function readText(input: string): Promise<string> {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await Bun.file(input).bytes())
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await fs.readFile(input))
   }
   export class ConflictError extends Error {
     override name = "WorkspaceFileWriteConflictError"

@@ -10,6 +10,8 @@ const suites = windows
   ? [
       "test/process/owned-process-windows.test.ts",
       "test/workspace/windows-bash-footprint.test.ts",
+      "test/workspace-file/long-path.test.ts",
+      "test/workspace-file/mutation.test.ts",
       "test/process-shutdown.test.ts",
       "test/session/shell.test.ts",
       "test/workspace/change-attribution.test.ts",

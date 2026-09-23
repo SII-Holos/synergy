@@ -1,6 +1,7 @@
 import { dlopen, ptr, read } from "bun:ffi"
 import { getSystemErrorName } from "node:util"
 import { readFileSync } from "node:fs"
+import path from "node:path"
 import { FileMutation } from "./mutation"
 
 export namespace FileRename {
@@ -12,8 +13,8 @@ export namespace FileRename {
         GetLastError: { args: [], returns: "u32" },
       }).symbols
       return (from: string, to: string) => {
-        const source = Buffer.from(`${from}\0`, "utf16le"),
-          destination = Buffer.from(`${to}\0`, "utf16le")
+        const source = Buffer.from(`${path.toNamespacedPath(path.resolve(from))}\0`, "utf16le"),
+          destination = Buffer.from(`${path.toNamespacedPath(path.resolve(to))}\0`, "utf16le")
         if (native.MoveFileExW(ptr(source), ptr(destination), 8)) return
         const errno = native.GetLastError()
         if ([80, 183].includes(errno)) throw new FileMutation.ConflictError()

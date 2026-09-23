@@ -1,4 +1,8 @@
 import path from "path"
+import fs from "node:fs/promises"
+import { constants } from "node:fs"
+import { FileMutation } from "../file/mutation"
+import { FileEntry } from "../file/entry"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { WorkspaceFile } from "./types"
 
@@ -89,24 +93,67 @@ function knownTextByExtension(filepath: string) {
   return TEXT_EXTENSIONS.has(path.extname(filepath).toLowerCase())
 }
 
-function binaryFromSample(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer)
+function binaryFromSample(bytes: Uint8Array) {
   for (const byte of bytes) {
     if (byte === 0) return true
   }
   return false
 }
 
-async function isBinaryTextCandidate(absolute: string, size: number, mime: string | undefined) {
+async function readBytes(
+  absolute: string,
+  info: WorkspaceFile.Node,
+  limit: number,
+  validate: (path: string) => Promise<void>,
+) {
+  const target = await FileMutation.canonical(absolute)
+  await validate(target)
+  const file = await fs.open(
+    target,
+    constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NONBLOCK | constants.O_NOFOLLOW),
+  )
+  try {
+    const before = await file.stat({ bigint: true })
+    if (!before.isFile()) throw new FileMutation.AccessDeniedError("Path is not a readable file")
+    if (
+      Number(before.size) !== info.size ||
+      (info.entryVersion && (await FileEntry.inspect(absolute))?.version !== info.entryVersion)
+    )
+      throw new FileMutation.ConflictError()
+    const buffer = Buffer.allocUnsafe(Math.min(limit, info.size))
+    let offset = 0
+    while (offset < buffer.length) {
+      const { bytesRead } = await file.read(buffer, offset, buffer.length - offset, offset)
+      if (!bytesRead) throw new FileMutation.ConflictError()
+      offset += bytesRead
+    }
+    const after = await file.stat({ bigint: true })
+    await validate(target)
+    if ((await FileMutation.canonical(absolute)) !== target) throw new FileMutation.ConflictError()
+    const current = await fs.stat(target, { bigint: true })
+    if (
+      before.size !== after.size ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs ||
+      before.dev !== current.dev ||
+      before.ino !== current.ino
+    )
+      throw new FileMutation.ConflictError()
+    return buffer
+  } finally {
+    await file.close()
+  }
+}
+
+async function isBinaryTextCandidate(
+  absolute: string,
+  mime: string | undefined,
+  read: (limit: number) => Promise<Uint8Array>,
+) {
   if (mime?.startsWith("text/")) return false
   if (mime?.includes("charset=")) return false
   if (knownTextByExtension(absolute)) return false
-  const file = Bun.file(absolute)
-  const sample = await file
-    .slice(0, Math.min(size, 4096))
-    .arrayBuffer()
-    .catch(() => new ArrayBuffer(0))
-  return binaryFromSample(sample) || likelyBinaryByExtension(absolute)
+  return binaryFromSample(await read(4096)) || likelyBinaryByExtension(absolute)
 }
 
 export namespace WorkspaceFileRead {
@@ -121,6 +168,7 @@ export namespace WorkspaceFileRead {
     deps: {
       resolve(path: string): string
       node(path: string): Promise<WorkspaceFile.Node>
+      validate(path: string): Promise<void>
     },
   ): Promise<WorkspaceFile.ReadResult> {
     const absolute = deps.resolve(input.path)
@@ -136,8 +184,8 @@ export namespace WorkspaceFileRead {
       }
     }
 
-    const file = Bun.file(absolute)
-    const mimeType = file.type || undefined
+    const mimeType = Bun.file(absolute).type || undefined
+    const contents = (limit: number) => readBytes(absolute, info, limit, deps.validate)
     if (mimeType?.startsWith("image/") && mimeType !== "image/svg+xml") {
       if (info.size > IMAGE_READ_BYTES) {
         return {
@@ -150,7 +198,7 @@ export namespace WorkspaceFileRead {
           unsupportedReason: "Image is too large to preview inline",
         }
       }
-      const buffer = await file.arrayBuffer()
+      const buffer = await contents(IMAGE_READ_BYTES)
       return {
         kind: "image",
         path: info.path,
@@ -164,7 +212,7 @@ export namespace WorkspaceFileRead {
       }
     }
 
-    if (await isBinaryTextCandidate(absolute, info.size, mimeType)) {
+    if (await isBinaryTextCandidate(absolute, mimeType, contents)) {
       return {
         kind: "binary",
         path: info.path,
@@ -178,7 +226,7 @@ export namespace WorkspaceFileRead {
 
     const capped = info.size > TEXT_READ_BYTES
     const bytesToRead = capped ? LARGE_TEXT_PREVIEW_BYTES : info.size
-    const buffer = await file.slice(0, bytesToRead).bytes()
+    const buffer = await contents(bytesToRead)
     let text: string
     try {
       text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer, { stream: capped })

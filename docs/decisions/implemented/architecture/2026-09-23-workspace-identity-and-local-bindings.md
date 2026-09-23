@@ -46,6 +46,8 @@ Snapshot capture reads native file bytes and publishes immutable blobs through G
 
 Retained file tabs display their own Workspace directory in the breadcrumb. A Session selection change preserves the tab and its draft without presenting the old Explorer as the new working directory.
 
+Preview reads use native file descriptors with bounded allocation and before/after identity checks. A file growing after metadata resolution cannot bypass image limits. Symbolic-link metadata describes its readable target while entry versions continue to identify the link itself. Windows move publication uses extended-length paths, and link copies inspect native reparse tags without following missing targets.
+
 ## Verification
 
 Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.

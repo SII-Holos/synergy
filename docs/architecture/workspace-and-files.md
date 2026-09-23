@@ -188,6 +188,8 @@ A governed file write can include:
 
 The exact stages vary by tool, but no write path should create a second unclassified filesystem capability.
 
+File previews pin their Workspace through bounded native descriptor reads, validate entry and content identity around the read, and reject growth or replacement instead of returning a falsely complete document. Internal symbolic links report the target's size and content while keeping the link's entry identity for mutations. Windows copies preserve directory-link and junction tags even when their targets are missing.
+
 ## Snapshots, Rollback, and Restore
 
 File snapshots share one Git object store and reference namespace per Scope under Synergy data. Each session, Workspace identity and binding generation has an independent, rebuildable index. Bound non-Git directories participate in text snapshots without creating a user Git repository. `SnapshotStore` is the sole resolver for registered legacy repositories and the shared store; snapshot readers validate session ownership before using a tree hash. The user's Git repository is not an object-store dependency.

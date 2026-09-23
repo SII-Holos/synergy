@@ -7,6 +7,7 @@ import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contai
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { FileMutation } from "./mutation"
 import { FileRename } from "./rename"
+import { FileLink } from "./link"
 
 export namespace FileEntry {
   export class PartialError extends Error {
@@ -304,7 +305,7 @@ export namespace FileEntry {
           target = path.join(output, member.relative)
         await requireVersion(source, member.entry.version)
         if (member.entry.type === "directory") await fs.mkdir(target, { mode: 0o700 })
-        else if (member.entry.type === "symlink") await fs.symlink(member.entry.link!, target)
+        else if (member.entry.type === "symlink") await FileLink.copy(source, target, member.entry.link!)
         else await copyFile(source, target, member.entry, input.signal)
       }
       for (const member of [...members].reverse())
