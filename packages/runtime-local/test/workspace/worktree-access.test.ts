@@ -43,14 +43,19 @@ test.skipIf(process.platform === "win32")(
             () => undefined,
             (error: unknown) => error,
           )
-          await waitUntil(() => Bun.file(marker).exists())
-          controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
-          const failure = await creation
-          if (failure instanceof AggregateError) throw failure
-          expect(failure).toBeInstanceOf(Error)
-          expect(await Bun.file(marker).text()).toContain("cancel-hook")
-          expect(await Worktree.list()).toHaveLength(1)
-          expect((await $`git branch --list ${"synergy/cancel-hook-*"}`.cwd(tmp.path).quiet().text()).trim()).toBe("")
+          try {
+            await waitUntil(() => Bun.file(marker).exists())
+            controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
+            const failure = await creation
+            if (failure instanceof AggregateError) throw failure
+            expect(failure).toBeInstanceOf(Error)
+            expect(await Bun.file(marker).text()).toContain("cancel-hook")
+            expect(await Worktree.list()).toHaveLength(1)
+            expect((await $`git branch --list ${"synergy/cancel-hook-*"}`.cwd(tmp.path).quiet().text()).trim()).toBe("")
+          } finally {
+            controller.abort(new DOMException("Checkout fixture closed", "AbortError"))
+            await creation
+          }
         },
       })
     })
@@ -102,19 +107,24 @@ test.skipIf(process.platform === "win32").each(["foreign lock", "new commit"])(
           const creation = WorkspaceAccess.task({ workspace: null, signal: controller.signal }, () =>
             Worktree.create({ name: "preserve-hook", bind: false, baseRef: "current" }),
           ).catch((error: unknown) => error)
-          await waitUntil(() => Bun.file(marker).exists())
-          controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
-          expect(await creation).toBeInstanceOf(AggregateError)
-          const directory = await Bun.file(marker).text()
-          const kept = (await Worktree.list()).find((item) => item.path === directory)
-          expect(kept).toBeDefined()
-          if (change === "foreign lock") expect(kept?.locked).toBe("user pinned")
-          else {
-            expect(await fs.readFile(path.join(directory, "important.txt"), "utf8")).toBe("keep this commit")
-            expect((await $`git log -1 --format=%s`.cwd(directory).quiet().text()).trim()).toBe(
-              "preserved fixture commit",
-            )
-            expect(kept?.locked).toBeUndefined()
+          try {
+            await waitUntil(() => Bun.file(marker).exists())
+            controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
+            expect(await creation).toBeInstanceOf(AggregateError)
+            const directory = await Bun.file(marker).text()
+            const kept = (await Worktree.list()).find((item) => item.path === directory)
+            expect(kept).toBeDefined()
+            if (change === "foreign lock") expect(kept?.locked).toBe("user pinned")
+            else {
+              expect(await fs.readFile(path.join(directory, "important.txt"), "utf8")).toBe("keep this commit")
+              expect((await $`git log -1 --format=%s`.cwd(directory).quiet().text()).trim()).toBe(
+                "preserved fixture commit",
+              )
+              expect(kept?.locked).toBeUndefined()
+            }
+          } finally {
+            controller.abort(new DOMException("Checkout fixture closed", "AbortError"))
+            await creation
           }
         },
       })
