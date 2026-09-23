@@ -44,6 +44,7 @@ bun bench clean /absolute/path/to/run
 | `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                           |
 | `suite`                                      | 锁定的题目清单、上游 revision 和内容摘要                                             |
 | `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                 |
+| `selection.cells`                            | 精确选择 task/harness/model/repeat 单元，保留原矩阵的冻结优先顺序                    |
 | `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                           |
 | `seed` / `concurrency`                       | 固定调度与分析 seed；默认 `auto` 按可用资源调度；正整数手动设置执行并发上限，包括 48 |
 | `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                        |
@@ -137,6 +138,17 @@ run/
 账本在发送网络请求前持久化意图，正常结束、错误、取消、未知送达和缺失 usage 分开记录。原生记录交叉核对主任务、辅助调用、重试和压缩请求。累计 usage 帧及重复终态不重复计量；未知输入/输出保留已知下界，缓存和推理保持输入/输出子集关系。字节不冒充 token。Synergy 继续使用公开 rollout/accounting 合同：网关返回带命名空间的 `X-Request-ID`，与原生归档的响应头关联后，再核对请求摘要和逐次 usage。没有响应头的历史或中断记录只允许唯一请求摘要匹配；重复、矛盾或缺失证据不能由聚合用量补足。Codex 使用原生 token_usage_record 的 response ID，与账本中的下游 response ID 逐条核对，累计事件不重复计量。协议桥同时保留转换前后的响应字节。
 
 每个计划单元只启动一次；恢复先核对终态、归档和账本摘要，已启动但中断的项保留中断状态，不产生替代 attempt。终态缺失或损坏单列证据问题，不自动重跑。改变 evaluator、Python 版本、冻结输入或任务摘要会拒绝续跑。`run` 冻结并调用本次 evaluator；`resume` 和 `debug` 只接受相同 evaluator 身份与当前格式，版本不符明确报错，不自动转交旧 evaluator。
+
+用户明确授权补跑时，用新配置的 `selection.cells` 列出所需的 `task`、`harness`、`model` 和从 0 开始的 `repeat`，然后执行 `bun bench run CONFIG` 创建新运行。该选择在矩阵展开后过滤，不改变 seed 决定的优先顺序，不自动加入另一侧或新增重复；空列表、重复项、未知项和被其他选择条件排除的项明确报错。配置省略 cells 时执行其他选择条件生成的完整矩阵。保留原运行的失败记录和全部费用，报告明确列出补跑来源及 evaluator 差异，不把两批结果冒充一次完整实验。
+
+```yaml
+selection:
+  cells:
+    - task: deepswe-1.1/drizzle-orm-window-function-builders
+      harness: candidate
+      model: boyue-glm53flash-low
+      repeat: 0
+```
 
 报告保留正式任务、辅助请求和失败消耗，并单列封存历史成本。旧配置中的 `preflight_timeout_seconds`、`admission_policy`、`resources.max_concurrency` 被拒绝，不能通过这些字段恢复另一套执行逻辑。CLI 对证据失败、基础设施失败、中断和未启动项返回非零状态；正常答错保留 reward 0。
 

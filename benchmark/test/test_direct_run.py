@@ -62,6 +62,31 @@ async def test_all_48_cells_can_overlap_including_both_sides_of_each_pair(tmp_pa
     assert len(entered) == 48
 
 
+async def test_explicit_supplement_dispatches_only_selected_cells_and_resume_never_replays(tmp_path):
+    from synergy_bench.config import resolve_plan
+
+    tasks = [{"id": f"task-{index:02d}"} for index in range(24)]
+    value = configuration(seed=20260921)
+    full = resolve_plan(ExperimentConfig.model_validate(value), tasks)
+    expected = full[9:30]
+    value["selection"] = {
+        "cells": [{key: cell[key] for key in ["task", "repeat", "harness", "model"]} for cell in expected]
+    }
+    schedule = resolve_plan(ExperimentConfig.model_validate(value), tasks)
+    calls = []
+
+    async def execute(item, attempt):
+        calls.append(item)
+        return {"version": 5, "execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 1}}}
+
+    plan = {"schedule": schedule, "concurrency": 48}
+    await execute_plan(tmp_path, plan, execute)
+    await execute_plan(tmp_path, plan, execute)
+    assert calls == expected
+    assert len(list(tmp_path.glob("trials/*/attempt-*/evidence.json"))) == 21
+    assert not list(tmp_path.glob("trials/*/attempt-002"))
+
+
 async def test_started_cells_are_never_replayed_even_without_terminal_evidence(tmp_path):
     schedule = [{"pair": "p", "variant": side} for side in ["a", "b", "c"]]
     atomic_json(tmp_path / "state.json", {"trials": {"0000": {"status": "running", "attempt": 1}}})

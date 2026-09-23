@@ -203,10 +203,16 @@ class Variant(StrictModel):
     bun_jit: StrictBool | None = None
 
 
+class SelectedCell(Combination):
+    task: str = Field(min_length=1)
+    repeat: int = Field(default=0, ge=0, strict=True)
+
+
 class Selection(StrictModel):
     tasks: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     limit: int | None = Field(default=None, gt=0)
+    cells: list[SelectedCell] | None = Field(default=None, min_length=1)
 
 
 class ExperimentConfig(StrictModel):
@@ -351,4 +357,14 @@ def resolve_plan(config: ExperimentConfig, tasks: list[dict[str, Any]]) -> list[
                     "model": variant.model_key or variant.model,
                 }
             )
+    if config.selection.cells:
+        requested = [(cell.task, cell.repeat, cell.harness, cell.model) for cell in config.selection.cells]
+        if len(set(requested)) != len(requested):
+            raise ValueError("Duplicate selected cells")
+        available = {(row["task"], row["repeat"], row["harness"], row["model"]): row for row in plan}
+        missing_cells = set(requested) - available.keys()
+        if missing_cells:
+            raise ValueError(f"Requested cells are outside the selected matrix: {sorted(missing_cells)}")
+        selected_cells = set(requested)
+        plan = [row for key, row in available.items() if key in selected_cells]
     return plan

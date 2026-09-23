@@ -112,6 +112,56 @@ def test_selection_precedes_pair_expansion():
         resolve_plan(parsed, [{"id": "slow", "tags": []}])
 
 
+def test_exact_cells_preserve_frozen_priority_and_do_not_expand_other_sides():
+    value = {**config(), "seed": 20260921}
+    tasks = [{"id": f"task-{i:02d}"} for i in range(24)]
+    full = resolve_plan(ExperimentConfig.model_validate(value), tasks)
+    missing = [2, 6, 7, 8, 9, 10, 12, 13, 18, 19, 33, 36, 37, 40, 41, 42, 43, 44, 45, 46, 47]
+    selected = [full[index] for index in missing]
+    cells = [{key: row[key] for key in ["task", "harness", "model", "repeat"]} for row in reversed(selected)]
+    parsed = ExperimentConfig.model_validate({**value, "selection": {"cells": cells}})
+    assert resolve_plan(parsed, tasks) == selected
+    assert resolve_plan(ExperimentConfig.model_validate(parsed.model_dump()), tasks) == selected
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        {"task": "missing", "harness": "a", "model": "m", "repeat": 0},
+        {"task": "task", "harness": "missing", "model": "m", "repeat": 0},
+        {"task": "task", "harness": "a", "model": "missing", "repeat": 0},
+        {"task": "task", "harness": "a", "model": "m", "repeat": 1},
+    ],
+)
+def test_exact_cells_reject_unavailable_matrix_members(cell):
+    parsed = ExperimentConfig.model_validate({**config(), "selection": {"cells": [cell]}})
+    with pytest.raises(ValueError, match="Requested cells are outside the selected matrix"):
+        resolve_plan(parsed, [{"id": "task"}])
+
+
+def test_exact_cells_reject_duplicates_and_conflicting_filters():
+    cell = {"task": "task", "harness": "a", "model": "m", "repeat": 0}
+    parsed = ExperimentConfig.model_validate({**config(), "selection": {"cells": [cell, cell]}})
+    with pytest.raises(ValueError, match="Duplicate selected cells"):
+        resolve_plan(parsed, [{"id": "task"}])
+    parsed = ExperimentConfig.model_validate({**config(), "selection": {"cells": [cell], "tasks": ["other"]}})
+    with pytest.raises(ValueError, match="Requested cells are outside the selected matrix"):
+        resolve_plan(parsed, [{"id": "task"}, {"id": "other"}])
+
+
+def test_exact_cells_keep_requested_repeat_without_adding_repeats():
+    cell = {"task": "task", "harness": "b", "model": "m", "repeat": 1}
+    parsed = ExperimentConfig.model_validate({**config(), "repeat": 2, "selection": {"cells": [cell]}})
+    plan = resolve_plan(parsed, [{"id": "task"}])
+    assert len(plan) == 1
+    assert {key: plan[0][key] for key in cell} == cell
+
+
+def test_empty_exact_selection_cannot_accidentally_dispatch_the_full_matrix():
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**config(), "selection": {"cells": []}})
+
+
 def test_missing_credentials_fail_before_preparation(tmp_path, monkeypatch):
     from synergy_bench.config import ExperimentConfig
     from synergy_bench.runner import validate_inputs
