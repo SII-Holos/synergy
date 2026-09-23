@@ -9,6 +9,129 @@ function request(roots: string[] | null, owner: string = randomUUID()) {
   return { id: randomUUID(), owner, kind: "task" as const, roots, ancestors: [] }
 }
 
+test("process finalization retains exclusion after kernel exit without blocking disjoint work", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const root = path.join(tmp.path, "work")
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const lease = await coordinator.acquire({
+    ...request([root]),
+    kind: "process",
+    processID: child.pid,
+    retainAfterExit: true,
+  })
+  let finalized = false
+  const entered = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  let releasing: Promise<void> | undefined
+  try {
+    await lease.release(async () => {
+      finalized = true
+    })
+    expect(finalized).toBe(false)
+    child.kill()
+    await child.exited
+    await expect(coordinator.acquire({ ...request([root]), timeoutMs: 50 })).rejects.toThrow("busy")
+    releasing = lease.release(async () => {
+      entered.resolve()
+      await finish.promise
+      finalized = true
+    })
+    await entered.promise
+    const disjoint = await coordinator.acquire({ ...request([path.join(tmp.path, "other")]), timeoutMs: 100 })
+    await disjoint.release()
+    await expect(coordinator.acquire({ ...request([root]), timeoutMs: 50 })).rejects.toThrow("busy")
+    expect(finalized).toBe(false)
+    finish.resolve()
+    await releasing
+    expect(finalized).toBe(true)
+    await (await coordinator.acquire({ ...request([root]), timeoutMs: 100 })).release()
+  } finally {
+    finish.resolve()
+    if (child.exitCode === null) {
+      child.kill()
+      await child.exited
+    }
+    await releasing
+    await lease.release()
+  }
+})
+
+test("a failed finalizer releases ownership once without replaying its side effects", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const contender = new WorkspaceCoordinator({ directory })
+  const lease = await coordinator.acquire({ ...request([tmp.path]), kind: "process", retainAfterExit: true })
+  let calls = 0
+  const entered = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  const finalizer = async () => {
+    calls++
+    entered.resolve()
+    await finish.promise
+    throw new Error("archive failed")
+  }
+  const first = lease.release(finalizer)
+  const second = lease.release(finalizer)
+  const outcomes = Promise.allSettled([first, second])
+  try {
+    await entered.promise
+    await expect(contender.acquire({ ...request([tmp.path]), timeoutMs: 50 })).rejects.toThrow("busy")
+    expect(calls).toBe(1)
+  } finally {
+    finish.resolve()
+  }
+  expect((await outcomes).map((result) => result.status)).toEqual(["rejected", "rejected"])
+  await (await contender.acquire({ ...request([tmp.path]), timeoutMs: 1000 })).release()
+  await lease.release(finalizer)
+  expect(calls).toBe(1)
+})
+
+test("a crashed finalization owner cannot leave a dead command's workspace occupied", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const root = path.join(tmp.path, "work")
+  const ready = path.join(tmp.path, "ready")
+  const fixture = path.join(tmp.path, "finalizer.ts")
+  await Bun.write(
+    fixture,
+    `
+    import { WorkspaceCoordinator } from ${JSON.stringify(new URL("../../src/workspace/coordinator.ts", import.meta.url).href)};
+    const command = Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)'], { stdout: 'ignore', stderr: 'ignore' });
+    const coordinator = new WorkspaceCoordinator({ directory: ${JSON.stringify(directory)} });
+    await coordinator.acquire({ ...${JSON.stringify(request([root]))}, kind: 'process', processID: command.pid, retainAfterExit: true });
+    command.kill(); await command.exited;
+    await Bun.write(${JSON.stringify(ready)}, 'ready');
+    setInterval(() => {}, 1000);
+  `,
+  )
+  const owner = Bun.spawn([process.execPath, "run", fixture], { stdout: "pipe", stderr: "pipe" })
+  const output = new Response(owner.stdout).text()
+  const errors = new Response(owner.stderr).text()
+  const coordinator = new WorkspaceCoordinator({ directory })
+  try {
+    while (!(await Bun.file(ready).exists())) {
+      if (owner.exitCode !== null) throw new Error(await errors)
+      await Bun.sleep(10)
+    }
+    await expect(coordinator.acquire({ ...request([root]), timeoutMs: 50 })).rejects.toThrow("busy")
+    owner.kill("SIGKILL")
+    await owner.exited
+    await (await coordinator.acquire({ ...request([root]), timeoutMs: 2000 })).release()
+    expect(await coordinator.inspect()).toHaveLength(0)
+  } finally {
+    if (owner.exitCode === null) {
+      owner.kill("SIGKILL")
+      await owner.exited
+    }
+    await Promise.all([output, errors])
+  }
+}, 20000)
+
 test("overlapping writers serialize across coordinator instances while disjoint roots proceed", async () => {
   await using tmp = await tmpdir()
   const directory = path.join(tmp.path, "locks")

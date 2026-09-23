@@ -18,12 +18,13 @@ export namespace WorkspaceAccess {
     useRoots?: string[]
     parentClaim?: string
     processID?: number
+    retainAfterExit?: boolean
     signal?: AbortSignal
     timeoutMs?: number
   }
   export interface Lease {
     id: string
-    release(): Promise<void>
+    release(beforeRelease?: () => Promise<void>): Promise<void>
     bindProcess(processID: number, options?: { descendants?: boolean }): Promise<void>
   }
   export interface Host {

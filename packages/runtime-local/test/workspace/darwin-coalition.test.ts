@@ -23,7 +23,7 @@ test.skipIf(process.platform !== "darwin")(
       orphan = path.join(tmp.path, "orphan"),
       gate = path.join(tmp.path, "gate"),
       finish = path.join(tmp.path, "finished")
-    const code = `import os,time,subprocess\nopen(${JSON.stringify(main)},'w').write(str(os.getpid()))\nwhile not os.path.exists(${JSON.stringify(gate)}): time.sleep(0.01)\np=os.fork()\nif p: os._exit(0)\nos.setsid()\np=os.fork()\nif p: os._exit(0)\nopen(${JSON.stringify(orphan)},'w').write(str(os.getpid()))\nr=subprocess.run(['/usr/bin/sandbox-exec','-p','(version 1)(allow default)','/usr/bin/true'])\ntime.sleep(0.8)\nopen(${JSON.stringify(finish)},'w').write(str(r.returncode))`
+    const code = `import os,time,subprocess\ndef publish(filename,value):\n with open(filename+'.tmp','w') as f: f.write(value)\n os.replace(filename+'.tmp',filename)\npublish(${JSON.stringify(main)},str(os.getpid()))\nwhile not os.path.exists(${JSON.stringify(gate)}): time.sleep(0.01)\np=os.fork()\nif p: os._exit(0)\nos.setsid()\np=os.fork()\nif p: os._exit(0)\npublish(${JSON.stringify(orphan)},str(os.getpid()))\nr=subprocess.run(['/usr/bin/sandbox-exec','-p','(version 1)(allow default)','/usr/bin/true'])\ntime.sleep(0.8)\npublish(${JSON.stringify(finish)},str(r.returncode))`
     const xml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     const domain = `gui/${process.getuid!()}`
     const plist = path.join(tmp.path, "job.plist")

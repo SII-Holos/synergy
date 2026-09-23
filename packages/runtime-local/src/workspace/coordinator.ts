@@ -29,6 +29,8 @@ const Claim = z.object({
   startIdentity: z.string().optional(),
   processBound: z.boolean().default(false),
   processTree: OwnedTree.Reference.optional(),
+  finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
+  finalizing: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
 const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
@@ -44,6 +46,7 @@ export interface WorkspaceClaimInput {
   useRoots?: string[]
   parentClaim?: string
   processID?: number
+  retainAfterExit?: boolean
   signal?: AbortSignal
   timeoutMs?: number
 }
@@ -159,7 +162,11 @@ export class WorkspaceCoordinator {
           if (error.code !== "ENOENT") throw error
         })
         const ledger = raw === undefined ? { version: 1 as const, claims: [] } : Ledger.parse(JSON.parse(raw))
-        const alive = await Promise.all(ledger.claims.map((claim) => this.alive(claim)))
+        const alive = await Promise.all(
+          ledger.claims.map(
+            async (claim) => (await this.alive(claim)) || (!!claim.finalizer && (await this.alive(claim.finalizer))),
+          ),
+        )
         const retired = ledger.claims.filter((_claim, index) => !alive[index])
         ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
         const result = await fn(ledger)
@@ -184,6 +191,10 @@ export class WorkspaceCoordinator {
       throw new Error("Invalid Workspace process ID")
     if (input.timeoutMs !== undefined && (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 0))
       throw new Error("Invalid Workspace admission timeout")
+    if (input.retainAfterExit && input.kind !== "process")
+      throw new Error("Only process claims can retain finalization ownership")
+    const finalizerIdentity = input.retainAfterExit ? await processStartIdentity(process.pid) : undefined
+    if (input.retainAfterExit && !finalizerIdentity) throw new Error("Cannot verify the Workspace finalizer identity")
     const deadline = Date.now() + (input.timeoutMs ?? 120_000)
     const identities = new Map<string, Promise<string | undefined>>()
     const identify = (filename: string) => {
@@ -236,6 +247,7 @@ export class WorkspaceCoordinator {
       pid,
       startIdentity: await processStartIdentity(pid),
       processBound: input.processID !== undefined,
+      finalizer: finalizerIdentity ? { pid: process.pid, startIdentity: finalizerIdentity } : undefined,
       state: "waiting",
     }
     let registered = false
@@ -298,9 +310,13 @@ export class WorkspaceCoordinator {
         throw new WorkspaceBusyError("Workspace is busy; coordination admission timed out")
       throw error
     }
+    let releasing: Promise<void> | undefined
     return {
       id: request.id,
-      release: () => this.release(request.id, request.token),
+      release: (beforeRelease?: () => Promise<void>) =>
+        (releasing ??= this.release(request.id, request.token, beforeRelease).finally(() => {
+          releasing = undefined
+        })),
       bindProcess: (processID: number, options?: { descendants?: boolean }) =>
         this.bindProcess(request.id, request.token, processID, options),
     }
@@ -321,13 +337,26 @@ export class WorkspaceCoordinator {
     })
   }
 
-  private async release(id: string, token: string) {
-    await this.update(async (ledger) => {
+  private async release(id: string, token: string, beforeRelease?: () => Promise<void>) {
+    const finalize = await this.update(async (ledger) => {
       const claim = ledger.claims.find((claim) => claim.id === id && claim.token === token)
-      if (!claim) return
-      if (claim.kind === "process" && claim.processBound && (await this.alive(claim, true))) return
+      if (!claim || claim.finalizing) return false
+      if (claim.kind === "process" && claim.processBound && (await this.alive(claim, true))) return false
+      if (beforeRelease) {
+        claim.finalizing = true
+        return true
+      }
       ledger.claims = ledger.claims.filter((claim) => claim.id !== id || claim.token !== token)
+      return false
     })
+    if (!finalize) return
+    try {
+      await beforeRelease!()
+    } finally {
+      await this.update((ledger) => {
+        ledger.claims = ledger.claims.filter((claim) => claim.id !== id || claim.token !== token)
+      })
+    }
   }
 
   inspect() {
