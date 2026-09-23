@@ -330,50 +330,6 @@ jobs:
           git config --global user.name "CI Runner"
       - name: Run shard package tests
         run: |
-          if [ "$TEST_PACKAGES" = "@ericsanchezok/synergy-product-runtime,@ericsanchezok/synergy-runtime-local,@ericsanchezok/synergy-server" ]; then
-            mkdir -p .artifacts
-            python3 - <<'PY' > .artifacts/workspace-native-probe.ndjson &
-          import hashlib, json, os, pathlib, time
-          ledger = pathlib.Path('/tmp/synergy-file-locks-' + str(os.getuid()) + '/workspace-claims-v1.json')
-          def identify(value):
-              return hashlib.sha256(str(value).encode()).hexdigest()[:12]
-          def process(pid):
-              try:
-                  stat = pathlib.Path('/proc/' + str(pid) + '/stat').read_text()
-                  fields = stat[stat.rfind(')') + 2:].split()
-                  children = []
-                  for task in pathlib.Path('/proc/' + str(pid) + '/task').iterdir():
-                      try: children.extend(int(item) for item in (task / 'children').read_text().split())
-                      except OSError: pass
-                  return {'pid': pid, 'state': fields[0], 'parent': fields[1], 'name': stat[stat.find('(') + 1:stat.rfind(')')], 'children': [process(child) for child in set(children)]}
-              except OSError: return {'pid': pid, 'gone': True}
-          previous = None
-          while True:
-              try:
-                  value = json.loads(ledger.read_text())
-                  claims = []
-                  for claim in value['claims']:
-                      item = {key: claim.get(key) for key in ['id', 'kind', 'state', 'parentClaim', 'pid', 'processBound', 'finalizing', 'transient']}
-                      item['owner'] = identify(claim['owner'])
-                      item['roots'] = None if claim['roots'] is None else [identify(root['path']) for root in claim['roots']]
-                      item['process'] = process(claim['pid'])
-                      if claim.get('processTree', {}).get('kind') == 'linux-subreaper':
-                          try:
-                              receipt = json.loads(pathlib.Path(claim['processTree']['receipt']).read_text())
-                              item['receipt'] = {'complete': receipt['complete'], 'owner': receipt['owner']['pid']}
-                          except Exception as error: item['receipt'] = type(error).__name__
-                      claims.append(item)
-                  current = json.dumps(claims, sort_keys=True)
-                  if current != previous:
-                      print(json.dumps({'time': time.time(), 'claims': claims}), flush=True)
-                      previous = current
-              except FileNotFoundError: pass
-              except Exception as error: print(json.dumps({'time': time.time(), 'error': type(error).__name__}), flush=True)
-              time.sleep(0.5)
-          PY
-            probe_pid=$!
-            trap 'kill "$probe_pid" 2>/dev/null || true' EXIT
-          fi
           filters=()
           IFS=',' read -ra shard_packages <<< "$TEST_PACKAGES"
           for package in "${shard_packages[@]}"; do
@@ -384,13 +340,6 @@ jobs:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
           SYNERGY_TEST_LINUX_SANDBOX_E2E: ${{ matrix.shard == 'runtime' && '1' || '' }}
           TEST_PACKAGES: ${{ matrix.packages }}
-      - name: Preserve temporary native Workspace probe
-        if: always() && matrix.shard == 'runtime'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: workspace-native-probe
-          path: .artifacts/workspace-native-probe.ndjson
-          retention-days: 1
 
   test-aux:
     name: Test Aux Contracts
