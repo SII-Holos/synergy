@@ -88,6 +88,8 @@ export type CodexRemoteCompactionMetadata = {
   providerID: string
   /** Conversation-model catalog key that produced the artifact. */
   modelID: string
+  /** Effective provider profile that produced the opaque artifact. */
+  profileID?: string
   /** Resolved wire model id actually sent to the Responses endpoint. */
   apiModelID?: string
   summaryText: string
@@ -479,6 +481,7 @@ export function extractRemoteCompactionMetadata(value: unknown): CodexRemoteComp
     modelKey: typeof remote.modelKey === "string" ? remote.modelKey : "",
     providerID: typeof remote.providerID === "string" ? remote.providerID : "",
     modelID: typeof remote.modelID === "string" ? remote.modelID : "",
+    ...(typeof remote.profileID === "string" && remote.profileID !== "" ? { profileID: remote.profileID } : {}),
     ...(typeof remote.apiModelID === "string" && remote.apiModelID !== "" ? { apiModelID: remote.apiModelID } : {}),
     summaryText: typeof remote.summaryText === "string" ? remote.summaryText : "",
     replacementHistory,
@@ -667,8 +670,9 @@ export function modelMessagesToItems(messages: CodexModelMessageLike[]): CodexRe
  *   system prompt) can be identified as the prefix;
  * - the stored summary text appears (exactly, or whitespace-tolerantly) as
  *   the joined output of one consecutive run of assistant message items
- *   at/after the prefix, and every item between the prefix and that run is a
- *   user message (the compaction boundary root);
+ *   at/after the prefix, preceded only by user messages and a contiguous run
+ *   of complete encrypted reasoning items (the compaction boundary root and
+ *   the same-model summary reasoning);
  * - the replacement history is a non-empty array ending in a `compaction`
  *   item (never truncated/rewritten).
  */
@@ -697,10 +701,23 @@ export function applyReplaySplice(
   const window = findSummaryWindow(items, prefixEnd, plan.summaryText)
   if (!window) return undefined
 
-  // Everything between the system prefix and the summary must be user messages
-  // (the compaction boundary root). Anything else means the projection shape
-  // is not what this splice understands — fall back to local replay.
-  for (let index = prefixEnd; index < window.start; index++) {
+  // The local summary can carry same-model encrypted reasoning immediately
+  // before its text. Replace that entire boundary, but reject any other item
+  // in the prefix-to-summary region rather than dropping unrelated history.
+  let boundaryStart = window.start
+  while (boundaryStart > prefixEnd) {
+    const item = items[boundaryStart - 1]
+    if (!("type" in item) || item.type !== "reasoning") break
+    if (
+      typeof item.id !== "string" ||
+      !item.id ||
+      typeof item.encrypted_content !== "string" ||
+      !item.encrypted_content
+    )
+      return undefined
+    boundaryStart--
+  }
+  for (let index = prefixEnd; index < boundaryStart; index++) {
     const item = items[index]
     if (!isCodexMessageItem(item) || item.role !== "user") return undefined
   }

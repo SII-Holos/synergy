@@ -674,6 +674,8 @@ export namespace MessageV2 {
     parentID: z.string(),
     modelID: z.string(),
     providerID: z.string(),
+    profileID: z.string().optional(),
+    apiModelID: z.string().optional(),
     /**
      * @deprecated
      */
@@ -1136,7 +1138,10 @@ export namespace MessageV2 {
 
   export function projectModelMessages(
     input: WithParts[],
-    opts?: { maxHistoryImages?: number; model?: { providerID: string; modelID: string } },
+    opts?: {
+      maxHistoryImages?: number
+      model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
+    },
   ): { messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats } {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
@@ -1215,9 +1220,11 @@ export namespace MessageV2 {
         }
         const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
         const replayCodexReasoning =
-          opts?.model?.providerID === "openai-codex" &&
+          opts?.model?.profileID === "openai-codex" &&
           msg.info.providerID === opts.model.providerID &&
-          msg.info.modelID === opts.model.modelID
+          msg.info.profileID === opts.model.profileID &&
+          !!opts.model.apiModelID &&
+          msg.info.apiModelID === opts.model.apiModelID
         const encryptedReasoningIds = new Set(
           replayCodexReasoning
             ? msg.parts.flatMap((part) => {
@@ -1325,7 +1332,10 @@ export namespace MessageV2 {
 
   export function toModelMessage(
     input: WithParts[],
-    opts?: { maxHistoryImages?: number; model?: { providerID: string; modelID: string } },
+    opts?: {
+      maxHistoryImages?: number
+      model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
+    },
   ): ModelMessage[] {
     return projectModelMessages(input, opts).messages
   }

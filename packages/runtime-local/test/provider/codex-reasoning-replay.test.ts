@@ -29,6 +29,8 @@ const history = [
       parentID: "user-1",
       providerID: "openai-codex",
       modelID: "gpt-5",
+      profileID: "openai-codex",
+      apiModelID: "gpt-5",
       mode: "",
       agent: "agent",
       path: { cwd: "/", root: "/" },
@@ -91,7 +93,7 @@ test("same-model Codex replay reaches the SDK wire as encrypted reasoning before
       }) as typeof fetch,
     })
     const prompt = MessageV2.toModelMessage(history, {
-      model: { providerID: "openai-codex", modelID: "gpt-5" },
+      model: { providerID: "openai-codex", modelID: "gpt-5", profileID: "openai-codex", apiModelID: "gpt-5" },
     })
     try {
       await openai.responses("gpt-5").doGenerate({
