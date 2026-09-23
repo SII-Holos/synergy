@@ -3,6 +3,7 @@ import { deserialize, serialize } from "v8"
 import { APICallError, type FinishReason, type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Runtime as ScopeRuntime } from "../../scope/types"
 import { Workspace } from "../workspace-schema"
+import { ModelSelection } from "../model-selection-schema"
 import { RolloutTransportSchema } from "../rollout/transport-schema"
 import { ObservabilitySchema } from "../../observability/schema"
 
@@ -10,7 +11,7 @@ export namespace AgentTurnProtocol {
   // An older host fails `parseWorkerToHost` inside the IPC handler, which kills
   // the worker, so an incompatible pair must instead be rejected by the `ready`
   // handshake's version check.
-  export const VERSION = 11
+  export const VERSION = 12
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -121,6 +122,7 @@ export namespace AgentTurnProtocol {
       user: z.object({ id: z.string() }).strict(),
       sessionID: z.string(),
       model: z.object({ id: z.string(), providerID: z.string() }).passthrough(),
+      modelSelection: ModelSelection.Request.optional(),
       agent: z.object({ name: z.string() }).strict(),
       system: z.array(z.string()),
       systemCacheBreakpoint: z.number().int().nonnegative().optional(),
