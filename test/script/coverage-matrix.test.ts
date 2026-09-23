@@ -56,6 +56,12 @@ describe("CI coverage matrix", () => {
     expect(workflow.jobs["coverage-shards"]?.strategy?.["fail-fast"]).toBe(false)
   })
 
+  test("Harness coverage has a dedicated runner budget", () => {
+    const entries = workflow.jobs["coverage-shards"]?.strategy?.matrix?.include ?? []
+    const harness = entries.find((entry) => entry.packages?.split(",").includes("packages/harness"))
+    expect(harness?.packages?.split(",")).toEqual(["packages/harness"])
+  })
+
   test("every coverage shard uploads its lcov reports", () => {
     const shard = workflow.jobs["coverage-shards"]!
     const upload = shard.steps?.find((step) => step.uses?.startsWith("actions/upload-artifact"))

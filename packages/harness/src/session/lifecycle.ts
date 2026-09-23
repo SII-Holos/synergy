@@ -47,12 +47,16 @@ export namespace SessionLifecycle {
       since: Date.now(),
     }
     let changed = false
-    await Session.update(input.sessionID, (draft) => {
-      changed = false
-      if (!latchable(draft) || draft.paused) return
-      draft.paused = paused
-      changed = true
-    })
+    await Session.update(
+      input.sessionID,
+      (draft) => {
+        changed = false
+        if (!latchable(draft) || draft.paused) return
+        draft.paused = paused
+        changed = true
+      },
+      { preserveActivityAt: true },
+    )
     if (!changed) return false
     log.info("session paused", {
       sessionID: input.sessionID,
