@@ -6,11 +6,13 @@ import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { OwnedTree } from "./owned-tree"
 import { LinuxTree } from "./linux-tree"
+import { WindowsJob } from "./windows-job"
 import { OwnedProtocol } from "./owned-protocol"
 import { NativePty } from "./native-pty"
 import type { Writable } from "node:stream"
 
 export async function runOwnedProcessWorker(filename: string) {
+  if (process.platform === "win32") WindowsJob.detachConsole()
   const raw = await fs.readFile(filename)
   if (raw.length > 16 * 1024 * 1024) throw new Error("Native process configuration exceeds its bound")
   const config = OwnedProtocol.Configuration.parse(JSON.parse(raw.toString()))

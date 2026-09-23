@@ -27,6 +27,7 @@ export namespace WindowsJob {
       TerminateProcess: { args: ["ptr", "u32"], returns: "bool" },
       CloseHandle: { args: ["ptr"], returns: "bool" },
       GetLastError: { args: [], returns: "u32" },
+      FreeConsole: { args: [], returns: "bool" },
     }).symbols
   }
   const runtime = () => (native ??= initialize())
@@ -129,6 +130,12 @@ export namespace WindowsJob {
       close(job)
     }
   }
+  // Provenance: https://learn.microsoft.com/en-us/windows/console/freeconsole
+  // This IPC-only worker must not retain its console host while waiting for its Job to drain.
+  export function detachConsole() {
+    if (!runtime().FreeConsole()) throw error("FreeConsole")
+  }
+
   export async function start(command: string[], directory: string) {
     const child = spawn(command[0]!, command.slice(1), { cwd: directory, stdio: "ignore", windowsHide: true })
     let job: Pointer | undefined
