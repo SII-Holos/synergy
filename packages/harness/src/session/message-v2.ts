@@ -112,6 +112,17 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    operation: z
+      .discriminatedUnion("status", [
+        z.object({ status: z.literal("pending"), toolCallID: z.string() }),
+        z.object({ status: z.literal("incomplete"), toolCallID: z.string() }),
+        z.object({
+          status: z.literal("complete"),
+          toolCallID: z.string(),
+          afterHash: z.string().regex(/^[0-9a-f]{40}$/),
+        }),
+      ])
+      .optional(),
     workspace: SnapshotSchema.Workspace.optional(),
     files: z.string().array(),
   }).meta({
@@ -490,7 +501,7 @@ export namespace MessageV2 {
             z.object({ status: z.literal("ready") }),
             z.object({
               status: z.literal("error"),
-              code: z.enum(["timeout", "git_failure", "unknown"]),
+              code: z.enum(["timeout", "git_failure", "unknown", "incomplete"]),
             }),
           ])
           .optional(),

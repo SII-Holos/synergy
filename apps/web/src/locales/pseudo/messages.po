@@ -12146,6 +12146,10 @@ msgid "session-review.historical-binding"
 msgstr ""
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.operation"
+msgstr ""
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr ""
 
@@ -20991,6 +20995,10 @@ msgstr ""
 
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.calculation-failed"
+msgstr ""
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.recording-incomplete"
 msgstr ""
 
 #. ── Turn change summary chrome ──────────────────────────────────────

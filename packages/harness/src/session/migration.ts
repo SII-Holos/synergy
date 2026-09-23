@@ -2473,6 +2473,22 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260923-session-operation-snapshot-cursor",
+    scope: "derived",
+    description: "Upgrade snapshot summary cursors to preserve individual write operations",
+    upSession: migrateOperationSnapshotCursor,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateOperationSnapshotCursor({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {
@@ -2544,4 +2560,15 @@ export async function migrateSessionWorkspaceReference(owner: { scopeID: string;
   )
   const { workspace: _workspace, ...stored } = info
   await Storage.write(key, { ...stored, workspaceID: workspace?.id ?? null })
+}
+
+async function migrateOperationSnapshotCursor(owner: { scopeID: string; sessionID: string }) {
+  const key = StoragePath.sessionSummaryCursor(
+    Identifier.asScopeID(owner.scopeID),
+    Identifier.asSessionID(owner.sessionID),
+  )
+  const value = await Storage.read<Record<string, unknown>>(key).catch(missingHistoricalRecord)
+  if (!value || value.version === 3) return
+  if (value.version === 2 && Array.isArray(value.ranges)) await Storage.write(key, { ...value, version: 3 })
+  else await Storage.remove(key)
 }

@@ -284,6 +284,7 @@ export const SPECIAL_USER_LABEL_DESC: Record<string, MessageDescriptor> = {
 
 // ── Session review chrome ───────────────────────────────────────────
 export const SESSION_REVIEW_DESC = {
+  operation: d("session-review.operation", "Change {number}"),
   viewFile: d("session-review.view-file", "Open file"),
   historicalBinding: d(
     "session-review.historical-binding",
@@ -342,6 +343,7 @@ export const TURN_CHANGE_DESC = {
   binary: d("turn-change.binary", "Binary"),
   calculating: d("turn-change.calculating", "Calculating file changes…"),
   calculationFailed: d("turn-change.calculation-failed", "Couldn’t calculate file changes"),
+  recordingIncomplete: d("turn-change.recording-incomplete", "File change recording is incomplete"),
 } as const
 
 // ── Session turn chrome ─────────────────────────────────────────────

@@ -294,6 +294,23 @@ async function runSettlementScenario(scenario: SettlementScenario) {
   }
 }
 
+test("read-only model steps carry no filesystem attribution", () =>
+  runtime.run(async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_read_only_attribution",
+      async *stream() {
+        yield { type: "start-step" }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }
+        yield { type: "finish" }
+      },
+    })
+    expect(parts.filter((part) => part.type === "step-start" || part.type === "step-finish").length).toBe(2)
+    for (const part of parts) {
+      expect(part.type).not.toBe("patch")
+      if (part.type === "step-start" || part.type === "step-finish") expect(part.snapshot).toBeUndefined()
+    }
+  }))
+
 describe("SessionProcessor stream lifecycle", () => {
   for (const testCase of ["completion", "failure", "abort"] as const) {
     test(`cancels the residual AI SDK stream branch after ${testCase}`, () =>

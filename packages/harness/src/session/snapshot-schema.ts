@@ -14,6 +14,7 @@ export namespace SnapshotSchema {
   export const FileDiff = z
     .object({
       file: z.string(),
+      operationID: z.string().optional(),
       workspace: Workspace.optional(),
       legacyRoot: z.string().optional(),
       additions: z.number(),
@@ -95,17 +96,21 @@ export namespace SnapshotSchema {
     const before = typeof record.before === "string" ? record.before : undefined
     const after = typeof record.after === "string" ? record.after : undefined
     if (before !== undefined || after !== undefined) {
-      return fromContents({
-        file,
-        ...attribution,
-        before: before ?? "",
-        after: after ?? "",
-        additions,
-        deletions,
-      })
+      return {
+        ...fromContents({
+          file,
+          ...attribution,
+          before: before ?? "",
+          after: after ?? "",
+          additions,
+          deletions,
+        }),
+        ...(typeof record.operationID === "string" ? { operationID: record.operationID } : {}),
+      }
     }
     return {
       file,
+      ...(typeof record.operationID === "string" ? { operationID: record.operationID } : {}),
       ...attribution,
       additions,
       deletions,

@@ -12146,6 +12146,10 @@ msgid "session-review.historical-binding"
 msgstr "此变更属于其他工作区绑定，或原绑定已不可用。"
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.operation"
+msgstr "第 {number} 次改动"
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr "拆分"
 
@@ -20992,6 +20996,10 @@ msgstr "正在计算文件更改…"
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.calculation-failed"
 msgstr "无法计算文件更改"
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.recording-incomplete"
+msgstr "文件改动记录尚不完整"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"

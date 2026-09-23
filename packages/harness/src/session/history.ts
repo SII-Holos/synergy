@@ -744,6 +744,10 @@ export namespace SessionHistory {
       for (const part of msg.parts) {
         if (part.type !== "patch") continue
         if (input.partID && part.id !== input.partID) continue
+        if (part.operation && part.operation.status !== "complete")
+          throw new SnapshotRestore.Invalid({
+            message: "File change evidence is incomplete; this operation cannot be restored",
+          })
         const root = part.workspace?.root ?? (msg.info.role === "assistant" ? msg.info.path?.cwd : undefined)
         const selectedFiles = files
           ? part.files.filter((file) => files.has(file) || (root && files.has(path.relative(root, file))))

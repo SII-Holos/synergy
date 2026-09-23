@@ -41,6 +41,7 @@ export namespace WorkspaceAccess {
     lease?: Lease
     use?: Lease
     uses: Map<string, Lease>
+    bindings: Map<string, Workspace>
     useRoots: Set<string>
     retired: Set<Lease>
     activity: number
@@ -48,6 +49,29 @@ export namespace WorkspaceAccess {
     serial: Promise<void>
     closed: boolean
     signal: AbortSignal
+  }
+  type WriteFinalizer = { finish(): Promise<void>; afterRelease?(): Promise<void> }
+  type WriteObserver = (input: {
+    roots: string[] | null
+    workspaces: Workspace[]
+    signal: AbortSignal
+  }) => Promise<WriteFinalizer | undefined>
+  const observers = RuntimeContext.createAsyncContext<
+    { runtime: RuntimeContext.Instance; observe: WriteObserver } | undefined
+  >()
+  export function observeWrites<T>(observe: WriteObserver | undefined, fn: () => Promise<T>): Promise<T> {
+    return observers.run(observe ? { runtime: RuntimeContext.current(), observe } : undefined, fn)
+  }
+  function observer() {
+    const current = observers.getStore()
+    return current?.runtime === RuntimeContext.current() ? current.observe : undefined
+  }
+  function observation(task: Task, roots: string[] | null) {
+    return {
+      roots,
+      workspaces: structuredClone([...(task.workspace ? [task.workspace] : []), ...task.bindings.values()]),
+      signal: task.signal,
+    }
   }
   const context = RuntimeContext.createAsyncContext<Task>()
   const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
@@ -96,6 +120,7 @@ export namespace WorkspaceAccess {
       workspace: input.workspace,
       closed: false,
       uses: new Map(),
+      bindings: new Map(),
       useRoots: new Set(input.workspace ? [input.workspace.path] : []),
       retired: new Set(),
       activity: 0,
@@ -229,6 +254,7 @@ export namespace WorkspaceAccess {
           task.lease = undefined
           task.roots = undefined
           task.uses.clear()
+          task.bindings.clear()
           task.useRoots = new Set(workspace ? [workspace.path] : [])
           ScopeContext.refreshWorkspace(workspace)
           const released = await Promise.allSettled(
@@ -262,6 +288,7 @@ export namespace WorkspaceAccess {
     if (!RuntimeContext.tryCurrent()) return fn()
     return inTask(async (task) => {
       let operation: Lease | undefined
+      let finalize: WriteFinalizer | undefined
       try {
         await ExecutionCapacity.wait(async () => {
           await reserve(task, roots, signal)
@@ -277,9 +304,17 @@ export namespace WorkspaceAccess {
         })
         signal?.throwIfAborted()
         await validate(task)
+        finalize = await observer()?.(observation(task, roots))
+        signal?.throwIfAborted()
+        await validate(task)
         return await fn()
       } finally {
-        await operation?.release()
+        try {
+          await finalize?.finish()
+        } finally {
+          await operation?.release()
+          await finalize?.afterRelease?.()
+        }
       }
     }, signal)
   }
@@ -287,6 +322,7 @@ export namespace WorkspaceAccess {
   export async function process(roots: string[] | null, signal?: AbortSignal): Promise<Lease> {
     return inTask(async (task) => {
       let lease: Lease | undefined
+      const observe = observer()
       try {
         await ExecutionCapacity.wait(async () => {
           const writes = roots === null || roots.length > 0
@@ -296,6 +332,7 @@ export namespace WorkspaceAccess {
             owner: task.owner,
             ancestors: task.ancestors,
             kind: "process",
+            retainAfterExit: !!observe,
             parentClaim: writes ? task.id : undefined,
             roots,
             useRoots: [...task.useRoots],
@@ -304,7 +341,22 @@ export namespace WorkspaceAccess {
         })
         signal?.throwIfAborted()
         await validate(task)
-        return lease!
+        const finalize = roots?.length === 0 ? undefined : await observe?.(observation(task, roots))
+        const owned = lease!
+        if (!finalize) return owned
+        let finalized = false
+        let afterRelease: Promise<void> | undefined
+        return {
+          ...owned,
+          async release(beforeRelease?: () => Promise<void>) {
+            await owned.release(async () => {
+              await finalize.finish()
+              await beforeRelease?.()
+              finalized = true
+            })
+            if (finalized) await (afterRelease ??= finalize.afterRelease?.() ?? Promise.resolve())
+          },
+        }
       } catch (error) {
         await lease?.release()
         throw error
@@ -358,6 +410,7 @@ export namespace WorkspaceAccess {
                 }),
               )
             if (workspace.id) await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
+            task.bindings.set(key, structuredClone(workspace))
           }
         }),
       )

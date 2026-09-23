@@ -12146,6 +12146,10 @@ msgid "session-review.historical-binding"
 msgstr "This change belongs to a different or unavailable Workspace binding."
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.operation"
+msgstr "Change {number}"
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr "Split"
 
@@ -20992,6 +20996,10 @@ msgstr "Calculating file changes…"
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.calculation-failed"
 msgstr "Couldn’t calculate file changes"
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.recording-incomplete"
+msgstr "File change recording is incomplete"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"

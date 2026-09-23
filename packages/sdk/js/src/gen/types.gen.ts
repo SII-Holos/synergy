@@ -5078,6 +5078,7 @@ export type SnapshotWorkspace = {
 
 export type FileDiff = {
   file: string
+  operationID?: string
   workspace?: SnapshotWorkspace
   legacyRoot?: string
   additions: number
@@ -7262,7 +7263,7 @@ export type UserMessage = {
         }
       | {
           status: "error"
-          code: "timeout" | "git_failure" | "unknown"
+          code: "timeout" | "git_failure" | "unknown" | "incomplete"
         }
   }
   agent: string
@@ -7668,6 +7669,20 @@ export type PatchPart = {
   messageID: string
   type: "patch"
   hash: string
+  operation?:
+    | {
+        status: "pending"
+        toolCallID: string
+      }
+    | {
+        status: "incomplete"
+        toolCallID: string
+      }
+    | {
+        status: "complete"
+        toolCallID: string
+        afterHash: string
+      }
   workspace?: SnapshotWorkspace
   files: Array<string>
 }

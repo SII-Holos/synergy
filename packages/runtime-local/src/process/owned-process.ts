@@ -228,7 +228,6 @@ export namespace OwnedProcess {
         if (!reported && !stopping)
           failure ??= new Error("Native process supervisor exited without a completion record")
         announceError()
-        announceExit()
         await Promise.all(drains)
         await finish()
       } catch (error) {

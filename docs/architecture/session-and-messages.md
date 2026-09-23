@@ -302,7 +302,7 @@ The Side Workspace Context panel reads this field from normal message synchroniz
 
 ## Turn Diffs
 
-Each user message may carry computed file-change diffs from the turn's snapshot/patch parts. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
+Each user message may carry computed file-change diffs from the turn's patch parts. New patches capture an immutable before/after tree for each actual write operation, after physical admission and before its release. Model-step start and finish parts carry accounting without filesystem attribution. Native processes retain exclusion until both their tree and evidence finalization finish, including after the tool returns or its Task ends. Explicit shared Workspaces keep their original binding in each record. Legacy step snapshots remain readable as historical evidence. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
 
 ### Diff state machine
 
@@ -312,14 +312,16 @@ Each user message may carry computed file-change diffs from the turn's snapshot/
 | --------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `pending` | Diff is being computed; includes the server-owned expiry marker `deadlineAt` (epoch ms) for timeout and restart recovery. |
 | `ready`   | Diffs computed successfully.                                                                                              |
-| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, or `unknown`).                            |
+| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, `incomplete`, or `unknown`).              |
 
 The non-blocking summary `LoopJob` derives turn diffs in this order:
 
 1. fresh-merge `diffState: { status: "pending", deadlineAt }` on the user message before `computeDiff()` so the frontend sees the pending state immediately;
-2. call `computeDiff()` using the snapshot range from every assistant revision belonging to the root turn;
+2. call `computeDiff()` using each recorded write operation from every assistant revision belonging to the root turn; exact operation pairs never span intervening writes by another owner;
 3. on success, write `{ diffs, diffState: { status: "ready" } }` atomically;
 4. on failure, write `{ diffState: { status: "error", code } }`; on a per-run timeout, apply `error/timeout` only if the diff is still `pending`, preserving an already-`ready` settlement while later enrichment or session aggregation finishes.
+
+An interrupted or failed operation capture remains explicitly incomplete, retains available diffs and cannot authorize file restoration. Background completion queues a diff-only refresh without title/body model calls. It uses the same per-session ordering, yields live execution capacity while waiting, and refreshes mutable pending parts before applying a captured root-turn view. Native process completion is published after its evidence is finalized, so completion consumers do not observe an unfinished archive.
 
 Title generation may continue after either outcome. Body generation runs only when diff settlement succeeded with a non-empty diff set. Diff errors persist safe error codes only and do not block the session or later queued turns. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary after its deadline; the frontend renders the server settlement state and never compares `deadlineAt` with the client clock.
 
@@ -339,7 +341,7 @@ diffState?: {
   status: "ready"
 } | {
   status: "error"
-  code: "timeout" | "git_failure" | "unknown"
+  code: "timeout" | "git_failure" | "incomplete" | "unknown"
 }
 ```
 
@@ -498,3 +500,5 @@ The continuation repair migration persists a rollout recovery intent before reop
 Recording-error cancellation carries the source root ID. The active loop lease binds its current root before model or tool work; an error from an older root cannot cancel a replacement root, including another root processed under the same lease. An unbound starting lease is not ownership evidence for an old task. Explicit user cancellation retains its session-wide semantics.
 
 Workspace-free sessions can use enabled model, network and managed-data capabilities. Local execution requires a valid persisted workspace; submission rejects an unavailable or archived binding before persisting input. Retained tool handles enforce that requirement again regardless of control profile. Missing projects retain readable history and never acquire the host working directory implicitly. See [Runtime and Scope](runtime-and-scope.md#session-workspace).
+
+The version-3 summary cursor preserves individual operation identities and endpoints. Its owning migration upgrades version-2 ranges without changing canonical history, metadata or archived state; obsolete derived cursors rebuild from canonical parts. Snapshot retention and transfer include both endpoints. Review keeps repeated changes to the same path independently expandable, while the compact turn summary groups their file counts and preserves Workspace identity.

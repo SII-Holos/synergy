@@ -155,6 +155,39 @@ export namespace Snapshot {
     })
   }
 
+  export async function changedPaths(from: string, to: string, sessionID: string, signal?: AbortSignal) {
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+          throw new SnapshotStore.StorageError("Operation snapshot endpoints are unavailable")
+        const result = await gitSpawn(
+          [
+            "git",
+            "--git-dir",
+            gitdir(),
+            "diff",
+            "--no-ext-diff",
+            "--no-renames",
+            "--name-only",
+            "-z",
+            from,
+            to,
+            "--",
+            ".",
+          ],
+          path.dirname(gitdir()),
+          undefined,
+          signal,
+        )
+        if (result.exitCode !== 0) throw new SnapshotStore.StorageError("Operation snapshot comparison failed")
+        return result.text.split("\0").filter(Boolean)
+      },
+      signal,
+      { historical: true },
+    )
+  }
+
   export async function diffSummary(from: string, to: string, sessionID: string, signal?: AbortSignal) {
     if (signal?.aborted) return []
     return SnapshotStore.withSession(

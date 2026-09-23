@@ -15,6 +15,8 @@ import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 import { getSemanticIcon } from "./semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { SESSION_REVIEW_DESC } from "./tool-title-descriptors"
+import { reviewFileKey } from "./session-review-model"
+export { reviewFileKey } from "./session-review-model"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -34,14 +36,6 @@ export interface SessionReviewProps {
   onViewFile?: (file: string, diff: FileDiff) => void
   canViewFile?: (diff: FileDiff) => boolean
   selectedFile?: string
-}
-
-export function reviewFileKey(diff: FileDiff) {
-  return diff.workspace
-    ? JSON.stringify([diff.workspace.id, diff.workspace.generation, diff.workspace.root, diff.file])
-    : diff.legacyRoot
-      ? JSON.stringify(["legacy", diff.legacyRoot, diff.file])
-      : diff.file
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
@@ -109,7 +103,7 @@ export const SessionReview = (props: SessionReviewProps) => {
       >
         <Accordion multiple value={open()} onChange={handleChange}>
           <For each={props.diffs}>
-            {(diff) => (
+            {(diff, index) => (
               <Accordion.Item
                 value={reviewFileKey(diff)}
                 data-slot="session-review-accordion-item"
@@ -129,6 +123,11 @@ export const SessionReview = (props: SessionReviewProps) => {
                             <span data-slot="session-review-directory">{getDirectory(diff.file)}&lrm;</span>
                           </Show>
                           <span data-slot="session-review-filename">{getFilename(diff.file)}</span>
+                          <Show when={diff.operationID}>
+                            <span data-slot="session-review-operation">
+                              {_({ ...SESSION_REVIEW_DESC.operation, values: { number: index() + 1 } })}
+                            </span>
+                          </Show>
                           <Show when={props.onViewFile}>
                             <button
                               data-slot="session-review-view-button"

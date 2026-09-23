@@ -41514,6 +41514,9 @@
           "file": {
             "type": "string"
           },
+          "operationID": {
+            "type": "string"
+          },
           "workspace": {
             "$ref": "#/components/schemas/SnapshotWorkspace"
           },
@@ -47935,7 +47938,7 @@
                       },
                       "code": {
                         "type": "string",
-                        "enum": ["timeout", "git_failure", "unknown"]
+                        "enum": ["timeout", "git_failure", "unknown", "incomplete"]
                       }
                     },
                     "required": ["status", "code"]
@@ -49217,6 +49220,53 @@
           },
           "hash": {
             "type": "string"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "pending"
+                  },
+                  "toolCallID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["status", "toolCallID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "incomplete"
+                  },
+                  "toolCallID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["status", "toolCallID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "complete"
+                  },
+                  "toolCallID": {
+                    "type": "string"
+                  },
+                  "afterHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{40}$"
+                  }
+                },
+                "required": ["status", "toolCallID", "afterHash"]
+              }
+            ]
           },
           "workspace": {
             "$ref": "#/components/schemas/SnapshotWorkspace"

@@ -6,6 +6,8 @@ import type { MessageV2 } from "./message-v2"
 export namespace SnapshotRanges {
   export const Range = z.object({
     workspace: SnapshotSchema.Workspace.optional(),
+    operationID: z.string().optional(),
+    incomplete: z.boolean().optional(),
     legacyRoot: z.string().optional(),
     from: z.string().optional(),
     to: z.string().optional(),
@@ -22,8 +24,12 @@ export namespace SnapshotRanges {
   export function merge(previous: Range[], next: Range[]): Range[] {
     const result = new Map<string, Range>()
     for (const range of [...previous, ...next]) {
-      const identity = key(range)
+      const identity = range.operationID ? JSON.stringify(["operation", range.operationID, key(range)]) : key(range)
       const existing = result.get(identity)
+      if (range.operationID) {
+        result.set(identity, existing && !existing.incomplete && range.incomplete ? existing : range)
+        continue
+      }
       result.set(identity, {
         ...range,
         from: existing?.from ?? range.from,
@@ -39,9 +45,17 @@ export namespace SnapshotRanges {
     for (const message of messages) {
       for (const part of message.parts) {
         if (part.type !== "patch" && part.type !== "step-start" && part.type !== "step-finish") continue
+        if (part.type !== "patch" && !part.snapshot) continue
         const root = part.workspace?.root ?? (message.info.role === "assistant" ? message.info.path?.cwd : undefined)
         const range: Range = {
           ...(part.workspace ? { workspace: part.workspace } : root ? { legacyRoot: root } : {}),
+          ...(part.type === "patch" && part.operation
+            ? {
+                operationID: part.id,
+                from: part.hash || undefined,
+                ...(part.operation.status === "complete" ? { to: part.operation.afterHash } : { incomplete: true }),
+              }
+            : {}),
           ...(part.type === "step-start" ? { from: part.snapshot } : {}),
           ...(part.type === "step-finish" ? { to: part.snapshot } : {}),
           files:

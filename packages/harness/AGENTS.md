@@ -22,3 +22,5 @@ Agent authority is owned by `Storage.Handle`: read [Agent storage](../../docs/ar
 Secret capture keeps Vault and execution-time resolution here; detector contracts and regex evaluation belong to `packages/secret-detection`. Register replacement detectors through `secrets/detector-source` before runtime startup. Run `bun test test/secrets/` and `bun run benchmark:secrets` for capture changes; the benchmark owns a disposable home.
 
 Storage transfer callers use the public `storage/compat` convergence guard before copying deferred datasets. The central migration runner stages records for shared migrations and tracks owner-local cohorts; background import remains owned and drained by the Runtime Handle.
+
+File-change evidence is attached by Rollout tool ownership at Workspace write admission. Preserve operation pairs, pending/incomplete capture and both retained tree roots across history, summary, migration and transfer. Model-step accounting must not snapshot files outside a write claim. Validate with the snapshot, summary and history suites plus Runtime Local's `test/workspace/change-attribution.test.ts`.

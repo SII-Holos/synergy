@@ -16,6 +16,23 @@ function fakeSessionID(): string {
   return Identifier.descending("session")
 }
 
+test("operation file lists compare retained trees even after the index changes", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        const sessionID = fakeSessionID()
+        const from = await Snapshot.track(sessionID)
+        await Bun.write(path.join(tmp.path, "own.txt"), "own")
+        const to = await Snapshot.track(sessionID)
+        await Bun.write(path.join(tmp.path, "foreign.txt"), "foreign")
+        await Snapshot.track(sessionID)
+        expect(await Snapshot.changedPaths(from!, to!, sessionID)).toEqual(["own.txt"])
+      },
+    })
+  }))
+
 describe("Snapshot per-session isolation", () => {
   test("track() retains independent session ownership in a shared repository", () =>
     runtime.run(async () => {

@@ -5,6 +5,7 @@ import { RolloutArtifact } from "./artifact"
 import { RolloutLedger } from "./ledger"
 import { record, RolloutRecordingError } from "./error"
 import { SecretMask } from "../../secrets/mask"
+import { SessionFileChanges } from "../file-changes"
 
 export namespace RolloutTool {
   const context = Context.create<{
@@ -89,7 +90,7 @@ export namespace RolloutTool {
     try {
       const result = await RolloutContext.provide(
         { owner: input.owner, runID: input.runID, signal: RolloutContext.current()?.signal },
-        () => context.provide(state, action),
+        () => context.provide(state, () => SessionFileChanges.provide(input, action)),
       )
       await state.capture(result)
       tool.observation = await artifact(result)
