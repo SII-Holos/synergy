@@ -15,6 +15,8 @@ export namespace ProviderThinking {
     }),
   )
 
+  // Provenance: https://api-docs.deepseek.com/guides/thinking_mode/
+  // Local adaptation: expose disabled thinking only when the model catalog and transport support its wire mapping.
   export function offOptions(model: Provider.Model): Record<string, unknown> | undefined {
     if (!model.capabilities.reasoning) return
     const declarations = model.capabilities.reasoningOptions ?? []

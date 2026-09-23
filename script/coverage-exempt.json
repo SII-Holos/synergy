@@ -507,8 +507,8 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/components/ModelVariantPicker.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+          "glob": "src/components/provider/model-thinking-picker.tsx",
+          "reason": "shared picker renders through Solid/browser; browser tests cover selection, layering, keyboard and focus"
         },
         {
           "glob": "src/components/settings/components/PasswordField.tsx",
