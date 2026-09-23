@@ -200,6 +200,7 @@ beforeAll(async () => {
   // fails here with page errors attached instead of three 30s timeouts.
   try {
     await page.goto(`${baseUrl}?path=README.md`)
+    await page.getByRole("navigation", { name: "File path" }).waitFor({ state: "visible" })
     await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
   } catch (error) {
     const pageError = pageErrors[0]
@@ -216,6 +217,15 @@ afterAll(async () => {
 })
 
 describe("file workbench open-in-browser action", () => {
+  test("the file breadcrumb identifies its owning Workspace", async () => {
+    await page.goto(`${baseUrl}?path=README.md`)
+    const owner = page
+      .getByRole("navigation", { name: "File path" })
+      .getByRole("button", { name: "/workspace/demo", exact: true })
+    expect(await owner.isVisible()).toBe(true)
+    expect(await owner.textContent()).toBe("demo")
+  }, 60000)
+
   test("renders the toolbar button for an HTML file and opens the raw content URL", async () => {
     await page.goto(`${baseUrl}?path=docs%2Findex.html`)
     const button = page.getByRole("button", { name: "Open in browser" })

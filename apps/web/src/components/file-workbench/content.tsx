@@ -502,8 +502,21 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
     <div class="file-workbench">
       <div class="file-workbench-toolbar">
         <nav class="file-breadcrumb" aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}>
-          <Show when={breadcrumb().length === 0}>
-            <span class="file-breadcrumb-root">/</span>
+          <Show when={file.workspace?.path}>
+            {(root) => (
+              <button
+                type="button"
+                class="file-breadcrumb-root"
+                title={root()}
+                aria-label={root()}
+                onClick={() => {
+                  file.explorer.setOpen(true)
+                  void file.explorer.reveal("__reveal__")
+                }}
+              >
+                {root().split(/[\\/]/).filter(Boolean).at(-1) ?? root()}
+              </button>
+            )}
           </Show>
           <For each={breadcrumb()}>
             {(part, index) => {
@@ -514,9 +527,7 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
               const current = () => index() === breadcrumb().length - 1
               return (
                 <>
-                  <Show when={index() > 0}>
-                    <span class="file-breadcrumb-separator">/</span>
-                  </Show>
+                  <span class="file-breadcrumb-separator">/</span>
                   <button
                     type="button"
                     classList={{ "file-breadcrumb-current": current() }}

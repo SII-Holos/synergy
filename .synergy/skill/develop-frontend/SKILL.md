@@ -66,6 +66,8 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 
 ## Preserve Product Presentation
 
+For retained resource tabs, display the resource's owning Workspace independently of the Session's current selection. Verify the visible directory, file tree and recovered draft after switching and reloading.
+
 Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.
 
 1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.

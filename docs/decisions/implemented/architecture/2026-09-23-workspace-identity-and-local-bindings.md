@@ -44,6 +44,8 @@ File content versions are independent of catalog revisions and binding generatio
 
 Snapshot Git commands enable long paths before repository discovery. The private store, generation-qualified index and retained references must work under a deeply nested Runtime home, including initialization, reads and pack transfers. This per-command option preserves the user's Git configuration and existing object-store format. Native verification covers paths beyond Windows MAX_PATH with exact-byte round trips.
 
+Retained file tabs display their own Workspace directory in the breadcrumb. A Session selection change preserves the tab and its draft without presenting the old Explorer as the new working directory.
+
 ## Verification
 
 Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.
