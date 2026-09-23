@@ -1125,8 +1125,7 @@ export namespace Session {
       // in-flight turn (the runtime still owns it) or one that stopped and is
       // waiting for the user. Ordered writes to a running session's title must
       // not churn the sidebar ordering, and a paused session's activity
-      // timestamp is the moment it stopped, not the moment its latch was last
-      // re-described.
+      // timestamp must not advance when its latch is re-described.
       const unfinished = SessionManager.isRunning(id) || (!!before.paused && !!result.paused)
       const shouldPreserveActivityAt = options?.preserveActivityAt ?? unfinished
       const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
@@ -1155,8 +1154,12 @@ export namespace Session {
     })
   }
 
-  export async function update(id: string, editor: (session: Info) => void) {
-    return updateInternal(id, editor)
+  export async function update(
+    id: string,
+    editor: (session: Info) => void,
+    options?: { preserveActivityAt?: boolean },
+  ) {
+    return updateInternal(id, editor, options)
   }
 
   export async function recordActivity(id: string) {

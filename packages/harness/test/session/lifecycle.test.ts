@@ -56,31 +56,36 @@ describe("SessionLifecycle pause latch", () => {
           ])
           expect(results.filter(Boolean)).toHaveLength(1)
           expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe(results[0] ? "aborted" : "failed")
+          expect((await Session.get(session.id)).time.updated).toBe(session.time.updated)
         },
       })
     }))
 
-  test("pause records the reason once and later pauses cannot rewrite it", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({ title: "Pausable" })
+  test.each(["aborted", "failed", "interrupted", "workflow"] as const)(
+    "pause records %s once without recording activity",
+    (reason) =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({ title: "Pausable" })
 
-          expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })).toBe(true)
-          const first = await SessionLifecycle.snapshot(session.id)
-          expect(first?.reason).toBe("aborted")
-          expect(first?.since).toBeNumber()
+            expect(await SessionLifecycle.pause({ sessionID: session.id, reason })).toBe(true)
+            const first = await SessionLifecycle.snapshot(session.id)
+            expect(first?.reason).toBe(reason)
+            expect(first?.since).toBeNumber()
+            expect((await Session.get(session.id)).time.updated).toBe(session.time.updated)
 
-          // First pause wins: a second reason describes the same stoppage, so
-          // rewriting it would churn `since` and lose the original cause.
-          expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })).toBe(false)
-          expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("aborted")
-          expect((await SessionLifecycle.snapshot(session.id))?.since).toBe(first?.since)
-        },
-      })
-    }))
+            // First pause wins: a second reason describes the same stoppage, so
+            // rewriting it would churn `since` and lose the original cause.
+            expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })).toBe(false)
+            expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe(reason)
+            expect((await SessionLifecycle.snapshot(session.id))?.since).toBe(first?.since)
+          },
+        })
+      }),
+  )
 
   test("machine sessions and archived sessions never latch", () =>
     runtime.run(async () => {
