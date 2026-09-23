@@ -51,6 +51,8 @@ Reacquiring an existing task reservation does not grant a new physical write. Ea
 
 The native PTY transport uses bounded byte queues and Node stream backpressure. UTF-8 decoding happens after transport, EOF drains before terminal completion, and replay never splits surrogate pairs. Slow WebSocket consumers and oversized input are disconnected without terminating the terminal. Failed termination retains the visible terminal tab and native ownership. Core, full and workspace-module packages include the same verified native library and license notices.
 
+PTY WebSocket callbacks capture the upgrading request's Runtime and Scope context. The server's Runtime binding alone does not retain a request Scope across Bun's native open, message and close callbacks; terminal lookup and connection telemetry must keep their original owner.
+
 ## Worktree Ownership
 
 Worktrees have explicit owners such as a session, Cortex task, Blueprint workflow, or internal orchestration record. Creating or entering a worktree updates session workspace binding; leaving returns to the project checkout according to the worktree lifecycle.
