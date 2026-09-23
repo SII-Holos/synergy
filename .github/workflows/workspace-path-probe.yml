@@ -10,7 +10,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -18,4 +18,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.3.14"
-      - run: bun test/script/windows-snapshot-path-probe.ts
+      - run: bun install --frozen-lockfile
+      - run: bun test test/session/snapshot-long-path.test.ts test/snapshot/workspace.test.ts test/snapshot/initialization.test.ts
+        working-directory: packages/harness
+      - run: bun test test/workspace-file/long-path.test.ts
+        working-directory: packages/runtime-local
