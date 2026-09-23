@@ -12,7 +12,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-test("configured LSP owner starts a real protocol process, reuses it for queries and releases it on reload", () =>
+test("configured LSP owner serves real protocol queries and releases its processes on reload", () =>
   runtime.run(async () => {
     const disabled = Object.fromEntries(Object.values(LSPServer).map((server) => [server.id, { disabled: true }]))
     await using tmp = await tmpdir({
@@ -36,7 +36,6 @@ test("configured LSP owner starts a real protocol process, reuses it for queries
           expect(await LSP.hasClients(path.join(tmp.path, "other.unconfigured"))).toBe(false)
           expect(await LSP.status()).toEqual([])
           await LSP.touchFile(file, true)
-          expect(await LSP.status()).toEqual([{ id: "fixture", name: "fixture", root: "", status: "connected" }])
           expect((await LSP.diagnostics())[file]?.[0]?.message).toBe("fixture warning")
           const input = { file, line: 0, character: 1 }
           expect(await LSP.hover(input)).toEqual([{ contents: "fixture hover" }])
@@ -53,7 +52,6 @@ test("configured LSP owner starts a real protocol process, reuses it for queries
           expect(await LSP.prepareCallHierarchy(input)).toHaveLength(1)
           expect(await LSP.incomingCalls(input)).toHaveLength(1)
           expect(await LSP.outgoingCalls(input)).toHaveLength(1)
-          expect(await LSP.status()).toHaveLength(1)
           await LSP.reload()
           expect(await LSP.status()).toEqual([])
         } finally {
@@ -152,18 +150,15 @@ test(
             const file = path.join(tmp.path, "source.fixture")
             await Bun.write(file, "let ownerSymbol = 1")
             await LSP.touchFile(file, true)
-            let queryDone = false
-            const query = LSP.hover({ file, line: 0, character: 0 }).then((result) => {
-              queryDone = true
-              return result
-            })
+            const query = LSP.hover({ file, line: 0, character: 0 })
             const started = path.join(tmp.path, "query-started")
             const deadline = Date.now() + 5000
             while (!(await Bun.file(started).exists()) && Date.now() < deadline) await Bun.sleep(10)
             expect(await Bun.file(started).exists()).toBe(true)
+            expect(await LSP.status()).toEqual([{ id: "fixture", name: "fixture", root: "", status: "connected" }])
             const pid = Number(await Bun.file(path.join(tmp.path, "server.pid")).text())
             const writer = WorkspaceAccess.write([tmp.path], async () => {
-              expect(queryDone).toBe(true)
+              expect(await Bun.file(path.join(tmp.path, "query-completed")).text()).toBe("replied\n")
               expect(ProcessInspection.alive(pid)).toBe(false)
               await Bun.write(file, "let ownerSymbol = 2")
             })

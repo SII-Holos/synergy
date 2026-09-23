@@ -54,6 +54,8 @@ Worktree cancellation remains connected after native activation and drains check
 
 ## Verification
 
+Native fixture homes remain subject to host-wide unconfined writers. Browser rebind tests bound retries of explicit busy admission, and LSP tests check protocol completion and native exit independently of the caller promise cleanup order. Connected status is asserted while a query is active, since an idle process may already have retired for another writer.
+
 Resource tests interleave Workspace startup, shared Sessions, rebinding and Scope disposal. Runtime Local tests exercise separate real Git directories, bounded file indexes, native watcher delivery, nested Workspace paths and whitespace in filenames. Formatter tests launch real subprocesses and verify one execution per edit across multiple Workspace subscriptions.
 
 Catalog tests exercise concurrent registration, host separation, generation rejection, cross-Scope lookup, and stale conditional updates against real SQLite. Filesystem tests verify persistent namespace convergence and directory replacement with real temporary directories.

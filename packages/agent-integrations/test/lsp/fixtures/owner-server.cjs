@@ -33,7 +33,10 @@ function handle(message) {
     const delay = Number(process.env.LSP_FIXTURE_DELAY_MS)
     if (delay) {
       require("node:fs").appendFileSync("query-started", "ready\n")
-      setTimeout(() => send({ id: message.id, result }), delay)
+      setTimeout(() => {
+        require("node:fs").appendFileSync("query-completed", "replied\n")
+        send({ id: message.id, result })
+      }, delay)
       return
     }
   } else if (

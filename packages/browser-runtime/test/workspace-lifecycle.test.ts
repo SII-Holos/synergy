@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
 import { BrowserRuntime } from "../src/runtime"
@@ -249,36 +250,49 @@ test("a failed Host closure preserves the binding and a retry revokes the old lo
     })
   }))
 
-test("rebinding a Workspace retires its browser resources and old replay results", () =>
-  runtime.run(async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      async fn() {
-        const session = await Session.create({})
-        const original = owner(session)
-        const browser = await BrowserRuntime.getOrCreateSession(original)
-        const close = spyOn(browser, "closePage")
-        await BrowserCommandService.execute(original, { commandId: "repeat", command: { type: "close" } })
-        const record = await WorkspaceCatalog.get(session.workspaceID!, session.scope.id)
-        await WorkspaceBinding.rebind(record.id, {
-          scopeID: session.scope.id,
-          expectedRevision: record.revision,
-          path: tmp.path,
-        })
-        const updated = owner(await Session.get(session.id))
-        const current = await BrowserRuntime.getOrCreateSession(updated)
-        expect(current).not.toBe(browser)
-        await expect(BrowserRuntime.getOrCreateSession(original)).rejects.toThrow()
-        const closeCurrent = spyOn(current, "closePage")
-        try {
-          await BrowserCommandService.execute(updated, { commandId: "repeat", command: { type: "close" } })
-          expect(closeCurrent).toHaveBeenCalledTimes(1)
-          expect(close).toHaveBeenCalledTimes(1)
-        } finally {
-          close.mockRestore()
-          closeCurrent.mockRestore()
-        }
-      },
-    })
-  }))
+test(
+  "rebinding a Workspace retires its browser resources and old replay results",
+  () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const session = await Session.create({})
+          const original = owner(session)
+          const browser = await BrowserRuntime.getOrCreateSession(original)
+          const close = spyOn(browser, "closePage")
+          await BrowserCommandService.execute(original, { commandId: "repeat", command: { type: "close" } })
+          const record = await WorkspaceCatalog.get(session.workspaceID!, session.scope.id)
+          const deadline = Date.now() + 15000
+          for (;;) {
+            try {
+              await WorkspaceBinding.rebind(record.id, {
+                scopeID: session.scope.id,
+                expectedRevision: record.revision,
+                path: tmp.path,
+              })
+              break
+            } catch (error) {
+              if (!(error instanceof WorkspaceAccess.BusyError) || Date.now() >= deadline) throw error
+              await Bun.sleep(50)
+            }
+          }
+          const updated = owner(await Session.get(session.id))
+          const current = await BrowserRuntime.getOrCreateSession(updated)
+          expect(current).not.toBe(browser)
+          await expect(BrowserRuntime.getOrCreateSession(original)).rejects.toThrow()
+          const closeCurrent = spyOn(current, "closePage")
+          try {
+            await BrowserCommandService.execute(updated, { commandId: "repeat", command: { type: "close" } })
+            expect(closeCurrent).toHaveBeenCalledTimes(1)
+            expect(close).toHaveBeenCalledTimes(1)
+          } finally {
+            close.mockRestore()
+            closeCurrent.mockRestore()
+          }
+        },
+      })
+    }),
+  20000,
+)
