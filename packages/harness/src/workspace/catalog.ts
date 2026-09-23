@@ -175,6 +175,20 @@ export namespace WorkspaceCatalog {
     await tx.write(scopeKey(info.scopeID, info.id), info.id)
   }
 
+  export async function writeRelocated(info: Info, tx: StoreTransaction) {
+    if (info.binding.state !== "bound" || !info.binding.path || !info.binding.physicalID || info.lifecycle !== "active")
+      throw new Invalid({ message: "Relocated Workspace requires verified local authority", workspaceID: info.id })
+    const keys = locations(info)
+    if ((await tx.readMany([recordKey(info.id), ...keys])).some((value) => value !== undefined))
+      throw new BindingChanged({
+        message: "Workspace destination was occupied during relocation",
+        workspaceID: info.id,
+      })
+    await tx.write(recordKey(info.id), info)
+    await tx.write(scopeKey(info.scopeID, info.id), info.id)
+    for (const key of keys) await tx.write(key, info.id)
+  }
+
   export async function resolve(
     id: string,
     input: { scopeID: string; hostID: string; generation?: number },

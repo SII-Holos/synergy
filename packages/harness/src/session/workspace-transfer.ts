@@ -2,6 +2,7 @@ import type { MessageV2 } from "./message-v2"
 import type { SessionExport } from "./session-export"
 import type { SnapshotSchema } from "./snapshot-schema"
 import { Workspace } from "./workspace-schema"
+import { ScopeTransfer } from "../scope/transfer"
 
 export namespace WorkspaceTransfer {
   export type Reference = { id: string; scopeID: string; legacy?: Workspace }
@@ -11,11 +12,17 @@ export namespace WorkspaceTransfer {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
   }
 
-  export function selection(value: Record<string, unknown>, scopeID: string, resolve: Resolve) {
+  export function selection(
+    value: Record<string, unknown>,
+    scopeID: string,
+    resolve: Resolve,
+    relocate?: ScopeTransfer.Relocate,
+  ) {
     const sourceScope = object(value.scope)?.id
     if (typeof sourceScope === "string" && sourceScope !== scopeID)
       throw new Error("Imported Workspace owner belongs to another Scope")
     const { workspace, ...result } = value
+    if (relocate && result.scope) result.scope = ScopeTransfer.paths(result.scope, relocate)
     if (typeof result.workspaceID === "string")
       return { ...result, workspaceID: resolve({ id: result.workspaceID, scopeID }) }
     if (result.workspaceID === null || workspace === null) return { ...result, workspaceID: null }
@@ -34,7 +41,7 @@ export namespace WorkspaceTransfer {
     }
   }
 
-  export function record(key: string[], value: unknown, resolve: Resolve): unknown {
+  export function record(key: string[], value: unknown, resolve: Resolve, relocate?: ScopeTransfer.Relocate): unknown {
     if (key[0] !== "sessions") return value
     const scopeID = key[1]!
     const source = (value: unknown) => {
@@ -51,7 +58,7 @@ export namespace WorkspaceTransfer {
         : value
     }
     const record = object(value)
-    if (key.length === 4 && key[3] === "info" && record) return summary(selection(record, scopeID, resolve))
+    if (key.length === 4 && key[3] === "info" && record) return summary(selection(record, scopeID, resolve, relocate))
     if (key.length === 4 && key[3] === "summary" && Array.isArray(value)) return value.map(source)
     if (key.length === 4 && key[3] === "summary_cursor" && record && Array.isArray(record.ranges))
       return { ...record, ranges: record.ranges.map(source) }

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { FileLink } from "@ericsanchezok/synergy-runtime-local/file/link"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import {
   scanDir,
@@ -90,4 +91,23 @@ test("data merge never follows destination links or replaces a dangling link", a
   await fs.symlink(path.join(outside, "absent"), path.join(target, "nested/new.txt"))
   expect(await copyDirSkipExisting(source, target)).toEqual({ copied: 0, skipped: 1 })
   expect(await Bun.file(path.join(outside, "absent")).exists()).toBe(false)
+})
+
+test("data copies preserve native link kinds after their targets disappear", async () => {
+  await using tmp = await tmpdir()
+  const source = path.join(tmp.path, "source")
+  const target = path.join(tmp.path, "target")
+  await fs.mkdir(source)
+  for (const type of ["file", "dir", "junction"] as const) {
+    const destination = path.join(tmp.path, type)
+    if (type === "file") await fs.writeFile(destination, "bytes")
+    else await fs.mkdir(destination)
+    await fs.symlink(destination, path.join(source, type), type)
+    await fs.rm(destination, { recursive: true })
+  }
+  expect(await copyDirSkipExisting(source, target)).toEqual({ copied: 3, skipped: 0 })
+  for (const type of ["file", "dir", "junction"] as const) {
+    expect(await fs.readlink(path.join(target, type))).toBe(await fs.readlink(path.join(source, type)))
+    expect(FileLink.type(path.join(target, type))).toBe(process.platform === "win32" ? type : undefined)
+  }
 })

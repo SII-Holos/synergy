@@ -5,6 +5,7 @@ import path from "path"
 import os from "os"
 import { UI } from "../../../util/ui"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { FileLink } from "@ericsanchezok/synergy-runtime-local/file/link"
 
 export interface Category {
   key: string
@@ -261,8 +262,13 @@ export async function copyDirSkipExisting(
           acc.skipped++
         } else {
           const linkTarget = await fs.readlink(srcPath)
-          await fs.symlink(linkTarget, dstPath)
-          acc.copied++
+          try {
+            await FileLink.copy(srcPath, dstPath, linkTarget)
+            acc.copied++
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "EEXIST") acc.skipped++
+            else throw error
+          }
         }
         if (onProgress && totalFiles) {
           onProgress({

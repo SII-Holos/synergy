@@ -13,6 +13,7 @@
     "./email/tools": "./src/email/tools.ts",
     "./channel/tools": "./src/channel/tools.ts",
     "./channel/session-projects": "./src/channel/session-projects.ts",
+    "./channel/workspace-transfer": "./src/channel/workspace-transfer.ts",
     "./channel": "./src/channel/index.ts",
     "./channel/provider": "./src/channel/provider/index.ts",
     "./channel/outbound": "./src/channel/outbound.ts",

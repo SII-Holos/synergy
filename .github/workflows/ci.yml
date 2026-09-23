@@ -230,6 +230,9 @@ jobs:
       - name: Run util lock tests
         run: bun test --timeout 30000 --cwd packages/util test/fs-lock.test.ts test/process-identity.test.ts
 
+      - name: Verify native Home file copies
+        run: bun test --cwd packages/cli test/cli/data-files.test.ts
+
       - name: Run Desktop Windows-focused tests
         run: >-
           bun test --cwd apps/desktop

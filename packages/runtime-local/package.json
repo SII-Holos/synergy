@@ -88,6 +88,7 @@
     "./workspace-file/indexer": "./src/workspace-file/indexer.ts",
     "./conflict/detect": "./src/conflict/detect.ts",
     "./host": "./src/host.ts",
+    "./file/link": "./src/file/link.ts",
     "./process/owned-process": "./src/process/owned-process.ts",
     "./file/mutation": "./src/file/mutation.ts",
     "./process/owned-worker": "./src/process/owned-worker.ts"

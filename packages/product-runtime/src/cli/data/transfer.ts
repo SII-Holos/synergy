@@ -35,7 +35,31 @@ const local = new Set([
 ])
 
 export namespace DataTransfer {
+  export async function validateHomes(roots: string[]) {
+    async function canonical(directory: string): Promise<string> {
+      try {
+        return await fs.realpath(directory)
+      } catch (error) {
+        const parent = path.dirname(directory)
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT" || parent === directory) throw error
+        return path.join(await canonical(parent), path.basename(directory))
+      }
+    }
+    const resolved = await Promise.all(roots.map((root) => canonical(path.resolve(root))))
+    for (let i = 0; i < resolved.length; i++)
+      for (let j = 0; j < resolved.length; j++) {
+        if (i === j) continue
+        const relative = path.relative(resolved[i], resolved[j])
+        if (
+          relative === "" ||
+          (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+        )
+          throw new Error("Source and target Homes must not overlap")
+      }
+  }
+
   export async function lockHomes(roots: string[]) {
+    await validateHomes(roots)
     for (const root of [...new Set(roots.map((root) => path.resolve(root)))].sort()) {
       const entry = fileURLToPath(new URL("../../index.ts", import.meta.url))
       const child = Bun.spawn({
@@ -97,6 +121,7 @@ export namespace DataTransfer {
     targetRoot: string,
     options: { progress?: (progress: CopyProgress) => void; trusted?: boolean } = {},
   ) {
+    await validateHomes([sourceRoot, targetRoot])
     const source = await StorageBootstrap.inspect(sourceRoot)
     if (!source) throw new Error("Source storage has not been initialized")
     let target: StorageBootstrap.Prepared | undefined
@@ -137,9 +162,12 @@ export namespace DataTransfer {
         { accept: acceptArtifact },
       )
       const conflicts = new Set<string>()
-      const workspaces = options.trusted
-        ? undefined
-        : await WorkspaceHomeTransfer.prepare(source.store, target.store, acceptArtifact)
+      const workspaces = await WorkspaceHomeTransfer.prepare(
+        source.store,
+        target.store,
+        acceptArtifact,
+        options.trusted ? { sourceRoot, targetRoot } : undefined,
+      )
       const result = await StoragePortable.importFile(target.store, path.join(backup, "data", "agent-records.ndjson"), {
         operationID: id,
         accept: async (entry, tx) => {

@@ -21,4 +21,4 @@ Native Workspace coordination owns canonical-root overlap and process identity f
 
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
-First-party native integrations use the declared `process/owned-process` and `file/mutation` exports for native process ownership and byte-version validation. They must still acquire Workspace claims before activation; the process module does not infer a writable footprint.
+First-party native integrations use the declared `process/owned-process`, `file/mutation` and `file/link` exports for native process ownership, byte-version validation and preservation of native symbolic-link kinds. They must still acquire Workspace claims before activation; the process module does not infer a writable footprint.

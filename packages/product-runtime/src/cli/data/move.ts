@@ -82,6 +82,7 @@ export async function executeMove(opts: MoveOptions) {
     prompts.outro("Nothing to move")
     return
   }
+  await DataTransfer.validateHomes([sourceRoot, targetPath])
 
   // Check disk space
   const diskOk = await checkDiskSpace(homePath, totalSize)
@@ -213,7 +214,10 @@ export async function executeMove(opts: MoveOptions) {
   const errors: string[] = []
   let libraryMerged = false
 
-  for (const cat of selectedCategories) {
+  const copyOrder = selectedCategories.toSorted(
+    (a, b) => Number(a.subdirs.includes("data")) - Number(b.subdirs.includes("data")),
+  )
+  for (const cat of copyOrder) {
     for (const subdir of cat.subdirs) {
       const src = path.join(sourceRoot, subdir)
       const dst = path.join(targetPath, subdir)
