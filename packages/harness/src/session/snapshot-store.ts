@@ -12,8 +12,10 @@ import type { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotProtection } from "./snapshot-protection"
+import { Log } from "../util/log"
 
 export namespace SnapshotStore {
+  const log = Log.create({ service: "snapshot-store" })
   export const Owner = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared", "deleted"]) })
   export type Owner = z.infer<typeof Owner>
   export const OID = /^[0-9a-f]{40}$/
@@ -348,6 +350,8 @@ export namespace SnapshotStore {
       undefined,
       signal,
     )
+    if (result.exitCode !== 0)
+      log.warn("snapshot retention failed", { exitCode: result.exitCode, stderr: result.stderr })
     return result.exitCode === 0
   }
 

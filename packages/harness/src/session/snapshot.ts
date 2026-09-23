@@ -535,6 +535,7 @@ export namespace Snapshot {
         undefined,
         signal,
       )
+      if (add.exitCode !== 0) log.warn("snapshot index update failed", { exitCode: add.exitCode, stderr: add.stderr })
       return add.exitCode === 0
     } finally {
       await fs.unlink(pathspec).catch(() => undefined)
