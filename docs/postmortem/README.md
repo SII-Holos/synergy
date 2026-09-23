@@ -71,3 +71,4 @@ Entries are added only when an incident qualifies; the table stays empty until t
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.
 
 | 0023 | Benchmark concurrency exhausted Docker network addresses | implemented | 2026-09-23 |
+| 0024 | Benchmark release observer imposed a hidden stream idle timeout | implemented | 2026-09-23 |

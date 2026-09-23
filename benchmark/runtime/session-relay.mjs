@@ -7,6 +7,9 @@ export function startSessionCapture({ root, endpoint }) {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    // Task/cleanup clocks own cancellation; Bun's default 10s idle timer resets quiet model streams.
+    // https://bun.com/docs/runtime/http/server
+    idleTimeout: 0,
     maxRequestBodySize: 128 * 1024 * 1024,
     async fetch(request) {
       const url = new URL(request.url)

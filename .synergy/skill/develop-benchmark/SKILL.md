@@ -33,6 +33,8 @@ description: Change or validate the repository benchmark evaluator, native harne
 
    Persist the first streamed data timestamp while the response is still in flight. Test with a provider that emits reasoning and then waits before completing; a completed-response latency assertion alone misses false live "no response" reports. Keep in-flight request counts distinct from first-data waits and leave usage unknown until observed.
 
+   Test quiet intervals longer than transport-server defaults through the actual native relay, including delayed headers and a pause after the first stream chunk. Continuous large responses do not exercise idle timers. Disable undeclared relay idle limits while retaining the outer task and bounded cleanup clocks; correlate native socket errors with relay diagnostics before attributing them to a provider. See the [relay idle-timeout incident](../../../docs/postmortem/0024-benchmark-session-relay-idle-timeout.md).
+
    Verify actual dispatch order against the frozen schedule, including after recovery. Concurrency one must traverse the whole list in order; a one-slot pool shared by independently queued pairs does not establish that order. Preserve zero-reward observations without reordering or stopping them solely for quality.
 
    Every planned cell has one attempt, including startup failures. Resume reconciles retained terminals and skips every dispatched cell; missing state with an existing attempt must not trigger replay. Preserve interrupted evidence and its known cost. Tests must cover simultaneous sides of a pair, 48 concurrent cells, per-cell failures, terminal persistence failure, cancellation and recovery.

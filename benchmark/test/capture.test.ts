@@ -306,3 +306,49 @@ test.each([false, true])("session observer cancellation during drain=%s preserve
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test.each(["headers", "stream"])(
+  "session observer permits quiet %s beyond the HTTP server default idle timeout",
+  async (phase) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bench-session-quiet-"))
+    const first = 'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n'
+    const last = 'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}\n\ndata: [DONE]\n\n'
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      idleTimeout: 0,
+      async fetch() {
+        if (phase === "headers") {
+          await Bun.sleep(16_000)
+          return new Response(first + last, { headers: { "content-type": "text/event-stream" } })
+        }
+        return new Response(
+          new ReadableStream({
+            async start(controller) {
+              controller.enqueue(new TextEncoder().encode(first))
+              await Bun.sleep(16_000)
+              controller.enqueue(new TextEncoder().encode(last))
+              controller.close()
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        )
+      },
+    })
+    const capture = startSessionCapture({ root, endpoint: server.url.toString().replace(/\/$/, "") })
+    try {
+      const response = await fetch(capture.url + "/chat/completions", { method: "POST", body: "{}" })
+      expect(await response.text()).toBe(first + last)
+      expect(await capture.close(1)).toMatchObject({ timed_out: false })
+      const [id] = await readdir(root)
+      const record = await Bun.file(path.join(root, id, "request.json")).json()
+      expect(record.status).toBe("completed")
+      expect(record.usage).toEqual({ prompt_tokens: 10, completion_tokens: 3 })
+    } finally {
+      await capture.close(1, true)
+      server.stop(true)
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  30_000,
+)
