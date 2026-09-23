@@ -9,6 +9,86 @@ function request(roots: string[] | null, owner: string = randomUUID()) {
   return { id: randomUUID(), owner, kind: "task" as const, roots, ancestors: [] }
 }
 
+test("a cooperative process reports waiting writers across coordinators without releasing a live process", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const contender = new WorkspaceCoordinator({ directory })
+  const owner = randomUUID()
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const held = await coordinator.acquire({
+    ...request([tmp.path], owner),
+    kind: "process",
+    processID: child.pid,
+    cooperative: true,
+  })
+  const waitingInput = request([tmp.path], owner)
+  const pending = contender.acquire({ ...waitingInput, timeoutMs: 2000 })
+  let admitted = false
+  void pending
+    .then(() => {
+      admitted = true
+    })
+    .catch(() => {})
+  try {
+    const until = Date.now() + 1500
+    while (!(await coordinator.inspect()).some((claim) => claim.state === "waiting")) {
+      if (Date.now() >= until) throw new Error("Writer did not remain queued for cooperative retirement")
+      await Bun.sleep(5)
+    }
+    expect(await coordinator.contendedProcesses()).toEqual([held.id])
+    await held.release()
+    expect(admitted).toBe(false)
+    expect((await coordinator.inspect()).find((claim) => claim.id === held.id)?.state).toBe("active")
+    child.kill()
+    await child.exited
+    await (await pending).release()
+    expect(await coordinator.contendedProcesses()).toEqual([])
+  } finally {
+    if (child.exitCode === null) {
+      child.kill()
+      await child.exited
+    }
+    await held.release()
+    await pending.then((lease) => lease.release()).catch(() => {})
+  }
+})
+
+test("cancelled writers and ordinary readers do not request cooperative process retirement", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const held = await coordinator.acquire({
+    ...request([path.join(tmp.path, "one")]),
+    kind: "process",
+    cooperative: true,
+  })
+  const disjoint = await coordinator.acquire(request([path.join(tmp.path, "two")]))
+  const reader = await coordinator.acquire({ ...request([tmp.path]), kind: "use" })
+  const controller = new AbortController()
+  const pending = coordinator.acquire({ ...request([tmp.path]), signal: controller.signal })
+  void pending.catch(() => {})
+  try {
+    const until = Date.now() + 1500
+    while (!(await coordinator.inspect()).some((claim) => claim.state === "waiting")) {
+      if (Date.now() >= until) throw new Error("Writer did not remain queued for cooperative retirement")
+      await Bun.sleep(5)
+    }
+    expect(await coordinator.contendedProcesses()).toEqual([held.id])
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+    expect(await coordinator.contendedProcesses()).toEqual([])
+  } finally {
+    controller.abort()
+    await pending.catch(() => {})
+    await reader.release()
+    await disjoint.release()
+    await held.release()
+  }
+})
+
 test("process finalization retains exclusion after kernel exit without blocking disjoint work", async () => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })

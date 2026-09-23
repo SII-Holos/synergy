@@ -31,6 +31,7 @@ const Claim = z.object({
   processTree: OwnedTree.Reference.optional(),
   finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
   finalizing: z.boolean().optional(),
+  cooperative: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
 const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
@@ -47,6 +48,7 @@ export interface WorkspaceClaimInput {
   parentClaim?: string
   processID?: number
   retainAfterExit?: boolean
+  cooperative?: boolean
   signal?: AbortSignal
   timeoutMs?: number
 }
@@ -193,6 +195,8 @@ export class WorkspaceCoordinator {
       throw new Error("Invalid Workspace admission timeout")
     if (input.retainAfterExit && input.kind !== "process")
       throw new Error("Only process claims can retain finalization ownership")
+    if (input.cooperative && input.kind !== "process")
+      throw new Error("Only process claims support cooperative retirement")
     const finalizerIdentity = input.retainAfterExit ? await processStartIdentity(process.pid) : undefined
     if (input.retainAfterExit && !finalizerIdentity) throw new Error("Cannot verify the Workspace finalizer identity")
     const deadline = Date.now() + (input.timeoutMs ?? 120_000)
@@ -242,6 +246,7 @@ export class WorkspaceCoordinator {
       ancestors: input.ancestors,
       kind: input.kind,
       parentClaim: input.parentClaim,
+      cooperative: input.cooperative,
       roots,
       useRoots,
       pid,
@@ -287,6 +292,7 @@ export class WorkspaceCoordinator {
               blockers.some(
                 (claim) =>
                   claim.kind === "process" &&
+                  !claim.cooperative &&
                   (claim.owner === current.owner ||
                     current.ancestors.includes(claim.owner) ||
                     claim.ancestors.includes(current.owner)),
@@ -361,5 +367,16 @@ export class WorkspaceCoordinator {
 
   inspect() {
     return this.update((ledger) => ledger.claims)
+  }
+
+  contendedProcesses() {
+    return this.update((ledger) => {
+      const waiting = ledger.claims.filter((claim) => claim.state === "waiting")
+      return ledger.claims
+        .filter(
+          (claim) => claim.cooperative && claim.state === "active" && waiting.some((next) => conflicts(next, claim)),
+        )
+        .map((claim) => claim.id)
+    })
   }
 }

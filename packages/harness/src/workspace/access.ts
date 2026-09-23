@@ -19,6 +19,7 @@ export namespace WorkspaceAccess {
     parentClaim?: string
     processID?: number
     retainAfterExit?: boolean
+    cooperative?: boolean
     signal?: AbortSignal
     timeoutMs?: number
   }
@@ -29,6 +30,7 @@ export namespace WorkspaceAccess {
   }
   export interface Host {
     acquire(input: ClaimInput): Promise<Lease>
+    contendedProcesses?(): Promise<string[]>
   }
   interface Task {
     runtime: RuntimeContext.Instance
@@ -325,7 +327,13 @@ export namespace WorkspaceAccess {
     }, signal)
   }
 
-  export async function process(roots: string[] | null, signal?: AbortSignal): Promise<Lease> {
+  export async function process(
+    roots: string[] | null,
+    signal?: AbortSignal,
+    options?: { cooperative?: boolean },
+  ): Promise<Lease> {
+    if (options?.cooperative && !host().contendedProcesses)
+      throw new Error("This Runtime cannot monitor cooperative process contention")
     return inTask(async (task) => {
       let lease: Lease | undefined
       const observe = observer()
@@ -339,6 +347,7 @@ export namespace WorkspaceAccess {
             ancestors: task.ancestors,
             kind: "process",
             retainAfterExit: !!observe,
+            cooperative: options?.cooperative,
             parentClaim: writes ? task.id : undefined,
             roots,
             useRoots: [...task.useRoots],
@@ -368,6 +377,12 @@ export namespace WorkspaceAccess {
         throw error
       }
     }, signal)
+  }
+
+  export function contendedProcesses(): Promise<string[]> {
+    const provider = host()
+    if (!provider.contendedProcesses) throw new Error("This Runtime cannot monitor cooperative process contention")
+    return provider.contendedProcesses()
   }
 
   export async function pin(signal?: AbortSignal): Promise<Lease> {
