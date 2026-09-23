@@ -189,9 +189,11 @@ for (const ending of ["complete", "cancel", "remove-session", "switch-workspace"
                 }),
               )
               expect((await a.patches())[0]?.operation?.status).toBe("pending")
-              await expect(
-                WorkspaceAccess.write([tmp.path], async () => {}, AbortSignal.timeout(100)),
-              ).rejects.toMatchObject({ name: "TimeoutError" })
+              const excluded = await WorkspaceAccess.write([tmp.path], async () => {}, AbortSignal.timeout(100)).then(
+                () => undefined,
+                (error: unknown) => error,
+              )
+              expect(excluded).toMatchObject({ name: "TimeoutError" })
               const done = ChildProcessClose.wait(owned!.child)
               if (ending === "switch-workspace") {
                 const target = await WorkspaceBinding.register(ScopeContext.current.scope.id, next.path)
@@ -204,7 +206,11 @@ for (const ending of ["complete", "cancel", "remove-session", "switch-workspace"
               await done
               await WorkspaceAccess.write([tmp.path], async () => {})
               if (ending === "remove-session") {
-                await expect(Session.get(a.session.id)).rejects.toThrow()
+                const removed = await Session.get(a.session.id).then(
+                  () => undefined,
+                  (error: unknown) => error,
+                )
+                expect(removed).toBeInstanceOf(Error)
               } else {
                 const patches = await a.patches()
                 expect(patches).toHaveLength(1)
@@ -256,9 +262,11 @@ test("incomplete operation evidence stays visible and cannot authorize restorati
             status: "error",
             code: "incomplete",
           })
-          await expect(Session.restoreFiles({ sessionID: a.session.id, messageID: a.assistant.id })).rejects.toThrow(
-            "incomplete",
+          const restored = await Session.restoreFiles({ sessionID: a.session.id, messageID: a.assistant.id }).then(
+            () => undefined,
+            (error: unknown) => error,
           )
+          expect(restored).toMatchObject({ message: expect.stringContaining("incomplete") })
           expect(await Bun.file(file).text()).toBe("after")
         } finally {
           comparison.mockRestore()
