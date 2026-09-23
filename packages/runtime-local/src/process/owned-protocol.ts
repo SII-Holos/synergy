@@ -26,6 +26,10 @@ export namespace OwnedProtocol {
     pid: z.number().int().positive(),
   })
   export const Event = z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("stage"),
+      stage: z.enum(["launched", "root-exited", "tree-drained", "streams-drained"]),
+    }),
     z.object({ type: z.literal("ready"), pid: z.number().int().positive() }),
     z.object({ type: z.literal("exit"), code: z.number().int().nullable(), signal: z.string().nullable() }),
     z.object({ type: z.literal("error"), message: z.string() }),
@@ -33,6 +37,8 @@ export namespace OwnedProtocol {
   export type Event = z.infer<typeof Event>
   export const Control = z.discriminatedUnion("type", [
     z.object({ type: z.literal("activate") }),
+    z.object({ type: z.literal("drained") }),
+    z.object({ type: z.literal("stdin-end"), bytes: z.number().int().nonnegative() }),
     z.object({
       type: z.literal("resize"),
       cols: z.number().int().min(1).max(65535),

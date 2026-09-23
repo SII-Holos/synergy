@@ -13,13 +13,13 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ulid } from "ulid"
-import { spawn } from "child_process"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { lastModel } from "@ericsanchezok/synergy-harness/session/input"
 import { SessionUserMessageMaterialization } from "@ericsanchezok/synergy-harness/session/user-message-materialization"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
-import { WindowsProcessJob } from "../process/windows-process-job"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { OwnedProcess } from "../process/owned-process"
 
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
@@ -210,27 +210,24 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
               ...RuntimeContext.current().host.env,
               TERM: "dumb",
             }
-            const windowsProcessJob = WindowsProcessJob.prepare({ command: sh, args, env: processEnv })
-            const unixInvocation = Shell.prepareOwnedProcessGroup({ command: sh, args })
-            let proc: ReturnType<typeof spawn>
-            let windowsProcessOwner: WindowsProcessJob.Owner | undefined
+            let processLease: WorkspaceAccess.Lease | undefined
+            let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>>
             try {
-              proc = spawn(
-                windowsProcessJob?.command ?? unixInvocation.command,
-                windowsProcessJob?.args ?? unixInvocation.args,
-                {
-                  cwd: ScopeContext.current.directory,
-                  detached: process.platform !== "win32",
-                  stdio: ["ignore", "pipe", "pipe"],
-                  env: windowsProcessJob?.env ?? processEnv,
-                },
-              )
-              if (windowsProcessJob) windowsProcessOwner = await windowsProcessJob.activate(proc)
+              processLease = await WorkspaceAccess.process(null, abort)
+              owned = await OwnedProcess.prepare({
+                command: sh,
+                args: args ?? [],
+                cwd: directory,
+                env: processEnv,
+                lease: processLease,
+                signal: abort,
+              })
             } catch (error) {
-              windowsProcessJob?.cleanup()
+              await processLease?.release()
               await evidence.finish({ interrupted: true, exitCode: null, signal: null })
               throw error
             }
+            const proc = owned.child
 
             let output = ""
 
@@ -268,31 +265,12 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
             proc.stderr?.on("data", stderr)
 
             let aborted = false
-            const terminate = async (allowExitedParent = false) => {
-              if (windowsProcessOwner) {
-                windowsProcessOwner.terminateOrRelease()
-                windowsProcessOwner = undefined
-                return
-              }
-              await Shell.killTree(proc, { exited: () => exited, allowExitedParent })
-            }
-            let exited = false
+            const kill = () => owned.stop()
             const closed = ChildProcessClose.wait(proc, {
               isBackpressured: () => backpressured > 0,
-              onExit() {
-                exited = true
-              },
-              onDrainTimeout() {
-                return terminate(true)
-              },
+              onDrainTimeout: kill,
             })
-
-            const kill = () => terminate()
-
-            if (abort.aborted) {
-              aborted = true
-              await kill()
-            }
+            void closed.catch(() => {})
 
             const abortHandler = () => {
               aborted = true
@@ -305,6 +283,18 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
 
             let completion: ChildProcessClose.Result | undefined
             try {
+              if (abort.aborted) {
+                aborted = true
+                await kill()
+              } else {
+                try {
+                  await owned.activate()
+                  proc.stdin.end()
+                } catch (error) {
+                  if (!abort.aborted) throw error
+                  aborted = true
+                }
+              }
               completion = await closed
               await pending
               if (recordingFailure) throw recordingFailure
@@ -321,14 +311,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
                 abort.removeEventListener("abort", abortHandler)
                 proc.stdout?.off("data", stdout)
                 proc.stderr?.off("data", stderr)
-                Shell.releaseOwnedProcessGroup(proc)
-                if (windowsProcessOwner) {
-                  try {
-                    windowsProcessOwner.terminateOrRelease()
-                    windowsProcessOwner = undefined
-                  } catch {}
-                }
-                windowsProcessJob?.cleanup()
+                await owned.stop()
               }
             }
 
@@ -366,6 +349,23 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
   } catch (error) {
     failure = findRecordingError(error) ?? error
     if (abort.aborted) status = "cancelled"
+    if (part.state.status === "running") {
+      part.state = {
+        status: "error",
+        input: part.state.input,
+        metadata: part.state.metadata,
+        time: { ...part.state.time, end: Date.now() },
+        error: abort.aborted
+          ? deriveShellAbortReason(abort.reason)
+          : failure instanceof Error
+            ? failure.message
+            : String(failure),
+      }
+      await Session.updatePart(part)
+    }
+    msg.time.completed = Date.now()
+    msg.finish = "error"
+    await Session.updateMessage(msg)
     throw failure
   } finally {
     try {

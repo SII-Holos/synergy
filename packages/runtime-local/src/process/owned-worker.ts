@@ -8,6 +8,7 @@ import { OwnedTree } from "./owned-tree"
 import { LinuxTree } from "./linux-tree"
 import { OwnedProtocol } from "./owned-protocol"
 import { NativePty } from "./native-pty"
+import type { Writable } from "node:stream"
 
 export async function runOwnedProcessWorker(filename: string) {
   const raw = await fs.readFile(filename)
@@ -63,6 +64,13 @@ export async function runOwnedProcessWorker(filename: string) {
   control.once("close", () => void shutdown())
   let terminal: ReturnType<typeof NativePty.spawn> | undefined
   let activationReceived = false
+  const received = Promise.withResolvers<void>()
+  let receivedInput = 0
+  let inputEnd: number | undefined
+  let commandInput: Writable | undefined
+  const finishInput = () => {
+    if (inputEnd === receivedInput) commandInput?.end()
+  }
   const activated = new Promise<void>((resolve, reject) => {
     OwnedProtocol.messages(
       control,
@@ -71,6 +79,11 @@ export async function runOwnedProcessWorker(filename: string) {
         if (message.type === "activate" && !activationReceived) {
           activationReceived = true
           resolve()
+        } else if (message.type === "drained" && activationReceived) {
+          received.resolve()
+        } else if (message.type === "stdin-end" && inputEnd === undefined) {
+          inputEnd = message.bytes
+          finishInput()
         } else if (message.type === "resize" && terminal) terminal.resize(message.cols, message.rows)
         else throw new Error("Invalid native process control state")
       },
@@ -105,21 +118,32 @@ export async function runOwnedProcessWorker(filename: string) {
           })
     const drained = [output, error].map((socket) => new Promise<void>((resolve) => socket.once("finish", resolve)))
     void exited.catch(() => {})
-    input.pipe(child.stdin)
+    commandInput = child.stdin
+    input.pipe(child.stdin, { end: false })
+    input.on("data", (chunk: Buffer) => {
+      receivedInput += chunk.length
+      finishInput()
+    })
+    finishInput()
     child.stdout.pipe(output)
     if ("stderr" in child) child.stderr.pipe(error)
     else error.end()
     child.stdin.on("error", () => input.destroy())
     if (!("exited" in child)) await once(child, "spawn")
     OwnedProtocol.send(control, { type: "ready", pid: child.pid })
+    OwnedProtocol.send(control, { type: "stage", stage: "launched" })
     const result = await exited
+    OwnedProtocol.send(control, { type: "stage", stage: "root-exited" })
     terminal?.close()
     while (OwnedTree.hasDescendants(reference)) await Bun.sleep(25)
+    OwnedProtocol.send(control, { type: "stage", stage: "tree-drained" })
     await Promise.all([
       child.stdout.readableEnded ? Promise.resolve() : once(child.stdout, "end"),
       !("stderr" in child) || child.stderr.readableEnded ? Promise.resolve() : once(child.stderr, "end"),
     ])
     await Promise.all(drained)
+    OwnedProtocol.send(control, { type: "stage", stage: "streams-drained" })
+    await received.promise
     OwnedTree.complete(reference)
     stopping = true
     OwnedProtocol.send(control, { type: "exit", ...result })

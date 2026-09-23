@@ -26,7 +26,7 @@ nativeTest(
       command: process.execPath,
       args: [
         "-e",
-        `await Bun.write(${JSON.stringify(marker)}, process.cwd()+':'+process.env.PROBE); for await (const b of Bun.stdin.stream()) process.stdout.write(b); process.stderr.write('err'); process.exitCode=7`,
+        `await Bun.write(${JSON.stringify(marker)}, process.cwd()+':'+process.env.PROBE); let received=0; for await (const b of Bun.stdin.stream()) { received+=b.length; process.stdout.write(b) }; process.stderr.write('err'+received); process.exitCode=7`,
       ],
       cwd: tmp.path,
       env: { PROBE: "ok" },
@@ -45,9 +45,9 @@ nativeTest(
       const closed = await done
       expect(closed.code).toBe(7)
       const actual = Buffer.from(await output)
-      expect(actual.length).toBe(bytes.length)
+      expect(actual.length, await error).toBe(bytes.length)
       expect(Bun.CryptoHasher.hash("sha256", actual, "hex")).toBe(Bun.CryptoHasher.hash("sha256", bytes, "hex"))
-      expect(await error).toBe("err")
+      expect(await error).toBe("err" + bytes.length)
       expect(await Bun.file(marker).text()).toBe(`${tmp.path}:ok`)
       expect(await coordinator.inspect()).toHaveLength(0)
     } finally {

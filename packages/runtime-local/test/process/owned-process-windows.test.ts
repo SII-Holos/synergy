@@ -43,6 +43,7 @@ nativeTest(
       env: { ...environment(), VALUE: "explicit" },
       lease,
     })
+    const diagnostics = setTimeout(() => console.error("Windows binary process drainage", owned.diagnostics()), 10000)
     try {
       expect(await Bun.file(marker).exists()).toBe(false)
       expect((await coordinator.inspect())[0]?.processTree?.kind).toBe("windows-job")
@@ -59,6 +60,7 @@ nativeTest(
       expect(await Bun.file(marker).text()).toBe(`${directory.path}:explicit`)
       expect(await coordinator.inspect()).toHaveLength(0)
     } finally {
+      clearTimeout(diagnostics)
       await owned.stop()
     }
   },

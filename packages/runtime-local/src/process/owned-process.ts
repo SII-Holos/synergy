@@ -78,6 +78,7 @@ export namespace OwnedProcess {
     let controlClosed: Promise<void> | undefined
     let reported = false
     let started = false
+    let stage = "preparing"
     let stopping: Promise<void> | undefined
     let observing: Promise<void> | undefined
     let abandoned: Promise<void> | undefined
@@ -116,11 +117,12 @@ export namespace OwnedProcess {
           const rest = pending.subarray(end + 1)
           if (rest.length) socket.unshift(rest)
           if (message.channel === "control") {
-            controlClosed = new Promise<void>((resolve) => socket.once("close", resolve))
+            controlClosed = new Promise<void>((resolve) => socket.once("end", resolve).once("close", resolve))
             OwnedProtocol.messages(
               socket,
               (raw) => {
                 const event = OwnedProtocol.Event.parse(raw)
+                if (event.type === "stage") stage = event.stage
                 if (event.type === "ready") {
                   child.pid = event.pid
                   activated.resolve()
@@ -135,12 +137,22 @@ export namespace OwnedProcess {
             )
           }
           if (message.channel === "stdin") {
-            child.stdin.pipe(socket)
+            let bytes = 0
+            child.stdin.pipe(socket, { end: false })
+            child.stdin.on("data", (chunk: Buffer) => {
+              bytes += chunk.length
+            })
+            child.stdin.once("end", () => {
+              const control = sockets.get("control")
+              if (control && !control.destroyed && !control.writableEnded)
+                OwnedProtocol.send(control, { type: "stdin-end", bytes })
+            })
             socket.on("close", () => child.stdin.destroy())
           }
           if (message.channel === "stdout" || message.channel === "stderr") {
             drains.push(new Promise<void>((resolve) => socket.once("end", resolve).once("close", resolve)))
             const stream = message.channel === "stdout" ? child.stdout : child.stderr
+            drains.push(new Promise<void>((resolve) => stream.once("end", resolve).once("close", resolve)))
             stream.once("close", () => {
               socket.unpipe(stream)
               socket.resume()
@@ -317,6 +329,13 @@ export namespace OwnedProcess {
             ? await WindowsJob.start(command, directory)
             : await LinuxTree.start(command, directory)
       const pid = await connected.promise
+      void Promise.all(drains)
+        .then(() => {
+          const control = sockets.get("control")
+          if (!stopping && control && !control.destroyed && !control.readableEnded && !control.writableEnded)
+            OwnedProtocol.send(control, { type: "drained" })
+        })
+        .catch(fail)
       reference = OwnedTree.capture(pid)
       await input.lease.bindProcess(pid, { descendants: true })
       input.signal?.throwIfAborted()
@@ -325,6 +344,19 @@ export namespace OwnedProcess {
       void observing.catch(fail)
       return {
         child,
+        diagnostics() {
+          return {
+            stage,
+            tree: reference && !finished ? OwnedTree.inspect(reference) : undefined,
+            control: {
+              ended: sockets.get("control")?.readableEnded,
+              finished: sockets.get("control")?.writableFinished,
+              closed: sockets.get("control")?.closed,
+            },
+            stdout: { ended: child.stdout.readableEnded, bytes: child.stdout.readableLength },
+            stderr: { ended: child.stderr.readableEnded, bytes: child.stderr.readableLength },
+          }
+        },
         async activate() {
           if (started || finished || stopping) throw new Error("Native process is no longer awaiting activation")
           started = true
