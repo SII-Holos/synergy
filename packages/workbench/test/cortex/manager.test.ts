@@ -1459,12 +1459,17 @@ describe.serial("Cortex", () => {
     type TaskOutputContext = Parameters<TaskOutputInstance["execute"]>[1]
 
     async function waitUntilCompleted(taskID: string) {
-      for (let i = 0; i < 50; i++) {
+      const completed = Promise.withResolvers<ReturnType<typeof Cortex.get>>()
+      const unsubscribe = Bus.subscribe(Cortex.Event.TaskCompleted, (event) => {
+        if (event.properties.task.id === taskID) completed.resolve(event.properties.task)
+      })
+      try {
         const task = Cortex.get(taskID)
         if (task?.status === "completed" || task?.status === "error") return task
-        await Bun.sleep(10)
+        return await completed.promise
+      } finally {
+        unsubscribe()
       }
-      return Cortex.get(taskID)
     }
 
     function taskOutputContext(sessionID: string): TaskOutputContext {
