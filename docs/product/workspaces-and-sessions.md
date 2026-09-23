@@ -141,7 +141,7 @@ See [Browser workspace](browser.md).
 
 ## Pause, continue and abandon
 
-Pause stops current execution and keeps its task resumable. Continue resumes it; typing new requirements in the ordinary composer and choosing Send and continue supplies those requirements before the next model call. Abandon current execution is available through the session actions menu with confirmation or a three-second hold on the primary composer control. It cancels the current workflow and queued messages while preserving history, generated files and the unsent draft. Releasing a partial hold cancels the gesture. A service restart leaves interrupted sessions paused and marks unfinished tool calls as interrupted rather than running.
+Pause stops current execution and keeps its task resumable. Continue resumes it; typing new requirements in the ordinary composer and choosing Send and continue supplies those requirements before the next model call. Abandon current execution is available through the session actions menu with confirmation or a three-second hold on the primary composer control. It cancels the current workflow and queued messages while preserving history, generated files and the unsent draft. Releasing a partial hold cancels the gesture. A service restart leaves interrupted sessions paused and marks unfinished tool calls as interrupted rather than running. Discovering a paused session during startup or when opening a project preserves its position in recent conversations.
 
 ## Session tags
 

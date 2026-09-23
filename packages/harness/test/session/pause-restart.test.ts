@@ -11,6 +11,12 @@ import { SessionInvoke } from "../../src/session/invoke"
 import { SessionLifecycle } from "../../src/session/lifecycle"
 import { SessionManager } from "../../src/session/manager"
 import { SessionHistory } from "../../src/session/history"
+import { SessionInbox } from "../../src/session/inbox"
+import { SessionNav } from "../../src/session/nav"
+import { SessionEvent } from "../../src/session/event"
+import { Bus } from "../../src/bus"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { resolve as resolveWorking, toStatus } from "../../src/session/working"
 
 /** A reply-required root with no terminal assistant: the persisted shape of a
@@ -42,6 +48,83 @@ async function createInterruptedTurn(sessionID: string, rootMessageID: string) {
 }
 
 describe("a paused session is visible and inert without a live runtime", () => {
+  test.each(["turn", "inbox"] as const)("recovery preserves historical activity for unfinished %s", (unfinished) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const historical = await Session.create({ title: "Historical unfinished session" })
+          if (unfinished === "turn") {
+            await createInterruptedTurn(historical.id, Identifier.ascending("message"))
+            const assistant = (await SessionHistory.modelMessages({ sessionID: historical.id })).at(-1)!.info
+            if (assistant.role !== "assistant") throw new Error("Expected an assistant")
+            await Session.updateMessage({
+              ...assistant,
+              finish: "tool-calls",
+              time: { created: 1_000, completed: 2_000 },
+            })
+          } else {
+            await SessionInbox.enqueueUser({
+              sessionID: historical.id,
+              parts: [{ type: "text", text: "Saved input" }],
+            })
+          }
+          await Storage.update<Session.Info>(
+            StoragePath.sessionInfo(Identifier.asScopeID(historical.scope.id), Identifier.asSessionID(historical.id)),
+            (draft) => {
+              draft.time.created = 1_000
+              draft.time.updated = 2_000
+            },
+          )
+          const recent = await Session.create({ title: "Recent session" })
+          await Storage.update<Session.Info>(
+            StoragePath.sessionInfo(Identifier.asScopeID(recent.scope.id), Identifier.asSessionID(recent.id)),
+            (draft) => {
+              draft.time.created = 3_000
+              draft.time.updated = 3_000
+            },
+          )
+          const before = await SessionNav.buildNavIndex(historical.scope.id)
+          const activity = before.entries.map(({ id, lastActivityAt }) => ({ id, lastActivityAt }))
+          const messages = await SessionHistory.modelMessages({ sessionID: historical.id })
+          const inbox = await SessionInbox.list(historical.id)
+          const events: Array<{ info: Session.Info; navEntry?: { lastActivityAt: number } }> = []
+          const unsubscribe = Bus.subscribe(SessionEvent.Updated, (event) => {
+            if (event.properties.info.id === historical.id) events.push(event.properties)
+          })
+          try {
+            for (let pass = 0; pass < 2; pass++) {
+              await SessionInvoke.reconcilePausedSessions(historical.scope.id)
+              const info = await Session.get(historical.id)
+              expect(info.paused?.reason).toBe("interrupted")
+              expect(info.paused!.since).toBeGreaterThan(3_000)
+              expect(info.time.updated).toBe(2_000)
+              const nav = await SessionNav.readNavIndex(historical.scope.id)
+              expect(nav.entries.map(({ id, lastActivityAt }) => ({ id, lastActivityAt }))).toEqual(activity)
+              const rebuilt = await SessionNav.buildNavIndex(historical.scope.id)
+              expect(rebuilt.entries.map(({ id, lastActivityAt }) => ({ id, lastActivityAt }))).toEqual(activity)
+              expect(SessionManager.isRunning(historical.id)).toBe(false)
+            }
+            expect(events).toHaveLength(1)
+            expect(events[0].info.paused?.reason).toBe("interrupted")
+            expect(events[0].info.time.updated).toBe(2_000)
+            expect(events[0].navEntry?.lastActivityAt).toBe(2_000)
+            expect(await SessionHistory.modelMessages({ sessionID: historical.id })).toEqual(messages)
+            expect(await SessionInbox.list(historical.id)).toEqual(inbox)
+
+            await SessionLifecycle.clear(historical.id)
+            const resumed = await SessionNav.readNavIndex(historical.scope.id)
+            expect(resumed.entries[0].id).toBe(historical.id)
+            expect(resumed.entries[0].lastActivityAt).toBeGreaterThan(3_000)
+          } finally {
+            unsubscribe()
+          }
+        },
+      })
+    }),
+  )
+
   test.each([false, true])(
     "startup settles orphaned tools without terminalizing the breakpoint (paused=%s)",
     (paused) =>
