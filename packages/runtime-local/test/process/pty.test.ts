@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { Pty } from "../../src/process/pty"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -9,7 +9,45 @@ import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harne
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
+import { NativePty } from "../../src/process/native-pty"
+import { OwnedProcess } from "../../src/process/owned-process"
 const runtime = await testRuntime()
+
+test.each(["missing-library", "cancelled-preparation"] as const)(
+  "a failed terminal launch releases native write ownership: %s",
+  (failure) =>
+    runtime.run(async () => {
+      await using directory = await tmpdir()
+      await ScopeContext.provide({
+        scope: await directory.scope(),
+        async fn() {
+          const prepare = OwnedProcess.prepare
+          const probe =
+            failure === "missing-library"
+              ? spyOn(NativePty, "libraryPath").mockImplementationOnce(() => {
+                  throw new Error("Fixture PTY library unavailable")
+                })
+              : spyOn(OwnedProcess, "prepare").mockImplementationOnce((input) =>
+                  prepare({ ...input, signal: AbortSignal.abort(new Error("Fixture preparation cancelled")) }),
+                )
+          try {
+            await expect(Pty.create({ command: process.execPath })).rejects.toThrow("Fixture")
+          } finally {
+            probe.mockRestore()
+          }
+          expect(Pty.list()).toHaveLength(0)
+          const marker = path.join(directory.path, "after-failed-terminal")
+          await WorkspaceAccess.write(
+            [directory.path],
+            () => Bun.write(marker, "admitted"),
+            AbortSignal.timeout(10_000),
+          )
+          expect(await Bun.file(marker).text()).toBe("admitted")
+        },
+      })
+    }),
+  30_000,
+)
 
 test.skipIf(process.platform === "win32")(
   "local PTY accepts input, emits native output and releases its session",

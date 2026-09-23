@@ -193,6 +193,8 @@ For multi-stage operations that reuse a cancellation signal, test a real `AbortS
 
 Platform-only native implementations must contribute coverage from their actual OS runner. The macOS and Windows Workspace process shards use `script/native-workspace-coverage.ts` to inject an isolated home before spawning Bun, and uploads its LCOV at the same repository-relative path used by the Linux shards. Normalize Windows report paths before upload and keep the aggregate dependent on both jobs; do not lower package thresholds or classify executable native parents as unmeasurable.
 
+Each package test command must prepare the native assets its own tests execute. A sibling package's build is not a prerequisite in an independent coverage shard. For native launch failures, verify that a subsequent real writer is admitted after missing assets or cancellation before supervisor ownership; checking only the launch error cannot detect a leaked lease.
+
 For snapshot capture, verify exact bytes under text, ident and encoding attributes, same-size changes with restored timestamps, nested/global ignore precedence, file/directory transitions and literal symlinks. Exercise deep Workspace, object-store, index and transfer paths together on Windows; a successful Git initialization alone does not cover native reads or retained object access.
 
 For native file previews, mutate size after metadata resolution and verify bounded failure, then read through an internal symbolic link whose target is longer than the link text. On Windows, copy file links, dangling directory links and junctions without changing their native type; compare preserved mode bits to the filesystem's actual mode rather than a POSIX-only fixture value.

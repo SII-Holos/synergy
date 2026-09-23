@@ -53,6 +53,8 @@ The native PTY transport uses bounded byte queues and Node stream backpressure. 
 
 PTY WebSocket callbacks capture the upgrading request's Runtime and Scope context. The server's Runtime binding alone does not retain a request Scope across Bun's native open, message and close callbacks; terminal lookup and connection telemetry must keep their original owner.
 
+Terminal startup resolves its native library before acquiring write ownership. If supervisor preparation fails before taking over the process lease, the launcher releases that lease; missing assets and cancellation cannot leave unrelated filesystem operations blocked.
+
 ## Worktree Ownership
 
 Worktrees have explicit owners such as a session, Cortex task, Blueprint workflow, or internal orchestration record. Creating or entering a worktree updates session workspace binding; leaving returns to the project checkout according to the worktree lifecycle.

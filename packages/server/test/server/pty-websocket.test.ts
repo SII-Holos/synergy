@@ -34,8 +34,9 @@ test.skipIf(process.platform === "win32")(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ sessionID: session.id, command: "/bin/cat" }),
         })
-        expect(response.status).toBe(200)
-        const pty = (await response.json()) as { id: string; workspaceID: string; cwd: string }
+        const payload = await response.json()
+        expect(response.status, JSON.stringify(payload)).toBe(200)
+        const pty = payload as { id: string; workspaceID: string; cwd: string }
         ptyID = pty.id
         expect(pty.workspaceID).toBe(session.workspaceID!)
         expect(pty.cwd).toBe(session.workspace!.path)

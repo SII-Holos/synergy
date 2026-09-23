@@ -33,13 +33,20 @@ export namespace Pty {
 
   async function spawn(input: NativePty.Input, signal: AbortSignal) {
     signal.throwIfAborted()
+    const library = NativePty.libraryPath()
     const lease = await WorkspaceAccess.process(null, signal)
-    const owned = await OwnedProcess.prepare({
-      ...input,
-      lease,
-      signal,
-      pty: { cols: input.cols ?? 80, rows: input.rows ?? 24, library: NativePty.libraryPath() },
-    })
+    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>>
+    try {
+      owned = await OwnedProcess.prepare({
+        ...input,
+        lease,
+        signal,
+        pty: { cols: input.cols ?? 80, rows: input.rows ?? 24, library },
+      })
+    } catch (error) {
+      await lease.release()
+      throw error
+    }
     owned.child.stderr.resume()
     try {
       await owned.activate()
