@@ -40,6 +40,31 @@ try {
   const copied = path.join(deep, "copied.git")
   await fs.cp(short, copied, { recursive: true })
   await roundtrip("copied", copied, path.join(deep, "copied-workspace"))
+  const repoAlias = path.join(root, "repo")
+  await fs.symlink(copied, repoAlias, "junction")
+  await roundtrip("repo-alias-short-work", repoAlias, path.join(root, "short-workdir"))
+  await roundtrip("repo-alias-deep-work", repoAlias, path.join(deep, "deep-workdir"))
+  const workAlias = path.join(root, "work")
+  await fs.symlink(path.join(deep, "deep-workdir"), workAlias, "junction")
+  await roundtrip("repo-and-work-alias", repoAlias, workAlias)
+  const privateConfig = path.join(root, "bootstrap-config")
+  await fs.writeFile(privateConfig, "[core]\nlongpaths = true\n")
+  git("config-init", ["--git-dir", path.join(deep, "config.git"), "init", "--bare"], {
+    GIT_CONFIG_SYSTEM: privateConfig,
+    GIT_CONFIG_NOSYSTEM: "0",
+  })
+  const file = path.join(deep, "bun-file.txt")
+  for (const [name, target] of [
+    ["plain", file],
+    ["namespaced", path.toNamespacedPath(file)],
+  ]) {
+    try {
+      await Bun.write(target!, "native bytes")
+      console.log(JSON.stringify({ label: `bun:${name}`, text: await Bun.file(target!).text() }))
+    } catch (error) {
+      console.log(JSON.stringify({ label: `bun:${name}`, error: String(error) }))
+    }
+  }
   git("prefixed-init", ["--git-dir", path.toNamespacedPath(path.join(deep, "prefixed.git")), "init", "--bare"])
   const direct = path.join(root, "direct")
   await fs.symlink(deep, direct, "junction")
