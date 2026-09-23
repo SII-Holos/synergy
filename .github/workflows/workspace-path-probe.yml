@@ -1,0 +1,21 @@
+name: Workspace Native Path Probe
+on:
+  push:
+    branches: [synergy/workspace-c]
+    paths:
+      - .github/workflows/workspace-path-probe.yml
+      - test/script/windows-snapshot-path-probe.ts
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+      - run: bun test/script/windows-snapshot-path-probe.ts
